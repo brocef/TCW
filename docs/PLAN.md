@@ -12,7 +12,7 @@ The model is **storage-abstracted** (a filesystem default, but able to run again
 
 ## History
 
-These specs were brainstormed inside the `skill-cefailures` repo and extracted here once the scope (a standalone CLI + framework) outgrew a plugin skill. The full design dialogue — the capabilities-absorption decision, the storage-abstraction reframe, a dual review (subagent + local model), and the taxonomy `extends` federation model — lives in that repo's git history.
+These specs were brainstormed inside the `skill-cefailures` repo and extracted here once the scope (a standalone CLI + framework) outgrew a plugin skill. The full design dialogue — the capabilities-absorption decision, the storage-abstraction reframe, a dual review (subagent + local model), and the taxonomy `extends` federation model — lives in that repo's git history. See [`DESIGN-HISTORY.md`](DESIGN-HISTORY.md) for the distilled design narrative and decision log.
 
 ---
 
