@@ -3,7 +3,7 @@
 **TCW** (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes, exposed through one CLI, `tcw`, with three subcommand groups (`tcw taxonomy | capabilities | work`). This guide governs all work in this repo.
 
 - **Plan, build order, and live status:** [`docs/plan/INDEX.md`](docs/plan/INDEX.md) — the spine; one file per build phase.
-- **Component designs (source of truth):** [`docs/plan/`](docs/plan/) — `phase-2-taxonomy.md` (nouns), `phase-5-capabilities.md` (behaviors), `phase-3-work.md` (verbs). Each phase doc is the component's design **and** build plan. Read the relevant phase before changing a component's model; if a change diverges, update the phase doc in the same change — never let code and design drift.
+- **Component designs (source of truth):** [`docs/plan/`](docs/plan/) — `phase-2-taxonomy.md` (the nouns), `phase-3-capabilities.md` (the user stories), `phase-5-work.md` (the changes). Each phase doc is the component's design **and** build plan. Read the relevant phase before changing a component's model; if a change diverges, update the phase doc in the same change — never let code and design drift.
 
 ## Generic instructions
 
@@ -32,5 +32,5 @@ Express behavior in the abstract vocabulary — **item · status · transition �
 ## Implementation rules
 
 - Each component depends on an abstract **store interface** (`TaxonomyStore`, `WorkStore`, …) that the CLI and any skills talk to. Ship the **filesystem adapters** (`FsTaxonomyStore`, `FsWorkStore`) only; keep remote adapters (e.g. `JiraWorkStore`) possible but unbuilt. Never add an interface method that only the FS adapter could honor (run the litmus test first).
-- The three components are **one system**: taxonomy is the nouns, capabilities the behaviors, work the verbs. They link by loose, one-directional pointers (capability→term, work→capability/term) and never duplicate each other.
+- The three components are **one system**: taxonomy is the nouns, capabilities the user stories (what a user can do), work the changes (to capabilities, machinery, or the project itself). They link by loose, one-directional pointers (capability→term, work→capability/term) and never duplicate each other.
 - Python with type hints; pytest over `tmp_path` git repos. Use the ABC + adapter pattern for stores; extract the shared tree-store core only once two components are real (don't pre-abstract).

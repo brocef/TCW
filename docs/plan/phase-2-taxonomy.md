@@ -8,7 +8,7 @@
 > Spec **and** build plan for component 1. Part A is the model; Part B is the buildable tool; B.9 records the resolved open questions. Framework-wide rules: [`../../AGENTS.md`](../../AGENTS.md). Build order & status: [`INDEX.md`](INDEX.md).
 
 **Date:** 2026-06-18
-**Scope:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling components: [`phase-3-work`](phase-3-work.md), [`phase-5-capabilities`](phase-5-capabilities.md).
+**Scope:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling components: [`phase-5-work`](phase-5-work.md), [`phase-3-capabilities`](phase-3-capabilities.md).
 
 ---
 
@@ -19,12 +19,12 @@
 The system has three components, defined in dependency order — the `tcw` binary's three subcommand groups:
 
 1. **`tcw taxonomy`** — the *things* an application deals with (domain entities/concepts). The **nouns**.
-2. **`tcw capabilities`** — what those things can do / their states. The **behaviors**.
-3. **`tcw work`** — how those things and their behaviors change over time. The **verbs**.
+2. **`tcw capabilities`** — what a user can do with them, each a miniature user story. The **user stories**.
+3. **`tcw work`** — the changes to those capabilities and to the machinery (and to the project itself). The **changes**.
 
 Taxonomy comes first because the other two reference it: a capability describes the behavior of *something*, and a work item changes *something* — that something is a taxonomy term. Today that subject is only ever *inferred* from prose and surrounding language; taxonomy makes it an explicit, addressable registry + glossary. (`tcw` = taxonomy, capabilities, work.)
 
-This spec covers the taxonomy component. `tcw work` is the existing work-sdlc spec (to be renamed under the umbrella); `tcw capabilities` is a later component spec — capabilities exist today as co-located prose + a skill, and a CLI surface comes later.
+This spec covers the taxonomy component; `tcw capabilities` ([phase-3](phase-3-capabilities.md)) and `tcw work` ([phase-5](phase-5-work.md)) are the other two component specs.
 
 ### A.2 Terms form a forest
 
@@ -74,7 +74,7 @@ Vocabulary is canonical-shared; behavior is locally-divergent. Same framework, o
 Taxonomy is the **root noun** the other two hang off, by loose one-directional pointers:
 
 - A **capability** optionally declares a **`subject`** = a taxonomy term (by ref). A work item may likewise reference the terms it touches.
-- The pointer is capability→term (and work→term), never the reverse: a term stays behavior-agnostic — it doesn't list its capabilities — so the noun is independent of its verbs. The tool can *resolve* a subject ref but never *requires* one — the same loose-coupling style as work↔capabilities.
+- The pointer is capability→term (and work→term), never the reverse: a term stays behavior-agnostic — it doesn't list its capabilities — so the noun is independent of what's done with it. The tool can *resolve* a subject ref but never *requires* one — the same loose-coupling style as work↔capabilities.
 
 ### A.8 Design principles (shared with the framework)
 
@@ -168,6 +168,6 @@ pytest over `tmp_path` git repos: term add + nesting + slug=path identity; `rm` 
 
 The global build order lives in [`INDEX.md`](INDEX.md). Taxonomy-local notes:
 
-- **Done since first draft:** the framework reframe (`WORK-SDLC.AGENTS.md` → this repo's [`../../AGENTS.md`](../../AGENTS.md); `work` → `tcw work`; the `tcw` umbrella) and the capabilities component spec ([`phase-5-capabilities`](phase-5-capabilities.md)) — both shipped.
+- **Done since first draft:** the framework reframe (`WORK-SDLC.AGENTS.md` → this repo's [`../../AGENTS.md`](../../AGENTS.md); `work` → `tcw work`; the `tcw` umbrella) and the capabilities component spec ([`phase-3-capabilities`](phase-3-capabilities.md)) — both shipped.
 - **Shared tree-store core** — extracted in [`phase-4-shared-core`](phase-4-shared-core.md), once taxonomy + work both exist (don't pre-abstract).
 - **Remote `extends`** (git/URL sources with version-pinning) — deferred to [`phase-6-beyond`](phase-6-beyond.md).

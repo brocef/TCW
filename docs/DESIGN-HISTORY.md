@@ -32,9 +32,9 @@ A pivotal decision: **make it a deterministic CLI tool, not a set of prose skill
 The design had to reconcile with the existing `capabilities-sdlc` skill. The breakthrough was seeing that skill as **two bundled halves**:
 
 - a **process half** — the planning gate, contradiction-detection, the doc-sync trigger — which is exactly what a work *lifecycle* subsumes; and
-- an **artifact half** — the `capabilities.md` format, the `Supported / Missing / Omitted` taxonomy, the two-layer model — which is the **standing capability ledger**: the noun-at-rest.
+- an **artifact half** — the `capabilities.md` format, the `Supported / Missing / Omitted` taxonomy, the two-layer model — which is the **standing capability ledger** (the always-current layer).
 
-Decision: **absorb it.** The process half becomes *structural* in the work lifecycle (a capability delta declared at item creation, reconciled at completion — no longer convention with no CI backstop); the artifact half re-homes under the tool as the ledger. A work item now declares its effect along **two explicit axes — product changes (capability deltas) and technical changes** — which made the old `type` enum redundant. Bugs became work items (resolving the old "capabilities don't track bugs → use `FOLLOWUPS`" rule). Coupling stays **loose**: pointers link the two; the tool never parses capability prose.
+Decision: **absorb it.** The process half becomes *structural* in the work lifecycle (a capability delta declared at item creation, reconciled at completion — no longer convention with no CI backstop); the artifact half re-homes under the tool as the ledger. A work item now declares its effect along **explicit axes — product (capability deltas), technical (machinery), and later meta (the project itself)** — which made the old `type` enum redundant. Bugs became work items (resolving the old "capabilities don't track bugs → use `FOLLOWUPS`" rule). Coupling stays **loose**: pointers link the two; the tool never parses capability prose.
 
 ## Storage abstraction
 
@@ -62,9 +62,9 @@ Then came the realization that completed the system: **capabilities describe the
 
 This produced the third component and the **triad**:
 
-- **Taxonomy** — the *things* (nouns).
-- **Capabilities** — what they can do (behaviors).
-- **Work** — how they change (verbs).
+- **Taxonomy** — the *things* (the nouns).
+- **Capabilities** — what a user can do with them, each a miniature user story (the user stories).
+- **Work** — the changes to those capabilities and to the machinery, and to the project itself (the changes — *not* "verbs"; the verb-bearing user stories are the capabilities).
 
 Taxonomy decisions:
 
@@ -79,5 +79,5 @@ The three components became one binary — **`tcw`** (Taxonomy, Capabilities, Wo
 
 ## Where it stands
 
-- **Plan:** reorganized into phased build docs under [`plan/`](plan/), tracked by [`plan/INDEX.md`](plan/INDEX.md). All three component specs are written (taxonomy, capabilities, work), their open questions resolved, and the `work → tcw work` reframe applied.
+- **Plan:** reorganized into **dependency-ordered** build phases under [`plan/`](plan/), tracked by [`plan/INDEX.md`](plan/INDEX.md). All three component specs are written (taxonomy, capabilities, work) and their open questions resolved; the `work → tcw work` reframe applied; and the framing refined — **capabilities are miniature user stories** (not merely "behaviors") and **work is the change layer** (not a "verb"), now spanning a third **meta** axis for changes to the project itself.
 - **Built:** nothing yet — planning is complete; execution starts at Phase 1 (scaffold). See [`plan/INDEX.md`](plan/INDEX.md).

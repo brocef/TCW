@@ -1,14 +1,14 @@
-# Phase 5 — Capabilities (TCW component 2 of 3: the behaviors)
+# Phase 3 — Capabilities (TCW component 2 of 3: the user stories)
 
 **Status:** spec ✓ · build ☐ not started
 **Delivers:** `tcw capabilities` + `FsCapabilitiesStore` over the bounded `docs/capabilities/` tree; `Subject`↔taxonomy validation in `check`.
-**Depends on:** Phase 1 (package/CLI), Phase 2 (taxonomy — `check` validates `Subject:` refs against the `TaxonomyStore`), Phase 4 (shared tree-store core).
+**Depends on:** Phase 1 (package/CLI), Phase 2 (taxonomy — `check` validates `Subject:` refs against the `TaxonomyStore`).
 **Build checklist:** `CapabilitiesStore` interface → `FsCapabilitiesStore` → the five subcommands (B.2) → identifier resolution (A.6) → `check` incl. cross-component `Subject` validation → tests (B.7).
 
-> Spec **and** build plan for component 2. Built **last** (despite the "2/3" numbering): it hard-depends on taxonomy and is a near-clone of it, so it follows the shared-core extraction (Phase 4). See [`INDEX.md`](INDEX.md) for why definition order ≠ build order. Framework rules: [`../../AGENTS.md`](../../AGENTS.md).
+> Spec **and** build plan for component 2 — a capability is a **miniature user story** ("*as a user, I can…*"). Built **second, right after taxonomy**: it depends only on taxonomy (its `check` validates `Subject:` refs against the `TaxonomyStore`) and is its near-clone, so the shared tree-store core is extracted from the two (Phase 4) before work is built. Framework rules: [`../../AGENTS.md`](../../AGENTS.md). Build order: [`INDEX.md`](INDEX.md).
 
 **Date:** 2026-06-18
-**Scope:** the conceptual model (Part A) plus the buildable `tcw capabilities` tool (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-3-work`](phase-3-work.md). This spec formalizes the **artifact half** of the absorbed `skill-cefailures:capabilities-sdlc` skill (its v2 design) as a TCW component; the **process half** is already structural in the work lifecycle (the work phase's A.7).
+**Scope:** the conceptual model (Part A) plus the buildable `tcw capabilities` tool (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-5-work`](phase-5-work.md). This spec formalizes the **artifact half** of the absorbed `skill-cefailures:capabilities-sdlc` skill (its v2 design) as a TCW component; the **process half** is already structural in the work lifecycle (the work phase's A.7).
 
 ---
 
@@ -19,10 +19,10 @@
 The system has three components, defined in dependency order — the `tcw` binary's three subcommand groups:
 
 1. **`tcw taxonomy`** — the *things* an application deals with. The **nouns**.
-2. **`tcw capabilities`** — what those things can do / their states. The **behaviors**.
-3. **`tcw work`** — how those things and their behaviors change over time. The **verbs**.
+2. **`tcw capabilities`** — what a user can do with them, each a miniature user story. The **user stories**.
+3. **`tcw work`** — the changes to those capabilities and to the machinery (and to the project itself). The **changes**.
 
-Capabilities sit in the middle: a capability describes the behavior of a taxonomy *thing*, and a work item realizes or changes a capability. Both links are loose, one-directional pointers — capability→term and work→capability (A.7, A.8). A capability is the **noun-at-rest**: it states *current intended user-facing behavior*, independent of any work item, and persists while work items freeze in `completed/`.
+Capabilities sit in the middle: a capability is a **miniature user story** about a taxonomy *thing* ("*as a user, I can …*"), and a work item realizes or changes a capability. Both links are loose, one-directional pointers — capability→term and work→capability (A.7, A.8). A capability is the **standing layer**: it states *what a user can currently do*, independent of any work item, and persists while work items freeze in `completed/`.
 
 This spec covers the capabilities component. `tcw taxonomy` and `tcw work` are their own specs; this one references them rather than restating them.
 
@@ -106,10 +106,10 @@ A capability optionally declares a **`Subject:`** = a taxonomy term ref (A.4). T
 
 ### A.8 The work seam (loose)
 
-The verb↔noun binding is **defined in the work-sdlc spec (A.7)** and only referenced here — neither component duplicates the other:
+The work↔capability binding is **defined in the work spec (A.7)** and only referenced here — neither component duplicates the other:
 
-- **Forward (noun→verb):** a `Missing` capability's `Planning doc:` pointer holds the realizing work item's **stable ID** (slug), resolved through the work store's `resolve`.
-- **Back (verb→noun):** the work item's `capabilities.yaml` lists the capability files it touches and their intended status transitions, as identifiers into this tree.
+- **Forward (capability→work):** a `Missing` capability's `Planning doc:` pointer holds the realizing work item's **stable ID** (slug), resolved through the work store's `resolve`.
+- **Back (work→capability):** the work item's `capabilities.yaml` lists the capability files it touches and their intended status transitions, as identifiers into this tree.
 - **The lifecycle handshake:** `new` (declares a product delta → records `Missing` with `Planning doc:`) → `active` (contradiction-detection) → `complete` (the DoD "capabilities reconciled" gate applies the delta: `Missing → Supported`, scope edits, `Supported → Omitted`).
 
 The binding is a **pointer, not a transaction** — atomic under the filesystem adapter (one commit), best-effort when the work store is remote. The capability ledger is always filesystem-resident, independent of the `WorkStore`. `tcw capabilities` reads these *pointers*, never work prose.
@@ -230,6 +230,6 @@ pytest over `tmp_path` git repos: `add` flat-file and promoted-folder; the flat/
 Global build order: [`INDEX.md`](INDEX.md). Capabilities-local notes:
 
 1. **This phase** — the capabilities component (`tcw capabilities`) + `FsCapabilitiesStore`, single bounded tree, `Subject`↔taxonomy validation in `check`.
-2. **Shared tree-store core** — extracted in [`phase-4-shared-core`](phase-4-shared-core.md), now that all three components are real: the common bounded-tree primitive (body + named fields + named attachments + identifier resolution) they share. Unify only now, not before (don't pre-abstract).
+2. **Shared tree-store core** — extracted in [`phase-4-shared-core`](phase-4-shared-core.md) from taxonomy + capabilities (the two near-clone trees), *before* work is built: the common bounded-tree primitive (body + named fields + named attachments + identifier resolution) they share. Don't pre-abstract — two real implementations justify it.
 3. **Skill + product-layer coordination** — the orchestrator-relay protocol (A.9), the lifecycle-handshake driving (work "Spec 3"), and the `## Capability changes` planning gate as a skill (the process half, now structural in the work lifecycle) — deferred to [`phase-6-beyond`](phase-6-beyond.md).
 4. **Tracker sync** — per-tracker adapters (Jira/GitHub/Linear) layered on the `**Tracker:**` shortname convention without changing the format — deferred to [`phase-6-beyond`](phase-6-beyond.md).

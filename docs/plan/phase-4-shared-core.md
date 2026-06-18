@@ -1,12 +1,12 @@
 # Phase 4 — Shared tree-store core
 
 **Status:** ☐ blocked on Phases 2 + 3
-**Delivers:** the common bounded-tree store primitive extracted from `FsTaxonomyStore` and `FsWorkStore`, ready for `FsCapabilitiesStore` (Phase 5) to reuse.
-**Depends on:** Phase 2 (taxonomy) **and** Phase 3 (work) must both be real first.
+**Delivers:** the common bounded-tree store primitive extracted from `FsTaxonomyStore` and `FsCapabilitiesStore`, ready for `FsWorkStore` (Phase 5) to reuse.
+**Depends on:** Phase 2 (taxonomy) **and** Phase 3 (capabilities) must both be real first.
 
 ## Why this phase exists — and why *here*
 
-`AGENTS.md` is explicit: *"extract the shared tree-store core only once two components are real (don't pre-abstract)."* Phases 2 and 3 deliberately ship their own `FsTaxonomyStore` / `FsWorkStore` with whatever each needs. This phase is where the duplication, now visible in real code, gets factored into one primitive — **after** two implementations exist to generalize from, **before** the third (capabilities) is written so it can reuse rather than re-duplicate.
+`AGENTS.md` is explicit: *"extract the shared tree-store core only once two components are real (don't pre-abstract)."* Phases 2 and 3 deliberately ship their own `FsTaxonomyStore` / `FsCapabilitiesStore` with whatever each needs. This phase is where the duplication, now visible in real code, gets factored into one primitive — **after** two implementations exist to generalize from, **before** the third component, **work** (Phase 5), is written so it can reuse rather than re-duplicate.
 
 This is a **refactor phase**, not a feature phase. No new `tcw` surface area; the CLI behaves identically before and after.
 
@@ -30,4 +30,4 @@ Run each candidate through the litmus test before promoting it. When unsure, lea
 
 ## Done when
 
-`FsTaxonomyStore` and `FsWorkStore` are re-expressed on the shared core with **no behavior change** (their existing test suites still pass green), and the core exposes exactly what Phase 5 needs — no speculative surface added "for later."
+`FsTaxonomyStore` and `FsCapabilitiesStore` are re-expressed on the shared core with **no behavior change** (their existing test suites still pass green), and the core exposes exactly what Phase 5 (work) needs — no speculative surface added "for later."

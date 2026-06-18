@@ -1,14 +1,14 @@
-# Phase 3 — Work (TCW component 3 of 3: the verbs)
+# Phase 5 — Work (TCW component 3 of 3: the changes)
 
 **Status:** spec ✓ · build ☐ not started
 **Delivers:** `tcw work` + `FsWorkStore` — the single-node state machine + loose DoD gate (the work component's "Spec 1").
-**Depends on:** Phase 1 (package + CLI skeleton + node detection); references Phase 2 terms loosely.
+**Depends on:** Phase 1 (package/CLI), Phase 4 (shared tree-store core); references Phase 2 (taxonomy) and Phase 3 (capabilities) loosely — `capabilities.yaml` is an opaque blob in this phase.
 **Build checklist:** `WorkStore` interface → `FsWorkStore` over `docs/work/` → the ten subcommands (B.2) → the state machine (B.3) → the loose DoD gate (B.6) → tests (B.8).
 
 > Spec **and** build plan for component 3. Part A is the model; Part B is the buildable single-node tool; B.9 records the resolved open questions. The cross-node recursion, skill layer, and migration (this doc's "Spec 2/3/4") are deferred to [`phase-6-beyond`](phase-6-beyond.md). Framework rules: [`../../AGENTS.md`](../../AGENTS.md). Build order: [`INDEX.md`](INDEX.md).
 
 **Date:** 2026-06-18
-**Scope:** the full conceptual model (Part A) plus the buildable *core single-node tool* (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-5-capabilities`](phase-5-capabilities.md).
+**Scope:** the full conceptual model (Part A) plus the buildable *core single-node tool* (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-3-capabilities`](phase-3-capabilities.md).
 
 ---
 
@@ -96,23 +96,24 @@ workspace/                          ← node (git + docs/work/)
 The former `capabilities-sdlc` skill is **absorbed**, not coupled-to. It bundled two things, and they split cleanly:
 
 - Its **process half** — the planning gate (`## Capability changes` opens every spec), contradiction-detection (at the moment of change), the capability doc-sync trigger — is exactly what the work lifecycle subsumes. It becomes *structural* here instead of convention-with-no-CI-backstop.
-- Its **artifact half** — the capability format, the status taxonomy, the **bounded `docs/capabilities/` tree**, the two-layer (per-repo / product) model, and product-layer coordination — is the **standing capability ledger**: the noun-at-rest. It is now the standalone **`tcw capabilities`** component ([`phase-5-capabilities`](phase-5-capabilities.md)), not docs folded under this skill. *(Layout reconciliation: capabilities live in a bounded tree, not scattered `**/capabilities.md` — see the capabilities spec A.2.)*
+- Its **artifact half** — the capability format, the status taxonomy, the **bounded `docs/capabilities/` tree**, the two-layer (per-repo / product) model, and product-layer coordination — is the **standing capability ledger** — the always-current layer. It is now the standalone **`tcw capabilities`** component ([`phase-3-capabilities`](phase-3-capabilities.md)), not docs folded under this skill. *(Layout reconciliation: capabilities live in a bounded tree, not scattered `**/capabilities.md` — see the capabilities spec A.2.)*
 
-**A work item declares its effect along two explicit axes** (both open `content.md`; either may be empty):
+**A work item declares its effect along three explicit axes** (all open `content.md`; any may be empty):
 
 - **Product changes** — capability deltas: new / updated / removed user-facing capabilities.
-- **Technical changes** — work with no user-facing delta (refactor, infra, perf, tech-debt, dependency).
+- **Technical changes** — changes to the *application's machinery* with no user-facing delta (refactor, infra, perf, tech-debt, dependency).
+- **Meta changes** — changes to the *project itself, not the application*: planning/docs, CI, repo tooling, the framework. (Even when a node's deliverable *is* a tool or framework, meta-work is the apparatus around building it — distinct from the application's own machinery.)
 
-A feature carries both; a refactor is technical-only; a bug references a capability and branches (below). Whether the `## Product changes` section is non-empty *is* the classification — there is no separate `type` field. This makes "planning relates to capabilities" literal and required, not a convention.
+A feature carries product (and usually technical); a refactor is technical-only; a docs/CI/tooling change is meta-only; a bug references a capability and branches (below). Which sections are non-empty *is* the classification — there is no separate `type` field. This makes "planning relates to capabilities" literal and required, not a convention.
 
-**The standing ledger is the noun-at-rest — and the system's only mutable survivor.** Capability files describe *current intended product state*; they persist independent of any work item, and a completed item's product delta is *applied* to them. Everything else freezes in `completed/`; the ledger keeps describing the present — correct, because the present is the one thing that must stay live.
+**The standing ledger is the system's only mutable survivor.** Capability files describe *current intended product state*; they persist independent of any work item, and a completed item's product delta is *applied* to them. Everything else freezes in `completed/`; the ledger keeps describing the present — correct, because the present is the one thing that must stay live.
 
-**Two pointers bind verb to noun:**
+**Two pointers bind work to capability:**
 
-- **Forward (noun → verb):** a `Missing` capability's `Planning doc:` pointer holds the realizing work item's **stable ID** (slug), resolved through the store's `resolve` (A.5) — so it survives even when the work-store is remote.
-- **Back (verb → noun):** the work item's `capabilities.yaml` lists the capability files it touches and their intended status transitions, as **identifiers into the `docs/capabilities/` tree** (capabilities spec A.6/A.8).
+- **Forward (capability → work):** a `Missing` capability's `Planning doc:` pointer holds the realizing work item's **stable ID** (slug), resolved through the store's `resolve` (A.5) — so it survives even when the work-store is remote.
+- **Back (work → capability):** the work item's `capabilities.yaml` lists the capability files it touches and their intended status transitions, as **identifiers into the `docs/capabilities/` tree** (capabilities spec A.6/A.8).
 
-The binding is a **pointer, not a transaction.** With `FsWorkStore` the verb and the noun live in the *same* repo, so a single commit can land code + the capability flip + the work-item move atomically (an A.11 bonus). When the work-store is remote (Jira) the ledger still lives in the code repo — two different stores — so the binding is **best-effort** (apply the delta, then transition the ticket; no cross-system atomicity). The ledger is therefore always filesystem-resident and independent of the `WorkStore`.
+The binding is a **pointer, not a transaction.** With `FsWorkStore` the work item and the capability live in the *same* repo, so a single commit can land code + the capability flip + the work-item move atomically (an A.11 bonus). When the work-store is remote (Jira) the ledger still lives in the code repo — two different stores — so the binding is **best-effort** (apply the delta, then transition the ticket; no cross-system atomicity). The ledger is therefore always filesystem-resident and independent of the `WorkStore`.
 
 Neither owns the other: a `Missing` capability can exist with no work item yet (pure intent); a technical-only item has no capability pointer.
 
@@ -133,7 +134,7 @@ Because `completed` means "no further code changes," reconciling the ledger is t
 
 **Recursion maps the two ledger layers onto the two work layers:** an epic ↔ the orchestrator-node's product-layer `docs/capabilities/`; a task ↔ the leaf-node's `docs/capabilities/`. The product-layer coordination protocol (a per-repo agent asking the orchestrator for canonical wording) **is** the escalate/delegate inbox channel of A.6 — an epic completing flips the product-layer entry; a task completing flips the co-located one.
 
-**Two backlogs, complementary not merged:** `**Status:** Missing` (the noun-backlog: what we want) and `ls backlog/` (the verb-backlog: queued changes) are two lenses, linked by ID when both exist. No dedup, no derivation.
+**Two backlogs, complementary not merged:** `**Status:** Missing` (the capability-backlog: what we want) and `ls backlog/` (the work-backlog: queued changes) are two lenses, linked by ID when both exist. No dedup, no derivation.
 
 **Coupling, stated precisely:** the *systems* are unified (one owner, absorbed). The *tool's* relationship to capability prose stays mechanism-only — it reads `capabilities.yaml` pointers, never capability prose; the ledger spec owns content/format/status. The `complete` DoD gate is **loose** (acknowledged, not externally verified — B.6); a **hard gate** (refuse `complete` unless the declared capability files appear in the item's commit range) is a deliberate future hook, not built now.
 
@@ -181,7 +182,7 @@ The model is defined in an abstract vocabulary — **item · status · transitio
 
 ### B.1 Scope
 
-The **`tcw work`** subcommand group operating on the current node's work store. **Single node only** — no recursion, no skill layer, no migration, no capability *prose* parsing. Delivers: the directory contract, slug management, work-item folders, the two-axis (product/technical) effect record, the legal-transition state machine, the loose DoD gate, and the on-demand queries.
+The **`tcw work`** subcommand group operating on the current node's work store. **Single node only** — no recursion, no skill layer, no migration, no capability *prose* parsing. Delivers: the directory contract, slug management, work-item folders, the three-axis (product/technical/meta) effect record, the legal-transition state machine, the loose DoD gate, and the on-demand queries.
 
 **Architecture — the store interface.** The CLI (and, later, the skills) depends on an abstract **`WorkStore`** interface; concrete adapters realize it. Spec 1 ships exactly one adapter, **`FsWorkStore`** (the `docs/work/` filesystem-state-machine of Part A). The interface exists so a future `JiraWorkStore` (or any tracker) is a drop-in without touching the CLI or skills. Use the ABC + adapter pattern for stores (per `AGENTS.md`). What is *in* the interface vs. *beside* it is governed by the A.11 litmus test:
 
@@ -225,9 +226,10 @@ tcw work drop <slug>                   inbox|backlog → deleted (git rm)
 
 A work item is a folder named exactly `<slug>`. Inside:
 
-- **`content.md`** — the human-readable body. It opens with the item's **two-axis effect** (A.7), which replaces capabilities-sdlc's convention-only planning gate with a structural one:
-  - `## Product changes` — capability deltas: new / updated / removed user-facing capabilities (empty for technical-only work and on non-product nodes).
-  - `## Technical changes` — work with no user-facing delta.
+- **`content.md`** — the human-readable body. It opens with the item's **three-axis effect** (A.7), which replaces capabilities-sdlc's convention-only planning gate with a structural one:
+  - `## Product changes` — capability deltas: new / updated / removed user-facing capabilities (empty for non-product work).
+  - `## Technical changes` — application-machinery changes with no user-facing delta.
+  - `## Meta changes` — changes to the project itself (planning, CI, tooling, the framework), not the application.
   Over the item's life `content.md` is joined by `spec.md`, `plan.md`, and any artifacts. The tool does not parse this prose. *(Abstractly: the item's body + named attachments — see A.11.)*
 - **`state.yaml`** — machine-readable metadata. Status is **not** stored here (status = the directory / store-status). Fields:
   - `slug` (string, immutable) · `title` · `phase` (free-text, e.g. `planning`) · `created` (date) · `resolution` (set on completion: `done|wontfix|duplicate|superseded`) · `dod` (optional acknowledged-checklist record). *(No `type` field — the product/technical axis classifies. `worktree`/`branch` arrive with `--worktree` in Spec 2.)*
@@ -239,14 +241,14 @@ A work item is a folder named exactly `<slug>`. Inside:
 ### B.5 Command behavior
 
 - **`init`** — create the five status directories, each holding a `.gitkeep` so the empty dirs survive commit/clone (idempotent — tops up a partial set). Refuse outside a git repo (suggest `git init`).
-- **`new`** — generate the slug, create `backlog/<slug>/` with `content.md` (seeded from the title, the `## Product changes` / `## Technical changes` scaffold, and any piped stdin) and `state.yaml`. Print the slug. (No empty `spec.md` is seeded — it is created only when an agent writes one.)
+- **`new`** — generate the slug, create `backlog/<slug>/` with `content.md` (seeded from the title, the `## Product changes` / `## Technical changes` / `## Meta changes` scaffold, and any piped stdin) and `state.yaml`. Print the slug. (No empty `spec.md` is seeded — it is created only when an agent writes one.)
 - **`list`** — walk the status directories, read each `state.yaml`, print a table (slug · status=dir · phase · title). `--status` filters.
 - **`show` / `path`** — resolve the slug to its current item (A.5); `show` prints `state.yaml` + the head of `content.md`; `path` prints just the resolved path (for scripting/references).
 - **`start`** — move `inbox|backlog → active`. *(The `--worktree` option is deferred to Spec 2 — see A.8.)*
 - **`block`** — move `active → blocked`; append the `--on` target to `links.yaml` `blocked_on`.
 - **`unblock`** — move `blocked → active`; **refuse** if any `blocked_on` entry is unresolved — a referenced slug whose item is not `completed` (checked via `resolve`/`get`, not a raw `completed/` path test), or an `external` entry still listed. A blocker slug that no longer resolves (it was dropped) counts as resolved, with a warning. `--force` overrides; `external` entries are cleared by hand-editing `links.yaml`.
 - **`complete`** — the DoD gate (B.6); on pass, set `resolution`, move `active → completed`.
-- **`drop`** — `git rm -r` the folder (only from `inbox`/`backlog`). If a capability's `Planning doc:` pointed at this slug, that forward pointer is left dangling; reconciling it is the capabilities component's job ([`phase-5-capabilities`](phase-5-capabilities.md)), not the work tool's.
+- **`drop`** — `git rm -r` the folder (only from `inbox`/`backlog`). If a capability's `Planning doc:` pointed at this slug, that forward pointer is left dangling; reconciling it is the capabilities component's job ([`phase-3-capabilities`](phase-3-capabilities.md)), not the work tool's.
 
 ### B.6 DoD gate (loose)
 
@@ -270,7 +272,7 @@ pytest over `tmp_path` git repos (each test runs `git init` and sets `user.name`
 - **`phase`** — **free-text** (e.g. `planning`); no fixed enum. Nothing in this phase sets it; a fixed enum is deferred to the skill layer (Phase 6) that would actually drive it.
 - **DoD defaults** — the **five defaults stand** (*tests pass · docs synced · capabilities reconciled · reviewed · version offered*) and **every item is loose/acknowledged** in this phase. A node-local `docs/work/dod.yaml` overrides the list but cannot add *hard* (verified) items yet — the hard-gate hook stays deferred.
 
-*(Resolved earlier, reflected in the body: `--commit` → stage-only; `type` → dropped (the product/technical axis classifies); `new` lands in `backlog/`; `content.md` seeded with the two-axis scaffold, no empty `spec.md`; worktree creation → Phase 6; DoD source → `docs/work/dod.yaml` + built-in default.)*
+*(Resolved earlier, reflected in the body: `--commit` → stage-only; `type` → dropped (the product/technical/meta axes classify); `new` lands in `backlog/`; `content.md` seeded with the three-axis scaffold, no empty `spec.md`; worktree creation → Phase 6; DoD source → `docs/work/dod.yaml` + built-in default.)*
 
 ---
 
@@ -280,7 +282,7 @@ The work component decomposes into four sub-specs. **Spec 1 is this phase (Phase
 
 1. **Spec 1 (this phase, Part B):** core single-node tool — the `WorkStore` interface + the `FsWorkStore` adapter + CLI.
 2. **Spec 2 — Cross-node / recursion:** node discovery, epics, `initiative:` back-pointers, `reconcile` (scan children → consolidated rollup), escalate/delegate via inbox, `tcw work start --worktree` (+ the rule for which checkout owns `docs/work/` writes), and the two-layer × two-layer capability mapping (epic ↔ product-layer ledger, task ↔ leaf-node ledger; product-layer coordination over the inbox channel).
-3. **Spec 3 — Skill + absorbed capabilities process:** the `tcw work` driving skill (recursive process-inbox, resume, decompose, two-axis / product-first planning, the A.7 lifecycle handshake). The capabilities **artifact** is already its own component ([`phase-5-capabilities`](phase-5-capabilities.md)); Spec 3 adds only the *process* skill, not a re-homing of artifact docs.
+3. **Spec 3 — Skill + absorbed capabilities process:** the `tcw work` driving skill (recursive process-inbox, resume, decompose, three-axis / product-first planning, the A.7 lifecycle handshake). The capabilities **artifact** is already its own component ([`phase-3-capabilities`](phase-3-capabilities.md)); Spec 3 adds only the *process* skill, not a re-homing of artifact docs.
 4. **Spec 4 — Consumer migration (downstream, not work in this repo):** retiring `skill-cefailures`'s `FOLLOWUPS.md` → `backlog/`, its two `process-inbox` commands → the recursive flow, and its standalone `capabilities-sdlc` skill → `tcw capabilities` + the Spec-3 process skill; redirecting Proposit's per-repo `CLAUDE.md` doc-sync entries; fixing `documentation-sync`'s follow-ups name mismatch; reconciling Proposit-App's `AGENTS.md` / `ORCHESTRATOR-AGENTS.md` to this model. This is **work for `tcw`'s consumers**, tracked in those repos — recorded here only so the migration path is on file.
 
 **Beyond the roadmap (enabled, not built):** a `JiraWorkStore` (or other external-tracker) adapter — the `WorkStore` interface exists so this is purely additive.

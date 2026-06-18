@@ -8,24 +8,25 @@ The big-picture spine for building **TCW** (**T**axonomy · **C**apabilities · 
 
 ## The three components
 
-| # | Component | Axis | What it is |
+| # | Component | Is | What it is |
 |---|---|---|---|
-| 1 | **Taxonomy** | nouns | the *things* an app deals with (domain entities) |
-| 2 | **Capabilities** | behaviors | what those things can do / their states |
-| 3 | **Work** | verbs | how they change over time |
+| 1 | **Taxonomy** | the nouns | the *things* an app deals with (domain entities) |
+| 2 | **Capabilities** | the user stories | what a user can do with them — each a miniature user story |
+| 3 | **Work** | the changes | edits to capabilities (product), machinery (technical), or the project itself (meta) |
 
-They link by **loose, one-directional pointers** (capability→term, work→capability/term) and never duplicate each other.
+They link by **loose, one-directional pointers** (capability→term, work→capability/term) and never duplicate each other. Capabilities are the user-facing surface; **work is the change layer that edits capabilities and machinery over time** — not a peer "verb."
 
-## Definition order ≠ build order (the thing that was confusing)
+## Build order = dependency order
 
-The components are **numbered 1/2/3 by *definition dependency*** — capabilities reference taxonomy, and work references both, so taxonomy must be *defined* first.
+The components are **numbered 1/2/3 by dependency** — capabilities reference taxonomy, and work references both — and they are **built in that same order**, so nothing is ever built against a stub:
 
-But they are **built in a different order**, for practical reasons:
+- **Taxonomy** first — it depends on nothing; the other two point at its terms.
+- **Capabilities** second — it depends only on taxonomy (its `check` validates `Subject:` refs against the `TaxonomyStore`).
+- **Work** last of the three — it references both taxonomy and capabilities.
 
-- **Taxonomy is built before Work** — it is the simplest fully-specced tree, and Work points at its terms.
-- **Capabilities is built last** — it hard-depends on Taxonomy (its `check` validates `Subject:` refs against the `TaxonomyStore`), and it is a near-clone of Taxonomy, so we build it *after* extracting the shared tree-store core (Phase 4), which only makes sense once two components already exist.
+Two non-component phases bracket the work: **scaffold** (Phase 1) lays down the package + CLI + store base, and the **shared tree-store core** (Phase 4) is extracted *after* taxonomy and capabilities — the two near-clone trees — so work can build on it.
 
-So the build order is **scaffold → taxonomy → work → shared core → capabilities → beyond**, which is the phase numbering below.
+So the build order is **scaffold → taxonomy → capabilities → shared core → work → beyond**, the phase numbering below.
 
 ## Phases & status
 
@@ -33,14 +34,14 @@ So the build order is **scaffold → taxonomy → work → shared core → capab
 |---|---|---|---|
 | 1 | [phase-1-scaffold](phase-1-scaffold.md) | `pyproject`, package layout, abstract store base, `tcw` CLI + `tcw init` | ☐ not started |
 | 2 | [phase-2-taxonomy](phase-2-taxonomy.md) | `tcw taxonomy` + `FsTaxonomyStore`, local-path `extends` | spec ✓ · build ☐ |
-| 3 | [phase-3-work](phase-3-work.md) | `tcw work` + `FsWorkStore`, single-node state machine + DoD gate | spec ✓ · build ☐ |
+| 3 | [phase-3-capabilities](phase-3-capabilities.md) | `tcw capabilities` + `FsCapabilitiesStore`, `Subject`↔taxonomy `check` | spec ✓ · build ☐ |
 | 4 | [phase-4-shared-core](phase-4-shared-core.md) | extract the common bounded-tree store primitive | ☐ blocked on 2 + 3 |
-| 5 | [phase-5-capabilities](phase-5-capabilities.md) | `tcw capabilities` + `FsCapabilitiesStore`, `Subject`↔taxonomy `check` | spec ✓ · build ☐ |
+| 5 | [phase-5-work](phase-5-work.md) | `tcw work` + `FsWorkStore`, single-node state machine + DoD gate | spec ✓ · build ☐ |
 | 6 | [phase-6-beyond](phase-6-beyond.md) | cross-node recursion, skill layer, remote adapters, tracker sync | ☐ deferred |
 
 **Where we are now:** planning is **complete** — all three component specs are written and their open questions resolved (see each phase's "Resolved decisions"). Nothing is built yet. **Next action: Phase 1.**
 
-> Tracking is a plain markdown table on purpose. Once `tcw work` (Phase 3) exists, TCW can dogfood its own `docs/work/` for tracking — but we do not build `tcw work` just to track building `tcw work`.
+> Tracking is a plain markdown table on purpose. Once `tcw work` (Phase 5) exists, TCW can dogfood its own `docs/work/` for tracking — but we do not build `tcw work` just to track building `tcw work`.
 
 ## Conventions decided for this repo
 
