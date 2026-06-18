@@ -1,8 +1,14 @@
-# Taxonomy — the domain-noun registry (TCW component 1 of 3)
+# Phase 2 — Taxonomy (TCW component 1 of 3: the nouns)
 
-**Status:** Draft (first pass; under active refinement)
+**Status:** spec ✓ · build ☐ not started
+**Delivers:** `tcw taxonomy` + `FsTaxonomyStore`, local-path `extends`.
+**Depends on:** Phase 1 (package + CLI skeleton + node detection).
+**Build checklist:** `TaxonomyStore` interface → `FsTaxonomyStore` over `docs/taxonomy/` → the six subcommands (B.2) → `extends` resolution (B.6) → `check` → tests (B.8).
+
+> Spec **and** build plan for component 1. Part A is the model; Part B is the buildable tool; B.9 records the resolved open questions. Framework-wide rules: [`../../AGENTS.md`](../../AGENTS.md). Build order & status: [`INDEX.md`](INDEX.md).
+
 **Date:** 2026-06-18
-**Scope of this document:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling to `2026-06-18-work-sdlc-design.md`; together with capabilities they form the **TCW** framework.
+**Scope:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling components: [`phase-3-work`](phase-3-work.md), [`phase-5-capabilities`](phase-5-capabilities.md).
 
 ---
 
@@ -148,20 +154,20 @@ References *inside an imported term* (its `relatesTo`, its prose) resolve in **t
 
 pytest over `tmp_path` git repos: term add + nesting + slug=path identity; `rm` refuses inherited; `list`/`show` resolve a local-path `extends` and flag origin; the three resolution branches (local-wins-bare, unique-extended, ambiguous-error); `check` catches a cycle, a duplicate alias, an alias/local-top-level collision, a dangling ref, and an ambiguous-bare ref.
 
-### B.9 Open questions
+### B.9 Resolved decisions
 
-- `relatesTo`: freeform refs vs. typed relations (e.g. `is-a`, `part-of`).
-- `add` description input: inline arg vs. stdin vs. `$EDITOR`.
-- Capability `subject`: single vs. multiple terms per capability.
-- `tcw taxonomy init` vs. a unified `tcw init` that scaffolds whichever components are present.
-- Transitivity edge cases in source-relative resolution (B.6) — the exact rebasing rules.
+- **`relatesTo`** — **freeform list of refs** now. Typed relations (`is-a`, `part-of`) are deferred until a consumer needs them (YAGNI; the tool reads pointers, humans write meaning).
+- **`add` description input** — **inline arg + piped stdin**; no `$EDITOR` (avoids TTY handling; mirrors `tcw work new`).
+- **Capability `subject`** — **single** primary term per capability; secondary nouns live in the capability body. (Mirrored in the capabilities spec A.7.)
+- **`init`** — **a unified `tcw init`** (not `tcw taxonomy init`) scaffolds whichever component trees you name, defaulting to all three. Lives in **Phase 1** (`phase-1-scaffold.md`).
+- **Source-relative resolution transitivity (B.6)** — **deferred to remote `extends`** (Phase 6). The authoring-namespace rule stands as stated; the deep rebasing edge cases are pinned down when git/URL sources land.
 
 ---
 
 ## Part C — Place in the roadmap
 
-1. **This spec** — the taxonomy component (`tcw taxonomy`) + `FsTaxonomyStore`, local-path `extends`.
-2. **Framework reframe (follow-on):** rename the work-sdlc tool to **`tcw work`**; generalize `WORK-SDLC.AGENTS.md` into a system-wide **TCW guide** (the litmus test governs all three components); add the `tcw` umbrella entry point.
-3. **Shared core (later, not now):** extract the common tree-store primitive shared by `tcw taxonomy` and `tcw work` (and the capabilities collection) — the three are structurally isomorphic, but unify only once two of them are real.
-4. **`tcw capabilities` (later component spec):** give capabilities a CLI surface (list / show / `check`, incl. `subject`↔taxonomy validation), folding in the absorbed capabilities artifact docs.
-5. **Remote `extends` (later):** git/URL source types with version-pinning.
+The global build order lives in [`INDEX.md`](INDEX.md). Taxonomy-local notes:
+
+- **Done since first draft:** the framework reframe (`WORK-SDLC.AGENTS.md` → this repo's [`../../AGENTS.md`](../../AGENTS.md); `work` → `tcw work`; the `tcw` umbrella) and the capabilities component spec ([`phase-5-capabilities`](phase-5-capabilities.md)) — both shipped.
+- **Shared tree-store core** — extracted in [`phase-4-shared-core`](phase-4-shared-core.md), once taxonomy + work both exist (don't pre-abstract).
+- **Remote `extends`** (git/URL sources with version-pinning) — deferred to [`phase-6-beyond`](phase-6-beyond.md).

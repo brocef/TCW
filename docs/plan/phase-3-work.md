@@ -1,8 +1,14 @@
-# Work SDLC — recursive, filesystem-native work tracking
+# Phase 3 — Work (TCW component 3 of 3: the verbs)
 
-**Status:** Draft (first pass; under active refinement)
+**Status:** spec ✓ · build ☐ not started
+**Delivers:** `tcw work` + `FsWorkStore` — the single-node state machine + loose DoD gate (the work component's "Spec 1").
+**Depends on:** Phase 1 (package + CLI skeleton + node detection); references Phase 2 terms loosely.
+**Build checklist:** `WorkStore` interface → `FsWorkStore` over `docs/work/` → the ten subcommands (B.2) → the state machine (B.3) → the loose DoD gate (B.6) → tests (B.8).
+
+> Spec **and** build plan for component 3. Part A is the model; Part B is the buildable single-node tool; B.9 records the resolved open questions. The cross-node recursion, skill layer, and migration (this doc's "Spec 2/3/4") are deferred to [`phase-6-beyond`](phase-6-beyond.md). Framework rules: [`../../AGENTS.md`](../../AGENTS.md). Build order: [`INDEX.md`](INDEX.md).
+
 **Date:** 2026-06-18
-**Scope of this document:** the full conceptual model (Part A) plus the concrete, buildable spec for the *core single-node tool* (Part B). The remaining three sub-specs are sketched in Part C and will be written separately.
+**Scope:** the full conceptual model (Part A) plus the buildable *core single-node tool* (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-5-capabilities`](phase-5-capabilities.md).
 
 ---
 
@@ -33,7 +39,7 @@ The system is **infinitely recursive**. There is no special "org root" vs "repo"
 - **Parent** = nearest *ancestor* directory that is a node. **Children** = nearest *descendant* directories that are nodes (skipping intermediate non-node folders). A node with no child nodes is a leaf (local work only); a node with no ancestor node is the root.
 - A node coordinating its children is acting as an **orchestrator**; the same node managed by *its* parent is a **project**. Both roles use the same mechanism.
 
-**Layering:** the plugin (`skill-cefailures`) owns the *generic recursive mechanism*; each node's `AGENTS.md` supplies the *instantiation* (which children exist, the team-agent roster, node-local gates such as Proposit's consumer-side publish-validation). This resolves concern #5: the plugin codifies the machine, `AGENTS.md` codifies the wiring. `ORCHESTRATOR-AGENTS.md` becomes "Proposit-App's node config," not a parallel rulebook.
+**Layering:** **TCW** (the `tcw work` recursion layer) owns the *generic recursive mechanism*; each node's `AGENTS.md` supplies the *instantiation* (which children exist, the team-agent roster, node-local gates such as a consumer's publish-validation). This resolves concern #5: `tcw` codifies the machine, `AGENTS.md` codifies the wiring. A consumer's `ORCHESTRATOR-AGENTS.md` becomes "that node's config," not a parallel rulebook.
 
 ### A.3 Filesystem as state machine
 
@@ -60,7 +66,7 @@ Each work item has **one state document, scoped to that item.** It may be as ric
 
 ### A.5 Stable identity
 
-The core mechanic is *moving folders*, so any reference by path breaks on the next transition. The **stable handle is the slug** (`YYYY-MM-DD-<kebab-title>`); references are by slug, and resolution is an abstract store operation — `resolve(stable_id) → item`, **not** a path computation. (Jira solved this with `PROJ-123`; we solve it with the slug.) `FsWorkStore` realizes `resolve` as a glob for the folder named `<slug>`, **bounded to the current node** (it does not descend into a child node's `docs/work/`) and erroring on multiple matches; a remote store realizes it as a lookup by key. `capabilities.md`'s `Planning doc:` pointer holds the slug and resolves through `resolve`, never a path — which is what lets the pointer survive when the store isn't the filesystem (A.11).
+The core mechanic is *moving folders*, so any reference by path breaks on the next transition. The **stable handle is the slug** (`YYYY-MM-DD-<kebab-title>`); references are by slug, and resolution is an abstract store operation — `resolve(stable_id) → item`, **not** a path computation. (Jira solved this with `PROJ-123`; we solve it with the slug.) `FsWorkStore` realizes `resolve` as a glob for the folder named `<slug>`, **bounded to the current node** (it does not descend into a child node's `docs/work/`) and erroring on multiple matches; a remote store realizes it as a lookup by key. A capability's `Planning doc:` pointer holds the slug and resolves through `resolve`, never a path — which is what lets the pointer survive when the store isn't the filesystem (A.11).
 
 ### A.6 Cross-node initiatives (epics)
 
@@ -89,8 +95,8 @@ workspace/                          ← node (git + docs/work/)
 
 The former `capabilities-sdlc` skill is **absorbed**, not coupled-to. It bundled two things, and they split cleanly:
 
-- Its **process half** — the planning gate (`## Capability changes` opens every spec), contradiction-detection (at the moment of change), the `**/capabilities.md` doc-sync trigger — is exactly what the work lifecycle subsumes. It becomes *structural* here instead of convention-with-no-CI-backstop.
-- Its **artifact half** — the `capabilities.md` format, the `Supported | Missing | Omitted` taxonomy, file locations, the two-layer (per-repo / product) model, and product-layer coordination — is the **standing capability ledger**: the noun-at-rest. It is re-homed as docs under the work skill (Spec 3); no standalone peer skill remains to drift.
+- Its **process half** — the planning gate (`## Capability changes` opens every spec), contradiction-detection (at the moment of change), the capability doc-sync trigger — is exactly what the work lifecycle subsumes. It becomes *structural* here instead of convention-with-no-CI-backstop.
+- Its **artifact half** — the capability format, the status taxonomy, the **bounded `docs/capabilities/` tree**, the two-layer (per-repo / product) model, and product-layer coordination — is the **standing capability ledger**: the noun-at-rest. It is now the standalone **`tcw capabilities`** component ([`phase-5-capabilities`](phase-5-capabilities.md)), not docs folded under this skill. *(Layout reconciliation: capabilities live in a bounded tree, not scattered `**/capabilities.md` — see the capabilities spec A.2.)*
 
 **A work item declares its effect along two explicit axes** (both open `content.md`; either may be empty):
 
@@ -99,12 +105,12 @@ The former `capabilities-sdlc` skill is **absorbed**, not coupled-to. It bundled
 
 A feature carries both; a refactor is technical-only; a bug references a capability and branches (below). Whether the `## Product changes` section is non-empty *is* the classification — there is no separate `type` field. This makes "planning relates to capabilities" literal and required, not a convention.
 
-**The standing ledger is the noun-at-rest — and the system's only mutable survivor.** `capabilities.md` files describe *current intended product state*; they persist independent of any work item, and a completed item's product delta is *applied* to them. Everything else freezes in `completed/`; the ledger keeps describing the present — correct, because the present is the one thing that must stay live.
+**The standing ledger is the noun-at-rest — and the system's only mutable survivor.** Capability files describe *current intended product state*; they persist independent of any work item, and a completed item's product delta is *applied* to them. Everything else freezes in `completed/`; the ledger keeps describing the present — correct, because the present is the one thing that must stay live.
 
 **Two pointers bind verb to noun:**
 
 - **Forward (noun → verb):** a `Missing` capability's `Planning doc:` pointer holds the realizing work item's **stable ID** (slug), resolved through the store's `resolve` (A.5) — so it survives even when the work-store is remote.
-- **Back (verb → noun):** the work item's `capabilities.yaml` lists the capability files it touches and their intended status transitions, as repo-relative paths into the code tree.
+- **Back (verb → noun):** the work item's `capabilities.yaml` lists the capability files it touches and their intended status transitions, as **identifiers into the `docs/capabilities/` tree** (capabilities spec A.6/A.8).
 
 The binding is a **pointer, not a transaction.** With `FsWorkStore` the verb and the noun live in the *same* repo, so a single commit can land code + the capability flip + the work-item move atomically (an A.11 bonus). When the work-store is remote (Jira) the ledger still lives in the code repo — two different stores — so the binding is **best-effort** (apply the delta, then transition the ticket; no cross-system atomicity). The ledger is therefore always filesystem-resident and independent of the `WorkStore`.
 
@@ -116,7 +122,7 @@ Neither owns the other: a `Missing` capability can exist with no work item yet (
 |---|---|---|
 | `new` (has a product delta) | declare it in `## Product changes`; new capabilities recorded **Missing** with `Planning doc:` = slug | the planning gate, now structural |
 | during `active` | contradiction-detection at the moment of change | the change author |
-| `complete` (DoD "capabilities reconciled") | apply the delta to the ledger: `Missing → Supported`, body/scope edits, `Supported → Omitted`. This is the same evaluation the old `**/capabilities.md` doc-sync trigger performed | the DoD gate |
+| `complete` (DoD "capabilities reconciled") | apply the delta to the ledger: `Missing → Supported`, body/scope edits, `Supported → Omitted`. This is the same evaluation the old capability doc-sync trigger performed | the DoD gate |
 
 Because `completed` means "no further code changes," reconciling the ledger is the final pre-freeze step rather than a follow-up. The gate is **loose** (B.6): `complete` forces the operator to *acknowledge* reconciliation; it does not verify it. (A hard gate is the deferred hook below.)
 
@@ -125,7 +131,7 @@ Because `completed` means "no further code changes," reconciling the ledger is t
 - **Pure regression** (a `Supported` capability whose implementation broke): technical-only, no product delta; DoD just confirms the ledger entry still matches the restored behavior.
 - **Discovery fix** (documented `Supported` but never actually worked) or **capability-change-disguised-as-bug**: carries a product delta; the planning gate applies and completion may edit the ledger entry/status.
 
-**Recursion maps the two ledger layers onto the two work layers:** an epic ↔ the product-layer `docs/capabilities/<area>.md`; a task ↔ the co-located `capabilities.md`. The product-layer coordination protocol (a per-repo agent asking the orchestrator for canonical wording) **is** the escalate/delegate inbox channel of A.6 — an epic completing flips the product-layer entry; a task completing flips the co-located one.
+**Recursion maps the two ledger layers onto the two work layers:** an epic ↔ the orchestrator-node's product-layer `docs/capabilities/`; a task ↔ the leaf-node's `docs/capabilities/`. The product-layer coordination protocol (a per-repo agent asking the orchestrator for canonical wording) **is** the escalate/delegate inbox channel of A.6 — an epic completing flips the product-layer entry; a task completing flips the co-located one.
 
 **Two backlogs, complementary not merged:** `**Status:** Missing` (the noun-backlog: what we want) and `ls backlog/` (the verb-backlog: queued changes) are two lenses, linked by ID when both exist. No dedup, no derivation.
 
@@ -136,8 +142,8 @@ Because `completed` means "no further code changes," reconciling the ledger is t
 Concurrency safety = **dispatch discipline + worktrees**, not an in-file lock:
 
 - The human avoids spinning up two orchestrators on the same work; an orchestrator dispatches **one work item per agent** to avoid two agents on the same item.
-- The **worktree invariant** covers the orthogonal case: two agents working *different* items in the *same* repo node would collide on the working tree, so each active item gets its own git worktree. (Tool support — `work start --worktree` — lands in **Spec 2**, alongside the rule for which checkout owns `docs/work/` writes.)
-- **Transition atomicity is not guaranteed.** The model assumes **one writer per node** (the dispatch discipline above); the `FsWorkStore` `git mv` is not locked against a concurrent `work` invocation. A remote store may offer server-side transactions; the FS adapter relies on single-writer discipline, not a lock.
+- The **worktree invariant** covers the orthogonal case: two agents working *different* items in the *same* repo node would collide on the working tree, so each active item gets its own git worktree. (Tool support — `tcw work start --worktree` — lands in **Spec 2**, alongside the rule for which checkout owns `docs/work/` writes.)
+- **Transition atomicity is not guaranteed.** The model assumes **one writer per node** (the dispatch discipline above); the `FsWorkStore` `git mv` is not locked against a concurrent `tcw work` invocation. A remote store may offer server-side transactions; the FS adapter relies on single-writer discipline, not a lock.
 
 ### A.9 Jira mapping and explicit non-features
 
@@ -150,7 +156,7 @@ This is a recursive, OS-native Jira. Mapping:
 | Epic → Story → Sub-task | recursive nodes + `initiative:` back-pointer |
 | Comments / history | `state` doc log + git + broker/inbox |
 | Attachments | artifacts in the work folder |
-| JQL / board view | `work list` query (the FS adapter adds `rg` / `find` / `tree`, generated, never stored) |
+| JQL / board view | `tcw work list` query (the FS adapter adds `rg` / `find` / `tree`, generated, never stored) |
 | Notifications / watchers | inbox (async) + broker (live) |
 | Permissions | node write-boundary |
 | Stable issue key | the slug |
@@ -167,7 +173,7 @@ This is a recursive, OS-native Jira. Mapping:
 
 The model is defined in an abstract vocabulary — **item · status · transition · stable ID · reference · node relation · query · body/fields/attachments**. The filesystem is the *default realization* (Part A describes it concretely), and the `WorkStore` interface (Part B) keeps the model swappable so it can run against an external tracker where one is already in use — the enterprise-portability requirement. Filesystem superpowers — work co-located with code, **one atomic commit landing code change + capability status flip + work-item transition**, grep/diff/PR-review legibility, atomic `mv` as transition — are leveraged as **bonuses on top**, never as load-bearing assumptions the abstract vocabulary can't express. (A.7's capability binding, for instance, *degrades* to best-effort when the store is remote — it does not break.)
 
-**The litmus test** governs every mechanism: *"Could a non-filesystem store implement this operation, even if less elegantly?"* Yes → it belongs in the model / the store interface. No (a filesystem trick with no abstract analog — reconstructing state from git log, globbing the folder as an open namespace, hard-coded paths in links, parent/child as literal directory ancestry) → it belongs in the FS adapter as a private detail, or it is redesigned. This discipline is codified as the project's prime directive in `WORK-SDLC.AGENTS.md`.
+**The litmus test** governs every mechanism: *"Could a non-filesystem store implement this operation, even if less elegantly?"* Yes → it belongs in the model / the store interface. No (a filesystem trick with no abstract analog — reconstructing state from git log, globbing the folder as an open namespace, hard-coded paths in links, parent/child as literal directory ancestry) → it belongs in the FS adapter as a private detail, or it is redesigned. This discipline is codified as the project's prime directive in [`../../AGENTS.md`](../../AGENTS.md).
 
 ---
 
@@ -175,28 +181,28 @@ The model is defined in an abstract vocabulary — **item · status · transitio
 
 ### B.1 Scope
 
-A Python CLI named **`work`** operating on the current node's work store. **Single node only** — no recursion, no skill layer, no migration, no capability *prose* parsing. Delivers: the directory contract, slug management, work-item folders, the two-axis (product/technical) effect record, the legal-transition state machine, the loose DoD gate, and the on-demand queries.
+The **`tcw work`** subcommand group operating on the current node's work store. **Single node only** — no recursion, no skill layer, no migration, no capability *prose* parsing. Delivers: the directory contract, slug management, work-item folders, the two-axis (product/technical) effect record, the legal-transition state machine, the loose DoD gate, and the on-demand queries.
 
-**Architecture — the store interface.** The CLI (and, later, the skills) depends on an abstract **`WorkStore`** interface; concrete adapters realize it. Spec 1 ships exactly one adapter, **`FsWorkStore`** (the `docs/work/` filesystem-state-machine of Part A). The interface exists so a future `JiraWorkStore` (or any tracker) is a drop-in without touching the CLI or skills. This mirrors the repo's existing `Backend` ABC (`create_skill.py`). What is *in* the interface vs. *beside* it is governed by the A.11 litmus test:
+**Architecture — the store interface.** The CLI (and, later, the skills) depends on an abstract **`WorkStore`** interface; concrete adapters realize it. Spec 1 ships exactly one adapter, **`FsWorkStore`** (the `docs/work/` filesystem-state-machine of Part A). The interface exists so a future `JiraWorkStore` (or any tracker) is a drop-in without touching the CLI or skills. Use the ABC + adapter pattern for stores (per `AGENTS.md`). What is *in* the interface vs. *beside* it is governed by the A.11 litmus test:
 
 - **In `WorkStore` (every adapter implements):** create · transition · query · get · set-field · link. The status vocabulary and the legal-transition graph live in the **core**, not the adapter — the adapter only *effects* a transition the core has already deemed legal.
 - **Beside it (local, FS-flavored — not store operations):** worktree/branch creation, node-detection by directory walk, `rg`/`find`/`tree` power queries. The CLI wires these to the active node locally; they are absent from the portable interface.
 
-Home: `skill-cefailures` (same plugin that already ships the broker CLI alongside skills). Language: Python (matches the repo + broker; argparse + PyYAML + `git`/`git worktree` via subprocess). Tests: pytest with `tmp_path` git repos.
+Home: this repo (the `tcw` package). Language: Python (argparse + PyYAML + `git`/`git worktree` via subprocess). Tests: pytest with `tmp_path` git repos.
 
 ### B.2 Command surface
 
 ```
-work init                          create docs/work/{inbox,backlog,active,blocked,completed}/
-work new "<title>"                 → creates backlog/<slug>/ (content.md + state.yaml); prints slug
-work list [--status S]             the board (reads dir listing + state.yaml)
-work show <slug>                   resolve slug→item; print state + body
-work path <slug>                   print current path of a slug (the stable-ID resolver)
-work start <slug>                  inbox|backlog → active/
-work block <slug> --on <slug|"…">  active → blocked/ (writes/updates links.yaml)
-work unblock <slug>                blocked → active/ (refuses if any blocker unresolved)
-work complete <slug> --resolution <R> --confirm   active → completed/ (DoD gate)
-work drop <slug>                   inbox|backlog → deleted (git rm)
+tcw work init                          create docs/work/{inbox,backlog,active,blocked,completed}/
+tcw work new "<title>"                 → creates backlog/<slug>/ (content.md + state.yaml); prints slug
+tcw work list [--status S]             the board (reads dir listing + state.yaml)
+tcw work show <slug>                   resolve slug→item; print state + body
+tcw work path <slug>                   print current path of a slug (the stable-ID resolver)
+tcw work start <slug>                  inbox|backlog → active/
+tcw work block <slug> --on <slug|"…">  active → blocked/ (writes/updates links.yaml)
+tcw work unblock <slug>                blocked → active/ (refuses if any blocker unresolved)
+tcw work complete <slug> --resolution <R> --confirm   active → completed/ (DoD gate)
+tcw work drop <slug>                   inbox|backlog → deleted (git rm)
 ```
 
 ### B.3 State machine
@@ -228,7 +234,7 @@ A work item is a folder named exactly `<slug>`. Inside:
 - **`capabilities.yaml`** — the machine-readable **back-pointer** for the product axis: the capability files this item touches and their intended status transitions (e.g. `{file: …, heading: …, from: Missing, to: Supported}`). Drives traceability and pointer resolution. The tool reads these *pointers*, never the capability *prose* (mechanism vs. judgment); in **Spec 1** it treats the file as an **opaque blob** — stored and surfaced, not acted on (applying the transitions to the ledger is the Spec-3 capabilities layer). Empty/absent for technical-only items.
 - **`links.yaml`** — present for blocked/linked items. `blocked_on:` is a list of `{slug: …}` or `{external: "…"}`; optional `relates:` list. Kept separate from `content.md` so an "is this still blocked?" check reads only this small file.
 
-**Slug rules:** `YYYY-MM-DD-<kebab-title>` from the creation date + title. Uniqueness is checked **within the node** via the store (`exists(slug)`, not a raw path test); collisions append `-2`, `-3`, … The slug is **frozen at creation** — `title` may later drift in `state.yaml`, but the slug never changes and there is no `work rename`. It is the only cross-reference handle; `resolve` (A.5) errors if two folders ever carry the same slug.
+**Slug rules:** `YYYY-MM-DD-<kebab-title>` from the creation date + title. Uniqueness is checked **within the node** via the store (`exists(slug)`, not a raw path test); collisions append `-2`, `-3`, … The slug is **frozen at creation** — `title` may later drift in `state.yaml`, but the slug never changes and there is no `tcw work rename`. It is the only cross-reference handle; `resolve` (A.5) errors if two folders ever carry the same slug.
 
 ### B.5 Command behavior
 
@@ -240,11 +246,11 @@ A work item is a folder named exactly `<slug>`. Inside:
 - **`block`** — move `active → blocked`; append the `--on` target to `links.yaml` `blocked_on`.
 - **`unblock`** — move `blocked → active`; **refuse** if any `blocked_on` entry is unresolved — a referenced slug whose item is not `completed` (checked via `resolve`/`get`, not a raw `completed/` path test), or an `external` entry still listed. A blocker slug that no longer resolves (it was dropped) counts as resolved, with a warning. `--force` overrides; `external` entries are cleared by hand-editing `links.yaml`.
 - **`complete`** — the DoD gate (B.6); on pass, set `resolution`, move `active → completed`.
-- **`drop`** — `git rm -r` the folder (only from `inbox`/`backlog`). If a `capabilities.md` `Planning doc:` pointed at this slug, that forward pointer is left dangling; reconciling it is the Spec-3 capabilities layer's job, not the tool's.
+- **`drop`** — `git rm -r` the folder (only from `inbox`/`backlog`). If a capability's `Planning doc:` pointed at this slug, that forward pointer is left dangling; reconciling it is the capabilities component's job ([`phase-5-capabilities`](phase-5-capabilities.md)), not the work tool's.
 
 ### B.6 DoD gate (loose)
 
-`work complete` is the `active → completed` transition condition. Loose means the tool **forces the checklist to be seen and acknowledged**, but does not externally verify each item:
+`tcw work complete` is the `active → completed` transition condition. Loose means the tool **forces the checklist to be seen and acknowledged**, but does not externally verify each item:
 
 1. Read the node's DoD checklist — a built-in default, overridable by a node-local `docs/work/dod.yaml` (the tool parses the YAML list; absent → default). Default items: *tests pass · docs synced · capabilities reconciled · reviewed · version offered*. In Spec 1 every item is a free-text line the operator **acknowledges**; the tool verifies none of them (the capabilities item's ledger semantics arrive with Spec 3).
 2. Print the checklist; require `--confirm` and a `--resolution` value. Without both, refuse and exit non-zero.
@@ -252,27 +258,29 @@ A work item is a folder named exactly `<slug>`. Inside:
 
 ### B.7 Git behavior and node detection
 
-- Every transition performs `git mv` (or `git rm` for `drop`) and **stages** the change; untracked files inside the item folder are staged first so `git mv` does not orphan them (refuse with a clear error on conflicting unstaged state). A `--commit` flag additionally commits with a conventional message (`work: <verb> <slug>`); **default is stage-only** so the agent controls commit boundaries (a transition usually rides with related code/doc changes in one commit).
-- **Node detection:** walk up from cwd to the nearest directory that is a git work-tree **and** contains `docs/work/`; operate there. Resolution and queries are bounded to *that* node — they do not descend into a child node's own `docs/work/`. If no node is found, error and suggest `work init`.
+- Every transition performs `git mv` (or `git rm` for `drop`) and **stages** the change; untracked files inside the item folder are staged first so `git mv` does not orphan them (refuse with a clear error on conflicting unstaged state). A `--commit` flag additionally commits with a conventional message (`tcw work: <verb> <slug>`); **default is stage-only** so the agent controls commit boundaries (a transition usually rides with related code/doc changes in one commit).
+- **Node detection:** walk up from cwd to the nearest directory that is a git work-tree **and** contains `docs/work/`; operate there. Resolution and queries are bounded to *that* node — they do not descend into a child node's own `docs/work/`. If no node is found, error and suggest `tcw init`.
 
 ### B.8 Testing
 
 pytest over `tmp_path` git repos (each test runs `git init` and sets `user.name`/`user.email`): slug generation + collision suffixing + immutability + multiple-match resolution error; every legal transition and a representative set of refused illegal ones; `completed/` is a sink; `unblock` refusal on an unresolved blocker and pass on a dropped one; `list --status` filter; `complete` refusal without `--confirm`; `slug→item` resolution *after* the folder has moved, and its boundedness to the node; malformed `state.yaml` handling; `init` `.gitkeep` persistence.
 
-### B.9 Open questions (remaining)
+### B.9 Resolved decisions
 
-- `phase`: free-text (current) vs. a fixed small enum (`planning|implementing|review`). Deferred until a Spec-3 skill actually drives it — nothing in Spec 1 sets it.
-- DoD default item set: whether the five defaults are right, and whether a node-local `dod.yaml` should be able to add *hard* (verified) items ahead of the deferred hard-gate hook.
+- **`phase`** — **free-text** (e.g. `planning`); no fixed enum. Nothing in this phase sets it; a fixed enum is deferred to the skill layer (Phase 6) that would actually drive it.
+- **DoD defaults** — the **five defaults stand** (*tests pass · docs synced · capabilities reconciled · reviewed · version offered*) and **every item is loose/acknowledged** in this phase. A node-local `docs/work/dod.yaml` overrides the list but cannot add *hard* (verified) items yet — the hard-gate hook stays deferred.
 
-*(Resolved during refinement, now reflected in the body: `--commit` → stage-only; `type` → dropped (the product/technical axis classifies); `new` lands in `backlog/`; `content.md` seeded with the two-axis scaffold, no empty `spec.md`; worktree creation → Spec 2; DoD source → `docs/work/dod.yaml` + built-in default.)*
+*(Resolved earlier, reflected in the body: `--commit` → stage-only; `type` → dropped (the product/technical axis classifies); `new` lands in `backlog/`; `content.md` seeded with the two-axis scaffold, no empty `spec.md`; worktree creation → Phase 6; DoD source → `docs/work/dod.yaml` + built-in default.)*
 
 ---
 
 ## Part C — Decomposition / roadmap
 
-1. **Spec 1 (this document, Part B):** core single-node tool — the `WorkStore` interface + the `FsWorkStore` adapter + CLI.
-2. **Spec 2 — Cross-node / recursion:** node discovery, epics, `initiative:` back-pointers, `reconcile` (scan children → consolidated rollup), escalate/delegate via inbox, `work start --worktree` (+ the rule for which checkout owns `docs/work/` writes), and the two-layer × two-layer capability mapping (epic ↔ product-layer ledger, task ↔ co-located ledger; product-layer coordination over the inbox channel).
-3. **Spec 3 — Skill + plugin + absorbed capabilities:** the `skill-cefailures:work` skill (recursive process-inbox, resume, decompose, two-axis / product-first planning, the A.7 lifecycle handshake); the capabilities **artifact** docs (format, statuses, locations, two-layer model, product-layer coordination) re-homed as docs under the work skill — no standalone peer skill; PATH/symlink install like the broker.
-4. **Spec 4 — Migration & retirement:** `FOLLOWUPS.md` → `backlog/`; retire the two `process-inbox` commands into the recursive flow; retire the standalone `capabilities-sdlc` skill (process half → the lifecycle, artifact half → Spec 3 docs) and redirect Proposit's per-repo `CLAUDE.md` doc-sync entries; formalize the `Planning doc:` → work-slug pointer; fix `documentation-sync`'s follow-ups reference (incl. the `docs/follow-ups.md` vs `docs/FOLLOWUPS.md` name mismatch); reconcile Proposit-App's `AGENTS.md` / `ORCHESTRATOR-AGENTS.md` to reference this model.
+The work component decomposes into four sub-specs. **Spec 1 is this phase (Phase 3);** Specs 2–4 are deferred to [`phase-6-beyond`](phase-6-beyond.md). Global build order: [`INDEX.md`](INDEX.md).
+
+1. **Spec 1 (this phase, Part B):** core single-node tool — the `WorkStore` interface + the `FsWorkStore` adapter + CLI.
+2. **Spec 2 — Cross-node / recursion:** node discovery, epics, `initiative:` back-pointers, `reconcile` (scan children → consolidated rollup), escalate/delegate via inbox, `tcw work start --worktree` (+ the rule for which checkout owns `docs/work/` writes), and the two-layer × two-layer capability mapping (epic ↔ product-layer ledger, task ↔ leaf-node ledger; product-layer coordination over the inbox channel).
+3. **Spec 3 — Skill + absorbed capabilities process:** the `tcw work` driving skill (recursive process-inbox, resume, decompose, two-axis / product-first planning, the A.7 lifecycle handshake). The capabilities **artifact** is already its own component ([`phase-5-capabilities`](phase-5-capabilities.md)); Spec 3 adds only the *process* skill, not a re-homing of artifact docs.
+4. **Spec 4 — Consumer migration (downstream, not work in this repo):** retiring `skill-cefailures`'s `FOLLOWUPS.md` → `backlog/`, its two `process-inbox` commands → the recursive flow, and its standalone `capabilities-sdlc` skill → `tcw capabilities` + the Spec-3 process skill; redirecting Proposit's per-repo `CLAUDE.md` doc-sync entries; fixing `documentation-sync`'s follow-ups name mismatch; reconciling Proposit-App's `AGENTS.md` / `ORCHESTRATOR-AGENTS.md` to this model. This is **work for `tcw`'s consumers**, tracked in those repos — recorded here only so the migration path is on file.
 
 **Beyond the roadmap (enabled, not built):** a `JiraWorkStore` (or other external-tracker) adapter — the `WorkStore` interface exists so this is purely additive.

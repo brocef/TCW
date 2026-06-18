@@ -2,8 +2,8 @@
 
 **TCW** (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes, exposed through one CLI, `tcw`, with three subcommand groups (`tcw taxonomy | capabilities | work`). This guide governs all work in this repo.
 
-- **Framing, roadmap, and bootstrap checklist:** [`docs/PLAN.md`](docs/PLAN.md).
-- **Component designs (source of truth):** [`docs/specs/`](docs/specs/) — `2026-06-18-taxonomy-design.md`, `2026-06-18-work-sdlc-design.md`. Read the relevant spec before changing a component's model; if a change diverges from the spec, update the spec in the same change — never let code and design drift.
+- **Plan, build order, and live status:** [`docs/plan/INDEX.md`](docs/plan/INDEX.md) — the spine; one file per build phase.
+- **Component designs (source of truth):** [`docs/plan/`](docs/plan/) — `phase-2-taxonomy.md` (nouns), `phase-5-capabilities.md` (behaviors), `phase-3-work.md` (verbs). Each phase doc is the component's design **and** build plan. Read the relevant phase before changing a component's model; if a change diverges, update the phase doc in the same change — never let code and design drift.
 
 ## Generic instructions
 

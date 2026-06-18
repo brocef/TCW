@@ -1,6 +1,6 @@
 # TCW — design history & decision log
 
-The narrative companion to the specs in [`specs/`](specs/): *how* the TCW design came to be and *why* the major decisions were made. The specs state the conclusions; this captures the reasoning and the path that produced them. The original brainstorming, dual review, and refinement happened inside the `skill-cefailures` repo (June 2026) and are preserved in its git history; this is the distilled account.
+The narrative companion to the component specs in [`plan/`](plan/): *how* the TCW design came to be and *why* the major decisions were made. The specs state the conclusions; this captures the reasoning and the path that produced them. The original brainstorming, dual review, and refinement happened inside the `skill-cefailures` repo (June 2026) and are preserved in its git history; this is the distilled account.
 
 ## Where it started
 
@@ -79,6 +79,5 @@ The three components became one binary — **`tcw`** (Taxonomy, Capabilities, Wo
 
 ## Where it stands
 
-- **Specs:** taxonomy (first full draft) and work-sdlc (drafted, dual-reviewed, refined) in [`specs/`](specs/). Capabilities has a CLI surface planned but no component spec yet.
-- **Built:** nothing — this is the planning/bootstrap stage. See [`PLAN.md`](PLAN.md) for the bootstrap checklist.
-- **Pending reframe:** the moved specs still say `work …` and reference the old working-guide name; renaming to `tcw work …` and repointing at this repo's `AGENTS.md` is the first bootstrap task.
+- **Plan:** reorganized into phased build docs under [`plan/`](plan/), tracked by [`plan/INDEX.md`](plan/INDEX.md). All three component specs are written (taxonomy, capabilities, work), their open questions resolved, and the `work → tcw work` reframe applied.
+- **Built:** nothing yet — planning is complete; execution starts at Phase 1 (scaffold). See [`plan/INDEX.md`](plan/INDEX.md).
