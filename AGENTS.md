@@ -5,6 +5,10 @@
 - **Framing, roadmap, and bootstrap checklist:** [`docs/PLAN.md`](docs/PLAN.md).
 - **Component designs (source of truth):** [`docs/specs/`](docs/specs/) — `2026-06-18-taxonomy-design.md`, `2026-06-18-work-sdlc-design.md`. Read the relevant spec before changing a component's model; if a change diverges from the spec, update the spec in the same change — never let code and design drift.
 
+## Generic instructions
+
+- Git commit messages should not include any co-authoring content.
+
 ## Prime directive: the abstraction litmus test
 
 TCW ships a filesystem-native default, but the **model is storage-abstracted** so it can run against an external tracker (Jira, a wiki, a graph DB) where one is already in use. That portability is the whole reason the system is viable at enterprise scale — do not trade it away for filesystem cleverness. Before adding or changing any operation, apply this test:
