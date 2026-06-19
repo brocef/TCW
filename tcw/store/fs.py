@@ -66,6 +66,13 @@ def git_rm(node_root: Path, path: Path) -> None:
     subprocess.run(["git", "-C", str(node_root), "rm", "-rfq", "--", str(path)], check=True)
 
 
+def git_mv(node_root: Path, src: Path, dst: Path) -> None:
+    """Move a tracked path, staging the rename. Untracked contents are staged
+    first so `git mv` doesn't orphan them (the transition mechanic — Phase 5)."""
+    subprocess.run(["git", "-C", str(node_root), "add", "--", str(src)], check=True)
+    subprocess.run(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
+
+
 def init(components: list[str], root: Path) -> list[Path]:
     """Scaffold `docs/<component>/` skeletons under `root`. Returns leaf dirs made.
 
@@ -121,32 +128,64 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
+# ── Shared tree-store core (Phase 4) ─────────────────────────────────────────
+
+class FsTreeStore:
+    """Common FS-adapter base for the three bounded-tree stores.
+
+    Captures the boilerplate every component shares — the store root, the
+    enclosing node (repo) root, config loading, the `open(node_root)` entry
+    point, and the git-plumbing methods that *effect* transitions. Component
+    specifics (node = dir vs file, identifier resolution, the status state
+    machine) stay in the subclasses (phase-4-shared-core: don't over-pull).
+
+    Subclasses set `COMPONENT` (the `docs/<COMPONENT>/` dir) and optionally
+    `CONFIG_NAME` (a root config file to load into `self.config`).
+    """
+    COMPONENT: str
+    CONFIG_NAME: str | None = None
+
+    def __init__(self, root: Path):
+        self.root = root                       # docs/<component>/
+        self.node_root = root.parent.parent    # repo root
+        self.config = load_yaml(root / self.CONFIG_NAME) if self.CONFIG_NAME else {}
+
+    @classmethod
+    def open(cls, node_root: Path):
+        return cls(node_root / "docs" / cls.COMPONENT)
+
+    def _stage(self, *paths: Path) -> None:
+        git_stage(self.node_root, *paths)
+
+    def _rm(self, path: Path) -> None:
+        git_rm(self.node_root, path)
+
+    def _mv(self, src: Path, dst: Path) -> None:
+        git_mv(self.node_root, src, dst)
+
+
 # ── FsTaxonomyStore ─────────────────────────────────────────────────────────
 
 _TAX_RESERVED = {"config.yaml", "meta.yaml", "description.md"}
 
 
-class FsTaxonomyStore(TaxonomyStore):
+class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     """`TaxonomyStore` over nested dirs under `docs/taxonomy/` (Phase 2 B.3).
 
     A term's slug is its directory path under the taxonomy root. `extends`
     aliases (local-path repo roots) are realized as nested stores.
     """
+    COMPONENT = "taxonomy"
+    CONFIG_NAME = "config.yaml"
 
     def __init__(self, root: Path, _seen: set[Path] | None = None):
-        self.root = root                       # docs/taxonomy/
-        self.node_root = root.parent.parent    # repo root
-        self.config = load_yaml(root / "config.yaml")
+        super().__init__(root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
         for alias, repo_path in (self.config.get("extends") or {}).items():
             ext = (self.node_root / repo_path / "docs" / "taxonomy").resolve()
             if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
                 self.extends[alias] = FsTaxonomyStore(ext, _seen=seen)
-
-    @classmethod
-    def open(cls, node_root: Path) -> "FsTaxonomyStore":
-        return cls(node_root / "docs" / "taxonomy")
 
     # -- reads --
 
@@ -222,7 +261,7 @@ class FsTaxonomyStore(TaxonomyStore):
         d.mkdir(parents=True)
         dump_yaml(d / "meta.yaml", {"name": name, "relatesTo": []})
         (d / "description.md").write_text(description, encoding="utf-8")
-        git_stage(self.node_root, d / "meta.yaml", d / "description.md")
+        self._stage(d / "meta.yaml", d / "description.md")
         return self._term(full)
 
     def remove(self, ref: str) -> None:
@@ -232,7 +271,7 @@ class FsTaxonomyStore(TaxonomyStore):
         if term.origin != "local":
             raise ValueError(f"cannot remove inherited term '{term.qualified}' "
                              f"(edit it at its source)")
-        git_rm(self.node_root, self.root / term.slug)
+        self._rm(self.root / term.slug)
 
     def relators(self, slug: str) -> list[str]:
         """Local term slugs whose `relatesTo` points at `slug` (for rm warnings)."""
@@ -318,17 +357,10 @@ def parse_capability_file(file_id: str, text: str) -> CapabilityFile:
     return CapabilityFile(file_id, title, caps)
 
 
-class FsCapabilitiesStore(CapabilitiesStore):
+class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     """`CapabilitiesStore` over the bounded `docs/capabilities/` tree (Phase 3 B.3)."""
-
-    def __init__(self, root: Path):
-        self.root = root                       # docs/capabilities/
-        self.node_root = root.parent.parent
-        self.config = load_yaml(root / ".config.yaml")
-
-    @classmethod
-    def open(cls, node_root: Path) -> "FsCapabilitiesStore":
-        return cls(node_root / "docs" / "capabilities")
+    COMPONENT = "capabilities"
+    CONFIG_NAME = ".config.yaml"
 
     # -- resolution --
 
@@ -427,14 +459,14 @@ class FsCapabilitiesStore(CapabilitiesStore):
         target.write_text(
             f"# {subject} — capabilities\n\n## {name or subject}\n"
             f"**Status:** {status}\n\n{body}\n", encoding="utf-8")
-        git_stage(self.node_root, target)
+        self._stage(target)
         return parse_capability_file(self._disk_id(target), target.read_text(encoding="utf-8"))
 
     def remove(self, identifier: str) -> None:
         fp = self._resolve_file(*_IDENT_RE.match(identifier).group("path", "state"))
         if fp is None:
             raise ValueError(f"no such capability: {identifier}")
-        git_rm(self.node_root, fp.parent if fp.name == "capabilities.md" else fp)
+        self._rm(fp.parent if fp.name == "capabilities.md" else fp)
 
     # -- validation --
 
