@@ -125,15 +125,15 @@ def _edit(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    if st.get(args.slug) is None:
-        print(f"tcw work edit: no such work item: {args.slug}", file=sys.stderr)
-        return 1
-    blocks = _split(args.blocks)
-    for ref in blocks:                              # validate targets up front
-        if st.get(ref) is None:
-            print(f"tcw work edit: no such work item: {ref}", file=sys.stderr)
-            return 1
     try:
+        if st.get(args.slug) is None:
+            print(f"tcw work edit: no such work item: {args.slug}", file=sys.stderr)
+            return 1
+        blocks = _split(args.blocks)
+        for ref in blocks:
+            if st.get(ref) is None:
+                print(f"tcw work edit: no such work item: {ref}", file=sys.stderr)
+                return 1
         for ref in _split(args.blocked_by):
             st.add_blocker(args.slug, ref)
         for ref in blocks:

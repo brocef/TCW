@@ -298,6 +298,15 @@ def test_cli_new_blocked_by(tmp_path, monkeypatch):
     assert a.blocked_by == [{"slug": b.slug}, {"external": "extra"}]
 
 
+def test_cli_edit_ambiguous_slug_errors(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    (root / "docs/work/active/dup").mkdir()
+    (root / "docs/work/backlog/dup").mkdir()
+    assert main(["work", "edit", "dup", "--blocked-by", "x"]) == 1
+
+
 def test_cli_complete_blocker_gate_before_dod(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
