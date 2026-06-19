@@ -187,6 +187,41 @@ class WorkItem:
     capabilities: object = None     # opaque blob in Spec 1 (B.4)
 
 
+def topo_order(items: list[WorkItem]) -> list[WorkItem]:
+    """Stable topological sort: a blocker precedes what it blocks.
+
+    An edge counts only when both endpoints are in `items`; ties keep input
+    order. A residual cycle (only via hand-edited data) degrades to original
+    order for the leftover nodes. ponytail: re-sort the ready set each step — a
+    board holds dozens of items, so the simple version is fine.
+    """
+    pos = {it.slug: i for i, it in enumerate(items)}
+    by_slug = {it.slug: it for it in items}
+    indeg = {it.slug: 0 for it in items}
+    blocks: dict[str, list[str]] = {it.slug: [] for it in items}
+    for it in items:
+        for b in it.blocked_by:
+            bs = b.get("slug")
+            if bs in by_slug and bs != it.slug:          # edge present in this set
+                blocks[bs].append(it.slug)
+                indeg[it.slug] += 1
+    ready = sorted((s for s, d in indeg.items() if d == 0), key=pos.get)
+    out: list[str] = []
+    while ready:
+        s = ready.pop(0)
+        out.append(s)
+        freed = []
+        for t in blocks[s]:
+            indeg[t] -= 1
+            if indeg[t] == 0:
+                freed.append(t)
+        if freed:
+            ready = sorted(ready + freed, key=pos.get)
+    placed = set(out)
+    out += [s for s in pos if s not in placed]           # residual cycle → input order
+    return [by_slug[s] for s in out]
+
+
 class WorkStore(ABC):
     """The work axis: items moving through a four-status state machine.
 
@@ -279,6 +314,10 @@ class WorkStore(ABC):
                 if e.get("slug") != ref and e.get("external") != ref]
         if len(kept) != len(item.blocked_by):
             self.set_field(slug, "blocked_by", kept)
+
+    def board(self, status: str | None = None) -> list[WorkItem]:
+        """The board in workable order: query(status) topologically sorted."""
+        return topo_order(self.query(status))
 
     def transition(self, slug: str, to_status: str) -> WorkItem:
         item = self._require(slug)

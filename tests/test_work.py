@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import IllegalTransition, MultipleMatch
+from tcw.store.base import IllegalTransition, MultipleMatch, topo_order
 from tcw.store.fs import FsWorkStore, init
 
 
@@ -225,3 +225,36 @@ def test_cli_complete_requires_confirm(tmp_path, monkeypatch, capsys):
     assert "Definition of Done" in capsys.readouterr().out
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
     assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+# ── topo_order / board ───────────────────────────────────────────────────────
+
+def test_topo_order_blocker_before_blocked(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")           # will be blocked by B
+    b = st.create("B", created="2026-01-02")
+    st.add_blocker(a.slug, b.slug)
+    ordered = [i.slug for i in st.board()]
+    assert ordered.index(b.slug) < ordered.index(a.slug)
+
+
+def test_topo_order_stable_on_ties(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    b = st.create("B", created="2026-01-02")
+    c = st.create("C", created="2026-01-03")           # no edges → input order kept
+    st.add_blocker(b.slug, "external wait")            # external is not a graph node
+    ordered = [i.slug for i in st.board()]
+    assert ordered == [a.slug, b.slug, c.slug]         # external doesn't reorder
+
+
+def test_topo_order_ignores_blocker_outside_set(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    backlog_blocker = st.create("Blocker", created="2026-01-01")
+    x = st.create("X", created="2026-01-02")
+    y = st.create("Y", created="2026-01-03")
+    st.add_blocker(x.slug, backlog_blocker.slug)        # blocker stays in backlog
+    st.start(x.slug, force=True)
+    st.start(y.slug)
+    ordered = [i.slug for i in st.board(status="active")]
+    assert ordered == [x.slug, y.slug]                  # blocker not in set → no reorder
