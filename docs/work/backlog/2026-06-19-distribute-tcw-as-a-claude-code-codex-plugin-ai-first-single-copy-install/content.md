@@ -57,6 +57,8 @@ Plus:
   (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`)
   on top of `pyproject.toml` + `tcw/__init__.py` = **5 files** that must move together. Fold
   them into the documentation-sync cut-version flow so a release bumps all five.
+  **On completion:** extend AGENTS.md's *Versioning* section to list these three files — it
+  currently names only the two that exist today.
 - README install section to document: if you use the plugin, do **not** also `pip install
   tcw` separately.
 
