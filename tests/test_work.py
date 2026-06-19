@@ -126,6 +126,50 @@ def test_malformed_state_yaml_degrades(tmp_path):
     assert got is not None and got.status == "backlog"
 
 
+# ── blocked-by relation ──────────────────────────────────────────────────────
+
+def test_add_and_remove_blocker_roundtrip(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    b = st.create("B", created="2026-01-02")
+    st.add_blocker(a.slug, b.slug)
+    assert st.get(a.slug).blocked_by == [{"slug": b.slug}]
+    st.add_blocker(a.slug, b.slug)                      # idempotent
+    assert st.get(a.slug).blocked_by == [{"slug": b.slug}]
+    st.remove_blocker(a.slug, b.slug)
+    assert st.get(a.slug).blocked_by == []
+    st.remove_blocker(a.slug, b.slug)                   # absent → no-op
+
+
+def test_external_blocker_stored(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    st.add_blocker(a.slug, "waiting on vendor")         # unresolvable → external
+    assert st.get(a.slug).blocked_by == [{"external": "waiting on vendor"}]
+    st.remove_blocker(a.slug, "waiting on vendor")
+    assert st.get(a.slug).blocked_by == []
+
+
+def test_self_block_refused(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    with pytest.raises(ValueError):
+        st.add_blocker(a.slug, a.slug)
+
+
+def test_cycle_refused_direct_and_transitive(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    b = st.create("B", created="2026-01-02")
+    c = st.create("C", created="2026-01-03")
+    st.add_blocker(a.slug, b.slug)                      # A blocked by B
+    with pytest.raises(ValueError):
+        st.add_blocker(b.slug, a.slug)                  # B blocked by A → direct cycle
+    st.add_blocker(b.slug, c.slug)                      # B blocked by C
+    with pytest.raises(ValueError):
+        st.add_blocker(c.slug, a.slug)                  # C blocked by A → A→B→C→A cycle
+
+
 # ── CLI: DoD gate ────────────────────────────────────────────────────────────
 
 def test_cli_complete_requires_confirm(tmp_path, monkeypatch, capsys):

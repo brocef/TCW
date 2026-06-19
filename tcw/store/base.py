@@ -231,6 +231,55 @@ class WorkStore(ABC):
             raise ValueError(f"no such work item: {slug}")
         return item
 
+    def _entry_for(self, ref: str) -> dict:
+        """A blocker entry: a resolvable ref → {slug}, else {external}."""
+        return {"slug": ref} if self.get(ref) is not None else {"external": ref}
+
+    @staticmethod
+    def _same_entry(a: dict, b: dict) -> bool:
+        """Entry identity: same slug value, or same external text; never cross."""
+        if "slug" in a and "slug" in b:
+            return a["slug"] == b["slug"]
+        if "external" in a and "external" in b:
+            return a["external"] == b["external"]
+        return False
+
+    def _reaches(self, start: str, target: str) -> bool:
+        """True if `start` (transitively, via blocked_by slugs) depends on `target`."""
+        seen: set[str] = set()
+        stack = [start]
+        while stack:
+            cur = stack.pop()
+            if cur == target:
+                return True
+            if cur in seen:
+                continue
+            seen.add(cur)
+            item = self.get(cur)
+            if item is None:
+                continue
+            stack += [b["slug"] for b in item.blocked_by if "slug" in b]
+        return False
+
+    def add_blocker(self, slug: str, ref: str) -> None:
+        item = self._require(slug)
+        entry = self._entry_for(ref)
+        if "slug" in entry:
+            if entry["slug"] == slug:
+                raise ValueError("an item cannot block itself")
+            if self._reaches(entry["slug"], slug):
+                raise ValueError(f"{ref} → {slug} would create a blocking cycle")
+        if any(self._same_entry(entry, e) for e in item.blocked_by):
+            return                                       # idempotent
+        self.set_field(slug, "blocked_by", item.blocked_by + [entry])
+
+    def remove_blocker(self, slug: str, ref: str) -> None:
+        item = self._require(slug)
+        kept = [e for e in item.blocked_by
+                if e.get("slug") != ref and e.get("external") != ref]
+        if len(kept) != len(item.blocked_by):
+            self.set_field(slug, "blocked_by", kept)
+
     def transition(self, slug: str, to_status: str) -> WorkItem:
         item = self._require(slug)
         if (item.status, to_status) not in self.LEGAL_TRANSITIONS:
