@@ -7,7 +7,7 @@ name = "tcw"
 version = "0.0.1"
 description = "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = ["PyYAML>=6"]
 

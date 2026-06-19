@@ -5,7 +5,6 @@
 adapters land here in their phases; the genuinely-shared primitives get factored
 into a tree-store core in Phase 4 (don't pre-abstract — AGENTS.md).
 """
-from __future__ import annotations
 
 import re
 import subprocess

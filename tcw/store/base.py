@@ -7,7 +7,6 @@ possible but unbuilt. Phase 2 introduces `TaxonomyStore`; capabilities and work
 add their interfaces here in their phases. The shared tree-store core is
 extracted in Phase 4 — not pre-abstracted here.
 """
-from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field

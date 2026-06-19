@@ -1,5 +1,4 @@
 """`tcw taxonomy` — the nouns. Subcommands per phase-2-taxonomy B.2."""
-from __future__ import annotations
 
 import argparse
 import sys

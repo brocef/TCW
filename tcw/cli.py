@@ -3,7 +3,6 @@
 Built component groups register their own subparsers; the rest stub to "not yet
 implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
 """
-from __future__ import annotations
 
 import argparse
 import sys

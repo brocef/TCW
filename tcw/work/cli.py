@@ -1,5 +1,4 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
-from __future__ import annotations
 
 import argparse
 import sys

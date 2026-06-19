@@ -1,5 +1,4 @@
 """`tcw capabilities` — the user stories. Subcommands per phase-3-capabilities B.2."""
-from __future__ import annotations
 
 import argparse
 import sys
