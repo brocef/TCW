@@ -18,3 +18,12 @@ internal module names.
   definition-of-done gate. Blocker relationships are recorded in the item's
   data (not as a separate status), so the board stays simple while still
   tracking what an item depends on.
+- **Blocker management from the CLI** — `tcw work edit <slug> --blocked-by
+  <refs> --blocks <refs> --unblocked-by <refs>` adds or removes blocking links
+  between items. `tcw work new` also accepts `--blocked-by` so blockers can be
+  set at creation time.
+- **Force past blockers** — `tcw work start --force` and `tcw work complete
+  --force` let you override unresolved blockers when you need to.
+- **Ordered board** — `tcw work list` now outputs items in topological order
+  (blockers before the items they block) and annotates each blocked item with
+  its unresolved blockers.

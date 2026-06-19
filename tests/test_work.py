@@ -258,3 +258,58 @@ def test_topo_order_ignores_blocker_outside_set(tmp_path):
     st.start(y.slug)
     ordered = [i.slug for i in st.board(status="active")]
     assert ordered == [x.slug, y.slug]                  # blocker not in set → no reorder
+
+
+# ── CLI: edit / new --blocked-by / --force / ordered list ───────────────────
+
+def test_cli_edit_blocked_by_and_blocks(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")
+    b = st.create("B", created="2026-01-02")
+    assert main(["work", "edit", a.slug, "--blocked-by", b.slug]) == 0
+    assert FsWorkStore.open(root).get(a.slug).blocked_by == [{"slug": b.slug}]
+    # reverse direction: a now blocks b's sibling c
+    c = st.create("C", created="2026-01-03")
+    assert main(["work", "edit", a.slug, "--blocks", c.slug]) == 0
+    assert FsWorkStore.open(root).get(c.slug).blocked_by == [{"slug": a.slug}]
+    assert main(["work", "edit", a.slug, "--unblocked-by", b.slug]) == 0
+    assert FsWorkStore.open(root).get(a.slug).blocked_by == []
+
+
+def test_cli_edit_blocks_nonexistent_errors(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    a = FsWorkStore.open(root).create("A", created="2026-01-01")
+    assert main(["work", "edit", a.slug, "--blocks", "nope"]) == 1
+
+
+def test_cli_new_blocked_by(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    b = FsWorkStore.open(root).create("B", created="2026-01-01")
+    assert main(["work", "new", "A", "--blocked-by", f"{b.slug}, , extra"]) == 0
+    items = FsWorkStore.open(root).query(status="backlog")
+    a = next(i for i in items if i.title == "A")
+    assert a.blocked_by == [{"slug": b.slug}, {"external": "extra"}]
+
+
+def test_cli_complete_blocker_gate_before_dod(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    blocker = st.create("Blocker", created="2026-01-01")
+    target = st.create("Target", created="2026-01-02")
+    st.add_blocker(target.slug, blocker.slug)
+    st.start(target.slug, force=True)
+    rc = main(["work", "complete", target.slug, "--resolution", "done", "--confirm"])
+    assert rc == 1
+    out = capsys.readouterr()
+    assert "blocked by" in out.err and "Definition of Done" not in out.out  # fail-fast
+    assert main(["work", "complete", target.slug, "--resolution", "done",
+                 "--confirm", "--force"]) == 0

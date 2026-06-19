@@ -39,3 +39,24 @@ category, with commit hash ranges so entries trace back to source.
 - `docs/work/` init no longer creates a `blocked/` folder.
 
 </changes>
+
+<changes starting-hash="061ecd7">
+
+### Added
+- `tcw work edit <slug> [--blocked-by <refs>] [--blocks <refs>] [--unblocked-by
+  <refs>]` — new CLI subcommand to add/remove blocking relations. `--blocks`
+  targets are validated against the store (must exist); `--blocked-by` and
+  `--unblocked-by` follow the same external-ref rules as the store layer.
+- `tcw work new --blocked-by <comma-separated refs>` — blockers can now be
+  attached at item-creation time.
+- `tcw work start --force` — skips the unresolved-blocker gate.
+- `tcw work complete --force` — skips the unresolved-blocker gate (blocker check
+  is performed before the DoD checklist is printed, so the gate fails fast).
+- `tcw work list` — now uses `WorkStore.board()` for topological ordering
+  (blockers appear before the items they block) and appends a `blocked-by: …`
+  annotation for items with unresolved blockers.
+- `_split(val)` helper in `tcw/work/cli.py` for comma-splitting flag values
+  with empty-token elision.
+- `"edit"` added to `SUBCOMMANDS` in `tcw/work/cli.py`.
+
+</changes>
