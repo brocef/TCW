@@ -63,7 +63,7 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 - **Entry identity** (for dedup on add and matching on remove): two entries are
   the same iff they share the same `slug` value or the same `external` text. A
   `slug` entry and an `external` entry never collide, even on equal text.
-- **`_unresolved_blockers(item) -> list[str]`** — an entry is *unresolved* if
+- **`unresolved_blockers(item) -> list[str]`** — an entry is *unresolved* if
   it is `external`, or a slug whose item is not `completed`. A slug that no
   longer resolves counts as **resolved** (silently — the old vanished-blocker
   warning is dropped; rationale: a dropped blocker is gone, and re-`get`-ing it
@@ -89,14 +89,15 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 ### Changed transitions (gating)
 
 - **`start(slug, force=False)`** — refuse `inbox/backlog→active` when
-  `_unresolved_blockers` is non-empty, unless `force`. (`start` has no other
+  `unresolved_blockers` is non-empty, unless `force`. (`start` has no other
   gate, so the asymmetry with `complete` below is intentional.)
 - **`complete(slug, resolution, dod_ack, force=False)`** — refuse when
   unresolved blockers remain, unless `force`. This is **in addition to** the
   existing DoD `--confirm` gate; the two are independent — `--force` bypasses
-  *only* the blocker gate and never the DoD `--confirm`. CLI precedence: the
-  core blocker gate is checked first and raises before the DoD checklist prints,
-  so a blocked complete fails fast on the blocker, not the DoD.
+  *only* the blocker gate and never the DoD `--confirm`. CLI precedence: the CLI
+  calls `unresolved_blockers` first, so a blocked complete fails fast on the
+  blocker *before* the DoD checklist prints; `complete()` re-checks in the core
+  as defense (and for non-CLI callers).
 
 ## Adapter (`tcw/store/fs.py`)
 
@@ -123,9 +124,15 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
     `remove_blocker(<slug>, t)`; `--blocks c` → `add_blocker(c, <slug>)` (reverse
     direction — here `c` is the item being mutated and **must resolve**, so an
     unknown `c` errors `no such work item: c`, it is *not* taken as external).
-  - **All-or-nothing:** validate every token first (existence where required,
-    self-block, cycle); on any failure write nothing and exit non-zero. So a
-    single bad token in a comma list aborts the whole `edit`.
+  - **Validation:** `<slug>` and every `--blocks` target are checked to exist up
+    front (no writes if any is missing). Edges then apply left-to-right via
+    `add_blocker`/`remove_blocker`, which re-check self-block and cycles against
+    live state — so a cycle is **always refused and never persisted**. Full
+    transactional rollback is *not* attempted: if a later token in the same
+    command fails, earlier valid edges stay applied (the store is plain files
+    with no transactions, and the only way to trip this is contradictory
+    single-command input, e.g. `--blocked-by B --blocks B`). The integrity
+    guarantee that matters — no cycles, ever — holds regardless.
   - `edit` only handles blocking flags for now.
 - **`tcw work new "<title>" [--blocked-by a,b]`** — create, then `add_blocker`
   per token (same comma rules). A brand-new item can't cycle, but an unknown
