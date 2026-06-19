@@ -45,9 +45,14 @@ def _print_item(item: WorkItem) -> None:
     if item.resolution:
         print(f"resolution: {item.resolution}")
     if item.blocked_by:
-        labels = [b["slug"] if "slug" in b else f"external: {b['external']}"
-                  for b in item.blocked_by]
-        print(f"blocked_by: {', '.join(labels)}")
+        labels = []
+        for b in item.blocked_by:
+            if "slug" in b:
+                labels.append(b["slug"])
+            elif "external" in b:
+                labels.append(f"external: {b['external']}")
+        if labels:
+            print(f"blocked_by: {', '.join(labels)}")
     body = item.body.strip()
     if body:
         print()

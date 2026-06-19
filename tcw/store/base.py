@@ -334,10 +334,11 @@ class WorkStore(ABC):
         for b in item.blocked_by:
             if "external" in b:
                 out.append(f"external: {b['external']}")
-            else:
+            elif "slug" in b:
                 blocker = self.get(b["slug"])
                 if blocker is not None and blocker.status != "completed":
                     out.append(b["slug"])
+            # else: structurally malformed entry — skip (degrade, don't crash)
         return out
 
     def start(self, slug: str, force: bool = False) -> WorkItem:

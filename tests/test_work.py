@@ -322,3 +322,15 @@ def test_cli_complete_blocker_gate_before_dod(tmp_path, monkeypatch, capsys):
     assert "blocked by" in out.err and "Definition of Done" not in out.out  # fail-fast
     assert main(["work", "complete", target.slug, "--resolution", "done",
                  "--confirm", "--force"]) == 0
+
+
+def test_malformed_blocked_by_entry_degrades(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    st.set_field(item.slug, "blocked_by", [{"note": "garbage"}])
+    assert st.unresolved_blockers(st.get(item.slug)) == []   # skipped, no KeyError
+    monkeypatch.chdir(root)
+    assert main(["work", "show", item.slug]) == 0            # show doesn't crash
+    assert main(["work", "list"]) == 0                       # list doesn't crash
