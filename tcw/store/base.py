@@ -71,3 +71,80 @@ class TaxonomyStore(ABC):
     @abstractmethod
     def check(self) -> list[str]:
         """Validate the taxonomy; return a list of problems (empty == clean)."""
+
+
+# ── Capabilities (Phase 3) ───────────────────────────────────────────────────
+
+# The locked vocabulary `check` validates (phase-3-capabilities A.4). `Planning
+# doc` is included: A.8 / the work spec use it as the capability→work forward
+# pointer, so it must be recognized (reconciles the A.4 table omission).
+CAP_STATUSES = {"Supported", "Partial", "Missing", "Blocked", "Omitted"}
+CAP_PRIORITIES = {"P0", "P1", "P2", "P3"}
+CAP_LIFECYCLES = {"Experimental", "Stable", "Deprecated"}
+CAP_FIELDS = {
+    "Status", "Priority", "Lifecycle", "Superseded by", "Tracker", "Subject",
+    "Roles", "When", "Gaps", "Blocked by", "Planning doc",
+}
+
+
+class Collision(RefError):
+    """A flat file and a same-named folder both claim an identifier."""
+
+
+@dataclass
+class Capability:
+    """One `## name` user story within a capability file."""
+    file_id: str                 # owning file identifier (e.g. "routes/login")
+    name: str                    # the heading text
+    heading_slug: str            # GitHub-flavored anchor
+    fields: dict[str, str] = field(default_factory=dict)
+    body: str = ""
+
+    @property
+    def status(self) -> str | None:
+        return self.fields.get("Status")
+
+    @property
+    def ref(self) -> str:
+        return f"{self.file_id}#{self.heading_slug}"
+
+
+@dataclass
+class CapabilityFile:
+    """A resolved capability file: its title + the capabilities it holds."""
+    identifier: str
+    title: str
+    capabilities: list[Capability] = field(default_factory=list)
+
+
+class CapabilitiesStore(ABC):
+    """The capabilities axis: a bounded tree of user-story files (A.5).
+
+    Deliberately near-identical to `TaxonomyStore` — both are bounded trees of
+    body + named-fields + named-attachments nodes (the Phase-4 shared-core basis).
+    """
+
+    @abstractmethod
+    def list(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
+        ...
+
+    @abstractmethod
+    def get(self, identifier: str) -> CapabilityFile | None:
+        """Resolve an identifier (A.6) to its file. Raises `Collision` on flat/folder clash."""
+
+    @abstractmethod
+    def add(self, identifier: str, name: str | None = None, status: str = "Missing",
+            body: str = "", folder: bool = False) -> CapabilityFile:
+        ...
+
+    @abstractmethod
+    def remove(self, identifier: str) -> None:
+        ...
+
+    @abstractmethod
+    def search(self, query: str) -> list[Capability]:
+        ...
+
+    @abstractmethod
+    def check(self, taxonomy: "TaxonomyStore | None" = None) -> list[str]:
+        """Validate identifiers, metadata vocabulary, and (cross-component) Subject refs."""

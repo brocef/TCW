@@ -13,7 +13,11 @@ from pathlib import Path
 
 import yaml
 
-from tcw.store.base import AmbiguousRef, TaxonomyStore, Term
+from tcw.store.base import (
+    CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
+    AmbiguousRef, Capability, CapabilitiesStore, CapabilityFile, Collision,
+    RefError, TaxonomyStore, Term,
+)
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
@@ -279,3 +283,230 @@ class FsTaxonomyStore(TaxonomyStore):
             if self._cycles(nxt, seen | {taxonomy_root}):
                 return True
         return False
+
+
+# ── FsCapabilitiesStore ──────────────────────────────────────────────────────
+
+_CAP_SIDECARS = {"errors.md", "states.md"}
+_FIELD_RE = re.compile(r"^\*\*([^:*]+):\*\*\s*(.*)$")
+_IDENT_RE = re.compile(r"^(?P<path>[^#\[\]]+?)(?:\[(?P<state>[^\]]+)\])?(?:#(?P<heading>[\w-]+))?$")
+
+
+def heading_slug(text: str) -> str:
+    """GitHub-flavored heading anchor: lowercased, punctuation stripped, spaces→'-'."""
+    s = re.sub(r"[^\w\s-]", "", text.strip().lower())
+    return re.sub(r"\s+", "-", s)
+
+
+def parse_capability_file(file_id: str, text: str) -> CapabilityFile:
+    """Parse `# Title` + one-or-more `## name` capabilities (inline `**Field:**` block + body)."""
+    title = next((ln[2:].strip() for ln in text.splitlines() if ln.startswith("# ")), file_id)
+    caps: list[Capability] = []
+    for block in re.split(r"(?m)^##\s+", text)[1:]:
+        lines = block.splitlines()
+        name = lines[0].strip()
+        fields: dict[str, str] = {}
+        idx = 1
+        while idx < len(lines):
+            m = _FIELD_RE.match(lines[idx].strip())
+            if not m:
+                break
+            fields[m.group(1).strip()] = m.group(2).strip()
+            idx += 1
+        body = "\n".join(lines[idx:]).strip()
+        caps.append(Capability(file_id, name, heading_slug(name), fields, body))
+    return CapabilityFile(file_id, title, caps)
+
+
+class FsCapabilitiesStore(CapabilitiesStore):
+    """`CapabilitiesStore` over the bounded `docs/capabilities/` tree (Phase 3 B.3)."""
+
+    def __init__(self, root: Path):
+        self.root = root                       # docs/capabilities/
+        self.node_root = root.parent.parent
+        self.config = load_yaml(root / ".config.yaml")
+
+    @classmethod
+    def open(cls, node_root: Path) -> "FsCapabilitiesStore":
+        return cls(node_root / "docs" / "capabilities")
+
+    # -- resolution --
+
+    def _state_prefixes(self) -> tuple[str, str]:
+        sc = self.config.get("state-conventions") or {}
+        return sc.get("with", "with-"), sc.get("without", "without-")
+
+    def _resolve_file(self, path: str, state: str | None) -> Path | None:
+        folder = self.root / path
+        flat = self.root / f"{path}.md"
+        entry = folder / "capabilities.md"
+        if state and state != "*":
+            with_p, without_p = self._state_prefixes()
+            neg = state.startswith("!")
+            prefix, base = (without_p, state[1:]) if neg else (with_p, state)
+            vf = folder / f"{prefix}{base}.md"
+            if not vf.is_file():
+                raise RefError(f"no state variant: {path}[{state}]")
+            return vf
+        if flat.is_file() and entry.is_file():
+            raise Collision(path)
+        if flat.is_file():
+            return flat
+        if entry.is_file():
+            return entry
+        return None
+
+    def _disk_id(self, path: Path) -> str:
+        rel = path.relative_to(self.root)
+        return str(rel.parent) if path.name == "capabilities.md" else str(rel)[:-3]
+
+    def _is_variant(self, p: Path) -> bool:
+        if not (p.parent / "capabilities.md").is_file():
+            return False
+        with_p, without_p = self._state_prefixes()
+        return p.name.startswith(with_p) or p.name.startswith(without_p)
+
+    def _cap_files(self, include_variants: bool = False) -> list[Path]:
+        out = []
+        for p in sorted(self.root.rglob("*.md")):
+            if p.name in _CAP_SIDECARS:
+                continue
+            if p.name != "capabilities.md" and self._is_variant(p) and not include_variants:
+                continue
+            out.append(p)
+        return out
+
+    # -- reads --
+
+    def get(self, identifier: str) -> CapabilityFile | None:
+        m = _IDENT_RE.match(identifier)
+        if not m:
+            raise RefError(f"malformed identifier: {identifier}")
+        fp = self._resolve_file(m.group("path"), m.group("state"))
+        if fp is None:
+            return None
+        return parse_capability_file(self._disk_id(fp), fp.read_text(encoding="utf-8"))
+
+    def list(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
+        caps: list[Capability] = []
+        for p in self._cap_files():
+            for c in parse_capability_file(self._disk_id(p), p.read_text(encoding="utf-8")).capabilities:
+                if status and c.status != status:
+                    continue
+                if namespace and c.file_id.split("/")[0] != namespace:
+                    continue
+                caps.append(c)
+        return caps
+
+    def search(self, query: str) -> list[Capability]:
+        q = query.lower()
+        caps: list[Capability] = []
+        for p in self._cap_files(include_variants=True):
+            for c in parse_capability_file(self._disk_id(p), p.read_text(encoding="utf-8")).capabilities:
+                if q in c.name.lower() or q in c.body.lower():
+                    caps.append(c)
+        return caps
+
+    # -- writes --
+
+    def add(self, identifier: str, name: str | None = None, status: str = "Missing",
+            body: str = "", folder: bool = False) -> CapabilityFile:
+        path = _IDENT_RE.match(identifier).group("path")
+        folder_dir = self.root / path
+        flat = self.root / f"{path}.md"
+        entry = folder_dir / "capabilities.md"
+        if flat.is_file() or entry.is_file():
+            raise ValueError(f"capability already exists: {path}")
+        if folder and flat.is_file():
+            raise ValueError(f"flat/folder collision: {path}.md exists")
+        if not folder and folder_dir.is_dir():
+            raise ValueError(f"flat/folder collision: folder {path}/ exists")
+        target = entry if folder else flat
+        target.parent.mkdir(parents=True, exist_ok=True)
+        subject = path.rsplit("/", 1)[-1].replace("-", " ").title()
+        target.write_text(
+            f"# {subject} — capabilities\n\n## {name or subject}\n"
+            f"**Status:** {status}\n\n{body}\n", encoding="utf-8")
+        git_stage(self.node_root, target)
+        return parse_capability_file(self._disk_id(target), target.read_text(encoding="utf-8"))
+
+    def remove(self, identifier: str) -> None:
+        fp = self._resolve_file(*_IDENT_RE.match(identifier).group("path", "state"))
+        if fp is None:
+            raise ValueError(f"no such capability: {identifier}")
+        git_rm(self.node_root, fp.parent if fp.name == "capabilities.md" else fp)
+
+    # -- validation --
+
+    def _ref_error(self, identifier: str) -> str | None:
+        m = _IDENT_RE.match(identifier)
+        if not m:
+            return f"malformed identifier '{identifier}'"
+        try:
+            fp = self._resolve_file(m.group("path"), m.group("state"))
+        except Collision:
+            return f"flat/folder collision at '{identifier}'"
+        except RefError as e:
+            return str(e)
+        if fp is None:
+            return f"dangling identifier '{identifier}'"
+        heading = m.group("heading")
+        if heading:
+            cf = parse_capability_file(m.group("path"), fp.read_text(encoding="utf-8"))
+            if not any(c.heading_slug == heading for c in cf.capabilities):
+                return f"no heading '#{heading}' in '{m.group('path')}'"
+        return None
+
+    def check(self, taxonomy: TaxonomyStore | None = None) -> list[str]:
+        problems: list[str] = []
+        # flat/folder collisions
+        for entry in self.root.rglob("capabilities.md"):
+            if entry.parent.with_suffix(".md").is_file():
+                problems.append(f"flat/folder collision: {self._disk_id(entry)}")
+
+        for p in self._cap_files(include_variants=True):
+            cf = parse_capability_file(self._disk_id(p), p.read_text(encoding="utf-8"))
+            for cap in cf.capabilities:
+                where = cap.ref
+                f = cap.fields
+                for key in f:
+                    if key not in CAP_FIELDS:
+                        problems.append(f"{where}: unknown field '{key}'")
+                status = f.get("Status")
+                if status is None:
+                    problems.append(f"{where}: missing Status")
+                elif status not in CAP_STATUSES:
+                    problems.append(f"{where}: invalid Status '{status}'")
+                if "Priority" in f and f["Priority"] not in CAP_PRIORITIES:
+                    problems.append(f"{where}: invalid Priority '{f['Priority']}'")
+                if "Lifecycle" in f and f["Lifecycle"] not in CAP_LIFECYCLES:
+                    problems.append(f"{where}: invalid Lifecycle '{f['Lifecycle']}'")
+                if status == "Partial" and "Gaps" not in f:
+                    problems.append(f"{where}: Partial requires Gaps")
+                if status == "Blocked" and "Blocked by" not in f:
+                    problems.append(f"{where}: Blocked requires Blocked by")
+                if "Superseded by" in f and (e := self._ref_error(f["Superseded by"])):
+                    problems.append(f"{where}: Superseded by → {e}")
+                problems += self._check_globals(where, f)
+                problems += self._check_subject(where, f, taxonomy)
+        return problems
+
+    def _check_globals(self, where: str, f: dict) -> list[str]:
+        out = []
+        for ns, field in (("roles", "Roles"), ("conditions", "When")):
+            for tok in (s.strip() for s in f.get(field, "").split(",") if s.strip()):
+                ref = tok.lstrip("!")
+                if not ref.startswith(f"{ns}/"):
+                    out.append(f"{where}: {field} '{tok}' must be a {ns}/ slug")
+                elif (e := self._ref_error(ref)):
+                    out.append(f"{where}: {field} → {e}")
+        return out
+
+    def _check_subject(self, where: str, f: dict, taxonomy: TaxonomyStore | None) -> list[str]:
+        subj = f.get("Subject")
+        if not subj or taxonomy is None:
+            return []
+        try:
+            return [] if taxonomy.get(subj) is not None else [f"{where}: Subject → dangling ref '{subj}'"]
+        except AmbiguousRef:
+            return [f"{where}: Subject → ambiguous ref '{subj}'"]

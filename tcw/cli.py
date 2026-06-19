@@ -9,12 +9,13 @@ import argparse
 import sys
 
 from tcw import __version__
+from tcw.capabilities import cli as capabilities_cli
 from tcw.store.fs import COMPONENTS, git_root, init
 from tcw.taxonomy import cli as taxonomy_cli
 
 # Component CLI modules that are built (each exposes NAME / SUBCOMMANDS /
-# DEFAULT_SUBCOMMAND / add_subparser). Phases 3 and 5 append their modules.
-_BUILT = [taxonomy_cli]
+# DEFAULT_SUBCOMMAND / add_subparser). Phase 5 appends the work module.
+_BUILT = [taxonomy_cli, capabilities_cli]
 _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 

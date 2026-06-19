@@ -1,6 +1,6 @@
 # Phase 3 — Capabilities (TCW component 2 of 3: the user stories)
 
-**Status:** spec ✓ · build ☐ not started
+**Status:** spec ✓ · build ✓ (see *Build notes*, Part C)
 **Delivers:** `tcw capabilities` + `FsCapabilitiesStore` over the bounded `docs/capabilities/` tree; `Subject`↔taxonomy validation in `check`.
 **Depends on:** Phase 1 (package/CLI), Phase 2 (taxonomy — `check` validates `Subject:` refs against the `TaxonomyStore`).
 **Build checklist:** `CapabilitiesStore` interface → `FsCapabilitiesStore` → the five subcommands (B.2) → identifier resolution (A.6) → `check` incl. cross-component `Subject` validation → tests (B.7).
@@ -77,6 +77,7 @@ The status vocabulary is **locked**: additions need a spec bump + explicit ratio
 | `**When:**` | No | All | comma-separated `conditions/` slugs (AND-ed; `!` negates) |
 | `**Gaps:**` | When `Partial` | `Partial` | list of known holes |
 | `**Blocked by:**` | When `Blocked` | `Blocked` | concrete dependency |
+| `**Planning doc:**` | When a work item realizes it | `Missing` (typically) | the realizing work item's **slug** (the capability→work forward pointer — A.8) |
 
 Unrecognized field names are `check` violations. The tool *reads* these fields (filter, resolve, validate) but does not enforce status business-semantics — that is judgment, left to skills and reviewers (A.12).
 
@@ -224,6 +225,19 @@ pytest over `tmp_path` git repos: `add` flat-file and promoted-folder; the flat/
 - Whether the recommended namespace set should ship as a seed in `tcw init` or stay purely illustrative.
 
 ---
+
+## Build notes (Phase 3)
+
+Built: `CapabilitiesStore` ABC + `Capability`/`CapabilityFile` + the locked vocabulary constants (`tcw/store/base.py`); `FsCapabilitiesStore` + the markdown capability parser (`parse_capability_file`, `heading_slug`) in `tcw/store/fs.py`; the five subcommands + bare-id `show` (`tcw/capabilities/cli.py`); 13 tests (`tests/test_capabilities.py`). `check` validates flat/folder collisions, the locked field vocabulary + valid status/priority/lifecycle values, required-when fields (Gaps/Blocked by), `Superseded by` identifier resolution, `Roles`/`When` slug resolution, and the cross-component `Subject`→`TaxonomyStore` ref. The CLI wires a real `FsTaxonomyStore` into `check` when the node has `docs/taxonomy/`.
+
+**Spec reconciliation:** added `**Planning doc:**` to the locked field set (A.4 table) — A.8 and the work spec use it as the capability→work forward pointer, so it must be a recognized field; the original A.4 table omitted it.
+
+**B.8 open questions — how they landed:**
+- **`Subject` cardinality** — single (per A.7). Unchanged.
+- **Dangling `Planning doc` slug** — *not* cross-validated here. The work store doesn't exist at capabilities-build time (work is Phase 5), and the lean was "work owns reconciliation." `Planning doc` is recognized as a field but its slug is not resolved against the `WorkStore` — that capability→work check belongs to the skill/Phase-6 layer.
+- **Recommended namespace seed** — left purely illustrative; `tcw init` does not seed `routes/ components/ …`.
+
+**Deliberate simplifications:** `list`/`search` skip sidecars (`errors.md`/`states.md`) and `list` skips state-variant files (reachable via explicit `[state]`); store `remove` exists on the interface but is intentionally not exposed as a CLI subcommand (B.2 has no `rm`).
 
 ## Part C — Place in the roadmap
 
