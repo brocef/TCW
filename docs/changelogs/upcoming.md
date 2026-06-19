@@ -1,9 +1,9 @@
-# Changelog
+# Upcoming
 
-All notable changes to TCW are recorded here. Format loosely follows
-[Keep a Changelog](https://keepachangelog.com/); versions are semver.
+Developer changelog for the next version. Technical and precise; grouped by
+category, with commit hash ranges so entries trace back to source.
 
-## [Unreleased]
+<changes starting-hash="be5ed6a" ending-hash="fe08e5b">
 
 ### Added
 - Phase 1 scaffold: `tcw` Python package, `pip install -e .` console entry point,
@@ -22,6 +22,8 @@ All notable changes to TCW are recorded here. Format loosely follows
   (slug) resolution, the legal-transition graph + named operations in the core,
   `git mv` transitions, blocker resolution on `unblock`, and the loose DoD gate.
 
-### Changed
-- Phase 4 (internal): extracted the shared `FsTreeStore` core from the taxonomy
-  and capabilities adapters; both re-expressed on it with no behavior change.
+### Internal
+- Phase 4: extracted the shared `FsTreeStore` core from the taxonomy and
+  capabilities adapters; both re-expressed on it with no behavior change.
+
+</changes>
