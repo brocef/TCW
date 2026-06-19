@@ -5,8 +5,7 @@
 **Depends on:** Phase 1 (package/CLI), Phase 2 (taxonomy — `check` validates `Subject:` refs against the `TaxonomyStore`).
 **Build checklist:** `CapabilitiesStore` interface → `FsCapabilitiesStore` → the five subcommands (B.2) → identifier resolution (A.6) → `check` incl. cross-component `Subject` validation → tests (B.7).
 
-> Spec **and** build plan for component 2 — a capability is a **miniature user story** ("*as a user, I can…*"). Built **second, right after taxonomy**: it depends only on taxonomy (its `check` validates `Subject:` refs against the `TaxonomyStore`) and is its near-clone, so the shared tree-store core is extracted from the two (Phase 4) before work is built. Framework rules: [`../../AGENTS.md`](../../AGENTS.md). Build order: [`INDEX.md`](INDEX.md).
-
+> Spec **and** build plan for component 2 — a capability is a **miniature user story** ("*as a user, I can…*"). Built **second, right after taxonomy**: it depends only on taxonomy (its `check` validates `Subject:` refs against the `TaxonomyStore`) and is its near-clone, so the shared tree-store core is extracted from the two (Phase 4) before work is built. Framework rules: [`../../AGENTS.md`](../../AGENTS.md).
 **Date:** 2026-06-18
 **Scope:** the conceptual model (Part A) plus the buildable `tcw capabilities` tool (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-5-work`](phase-5-work.md). This spec formalizes the **artifact half** of the absorbed `skill-cefailures:capabilities-sdlc` skill (its v2 design) as a TCW component; the **process half** is already structural in the work lifecycle (the work phase's A.7).
 
@@ -241,7 +240,7 @@ Built: `CapabilitiesStore` ABC + `Capability`/`CapabilityFile` + the locked voca
 
 ## Part C — Place in the roadmap
 
-Global build order: [`INDEX.md`](INDEX.md). Capabilities-local notes:
+Capabilities-local notes:
 
 1. **This phase** — the capabilities component (`tcw capabilities`) + `FsCapabilitiesStore`, single bounded tree, `Subject`↔taxonomy validation in `check`.
 2. **Shared tree-store core** — extracted in [`phase-4-shared-core`](phase-4-shared-core.md) from taxonomy + capabilities (the two near-clone trees), *before* work is built: the common bounded-tree primitive (body + named fields + named attachments + identifier resolution) they share. Don't pre-abstract — two real implementations justify it.

@@ -5,8 +5,7 @@
 **Depends on:** Phase 1 (package + CLI skeleton + node detection).
 **Build checklist:** `TaxonomyStore` interface → `FsTaxonomyStore` over `docs/taxonomy/` → the six subcommands (B.2) → `extends` resolution (B.6) → `check` → tests (B.8).
 
-> Spec **and** build plan for component 1. Part A is the model; Part B is the buildable tool; B.9 records the resolved open questions. Framework-wide rules: [`../../AGENTS.md`](../../AGENTS.md). Build order & status: [`INDEX.md`](INDEX.md).
-
+> Spec **and** build plan for component 1. Part A is the model; Part B is the buildable tool; B.9 records the resolved open questions. Framework-wide rules: [`../../AGENTS.md`](../../AGENTS.md).
 **Date:** 2026-06-18
 **Scope:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling components: [`phase-5-work`](phase-5-work.md), [`phase-3-capabilities`](phase-3-capabilities.md).
 
@@ -176,7 +175,7 @@ Shared FS helpers added to `fs.py` (`find_node`, `load_yaml`/`dump_yaml`, `git_s
 
 ## Part C — Place in the roadmap
 
-The global build order lives in [`INDEX.md`](INDEX.md). Taxonomy-local notes:
+Taxonomy-local notes:
 
 - **Done since first draft:** the framework reframe (`WORK-SDLC.AGENTS.md` → this repo's [`../../AGENTS.md`](../../AGENTS.md); `work` → `tcw work`; the `tcw` umbrella) and the capabilities component spec ([`phase-3-capabilities`](phase-3-capabilities.md)) — both shipped.
 - **Shared tree-store core** — extracted in [`phase-4-shared-core`](phase-4-shared-core.md), once taxonomy + work both exist (don't pre-abstract).

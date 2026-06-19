@@ -5,7 +5,7 @@
 **Depends on:** Phase 1 (package/CLI), Phase 4 (shared tree-store core); references Phase 2 (taxonomy) and Phase 3 (capabilities) loosely — `capabilities.yaml` is an opaque blob in this phase.
 **Build checklist:** `WorkStore` interface → `FsWorkStore` over `docs/work/` → the ten subcommands (B.2) → the state machine (B.3) → the loose DoD gate (B.6) → tests (B.8).
 
-> Spec **and** build plan for component 3. Part A is the model; Part B is the buildable single-node tool; B.9 records the resolved open questions. The cross-node recursion, skill layer, and migration (this doc's "Spec 2/3/4") are deferred to [`phase-6-beyond`](phase-6-beyond.md). Framework rules: [`../../AGENTS.md`](../../AGENTS.md). Build order: [`INDEX.md`](INDEX.md).
+> Spec **and** build plan for component 3. Part A is the model; Part B is the buildable single-node tool; B.9 records the resolved open questions. The cross-node recursion, skill layer, and migration (this doc's "Spec 2/3/4") are deferred to [`phase-6-beyond`](phase-6-beyond.md). Framework rules: [`../../AGENTS.md`](../../AGENTS.md).
 
 **Date:** 2026-06-18
 **Scope:** the full conceptual model (Part A) plus the buildable *core single-node tool* (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-3-capabilities`](phase-3-capabilities.md).
@@ -288,7 +288,7 @@ Tests cover the full B.8 list: slug generation/collision/immutability, multiple-
 
 ## Part C — Decomposition / roadmap
 
-The work component decomposes into four sub-specs. **Spec 1 is this phase (Phase 5);** Specs 2–4 are deferred to [`phase-6-beyond`](phase-6-beyond.md). Global build order: [`INDEX.md`](INDEX.md).
+The work component decomposes into four sub-specs. **Spec 1 is this phase (Phase 5);** Specs 2–4 are deferred to [`phase-6-beyond`](phase-6-beyond.md).
 
 1. **Spec 1 (this phase, Part B):** core single-node tool — the `WorkStore` interface + the `FsWorkStore` adapter + CLI.
 2. **Spec 2 — Cross-node / recursion:** node discovery, epics, `initiative:` back-pointers, `reconcile` (scan children → consolidated rollup), escalate/delegate via inbox, `tcw work start --worktree` (+ the rule for which checkout owns `docs/work/` writes), and the two-layer × two-layer capability mapping (epic ↔ product-layer ledger, task ↔ leaf-node ledger; product-layer coordination over the inbox channel).
