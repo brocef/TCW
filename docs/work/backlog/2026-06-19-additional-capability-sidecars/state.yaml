@@ -3,3 +3,5 @@ title: Additional capability sidecars
 phase: ''
 created: '2026-06-19'
 resolution: null
+blocked_by:
+- external: a real project that needs events.md or metrics.md sidecars

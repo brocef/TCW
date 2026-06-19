@@ -3,3 +3,5 @@ title: Distribute tcw as a Claude Code / Codex plugin (AI-first single-copy inst
 phase: ''
 created: '2026-06-19'
 resolution: null
+blocked_by:
+- slug: 2026-06-19-skill-layer-capabilities-process-work-spec-3

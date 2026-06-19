@@ -3,3 +3,5 @@ title: Hard DoD gate (commit-range enforced)
 phase: ''
 created: '2026-06-19'
 resolution: null
+blocked_by:
+- slug: 2026-06-19-skill-layer-capabilities-process-work-spec-3
