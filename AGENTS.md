@@ -42,3 +42,10 @@ Before reporting any code change complete, invoke the `skill-cefailures:document
 - `README.md` [Public-API] — Public-facing overview and `tcw` CLI usage (install, commands, quickstart); plain, high-readability. Update when the public CLI surface or user-facing behavior changes.
 - `docs/release-notes/upcoming.md` [Public-API] — User-facing release notes for the next version; plain language, no jargon or internal module names.
 - `docs/changelogs/upcoming.md` [Any-Code-Change] — Developer changelog for the next version; technical, grouped (Added/Changed/Fixed/Removed/Internal), with commit hash ranges (`git rev-parse --short HEAD`).
+
+## Versioning
+
+The version string is **duplicated across files** — a release bumps *all* of them in lockstep, not just `pyproject.toml`. Keep them identical, and fold them into the documentation-sync `cut-version` flow.
+
+- **Now:** `pyproject.toml` (`version`) and `tcw/__init__.py` (`__version__`).
+- **Once the plugin manifests land** (backlog `2026-06-19-distribute-tcw-as-a-claude-code-codex-plugin-ai-first-single-copy-install`): also `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` — five files to bump together.
