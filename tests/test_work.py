@@ -170,6 +170,48 @@ def test_cycle_refused_direct_and_transitive(tmp_path):
         st.add_blocker(c.slug, a.slug)                  # C blocked by A → A→B→C→A cycle
 
 
+# ── gating: unresolved blockers ─────────────────────────────────────────────
+
+def test_start_gated_on_unresolved_blocker(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    blocker = st.create("Blocker", created="2026-01-01")
+    target = st.create("Target", created="2026-01-02")
+    st.add_blocker(target.slug, blocker.slug)
+    with pytest.raises(ValueError):
+        st.start(target.slug)                          # blocker not completed
+    assert st.start(target.slug, force=True).status == "active"
+
+
+def test_start_ungated_when_blocker_completed_or_dropped(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    blocker = st.create("Blocker", created="2026-01-01")
+    target = st.create("Target", created="2026-01-02")
+    st.add_blocker(target.slug, blocker.slug)
+    st.start(blocker.slug)
+    st.complete(blocker.slug, "done", [])
+    assert st.start(target.slug).status == "active"    # completed blocker → resolved
+
+
+def test_start_passes_on_dropped_blocker_silently(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    blocker = st.create("Blocker", created="2026-01-01")
+    target = st.create("Target", created="2026-01-02")
+    st.add_blocker(target.slug, blocker.slug)
+    st.drop(blocker.slug)                              # vanished → resolved, no warning
+    assert st.start(target.slug).status == "active"
+
+
+def test_complete_gated_on_unresolved_blocker(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    blocker = st.create("Blocker", created="2026-01-01")
+    target = st.create("Target", created="2026-01-02")
+    st.add_blocker(target.slug, blocker.slug)
+    st.start(target.slug, force=True)
+    with pytest.raises(ValueError):
+        st.complete(target.slug, "done", [])           # still blocked
+    assert st.complete(target.slug, "done", [], force=True).status == "completed"
+
+
 # ── CLI: DoD gate ────────────────────────────────────────────────────────────
 
 def test_cli_complete_requires_confirm(tmp_path, monkeypatch, capsys):

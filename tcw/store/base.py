@@ -287,16 +287,42 @@ class WorkStore(ABC):
         self._effect_transition(slug, to_status)
         return self._require(slug)
 
-    def start(self, slug: str) -> WorkItem:
+    def unresolved_blockers(self, item: WorkItem) -> list[str]:
+        """Labels of blockers that still block `item`. An entry is unresolved if
+        it is external, or a slug whose item is not completed. A slug that no
+        longer resolves counts as resolved (silently)."""
+        out: list[str] = []
+        for b in item.blocked_by:
+            if "external" in b:
+                out.append(f"external: {b['external']}")
+            else:
+                blocker = self.get(b["slug"])
+                if blocker is not None and blocker.status != "completed":
+                    out.append(b["slug"])
+        return out
+
+    def start(self, slug: str, force: bool = False) -> WorkItem:
+        item = self._require(slug)
+        if not force:
+            blockers = self.unresolved_blockers(item)
+            if blockers:
+                raise ValueError("blocked by: " + ", ".join(blockers)
+                                 + " (use --force to override)")
         return self.transition(slug, "active")
 
-    def complete(self, slug: str, resolution: str, dod_ack: list[str]) -> WorkItem:
+    def complete(self, slug: str, resolution: str, dod_ack: list[str],
+                 force: bool = False) -> WorkItem:
         if resolution not in WORK_RESOLUTIONS:
             raise ValueError(f"invalid resolution '{resolution}' "
                              f"(choose: {', '.join(sorted(WORK_RESOLUTIONS))})")
         item = self._require(slug)
         if (item.status, "completed") not in self.LEGAL_TRANSITIONS:
             raise IllegalTransition(f"cannot complete from {item.status} (only active)")
+        if not force:
+            blockers = self.unresolved_blockers(item)
+            if blockers:
+                raise ValueError("blocked by: " + ", ".join(blockers)
+                                 + " (use --force to override)")
         self.set_field(slug, "resolution", resolution)
         self.set_field(slug, "dod", dod_ack)
         return self.transition(slug, "completed")
