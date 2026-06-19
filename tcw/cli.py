@@ -1,7 +1,7 @@
 """Top-level `tcw` CLI: dispatches `init | taxonomy | capabilities | work`.
 
-Component groups stub to "not yet implemented" until their phase lands
-(taxonomy = Phase 2, capabilities = Phase 3, work = Phase 5).
+Built component groups register their own subparsers; the rest stub to "not yet
+implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
 """
 from __future__ import annotations
 
@@ -10,6 +10,12 @@ import sys
 
 from tcw import __version__
 from tcw.store.fs import COMPONENTS, git_root, init
+from tcw.taxonomy import cli as taxonomy_cli
+
+# Component CLI modules that are built (each exposes NAME / SUBCOMMANDS /
+# DEFAULT_SUBCOMMAND / add_subparser). Phases 3 and 5 append their modules.
+_BUILT = [taxonomy_cli]
+_STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -47,15 +53,28 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")
     p_init.set_defaults(func=_cmd_init)
 
-    for name in COMPONENTS:
+    for mod in _BUILT:
+        mod.add_subparser(sub)
+    for name in _STUBBED:
         p = sub.add_parser(name, help=f"{name} commands (not yet implemented)")
         p.set_defaults(func=_not_yet(name))
 
     return parser
 
 
+def _normalize(argv: list[str]) -> list[str]:
+    """Sugar: `tcw <component> <path>` → `tcw <component> show <path>`."""
+    if len(argv) >= 2 and not argv[1].startswith("-"):
+        for mod in _BUILT:
+            default = getattr(mod, "DEFAULT_SUBCOMMAND", None)
+            if default and argv[0] == mod.NAME and argv[1] not in mod.SUBCOMMANDS:
+                return [argv[0], default, *argv[1:]]
+    return argv
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(_normalize(argv))
     return args.func(args)
 
 

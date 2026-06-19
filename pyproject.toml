@@ -9,6 +9,7 @@ description = "Taxonomy · Capabilities · Work — a storage-abstracted framewo
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
+dependencies = ["PyYAML>=6"]
 
 [project.scripts]
 tcw = "tcw.cli:main"
