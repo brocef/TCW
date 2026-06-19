@@ -48,44 +48,66 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 
 ### New concrete operations (depend only on `get` / `set_field`)
 
-- **`add_blocker(slug, ref)`** — resolve `ref`: if it resolves to a work item,
-  store `{"slug": ref}`, else `{"external": ref}` (keeps external/off-tracker
-  waits). Refuse:
+- **`add_blocker(slug, ref)`** — read-modify-write: `get(slug)`, copy its
+  `blocked_by`, append, `set_field(slug, "blocked_by", new_list)`. Resolve `ref`:
+  if it resolves to a work item, store `{"slug": ref}`, else `{"external": ref}`
+  (keeps external/off-tracker waits). Refuse:
   - **self-block** (`ref == slug`);
   - any edge that would close a **cycle** — `_reaches(ref, slug)` walks `ref`'s
     blocker chain via `get`; if `slug` is reachable, refuse.
   - Idempotent: adding an entry already present is a no-op.
-- **`remove_blocker(slug, ref)`** — drop the entry matching `ref` by slug or
-  external text.
+- **`remove_blocker(slug, ref)`** — read-modify-write dropping entries that match
+  `ref` against their **stored** representation (no re-resolution):
+  `entry.get("slug") == ref or entry.get("external") == ref`. Removing something
+  not present is a silent no-op (idempotent, mirrors add).
+- **Entry identity** (for dedup on add and matching on remove): two entries are
+  the same iff they share the same `slug` value or the same `external` text. A
+  `slug` entry and an `external` entry never collide, even on equal text.
 - **`_unresolved_blockers(item) -> list[str]`** — an entry is *unresolved* if
   it is `external`, or a slug whose item is not `completed`. A slug that no
   longer resolves counts as **resolved** (silently — the old vanished-blocker
-  warning is dropped).
+  warning is dropped; rationale: a dropped blocker is gone, and re-`get`-ing it
+  is the only way to know, so the warning added noise for a non-actionable
+  state). An external wait is "resolved" by `--unblocked-by`-ing its text once
+  it clears — there is no separate resolve step (matches keeping it lazy).
+  Unlike `topo_order`, this uses `get`, so it *does* see cross-status blockers:
+  a `--status active` board can annotate "blocked-by: <backlog-slug>" even though
+  that edge didn't reorder the active items.
 - **`board(status=None) -> list[WorkItem]`** — `query(status)` then
-  `topo_order()`.
+  `topo_order()`. `status=None` means all statuses (delegates to `query`'s
+  existing all-statuses behavior).
 - **`topo_order(items)`** (module-level pure function) — stable Kahn
-  topological sort over the slug edges *present in `items`*: a blocker always
-  precedes what it blocks; ties keep the input order (which is the status-grouped
-  order `query` returns). External entries are not nodes. Any residual cycle
-  (only possible via hand-edited YAML, since writes refuse them) degrades
-  gracefully: leftover nodes are appended in original order.
-  - `# ponytail:` re-sort the ready set each step — O(n²) is fine for a board's
-    worth of items; swap to a heap if it ever holds thousands.
+  topological sort. An edge counts **only when both endpoints are in `items`**:
+  a slug blocker outside the set (e.g. filtered out by `--status`, or external)
+  is *not* a node and does not constrain ordering. Within that graph a blocker
+  always precedes what it blocks; ties keep the input order (the status-grouped
+  order `query` returns). Any residual cycle (only possible via hand-edited YAML,
+  since writes refuse them) degrades gracefully: leftover nodes are appended in
+  original order. (Implementation note: a board holds dozens of items, so a
+  naive sort is fine — no perf work warranted.)
 
 ### Changed transitions (gating)
 
 - **`start(slug, force=False)`** — refuse `inbox/backlog→active` when
-  `_unresolved_blockers` is non-empty, unless `force`.
+  `_unresolved_blockers` is non-empty, unless `force`. (`start` has no other
+  gate, so the asymmetry with `complete` below is intentional.)
 - **`complete(slug, resolution, dod_ack, force=False)`** — refuse when
   unresolved blockers remain, unless `force`. This is **in addition to** the
-  existing DoD `--confirm` gate (two independent gates).
+  existing DoD `--confirm` gate; the two are independent — `--force` bypasses
+  *only* the blocker gate and never the DoD `--confirm`. CLI precedence: the
+  core blocker gate is checked first and raises before the DoD checklist prints,
+  so a blocked complete fails fast on the blocker, not the DoD.
 
 ## Adapter (`tcw/store/fs.py`)
 
-- Drop `"blocked"` from the module-level `WORK_STATUSES` and from `init()`'s
-  scaffold leaves (no more `docs/work/blocked/`).
-- `get()` reads `blocked_by` from `state.yaml`; remove the `links.yaml` read and
-  the `link()` method.
+- Drop `"blocked"` from `WORK_STATUSES` — note it is **duplicated** at
+  `base.py:154` and `fs.py:25` and must change in lockstep; `init()` (fs.py:85)
+  derives its scaffold leaves from the fs.py copy, so it follows automatically
+  (no more `docs/work/blocked/`).
+- `get()` reads `blocked_by` via `list(state.get("blocked_by") or [])` — an
+  absent key means `[]`, which is exactly why `create()` needs no change. Remove
+  the `links.yaml` read and the `link()` method, and drop the now-stale "links"
+  mention from `_safe_yaml`'s docstring.
 - `create()` unchanged (new items get blockers via `add_blocker` after creation;
   a brand-new item can never be in a cycle).
 
@@ -93,26 +115,58 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 
 - Remove `block` and `unblock` (and from `SUBCOMMANDS` / help / the `init` help
   string).
-- **`tcw work edit <slug> [--blocked-by a,b] [--blocks c] [--unblocked-by d]`** —
-  values comma-separated. `--blocked-by`/`--unblocked-by` act on `<slug>`'s list;
-  `--blocks=c` is `add_blocker(c, <slug>)` (reverse direction). Cycle / self-block
-  errors surface here. `edit` only handles blocking flags for now.
+- **`tcw work edit <slug> [--blocked-by a,b] [--blocks c] [--unblocked-by d]`**:
+  - Each flag value is comma-split with the existing repo idiom
+    `(s.strip() for s in val.split(",") if s.strip())` — empty/whitespace tokens
+    and a trailing comma are dropped; duplicates collapse via add idempotency.
+  - `--blocked-by` → `add_blocker(<slug>, t)` per token; `--unblocked-by` →
+    `remove_blocker(<slug>, t)`; `--blocks c` → `add_blocker(c, <slug>)` (reverse
+    direction — here `c` is the item being mutated and **must resolve**, so an
+    unknown `c` errors `no such work item: c`, it is *not* taken as external).
+  - **All-or-nothing:** validate every token first (existence where required,
+    self-block, cycle); on any failure write nothing and exit non-zero. So a
+    single bad token in a comma list aborts the whole `edit`.
+  - `edit` only handles blocking flags for now.
 - **`tcw work new "<title>" [--blocked-by a,b]`** — create, then `add_blocker`
-  per entry.
+  per token (same comma rules). A brand-new item can't cycle, but an unknown
+  token still becomes an `external` entry, consistent with `--blocked-by`.
 - **`tcw work start <slug> [--force]`**, **`tcw work complete … [--force]`**.
-- **`list`** uses `board()`; appends `blocked-by: a,b` for items with unresolved
-  blockers.
-- **`show`** renames its `blocked_on:` line to `blocked_by:`.
+- **`list`** uses `board()`; appends `blocked-by: a, b` (comma-joined slugs /
+  external texts) for items with unresolved blockers.
+- **`show`** — rename the `blocked_on:` line to `blocked_by:` and format it as a
+  comma list of slugs / external texts, not the raw dict `repr` (`_print_item`,
+  cli.py:43-44, currently prints the list repr).
 
 ## Tests (`tests/test_work.py`)
 
+**First rewrite/remove the existing tests that won't import once `block`/`unblock`
+and the `blocked` status are gone:**
+
+- `test_init_gitkeep_persistence` — drop `"blocked"` from its status loop.
+- `test_legal_transition_lifecycle` — replace the `st.block`/`st.unblock` leg
+  with the new `inbox/backlog→active→completed` path.
+- `test_illegal_transitions_refused` — drop the `st.block` setup; assert the new
+  illegal set (e.g. `backlog→completed`, `completed→*`).
+- `test_unblock_refuses_unresolved_passes_on_dropped` and
+  `test_unblock_passes_when_blocker_completed` — re-home as the new `start`/
+  `complete` gating tests; the old `warnings` assertion goes away (vanished
+  blocker is now silent).
+
+**Then add:**
+
 - blocked-by add/remove round-trip; `--blocks` reverse direction;
+- `--blocks` against a nonexistent target errors `no such work item`;
+- comma-list parsing (`a, ,b` → `[a, b]`, trailing comma, duplicate token);
+- `edit` atomicity — a bad token aborts the whole command, nothing written;
+- `remove_blocker` of an absent entry is a no-op;
 - cycle refusal — direct (A↔B) and transitive (A→B→C→A);
 - self-block refusal;
-- external blocker stored and counted unresolved;
+- external blocker stored and counted unresolved; `--unblocked-by <text>` clears it;
 - `start` and `complete` gated on unresolved blockers; `--force` overrides each;
-- `topo_order` places a blocker before what it blocks and is stable on ties;
-- vanished slug-blocker treated as resolved.
+  `complete --force` still requires `--confirm` (DoD independent);
+- `topo_order` places a blocker before what it blocks, is stable on ties, and
+  ignores a blocker filtered out of the set;
+- vanished slug-blocker treated as resolved (silently).
 
 ## Docs to sync (CLAUDE.md Documentation Sync)
 
@@ -129,3 +183,5 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 - Cycle detection as a separate `tcw work check` (handled inline at write time).
 - An explicit `--external` flag (a non-resolving value is taken as external).
 - `edit --title` / `--phase` and a `--unblocks` reverse-removal flag.
+- Concurrency / file locking — `tcw` is a single-process CLI; `set_field`'s
+  read-modify-write assumes no concurrent writer (unchanged from today).
