@@ -29,6 +29,13 @@ Express behavior in the abstract vocabulary — **item · status · transition �
   - Parent/child as literal directory ancestry outside the node-resolution layer — *express the relation abstractly; the FS adapter derives it from nesting.*
   - Worktrees and `rg`/`find` queries — *filesystem-adapter local details, not store-interface operations.*
 
+## Work Planning and Implementation
+**All work in this repository should be tracked by the `tcw work` system!**
+
+When planning work, the spec document and implementation plan *must* be placed inside the corresponding work item folder.
+
+After planning concludes, and implementation is about to begin, use `tcw work start {work-item-slug}` to move it to the active status. This status transition should be the first implementation commit.
+
 ## Implementation rules
 
 - Each component depends on an abstract **store interface** (`TaxonomyStore`, `WorkStore`, …) that the CLI and any skills talk to. Ship the **filesystem adapters** (`FsTaxonomyStore`, `FsWorkStore`) only; keep remote adapters (e.g. `JiraWorkStore`) possible but unbuilt. Never add an interface method that only the FS adapter could honor (run the litmus test first).
