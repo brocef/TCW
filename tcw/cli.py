@@ -12,10 +12,11 @@ from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.store.fs import COMPONENTS, git_root, init
 from tcw.taxonomy import cli as taxonomy_cli
+from tcw.work import cli as work_cli
 
-# Component CLI modules that are built (each exposes NAME / SUBCOMMANDS /
-# DEFAULT_SUBCOMMAND / add_subparser). Phase 5 appends the work module.
-_BUILT = [taxonomy_cli, capabilities_cli]
+# Component CLI modules (each exposes NAME / SUBCOMMANDS / DEFAULT_SUBCOMMAND /
+# add_subparser). All three components are now built.
+_BUILT = [taxonomy_cli, capabilities_cli, work_cli]
 _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 

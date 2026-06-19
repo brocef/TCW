@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import re
 import subprocess
+from datetime import date
 from pathlib import Path
 
 import yaml
 
 from tcw.store.base import (
-    CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
+    CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, DEFAULT_DOD,
     AmbiguousRef, Capability, CapabilitiesStore, CapabilityFile, Collision,
-    RefError, TaxonomyStore, Term,
+    MultipleMatch, RefError, TaxonomyStore, Term, WorkItem, WorkStore,
 )
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
@@ -542,3 +543,125 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return [] if taxonomy.get(subj) is not None else [f"{where}: Subject → dangling ref '{subj}'"]
         except AmbiguousRef:
             return [f"{where}: Subject → ambiguous ref '{subj}'"]
+
+
+# ── FsWorkStore ──────────────────────────────────────────────────────────────
+
+class FsWorkStore(FsTreeStore, WorkStore):
+    """`WorkStore` over `docs/work/` — the filesystem-as-state-machine (Phase 5).
+
+    Status is the parent directory; a transition is a `git mv` of the item
+    folder. The stable id is the slug; `_find` resolves it by bounded glob.
+    """
+    COMPONENT = "work"
+
+    # -- slug resolution (the stable-id resolver, A.5) --
+
+    def _find(self, slug: str) -> Path | None:
+        matches = [self.root / s / slug for s in self.STATUSES
+                   if (self.root / s / slug).is_dir()]
+        if len(matches) > 1:
+            raise MultipleMatch(f"slug resolves to {len(matches)} items: {slug}")
+        return matches[0] if matches else None
+
+    def path(self, slug: str) -> Path | None:
+        return self._find(slug)
+
+    def _unique_slug(self, created: str, title: str) -> str:
+        base = f"{created}-{slugify(title)}"
+        slug, n = base, 2
+        while self._find(slug) is not None:
+            slug, n = f"{base}-{n}", n + 1
+        return slug
+
+    # -- reads --
+
+    @staticmethod
+    def _safe_yaml(path: Path) -> dict:
+        """Tolerant load: a malformed state/links file degrades to empty rather
+        than crashing the board (the item still lists, status comes from the dir)."""
+        try:
+            return load_yaml(path)
+        except yaml.YAMLError:
+            return {}
+
+    def get(self, slug: str) -> WorkItem | None:
+        d = self._find(slug)
+        if d is None:
+            return None
+        state = self._safe_yaml(d / "state.yaml")
+        links = self._safe_yaml(d / "links.yaml")
+        content = d / "content.md"
+        caps = d / "capabilities.yaml"
+        return WorkItem(
+            slug=slug,
+            title=state.get("title", slug),
+            status=d.parent.name,
+            phase=state.get("phase", ""),
+            created=state.get("created", ""),
+            resolution=state.get("resolution"),
+            body=content.read_text(encoding="utf-8") if content.exists() else "",
+            blocked_on=list(links.get("blocked_on") or []),
+            capabilities=load_yaml(caps) if caps.exists() else None,
+        )
+
+    def query(self, status: str | None = None) -> list[WorkItem]:
+        statuses = self.STATUSES if status is None else [status]
+        items: list[WorkItem] = []
+        for s in statuses:
+            sd = self.root / s
+            if sd.is_dir():
+                items += [self.get(d.name) for d in sorted(sd.iterdir()) if d.is_dir()]
+        return items
+
+    def dod_checklist(self) -> list[str]:
+        p = self.root / "dod.yaml"
+        if p.exists():
+            data = yaml.safe_load(p.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [str(x) for x in data]
+            if isinstance(data, dict) and isinstance(data.get("checklist"), list):
+                return [str(x) for x in data["checklist"]]
+        return list(DEFAULT_DOD)
+
+    # -- writes --
+
+    def create(self, title: str, created: str | None = None, body: str = "") -> WorkItem:
+        created = created or date.today().isoformat()
+        slug = self._unique_slug(created, title)
+        d = self.root / "backlog" / slug
+        d.mkdir(parents=True)
+        (d / "content.md").write_text(
+            f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
+            f"{body}\n", encoding="utf-8")
+        dump_yaml(d / "state.yaml", {
+            "slug": slug, "title": title, "phase": "", "created": created, "resolution": None})
+        self._stage(d / "content.md", d / "state.yaml")
+        return self.get(slug)
+
+    def set_field(self, slug: str, key: str, value) -> None:
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        state = load_yaml(d / "state.yaml")
+        state[key] = value
+        dump_yaml(d / "state.yaml", state)
+        self._stage(d / "state.yaml")
+
+    def link(self, slug: str, blocked_on: dict) -> None:
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        links = load_yaml(d / "links.yaml")
+        links.setdefault("blocked_on", []).append(blocked_on)
+        dump_yaml(d / "links.yaml", links)
+        self._stage(d / "links.yaml")
+
+    def _effect_transition(self, slug: str, to_status: str) -> None:
+        self._mv(self._find(slug), self.root / to_status / slug)
+
+    def _delete(self, slug: str) -> None:
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        self._rm(d)

@@ -17,3 +17,11 @@ All notable changes to TCW are recorded here. Format loosely follows
   markdown capability parsing, the file/folder rule, identifier resolution
   (`namespace/path[state]#heading`), the locked status/field vocabulary, and
   cross-component `Subject`→taxonomy validation in `check`.
+- Phase 5 work: `tcw work` (`init/new/list/show/path/start/block/unblock/complete/
+  drop`) and `FsWorkStore` — the `docs/work/` filesystem state machine. Stable-id
+  (slug) resolution, the legal-transition graph + named operations in the core,
+  `git mv` transitions, blocker resolution on `unblock`, and the loose DoD gate.
+
+### Changed
+- Phase 4 (internal): extracted the shared `FsTreeStore` core from the taxonomy
+  and capabilities adapters; both re-expressed on it with no behavior change.

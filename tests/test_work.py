@@ -1,0 +1,162 @@
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from tcw.store.base import IllegalTransition, MultipleMatch
+from tcw.store.fs import FsWorkStore, init
+
+
+def node(tmp_path: Path, name: str = "repo") -> Path:
+    root = tmp_path / name
+    root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    init(["work"], root)
+    return root
+
+
+# ── init / slug ──────────────────────────────────────────────────────────────
+
+def test_init_gitkeep_persistence(tmp_path):
+    root = node(tmp_path)
+    for s in ("inbox", "backlog", "active", "blocked", "completed"):
+        assert (root / "docs" / "work" / s / ".gitkeep").is_file()
+
+
+def test_slug_generation_collision_and_immutability(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("Fix the bug", created="2026-01-01")
+    assert a.slug == "2026-01-01-fix-the-bug"
+    b = st.create("Fix the bug", created="2026-01-01")
+    assert b.slug == "2026-01-01-fix-the-bug-2"        # collision suffix
+    st.set_field(a.slug, "title", "Renamed")           # title drifts...
+    assert st.get(a.slug).title == "Renamed"
+    assert st.get(a.slug).slug == a.slug               # ...slug is frozen
+
+
+def test_multiple_match_resolution_error(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    (root / "docs/work/active/dup").mkdir()
+    (root / "docs/work/backlog/dup").mkdir()
+    with pytest.raises(MultipleMatch):
+        st.get("dup")
+
+
+# ── transitions ──────────────────────────────────────────────────────────────
+
+def test_legal_transition_lifecycle(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    assert st.get(item.slug).status == "backlog"
+    assert st.start(item.slug).status == "active"
+    assert st.block(item.slug, {"external": "vendor"}).status == "blocked"
+    _, _ = st.unblock(item.slug, force=True)
+    assert st.get(item.slug).status == "active"
+    assert st.complete(item.slug, "done", ["acked"]).status == "completed"
+    assert st.get(item.slug).resolution == "done"
+
+
+def test_completed_is_a_sink(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    st.start(item.slug)
+    st.complete(item.slug, "done", [])
+    with pytest.raises(IllegalTransition):
+        st.start(item.slug)               # completed → active refused
+
+
+def test_illegal_transitions_refused(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    with pytest.raises(IllegalTransition):
+        st.complete(item.slug, "done", [])    # backlog → completed (only from active)
+    st.start(item.slug)
+    st.block(item.slug, {"external": "x"})
+    with pytest.raises(IllegalTransition):
+        st.complete(item.slug, "done", [])    # blocked → completed
+
+
+def test_drop_only_from_inbox_or_backlog(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    st.start(item.slug)
+    with pytest.raises(IllegalTransition):
+        st.drop(item.slug)                    # active can't be dropped
+
+
+# ── unblock blocker resolution ───────────────────────────────────────────────
+
+def test_unblock_refuses_unresolved_passes_on_dropped(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    blocker = st.create("Blocker", created="2026-01-01")
+    target = st.create("Target", created="2026-01-01")
+    st.start(target.slug)
+    st.block(target.slug, {"slug": blocker.slug})
+    with pytest.raises(ValueError):           # blocker not completed
+        st.unblock(target.slug)
+    st.drop(blocker.slug)                      # blocker gone → resolved (with warning)
+    item, warnings = st.unblock(target.slug)
+    assert item.status == "active" and warnings
+
+
+def test_unblock_passes_when_blocker_completed(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    blocker = st.create("Blocker", created="2026-01-01")
+    st.start(blocker.slug)
+    st.complete(blocker.slug, "done", [])
+    target = st.create("Target", created="2026-01-01")
+    st.start(target.slug)
+    st.block(target.slug, {"slug": blocker.slug})
+    item, _ = st.unblock(target.slug)
+    assert item.status == "active"
+
+
+# ── query / resolution after move / boundedness ──────────────────────────────
+
+def test_list_status_filter(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    st.create("A", created="2026-01-01")
+    b = st.create("B", created="2026-01-02")
+    st.start(b.slug)
+    assert {i.slug for i in st.query(status="backlog")} == {"2026-01-01-a"}
+    assert {i.slug for i in st.query(status="active")} == {"2026-01-02-b"}
+
+
+def test_resolution_after_move_and_node_bounded(tmp_path):
+    parent = node(tmp_path, "parent")
+    pst = FsWorkStore.open(parent)
+    item = pst.create("Task", created="2026-01-01")
+    pst.start(item.slug)                       # folder moved backlog → active
+    assert pst.get(item.slug).status == "active"   # resolves after the move
+    # a child node's item is invisible to the parent store (bounded — A.5)
+    child = node(parent, "child")
+    cst = FsWorkStore.open(child)
+    citem = cst.create("Child task", created="2026-01-01")
+    assert pst.get(citem.slug) is None
+
+
+def test_malformed_state_yaml_degrades(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    (root / "docs/work/backlog" / item.slug / "state.yaml").write_text("{not: valid: yaml:")
+    got = st.get(item.slug)                    # no crash
+    assert got is not None and got.status == "backlog"
+
+
+# ── CLI: DoD gate ────────────────────────────────────────────────────────────
+
+def test_cli_complete_requires_confirm(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    slug = FsWorkStore.open(root).create("Task", created="2026-01-01").slug
+    main(["work", "start", slug])
+    assert main(["work", "complete", slug, "--resolution", "done"]) == 1   # no --confirm
+    assert FsWorkStore.open(root).get(slug).status == "active"
+    assert "Definition of Done" in capsys.readouterr().out
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+    assert FsWorkStore.open(root).get(slug).status == "completed"

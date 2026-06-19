@@ -1,6 +1,6 @@
 # Phase 5 — Work (TCW component 3 of 3: the changes)
 
-**Status:** spec ✓ · build ☐ not started
+**Status:** spec ✓ · build ✓ (see *Build notes*, Part C)
 **Delivers:** `tcw work` + `FsWorkStore` — the single-node state machine + loose DoD gate (the work component's "Spec 1").
 **Depends on:** Phase 1 (package/CLI), Phase 4 (shared tree-store core); references Phase 2 (taxonomy) and Phase 3 (capabilities) loosely — `capabilities.yaml` is an opaque blob in this phase.
 **Build checklist:** `WorkStore` interface → `FsWorkStore` over `docs/work/` → the ten subcommands (B.2) → the state machine (B.3) → the loose DoD gate (B.6) → tests (B.8).
@@ -276,9 +276,19 @@ pytest over `tmp_path` git repos (each test runs `git init` and sets `user.name`
 
 ---
 
+## Build notes (Phase 5)
+
+Built: `WorkStore` ABC + `WorkItem` + the legal-transition graph / status vocabulary / resolutions / default DoD (`tcw/store/base.py`); `FsWorkStore` on the Phase-4 `FsTreeStore` (`tcw/store/fs.py`); the ten subcommands (`tcw/work/cli.py`); 13 tests (`tests/test_work.py`).
+
+The **core-vs-adapter split** (B.1) is realized exactly: the abstract `WorkStore` owns the legal-transition graph and the named operations (`start`/`block`/`unblock`/`complete`/`drop`) with their shared semantics (legality, blocker-resolution, the loose DoD gate); `FsWorkStore` only implements the primitives (`create`/`get`/`query`/`set_field`/`link`/`_effect_transition`/`_delete`/`dod_checklist`) and *effects* a `git mv` the core has already deemed legal. Status is the parent directory; the slug is the stable id; `_find` resolves it by node-bounded glob and errors on multiple matches. The DoD gate is loose: `complete` prints the checklist and requires `--confirm` + `--resolution`, recording the acknowledgment in `state.yaml` — it verifies nothing (the hard gate stays the deferred Phase-6 hook).
+
+Tests cover the full B.8 list: slug generation/collision/immutability, multiple-match error, every legal transition + refused illegals (`completed` sink, `backlog→completed`, `blocked→completed`, `drop` only from inbox/backlog), `unblock` refusal on an unresolved blocker and pass on a dropped/completed one, `--status` filtering, slug resolution *after* the folder moves, node-boundedness (a child node's item is invisible to the parent store), malformed `state.yaml` degradation, `.gitkeep` persistence, and the CLI DoD-gate refusal without `--confirm`.
+
+**Per B.9, as built:** `capabilities.yaml` is an opaque blob (loaded + surfaced on the item, never acted on); `phase` is free-text and nothing sets it; `--commit` is not added (stage-only — transitions ride with related commits); worktrees, the hard DoD gate, and applying capability deltas to the ledger are the deferred Spec 2/3 / Phase-6 work.
+
 ## Part C — Decomposition / roadmap
 
-The work component decomposes into four sub-specs. **Spec 1 is this phase (Phase 3);** Specs 2–4 are deferred to [`phase-6-beyond`](phase-6-beyond.md). Global build order: [`INDEX.md`](INDEX.md).
+The work component decomposes into four sub-specs. **Spec 1 is this phase (Phase 5);** Specs 2–4 are deferred to [`phase-6-beyond`](phase-6-beyond.md). Global build order: [`INDEX.md`](INDEX.md).
 
 1. **Spec 1 (this phase, Part B):** core single-node tool — the `WorkStore` interface + the `FsWorkStore` adapter + CLI.
 2. **Spec 2 — Cross-node / recursion:** node discovery, epics, `initiative:` back-pointers, `reconcile` (scan children → consolidated rollup), escalate/delegate via inbox, `tcw work start --worktree` (+ the rule for which checkout owns `docs/work/` writes), and the two-layer × two-layer capability mapping (epic ↔ product-layer ledger, task ↔ leaf-node ledger; product-layer coordination over the inbox channel).
