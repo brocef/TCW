@@ -1,6 +1,6 @@
 # Phase 4 — Shared tree-store core
 
-**Status:** ☐ blocked on Phases 2 + 3
+**Status:** ✓ built (see *Build notes*)
 **Delivers:** the common bounded-tree store primitive extracted from `FsTaxonomyStore` and `FsCapabilitiesStore`, ready for `FsWorkStore` (Phase 5) to reuse.
 **Depends on:** Phase 2 (taxonomy) **and** Phase 3 (capabilities) must both be real first.
 
@@ -31,3 +31,11 @@ Run each candidate through the litmus test before promoting it. When unsure, lea
 ## Done when
 
 `FsTaxonomyStore` and `FsCapabilitiesStore` are re-expressed on the shared core with **no behavior change** (their existing test suites still pass green), and the core exposes exactly what Phase 5 (work) needs — no speculative surface added "for later."
+
+## Build notes (Phase 4)
+
+Extracted **`FsTreeStore`** (`tcw/store/fs.py`): the boilerplate every component shares — `self.root` / `self.node_root`, config loading driven by class attrs `COMPONENT` + `CONFIG_NAME`, the `open(node_root)` entry point, and the git-plumbing methods `_stage`/`_rm`/`_mv` that *effect* a transition the core deems legal. `FsTaxonomyStore` and `FsCapabilitiesStore` now subclass it (`FsTreeStore, <Interface>`); both lost their duplicated `__init__`/`open` and their direct `git_stage`/`git_rm` calls. The full 34-test suite passes unchanged — behavior is identical.
+
+**What was deliberately *not* pulled into the core** (left component-specific per the litmus test + the "when unsure, leave it" caution above): the tree walk (taxonomy nodes are dirs via `rglob("*")`; capability nodes are files via `rglob("*.md")` — genuinely different), identifier/reference resolution, `extends` federation, the capability vocabulary + `Subject` check. The git/YAML/node-detection *functions* (`git_root`, `find_node`, `git_stage/rm/mv`, `load_yaml/dump_yaml`, `slugify`) were already shared module-level helpers — they stay as-is.
+
+`git_mv` (+ the `_mv` method) was added now because Phase 5's transition mechanic needs it; nothing else speculative was added. No new file (the core is a base class + the existing helpers in `fs.py`) and no new `tcw` surface — the CLI is byte-for-byte identical in behavior.

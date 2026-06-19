@@ -1,6 +1,6 @@
 # Phase 2 — Taxonomy (TCW component 1 of 3: the nouns)
 
-**Status:** spec ✓ · build ☐ not started
+**Status:** spec ✓ · build ✓ (see *Build notes*, Part C)
 **Delivers:** `tcw taxonomy` + `FsTaxonomyStore`, local-path `extends`.
 **Depends on:** Phase 1 (package + CLI skeleton + node detection).
 **Build checklist:** `TaxonomyStore` interface → `FsTaxonomyStore` over `docs/taxonomy/` → the six subcommands (B.2) → `extends` resolution (B.6) → `check` → tests (B.8).
@@ -163,6 +163,16 @@ pytest over `tmp_path` git repos: term add + nesting + slug=path identity; `rm` 
 - **Source-relative resolution transitivity (B.6)** — **deferred to remote `extends`** (Phase 6). The authoring-namespace rule stands as stated; the deep rebasing edge cases are pinned down when git/URL sources land.
 
 ---
+
+## Build notes (Phase 2)
+
+Built: `TaxonomyStore` ABC + `Term` (`tcw/store/base.py`); `FsTaxonomyStore` over `docs/taxonomy/` (`tcw/store/fs.py`); the six subcommands + bare-path `show` sugar (`tcw/taxonomy/cli.py`); 16 tests (`tests/test_taxonomy.py`) covering add/nesting/slug-identity, inherited-rm refusal, origin-flagged `list`, the three resolution branches, and every `check` failure class (cycle, duplicate alias, alias/local collision, dangling + ambiguous `relatesTo`, missing path). `tcw taxonomy check` is green on a clean tree.
+
+Shared FS helpers added to `fs.py` (`find_node`, `load_yaml`/`dump_yaml`, `git_stage`/`git_rm`, `slugify`) are the Phase-4 shared-core candidates — left in `fs.py` for now (don't pre-abstract).
+
+**Deliberate simplifications (recorded so they don't read as bugs):**
+- **Bare-*leaf*-anywhere sugar not implemented.** Addressing is by path; `get("permission")` resolves a top-level term, not a deep `admin/permission`. The path *is* the address (A.2); B.6's three namespace-resolution branches (local-wins / unique-extended / ambiguous) are fully implemented.
+- **Prefixed-ref + `list` go one `extends` level deep.** Deep transitive federation (an alias's own `extends`) is the deferred remote-`extends` transitivity (B.9 / Phase 6); local-path single-level works.
 
 ## Part C — Place in the roadmap
 
