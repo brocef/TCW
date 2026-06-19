@@ -180,26 +180,43 @@ inbox  →  backlog  →  active
                      completed        (drop: delete from inbox|backlog)
 ```
 
+Blocked-ness is a **derived overlay**: an item is blocked when it has at least
+one unresolved blocker recorded in its data — there is no separate "blocked"
+folder or status.
+
 ```sh
 tcw work init                          # docs/work/{inbox,backlog,active,completed}/
 
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
-tcw work list                          # the board (every item, status, phase, title)
+tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
+                                       # create with blockers pre-attached
+tcw work list                          # the board, topologically ordered (blockers first)
 tcw work list --status active          # filter to one column
-tcw work show "$slug"                  # state + body
+tcw work show "$slug"                  # state + body (includes blocked_by if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
-tcw work start "$slug"                 # inbox|backlog → active
+tcw work start "$slug"                 # inbox|backlog → active (refused if blocked)
+tcw work start "$slug" --force         # override unresolved blockers
+
+tcw work edit "$slug" --blocked-by other-slug    # record a new blocker
+tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
+tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker
+
 tcw work complete "$slug" --resolution done --confirm
+tcw work complete "$slug" --resolution done --confirm --force   # override blockers
 tcw work drop some-slug                # delete an inbox|backlog item
 ```
+
+The **board** (`tcw work list`) outputs items in topological order — blockers
+appear before the items they block — and annotates blocked items with their
+unresolved blockers.
 
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted
 — anything else is refused, not silently allowed.
 
 **Completion is gated.** `tcw work complete` prints the Definition of Done and
-refuses without `--confirm`:
+refuses without `--confirm` (and without `--force` if unresolved blockers exist):
 
 ```
 Definition of Done — acknowledge each item:

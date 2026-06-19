@@ -50,12 +50,12 @@ docs/work/
   inbox/       raw human/agent requests — the drop zone and the inter-node channel
   backlog/     deferred / not-yet-started work items          (replaces FOLLOWUPS.md)
   active/      in-flight work items — "work these now"
-  blocked/     parked on an external/sibling wait — not actionable
   completed/   frozen, finished work — never touched again
 ```
 
 - **The index is `ls active/`.** There is no `INDEX.md` and no global ledger file to drift or to burn tokens reading. Cross-cutting queries are *generated on demand* (`rg`, `find`, `tree`), never stored.
-- **Directories partition by *actionability*, not by workflow phase.** `inbox` = needs triage, `backlog` = not yet, `active` = work now, `blocked` = waiting, `completed` = done. Fine-grained phase ("planning / implementing / in-review") is a `phase:` field in `state.yaml`, not a directory — this freezes the directory set at five and prevents Jira-style workflow-soup.
+- **Directories partition by *actionability*, not by workflow phase.** `inbox` = needs triage, `backlog` = not yet, `active` = work now, `completed` = done. Fine-grained phase ("planning / implementing / in-review") is a `phase:` field in `state.yaml`, not a directory — this freezes the directory set at **four** and prevents Jira-style workflow-soup.
+- **Blocked is a derived overlay, not a directory.** An item is "blocked" when it has at least one unresolved blocker recorded in its `state.yaml`; there is no `blocked/` folder and no blocked status. The board (`tcw work list`) annotates such items and orders them after their blockers — blocked-ness is visible without a separate column.
 - **A work item is a folder** that carries its own documents and moves through stages by changing its parent directory (a `git mv`). The "chaotic document movement" becomes the *one explicit mechanism*.
 - **Completion = move the whole folder `active/<slug>/ → completed/<slug>/`.** "Completed" means *no further code changes will result from this item*. Therefore documentation-sync, version bumps, and capability reconciliation all run **before** the move. The folder is self-contained and frozen; git history is the permanent archive (no `.archive/`).
 - **Future work = un-started items in `backlog/`.** Picking one up moves it to `active/`; dropping it deletes it. This replaces `FOLLOWUPS.md` entirely.
@@ -80,7 +80,7 @@ workspace/                          ← node (git + docs/work/)
       state.yaml  ← machine fields (type: epic, …)
   project-a/                        ← child node
       docs/work/active/redesign-x-slice-1/…
-      docs/work/blocked/redesign-x-slice-2/…
+      docs/work/active/redesign-x-slice-2/…   ← active but blocked (blocked_by in state.yaml)
   project-b/                        ← child node
       docs/work/completed/redesign-x-slice-3/…
 ```
@@ -153,7 +153,7 @@ This is a recursive, OS-native Jira. Mapping:
 | Jira | Ours |
 |---|---|
 | Issue/ticket | work-item folder |
-| Status / board columns | the five status directories |
+| Status / board columns | the four status directories (blocked is a derived overlay) |
 | Epic → Story → Sub-task | recursive nodes + `initiative:` back-pointer |
 | Comments / history | `state` doc log + git + broker/inbox |
 | Attachments | artifacts in the work folder |
@@ -186,7 +186,7 @@ The **`tcw work`** subcommand group operating on the current node's work store. 
 
 **Architecture — the store interface.** The CLI (and, later, the skills) depends on an abstract **`WorkStore`** interface; concrete adapters realize it. Spec 1 ships exactly one adapter, **`FsWorkStore`** (the `docs/work/` filesystem-state-machine of Part A). The interface exists so a future `JiraWorkStore` (or any tracker) is a drop-in without touching the CLI or skills. Use the ABC + adapter pattern for stores (per `AGENTS.md`). What is *in* the interface vs. *beside* it is governed by the A.11 litmus test:
 
-- **In `WorkStore` (every adapter implements):** create · transition · query · get · set-field · link. The status vocabulary and the legal-transition graph live in the **core**, not the adapter — the adapter only *effects* a transition the core has already deemed legal.
+- **In `WorkStore` (every adapter implements):** create · transition · query · get · set-field. Named operations in the core: `start` · `complete` · `drop` (the transition ops) and `add_blocker` · `remove_blocker` (the relation ops), plus `unresolved_blockers` (gating) and `board` (topological query). The status vocabulary and the legal-transition graph live in the **core**, not the adapter — the adapter only *effects* a transition the core has already deemed legal. Module-level `topo_order` is a pure function available to any caller.
 - **Beside it (local, FS-flavored — not store operations):** worktree/branch creation, node-detection by directory walk, `rg`/`find`/`tree` power queries. The CLI wires these to the active node locally; they are absent from the portable interface.
 
 Home: this repo (the `tcw` package). Language: Python (argparse + PyYAML + `git`/`git worktree` via subprocess). Tests: pytest with `tmp_path` git repos.
@@ -194,16 +194,16 @@ Home: this repo (the `tcw` package). Language: Python (argparse + PyYAML + `git`
 ### B.2 Command surface
 
 ```
-tcw work init                          create docs/work/{inbox,backlog,active,blocked,completed}/
-tcw work new "<title>"                 → creates backlog/<slug>/ (content.md + state.yaml); prints slug
-tcw work list [--status S]             the board (reads dir listing + state.yaml)
-tcw work show <slug>                   resolve slug→item; print state + body
-tcw work path <slug>                   print current path of a slug (the stable-ID resolver)
-tcw work start <slug>                  inbox|backlog → active/
-tcw work block <slug> --on <slug|"…">  active → blocked/ (writes/updates links.yaml)
-tcw work unblock <slug>                blocked → active/ (refuses if any blocker unresolved)
-tcw work complete <slug> --resolution <R> --confirm   active → completed/ (DoD gate)
-tcw work drop <slug>                   inbox|backlog → deleted (git rm)
+tcw work init                                         create docs/work/{inbox,backlog,active,completed}/
+tcw work new "<title>" [--blocked-by <refs>]          → creates backlog/<slug>/; prints slug
+tcw work list [--status S]                            the board, topologically ordered; annotates blocked items
+tcw work show <slug>                                  resolve slug→item; print state + body
+tcw work path <slug>                                  print current path of a slug (the stable-ID resolver)
+tcw work start <slug> [--force]                       inbox|backlog → active (refuses unresolved blockers unless --force)
+tcw work edit <slug> [--blocked-by <refs>] [--blocks <refs>] [--unblocked-by <refs>]
+                                                      add or remove blocking relations
+tcw work complete <slug> --resolution <R> --confirm [--force]   active → completed/ (DoD gate)
+tcw work drop <slug>                                  inbox|backlog → deleted (git rm)
 ```
 
 ### B.3 State machine
@@ -213,14 +213,15 @@ tcw work drop <slug>                   inbox|backlog → deleted (git rm)
          │
          ▼
    inbox / backlog ──start──► active ──complete──► completed   (frozen; no exit)
-         │                   ▲    │
-        drop                 │    └──block──► blocked
-       (delete)              └────unblock────────┘
+         │
+        drop
+       (delete)
 ```
 
-- Illegal transitions are **refused** — that is the enforcement (e.g. `completed → *`, `blocked → completed`).
+- Illegal transitions are **refused** — that is the enforcement (e.g. `completed → *`).
 - `completed/` is a sink. Reopening = a *new* item that links to the old one; history is never un-frozen.
 - `drop` is only legal from `inbox`/`backlog` (you don't silently delete in-flight or finished work).
+- **Blocked is not a status.** An item is blocked when `unresolved_blockers()` returns non-empty; there is no `blocked` node in the transition graph. `start` and `complete` refuse if blockers are unresolved unless `--force` is passed.
 
 ### B.4 File formats
 
@@ -232,23 +233,26 @@ A work item is a folder named exactly `<slug>`. Inside:
   - `## Meta changes` — changes to the project itself (planning, CI, tooling, the framework), not the application.
   Over the item's life `content.md` is joined by `spec.md`, `plan.md`, and any artifacts. The tool does not parse this prose. *(Abstractly: the item's body + named attachments — see A.11.)*
 - **`state.yaml`** — machine-readable metadata. Status is **not** stored here (status = the directory / store-status). Fields:
-  - `slug` (string, immutable) · `title` · `phase` (free-text, e.g. `planning`) · `created` (date) · `resolution` (set on completion: `done|wontfix|duplicate|superseded`) · `dod` (optional acknowledged-checklist record). *(No `type` field — the product/technical axis classifies. `worktree`/`branch` arrive with `--worktree` in Spec 2.)*
+  - `slug` (string, immutable) · `title` · `phase` (free-text, e.g. `planning`) · `created` (date) · `resolution` (set on completion: `done|wontfix|duplicate|superseded`) · `dod` (optional acknowledged-checklist record) · `blocked_by` (list of blocker entries — see below). *(No `type` field — the product/technical axis classifies. `worktree`/`branch` arrive with `--worktree` in Spec 2.)*
+  - **`blocked_by:`** is a list of blocker entries, each either `{slug: <slug>}` (a resolvable work item in this store) or `{external: "<text>"}` (an opaque external dependency). Stored directly in `state.yaml`, not in a separate file. Added/removed by `add_blocker`/`remove_blocker`; never derived from git history or directory structure.
 - **`capabilities.yaml`** — the machine-readable **back-pointer** for the product axis: the capability files this item touches and their intended status transitions (e.g. `{file: …, heading: …, from: Missing, to: Supported}`). Drives traceability and pointer resolution. The tool reads these *pointers*, never the capability *prose* (mechanism vs. judgment); in **Spec 1** it treats the file as an **opaque blob** — stored and surfaced, not acted on (applying the transitions to the ledger is the Spec-3 capabilities layer). Empty/absent for technical-only items.
-- **`links.yaml`** — present for blocked/linked items. `blocked_on:` is a list of `{slug: …}` or `{external: "…"}`; optional `relates:` list. Kept separate from `content.md` so an "is this still blocked?" check reads only this small file.
 
 **Slug rules:** `YYYY-MM-DD-<kebab-title>` from the creation date + title. Uniqueness is checked **within the node** via the store (`exists(slug)`, not a raw path test); collisions append `-2`, `-3`, … The slug is **frozen at creation** — `title` may later drift in `state.yaml`, but the slug never changes and there is no `tcw work rename`. It is the only cross-reference handle; `resolve` (A.5) errors if two folders ever carry the same slug.
 
 ### B.5 Command behavior
 
-- **`init`** — create the five status directories, each holding a `.gitkeep` so the empty dirs survive commit/clone (idempotent — tops up a partial set). Refuse outside a git repo (suggest `git init`).
-- **`new`** — generate the slug, create `backlog/<slug>/` with `content.md` (seeded from the title, the `## Product changes` / `## Technical changes` / `## Meta changes` scaffold, and any piped stdin) and `state.yaml`. Print the slug. (No empty `spec.md` is seeded — it is created only when an agent writes one.)
-- **`list`** — walk the status directories, read each `state.yaml`, print a table (slug · status=dir · phase · title). `--status` filters.
-- **`show` / `path`** — resolve the slug to its current item (A.5); `show` prints `state.yaml` + the head of `content.md`; `path` prints just the resolved path (for scripting/references).
-- **`start`** — move `inbox|backlog → active`. *(The `--worktree` option is deferred to Spec 2 — see A.8.)*
-- **`block`** — move `active → blocked`; append the `--on` target to `links.yaml` `blocked_on`.
-- **`unblock`** — move `blocked → active`; **refuse** if any `blocked_on` entry is unresolved — a referenced slug whose item is not `completed` (checked via `resolve`/`get`, not a raw `completed/` path test), or an `external` entry still listed. A blocker slug that no longer resolves (it was dropped) counts as resolved, with a warning. `--force` overrides; `external` entries are cleared by hand-editing `links.yaml`.
-- **`complete`** — the DoD gate (B.6); on pass, set `resolution`, move `active → completed`.
-- **`drop`** — `git rm -r` the folder (only from `inbox`/`backlog`). If a capability's `Planning doc:` pointed at this slug, that forward pointer is left dangling; reconciling it is the capabilities component's job ([`phase-3-capabilities`](phase-3-capabilities.md)), not the work tool's.
+- **`init`** — create the four status directories (`inbox`, `backlog`, `active`, `completed`), each holding a `.gitkeep` so the empty dirs survive commit/clone (idempotent — tops up a partial set). Refuse outside a git repo (suggest `git init`).
+- **`new`** — generate the slug, create `backlog/<slug>/` with `content.md` (seeded from the title, the `## Product changes` / `## Technical changes` / `## Meta changes` scaffold, and any piped stdin) and `state.yaml`. Print the slug. Accepts `--blocked-by <refs>` (comma-separated slugs or external strings) to record blockers at creation time. (No empty `spec.md` is seeded — it is created only when an agent writes one.)
+- **`list`** — walk the status directories, read each `state.yaml`, print a table (slug · status=dir · phase · title) in **topological order** (blockers precede the items they block, via `board()`). Items with unresolved blockers are annotated with `blocked-by: <slugs>`. `--status` filters.
+- **`show` / `path`** — resolve the slug to its current item (A.5); `show` prints `state.yaml` + the head of `content.md` (including `blocked_by` if set); `path` prints just the resolved path (for scripting/references).
+- **`start`** — move `inbox|backlog → active`; **refuse** if `unresolved_blockers()` is non-empty, unless `--force` is passed. *(The `--worktree` option is deferred to Spec 2 — see A.8.)*
+- **`edit`** — update blocking relations on an existing item, without changing its status. Accepts:
+  - `--blocked-by <refs>`: add blockers to this item (comma-separated slugs or external strings).
+  - `--blocks <refs>`: add this item as a blocker of the named items (all must exist in the store).
+  - `--unblocked-by <refs>`: remove named blockers from this item.
+  - `add_blocker` guards against self-blocking and cycles; adding an already-present entry is idempotent.
+- **`complete`** — the DoD gate (B.6); **refuse** if `unresolved_blockers()` is non-empty, unless `--force` is passed (blocker check runs before the checklist is printed). On pass, set `resolution`, move `active → completed`.
+- **`drop`** — `git rm -r` the folder (only from `inbox`/`backlog`). If a capability's `Planning doc:` pointed at this slug, that forward pointer is left dangling; reconciling it is the capabilities component's job ([`phase-3-capabilities`](phase-3-capabilities.md)), not the work tool's. A dropped item's slug that appears in another item's `blocked_by` silently counts as resolved (`unresolved_blockers` treats a non-resolving slug as resolved).
 
 ### B.6 DoD gate (loose)
 
@@ -265,7 +269,7 @@ A work item is a folder named exactly `<slug>`. Inside:
 
 ### B.8 Testing
 
-pytest over `tmp_path` git repos (each test runs `git init` and sets `user.name`/`user.email`): slug generation + collision suffixing + immutability + multiple-match resolution error; every legal transition and a representative set of refused illegal ones; `completed/` is a sink; `unblock` refusal on an unresolved blocker and pass on a dropped one; `list --status` filter; `complete` refusal without `--confirm`; `slug→item` resolution *after* the folder has moved, and its boundedness to the node; malformed `state.yaml` handling; `init` `.gitkeep` persistence.
+pytest over `tmp_path` git repos (each test runs `git init` and sets `user.name`/`user.email`): slug generation + collision suffixing + immutability + multiple-match resolution error; every legal transition and a representative set of refused illegal ones; `completed/` is a sink; `add_blocker`/`remove_blocker` with cycle- and self-block-guarding (idempotent add); `unresolved_blockers` gating — `start`/`complete` refused when blockers unresolved, pass with `--force`, pass when all blockers completed or dropped; `topo_order` — blockers sort before blocked, both-endpoints constraint, residual-cycle fallback; `list --status` filter + topological ordering + blocked annotation; `complete` refusal without `--confirm`; `slug→item` resolution *after* the folder has moved, and its boundedness to the node; malformed `state.yaml` handling; `init` `.gitkeep` persistence.
 
 ### B.9 Resolved decisions
 
@@ -278,11 +282,11 @@ pytest over `tmp_path` git repos (each test runs `git init` and sets `user.name`
 
 ## Build notes (Phase 5)
 
-Built: `WorkStore` ABC + `WorkItem` + the legal-transition graph / status vocabulary / resolutions / default DoD (`tcw/store/base.py`); `FsWorkStore` on the Phase-4 `FsTreeStore` (`tcw/store/fs.py`); the ten subcommands (`tcw/work/cli.py`); 13 tests (`tests/test_work.py`).
+Built: `WorkStore` ABC + `WorkItem` + `topo_order` + the legal-transition graph / status vocabulary / resolutions / default DoD (`tcw/store/base.py`); `FsWorkStore` on the Phase-4 `FsTreeStore` (`tcw/store/fs.py`); the nine subcommands (`tcw/work/cli.py`): `init`, `new`, `list`, `show`, `path`, `start`, `edit`, `complete`, `drop`; tests (`tests/test_work.py`).
 
-The **core-vs-adapter split** (B.1) is realized exactly: the abstract `WorkStore` owns the legal-transition graph and the named operations (`start`/`block`/`unblock`/`complete`/`drop`) with their shared semantics (legality, blocker-resolution, the loose DoD gate); `FsWorkStore` only implements the primitives (`create`/`get`/`query`/`set_field`/`link`/`_effect_transition`/`_delete`/`dod_checklist`) and *effects* a `git mv` the core has already deemed legal. Status is the parent directory; the slug is the stable id; `_find` resolves it by node-bounded glob and errors on multiple matches. The DoD gate is loose: `complete` prints the checklist and requires `--confirm` + `--resolution`, recording the acknowledgment in `state.yaml` — it verifies nothing (the hard gate stays the deferred Phase-6 hook).
+The **core-vs-adapter split** (B.1) is realized exactly: the abstract `WorkStore` owns the legal-transition graph and the named operations — transition ops (`start`/`complete`/`drop`) and relation ops (`add_blocker`/`remove_blocker`) — with their shared semantics (legality, blocker-resolution, the loose DoD gate). `board()` calls `topo_order()` (a module-level pure function); `unresolved_blockers()` is the shared gating predicate. `FsWorkStore` only implements the primitives (`create`/`get`/`query`/`set_field`/`_effect_transition`/`_delete`/`dod_checklist`) and *effects* a `git mv` the core has already deemed legal. The `link` primitive is gone — `blocked_by` is stored in `state.yaml` via `set_field`. Status is the parent directory; the slug is the stable id; `_find` resolves it by node-bounded glob and errors on multiple matches. The DoD gate is loose: `complete` checks blockers first (fast-fail), then prints the checklist and requires `--confirm` + `--resolution`, recording the acknowledgment in `state.yaml` — it verifies nothing (the hard gate stays the deferred Phase-6 hook).
 
-Tests cover the full B.8 list: slug generation/collision/immutability, multiple-match error, every legal transition + refused illegals (`completed` sink, `backlog→completed`, `blocked→completed`, `drop` only from inbox/backlog), `unblock` refusal on an unresolved blocker and pass on a dropped/completed one, `--status` filtering, slug resolution *after* the folder moves, node-boundedness (a child node's item is invisible to the parent store), malformed `state.yaml` degradation, `.gitkeep` persistence, and the CLI DoD-gate refusal without `--confirm`.
+Tests cover the full B.8 list (updated): slug generation/collision/immutability, multiple-match error, every legal transition + refused illegals (`completed` sink, `backlog→completed`, `drop` only from inbox/backlog), `add_blocker`/`remove_blocker` cycle- and self-block-guarded idempotency, `unresolved_blockers` gating (blocked start/complete + --force overrides), `topo_order` with both-endpoints-in-set constraint and residual-cycle fallback, `list` topological ordering + blocked annotation, `--status` filtering, slug resolution *after* the folder moves, node-boundedness (a child node's item is invisible to the parent store), malformed `state.yaml` degradation, `.gitkeep` persistence, and the CLI DoD-gate refusal without `--confirm`.
 
 **Per B.9, as built:** `capabilities.yaml` is an opaque blob (loaded + surfaced on the item, never acted on); `phase` is free-text and nothing sets it; `--commit` is not added (stage-only — transitions ride with related commits); worktrees, the hard DoD gate, and applying capability deltas to the ledger are the deferred Spec 2/3 / Phase-6 work.
 

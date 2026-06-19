@@ -28,7 +28,7 @@ category, with commit hash ranges so entries trace back to source.
 
 </changes>
 
-<changes starting-hash="a9cea6f">
+<changes starting-hash="a9cea6f" ending-hash="84f1545">
 
 ### Changed
 - Work status vocabulary reduced from five to four: `blocked` folder dropped;
@@ -40,23 +40,29 @@ category, with commit hash ranges so entries trace back to source.
 
 </changes>
 
-<changes starting-hash="061ecd7">
+<changes starting-hash="b963c75">
 
 ### Added
+- `WorkStore.add_blocker(slug, ref)` / `remove_blocker(slug, ref)` — concrete
+  relation operations in the core, cycle- and self-block-guarded; adding an
+  already-present entry is idempotent.
+- `WorkStore.unresolved_blockers(item)` — returns labels of blockers that still
+  block an item; a slug that no longer resolves counts as resolved.
+- `WorkStore.board(status=None)` — `query()` wrapped with topological ordering.
+- `topo_order(items)` — module-level pure function; both-endpoints-in-set
+  constraint, stable tie-breaking by input order, residual-cycle fallback.
+- `WorkStore.start` / `complete` — blocker gating via `unresolved_blockers`;
+  both accept a `force: bool` parameter to override.
 - `tcw work edit <slug> [--blocked-by <refs>] [--blocks <refs>] [--unblocked-by
-  <refs>]` — new CLI subcommand to add/remove blocking relations. `--blocks`
-  targets are validated against the store (must exist); `--blocked-by` and
-  `--unblocked-by` follow the same external-ref rules as the store layer.
-- `tcw work new --blocked-by <comma-separated refs>` — blockers can now be
-  attached at item-creation time.
-- `tcw work start --force` — skips the unresolved-blocker gate.
-- `tcw work complete --force` — skips the unresolved-blocker gate (blocker check
-  is performed before the DoD checklist is printed, so the gate fails fast).
-- `tcw work list` — now uses `WorkStore.board()` for topological ordering
-  (blockers appear before the items they block) and appends a `blocked-by: …`
+  <refs>]` — CLI subcommand to add/remove blocking relations. `--blocks`
+  targets are validated against the store (must exist).
+- `tcw work new --blocked-by <comma-separated refs>` — blockers attachable at
+  item-creation time.
+- `tcw work start --force` and `tcw work complete --force` — skip the
+  unresolved-blocker gate (blocker check runs before the DoD checklist).
+- `tcw work list` — topological ordering via `board()`, `blocked-by: …`
   annotation for items with unresolved blockers.
 - `_split(val)` helper in `tcw/work/cli.py` for comma-splitting flag values
   with empty-token elision.
-- `"edit"` added to `SUBCOMMANDS` in `tcw/work/cli.py`.
 
 </changes>
