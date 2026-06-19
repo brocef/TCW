@@ -1,0 +1,1 @@
+A loose, one-directional pointer between items (capability→term, work→capability), resolved through a store.

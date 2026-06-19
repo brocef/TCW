@@ -1,0 +1,1 @@
+A top-level grouping within a bounded tree: a taxonomy extends-alias, or a capabilities top-level folder.

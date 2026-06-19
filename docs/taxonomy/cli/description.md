@@ -1,0 +1,1 @@
+The single 'tcw' command surface exposing the taxonomy, capabilities, and work subcommand groups.

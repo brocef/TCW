@@ -1,0 +1,1 @@
+A capability's intended-state label from the locked set: Supported, Partial, Missing, Blocked, Omitted.

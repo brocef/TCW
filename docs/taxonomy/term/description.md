@@ -1,0 +1,1 @@
+A taxonomy entry: a domain noun plus its glossary definition. Its identity is its path from the taxonomy root.

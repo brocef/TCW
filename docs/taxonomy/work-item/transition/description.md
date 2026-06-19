@@ -1,0 +1,1 @@
+A change of a work item's status, realized as an atomic move between status folders.

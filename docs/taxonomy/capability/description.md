@@ -1,0 +1,1 @@
+A miniature user story — 'as a user, I can …' — describing one discrete action a user takes on a term.

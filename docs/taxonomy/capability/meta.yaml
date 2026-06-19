@@ -1,0 +1,4 @@
+name: Capability
+relatesTo:
+- term
+- capability/subject

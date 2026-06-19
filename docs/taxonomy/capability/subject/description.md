@@ -1,0 +1,1 @@
+The loose, one-directional pointer from a capability to the single taxonomy term it is about.

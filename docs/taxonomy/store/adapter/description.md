@@ -1,0 +1,1 @@
+A concrete realization of a store interface (FsTaxonomyStore today; a remote tracker adapter possible).

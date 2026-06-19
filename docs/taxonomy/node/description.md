@@ -1,0 +1,1 @@
+A git work-tree that owns the docs/{taxonomy,capabilities,work}/ trees; the unit of TCW's recursion.

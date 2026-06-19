@@ -1,0 +1,1 @@
+The abstract storage interface a component depends on; the filesystem is the default realization, remotes are additive.
