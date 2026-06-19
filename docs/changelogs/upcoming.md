@@ -57,7 +57,8 @@ category, with commit hash ranges so entries trace back to source.
   <refs>]` — CLI subcommand to add/remove blocking relations. `--blocks`
   targets are validated against the store (must exist).
 - `tcw work new --blocked-by <comma-separated refs>` — blockers attachable at
-  item-creation time.
+  item-creation time. The item is always created and its slug printed, but the
+  command exits non-zero if a blocker fails to attach (e.g. an ambiguous ref).
 - `tcw work start --force` and `tcw work complete --force` — skip the
   unresolved-blocker gate (blocker check runs before the DoD checklist).
 - `tcw work list` — topological ordering via `board()`, `blocked-by: …`

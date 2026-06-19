@@ -298,6 +298,18 @@ def test_cli_new_blocked_by(tmp_path, monkeypatch):
     assert a.blocked_by == [{"slug": b.slug}, {"external": "extra"}]
 
 
+def test_cli_new_blocked_by_attach_failure_returns_nonzero(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    (root / "docs/work/active/dup").mkdir()
+    (root / "docs/work/backlog/dup").mkdir()
+    rc = main(["work", "new", "A", "--blocked-by", "dup"])   # ambiguous ref → attach fails
+    out = capsys.readouterr().out.strip()
+    assert rc == 1                                           # non-zero on attach failure
+    assert (root / "docs/work/backlog" / out).is_dir()      # item still created + slug printed
+
+
 def test_cli_edit_ambiguous_slug_errors(tmp_path, monkeypatch):
     from tcw.cli import main
     root = node(tmp_path)

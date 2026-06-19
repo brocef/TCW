@@ -74,13 +74,15 @@ def _new(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     item = st.create(args.title, body=_stdin_body())
+    rc = 0
     try:
         for ref in _split(args.blocked_by):
             st.add_blocker(item.slug, ref)
     except _ERRORS as e:
         print(f"tcw work new: {e}", file=sys.stderr)
+        rc = 1
     print(item.slug)
-    return 0
+    return rc
 
 
 def _list(args: argparse.Namespace) -> int:
