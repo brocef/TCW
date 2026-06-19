@@ -9,8 +9,7 @@ from tcw.store.base import (
 from tcw.store.fs import COMPONENTS, FsWorkStore, find_node, git_root, init
 
 NAME = "work"
-SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "block",
-               "unblock", "complete", "drop"}
+SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "complete", "drop"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 _ERRORS = (ValueError, IllegalTransition, MultipleMatch)
@@ -40,8 +39,10 @@ def _print_item(item: WorkItem) -> None:
         print(f"phase: {item.phase}")
     if item.resolution:
         print(f"resolution: {item.resolution}")
-    if item.blocked_on:
-        print(f"blocked_on: {item.blocked_on}")
+    if item.blocked_by:
+        labels = [b["slug"] if "slug" in b else f"external: {b['external']}"
+                  for b in item.blocked_by]
+        print(f"blocked_by: {', '.join(labels)}")
     body = item.body.strip()
     if body:
         print()
@@ -108,28 +109,6 @@ def _start(args: argparse.Namespace) -> int:
     return _run(lambda st: st.start(args.slug), f"started {args.slug}")
 
 
-def _block(args: argparse.Namespace) -> int:
-    def op(st):
-        on = {"slug": args.on} if st.get(args.on) is not None else {"external": args.on}
-        st.block(args.slug, on)
-    return _run(op, f"blocked {args.slug} on {args.on}")
-
-
-def _unblock(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    try:
-        _, warnings = st.unblock(args.slug, force=args.force)
-    except _ERRORS as e:
-        print(f"tcw work unblock: {e}", file=sys.stderr)
-        return 1
-    for w in warnings:
-        print(f"warning: {w}", file=sys.stderr)
-    print(f"unblocked {args.slug}")
-    return 0
-
-
 def _complete(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -171,7 +150,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the changes — work items through a state machine")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    g.add_parser("init", help="create docs/work/{inbox,backlog,active,blocked,completed}/") \
+    g.add_parser("init", help="create docs/work/{inbox,backlog,active,completed}/") \
         .set_defaults(func=_init)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
@@ -193,16 +172,6 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pst = g.add_parser("start", help="inbox|backlog → active")
     pst.add_argument("slug")
     pst.set_defaults(func=_start)
-
-    pb = g.add_parser("block", help="active → blocked")
-    pb.add_argument("slug")
-    pb.add_argument("--on", required=True, help="a blocker slug or free-text external dependency")
-    pb.set_defaults(func=_block)
-
-    pu = g.add_parser("unblock", help="blocked → active (refuses on unresolved blockers)")
-    pu.add_argument("slug")
-    pu.add_argument("--force", action="store_true")
-    pu.set_defaults(func=_unblock)
 
     pc = g.add_parser("complete", help="active → completed (DoD gate)")
     pc.add_argument("slug")

@@ -14,5 +14,7 @@ internal module names.
   and check user-story capabilities, with checks that they point at real
   taxonomy terms.
 - **Track changes (`tcw work`)** — create work items and move them through their
-  lifecycle (start, block/unblock, complete, drop) with a guided state machine
-  and a definition-of-done gate.
+  lifecycle (start, complete, drop) with a guided state machine and a
+  definition-of-done gate. Blocker relationships are recorded in the item's
+  data (not as a separate status), so the board stays simple while still
+  tracking what an item depends on.

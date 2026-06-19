@@ -21,8 +21,9 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
 
 def test_init_gitkeep_persistence(tmp_path):
     root = node(tmp_path)
-    for s in ("inbox", "backlog", "active", "blocked", "completed"):
+    for s in ("inbox", "backlog", "active", "completed"):
         assert (root / "docs" / "work" / s / ".gitkeep").is_file()
+    assert not (root / "docs" / "work" / "blocked").exists()
 
 
 def test_slug_generation_collision_and_immutability(tmp_path):
@@ -52,9 +53,6 @@ def test_legal_transition_lifecycle(tmp_path):
     item = st.create("Task", created="2026-01-01")
     assert st.get(item.slug).status == "backlog"
     assert st.start(item.slug).status == "active"
-    assert st.block(item.slug, {"external": "vendor"}).status == "blocked"
-    _, _ = st.unblock(item.slug, force=True)
-    assert st.get(item.slug).status == "active"
     assert st.complete(item.slug, "done", ["acked"]).status == "completed"
     assert st.get(item.slug).resolution == "done"
 
@@ -74,9 +72,9 @@ def test_illegal_transitions_refused(tmp_path):
     with pytest.raises(IllegalTransition):
         st.complete(item.slug, "done", [])    # backlog → completed (only from active)
     st.start(item.slug)
-    st.block(item.slug, {"external": "x"})
+    st.complete(item.slug, "done", [])
     with pytest.raises(IllegalTransition):
-        st.complete(item.slug, "done", [])    # blocked → completed
+        st.start(item.slug)                   # completed → active (sink)
 
 
 def test_drop_only_from_inbox_or_backlog(tmp_path):
@@ -87,31 +85,12 @@ def test_drop_only_from_inbox_or_backlog(tmp_path):
         st.drop(item.slug)                    # active can't be dropped
 
 
-# ── unblock blocker resolution ───────────────────────────────────────────────
-
-def test_unblock_refuses_unresolved_passes_on_dropped(tmp_path):
+def test_blocked_by_read_from_state_yaml(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
-    blocker = st.create("Blocker", created="2026-01-01")
-    target = st.create("Target", created="2026-01-01")
-    st.start(target.slug)
-    st.block(target.slug, {"slug": blocker.slug})
-    with pytest.raises(ValueError):           # blocker not completed
-        st.unblock(target.slug)
-    st.drop(blocker.slug)                      # blocker gone → resolved (with warning)
-    item, warnings = st.unblock(target.slug)
-    assert item.status == "active" and warnings
-
-
-def test_unblock_passes_when_blocker_completed(tmp_path):
-    st = FsWorkStore.open(node(tmp_path))
-    blocker = st.create("Blocker", created="2026-01-01")
-    st.start(blocker.slug)
-    st.complete(blocker.slug, "done", [])
-    target = st.create("Target", created="2026-01-01")
-    st.start(target.slug)
-    st.block(target.slug, {"slug": blocker.slug})
-    item, _ = st.unblock(target.slug)
-    assert item.status == "active"
+    item = st.create("Task", created="2026-01-01")
+    assert st.get(item.slug).blocked_by == []          # absent key → empty
+    st.set_field(item.slug, "blocked_by", [{"external": "vendor"}])
+    assert st.get(item.slug).blocked_by == [{"external": "vendor"}]
 
 
 # ── query / resolution after move / boundedness ──────────────────────────────

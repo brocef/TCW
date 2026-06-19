@@ -175,13 +175,13 @@ Work is a **single-node state machine** where status is the folder a work item
 lives in, and a transition is a move between folders:
 
 ```
-inbox  →  backlog  →  active  ⇄  blocked
+inbox  →  backlog  →  active
                          ↓
                      completed        (drop: delete from inbox|backlog)
 ```
 
 ```sh
-tcw work init                          # docs/work/{inbox,backlog,active,blocked,completed}/
+tcw work init                          # docs/work/{inbox,backlog,active,completed}/
 
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work list                          # the board (every item, status, phase, title)
@@ -190,8 +190,6 @@ tcw work show "$slug"                  # state + body
 tcw work path "$slug"                  # current filesystem path of the slug
 
 tcw work start "$slug"                 # inbox|backlog → active
-tcw work block "$slug" --on other-slug # active → blocked (on an item or free text)
-tcw work unblock "$slug"               # blocked → active (refuses on unresolved blockers; --force to override)
 tcw work complete "$slug" --resolution done --confirm
 tcw work drop some-slug                # delete an inbox|backlog item
 ```

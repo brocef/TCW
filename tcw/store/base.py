@@ -151,15 +151,13 @@ class CapabilitiesStore(ABC):
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────
 
-WORK_STATUSES = ("inbox", "backlog", "active", "blocked", "completed")
+WORK_STATUSES = ("inbox", "backlog", "active", "completed")
 
 # The legal-transition graph lives in the *core* (phase-5-work B.1/B.3): the
 # adapter only effects a move the core has already deemed legal. `drop` is
 # handled separately (delete, inbox|backlog only).
 LEGAL_TRANSITIONS = {
     ("inbox", "active"), ("backlog", "active"),     # start
-    ("active", "blocked"),                          # block
-    ("blocked", "active"),                          # unblock
     ("active", "completed"),                        # complete (DoD gate)
 }
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
@@ -185,17 +183,18 @@ class WorkItem:
     created: str = ""
     resolution: str | None = None
     body: str = ""
-    blocked_on: list[dict] = field(default_factory=list)
+    blocked_by: list[dict] = field(default_factory=list)
     capabilities: object = None     # opaque blob in Spec 1 (B.4)
 
 
 class WorkStore(ABC):
-    """The work axis: items moving through a five-status state machine.
+    """The work axis: items moving through a four-status state machine.
 
     The status vocabulary + legal-transition graph are core (above); adapters
     implement the abstract primitives and `_effect_transition`. The named
-    operations (`start`/`block`/`unblock`/`complete`/`drop`) are concrete here
-    so every adapter shares the same legality + DoD semantics (B.1).
+    operations (`start`/`complete`/`drop`) are concrete here so every adapter
+    shares the same legality + DoD semantics (B.1). Relation operations
+    (`add_blocker`/`remove_blocker`) are added in Task 2.
     """
     STATUSES = WORK_STATUSES
     LEGAL_TRANSITIONS = LEGAL_TRANSITIONS
@@ -214,9 +213,6 @@ class WorkStore(ABC):
 
     @abstractmethod
     def set_field(self, slug: str, key: str, value) -> None: ...
-
-    @abstractmethod
-    def link(self, slug: str, blocked_on: dict) -> None: ...
 
     @abstractmethod
     def _effect_transition(self, slug: str, to_status: str) -> None: ...
@@ -244,28 +240,6 @@ class WorkStore(ABC):
 
     def start(self, slug: str) -> WorkItem:
         return self.transition(slug, "active")
-
-    def block(self, slug: str, on: dict) -> WorkItem:
-        self._require(slug)
-        self.link(slug, on)
-        return self.transition(slug, "blocked")
-
-    def unblock(self, slug: str, force: bool = False) -> tuple[WorkItem, list[str]]:
-        item = self._require(slug)
-        warnings: list[str] = []
-        unresolved: list[str] = []
-        for b in item.blocked_on:
-            if "external" in b:
-                unresolved.append(f"external: {b['external']}")
-            else:
-                blocker = self.get(b["slug"])
-                if blocker is None:
-                    warnings.append(f"blocker {b['slug']} no longer exists (treated as resolved)")
-                elif blocker.status != "completed":
-                    unresolved.append(b["slug"])
-        if unresolved and not force:
-            raise ValueError("unresolved blockers: " + ", ".join(unresolved))
-        return self.transition(slug, "active"), warnings
 
     def complete(self, slug: str, resolution: str, dod_ack: list[str]) -> WorkItem:
         if resolution not in WORK_RESOLUTIONS:

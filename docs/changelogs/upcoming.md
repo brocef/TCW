@@ -27,3 +27,15 @@ category, with commit hash ranges so entries trace back to source.
   capabilities adapters; both re-expressed on it with no behavior change.
 
 </changes>
+
+<changes starting-hash="a9cea6f">
+
+### Changed
+- Work status vocabulary reduced from five to four: `blocked` folder dropped;
+  `blocked_by` relations now live in `state.yaml` as a list of dicts, readable
+  via `WorkItem.blocked_by` (renamed from `blocked_on`).
+- `tcw work block` and `tcw work unblock` subcommands removed; `block`/`unblock`
+  methods removed from `WorkStore`; `link` method removed from `FsWorkStore`.
+- `docs/work/` init no longer creates a `blocked/` folder.
+
+</changes>

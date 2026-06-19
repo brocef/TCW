@@ -22,7 +22,7 @@ from tcw.store.base import (
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
 COMPONENTS = ("taxonomy", "capabilities", "work")
-WORK_STATUSES = ("inbox", "backlog", "active", "blocked", "completed")
+WORK_STATUSES = ("inbox", "backlog", "active", "completed")
 
 
 # ── git + node helpers (FS-adapter local details, not store-interface ops) ──
@@ -577,8 +577,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @staticmethod
     def _safe_yaml(path: Path) -> dict:
-        """Tolerant load: a malformed state/links file degrades to empty rather
-        than crashing the board (the item still lists, status comes from the dir)."""
+        """Tolerant load: a malformed state file degrades to empty rather than
+        crashing the board (the item still lists, status comes from the dir)."""
         try:
             return load_yaml(path)
         except yaml.YAMLError:
@@ -589,7 +589,6 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if d is None:
             return None
         state = self._safe_yaml(d / "state.yaml")
-        links = self._safe_yaml(d / "links.yaml")
         content = d / "content.md"
         caps = d / "capabilities.yaml"
         return WorkItem(
@@ -600,7 +599,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             created=state.get("created", ""),
             resolution=state.get("resolution"),
             body=content.read_text(encoding="utf-8") if content.exists() else "",
-            blocked_on=list(links.get("blocked_on") or []),
+            blocked_by=list(state.get("blocked_by") or []),
             capabilities=load_yaml(caps) if caps.exists() else None,
         )
 
@@ -646,15 +645,6 @@ class FsWorkStore(FsTreeStore, WorkStore):
         state[key] = value
         dump_yaml(d / "state.yaml", state)
         self._stage(d / "state.yaml")
-
-    def link(self, slug: str, blocked_on: dict) -> None:
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
-        links = load_yaml(d / "links.yaml")
-        links.setdefault("blocked_on", []).append(blocked_on)
-        dump_yaml(d / "links.yaml", links)
-        self._stage(d / "links.yaml")
 
     def _effect_transition(self, slug: str, to_status: str) -> None:
         self._mv(self._find(slug), self.root / to_status / slug)
