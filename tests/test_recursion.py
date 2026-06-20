@@ -10,7 +10,7 @@ import pytest
 # write that task's test (Task 3: reconcile; Task 4: delegate, escalate;
 # Task 5: add_worktree, ensure_worktree_ignored, git_commit, remove_worktree).
 from tcw.store.fs import FsWorkStore, child_nodes, init, parent_node
-from tcw.work.recursion import reconcile
+from tcw.work.recursion import delegate, escalate, reconcile
 
 
 def mk_node(base: Path, name: str) -> Path:
@@ -133,3 +133,46 @@ def test_reconcile_tolerates_malformed_capabilities(tmp_path):
     _child_task(a, epic.slug, caps="just: a-mapping\n")   # not a list
     block = reconcile(parent, epic.slug)                   # must not raise
     assert "skipped" in block.lower()
+
+
+# ── Task 4: inbox channel ────────────────────────────────────────────────────
+
+def _no_items(node: Path) -> bool:
+    work = node / "docs" / "work"
+    return all(not [d for d in (work / s).iterdir() if d.is_dir()]
+               for s in ("backlog", "active", "completed"))
+
+
+def test_delegate_writes_child_inbox_only(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    doc = delegate(parent, "child", "Do a thing", body="details", initiative="2026-01-01-epic")
+    assert doc.parent == (child / "docs" / "work" / "inbox")
+    text = doc.read_text()
+    assert "from: ." in text and "initiative: 2026-01-01-epic" in text and "details" in text
+    assert _no_items(child)                                # boundary: never touches backlog/active/completed
+
+
+def test_delegate_unknown_child_errors(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    mk_node(parent, "child")
+    with pytest.raises(ValueError):
+        delegate(parent, "nope", "x")
+
+
+def test_delegate_filename_collision_suffix(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    mk_node(parent, "child")
+    d1 = delegate(parent, "child", "Same title")
+    d2 = delegate(parent, "child", "Same title")
+    assert d1 != d2
+
+
+def test_escalate_writes_parent_inbox_and_root_errors(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    doc = escalate(child, "Cross-repo scope")
+    assert doc.parent == (parent / "docs" / "work" / "inbox")
+    assert "from: child" in doc.read_text()
+    with pytest.raises(ValueError):
+        escalate(parent, "x")                              # parent is the root

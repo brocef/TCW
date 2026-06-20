@@ -107,3 +107,41 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False) -> str:
             from tcw.store.fs import git_commit
             git_commit(node_root, f"tcw work: reconcile {epic_slug}", "docs/work")
     return block
+
+
+# ── inbox channel ────────────────────────────────────────────────────────────
+
+def _inbox_write(inbox: Path, title: str, body: str, origin: str,
+                 initiative: str | None) -> Path:
+    inbox.mkdir(parents=True, exist_ok=True)
+    base = f"{date.today().isoformat()}-{slugify(title)}"
+    name, n = base, 2
+    while (inbox / f"{name}.md").exists():
+        name, n = f"{base}-{n}", n + 1
+    front = [f"from: {origin}"] + ([f"initiative: {initiative}"] if initiative else [])
+    doc = inbox / f"{name}.md"
+    doc.write_text("---\n" + "\n".join(front) + "\n---\n\n"
+                   f"# {title}\n\n{body}\n", encoding="utf-8")
+    return doc
+
+
+def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
+             initiative: str | None = None) -> Path:
+    """Write a request DOWN into a child node's inbox/ (boundary: inbox only)."""
+    node_root = node_root.resolve()
+    children = {str(c.resolve().relative_to(node_root)): c for c in child_nodes(node_root)}
+    if child_ref not in children:
+        raise ValueError(f"no child node '{child_ref}'. children: "
+                         f"{', '.join(sorted(children)) or '(none)'}")
+    return _inbox_write(children[child_ref] / "docs" / "work" / "inbox",
+                        title, body, origin=".", initiative=initiative)
+
+
+def escalate(node_root: Path, title: str, body: str = "",
+             initiative: str | None = None) -> Path:
+    """Write a request UP into the parent node's inbox/ (boundary: inbox only)."""
+    parent = parent_node(node_root)
+    if parent is None:
+        raise ValueError("no parent node to escalate to (this is the root)")
+    origin = str(node_root.resolve().relative_to(parent.resolve()))
+    return _inbox_write(parent / "docs" / "work" / "inbox", title, body, origin, initiative)
