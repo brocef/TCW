@@ -10,6 +10,7 @@ import pytest
 # write that task's test (Task 3: reconcile; Task 4: delegate, escalate;
 # Task 5: add_worktree, ensure_worktree_ignored, git_commit, remove_worktree).
 from tcw.store.fs import FsWorkStore, child_nodes, init, parent_node
+from tcw.work.recursion import reconcile
 
 
 def mk_node(base: Path, name: str) -> Path:
@@ -78,3 +79,57 @@ def test_edit_sets_and_clears_initiative(tmp_path):
     assert st.get(item.slug).initiative == "2026-01-01-epic"
     st.set_field(item.slug, "initiative", "")
     assert st.get(item.slug).initiative == ""
+
+
+# ── Task 3: reconcile ────────────────────────────────────────────────────────
+
+def _child_task(child, initiative, title="Slice", caps=None):
+    s = FsWorkStore.open(child)
+    t = s.create(title, created="2026-01-01")
+    s.set_field(t.slug, "initiative", initiative)
+    if caps is not None:
+        (s.path(t.slug) / "capabilities.yaml").write_text(caps, encoding="utf-8")
+    return t.slug
+
+
+def test_reconcile_rollup_keys_by_node_and_is_idempotent(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("Redesign", created="2026-01-01")
+    a, b = mk_node(parent, "child-a"), mk_node(parent, "child-b")
+    _child_task(a, epic.slug)
+    _child_task(b, epic.slug)                              # same slug as child-a's task
+    block = reconcile(parent, epic.slug)
+    assert "child-a" in block and "child-b" in block
+    # both colliding slugs appear, disambiguated by node in the table rows
+    # (assert rows, not a raw count — the slug also recurs in the **Next:** line)
+    assert "| child-a | 2026-01-01-slice |" in block
+    assert "| child-b | 2026-01-01-slice |" in block
+    assert reconcile(parent, epic.slug) == block          # idempotent
+    content = (FsWorkStore.open(parent).path(epic.slug) / "content.md").read_text()
+    assert content.count("<!-- tcw:rollup -->") == 1      # no duplicate block
+
+
+def test_reconcile_unknown_epic_errors(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    with pytest.raises(ValueError):
+        reconcile(parent, "2026-01-01-nope")
+
+
+def test_reconcile_surfaces_capability_deltas(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("E", created="2026-01-01")
+    a = mk_node(parent, "child-a")
+    _child_task(a, epic.slug,
+                caps="- file: routes/login\n  heading: sso\n  from: Missing\n  to: Supported\n")
+    block = reconcile(parent, epic.slug)
+    assert "routes/login#sso" in block
+    assert "Missing" in block and "Supported" in block
+
+
+def test_reconcile_tolerates_malformed_capabilities(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("E", created="2026-01-01")
+    a = mk_node(parent, "child-a")
+    _child_task(a, epic.slug, caps="just: a-mapping\n")   # not a list
+    block = reconcile(parent, epic.slug)                   # must not raise
+    assert "skipped" in block.lower()

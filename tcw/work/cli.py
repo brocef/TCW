@@ -9,6 +9,7 @@ from tcw.store.base import (
 from tcw.store.fs import (
     COMPONENTS, FsWorkStore, child_nodes, find_node, git_root, init, parent_node,
 )
+from tcw.work.recursion import reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "edit", "complete",
@@ -77,6 +78,20 @@ def _nodes(args: argparse.Namespace) -> int:
             print(f"  {c.relative_to(node)}")
     else:
         print("children: (none — leaf)")
+    return 0
+
+
+def _reconcile(args: argparse.Namespace) -> int:
+    node = find_node(NAME)
+    if node is None:
+        print("tcw work: no docs/work/ in this repo. Run `tcw work init`.", file=sys.stderr)
+        return 1
+    try:
+        block = reconcile(node, args.slug, commit=args.commit)
+    except _ERRORS as e:
+        print(f"tcw work reconcile: {e}", file=sys.stderr)
+        return 1
+    print(block)
     return 0
 
 
@@ -240,6 +255,11 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         .set_defaults(func=_init)
 
     g.add_parser("nodes", help="list this node's parent + child nodes").set_defaults(func=_nodes)
+
+    pr = g.add_parser("reconcile", help="scan child nodes → write the epic rollup")
+    pr.add_argument("slug")
+    pr.add_argument("--commit", action="store_true", help="also commit the rollup")
+    pr.set_defaults(func=_reconcile)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")
