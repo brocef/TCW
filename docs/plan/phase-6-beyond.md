@@ -5,9 +5,11 @@
 
 Everything the three component specs mark "later." Nothing here is built until the single-node core is real and in use. Grouped by source; each item links back to the spec section that defines it.
 
-## Cross-node / recursion (work "Spec 2")
+## Cross-node / recursion (work "Spec 2") — ✓ built
 
-Node discovery; epics + `initiative:` back-pointers; `reconcile` (scan child nodes → consolidated rollup); escalate/delegate over the inbox channel; `tcw work start --worktree` + the rule for which checkout owns `docs/work/` writes; the two-layer × two-layer capability mapping (epic ↔ product-layer ledger, task ↔ leaf-node ledger). *(phase-5-work A.2, A.6, A.8; Part C #2.)*
+**Status:** ✓ built — spec/plan/build in [`docs/work/.../cross-node-recursion-work-spec-2`](../work/active/2026-06-19-cross-node-recursion-work-spec-2/).
+
+Node discovery; epics + `initiative:` back-pointers; `reconcile` (scan child nodes → consolidated rollup); escalate/delegate over the inbox channel; `tcw work start --worktree` + the checkout-ownership rule (resolved: the "split" model — transitions on the primary checkout/trunk, in-flight edits on the work branch, merge-back on complete). The two-layer × two-layer capability mapping is realized **surface-only**: `reconcile` reads each task's `capabilities.yaml` and lists the deltas in the rollup; the product-layer ledger *flip* and canonical-wording *coordination* stay the Spec 3 skill layer below. *(phase-5-work A.2, A.6, A.8; Part C #2.)*
 
 ## Skill layer + capabilities process (work "Spec 3")
 

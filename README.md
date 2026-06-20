@@ -232,6 +232,43 @@ Resolutions are `done · wontfix · duplicate · superseded`. The
 axis: a work item declares its capability delta at creation and reconciles it at
 completion, so the standing capability ledger stays current by construction.
 
+#### Cross-node recursion (epics across repos)
+
+Any git repo with a `docs/work/` is a **node**; "orchestrator" and "project" are
+relative roles. A node nested under another is a **child**, the enclosing one its
+**parent**. An **epic** is an ordinary work item that tasks in child nodes point
+at via an `initiative:` back-pointer.
+
+```sh
+tcw work nodes                              # show this node's parent + child nodes
+
+epic=$(tcw work new "Redesign checkout" --epic)
+tcw work new "Slice 1" --initiative "$epic" # in a child node: link a new task to the epic
+tcw work edit "$slug" --initiative "$epic"  # …or link an existing one
+
+tcw work reconcile "$epic"                  # scan child nodes → rollup into the epic
+tcw work reconcile "$epic" --commit         # …and commit it
+
+echo "needs an API change" | tcw work delegate child-repo "Expose X"  # request DOWN to a child inbox/
+echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # request UP to the parent inbox/
+```
+
+`reconcile` consolidates every child task for an initiative into a managed
+rollup block in the epic's `content.md` — a slice table, surfaced capability
+deltas, and the next ready actions — and is **read-only** on the capabilities
+ledger. `delegate`/`escalate` only ever write a request into the target node's
+`inbox/`, never its tracked work, respecting the node write-boundary.
+
+Run an item in an isolated checkout with `--worktree`:
+
+```sh
+tcw work start "$slug" --worktree           # active on trunk + a git worktree/branch for the code
+```
+
+Status transitions stay on the node's primary checkout (the board is always
+`ls active/`); in-flight edits live on the work branch and merge back. `complete`
+runs once the branch is integrated and tears the worktree down.
+
 ---
 
 ## Status
@@ -241,12 +278,16 @@ exposes `init | taxonomy | capabilities | work`; the three filesystem stores sit
 on a shared bounded-tree core; the test suite (pytest over throwaway git repos)
 is green.
 
-**Deferred by design (Phase 6):** cross-node *recursion* — where any git repo
-with a `docs/work/` is a "node," "orchestrator" and "project" are relative
-roles, cross-node initiatives link by a back-pointer, and the inbox is the
-inter-node channel — plus the skill layer and remote (Jira/wiki/graph-DB)
-adapters. These wait until the single-node core is real and dogfooded; the
-natural next step is to run `tcw work` on TCW's own `docs/work/`.
+**Cross-node recursion is now built (work Spec 2):** any git repo with a
+`docs/work/` is a "node," "orchestrator" and "project" are relative roles,
+cross-node initiatives (epics) link by an `initiative:` back-pointer, `tcw work
+reconcile` rolls child tasks up into the epic, the inbox is the inter-node
+channel (`delegate`/`escalate`), and `tcw work start --worktree` isolates an
+item's code in its own checkout.
+
+**Still deferred (Phase 6):** the `tcw work` driving skill layer and remote
+(Jira/wiki/graph-DB) store adapters. These remain additive on top of the
+interfaces that already exist.
 
 ## Further reading
 
