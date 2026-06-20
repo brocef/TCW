@@ -6,10 +6,13 @@ import sys
 from tcw.store.base import (
     WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
 )
-from tcw.store.fs import COMPONENTS, FsWorkStore, find_node, git_root, init
+from tcw.store.fs import (
+    COMPONENTS, FsWorkStore, child_nodes, find_node, git_root, init, parent_node,
+)
 
 NAME = "work"
-SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "edit", "complete", "drop"}
+SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "edit", "complete",
+               "drop", "nodes", "reconcile", "delegate", "escalate"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 _ERRORS = (ValueError, IllegalTransition, MultipleMatch)
@@ -57,6 +60,24 @@ def _print_item(item: WorkItem) -> None:
     if body:
         print()
         print("\n".join(body.splitlines()[:12]))
+
+
+def _nodes(args: argparse.Namespace) -> int:
+    node = find_node(NAME)
+    if node is None:
+        print("tcw work: no docs/work/ in this repo. Run `tcw work init`.", file=sys.stderr)
+        return 1
+    parent = parent_node(node)
+    print(f"node:   {node}")
+    print(f"parent: {parent if parent else '(none — root)'}")
+    children = child_nodes(node)
+    if children:
+        print("children:")
+        for c in children:
+            print(f"  {c.relative_to(node)}")
+    else:
+        print("children: (none — leaf)")
+    return 0
 
 
 def _init(args: argparse.Namespace) -> int:
@@ -211,6 +232,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     g.add_parser("init", help="create docs/work/{inbox,backlog,active,completed}/") \
         .set_defaults(func=_init)
+
+    g.add_parser("nodes", help="list this node's parent + child nodes").set_defaults(func=_nodes)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")

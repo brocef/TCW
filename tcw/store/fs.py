@@ -57,6 +57,64 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     return root if (root / "docs" / component).is_dir() else None
 
 
+def _git_common_dir(path: Path) -> Path | None:
+    """Absolute shared `.git` dir for the repo containing `path` (None if outside
+    a work-tree). A linked worktree resolves to its MAIN repo's `.git`; a
+    standalone repo resolves to its own — the basis for excluding own worktrees.
+    --path-format=absolute is required: the default is cwd-relative and would
+    mis-compare (Spec 2 §3.1)."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--path-format=absolute",
+             "--git-common-dir"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return Path(out).resolve()
+
+
+def child_nodes(root: Path) -> list[Path]:
+    """Nearest descendant nodes (git work-tree + docs/work/) under `root`.
+
+    Descent stops at each found node (its children are its own — A.2). Excludes
+    `root`'s own linked worktrees: a candidate whose git-common-dir equals
+    `root`'s is the same logical node, not a child. FS-adapter-local.
+    ponytail: shells out per dir and walks the whole tree — fine for a docs
+    repo; prune by .gitignore only if it ever bites.
+    """
+    root = root.resolve()
+    own_common = _git_common_dir(root)
+    found: list[Path] = []
+
+    def walk(d: Path) -> None:
+        for child in sorted(p for p in d.iterdir() if p.is_dir() and p.name != ".git"):
+            top = git_root(child)
+            is_node = (top is not None and top.resolve() == child.resolve()
+                       and (child / "docs" / "work").is_dir())
+            if is_node and _git_common_dir(child) != own_common:
+                found.append(child)        # genuine child node — don't descend
+            else:
+                walk(child)                # plain subdir or our own worktree
+    walk(root)
+    return found
+
+
+def parent_node(root: Path) -> Path | None:
+    """Nearest ancestor node above `root`, or None. FS-adapter-local."""
+    root = root.resolve()
+    search = git_root(root.parent)
+    while search is not None:
+        search = search.resolve()
+        if search != root and (search / "docs" / "work").is_dir():
+            return search
+        nxt = git_root(search.parent)      # climb above this enclosing repo
+        if nxt is None or nxt.resolve() == search:
+            return None
+        search = nxt
+    return None
+
+
 def git_stage(node_root: Path, *paths: Path) -> None:
     subprocess.run(["git", "-C", str(node_root), "add", "--", *map(str, paths)], check=True)
 
