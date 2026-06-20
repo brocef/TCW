@@ -131,6 +131,57 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
     subprocess.run(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
 
 
+WORKTREES_DIR = ".worktrees"
+
+
+def git_commit(node_root: Path, message: str, *paths: str) -> None:
+    """Commit staged changes. With paths, a scoped (partial) commit so unrelated
+    staged changes are left alone — used by start --worktree (Spec 2 §3.4)."""
+    cmd = ["git", "-C", str(node_root), "commit", "-q", "-m", message]
+    if paths:
+        cmd += ["--", *paths]
+    subprocess.run(cmd, check=True)
+
+
+def ensure_worktree_ignored(node_root: Path) -> None:
+    """Add `.worktrees/` to the node's .gitignore (a linked worktree dir is
+    untracked otherwise and would clutter/be staged). Idempotent; stages it."""
+    gi = node_root / ".gitignore"
+    line = f"{WORKTREES_DIR}/"
+    existing = gi.read_text(encoding="utf-8") if gi.exists() else ""
+    if line not in existing.splitlines():
+        gi.write_text((existing.rstrip("\n") + "\n" if existing else "") + line + "\n",
+                      encoding="utf-8")
+        git_stage(node_root, gi)
+
+
+def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
+    """Create the item's git worktree + branch from HEAD. Returns (path, branch)."""
+    wt = node_root / WORKTREES_DIR / slug
+    branch = f"work/{slug}"
+    subprocess.run(["git", "-C", str(node_root), "worktree", "add", "-q",
+                    "-b", branch, str(wt)], check=True)
+    return wt, branch
+
+
+def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> list[str]:
+    """Best-effort teardown (Spec 2 §3.4): `git worktree remove` refuses on a
+    dirty worktree — the safety net against losing uncommitted work. Returns
+    warnings (empty == clean)."""
+    warns: list[str] = []
+    wt = node_root / WORKTREES_DIR / slug
+    r = subprocess.run(["git", "-C", str(node_root), "worktree", "remove", str(wt)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        warns.append(f"worktree remove failed for {slug}: {r.stderr.strip()}")
+    elif branch:
+        rb = subprocess.run(["git", "-C", str(node_root), "branch", "-D", branch],
+                            capture_output=True, text=True)
+        if rb.returncode != 0:
+            warns.append(f"branch delete failed for {branch}: {rb.stderr.strip()}")
+    return warns
+
+
 def init(components: list[str], root: Path) -> list[Path]:
     """Scaffold `docs/<component>/` skeletons under `root`. Returns leaf dirs made.
 

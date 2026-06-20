@@ -1,13 +1,16 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+import subprocess
 import sys
 
 from tcw.store.base import (
     WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
 )
 from tcw.store.fs import (
-    COMPONENTS, FsWorkStore, child_nodes, find_node, git_root, init, parent_node,
+    COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
+    ensure_worktree_ignored, find_node, git_commit, git_root, init, parent_node,
+    remove_worktree,
 )
 from tcw.work.recursion import delegate, escalate, reconcile
 
@@ -196,7 +199,29 @@ def _path(args: argparse.Namespace) -> int:
 
 
 def _start(args: argparse.Namespace) -> int:
-    return _run(lambda st: st.start(args.slug, force=args.force), f"started {args.slug}")
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        st.start(args.slug, force=args.force)
+    except _ERRORS as e:
+        print(f"tcw work: {e}", file=sys.stderr)
+        return 1
+    if not args.worktree:
+        print(f"started {args.slug}")
+        return 0
+    node = st.node_root
+    ensure_worktree_ignored(node)
+    st.set_field(args.slug, "worktree", f"{WORKTREES_DIR}/{args.slug}")
+    st.set_field(args.slug, "branch", f"work/{args.slug}")
+    try:
+        git_commit(node, f"tcw work: start {args.slug} (worktree)", "docs/work", ".gitignore")
+        wt, _branch = add_worktree(node, args.slug)
+    except subprocess.CalledProcessError as e:
+        print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
+        return 1
+    print(f"started {args.slug} → worktree {wt}")
+    return 0
 
 
 def _edit(args: argparse.Namespace) -> int:
@@ -239,6 +264,8 @@ def _complete(args: argparse.Namespace) -> int:
     if item is None:
         print(f"tcw work complete: no such work item: {args.slug}", file=sys.stderr)
         return 1
+    branch = item.branch or None              # capture before complete moves the folder
+    has_worktree = bool(item.worktree)
     if not args.force:
         blockers = st.unresolved_blockers(item)
         if blockers:
@@ -258,6 +285,9 @@ def _complete(args: argparse.Namespace) -> int:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
     print(f"completed {args.slug} ({args.resolution})")
+    if has_worktree:
+        for w in remove_worktree(st.node_root, args.slug, branch):
+            print(f"tcw work complete: {w}", file=sys.stderr)
     return 0
 
 
@@ -325,6 +355,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pst = g.add_parser("start", help="inbox|backlog → active")
     pst.add_argument("slug")
     pst.add_argument("--force", action="store_true", help="start despite unresolved blockers")
+    pst.add_argument("--worktree", action="store_true",
+                     help="isolate the item in its own git worktree + branch")
     pst.set_defaults(func=_start)
 
     pe = g.add_parser("edit", help="change blocking links between items")

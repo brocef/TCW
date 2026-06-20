@@ -9,7 +9,10 @@ import pytest
 # Imports grow per task — start with Task 1's, add each task's symbols when you
 # write that task's test (Task 3: reconcile; Task 4: delegate, escalate;
 # Task 5: add_worktree, ensure_worktree_ignored, git_commit, remove_worktree).
-from tcw.store.fs import FsWorkStore, child_nodes, init, parent_node
+from tcw.store.fs import (
+    FsWorkStore, add_worktree, child_nodes, ensure_worktree_ignored, git_commit,
+    init, parent_node, remove_worktree,
+)
 from tcw.work.recursion import delegate, escalate, reconcile
 
 
@@ -176,3 +179,52 @@ def test_escalate_writes_parent_inbox_and_root_errors(tmp_path):
     assert "from: child" in doc.read_text()
     with pytest.raises(ValueError):
         escalate(parent, "x")                              # parent is the root
+
+
+# ── Task 5: worktrees ────────────────────────────────────────────────────────
+
+def test_start_worktree_places_item_in_worktree(tmp_path, monkeypatch, capsys):
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    monkeypatch.chdir(root)
+    from tcw.cli import main
+    main(["work", "new", "Build it"]); slug = capsys.readouterr().out.strip()
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+    wt = root / ".worktrees" / slug
+    assert (wt / "docs" / "work" / "active" / slug / "state.yaml").is_file()  # item IS in the worktree
+    item = FsWorkStore.open(root).get(slug)
+    assert item.status == "active" and item.branch == f"work/{slug}"
+    assert ".worktrees/" in (root / ".gitignore").read_text()
+
+
+def test_worktree_edit_merges_back_clean(tmp_path, monkeypatch, capsys):
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    monkeypatch.chdir(root)
+    from tcw.cli import main
+    main(["work", "new", "Feature"]); slug = capsys.readouterr().out.strip()
+    main(["work", "start", slug, "--worktree"]); capsys.readouterr()
+    wt = root / ".worktrees" / slug
+    monkeypatch.chdir(wt)                                  # work on the branch
+    main(["work", "edit", slug, "--blocked-by", "external: upstream"])
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-am", "edit"], check=True)
+    subprocess.run(["git", "-C", str(root), "merge", "-q", "--no-edit", f"work/{slug}"],
+                   check=True)                             # clean merge — single-owner invariant
+    item = FsWorkStore.open(root).get(slug)
+    assert any("upstream" in b.get("external", "") for b in item.blocked_by)
+
+
+def test_complete_tears_down_worktree(tmp_path, monkeypatch, capsys):
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    monkeypatch.chdir(root)
+    from tcw.cli import main
+    main(["work", "new", "Ship"]); slug = capsys.readouterr().out.strip()
+    main(["work", "start", slug, "--worktree"]); capsys.readouterr()
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+    assert not (root / ".worktrees" / slug).exists()
+    branches = subprocess.run(["git", "-C", str(root), "branch", "--list", f"work/{slug}"],
+                              capture_output=True, text=True).stdout.strip()
+    assert branches == ""
+    assert FsWorkStore.open(root).get(slug).status == "completed"
