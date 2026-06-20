@@ -2,4 +2,10 @@ slug: 2026-06-19-cross-node-recursion-work-spec-2
 title: Cross-node recursion (work Spec 2)
 phase: ''
 created: '2026-06-19'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
