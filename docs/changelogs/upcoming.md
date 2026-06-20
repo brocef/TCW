@@ -2,3 +2,28 @@
 
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
+
+<changes starting-hash="a86ae39" ending-hash="b57ef0f">
+
+Skill layer + capabilities process — work Spec 3.
+
+### Added
+- `CapabilitiesStore.set(identifier, fields) -> Capability` (abstract) +
+  `FsCapabilitiesStore.set` + the module helper `_set_inline_fields` — an
+  in-place, heading-scoped edit of a capability's inline `**Field:**` block
+  (update-or-insert at the end of the metadata run; never keys off a blank line,
+  so body and sibling blocks are preserved). Validates field keys against
+  `CAP_FIELDS` and `Status` against `CAP_STATUSES`; requires a `#heading` when the
+  file holds more than one capability. Other field-value semantics stay `check`'s
+  job (mechanism vs. judgment).
+- `tcw capabilities set <id> [--status S] [--field "K=V"]…` — CLI for the above
+  (`"set"` added to the capabilities `SUBCOMMANDS` so the `show`-sugar normalizer
+  doesn't rewrite it). Stage-only.
+- `skills/tcw-work/SKILL.md` and `skills/tcw-capabilities/SKILL.md` — the judgment
+  layer that drives the work↔capability lifecycle (recursive process-inbox,
+  product-first planning, the start/complete handshake, the ledger flip, and the
+  product-layer coordination protocol). Mechanism stays in the binary.
+- `tests/test_skill_flow.py` — the lifecycle handshake end-to-end via the CLI
+  (the worked dry-run, captured as a regression).
+
+</changes>

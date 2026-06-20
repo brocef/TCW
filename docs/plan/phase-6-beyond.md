@@ -11,9 +11,11 @@ Everything the three component specs mark "later." Nothing here is built until t
 
 Node discovery; epics + `initiative:` back-pointers; `reconcile` (scan child nodes → consolidated rollup); escalate/delegate over the inbox channel; `tcw work start --worktree` + the checkout-ownership rule (resolved: the "split" model — transitions on the primary checkout/trunk, in-flight edits on the work branch, merge-back on complete). The two-layer × two-layer capability mapping is realized **surface-only**: `reconcile` reads each task's `capabilities.yaml` and lists the deltas in the rollup; the product-layer ledger *flip* and canonical-wording *coordination* stay the Spec 3 skill layer below. *(phase-5-work A.2, A.6, A.8; Part C #2.)*
 
-## Skill layer + capabilities process (work "Spec 3")
+## Skill layer + capabilities process (work "Spec 3") — ✓ built
 
-The `tcw work` driving skill — recursive process-inbox, resume, decompose, three-axis / product-first planning, the lifecycle handshake; the capabilities **process** half (the `## Capability changes` planning gate, contradiction-detection) and the **product-layer coordination** protocol as skills. The capabilities *artifact* is already its own component (Phase 3) — this is only the process/skill layer. *(phase-5-work Part C #3; phase-3-capabilities A.9, Part C #3.)*
+**Status:** ✓ built — spec/plan/build in [`docs/work/.../skill-layer-capabilities-process-work-spec-3`](../work/active/2026-06-19-skill-layer-capabilities-process-work-spec-3/).
+
+The `tcw work` driving skill — recursive process-inbox, resume, decompose, three-axis / product-first planning, the lifecycle handshake; the capabilities **process** half (the `## Capability changes` planning gate, contradiction-detection) and the **product-layer coordination** protocol as skills. Shipped as two Claude Code skills (`skills/tcw-work`, `skills/tcw-capabilities`) plus the one tool affordance the handshake needed — `tcw capabilities set` (the ledger-flip mechanism). The capabilities *artifact* is already its own component (Phase 3) — this was only the process/skill layer. *(phase-5-work Part C #3; phase-3-capabilities A.9, Part C #3.)*
 
 ## Remote store adapters
 

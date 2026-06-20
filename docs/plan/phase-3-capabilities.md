@@ -164,7 +164,10 @@ tcw capabilities show <id>                            read a capability (file, o
 tcw capabilities add <namespace/path> [name]          scaffold a file/heading  ·  -s/--status <S>
 tcw capabilities search <query>                        search names + bodies
 tcw capabilities check                                 validate identifiers, subject refs, metadata
+tcw capabilities set <id> [--status S] [--field K=V]   update a capability's status/fields in place (Spec 3)
 ```
+
+> **`set` (added in work Spec 3).** The ledger-flip mechanism the lifecycle handshake (A.8) needs: an in-place edit of a capability's inline metadata block. The *act* of setting a field is mechanism (a node field write — it passes the litmus test); deciding *when* to flip stays the `tcw-capabilities` skill. A.9's product-layer coordination protocol is now realized as that skill, not tool code.
 
 ### B.3 On-disk layout (`FsCapabilitiesStore`)
 

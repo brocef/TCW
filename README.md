@@ -162,7 +162,14 @@ tcw capabilities show billing/invoices     # whole file…
 tcw capabilities show billing/invoices#download-an-invoice-as-pdf   # …or one heading
 tcw capabilities search pdf
 tcw capabilities check                     # identifiers, metadata vocab, Subject refs
+
+tcw capabilities set billing/invoices#download-an-invoice-as-pdf --status Supported
+tcw capabilities set billing/invoices --field "Planning doc=2026-06-19-pdf-export"
 ```
+
+`set` updates a capability's status/fields in place (stage-only) — the mechanism
+the work→capability lifecycle uses to flip `Missing → Supported` at completion.
+A `#heading` is required when a file holds more than one capability.
 
 Status is one of `Supported · Partial · Missing · Blocked · Omitted`. `check`
 validates the metadata vocabulary *and* resolves each `Subject:` pointer against
@@ -271,6 +278,23 @@ runs once the branch is integrated and tears the worktree down.
 
 ---
 
+## Skills — the judgment layer
+
+The CLI is the *mechanism*; two skills in [`skills/`](skills/) are the *judgment*
+that drives it (the work↔capability lifecycle the tool only enforces structurally):
+
+- **[`tcw-work`](skills/tcw-work/SKILL.md)** — triage a `docs/work/inbox`, plan a
+  change product-first along the three axes, run the start/complete lifecycle,
+  resume an active item, and decompose work into a cross-node epic.
+- **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
+  changes` planning gate, contradiction-detection, the `Missing → Supported`
+  ledger flip at completion, and product-layer wording coordination.
+
+They name `tcw …` commands and never reimplement tool logic — mechanism stays in
+the binary, judgment in the skills.
+
+---
+
 ## Status
 
 **The single-node core is built.** Phases 1–5 are complete: `tcw` installs and
@@ -285,9 +309,12 @@ reconcile` rolls child tasks up into the epic, the inbox is the inter-node
 channel (`delegate`/`escalate`), and `tcw work start --worktree` isolates an
 item's code in its own checkout.
 
-**Still deferred (Phase 6):** the `tcw work` driving skill layer and remote
-(Jira/wiki/graph-DB) store adapters. These remain additive on top of the
-interfaces that already exist.
+**The skill layer is now built (work Spec 3):** the `tcw-work` and
+`tcw-capabilities` skills drive the lifecycle, and `tcw capabilities set` flips
+the capability ledger as work completes.
+
+**Still deferred (Phase 6):** remote (Jira/wiki/graph-DB) store adapters and
+tracker sync — additive on top of the interfaces that already exist.
 
 ## Further reading
 
