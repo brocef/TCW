@@ -56,3 +56,25 @@ def test_parent_node(tmp_path):
     child = mk_node(parent, "child")
     assert parent_node(child).resolve() == parent.resolve()
     assert parent_node(parent) is None                     # root has no parent node
+
+
+# ── Task 2: epic / initiative fields ─────────────────────────────────────────
+
+def test_new_epic_and_initiative_fields(tmp_path, monkeypatch, capsys):
+    root = mk_node(tmp_path, "repo")
+    monkeypatch.chdir(root)
+    from tcw.cli import main
+    assert main(["work", "new", "Build it", "--epic", "--initiative", "2026-01-01-epic"]) == 0
+    slug = capsys.readouterr().out.strip()
+    item = FsWorkStore.open(root).get(slug)
+    assert item.type == "epic"
+    assert item.initiative == "2026-01-01-epic"
+
+
+def test_edit_sets_and_clears_initiative(tmp_path):
+    st = FsWorkStore.open(mk_node(tmp_path, "repo"))
+    item = st.create("Task", created="2026-01-01")
+    st.set_field(item.slug, "initiative", "2026-01-01-epic")
+    assert st.get(item.slug).initiative == "2026-01-01-epic"
+    st.set_field(item.slug, "initiative", "")
+    assert st.get(item.slug).initiative == ""

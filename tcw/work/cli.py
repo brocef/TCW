@@ -102,6 +102,10 @@ def _new(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work new: {e}", file=sys.stderr)
         rc = 1
+    if args.epic:
+        st.set_field(item.slug, "type", "epic")
+    if args.initiative:
+        st.set_field(item.slug, "initiative", args.initiative)
     print(item.slug)
     return rc
 
@@ -168,6 +172,8 @@ def _edit(args: argparse.Namespace) -> int:
             st.add_blocker(ref, args.slug)
         for ref in _split(args.unblocked_by):
             st.remove_blocker(args.slug, ref)
+        if args.initiative is not None:
+            st.set_field(args.slug, "initiative", args.initiative)
     except _ERRORS as e:
         print(f"tcw work edit: {e}", file=sys.stderr)
         return 1
@@ -238,6 +244,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")
     pn.add_argument("--blocked-by", help="comma-separated slugs/externals that block it")
+    pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
+    pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
     pn.set_defaults(func=_new)
 
     pl = g.add_parser("list", help="the board")
@@ -262,6 +270,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--blocked-by", help="comma-separated slugs/externals that block this item")
     pe.add_argument("--blocks", help="comma-separated items this item blocks")
     pe.add_argument("--unblocked-by", help="comma-separated blockers to remove")
+    pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
     pe.set_defaults(func=_edit)
 
     pc = g.add_parser("complete", help="active → completed (DoD gate)")

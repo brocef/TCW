@@ -185,6 +185,10 @@ class WorkItem:
     body: str = ""
     blocked_by: list[dict] = field(default_factory=list)
     capabilities: object = None     # opaque blob in Spec 1 (B.4)
+    initiative: str = ""            # cross-node back-pointer to an epic (Spec 2)
+    type: str = ""                  # optional recursion sugar; only value: "epic"
+    worktree: str = ""              # node-relative worktree path (start --worktree)
+    branch: str = ""                # work branch name (start --worktree)
 
 
 def topo_order(items: list[WorkItem]) -> list[WorkItem]:

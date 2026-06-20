@@ -659,6 +659,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
             body=content.read_text(encoding="utf-8") if content.exists() else "",
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=load_yaml(caps) if caps.exists() else None,
+            initiative=state.get("initiative", ""),
+            type=state.get("type", ""),
+            worktree=state.get("worktree", ""),
+            branch=state.get("branch", ""),
         )
 
     def query(self, status: str | None = None) -> list[WorkItem]:
