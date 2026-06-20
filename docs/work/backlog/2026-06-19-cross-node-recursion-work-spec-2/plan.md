@@ -36,11 +36,15 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.fs import (
-    FsWorkStore, add_worktree, child_nodes, ensure_worktree_ignored,
-    git_commit, init, parent_node, remove_worktree,
-)
-from tcw.work.recursion import delegate, escalate, reconcile
+# Imports grow per task — start with Task 1's, add each task's symbols when you
+# write that task's test. This keeps every per-task pytest checkpoint runnable:
+# its failure is the expected "cannot import name <this task's symbol>", not a
+# collection error from a not-yet-built later task. Add as you go:
+#   Task 3: from tcw.work.recursion import reconcile
+#   Task 4: from tcw.work.recursion import delegate, escalate, reconcile
+#   Task 5: from tcw.store.fs import (add_worktree, ensure_worktree_ignored,
+#                                     git_commit, remove_worktree)
+from tcw.store.fs import FsWorkStore, child_nodes, init, parent_node
 
 
 def mk_node(base: Path, name: str) -> Path:
@@ -76,12 +80,15 @@ def commit_all(root: Path, msg: str = "init") -> None:
 ```python
 def test_child_nodes_finds_children_excludes_own_worktree_keeps_nested_repo(tmp_path):
     parent = mk_node(tmp_path, "parent")
+    subprocess.run(["git", "-C", str(parent), "add", "docs"], check=True)   # commit parent's
+    subprocess.run(["git", "-C", str(parent), "commit", "-qm", "init"], check=True)  # OWN files
     child = mk_node(parent, "child")                       # direct child node
     deep = mk_node(parent / "group", "deep")              # under a non-node folder
     plain_repo = parent / "lib"                            # a git repo WITHOUT docs/work
     plain_repo.mkdir()
     subprocess.run(["git", "init", "-q", str(plain_repo)], check=True)
-    commit_all(parent)
+    # NB: never `git add -A` the parent now — it holds uncommitted nested repos
+    # (child/deep/lib) and git would abort ("does not have a commit checked out").
     subprocess.run(["git", "-C", str(parent), "worktree", "add", "-q",
                     "-b", "work/x", str(parent / ".worktrees" / "x")], check=True)
 
@@ -351,7 +358,10 @@ def test_reconcile_rollup_keys_by_node_and_is_idempotent(tmp_path):
     _child_task(b, epic.slug)                              # same slug as child-a's task
     block = reconcile(parent, epic.slug)
     assert "child-a" in block and "child-b" in block
-    assert block.count("2026-01-01-slice") == 2           # both, keyed by node
+    # both colliding slugs appear, disambiguated by node in the table rows
+    # (assert rows, not a raw count — the slug also recurs in the **Next:** line)
+    assert "| child-a | 2026-01-01-slice |" in block
+    assert "| child-b | 2026-01-01-slice |" in block
     assert reconcile(parent, epic.slug) == block          # idempotent
     content = (FsWorkStore.open(parent).path(epic.slug) / "content.md").read_text()
     assert content.count("<!-- tcw:rollup -->") == 1      # no duplicate block
@@ -490,13 +500,15 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False) -> str:
         raise ValueError(f"no such epic: {epic_slug}")
     block = _render(epic_slug, _tasks_for(node_root, epic_slug))
     content = store.path(epic_slug) / "content.md"
-    text = content.read_text(encoding="utf-8") if content.exists() else ""
-    text = ROLLUP_RE.sub(block, text) if ROLLUP_RE.search(text) else f"{text.rstrip()}\n\n{block}\n"
-    content.write_text(text, encoding="utf-8")
-    git_stage(node_root, content)
-    if commit:
-        from tcw.store.fs import git_commit
-        git_commit(node_root, f"tcw work: reconcile {epic_slug}", "docs/work")
+    original = content.read_text(encoding="utf-8") if content.exists() else ""
+    text = ROLLUP_RE.sub(block, original) if ROLLUP_RE.search(original) \
+        else f"{original.rstrip()}\n\n{block}\n"
+    if text != original:                       # idempotent at the git level too:
+        content.write_text(text, encoding="utf-8")   # don't stage/commit an
+        git_stage(node_root, content)                # unchanged rollup (an empty
+        if commit:                                   # commit would fail)
+            from tcw.store.fs import git_commit
+            git_commit(node_root, f"tcw work: reconcile {epic_slug}", "docs/work")
     return block
 ```
 
@@ -611,8 +623,8 @@ Expected: FAIL — `ImportError: cannot import name 'delegate'`.
 def _inbox_write(inbox: Path, title: str, body: str, origin: str,
                  initiative: str | None) -> Path:
     inbox.mkdir(parents=True, exist_ok=True)
-    base, name, n = f"{date.today().isoformat()}-{slugify(title)}", None, 2
-    name = base
+    base = f"{date.today().isoformat()}-{slugify(title)}"
+    name, n = base, 2
     while (inbox / f"{name}.md").exists():
         name, n = f"{base}-{n}", n + 1
     front = [f"from: {origin}"] + ([f"initiative: {initiative}"] if initiative else [])
@@ -849,11 +861,11 @@ def _start(args: argparse.Namespace) -> int:
     ensure_worktree_ignored(node)
     st.set_field(args.slug, "worktree", f"{WORKTREES_DIR}/{args.slug}")
     st.set_field(args.slug, "branch", f"work/{args.slug}")
-    git_commit(node, f"tcw work: start {args.slug} (worktree)", "docs/work", ".gitignore")
     try:
+        git_commit(node, f"tcw work: start {args.slug} (worktree)", "docs/work", ".gitignore")
         wt, _branch = add_worktree(node, args.slug)
     except subprocess.CalledProcessError as e:
-        print(f"tcw work start: worktree add failed: {e.stderr or e}", file=sys.stderr)
+        print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
         return 1
     print(f"started {args.slug} → worktree {wt}")
     return 0
