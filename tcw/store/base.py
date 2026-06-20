@@ -141,6 +141,12 @@ class CapabilitiesStore(ABC):
         ...
 
     @abstractmethod
+    def set(self, identifier: str, fields: dict[str, str]) -> Capability:
+        """Update/insert inline metadata fields on the resolved capability;
+        return it. Keys must be in CAP_FIELDS; a Status value must be in
+        CAP_STATUSES. Other field-value semantics are `check`'s job (Spec 3)."""
+
+    @abstractmethod
     def search(self, query: str) -> list[Capability]:
         ...
 

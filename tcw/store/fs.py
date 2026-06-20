@@ -466,6 +466,33 @@ def parse_capability_file(file_id: str, text: str) -> CapabilityFile:
     return CapabilityFile(file_id, title, caps)
 
 
+def _set_inline_fields(text: str, target_slug: str, fields: dict[str, str]) -> str:
+    """Update-or-insert `**K:** V` lines in the metadata run of the `## <name>`
+    block whose heading_slug == target_slug. The run is the consecutive
+    `_FIELD_RE` lines right after the heading; inserts land at its end (or right
+    after the heading when empty), never keyed off a blank line — so the body and
+    sibling blocks are untouched (Spec 3 §3.1)."""
+    lines = text.splitlines()
+    hi = next((i for i, ln in enumerate(lines)
+               if ln.startswith("## ") and heading_slug(ln[3:].strip()) == target_slug), None)
+    if hi is None:
+        raise RefError(f"heading '#{target_slug}' not found")
+    run_end, existing = hi + 1, {}
+    while run_end < len(lines):
+        fm = _FIELD_RE.match(lines[run_end].strip())
+        if not fm:
+            break
+        existing[fm.group(1).strip()] = run_end
+        run_end += 1
+    remaining = dict(fields)
+    for k in list(remaining):
+        if k in existing:
+            lines[existing[k]] = f"**{k}:** {remaining.pop(k)}"
+    lines[run_end:run_end] = [f"**{k}:** {v}" for k, v in remaining.items()]
+    out = "\n".join(lines)
+    return out + "\n" if text.endswith("\n") else out
+
+
 class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     """`CapabilitiesStore` over the bounded `docs/capabilities/` tree (Phase 3 B.3)."""
     COMPONENT = "capabilities"
@@ -576,6 +603,37 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         if fp is None:
             raise ValueError(f"no such capability: {identifier}")
         self._rm(fp.parent if fp.name == "capabilities.md" else fp)
+
+    def set(self, identifier: str, fields: dict[str, str]) -> Capability:
+        for k, v in fields.items():
+            if k not in CAP_FIELDS:
+                raise ValueError(f"unknown field '{k}' (not in the locked vocabulary)")
+            if k == "Status" and v not in CAP_STATUSES:
+                raise ValueError(f"invalid Status '{v}' "
+                                 f"(choose: {', '.join(sorted(CAP_STATUSES))})")
+        m = _IDENT_RE.match(identifier)
+        if not m:
+            raise RefError(f"malformed identifier: {identifier}")
+        fp = self._resolve_file(m.group("path"), m.group("state"))
+        if fp is None:
+            raise ValueError(f"no such capability: {identifier}")
+        text = fp.read_text(encoding="utf-8")
+        cf = parse_capability_file(self._disk_id(fp), text)
+        heading = m.group("heading")
+        if heading:
+            match = next((c for c in cf.capabilities if c.heading_slug == heading), None)
+            if match is None:
+                raise RefError(f"no heading '#{heading}' in {self._disk_id(fp)}")
+        elif len(cf.capabilities) != 1:
+            raise RefError(f"{identifier} resolves to {len(cf.capabilities)} "
+                           f"capabilities; specify #heading")
+        else:
+            match = cf.capabilities[0]
+        new_text = _set_inline_fields(text, match.heading_slug, fields)
+        fp.write_text(new_text, encoding="utf-8")
+        self._stage(fp)
+        updated = parse_capability_file(self._disk_id(fp), new_text)
+        return next(c for c in updated.capabilities if c.heading_slug == match.heading_slug)
 
     # -- validation --
 

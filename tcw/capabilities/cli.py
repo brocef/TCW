@@ -7,7 +7,7 @@ from tcw.store.base import Capability, RefError
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
 
 NAME = "capabilities"
-SUBCOMMANDS = {"list", "show", "add", "search", "check"}
+SUBCOMMANDS = {"list", "show", "add", "search", "check", "set"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <id>` == `tcw capabilities show <id>`
 
 
@@ -91,6 +91,31 @@ def _add(args: argparse.Namespace) -> int:
     return 0
 
 
+def _set(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    fields: dict[str, str] = {}
+    if args.status:
+        fields["Status"] = args.status
+    for kv in (args.field or []):
+        if "=" not in kv:
+            print(f"tcw capabilities set: --field must be K=V: {kv}", file=sys.stderr)
+            return 1
+        k, v = kv.split("=", 1)
+        fields[k.strip()] = v.strip()
+    if not fields:
+        print("tcw capabilities set: need --status or at least one --field", file=sys.stderr)
+        return 1
+    try:
+        cap = st.set(args.id, fields)
+    except (ValueError, RefError) as e:
+        print(f"tcw capabilities set: {e}", file=sys.stderr)
+        return 1
+    print(f"Set {cap.ref}")
+    return 0
+
+
 def _search(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -135,6 +160,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pa.add_argument("-s", "--status", default="Missing")
     pa.add_argument("--folder", action="store_true", help="scaffold a folder + capabilities.md")
     pa.set_defaults(func=_add)
+
+    pset = g.add_parser("set", help="update a capability's status/fields in place")
+    pset.add_argument("id")
+    pset.add_argument("--status", help="shorthand for --field Status=<S>")
+    pset.add_argument("--field", action="append", metavar="K=V",
+                      help="set a metadata field (repeatable)")
+    pset.set_defaults(func=_set)
 
     pse = g.add_parser("search", help="search names + bodies")
     pse.add_argument("query")

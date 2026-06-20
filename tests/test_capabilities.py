@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from tcw.store.base import RefError
 from tcw.store.fs import FsCapabilitiesStore, heading_slug
 
 
@@ -158,3 +159,74 @@ def test_cli_check_with_taxonomy(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(root)
     assert main(["capabilities", "check"]) == 0
     assert "capabilities OK" in capsys.readouterr().out
+
+
+# ── set (the ledger-flip affordance) ──────────────────────────────────────────
+
+_MULTI = (
+    "# Auth — capabilities\n\n"
+    "## Sign in with Google\n**Status:** Missing\n\nUser clicks the Google button.\n\n"
+    "## Sign out\n**Status:** Supported\n**Priority:** P1\n\nUser ends the session.\n"
+)
+
+
+def test_set_updates_status_preserving_siblings(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "auth.md", _MULTI)
+    st = FsCapabilitiesStore.open(root)
+    cap = st.set("auth#sign-in-with-google", {"Status": "Supported"})
+    assert cap.status == "Supported"
+    sign_out = next(c for c in st.get("auth").capabilities if c.name == "Sign out")
+    assert sign_out.status == "Supported" and sign_out.fields.get("Priority") == "P1"
+    assert "User clicks the Google button." in (root / "docs/capabilities/auth.md").read_text()
+
+
+def test_set_inserts_new_field_into_metadata_run(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "auth.md", _MULTI)
+    st = FsCapabilitiesStore.open(root)
+    st.set("auth#sign-in-with-google", {"Planning doc": "2026-01-01-google-sso"})
+    cap = next(c for c in st.get("auth").capabilities if c.name == "Sign in with Google")
+    assert cap.fields.get("Planning doc") == "2026-01-01-google-sso"
+    assert cap.body.startswith("User clicks")
+
+
+def test_set_requires_heading_for_multicap(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "auth.md", _MULTI)
+    with pytest.raises(RefError):
+        FsCapabilitiesStore.open(root).set("auth", {"Status": "Supported"})
+
+
+def test_set_bare_id_on_single_cap(tmp_path):
+    root = node(tmp_path)
+    st = FsCapabilitiesStore.open(root)
+    st.add("routes/login", name="Sign in")
+    cap = st.set("routes/login", {"Status": "Supported"})
+    assert cap.status == "Supported"
+
+
+def test_set_rejects_invalid_status_and_unknown_field(tmp_path):
+    root = node(tmp_path)
+    st = FsCapabilitiesStore.open(root)
+    st.add("routes/login", name="Sign in")
+    with pytest.raises(ValueError):
+        st.set("routes/login", {"Status": "Broken"})
+    with pytest.raises(ValueError):
+        st.set("routes/login", {"Frobnicate": "x"})
+
+
+def test_set_dangling_id_errors(tmp_path):
+    root = node(tmp_path)
+    with pytest.raises((ValueError, RefError)):
+        FsCapabilitiesStore.open(root).set("routes/nope", {"Status": "Supported"})
+
+
+def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    from tcw.cli import main
+    FsCapabilitiesStore.open(root).add("routes/login", name="Sign in")
+    assert main(["capabilities", "set", "routes/login", "--status", "Supported"]) == 0
+    assert "Set" in capsys.readouterr().out
+    assert FsCapabilitiesStore.open(root).get("routes/login").capabilities[0].status == "Supported"
