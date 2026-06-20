@@ -109,7 +109,7 @@ def test_set_dangling_id_errors(tmp_path):
         FsCapabilitiesStore.open(root).set("routes/nope", {"Status": "Supported"})
 ```
 
-Add `RefError` to the test imports: `from tcw.store.base import RefError` (alongside the existing imports), and `from tcw.store.fs import FsCapabilitiesStore, heading_slug`.
+Add the one genuinely-new import — `from tcw.store.base import RefError`. (`FsCapabilitiesStore`/`heading_slug` are already imported at the top of `test_capabilities.py`; don't duplicate them.)
 
 - [ ] **Step 2: Run to verify they fail**
 
