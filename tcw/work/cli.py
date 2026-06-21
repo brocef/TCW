@@ -170,9 +170,9 @@ def _list(args: argparse.Namespace) -> int:
         items = [i for i in items if i.status != "completed"]
     for item in items:
         blockers = st.unresolved_blockers(item)
-        suffix = f"\tblocked-by: {', '.join(blockers)}" if blockers else ""
+        suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
         pri = item.priority if item.priority is not None else "-"
-        print(f"{item.slug}\t{item.status}\t{item.phase or '-'}\t{pri}\t{item.title}{suffix}")
+        print(f"{item.slug} | {item.status} | {item.phase or '-'} | {pri} | {item.title}{suffix}")
     return 0
 
 
