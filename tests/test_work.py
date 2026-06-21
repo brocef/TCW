@@ -346,3 +346,62 @@ def test_malformed_blocked_by_entry_degrades(tmp_path, monkeypatch):
     monkeypatch.chdir(root)
     assert main(["work", "show", item.slug]) == 0            # show doesn't crash
     assert main(["work", "list"]) == 0                       # list doesn't crash
+
+
+# ── priority ─────────────────────────────────────────────────────────────────
+
+def test_priority_order_specified_above_unspecified_desc(tmp_path):
+    from tcw.store.base import priority_order
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")               # no priority
+    b = st.create("B", created="2026-01-02", priority=1)
+    c = st.create("C", created="2026-01-03")               # no priority
+    d = st.create("D", created="2026-01-04", priority=5)
+    ordered = [i.slug for i in priority_order(st.query(status="backlog"))]
+    # specified desc (D=5, B=1) first; unspecified keep creation order (A, C)
+    assert ordered == [d.slug, b.slug, a.slug, c.slug]
+
+
+def test_priority_default_unspecified_keeps_creation_order(tmp_path):
+    from tcw.store.base import priority_order
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    b = st.create("B", created="2026-01-02")
+    assert a.priority is None
+    assert [i.slug for i in priority_order([a, b])] == [a.slug, b.slug]
+
+
+def test_board_priority_cannot_jump_a_blocker(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    blocker = st.create("Blocker", created="2026-01-01")   # low/no priority
+    blocked = st.create("Blocked", created="2026-01-02", priority=9)
+    st.add_blocker(blocked.slug, blocker.slug)
+    ordered = [i.slug for i in st.board(status="backlog")]
+    # priority wants Blocked first, but its blocker is a hard constraint
+    assert ordered.index(blocker.slug) < ordered.index(blocked.slug)
+
+
+def test_priority_persists_create_and_set_field(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01", priority=3)
+    assert FsWorkStore.open(root).get(a.slug).priority == 3
+    st.set_field(a.slug, "priority", 7)
+    assert FsWorkStore.open(root).get(a.slug).priority == 7
+
+
+def test_cli_new_and_edit_priority_reorders_list(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")
+    assert main(["work", "new", "B", "--priority", "5"]) == 0
+    b = next(i for i in FsWorkStore.open(root).query(status="backlog") if i.title == "B")
+    assert FsWorkStore.open(root).get(b.slug).priority == 5
+    # B (priority 5) sorts above A (unspecified)
+    assert [i.slug for i in FsWorkStore.open(root).board(status="backlog")][0] == b.slug
+    # raise A above B via edit
+    assert main(["work", "edit", a.slug, "--priority", "9"]) == 0
+    assert FsWorkStore.open(root).get(a.slug).priority == 9
+    assert [i.slug for i in FsWorkStore.open(root).board(status="backlog")][0] == a.slug

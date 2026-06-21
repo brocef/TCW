@@ -765,6 +765,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             phase=state.get("phase", ""),
             created=state.get("created", ""),
             resolution=state.get("resolution"),
+            priority=state.get("priority"),
             body=content.read_text(encoding="utf-8") if content.exists() else "",
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=load_yaml(caps) if caps.exists() else None,
@@ -795,7 +796,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     # -- writes --
 
-    def create(self, title: str, created: str | None = None, body: str = "") -> WorkItem:
+    def create(self, title: str, created: str | None = None, body: str = "",
+               priority: int | None = None) -> WorkItem:
         created = created or date.today().isoformat()
         slug = self._unique_slug(created, title)
         d = self.root / "backlog" / slug
@@ -804,7 +806,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
             f"{body}\n", encoding="utf-8")
         dump_yaml(d / "state.yaml", {
-            "slug": slug, "title": title, "phase": "", "created": created, "resolution": None})
+            "slug": slug, "title": title, "phase": "", "created": created,
+            "resolution": None, "priority": priority})
         self._stage(d / "content.md", d / "state.yaml")
         return self.get(slug)
 

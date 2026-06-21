@@ -49,6 +49,8 @@ def _print_item(item: WorkItem) -> None:
     print(f"title: {item.title}")
     if item.phase:
         print(f"phase: {item.phase}")
+    if item.priority is not None:
+        print(f"priority: {item.priority}")
     if item.resolution:
         print(f"resolution: {item.resolution}")
     if item.blocked_by:
@@ -143,7 +145,7 @@ def _new(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    item = st.create(args.title, body=_stdin_body())
+    item = st.create(args.title, body=_stdin_body(), priority=args.priority)
     rc = 0
     try:
         for ref in _split(args.blocked_by):
@@ -245,6 +247,8 @@ def _edit(args: argparse.Namespace) -> int:
             st.remove_blocker(args.slug, ref)
         if args.initiative is not None:
             st.set_field(args.slug, "initiative", args.initiative)
+        if args.priority is not None:
+            st.set_field(args.slug, "priority", args.priority)
     except _ERRORS as e:
         print(f"tcw work edit: {e}", file=sys.stderr)
         return 1
@@ -335,6 +339,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")
+    pn.add_argument("--priority", type=int, help="integer priority (higher = higher)")
     pn.add_argument("--blocked-by", help="comma-separated slugs/externals that block it")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
     pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
@@ -364,6 +369,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--blocked-by", help="comma-separated slugs/externals that block this item")
     pe.add_argument("--blocks", help="comma-separated items this item blocks")
     pe.add_argument("--unblocked-by", help="comma-separated blockers to remove")
+    pe.add_argument("--priority", type=int, help="set integer priority (higher = higher)")
     pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
     pe.set_defaults(func=_edit)
 

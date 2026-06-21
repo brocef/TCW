@@ -188,6 +188,7 @@ class WorkItem:
     phase: str = ""
     created: str = ""
     resolution: str | None = None
+    priority: int | None = None     # higher int = higher priority; None = unspecified
     body: str = ""
     blocked_by: list[dict] = field(default_factory=list)
     capabilities: object = None     # opaque blob in Spec 1 (B.4)
@@ -232,6 +233,15 @@ def topo_order(items: list[WorkItem]) -> list[WorkItem]:
     return [by_slug[s] for s in out]
 
 
+def priority_order(items: list[WorkItem]) -> list[WorkItem]:
+    """Stable priority sort: specified priorities (higher int first) above
+    unspecified, which keep their input (creation) order. A soft preference —
+    `board()` feeds it into `topo_order`, so a blocker still precedes what it
+    blocks. ponytail: a stable sort with a two-part key, nothing fancier."""
+    return sorted(items, key=lambda it: (0, -it.priority) if it.priority is not None
+                  else (1, 0))
+
+
 class WorkStore(ABC):
     """The work axis: items moving through a four-status state machine.
 
@@ -247,7 +257,8 @@ class WorkStore(ABC):
     # -- abstract primitives every adapter implements --
 
     @abstractmethod
-    def create(self, title: str, created: str | None = None, body: str = "") -> WorkItem: ...
+    def create(self, title: str, created: str | None = None, body: str = "",
+               priority: int | None = None) -> WorkItem: ...
 
     @abstractmethod
     def get(self, slug: str) -> WorkItem | None:
@@ -326,8 +337,9 @@ class WorkStore(ABC):
             self.set_field(slug, "blocked_by", kept)
 
     def board(self, status: str | None = None) -> list[WorkItem]:
-        """The board in workable order: query(status) topologically sorted."""
-        return topo_order(self.query(status))
+        """The board in workable order: query(status) priority-sorted, then
+        topologically sorted (a blocker still precedes what it blocks)."""
+        return topo_order(priority_order(self.query(status)))
 
     def transition(self, slug: str, to_status: str) -> WorkItem:
         item = self._require(slug)
