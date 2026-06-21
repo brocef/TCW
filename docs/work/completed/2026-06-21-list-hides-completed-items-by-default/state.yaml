@@ -2,5 +2,11 @@ slug: 2026-06-21-list-hides-completed-items-by-default
 title: List hides completed items by default
 phase: ''
 created: '2026-06-21'
-resolution: null
+resolution: done
 priority: null
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
