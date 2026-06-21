@@ -449,3 +449,21 @@ def test_cli_list_all_includes_completed(tmp_path, monkeypatch, capsys):
     assert main(["work", "list", "--all"]) == 0
     out = capsys.readouterr().out
     assert live.slug in out and done.slug in out  # --all = full board
+
+
+# ── list: priority column ────────────────────────────────────────────────────
+
+def test_cli_list_shows_priority_column(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    hot = st.create("Hot", created="2026-01-01", priority=7)
+    cold = st.create("Cold", created="2026-01-02")        # unspecified
+    assert main(["work", "list"]) == 0
+    rows = {ln.split("\t")[0]: ln.split("\t")
+            for ln in capsys.readouterr().out.splitlines()}
+    # row: slug status phase priority title
+    assert rows[hot.slug][3] == "7"
+    assert rows[cold.slug][3] == "-"
+    assert rows[hot.slug][4] == "Hot"                     # title still follows

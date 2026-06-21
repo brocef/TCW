@@ -171,7 +171,8 @@ def _list(args: argparse.Namespace) -> int:
     for item in items:
         blockers = st.unresolved_blockers(item)
         suffix = f"\tblocked-by: {', '.join(blockers)}" if blockers else ""
-        print(f"{item.slug}\t{item.status}\t{item.phase or '-'}\t{item.title}{suffix}")
+        pri = item.priority if item.priority is not None else "-"
+        print(f"{item.slug}\t{item.status}\t{item.phase or '-'}\t{pri}\t{item.title}{suffix}")
     return 0
 
 
