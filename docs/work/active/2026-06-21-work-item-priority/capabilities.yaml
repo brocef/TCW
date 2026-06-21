@@ -1,0 +1,7 @@
+# Capability deltas this work item lands (work→capability back-pointers).
+new:
+  - work#prioritize-a-work-item   # "Prioritize a work item" — Missing → Supported
+changed:
+  - work#view-the-board           # ordering now honors integer priority
+  - work#open-a-work-item         # `tcw work new` gains --priority
+  - work#manage-blocking-relations  # `tcw work edit` gains --priority
