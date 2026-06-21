@@ -40,8 +40,10 @@ def test_slug_generation_collision_and_immutability(tmp_path):
 def test_multiple_match_resolution_error(tmp_path):
     root = node(tmp_path)
     st = FsWorkStore.open(root)
-    (root / "docs/work/active/dup").mkdir()
-    (root / "docs/work/backlog/dup").mkdir()
+    for s in ("active", "backlog"):
+        d = root / "docs/work" / s / "dup"
+        d.mkdir()
+        (d / "state.yaml").write_text("slug: dup\n")     # state.yaml is the item marker
     with pytest.raises(MultipleMatch):
         st.get("dup")
 
@@ -302,8 +304,10 @@ def test_cli_new_blocked_by_attach_failure_returns_nonzero(tmp_path, monkeypatch
     from tcw.cli import main
     root = node(tmp_path)
     monkeypatch.chdir(root)
-    (root / "docs/work/active/dup").mkdir()
-    (root / "docs/work/backlog/dup").mkdir()
+    for s in ("active", "backlog"):
+        d = root / "docs/work" / s / "dup"
+        d.mkdir()
+        (d / "state.yaml").write_text("slug: dup\n")        # two real items named "dup"
     rc = main(["work", "new", "A", "--blocked-by", "dup"])   # ambiguous ref → attach fails
     out = capsys.readouterr().out.strip()
     assert rc == 1                                           # non-zero on attach failure
@@ -481,3 +485,93 @@ def test_cli_work_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
         assert (root / "docs" / "work" / s / ".gitkeep").is_file()
     assert main(["init", "work"]) == 0
     assert comp_out == capsys.readouterr().out
+
+
+# ── nested work items (parent/child) ─────────────────────────────────────────
+
+def test_create_child_nests_and_derives_parent(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = st.create("Parent", created="2026-01-01")
+    c = st.create("Child", created="2026-01-02", parent=p.slug)
+    # folder nests inside the parent's folder
+    assert (root / "docs/work/backlog" / p.slug / c.slug / "state.yaml").is_file()
+    got = st.get(c.slug)
+    assert got.parent == p.slug
+    assert got.status == "backlog"                  # inherits parent's status folder
+    assert st.get(p.slug).parent == ""              # top-level
+
+
+def test_create_child_unknown_parent_errors(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    with pytest.raises(ValueError):
+        st.create("Orphan", created="2026-01-01", parent="no-such-slug")
+
+
+def test_discovery_is_depth_agnostic(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = st.create("Parent", created="2026-01-01")
+    c = st.create("Child", created="2026-01-02", parent=p.slug)
+    assert st.path(c.slug) == root / "docs/work/backlog" / p.slug / c.slug
+    assert {i.slug for i in st.query()} == {p.slug, c.slug}      # query walks
+    assert {i.slug for i in st.query(status="backlog")} == {p.slug, c.slug}
+
+
+def test_parent_transition_carries_children(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = st.create("Parent", created="2026-01-01")
+    c = st.create("Child", created="2026-01-02", parent=p.slug)
+    st.start(p.slug)                                # git mv of the parent folder
+    assert st.get(p.slug).status == "active"
+    child = st.get(c.slug)
+    assert child.status == "active"                 # rode along, still nested
+    assert child.parent == p.slug
+    assert (root / "docs/work/active" / p.slug / c.slug / "state.yaml").is_file()
+
+
+def test_child_transition_denests_to_top_level(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = st.create("Parent", created="2026-01-01")
+    c = st.create("Child", created="2026-01-02", parent=p.slug)
+    st.start(c.slug)                                # child moves to a new status alone
+    child = st.get(c.slug)
+    assert child.status == "active"
+    assert child.parent == ""                       # de-nested (relation ends with nesting)
+    assert (root / "docs/work/active" / c.slug / "state.yaml").is_file()
+    assert st.get(p.slug).status == "backlog"       # parent unaffected
+
+
+def test_drop_parent_removes_children(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    p = st.create("Parent", created="2026-01-01")
+    c = st.create("Child", created="2026-01-02", parent=p.slug)
+    st.drop(p.slug)
+    assert st.get(p.slug) is None
+    assert st.get(c.slug) is None                   # nested child went with it
+
+
+def test_cli_new_parent_and_list_nesting(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    p = st.create("Parent", created="2026-01-01")
+    assert main(["work", "new", "Child task", "--parent", p.slug]) == 0
+    child_slug = capsys.readouterr().out.strip()
+    assert FsWorkStore.open(root).get(child_slug).parent == p.slug
+    assert main(["work", "list"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    parent_line = next(ln for ln in lines if ln.startswith(p.slug))
+    child_line = next(ln for ln in lines if child_slug in ln)
+    assert child_line.startswith("  ")              # child indented under parent
+    assert lines.index(parent_line) < lines.index(child_line)
+
+
+def test_cli_new_unknown_parent_errors(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "X", "--parent", "nope"]) == 1

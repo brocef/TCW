@@ -47,6 +47,8 @@ def _split(val: str | None) -> list[str]:
 def _print_item(item: WorkItem) -> None:
     print(f"{item.slug}  [{item.status}]")
     print(f"title: {item.title}")
+    if item.parent:
+        print(f"parent: {item.parent}")
     if item.phase:
         print(f"phase: {item.phase}")
     if item.priority is not None:
@@ -140,7 +142,12 @@ def _new(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    item = st.create(args.title, body=_stdin_body(), priority=args.priority)
+    try:
+        item = st.create(args.title, body=_stdin_body(), priority=args.priority,
+                         parent=args.parent)
+    except _ERRORS as e:
+        print(f"tcw work new: {e}", file=sys.stderr)
+        return 1
     rc = 0
     try:
         for ref in _split(args.blocked_by):
@@ -163,11 +170,24 @@ def _list(args: argparse.Namespace) -> int:
     items = st.board(status=args.status)
     if args.status is None and not args.all:
         items = [i for i in items if i.status != "completed"]
-    for item in items:
-        blockers = st.unresolved_blockers(item)
+    present = {i.slug for i in items}
+    by_parent: dict[str, list[WorkItem]] = {}
+    for it in items:                              # board order preserved per sibling group
+        by_parent.setdefault(it.parent, []).append(it)
+
+    def emit(it: WorkItem, depth: int) -> None:
+        blockers = st.unresolved_blockers(it)
         suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
-        pri = item.priority if item.priority is not None else "-"
-        print(f"{item.slug} | {item.status} | {item.phase or '-'} | {pri} | {item.title}{suffix}")
+        pri = it.priority if it.priority is not None else "-"
+        print(f"{'  ' * depth}{it.slug} | {it.status} | {it.phase or '-'} | "
+              f"{pri} | {it.title}{suffix}")
+        for ch in by_parent.get(it.slug, []):
+            emit(ch, depth + 1)
+
+    for it in items:                              # roots first; children ride their parent
+        if it.parent in present:                  # a visible parent will emit it
+            continue
+        emit(it, 0)
     return 0
 
 
@@ -341,6 +361,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn.add_argument("--priority", type=int, help="integer priority (higher = higher)")
     pn.add_argument("--blocked-by", help="comma-separated slugs/externals that block it")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
+    pn.add_argument("--parent", help="create as a child nested under this item's slug")
     pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
     pn.set_defaults(func=_new)
 

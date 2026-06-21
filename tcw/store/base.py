@@ -196,6 +196,7 @@ class WorkItem:
     type: str = ""                  # optional recursion sugar; only value: "epic"
     worktree: str = ""              # node-relative worktree path (start --worktree)
     branch: str = ""                # work branch name (start --worktree)
+    parent: str = ""                # slug of the parent item; "" == top-level (node relation)
 
 
 def topo_order(items: list[WorkItem]) -> list[WorkItem]:
@@ -258,7 +259,9 @@ class WorkStore(ABC):
 
     @abstractmethod
     def create(self, title: str, created: str | None = None, body: str = "",
-               priority: int | None = None) -> WorkItem: ...
+               priority: int | None = None, parent: str | None = None) -> WorkItem:
+        """Create an item. With `parent` (a slug), create it as a child of that
+        item — an abstract node relation; the adapter realizes the nesting."""
 
     @abstractmethod
     def get(self, slug: str) -> WorkItem | None:

@@ -716,16 +716,39 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 class FsWorkStore(FsTreeStore, WorkStore):
     """`WorkStore` over `docs/work/` — the filesystem-as-state-machine (Phase 5).
 
-    Status is the parent directory; a transition is a `git mv` of the item
-    folder. The stable id is the slug; `_find` resolves it by bounded glob.
+    Status is the top-level status folder an item lives under; a transition is a
+    `git mv` of the item folder. The stable id is the slug; an item folder is any
+    dir holding a `state.yaml`, found at any nesting depth — a child item is a
+    folder nested inside its parent's (the node relation, derived from nesting).
     """
     COMPONENT = "work"
+
+    # -- discovery (state.yaml-keyed, depth-agnostic) --
+
+    def _item_dirs(self) -> list[Path]:
+        """Every item folder (dir with a `state.yaml`), at any depth. Sorted by
+        path so a parent precedes its children."""
+        return sorted(p.parent for p in self.root.rglob("state.yaml"))
+
+    def _status_of(self, d: Path) -> str:
+        """Status = the first path component under the work root (`backlog/p/c`
+        → `backlog`), so a nested child reports its top-level status folder."""
+        return d.relative_to(self.root).parts[0]
+
+    def _parent_slug(self, d: Path) -> str:
+        """Parent = the nearest `state.yaml`-bearing ancestor's name; "" if the
+        nearest ancestor is a status folder (the relation derived from nesting)."""
+        anc = d.parent
+        while anc != self.root and self.root in anc.parents:
+            if (anc / "state.yaml").exists():
+                return anc.name
+            anc = anc.parent
+        return ""
 
     # -- slug resolution (the stable-id resolver, A.5) --
 
     def _find(self, slug: str) -> Path | None:
-        matches = [self.root / s / slug for s in self.STATUSES
-                   if (self.root / s / slug).is_dir()]
+        matches = [d for d in self._item_dirs() if d.name == slug]
         if len(matches) > 1:
             raise MultipleMatch(f"slug resolves to {len(matches)} items: {slug}")
         return matches[0] if matches else None
@@ -751,17 +774,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         except yaml.YAMLError:
             return {}
 
-    def get(self, slug: str) -> WorkItem | None:
-        d = self._find(slug)
-        if d is None:
-            return None
+    def _item_from_dir(self, d: Path) -> WorkItem:
         state = self._safe_yaml(d / "state.yaml")
         content = d / "content.md"
         caps = d / "capabilities.yaml"
         return WorkItem(
-            slug=slug,
-            title=state.get("title", slug),
-            status=d.parent.name,
+            slug=d.name,
+            title=state.get("title", d.name),
+            status=self._status_of(d),
             phase=state.get("phase", ""),
             created=state.get("created", ""),
             resolution=state.get("resolution"),
@@ -773,16 +793,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
             type=state.get("type", ""),
             worktree=state.get("worktree", ""),
             branch=state.get("branch", ""),
+            parent=self._parent_slug(d),
         )
 
+    def get(self, slug: str) -> WorkItem | None:
+        d = self._find(slug)
+        return self._item_from_dir(d) if d is not None else None
+
     def query(self, status: str | None = None) -> list[WorkItem]:
-        statuses = self.STATUSES if status is None else [status]
-        items: list[WorkItem] = []
-        for s in statuses:
-            sd = self.root / s
-            if sd.is_dir():
-                items += [self.get(d.name) for d in sorted(sd.iterdir()) if d.is_dir()]
-        return items
+        items = [self._item_from_dir(d) for d in self._item_dirs()]
+        return [i for i in items if status is None or i.status == status]
 
     def dod_checklist(self) -> list[str]:
         p = self.root / "dod.yaml"
@@ -797,10 +817,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # -- writes --
 
     def create(self, title: str, created: str | None = None, body: str = "",
-               priority: int | None = None) -> WorkItem:
+               priority: int | None = None, parent: str | None = None) -> WorkItem:
         created = created or date.today().isoformat()
         slug = self._unique_slug(created, title)
-        d = self.root / "backlog" / slug
+        if parent:
+            pd = self._find(parent)
+            if pd is None:
+                raise ValueError(f"no such parent work item: {parent}")
+            d = pd / slug                          # child nests inside the parent
+        else:
+            d = self.root / "backlog" / slug
         d.mkdir(parents=True)
         (d / "content.md").write_text(
             f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
