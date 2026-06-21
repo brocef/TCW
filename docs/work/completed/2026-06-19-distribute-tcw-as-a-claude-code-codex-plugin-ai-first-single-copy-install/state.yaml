@@ -2,6 +2,12 @@ slug: 2026-06-19-distribute-tcw-as-a-claude-code-codex-plugin-ai-first-single-co
 title: Distribute tcw as a Claude Code / Codex plugin (AI-first single-copy install)
 phase: ''
 created: '2026-06-19'
-resolution: null
+resolution: done
 blocked_by:
 - slug: 2026-06-19-skill-layer-capabilities-process-work-spec-3
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered

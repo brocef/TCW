@@ -1,0 +1,19 @@
+{
+  "name": "tcw",
+  "interface": {
+    "displayName": "tcw"
+  },
+  "plugins": [
+    {
+      "name": "tcw",
+      "source": {
+        "source": "local",
+        "path": "./plugins/tcw"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

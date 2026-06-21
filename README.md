@@ -94,6 +94,35 @@ load-bearing assumptions of the model. The full rules live in
 
 ## Install
 
+### As a plugin (recommended)
+
+In **Claude Code**:
+
+```
+/plugin marketplace add brocef/TCW
+/plugin install tcw
+/tcw-init        # installs the `tcw` CLI from the plugin's own clone (via pipx)
+```
+
+This ships the `tcw-work`, `tcw-capabilities`, and `tcw-plugin` skills plus the
+`/tcw-init` and `/tcw-doctor` commands. `/tcw-init` puts the `tcw` CLI on your
+PATH from the plugin's *own clone*, so there's one copy — **don't also
+`pip install tcw` separately**, or the two can drift (`/tcw-doctor` detects this
+and re-points). Run `/tcw-doctor` any time `tcw` goes missing or a plugin update
+leaves it stale.
+
+In **Codex** (no slash commands — skills only):
+
+```bash
+codex plugin marketplace add brocef/TCW --ref main
+codex plugin add tcw@tcw
+```
+
+Then ask the agent to run the **`tcw-plugin`** setup — it installs the `tcw` CLI
+from the plugin clone the same way `/tcw-init` does.
+
+### As a Python package
+
 ```sh
 pipx install tcw            # once published — recommended (isolated, on PATH)
 pip install -e .            # development install from a clone
@@ -280,7 +309,7 @@ runs once the branch is integrated and tears the worktree down.
 
 ## Skills — the judgment layer
 
-The CLI is the *mechanism*; two skills in [`skills/`](skills/) are the *judgment*
+The CLI is the *mechanism*; three skills in [`skills/`](skills/) are the *judgment*
 that drives it (the work↔capability lifecycle the tool only enforces structurally):
 
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — triage a `docs/work/inbox`, plan a
@@ -289,9 +318,12 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
 - **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
   changes` planning gate, contradiction-detection, the `Missing → Supported`
   ledger flip at completion, and product-layer wording coordination.
+- **[`tcw-plugin`](skills/tcw-plugin/SKILL.md)** — install/repair the `tcw` CLI
+  from the plugin's own clone (pipx); the single source of the `/tcw-init` and
+  `/tcw-doctor` procedure, and the Codex shim for them.
 
-They name `tcw …` commands and never reimplement tool logic — mechanism stays in
-the binary, judgment in the skills.
+They name `tcw …` commands (and, for `tcw-plugin`, `pipx`) and never reimplement
+tool logic — mechanism stays in the binary, judgment in the skills.
 
 ---
 

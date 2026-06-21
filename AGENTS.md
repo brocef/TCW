@@ -53,4 +53,12 @@ Before reporting any code change complete, invoke the `skill-cefailures:document
 
 ## Versioning
 
-The version string is **duplicated** across `pyproject.toml` (`version`) and `tcw/__init__.py` (`__version__`) — a release bumps *both* in lockstep, not just `pyproject.toml`. Keep them identical, and fold them into the documentation-sync `cut-version` flow.
+The version string is **duplicated across 5 files** — a release bumps *all* of them in lockstep, not just `pyproject.toml`. Keep them identical, and fold them into the documentation-sync `cut-version` flow. `tests/test_plugin_manifests.py` guards that they agree.
+
+1. `pyproject.toml` — `project.version`
+2. `tcw/__init__.py` — `__version__`
+3. `.claude-plugin/plugin.json` — `version`
+4. `.claude-plugin/marketplace.json` — `plugins[0].version`
+5. `.codex-plugin/plugin.json` — `version`
+
+(`.agents/plugins/marketplace.json` deliberately carries **no** version — don't add one.)

@@ -19,3 +19,10 @@ dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 include = ["tcw*"]
+exclude = ["plugins*"]
+
+[tool.pytest.ini_options]
+# `plugins/tcw` is a symlink back to the repo root (the Codex marketplace pointer);
+# without these, collection recurses through it infinitely.
+testpaths = ["tests"]
+norecursedirs = ["plugins", ".venv", "build", "dist", "*.egg-info"]
