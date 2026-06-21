@@ -246,9 +246,11 @@ tcw work complete "$slug" --resolution done --confirm --force   # override block
 tcw work drop some-slug                # delete an inbox|backlog item
 ```
 
-The **board** (`tcw work list`) shows the live columns (inbox, backlog, active)
-and hides completed items by default — pass `--status completed` to list them or
-`--all` for everything. It sorts by priority first (higher integer above lower,
+The **board** (`tcw work list`) prints a row per item —
+`slug  status  phase  priority  title` (priority is the integer, or `-` when
+unspecified). It shows the live columns (inbox, backlog, active) and hides
+completed items by default — pass `--status completed` to list them or `--all`
+for everything. It sorts by priority first (higher integer above lower,
 unspecified-priority items keeping creation order), then topologically — blockers
 appear before the items they block, since a priority preference can't jump a hard
 dependency — and annotates blocked items with their unresolved blockers.

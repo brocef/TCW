@@ -26,3 +26,9 @@ category, with commit hash ranges so entries trace back to source.
   `--status` is honored as-is (`--status completed` still lists them); new
   `--all` flag re-includes completed. Filtering is in the CLI `_list` layer;
   `WorkStore.board()`/`query()` semantics are unchanged.
+
+## Changed (7772066..693df43)
+
+- `tcw work list` rows gain a **priority** column between `phase` and `title`
+  (`slug  status  phase  priority  title`); shows the int or `-` when
+  unspecified. CLI presentation only.
