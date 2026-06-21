@@ -405,3 +405,47 @@ def test_cli_new_and_edit_priority_reorders_list(tmp_path, monkeypatch):
     assert main(["work", "edit", a.slug, "--priority", "9"]) == 0
     assert FsWorkStore.open(root).get(a.slug).priority == 9
     assert [i.slug for i in FsWorkStore.open(root).board(status="backlog")][0] == a.slug
+
+
+# ── list: completed hidden by default ────────────────────────────────────────
+
+def _make_completed(st):
+    item = st.create("Done thing", created="2026-01-01")
+    st.start(item.slug)
+    st.complete(item.slug, "done", [])
+    return item
+
+
+def test_cli_list_hides_completed_by_default(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    live = st.create("Live one", created="2026-01-02")
+    done = _make_completed(st)
+    assert main(["work", "list"]) == 0
+    out = capsys.readouterr().out
+    assert live.slug in out
+    assert done.slug not in out                 # completed hidden by default
+
+
+def test_cli_list_status_completed_still_shows(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    done = _make_completed(st)
+    assert main(["work", "list", "--status", "completed"]) == 0
+    assert done.slug in capsys.readouterr().out  # explicit filter honored
+
+
+def test_cli_list_all_includes_completed(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    live = st.create("Live one", created="2026-01-02")
+    done = _make_completed(st)
+    assert main(["work", "list", "--all"]) == 0
+    out = capsys.readouterr().out
+    assert live.slug in out and done.slug in out  # --all = full board

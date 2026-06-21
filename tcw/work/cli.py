@@ -165,7 +165,10 @@ def _list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    for item in st.board(status=args.status):
+    items = st.board(status=args.status)
+    if args.status is None and not args.all:
+        items = [i for i in items if i.status != "completed"]
+    for item in items:
         blockers = st.unresolved_blockers(item)
         suffix = f"\tblocked-by: {', '.join(blockers)}" if blockers else ""
         print(f"{item.slug}\t{item.status}\t{item.phase or '-'}\t{item.title}{suffix}")
@@ -345,8 +348,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
     pn.set_defaults(func=_new)
 
-    pl = g.add_parser("list", help="the board")
+    pl = g.add_parser("list", help="the board (hides completed unless --status/--all)")
     pl.add_argument("--status")
+    pl.add_argument("--all", action="store_true", help="include completed items")
     pl.set_defaults(func=_list)
 
     psh = g.add_parser("show", help="resolve slug → item; print state + body")
