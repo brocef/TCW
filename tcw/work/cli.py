@@ -160,6 +160,9 @@ def _new(args: argparse.Namespace) -> int:
     if args.initiative:
         st.set_field(item.slug, "initiative", args.initiative)
     print(item.slug)
+    if not args.epic:                         # epic's next step is delegate, not start
+        print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
+              file=sys.stderr)
     return rc
 
 
@@ -219,6 +222,11 @@ def _path(args: argparse.Namespace) -> int:
     return 0
 
 
+def _complete_hint(slug: str) -> None:
+    print(f"→ next: when done & verified, run "
+          f"`tcw work complete {slug} --resolution done --confirm`", file=sys.stderr)
+
+
 def _start(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -230,6 +238,7 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     if not args.worktree:
         print(f"started {args.slug}")
+        _complete_hint(args.slug)
         return 0
     node = st.node_root
     ensure_worktree_ignored(node)
@@ -242,6 +251,7 @@ def _start(args: argparse.Namespace) -> int:
         print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
         return 1
     print(f"started {args.slug} → worktree {wt}")
+    _complete_hint(args.slug)
     return 0
 
 

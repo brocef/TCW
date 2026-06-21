@@ -314,6 +314,31 @@ def test_cli_new_blocked_by_attach_failure_returns_nonzero(tmp_path, monkeypatch
     assert (root / "docs/work/backlog" / out).is_dir()      # item still created + slug printed
 
 
+def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "new", "A"]) == 0
+    new_out = capsys.readouterr()
+    slug = new_out.out.strip()
+    assert "\n" not in slug                                  # stdout is just the slug…
+    assert "tcw work start" in new_out.err and slug in new_out.err   # …hint is on stderr
+
+    assert main(["work", "start", slug]) == 0
+    start_out = capsys.readouterr()
+    assert start_out.out.strip() == f"started {slug}"        # stdout unchanged
+    assert "tcw work complete" in start_out.err and slug in start_out.err
+
+
+def test_cli_new_epic_omits_start_hint(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "E", "--epic"]) == 0         # epic's next step is delegate
+    assert "tcw work start" not in capsys.readouterr().err
+
+
 def test_cli_edit_ambiguous_slug_errors(tmp_path, monkeypatch):
     from tcw.cli import main
     root = node(tmp_path)

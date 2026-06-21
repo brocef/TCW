@@ -15,6 +15,13 @@ Fill the item's `content.md` under `## Product changes` / `## Technical changes`
 
 ## The lifecycle handshake
 
+**You drive the transitions — the tool never moves an item for you, so its status is only as accurate as you keep it.** Two transitions are mandatory and the easy ones to forget:
+
+- **Before you write the first line of code for an item, run `tcw work start <slug>`.** If you ever notice you're editing code while the item is still in `backlog`, you skipped this — stop and start it.
+- **The moment the work is done and verified, run `tcw work complete <slug> …`.** Don't leave a shipped item sitting in `active`.
+
+Keep status in step *as you go*; don't batch the transitions at the end. The per-command detail:
+
 - **`tcw work new`** — declare the delta; for a product delta, record `Missing` capabilities (tcw-capabilities).
 - **`tcw work start <slug>`** — when planning concludes and implementation begins, move the item to active. **This transition is the first implementation commit** (AGENTS.md) — commit the `start` move (with the committed `spec.md`/`plan.md`) before the first code change. Add `--worktree` to isolate the item's code in its own git worktree + branch (transitions stay on the primary checkout; edits ride the work branch and merge back).
 - **during `active`** — on any capability change, run contradiction-detection (tcw-capabilities).
