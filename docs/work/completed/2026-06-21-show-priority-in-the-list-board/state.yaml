@@ -2,5 +2,11 @@ slug: 2026-06-21-show-priority-in-the-list-board
 title: Show priority in the list board
 phase: ''
 created: '2026-06-21'
-resolution: null
+resolution: done
 priority: null
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
