@@ -1,0 +1,3 @@
+# Capability deltas this work item lands (work→capability back-pointers).
+changed:
+  - cli#scaffold-the-doc-trees   # also reachable as `tcw <component> init`
