@@ -52,7 +52,9 @@ Before reporting any code change complete, invoke the `skill-cefailures:document
 
 ## Versioning
 
-The version string is **duplicated across 5 files** — a release bumps *all* of them in lockstep, not just `pyproject.toml`. Keep them identical, and fold them into the documentation-sync `cut-version` flow. `tests/test_plugin_manifests.py` guards that they agree.
+The version string is **duplicated across 5 files** — a release bumps *all* of them in lockstep, not just `pyproject.toml`. Keep them identical. `tests/test_plugin_manifests.py` guards that they agree.
+
+**Cut a release with `python scripts/cut_version.py <patch|minor|major|X.Y.Z>`** — it bumps all 5 files, rotates `docs/{changelogs,release-notes}/upcoming.md` → `v{version}.md` (recreating fresh `upcoming.md`), commits, and tags. It aborts on version drift; it does **not** push (publishing stays a human step). Write the changelog/release-note entries into `upcoming.md` *before* running it. The 5 files:
 
 1. `pyproject.toml` — `project.version`
 2. `tcw/__init__.py` — `__version__`
