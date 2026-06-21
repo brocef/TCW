@@ -47,3 +47,10 @@ As a user, I run `tcw work complete <slug> --resolution <r>`; the tool checks fo
 **Subject:** work-item/transition
 
 As a user, I run `tcw work drop <slug>` to delete an inbox or backlog item that won't be done.
+
+## Decompose a work item into children
+**Status:** Missing
+**Subject:** work-item
+**Planning doc:** 2026-06-21-nested-work-items
+
+As a user, I run `tcw work new "<title>" --parent <slug>` to create a child work item nested inside an existing item, so a large item can be broken into smaller ones that travel with it. `tcw work list` shows children indented under their parents. A child shares its parent's status by living inside it; starting or completing the parent carries its children along, and transitioning a child on its own promotes it to a top-level item.
