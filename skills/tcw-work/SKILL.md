@@ -1,6 +1,6 @@
 ---
 name: tcw-work
-description: Use when starting, continuing, triaging, or decomposing tcw work items — when you face a docs/work/inbox to process, are planning a change, need to start or complete an item, are resuming an active item across sessions, or are splitting work into a cross-node epic. Drives the `tcw work` CLI; does not reimplement it.
+description: Use when starting, continuing, triaging, or decomposing tcw work items — when you face a docs/work/inbox to process, are planning a change, need to start or complete an item, are resuming an active item across sessions, want to break a large item into child items (`tcw work new --parent`) so no item is too large, or are coordinating orchestrator-level work across sub-project nodes via a cross-node epic. Drives the `tcw work` CLI; does not reimplement it.
 ---
 
 # Driving `tcw work`
@@ -35,17 +35,69 @@ Fill the item's `content.md` under `## Product changes` / `## Technical changes`
 
 `tcw work list --status active` → `tcw work show <slug>` → read the item's `content.md` / `spec.md` / `plan.md`. For an epic, `tcw work reconcile <slug>` to refresh the rollup before choosing the next action.
 
-## Decompose into a cross-node epic
+## Keep items small: decompose into child items
 
-1. `tcw work new --epic` in the orchestrator node (the epic).
-2. `tcw work delegate <child> "<slice title>"` for each child node — or have each child run process-inbox and `tcw work new --initiative <epic-slug>`.
-3. `tcw work reconcile <epic-slug>` to consolidate child progress into the epic's rollup.
+**No single work item should be too large.** When planning reveals an item is
+big — it would touch many subsystems, span several sessions, or bundle loosely
+related concerns — break it into **child items nested under it**, and whenever
+the user asks you to split an item, do so the same way. This is the *intra-node*
+decomposition path: one item, one repo, broken into smaller pieces that travel
+with the parent.
+
+```
+tcw work new "<sub-item title>" --parent <parent-slug>
+```
+
+- The child's folder is created **inside** the parent's folder; `tcw work list`
+  shows children indented under their parent.
+- A child inherits the parent's status by living inside it. `tcw work start`/
+  `complete` on the **parent** carries its children along; transitioning a
+  **child** on its own promotes it to a top-level item (it de-nests).
+- Decompose at *planning* time (in the parent's `plan.md`, list the children you
+  intend to spin off), then create them. Each child gets its own
+  `content.md`/`spec.md`/`plan.md` as it's planned — the parent stays a thin
+  umbrella.
+
+Reach for this **before** an item grows unwieldy. A parent with three focused
+children beats one item whose `plan.md` has fifteen tasks.
+
+## Orchestrator-level work: coordinate across sub-projects
+
+When work spans **separate sub-project repos** (child *nodes* — see
+`tcw work nodes`), the unit of coordination is a **cross-node epic** at the
+orchestrator node, not a nested child. Use this path when the slices live in
+different repos and progress independently; use `--parent` children when the
+whole thing lives in one repo.
+
+1. **Open the epic** at the orchestrator node:
+   `tcw work new --epic "<epic title>"` → note its slug.
+2. **Hand each slice down** to the owning sub-project:
+   `tcw work delegate <child-node> "<slice title>" --initiative <epic-slug>` —
+   this drops a request (with `from:`/`initiative:` front-matter) into that
+   child node's `inbox/`. The orchestrator never writes into a child's tracking
+   tree directly; the child agent runs process-inbox and
+   `tcw work new --initiative <epic-slug>` to adopt the slice.
+3. **Each sub-project works its slice independently**, linking its own
+   capabilities. Product-layer wording is coordinated over the inbox channel
+   (`tcw work escalate "capability wording: …"`) — **non-blocking**; never wait
+   on a reply (tcw-capabilities).
+4. **A sub-project escalates up** when it needs the orchestrator:
+   `tcw work escalate "<title>"` writes into the parent node's `inbox/`.
+5. **Roll up progress** from the orchestrator:
+   `tcw work reconcile <epic-slug>` scans every node for
+   `initiative == <epic-slug>` and writes a consolidated table (node, slug,
+   status, blockers, next-ready) into the epic's `content.md`. Re-run it to
+   refresh before deciding the next move.
+
+**Which path?** Same repo, one big item → `--parent` children. Multiple
+sub-project repos → an `--epic` + `delegate`/`--initiative`/`reconcile`.
 
 ## Quick reference
 
 | Goal | Command |
 |---|---|
 | triage an inbox doc | read → `tcw work new "<title>" [--initiative <slug>]` (pipe stripped body) → `git rm` the doc |
+| split an item (same repo) | `tcw work new "<sub>" --parent <slug>` (child nests under it; shows indented in `list`) |
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
 | see the board | `tcw work list [--status active]` (hides completed; `--all` to include; sorts by priority, then topologically) |

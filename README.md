@@ -230,6 +230,7 @@ slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
                                        # create with blockers pre-attached
 tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
+tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the parent's folder
 tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column
 tcw work list --all                    # include completed items too
@@ -257,6 +258,14 @@ for everything. It sorts by priority first (higher integer above lower,
 unspecified-priority items keeping creation order), then topologically — blockers
 appear before the items they block, since a priority preference can't jump a hard
 dependency — and annotates blocked items with their unresolved blockers.
+
+A large item can be **decomposed into child items** with `tcw work new
+"<title>" --parent <slug>`: the child's folder is created inside the parent's,
+and `tcw work list` renders children indented under their parent. A child shares
+its parent's status by living inside it — starting or completing the parent
+carries its children along, while transitioning a child on its own promotes it
+to a top-level item. (That keeps any one item small; for work spanning *separate
+repos*, use a cross-node epic instead — see below.)
 
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted
