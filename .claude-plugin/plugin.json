@@ -1,6 +1,6 @@
 {
   "name": "tcw",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project, with skills that drive the tcw CLI.",
   "author": {
     "name": "Brian Cefali"
