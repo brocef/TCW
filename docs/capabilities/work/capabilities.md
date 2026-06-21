@@ -49,7 +49,7 @@ As a user, I run `tcw work complete <slug> --resolution <r>`; the tool checks fo
 As a user, I run `tcw work drop <slug>` to delete an inbox or backlog item that won't be done.
 
 ## Decompose a work item into children
-**Status:** Missing
+**Status:** Supported
 **Subject:** work-item
 **Planning doc:** 2026-06-21-nested-work-items
 
