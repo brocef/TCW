@@ -2,5 +2,11 @@ slug: 2026-06-21-deterministic-version-cut-script
 title: Deterministic version-cut script
 phase: ''
 created: '2026-06-21'
-resolution: null
+resolution: done
 priority: null
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
