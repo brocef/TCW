@@ -2,5 +2,11 @@ slug: 2026-06-21-explicit-lifecycle-transition-cues-for-start-complete-skill-cli
 title: Explicit lifecycle-transition cues for start/complete (skill + CLI)
 phase: ''
 created: '2026-06-21'
-resolution: null
+resolution: done
 priority: null
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
