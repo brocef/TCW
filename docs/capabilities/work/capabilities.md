@@ -10,7 +10,13 @@ As a user, I run `tcw work new "<title>"` (with an optional piped body) to creat
 **Status:** Supported
 **Subject:** work-item
 
-As a user, I run `tcw work list` (optionally `--status`) to see every work item with its slug, status, phase, and title in topological order (blockers appear before the items they block). Items with unresolved blockers are annotated with their blocker slugs.
+As a user, I run `tcw work list` (optionally `--status`) to see every work item with its slug, status, phase, and title. The board sorts by priority first (higher integer above lower; unspecified-priority items keep creation order, below the prioritized ones), then topologically — blockers appear before the items they block, since priority can't jump a hard dependency. Items with unresolved blockers are annotated with their blocker slugs.
+
+## Prioritize a work item
+**Status:** Supported
+**Subject:** work-item
+
+As a user, I assign an integer priority with `tcw work new "<title>" --priority N` or `tcw work edit <slug> --priority N` (higher integer = higher priority; the default is unspecified). Higher-priority items sort to the top of the board.
 
 ## Read a work item
 **Status:** Supported

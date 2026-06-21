@@ -48,7 +48,8 @@ Fill the item's `content.md` under `## Product changes` / `## Technical changes`
 | triage an inbox doc | read → `tcw work new "<title>" [--initiative <slug>]` (pipe stripped body) → `git rm` the doc |
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
-| see the board | `tcw work list [--status active]` |
+| see the board | `tcw work list [--status active]` (sorts by priority, then topologically) |
+| set priority | `tcw work new "<t>" --priority N` · `tcw work edit <slug> --priority N` (higher int = higher; default unspecified) |
 | topology | `tcw work nodes` |
 | epic rollup | `tcw work reconcile <epic-slug>` |
 | hand work down / up | `tcw work delegate <child> "<t>"` · `tcw work escalate "<t>"` |

@@ -226,7 +226,8 @@ tcw work init                          # docs/work/{inbox,backlog,active,complet
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
                                        # create with blockers pre-attached
-tcw work list                          # the board, topologically ordered (blockers first)
+tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
+tcw work list                          # the board: priority first, then topologically ordered
 tcw work list --status active          # filter to one column
 tcw work show "$slug"                  # state + body (includes blocked_by if set)
 tcw work path "$slug"                  # current filesystem path of the slug
@@ -237,15 +238,18 @@ tcw work start "$slug" --force         # override unresolved blockers
 tcw work edit "$slug" --blocked-by other-slug    # record a new blocker
 tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
 tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker
+tcw work edit "$slug" --priority 9               # set/raise integer priority
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers
 tcw work drop some-slug                # delete an inbox|backlog item
 ```
 
-The **board** (`tcw work list`) outputs items in topological order — blockers
-appear before the items they block — and annotates blocked items with their
-unresolved blockers.
+The **board** (`tcw work list`) sorts by priority first (higher integer above
+lower, unspecified-priority items keeping creation order), then topologically —
+blockers appear before the items they block, since a priority preference can't
+jump a hard dependency — and annotates blocked items with their unresolved
+blockers.
 
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted
