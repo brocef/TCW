@@ -9,7 +9,7 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
-    ensure_worktree_ignored, find_node, git_commit, git_root, init, parent_node,
+    ensure_worktree_ignored, find_node, git_commit, parent_node,
     remove_worktree,
 )
 from tcw.work.recursion import delegate, escalate, reconcile
@@ -132,13 +132,8 @@ def _escalate(args: argparse.Namespace) -> int:
 
 
 def _init(args: argparse.Namespace) -> int:
-    root = git_root()
-    if root is None:
-        print("tcw work init: not inside a git repository. Run `git init` first.", file=sys.stderr)
-        return 1
-    init(["work"], root)
-    print(f"Initialized docs/work/ under {root}")
-    return 0
+    from tcw.cli import run_init      # function-local: top-level cli imports this module
+    return run_init([NAME])
 
 
 def _new(args: argparse.Namespace) -> int:

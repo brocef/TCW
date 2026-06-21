@@ -179,3 +179,16 @@ def test_cli_bare_path_is_show(tmp_path, monkeypatch, capsys):
     main(["taxonomy", "add", "Admin"])
     assert main(["taxonomy", "admin"]) == 0          # bare path → show
     assert "Admin" in capsys.readouterr().out
+
+
+def test_cli_taxonomy_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = tmp_path / "fresh"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    monkeypatch.chdir(root)
+    assert main(["taxonomy", "init"]) == 0
+    comp_out = capsys.readouterr().out
+    assert (root / "docs" / "taxonomy" / ".gitkeep").is_file()
+    assert main(["init", "taxonomy"]) == 0          # idempotent; same report
+    assert comp_out == capsys.readouterr().out

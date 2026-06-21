@@ -7,8 +7,13 @@ from tcw.store.base import AmbiguousRef, Term
 from tcw.store.fs import FsTaxonomyStore, find_node
 
 NAME = "taxonomy"
-SUBCOMMANDS = {"list", "add", "show", "rm", "search", "check"}
+SUBCOMMANDS = {"init", "list", "add", "show", "rm", "search", "check"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw taxonomy <path>` == `tcw taxonomy show <path>`
+
+
+def _init(args: argparse.Namespace) -> int:
+    from tcw.cli import run_init      # function-local: top-level cli imports this module
+    return run_init([NAME])
 
 
 def _store() -> FsTaxonomyStore | None:
@@ -133,6 +138,9 @@ def _check(args: argparse.Namespace) -> int:
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the nouns — domain terms")
     g = p.add_subparsers(dest="cmd", required=True)
+
+    g.add_parser("init", help="scaffold docs/taxonomy/ (mirror of `tcw init taxonomy`)") \
+        .set_defaults(func=_init)
 
     pl = g.add_parser("list", help="list terms as a tree, flagged by origin")
     pl.add_argument("--local", action="store_true", help="local terms only")

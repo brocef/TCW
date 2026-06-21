@@ -7,8 +7,13 @@ from tcw.store.base import Capability, RefError
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
 
 NAME = "capabilities"
-SUBCOMMANDS = {"list", "show", "add", "search", "check", "set"}
+SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <id>` == `tcw capabilities show <id>`
+
+
+def _init(args: argparse.Namespace) -> int:
+    from tcw.cli import run_init      # function-local: top-level cli imports this module
+    return run_init([NAME])
 
 
 def _store() -> FsCapabilitiesStore | None:
@@ -144,6 +149,9 @@ def _check(args: argparse.Namespace) -> int:
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the user stories — what a user can do")
     g = p.add_subparsers(dest="cmd", required=True)
+
+    g.add_parser("init", help="scaffold docs/capabilities/ (mirror of `tcw init capabilities`)") \
+        .set_defaults(func=_init)
 
     pl = g.add_parser("list", help="list capabilities, flagged by status")
     pl.add_argument("--status")

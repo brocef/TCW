@@ -230,3 +230,16 @@ def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
     assert main(["capabilities", "set", "routes/login", "--status", "Supported"]) == 0
     assert "Set" in capsys.readouterr().out
     assert FsCapabilitiesStore.open(root).get("routes/login").capabilities[0].status == "Supported"
+
+
+def test_cli_capabilities_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = tmp_path / "fresh"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "init"]) == 0
+    comp_out = capsys.readouterr().out
+    assert (root / "docs" / "capabilities" / ".gitkeep").is_file()
+    assert main(["init", "capabilities"]) == 0
+    assert comp_out == capsys.readouterr().out

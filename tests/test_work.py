@@ -467,3 +467,17 @@ def test_cli_list_shows_priority_column(tmp_path, monkeypatch, capsys):
     assert rows[hot.slug][3] == "7"
     assert rows[cold.slug][3] == "-"
     assert rows[hot.slug][4] == "Hot"                     # title still follows
+
+
+def test_cli_work_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = tmp_path / "fresh"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    monkeypatch.chdir(root)
+    assert main(["work", "init"]) == 0
+    comp_out = capsys.readouterr().out
+    for s in ("inbox", "backlog", "active", "completed"):
+        assert (root / "docs" / "work" / s / ".gitkeep").is_file()
+    assert main(["init", "work"]) == 0
+    assert comp_out == capsys.readouterr().out

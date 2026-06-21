@@ -19,12 +19,13 @@ _BUILT = [taxonomy_cli, capabilities_cli, work_cli]
 _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 
-def _cmd_init(args: argparse.Namespace) -> int:
+def run_init(components: list[str]) -> int:
+    """Scaffold `docs/<component>/` trees and report. Shared by the top-level
+    `tcw init` and each component's mirror `tcw <component> init`."""
     root = git_root()
     if root is None:
         print("tcw init: not inside a git repository. Run `git init` first.", file=sys.stderr)
         return 1
-    components = args.components or list(COMPONENTS)
     unknown = [c for c in components if c not in COMPONENTS]
     if unknown:
         print(f"tcw init: unknown component(s): {', '.join(unknown)}. "
@@ -35,6 +36,10 @@ def _cmd_init(args: argparse.Namespace) -> int:
     for p in created:
         print(f"  {p.relative_to(root)}")
     return 0
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    return run_init(args.components or list(COMPONENTS))
 
 
 def _not_yet(name: str):
