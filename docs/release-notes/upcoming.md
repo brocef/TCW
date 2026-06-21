@@ -17,3 +17,9 @@ The board (`tcw work list`) shows prioritized items first, highest number at the
 top. Items without a priority keep their usual order, below the prioritized ones.
 Priority never lets an item jump ahead of something that's blocking it.
 
+## A cleaner board by default
+
+`tcw work list` no longer clutters the board with finished work — completed items
+are hidden by default. To see them, filter with `tcw work list --status completed`,
+or pass `tcw work list --all` to show everything at once.
+

@@ -227,8 +227,9 @@ slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
                                        # create with blockers pre-attached
 tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
-tcw work list                          # the board: priority first, then topologically ordered
+tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column
+tcw work list --all                    # include completed items too
 tcw work show "$slug"                  # state + body (includes blocked_by if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
@@ -245,11 +246,12 @@ tcw work complete "$slug" --resolution done --confirm --force   # override block
 tcw work drop some-slug                # delete an inbox|backlog item
 ```
 
-The **board** (`tcw work list`) sorts by priority first (higher integer above
-lower, unspecified-priority items keeping creation order), then topologically —
-blockers appear before the items they block, since a priority preference can't
-jump a hard dependency — and annotates blocked items with their unresolved
-blockers.
+The **board** (`tcw work list`) shows the live columns (inbox, backlog, active)
+and hides completed items by default — pass `--status completed` to list them or
+`--all` for everything. It sorts by priority first (higher integer above lower,
+unspecified-priority items keeping creation order), then topologically — blockers
+appear before the items they block, since a priority preference can't jump a hard
+dependency — and annotates blocked items with their unresolved blockers.
 
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted

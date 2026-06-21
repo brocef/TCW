@@ -19,3 +19,10 @@ category, with commit hash ranges so entries trace back to source.
 - `WorkStore.board()` is now `topo_order(priority_order(query()))` — priority is
   the input order to the existing stable topological sort, so it sorts the board
   while a blocker still precedes what it blocks. No priorities set → identity.
+
+## Changed (f58af86..531e0e5)
+
+- `tcw work list` hides `completed` items by default (live columns only).
+  `--status` is honored as-is (`--status completed` still lists them); new
+  `--all` flag re-includes completed. Filtering is in the CLI `_list` layer;
+  `WorkStore.board()`/`query()` semantics are unchanged.
