@@ -10,7 +10,7 @@ As a user, I run `tcw work new "<title>"` (with an optional piped body) to creat
 **Status:** Supported
 **Subject:** work-item
 
-As a user, I run `tcw work list` to see work items with their slug, status, phase, priority (the integer, or `-` when unspecified), and title. By default the board shows the live columns (inbox, backlog, active) and hides completed items; I pass `--status <s>` to list one column (including `--status completed`), or `--all` to show everything. The board sorts by priority first (higher integer above lower; unspecified-priority items keep creation order, below the prioritized ones), then topologically — blockers appear before the items they block, since priority can't jump a hard dependency. Items with unresolved blockers are annotated with their blocker slugs.
+As a user, I run `tcw work list` to see work items as ` | `-delimited rows of slug, status, phase, priority (the integer, or `-` when unspecified), and title. By default the board shows the live columns (inbox, backlog, active) and hides completed items; I pass `--status <s>` to list one column (including `--status completed`), or `--all` to show everything. The board sorts by priority first (higher integer above lower; unspecified-priority items keep creation order, below the prioritized ones), then topologically — blockers appear before the items they block, since priority can't jump a hard dependency. Items with unresolved blockers are annotated with their blocker slugs.
 
 ## Prioritize a work item
 **Status:** Supported

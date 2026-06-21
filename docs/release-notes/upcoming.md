@@ -16,7 +16,8 @@ tcw work edit some-slug --priority 9
 The board (`tcw work list`) shows prioritized items first, highest number at the
 top, and prints each item's priority in its own column (`-` when none). Items
 without a priority keep their usual order, below the prioritized ones. Priority
-never lets an item jump ahead of something that's blocking it.
+never lets an item jump ahead of something that's blocking it. Board rows are now
+separated by ` | ` so the columns are easy to read.
 
 ## A cleaner board by default
 

@@ -32,3 +32,9 @@ category, with commit hash ranges so entries trace back to source.
 - `tcw work list` rows gain a **priority** column between `phase` and `title`
   (`slug  status  phase  priority  title`); shows the int or `-` when
   unspecified. CLI presentation only.
+
+## Changed (352b5e6..48b0798)
+
+- `tcw work list` rows are now ` | `-delimited instead of tab-separated
+  (`slug | status | phase | priority | title [| blocked-by: …]`), so field
+  boundaries are unambiguous. CLI presentation only.

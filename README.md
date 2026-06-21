@@ -246,8 +246,8 @@ tcw work complete "$slug" --resolution done --confirm --force   # override block
 tcw work drop some-slug                # delete an inbox|backlog item
 ```
 
-The **board** (`tcw work list`) prints a row per item —
-`slug  status  phase  priority  title` (priority is the integer, or `-` when
+The **board** (`tcw work list`) prints a `|`-delimited row per item —
+`slug | status | phase | priority | title` (priority is the integer, or `-` when
 unspecified). It shows the live columns (inbox, backlog, active) and hides
 completed items by default — pass `--status completed` to list them or `--all`
 for everything. It sorts by priority first (higher integer above lower,
