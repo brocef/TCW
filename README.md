@@ -137,11 +137,14 @@ symlink. Requires Python ≥ 3.11; the only runtime dependency is PyYAML.
 cd your-git-repo
 tcw init                    # scaffold docs/{taxonomy,capabilities,work}/
 tcw init taxonomy work      # …or just the components you name
+tcw work init               # …or per-component: same as `tcw init work`
 tcw --help                  # top-level groups: init | taxonomy | capabilities | work
 ```
 
 `tcw init` operates on the current git work-tree and refuses outside a git repo.
-Each component is a tree of docs under `docs/<component>/`.
+Each component is a tree of docs under `docs/<component>/`. Each component group
+also has its own `init` mirror — `tcw taxonomy init`, `tcw capabilities init`,
+`tcw work init` — identical to `tcw init <component>`.
 
 ---
 
