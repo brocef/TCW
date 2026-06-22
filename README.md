@@ -326,8 +326,10 @@ tcw work start "$slug" --worktree           # active on trunk + a git worktree/b
 ```
 
 Status transitions stay on the node's primary checkout (the board is always
-`ls active/`); in-flight edits live on the work branch and merge back. `complete`
-runs once the branch is integrated and tears the worktree down.
+`ls active/`); in-flight edits live on the work branch. `complete` merges that
+branch back into the primary checkout, then tears the worktree down — and if the
+merge conflicts it stops with the branch and worktree left intact, so committed
+work is never silently dropped.
 
 ---
 

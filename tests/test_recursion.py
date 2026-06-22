@@ -228,3 +228,64 @@ def test_complete_tears_down_worktree(tmp_path, monkeypatch, capsys):
                               capture_output=True, text=True).stdout.strip()
     assert branches == ""
     assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_complete_merges_worktree_branch_before_teardown(tmp_path, monkeypatch, capsys):
+    """Regression: complete must merge the work branch into the primary checkout
+    before deleting it — committed worktree work must land on the integration
+    branch, not become a dangling object (the data-loss bug)."""
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    monkeypatch.chdir(root)
+    from tcw.cli import main
+    main(["work", "new", "Ship"]); slug = capsys.readouterr().out.strip()
+    main(["work", "start", slug, "--worktree"]); capsys.readouterr()
+    wt = root / ".worktrees" / slug
+    # implementation commit I on work/<slug>: modify the tracked item doc AND add code
+    (wt / "docs" / "work" / "active" / slug / "content.md").write_text("worktree edit\n")
+    (wt / "feature.py").write_text("x = 1\n")
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "impl"], check=True)
+    impl = subprocess.run(["git", "-C", str(wt), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+
+    # the implementation commit is reachable on the primary branch
+    assert subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor",
+                           impl, "HEAD"]).returncode == 0
+    assert (root / "feature.py").read_text() == "x = 1\n"          # code integrated
+    assert not wt.exists()                                          # worktree torn down
+    branches = subprocess.run(["git", "-C", str(root), "branch", "--list", f"work/{slug}"],
+                              capture_output=True, text=True).stdout.strip()
+    assert branches == ""                                          # branch deleted (post-merge)
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):
+    """Fail closed: an unmergeable work branch must leave branch + worktree
+    intact, keep the item active, and not report completion."""
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    monkeypatch.chdir(root)
+    from tcw.cli import main
+    main(["work", "new", "Ship"]); slug = capsys.readouterr().out.strip()
+    main(["work", "start", slug, "--worktree"]); capsys.readouterr()
+    wt = root / ".worktrees" / slug
+    item_doc = ["docs", "work", "active", slug, "content.md"]
+    # diverging edits to the SAME tracked file → conflicting merge
+    (wt.joinpath(*item_doc)).write_text("worktree side\n")
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-am", "wt"], check=True)
+    (root.joinpath(*item_doc)).write_text("main side\n")
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-am", "main"], check=True)
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert "merge" in err and slug in err
+    # everything intact for manual resolution
+    branches = subprocess.run(["git", "-C", str(root), "branch", "--list", f"work/{slug}"],
+                              capture_output=True, text=True).stdout.strip()
+    assert branches != ""
+    assert wt.exists()
+    assert FsWorkStore.open(root).get(slug).status == "active"
+    assert not (root / ".git" / "MERGE_HEAD").exists()            # half-merge aborted

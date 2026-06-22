@@ -25,7 +25,7 @@ Keep status in step *as you go*; don't batch the transitions at the end. The per
 - **`tcw work new`** — declare the delta; for a product delta, record `Missing` capabilities (tcw-capabilities).
 - **`tcw work start <slug>`** — when planning concludes and implementation begins, move the item to active. **This transition is the first implementation commit** (AGENTS.md) — commit the `start` move (with the committed `spec.md`/`plan.md`) before the first code change. Add `--worktree` to isolate the item's code in its own git worktree + branch (transitions stay on the primary checkout; edits ride the work branch and merge back).
 - **during `active`** — on any capability change, run contradiction-detection (tcw-capabilities).
-- **`tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm`** — the final step. Reconcile capabilities first (the tcw-capabilities ledger flip), since the DoD "capabilities reconciled" item is acknowledged here. `--force` overrides unresolved blockers.
+- **`tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm`** — the final step. Reconcile capabilities first (the tcw-capabilities ledger flip), since the DoD "capabilities reconciled" item is acknowledged here. `--force` overrides unresolved blockers. For a `--worktree` item, `complete` **merges the work branch back** into the primary checkout before tearing it down, and **fails closed** on a merge conflict (branch + worktree left intact, item stays `active`) — resolve the conflict and re-run rather than `--force`ing past it.
 
 ## Resume (across sessions)
 

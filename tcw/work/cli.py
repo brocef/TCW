@@ -9,7 +9,7 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
-    ensure_worktree_ignored, find_node, git_commit, parent_node,
+    ensure_worktree_ignored, find_node, git_commit, merge_worktree, parent_node,
     remove_worktree,
 )
 from tcw.work.recursion import delegate, escalate, reconcile
@@ -312,6 +312,11 @@ def _complete(args: argparse.Namespace) -> int:
     if not args.confirm:
         print("Refused: re-run with --confirm once the checklist is satisfied.", file=sys.stderr)
         return 1
+    if has_worktree and branch:                       # merge-back before the rename/teardown
+        err = merge_worktree(st.node_root, branch)
+        if err:
+            print(f"tcw work complete: {err}", file=sys.stderr)
+            return 1
     try:
         st.complete(args.slug, args.resolution, dod_ack=checklist, force=args.force)
     except _ERRORS as e:

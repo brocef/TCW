@@ -164,6 +164,27 @@ def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
     return wt, branch
 
 
+def merge_worktree(node_root: Path, branch: str) -> str | None:
+    """Merge the work branch into the primary checkout's current branch — the
+    "merge-back on complete" half of the split-ownership model. Runs *before* the
+    active→completed rename so the merge sees the item docs still under
+    `active/<slug>/` (no rename/modify overlap). Fail closed: a missing branch is
+    a quiet no-op (e.g. a recovery re-run), any merge failure aborts the
+    half-merge and returns an error so teardown is skipped and the branch is left
+    intact. Returns None on success, else an error message."""
+    if subprocess.run(["git", "-C", str(node_root), "rev-parse", "--verify", "--quiet",
+                       f"refs/heads/{branch}"], capture_output=True).returncode != 0:
+        return None                                   # branch already gone — nothing to merge
+    r = subprocess.run(["git", "-C", str(node_root), "merge", "--no-edit", branch],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        subprocess.run(["git", "-C", str(node_root), "merge", "--abort"],
+                       capture_output=True, text=True)
+        return (f"merge of {branch} into the primary checkout failed; branch left "
+                f"intact — resolve and re-run:\n{(r.stderr or r.stdout).strip()}")
+    return None
+
+
 def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> list[str]:
     """Best-effort teardown (Spec 2 §3.4): `git worktree remove` refuses on a
     dirty worktree — the safety net against losing uncommitted work. Returns
@@ -173,7 +194,8 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
     r = subprocess.run(["git", "-C", str(node_root), "worktree", "remove", str(wt)],
                        capture_output=True, text=True)
     if r.returncode != 0:
-        warns.append(f"worktree remove failed for {slug}: {r.stderr.strip()}")
+        if "is not a working tree" not in r.stderr:   # already absent — tolerate quietly
+            warns.append(f"worktree remove failed for {slug}: {r.stderr.strip()}")
     elif branch:
         rb = subprocess.run(["git", "-C", str(node_root), "branch", "-D", branch],
                             capture_output=True, text=True)
