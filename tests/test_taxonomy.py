@@ -239,7 +239,7 @@ def test_cli_extends_add_and_rm(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     assert (consumer / "docs/taxonomy/config.yaml").exists()
     assert main(["taxonomy", "extends", "add", "shared", "../base"]) == 1   # duplicate → error exit
-    capsys.readouterr()
+    assert "already exists" in capsys.readouterr().err
     assert main(["taxonomy", "extends", "rm", "shared"]) == 0
 
 

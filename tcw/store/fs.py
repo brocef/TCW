@@ -414,6 +414,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         if target == self.root.resolve():
             raise ValueError("a taxonomy cannot extend itself")
         extends[alias] = ref
+        # Update in-memory config so a later add/rm in the same process sees this
+        # write; term *resolution* (self.extends) is load-time only — reopen to use.
         self.config["extends"] = extends
         cfg = self.root / "config.yaml"
         dump_yaml(cfg, self.config)
