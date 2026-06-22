@@ -104,8 +104,9 @@ In **Claude Code**:
 /tcw-init        # installs the `tcw` CLI from the plugin's own clone (via pipx)
 ```
 
-This ships the `tcw-work`, `tcw-capabilities`, and `tcw-plugin` skills plus the
-`/tcw-init` and `/tcw-doctor` commands. `/tcw-init` puts the `tcw` CLI on your
+This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, and `tcw-plugin`
+skills plus the `/tcw-init`, `/tcw-doctor`, `/tcw-taxonomy-init`, and
+`/tcw-capabilities-init` commands. `/tcw-init` puts the `tcw` CLI on your
 PATH from the plugin's *own clone*, so there's one copy — **don't also
 `pip install tcw` separately**, or the two can drift (`/tcw-doctor` detects this
 and re-points). Run `/tcw-doctor` any time `tcw` goes missing or a plugin update
@@ -168,14 +169,23 @@ tcw taxonomy list --local          # local terms only (hide imported)
 tcw taxonomy show admin/permission # read one term (or: tcw taxonomy admin/permission)
 tcw taxonomy search invoice        # match names + descriptions
 tcw taxonomy check                 # validate aliases + references
+
+tcw taxonomy extends add acme ../acme-shared   # import another repo's terms
+tcw taxonomy extends rm acme                   # drop the import
 ```
 
 A term's body comes from the argument or from **stdin** (`echo "..." | tcw
-taxonomy add Foo`). Taxonomies can **federate**: a `config.yaml` maps a
-consumer-chosen alias to a source taxonomy via `extends`, each alias is its own
-namespace, and there is **no silent merge** — a local `permission` and an
-imported `acme/permission` stay distinct. (Vocabulary is canonical-shared, so
-taxonomy federates *directly*, unlike capabilities.)
+taxonomy add Foo`). Taxonomies can **federate**: `tcw taxonomy extends add
+<alias> <repo-path>` maps a consumer-chosen alias to a source taxonomy (writing
+the `extends` map in `config.yaml`), each alias is its own namespace, and there
+is **no silent merge** — a local `permission` and an imported `acme/permission`
+stay distinct. (Vocabulary is canonical-shared, so taxonomy federates *directly*,
+unlike capabilities.) Local sibling-repo paths only; remote git/URL sources are
+not yet supported.
+
+To **bootstrap** a taxonomy or capabilities ledger on a project newly adopting
+TCW, run `/tcw-taxonomy-init` or `/tcw-capabilities-init`: the assistant studies
+your code, proposes a first draft, refines it with you, and writes it.
 
 ### `tcw capabilities` — the user stories
 
@@ -337,7 +347,7 @@ work is never silently dropped.
 
 ## Skills — the judgment layer
 
-The CLI is the *mechanism*; three skills in [`skills/`](skills/) are the *judgment*
+The CLI is the *mechanism*; four skills in [`skills/`](skills/) are the *judgment*
 that drives it (the work↔capability lifecycle the tool only enforces structurally):
 
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — triage a `docs/work/inbox`, plan a
@@ -345,7 +355,11 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
   resume an active item, and decompose work into a cross-node epic.
 - **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
   changes` planning gate, contradiction-detection, the `Missing → Supported`
-  ledger flip at completion, and product-layer wording coordination.
+  ledger flip at completion, product-layer wording coordination, and bootstrapping
+  a capabilities ledger (`/tcw-capabilities-init`).
+- **[`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)** — declaring domain terms,
+  `relatesTo` links, federating shared vocabulary (`tcw taxonomy extends`), and
+  bootstrapping a taxonomy from an existing codebase (`/tcw-taxonomy-init`).
 - **[`tcw-plugin`](skills/tcw-plugin/SKILL.md)** — install/repair the `tcw` CLI
   from the plugin's own clone (pipx); the single source of the `/tcw-init` and
   `/tcw-doctor` procedure, and the Codex shim for them.
