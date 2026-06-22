@@ -42,4 +42,4 @@ As a user, I run `tcw taxonomy check` to validate extends aliases and every rela
 **Gaps:** remote git/URL sources, version-pinning, and transitive (multi-level) extends are deferred to Phase 6; only local sibling-repo paths resolve today.
 **Subject:** namespace
 
-As a user, I declare `extends: { <alias>: <repo-path> }` in `docs/taxonomy/config.yaml` to import another repo's taxonomy under a namespace, so shared nouns mean the same thing everywhere.
+As a user, I run `tcw taxonomy extends add <alias> <repo-path>` (or declare `extends: { <alias>: <repo-path> }` in `docs/taxonomy/config.yaml`) to import another repo's taxonomy under a namespace, so shared nouns mean the same thing everywhere.
