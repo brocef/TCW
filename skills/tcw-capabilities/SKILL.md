@@ -33,6 +33,11 @@ A per-node agent does **not** read the orchestrator's `docs/capabilities/`. To g
 
 The protocol is **non-blocking** — never wait on a reply. If canonical wording isn't available when needed, fall back to in-repo evidence and mark the entry `TODO: confirm wording`.
 
+## Bootstrap (read on demand)
+
+To seed `docs/capabilities/` for a project newly adopting TCW (deep-dive the
+codebase → draft → refine with the user → write) → read [`docs/init.md`](docs/init.md).
+
 ## Quick reference
 
 | Goal | Command |
