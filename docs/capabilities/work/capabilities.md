@@ -4,7 +4,7 @@
 **Status:** Supported
 **Subject:** work-item
 
-As a user, I run `tcw work new "<title>"` (with an optional piped body) to create a backlog item; the tool prints its generated slug. I can pass `--blocked-by <refs>` (comma-separated slugs or external strings) to attach blockers at creation time.
+As a user, I run `tcw work new "<title>"` (with an optional piped body) to create a backlog item; the tool prints its generated slug (to stdout) and, to stderr, the path to the new item's `content.md` so I can open it for editing right away. I can pass `--blocked-by <refs>` (comma-separated slugs or external strings) to attach blockers at creation time.
 
 ## View the board
 **Status:** Supported

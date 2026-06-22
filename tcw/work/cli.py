@@ -160,6 +160,9 @@ def _new(args: argparse.Namespace) -> int:
     if args.initiative:
         st.set_field(item.slug, "initiative", args.initiative)
     print(item.slug)
+    body = st.body_path(item.slug)
+    if body is not None:
+        print(f"→ edit: {body}", file=sys.stderr)
     if not args.epic:                         # epic's next step is delegate, not start
         print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
               file=sys.stderr)

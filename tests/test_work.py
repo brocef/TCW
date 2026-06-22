@@ -37,6 +37,15 @@ def test_slug_generation_collision_and_immutability(tmp_path):
     assert st.get(a.slug).slug == a.slug               # ...slug is frozen
 
 
+def test_body_path_points_at_content_md(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    body = st.body_path(item.slug)
+    assert body == st.path(item.slug) / "content.md"
+    assert body.exists()
+    assert st.body_path("no-such-slug") is None
+
+
 def test_multiple_match_resolution_error(tmp_path):
     root = node(tmp_path)
     st = FsWorkStore.open(root)

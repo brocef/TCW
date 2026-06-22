@@ -778,6 +778,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def path(self, slug: str) -> Path | None:
         return self._find(slug)
 
+    def body_path(self, slug: str) -> Path | None:
+        d = self._find(slug)                          # content.md filename: FS realization, kept here
+        return d / "content.md" if d is not None else None
+
     def _unique_slug(self, created: str, title: str) -> str:
         base = f"{created}-{slugify(title)}"
         slug, n = base, 2

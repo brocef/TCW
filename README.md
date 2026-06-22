@@ -253,6 +253,8 @@ tcw work drop some-slug                # delete an inbox|backlog item
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
+`tcw work new` also prints an "→ edit: …/content.md" line (stderr) pointing at the
+new item's body so you can open it for editing right away.
 
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
 `slug | status | phase | priority | title` (priority is the integer, or `-` when
