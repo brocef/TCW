@@ -192,3 +192,39 @@ def test_cli_taxonomy_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     assert (root / "docs" / "taxonomy" / ".gitkeep").is_file()
     assert main(["init", "taxonomy"]) == 0          # idempotent; same report
     assert comp_out == capsys.readouterr().out
+
+
+# ── extends (federation) write path ───────────────────────────────────────────
+
+def test_extends_add_writes_map_and_resolves(tmp_path):
+    base = node(tmp_path, "base")
+    write_term(base, "widget", name="Widget")
+    consumer = node(tmp_path, "consumer")
+    FsTaxonomyStore.open(consumer).extends_add("shared", "../base")
+    st = FsTaxonomyStore.open(consumer)            # reopen to load the new federation
+    assert "shared/widget" in {t.qualified for t in st.list()}
+    assert st.get("shared/widget").name == "Widget"
+
+
+def test_extends_add_refuses(tmp_path):
+    node(tmp_path, "base")
+    consumer = node(tmp_path, "consumer")
+    FsTaxonomyStore.open(consumer).extends_add("shared", "../base")
+    st = FsTaxonomyStore.open(consumer)
+    with pytest.raises(ValueError):               # duplicate alias
+        st.extends_add("shared", "../base")
+    with pytest.raises(ValueError):               # missing target repo
+        st.extends_add("nope", "../does-not-exist")
+    with pytest.raises(ValueError):               # self-reference
+        st.extends_add("self", ".")
+
+
+def test_extends_remove(tmp_path):
+    node(tmp_path, "base")
+    consumer = node(tmp_path, "consumer")
+    FsTaxonomyStore.open(consumer).extends_add("shared", "../base")
+    st = FsTaxonomyStore.open(consumer)
+    st.extends_remove("shared")
+    assert "shared" not in (FsTaxonomyStore.open(consumer).config.get("extends") or {})
+    with pytest.raises(ValueError):               # absent alias
+        FsTaxonomyStore.open(consumer).extends_remove("shared")

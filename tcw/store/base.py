@@ -71,6 +71,18 @@ class TaxonomyStore(ABC):
     def check(self) -> list[str]:
         """Validate the taxonomy; return a list of problems (empty == clean)."""
 
+    @abstractmethod
+    def extends_add(self, alias: str, ref: str) -> None:
+        """Declare federation: this taxonomy extends another store under `alias`.
+
+        `ref` is opaque to the interface (a sibling-repo path for the FS adapter,
+        a URL/id for a remote one). Refuse a duplicate alias or an unresolvable ref.
+        """
+
+    @abstractmethod
+    def extends_remove(self, alias: str) -> None:
+        """Drop a federation alias. Refuse if it isn't present."""
+
 
 # ── Capabilities (Phase 3) ───────────────────────────────────────────────────
 

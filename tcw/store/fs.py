@@ -404,6 +404,34 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                              f"(edit it at its source)")
         self._rm(self.root / term.slug)
 
+    def extends_add(self, alias: str, ref: str) -> None:
+        extends = dict(self.config.get("extends") or {})
+        if alias in extends:
+            raise ValueError(f"extends alias already exists: {alias} (rm it first)")
+        target = (self.node_root / ref / "docs" / "taxonomy").resolve()
+        if not target.is_dir():
+            raise ValueError(f"no docs/taxonomy/ under {ref}")
+        if target == self.root.resolve():
+            raise ValueError("a taxonomy cannot extend itself")
+        extends[alias] = ref
+        self.config["extends"] = extends
+        cfg = self.root / "config.yaml"
+        dump_yaml(cfg, self.config)
+        self._stage(cfg)
+
+    def extends_remove(self, alias: str) -> None:
+        extends = dict(self.config.get("extends") or {})
+        if alias not in extends:
+            raise ValueError(f"no such extends alias: {alias}")
+        del extends[alias]
+        if extends:
+            self.config["extends"] = extends
+        else:
+            self.config.pop("extends", None)
+        cfg = self.root / "config.yaml"
+        dump_yaml(cfg, self.config)
+        self._stage(cfg)
+
     def relators(self, slug: str) -> list[str]:
         """Local term slugs whose `relatesTo` points at `slug` (for rm warnings)."""
         return [t.slug for t in self.list(local_only=True)
