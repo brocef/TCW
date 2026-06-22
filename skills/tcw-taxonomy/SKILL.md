@@ -1,0 +1,51 @@
+---
+name: tcw-taxonomy
+description: Use when planning, seeding, or maintaining a project's domain terms — declaring nouns, linking related terms, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase. Drives `tcw taxonomy`; the capabilities axis is tcw-capabilities, the work axis is tcw-work.
+---
+
+# The taxonomy process
+
+**What it is:** the taxonomy axis is the *nouns* — the canonical domain terms a
+project reasons about (its ubiquitous language). It exists so the other axes point
+at shared, unambiguous concepts instead of re-defining words: capabilities name a
+term as their **Subject**, work references terms. The pointers are one-directional —
+**taxonomy never points back** at capabilities or work.
+
+Drive `tcw taxonomy`; never hand-edit term markdown when a command applies. Read
+with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
+local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-capabilities**.
+
+## Judgment
+
+- **One term per distinct concept.** A near-synonym or merely-related concept is a
+  `relatesTo` link (in the term's `meta.yaml`), not a second term.
+- **Nest specializations** under a parent: `tcw taxonomy add <Name> --parent <path>`
+  (`-s` to override the leaf slug; description inline or piped on stdin).
+- **Keep descriptions short** — one or two sentences of what the noun means here.
+- **Run `tcw taxonomy check` after edits** — it validates extends aliases and every
+  relatesTo / subject reference (cycles, dup aliases, dangling/ambiguous refs).
+
+## Inheritance (federation)
+
+Import another repo's taxonomy so shared nouns mean the same thing everywhere:
+`tcw taxonomy extends add <alias> <sibling-repo-path>` (writes the `extends:` map;
+`rm <alias>` drops it). Inherited terms show in `list` flagged by origin and qualify
+as `<alias>/<slug>`; they can't be removed locally. Remote git/URL sources are not
+yet supported (local sibling-repo paths only).
+
+## Bootstrap (read on demand)
+
+To seed a new or empty taxonomy from an existing codebase (deep-dive → draft →
+refine with the user → write) → read [`docs/init.md`](docs/init.md).
+
+## Quick reference
+
+| Goal | Command |
+|---|---|
+| add a term | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]` |
+| nest under a parent | `tcw taxonomy add "<Name>" --parent <path>` |
+| link related terms | edit `relatesTo` in the term's `meta.yaml`, then `check` |
+| browse / read / find | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>` |
+| inherit another repo's terms | `tcw taxonomy extends add <alias> <repo-path>` · `… extends rm <alias>` |
+| validate | `tcw taxonomy check` |
+| remove a local term | `tcw taxonomy rm <path>` |
