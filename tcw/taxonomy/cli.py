@@ -7,7 +7,7 @@ from tcw.store.base import AmbiguousRef, Term
 from tcw.store.fs import FsTaxonomyStore, find_node
 
 NAME = "taxonomy"
-SUBCOMMANDS = {"init", "list", "add", "show", "rm", "search", "check"}
+SUBCOMMANDS = {"init", "list", "add", "show", "rm", "search", "check", "extends"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw taxonomy <path>` == `tcw taxonomy show <path>`
 
 
@@ -135,6 +135,33 @@ def _check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _extends_add(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        st.extends_add(args.alias, args.path)
+    except ValueError as e:
+        print(f"tcw taxonomy extends add: {e}", file=sys.stderr)
+        return 1
+    print(f"Extends '{args.alias}' -> {args.path}  (docs/taxonomy/config.yaml). "
+          f"Run `tcw taxonomy check`.")
+    return 0
+
+
+def _extends_rm(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        st.extends_remove(args.alias)
+    except ValueError as e:
+        print(f"tcw taxonomy extends rm: {e}", file=sys.stderr)
+        return 1
+    print(f"Removed extends '{args.alias}'")
+    return 0
+
+
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the nouns — domain terms")
     g = p.add_subparsers(dest="cmd", required=True)
@@ -167,3 +194,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pc = g.add_parser("check", help="validate aliases + references")
     pc.set_defaults(func=_check)
+
+    pe = g.add_parser("extends", help="declare taxonomy inheritance (federation)")
+    eg = pe.add_subparsers(dest="ecmd", required=True)
+    pea = eg.add_parser("add", help="add an extends alias -> sibling repo path")
+    pea.add_argument("alias")
+    pea.add_argument("path", help="path to a sibling repo containing docs/taxonomy/")
+    pea.set_defaults(func=_extends_add)
+    per = eg.add_parser("rm", help="remove an extends alias")
+    per.add_argument("alias")
+    per.set_defaults(func=_extends_rm)

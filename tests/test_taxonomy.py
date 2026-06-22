@@ -228,3 +228,25 @@ def test_extends_remove(tmp_path):
     assert "shared" not in (FsTaxonomyStore.open(consumer).config.get("extends") or {})
     with pytest.raises(ValueError):               # absent alias
         FsTaxonomyStore.open(consumer).extends_remove("shared")
+
+
+def test_cli_extends_add_and_rm(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    node(tmp_path, "base")
+    consumer = node(tmp_path, "consumer")
+    monkeypatch.chdir(consumer)
+    assert main(["taxonomy", "extends", "add", "shared", "../base"]) == 0
+    capsys.readouterr()
+    assert (consumer / "docs/taxonomy/config.yaml").exists()
+    assert main(["taxonomy", "extends", "add", "shared", "../base"]) == 1   # duplicate → error exit
+    capsys.readouterr()
+    assert main(["taxonomy", "extends", "rm", "shared"]) == 0
+
+
+def test_cli_extends_is_not_treated_as_a_term_path(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    monkeypatch.chdir(root)
+    # "extends" must dispatch to the subcommand, not the `taxonomy <path>` show-sugar
+    assert main(["taxonomy", "extends", "rm", "ghost"]) == 1   # absent alias → handled error, not "no such term"
+    assert "no such term" not in capsys.readouterr().err
