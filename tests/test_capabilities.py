@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from tcw.store.base import RefError
-from tcw.store.fs import FsCapabilitiesStore, heading_slug
+from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
@@ -13,6 +13,7 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    write_sentinel(root)                # mark it a node for CLI (find_node) tests
     return root
 
 

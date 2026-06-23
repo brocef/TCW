@@ -44,17 +44,42 @@ def git_root(start: Path | None = None) -> Path | None:
     return Path(out)
 
 
-def find_node(component: str, start: Path | None = None) -> Path | None:
-    """The node (git work-tree root) that owns `docs/<component>/`, or None.
+SENTINEL = "tcw-config.yaml"
+_SENTINEL_STUB = (
+    "# tcw node marker — declares this folder a TCW project (node).\n"
+    "# Future config (inheritance, etc.) goes here.\n"
+)
 
-    ponytail: the single-node tools resolve to the enclosing repo root and check
-    for `docs/<component>/`. Walking *across* nested git repos to a different
-    node is the cross-node concern (Phase 6) — not needed here.
-    """
-    root = git_root(start)
-    if root is None:
-        return None
-    return root if (root / "docs" / component).is_dir() else None
+
+def write_sentinel(root: Path) -> bool:
+    """Create the node sentinel at `root` if absent; return True iff it wrote one.
+    Create-don't-stage (mirrors how `init` scaffolds dirs) — never touches the index."""
+    p = root / SENTINEL
+    if p.exists():
+        return False
+    p.write_text(_SENTINEL_STUB, encoding="utf-8")
+    return True
+
+
+def find_node_root(start: Path | None = None) -> Path | None:
+    """The nearest ancestor of `start` (cwd by default) holding a `tcw-config.yaml`
+    *file* — the node root, or None. FS-adapter-local: realizes 'locate the node'.
+    Resolves `start` (like `git_root`) so a symlinked cwd chains identically."""
+    d = (start or Path.cwd()).resolve()
+    while True:
+        if (d / SENTINEL).is_file():
+            return d
+        if d == d.parent:                  # filesystem-root fixpoint
+            return None
+        d = d.parent
+
+
+def find_node(component: str, start: Path | None = None) -> Path | None:
+    """The node owning `docs/<component>/`, or None. A node is the nearest
+    ancestor marked by a `tcw-config.yaml` sentinel (FS-adapter-local). Returns
+    the node iff it has that component, preserving the prior contract."""
+    nr = find_node_root(start)
+    return nr if nr is not None and (nr / "docs" / component).is_dir() else None
 
 
 def _git_common_dir(path: Path) -> Path | None:
@@ -205,11 +230,10 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
 
 
 def init(components: list[str], root: Path) -> list[Path]:
-    """Scaffold `docs/<component>/` skeletons under `root`. Returns leaf dirs made.
-
-    A `.gitkeep` lands in each leaf so the empty skeleton survives a commit
-    (git doesn't track empty directories).
-    """
+    """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
+    Returns leaf dirs made. A `.gitkeep` lands in each leaf so the empty skeleton
+    survives a commit (git doesn't track empty directories)."""
+    write_sentinel(root)
     created: list[Path] = []
     for c in components:
         base = root / "docs" / c

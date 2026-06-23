@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from tcw.store.base import AmbiguousRef
-from tcw.store.fs import FsTaxonomyStore
+from tcw.store.fs import FsTaxonomyStore, write_sentinel
 
 
 def node(tmp_path: Path, name: str) -> Path:
@@ -14,6 +14,7 @@ def node(tmp_path: Path, name: str) -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    write_sentinel(root)                # mark it a node for CLI (find_node) tests
     return root
 
 
