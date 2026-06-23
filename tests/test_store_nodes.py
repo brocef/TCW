@@ -1,6 +1,3 @@
-import subprocess
-from pathlib import Path
-
 from tcw.store.fs import SENTINEL, find_node, find_node_root, init, write_sentinel
 
 

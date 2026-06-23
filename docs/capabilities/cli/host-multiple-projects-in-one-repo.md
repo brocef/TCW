@@ -1,7 +1,7 @@
 # Host Multiple Projects In One Repo — capabilities
 
 ## Host multiple projects in one repo
-**Status:** Missing
+**Status:** Supported
 **Subject:** node
 **Planning doc:** 2026-06-22-node-sentinel-tcw-config-yaml-and-sentinel-based-node-detection
 
