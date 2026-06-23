@@ -6,10 +6,11 @@ implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
 
 import argparse
 import sys
+from pathlib import Path
 
 from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
-from tcw.store.fs import COMPONENTS, git_root, init
+from tcw.store.fs import COMPONENTS, SENTINEL, git_root, init
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
 
@@ -20,10 +21,10 @@ _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 
 def run_init(components: list[str]) -> int:
-    """Scaffold `docs/<component>/` trees and report. Shared by the top-level
-    `tcw init` and each component's mirror `tcw <component> init`."""
-    root = git_root()
-    if root is None:
+    """Scaffold `docs/<component>/` trees under the current directory, mark it a
+    node, and report. Shared by `tcw init` and each `tcw <component> init`."""
+    root = Path.cwd()
+    if git_root(root) is None:                 # returns the repo root for any dir inside it
         print("tcw init: not inside a git repository. Run `git init` first.", file=sys.stderr)
         return 1
     unknown = [c for c in components if c not in COMPONENTS]
@@ -35,6 +36,7 @@ def run_init(components: list[str]) -> int:
     print(f"Scaffolded {len(created)} dir(s) under {root / 'docs'}:")
     for p in created:
         print(f"  {p.relative_to(root)}")
+    print(f"Node marker: {SENTINEL}")          # deterministic across runs
     return 0
 
 
