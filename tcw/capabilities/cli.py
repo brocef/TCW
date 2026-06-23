@@ -133,7 +133,7 @@ def _search(args: argparse.Namespace) -> int:
 def _check(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:
-        print("tcw capabilities: no docs/capabilities/ in this repo. Run `tcw init capabilities`.",
+        print("tcw capabilities: no tcw capabilities node here — run `tcw init` in the project folder.",
               file=sys.stderr)
         return 1
     problems = FsCapabilitiesStore.open(node).check(taxonomy=_taxonomy_for(node))
