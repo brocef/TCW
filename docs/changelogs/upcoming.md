@@ -3,7 +3,7 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
 
-## Added (6b93a55..a8c16d1)
+## Added (a8cb467..a8c16d1)
 
 - `find_node_root(start)` in `tcw/store/fs.py`: walks up from `start` (or cwd)
   to the nearest directory containing a `tcw-config.yaml` file; nearest-wins so
@@ -18,7 +18,7 @@ category, with commit hash ranges so entries trace back to source.
   projects as subfolders, each with its own sentinel, `docs/` tree, and
   `tcw work` board.
 
-## Changed (6b93a55..a8c16d1)
+## Changed (a8cb467..a8c16d1)
 
 - `find_node(component, start)`: rewired to call `find_node_root` instead of
   `git_root`; returns the node root iff the sentinel is present **and**
