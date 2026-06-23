@@ -1,0 +1,8 @@
+# Host Multiple Projects In One Repo — capabilities
+
+## Host multiple projects in one repo
+**Status:** Missing
+**Subject:** node
+**Planning doc:** 2026-06-22-node-sentinel-tcw-config-yaml-and-sentinel-based-node-detection
+
+As a user, I keep several TCW projects as subfolders of one git repo — each with its own `docs/{taxonomy,capabilities,work}/` — by marking each project folder with a `tcw-config.yaml` sentinel. `tcw` resolves the nearest enclosing sentinel as the active node, so running it inside `project-b/` operates on `project-b`, not the whole repo. Sibling projects can inherit each other's vocabulary through taxonomy `extends` (e.g. `project-b` extends `project-a`). `tcw init` marks the current folder as a node.
