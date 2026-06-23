@@ -25,7 +25,7 @@ _ERRORS = (ValueError, IllegalTransition, MultipleMatch)
 def _store() -> FsWorkStore | None:
     node = find_node(NAME)
     if node is None:
-        print("tcw work: no docs/work/ in this repo. Run `tcw work init`.", file=sys.stderr)
+        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return None
     return FsWorkStore.open(node)
 
@@ -73,7 +73,7 @@ def _print_item(item: WorkItem) -> None:
 def _nodes(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:
-        print("tcw work: no docs/work/ in this repo. Run `tcw work init`.", file=sys.stderr)
+        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     parent = parent_node(node)
     print(f"node:   {node}")
@@ -91,7 +91,7 @@ def _nodes(args: argparse.Namespace) -> int:
 def _reconcile(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:
-        print("tcw work: no docs/work/ in this repo. Run `tcw work init`.", file=sys.stderr)
+        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
         block = reconcile(node, args.slug, commit=args.commit)
@@ -105,7 +105,7 @@ def _reconcile(args: argparse.Namespace) -> int:
 def _delegate(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:
-        print("tcw work: no docs/work/ in this repo. Run `tcw work init`.", file=sys.stderr)
+        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
         doc = delegate(node, args.child, args.title, body=_stdin_body(),
@@ -120,7 +120,7 @@ def _delegate(args: argparse.Namespace) -> int:
 def _escalate(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:
-        print("tcw work: no docs/work/ in this repo. Run `tcw work init`.", file=sys.stderr)
+        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
         doc = escalate(node, args.title, body=_stdin_body(), initiative=args.initiative)

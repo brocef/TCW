@@ -19,7 +19,7 @@ def _init(args: argparse.Namespace) -> int:
 def _store() -> FsCapabilitiesStore | None:
     node = find_node(NAME)
     if node is None:
-        print("tcw capabilities: no docs/capabilities/ in this repo. Run `tcw init capabilities`.",
+        print("tcw capabilities: no tcw capabilities node here — run `tcw init` in the project folder.",
               file=sys.stderr)
         return None
     return FsCapabilitiesStore.open(node)

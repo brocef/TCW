@@ -19,7 +19,7 @@ def _init(args: argparse.Namespace) -> int:
 def _store() -> FsTaxonomyStore | None:
     node = find_node(NAME)
     if node is None:
-        print("tcw taxonomy: no docs/taxonomy/ in this repo. Run `tcw init taxonomy`.",
+        print("tcw taxonomy: no tcw taxonomy node here — run `tcw init` in the project folder.",
               file=sys.stderr)
         return None
     return FsTaxonomyStore.open(node)

@@ -51,6 +51,13 @@ def test_init_scaffolds_in_current_subfolder(tmp_path, monkeypatch):
     assert not (tmp_path / "docs").exists()   # scaffolded at cwd, not the git root
 
 
+def test_command_outside_a_node_reports_helpfully(tmp_path, monkeypatch, capsys):
+    _git_init(tmp_path)            # a git repo but NOT a tcw node (no sentinel)
+    monkeypatch.chdir(tmp_path)
+    assert main(["work", "list"]) == 1
+    assert "tcw init" in capsys.readouterr().err
+
+
 def test_help_lists_four_groups(capsys):
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--help"])
