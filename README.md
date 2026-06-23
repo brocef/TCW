@@ -142,10 +142,51 @@ tcw work init               # …or per-component: same as `tcw init work`
 tcw --help                  # top-level groups: init | taxonomy | capabilities | work
 ```
 
-`tcw init` operates on the current git work-tree and refuses outside a git repo.
-Each component is a tree of docs under `docs/<component>/`. Each component group
-also has its own `init` mirror — `tcw taxonomy init`, `tcw capabilities init`,
-`tcw work init` — identical to `tcw init <component>`.
+`tcw init` marks the **current directory** as a TCW node by writing a
+`tcw-config.yaml` sentinel there, then scaffolds `docs/<component>/` skeletons.
+It refuses outside a git repo (write transitions need git), but the node folder
+can be anywhere inside the repo — not just the root. Each component is a tree of
+docs under `docs/<component>/`. Each component group also has its own `init`
+mirror — `tcw taxonomy init`, `tcw capabilities init`, `tcw work init` —
+identical to `tcw init <component>`.
+
+### Multiple projects in one repo
+
+A single git repo can hold several TCW projects as subfolders. Run `tcw init`
+once inside each project folder to mark it as its own node:
+
+```
+/                               # one git repo (documentation root)
+  /.git
+  /project-a/
+    tcw-config.yaml             # marks project-a as a TCW node
+    docs/{taxonomy,capabilities,work}/
+  /project-b/
+    tcw-config.yaml             # marks project-b as a TCW node
+    docs/{taxonomy,capabilities,work}/
+```
+
+```sh
+cd project-a && tcw init        # scaffold + write sentinel in project-a/
+cd ../project-b && tcw init     # scaffold + write sentinel in project-b/
+```
+
+Each `tcw` invocation operates on the nearest `tcw-config.yaml` ancestor — so
+`cd project-b && tcw work list` shows project-b's board, not project-a's.
+
+Taxonomy `extends` works across sibling subfolder projects. Add an `extends`
+block in `project-b/docs/taxonomy/config.yaml` pointing at the sibling:
+
+```yaml
+extends:
+  base: ../project-a
+```
+
+project-b's taxonomy commands then inherit project-a's terms automatically.
+
+> **Note:** Cross-node operations (`tcw work nodes` / epics / delegate /
+> escalate) currently discover nodes by git-repo root. Subfolder nodes within
+> the same repo will not appear as cross-node peers until a later update.
 
 ---
 
@@ -306,10 +347,13 @@ completion, so the standing capability ledger stays current by construction.
 
 #### Cross-node recursion (epics across repos)
 
-Any git repo with a `docs/work/` is a **node**; "orchestrator" and "project" are
-relative roles. A node nested under another is a **child**, the enclosing one its
-**parent**. An **epic** is an ordinary work item that tasks in child nodes point
-at via an `initiative:` back-pointer.
+For cross-node discovery (`tcw work nodes` / epics / delegate / escalate), a
+**node** is a git repo with a `docs/work/`; "orchestrator" and "project" are
+relative roles. (The *current node* — where `tcw` operates day-to-day — is the
+nearest `tcw-config.yaml` ancestor, which may be a subfolder.) A node nested
+under another is a **child**, the enclosing one its **parent**. An **epic** is
+an ordinary work item that tasks in child nodes point at via an
+`initiative:` back-pointer.
 
 ```sh
 tcw work nodes                              # show this node's parent + child nodes
@@ -376,12 +420,17 @@ exposes `init | taxonomy | capabilities | work`; the three filesystem stores sit
 on a shared bounded-tree core; the test suite (pytest over throwaway git repos)
 is green.
 
-**Cross-node recursion is now built (work Spec 2):** any git repo with a
-`docs/work/` is a "node," "orchestrator" and "project" are relative roles,
-cross-node initiatives (epics) link by an `initiative:` back-pointer, `tcw work
-reconcile` rolls child tasks up into the epic, the inbox is the inter-node
-channel (`delegate`/`escalate`), and `tcw work start --worktree` isolates an
-item's code in its own checkout.
+**Cross-node recursion is now built (work Spec 2):** for cross-node discovery,
+any git repo with a `docs/work/` is a "node;" "orchestrator" and "project" are
+relative roles, cross-node initiatives (epics) link by an `initiative:`
+back-pointer, `tcw work reconcile` rolls child tasks up into the epic, the inbox
+is the inter-node channel (`delegate`/`escalate`), and `tcw work start
+--worktree` isolates an item's code in its own checkout.
+
+**Sentinel-based node detection (work Spec 1):** `tcw init` now marks the
+current directory a TCW node (writing a `tcw-config.yaml` sentinel), so a
+single git repo can hold multiple projects as subfolders. Taxonomy `extends`
+works across sibling subfolder projects by construction.
 
 **The skill layer is now built (work Spec 3):** the `tcw-work` and
 `tcw-capabilities` skills drive the lifecycle, and `tcw capabilities set` flips

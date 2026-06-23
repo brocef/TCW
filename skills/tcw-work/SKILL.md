@@ -7,6 +7,8 @@ description: Use when starting, continuing, triaging, or decomposing tcw work it
 
 `tcw work` is the change-tracking state machine: items move `inbox → backlog → active → completed` by changing directory; blocked is a derived overlay, not a status. This skill is the *judgment* on top of the tool. Name `tcw …` commands; never hand-edit `docs/work/` when a command exists. The capability axis is **REQUIRED SUB-SKILL: Use tcw-capabilities** at the planning and completion gates.
 
+**Node identity:** `tcw init` marks the **current directory** a TCW node by writing a `tcw-config.yaml` sentinel there. All `tcw` commands resolve to the nearest `tcw-config.yaml` ancestor — so in a multi-project repo, `cd project-b && tcw work list` shows project-b's board. If a command fails with "no tcw … node here", run `tcw init` in the project folder first. Cross-node discovery (`tcw work nodes` / epics / delegate / escalate) still locates peers by git-repo root (see `docs/cross-node-epic.md`).
+
 ## Three-axis / product-first planning
 
 Fill the item's `content.md` under `## Product changes` / `## Technical changes` / `## Meta changes` — which sections are non-empty *is* the classification. **Product-first:** if there is any product delta, run the tcw-capabilities planning gate *before* writing the technical plan.
