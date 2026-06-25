@@ -392,7 +392,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     psh.add_argument("slug")
     psh.set_defaults(func=_show)
 
-    pp = g.add_parser("path", help="print the current path of a slug")
+    pp = g.add_parser("path", help="print the current work item folder path")
     pp.add_argument("slug")
     pp.set_defaults(func=_path)
 

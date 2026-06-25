@@ -57,6 +57,32 @@ def test_multiple_match_resolution_error(tmp_path):
         st.get("dup")
 
 
+def test_cli_path_prints_current_item_folder(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+
+    assert main(["work", "path", item.slug]) == 0
+    assert capsys.readouterr().out.strip() == str(root / "docs/work/backlog" / item.slug)
+
+    st.start(item.slug)
+    assert main(["work", "path", item.slug]) == 0
+    assert capsys.readouterr().out.strip() == str(root / "docs/work/active" / item.slug)
+
+
+def test_cli_path_missing_slug_errors(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "path", "no-such-slug"]) == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert "tcw work path: no such work item: no-such-slug" in out.err
+
+
 # ── transitions ──────────────────────────────────────────────────────────────
 
 def test_legal_transition_lifecycle(tmp_path):
