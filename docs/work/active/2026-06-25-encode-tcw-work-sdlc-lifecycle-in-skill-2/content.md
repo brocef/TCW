@@ -2,12 +2,6 @@
 
 ## Product changes
 
-## Technical changes
-
-## Meta changes
-
-## Product changes
-
 - Clarify the tcw-work SDLC used by agents to plan and drive work items.
 
 ## Technical changes
@@ -18,4 +12,3 @@
 ## Meta changes
 
 - Record how follow-up notes and closeout decisions fit into the TCW work lifecycle.
-

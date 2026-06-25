@@ -105,7 +105,8 @@ In **Claude Code**:
 ```
 
 This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, and `tcw-plugin`
-skills plus the `/tcw-init`, `/tcw-doctor`, `/tcw-taxonomy-init`, and
+skills plus the `/tcw-init`, `/tcw-doctor`, `/tcw-plan-work`,
+`/tcw-drive-work-to-completion`, `/tcw-taxonomy-init`, and
 `/tcw-capabilities-init` commands. `/tcw-init` puts the `tcw` CLI on your
 PATH from the plugin's *own clone*, so there's one copy — **don't also
 `pip install tcw` separately**, or the two can drift (`/tcw-doctor` detects this
@@ -394,9 +395,11 @@ work is never silently dropped.
 The CLI is the *mechanism*; four skills in [`skills/`](skills/) are the *judgment*
 that drives it (the work↔capability lifecycle the tool only enforces structurally):
 
-- **[`tcw-work`](skills/tcw-work/SKILL.md)** — triage a `docs/work/inbox`, plan a
-  change product-first along the three axes, run the start/complete lifecycle,
-  resume an active item, and decompose work into a cross-node epic.
+- **[`tcw-work`](skills/tcw-work/SKILL.md)** — plan a request or existing work item
+  through `initial-request.md`, `spec.md`, and `plan.md`; drive implementation
+  through `outcome.md` and user verification in `refined-outcome.md`; triage
+  `docs/work/inbox`; run the start/complete lifecycle; resume active work; and
+  decompose work into a cross-node epic.
 - **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
   changes` planning gate, contradiction-detection, the `Missing → Supported`
   ledger flip at completion, product-layer wording coordination, and bootstrapping
