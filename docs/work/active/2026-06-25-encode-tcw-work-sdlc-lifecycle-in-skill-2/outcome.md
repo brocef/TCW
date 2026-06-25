@@ -10,11 +10,13 @@ Work completed successfully; awaiting user verification before TCW closeout.
 - Added `/tcw-plan-work` and `/tcw-drive-work-to-completion` command wrappers.
 - Added relation-based transition gates: initiative child tasks cannot start before their epic is active, and epics cannot complete while initiative children are still open.
 - Surfaced `type` and `initiative` in `tcw work show` when present, so agents can dispatch to the right lifecycle without opening `state.yaml`.
+- Added CLI-level regression tests for the initiative start and epic completion gate error messages.
 - Added a plugin capability entry for planning and driving work items.
 - Updated README, release notes, and changelog entries for the new plugin-facing workflow.
 
 ## Verification
 
+- `pytest tests/test_recursion.py` -> passed.
 - `pytest tests/test_recursion.py tests/test_work.py tests/test_skill_flow.py tests/test_plugin_manifests.py tests/test_capabilities.py` -> passed.
 - `tcw capabilities check` -> passed.
 

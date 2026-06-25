@@ -105,6 +105,23 @@ def test_initiative_child_cannot_start_before_epic_active(tmp_path):
     assert task_store.start(task.slug).status == "active"
 
 
+def test_cli_initiative_child_start_gate_prints_error(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    epic_store = FsWorkStore.open(parent)
+    epic = epic_store.create("Epic", created="2026-01-01")
+    epic_store.set_field(epic.slug, "type", "epic")
+    task_store = FsWorkStore.open(child)
+    task = task_store.create("Slice", created="2026-01-02")
+    task_store.set_field(task.slug, "initiative", epic.slug)
+
+    monkeypatch.chdir(child)
+    assert main(["work", "start", task.slug]) == 1
+    err = capsys.readouterr().err
+    assert f"Cannot start work item {task.slug} before epic {epic.slug} is active" in err
+
+
 def test_epic_cannot_complete_with_open_initiative_children(tmp_path):
     parent = mk_node(tmp_path, "parent")
     child = mk_node(parent, "child")
@@ -122,6 +139,25 @@ def test_epic_cannot_complete_with_open_initiative_children(tmp_path):
 
     task_store.complete(task.slug, "done", [])
     assert epic_store.complete(epic.slug, "done", []).status == "completed"
+
+
+def test_cli_epic_complete_gate_prints_error(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    epic_store = FsWorkStore.open(parent)
+    epic = epic_store.create("Epic", created="2026-01-01")
+    epic_store.set_field(epic.slug, "type", "epic")
+    epic_store.start(epic.slug)
+    task_store = FsWorkStore.open(child)
+    task = task_store.create("Slice", created="2026-01-02")
+    task_store.set_field(task.slug, "initiative", epic.slug)
+    task_store.start(task.slug)
+
+    monkeypatch.chdir(parent)
+    assert main(["work", "complete", epic.slug, "--resolution", "done", "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert f"Cannot complete epic {epic.slug}; initiative children are still open: {task.slug}" in err
 
 
 # ── Task 3: reconcile ────────────────────────────────────────────────────────
