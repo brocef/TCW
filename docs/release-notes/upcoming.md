@@ -10,3 +10,5 @@ internal module names.
 - Documented the TCW work lifecycle artifacts agents use to plan, implement, and
   refine work: `initial-request.md`, `spec.md`, `plan.md`, `outcome.md`, and
   `refined-outcome.md`.
+- Added safeguards so initiative child tasks cannot start before their epic is
+  active, and epics cannot be completed while child tasks are still open.

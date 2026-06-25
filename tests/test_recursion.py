@@ -73,6 +73,10 @@ def test_new_epic_and_initiative_fields(tmp_path, monkeypatch, capsys):
     item = FsWorkStore.open(root).get(slug)
     assert item.type == "epic"
     assert item.initiative == "2026-01-01-epic"
+    assert main(["work", "show", slug]) == 0
+    out = capsys.readouterr().out
+    assert "type: epic" in out
+    assert "initiative: 2026-01-01-epic" in out
 
 
 def test_edit_sets_and_clears_initiative(tmp_path):
@@ -82,6 +86,42 @@ def test_edit_sets_and_clears_initiative(tmp_path):
     assert st.get(item.slug).initiative == "2026-01-01-epic"
     st.set_field(item.slug, "initiative", "")
     assert st.get(item.slug).initiative == ""
+
+
+def test_initiative_child_cannot_start_before_epic_active(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    epic_store = FsWorkStore.open(parent)
+    epic = epic_store.create("Epic", created="2026-01-01")
+    epic_store.set_field(epic.slug, "type", "epic")
+    task_store = FsWorkStore.open(child)
+    task = task_store.create("Slice", created="2026-01-02")
+    task_store.set_field(task.slug, "initiative", epic.slug)
+
+    with pytest.raises(ValueError, match=f"Cannot start work item {task.slug} before epic {epic.slug} is active"):
+        task_store.start(task.slug)
+
+    epic_store.start(epic.slug)
+    assert task_store.start(task.slug).status == "active"
+
+
+def test_epic_cannot_complete_with_open_initiative_children(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    epic_store = FsWorkStore.open(parent)
+    epic = epic_store.create("Epic", created="2026-01-01")
+    epic_store.set_field(epic.slug, "type", "epic")
+    epic_store.start(epic.slug)
+    task_store = FsWorkStore.open(child)
+    task = task_store.create("Slice", created="2026-01-02")
+    task_store.set_field(task.slug, "initiative", epic.slug)
+    task_store.start(task.slug)
+
+    with pytest.raises(ValueError, match=f"Cannot complete epic {epic.slug}; initiative children are still open: {task.slug}"):
+        epic_store.complete(epic.slug, "done", [])
+
+    task_store.complete(task.slug, "done", [])
+    assert epic_store.complete(epic.slug, "done", []).status == "completed"
 
 
 # ── Task 3: reconcile ────────────────────────────────────────────────────────

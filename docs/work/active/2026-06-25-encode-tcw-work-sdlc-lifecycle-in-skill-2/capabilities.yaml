@@ -1,3 +1,7 @@
 # Capability deltas this work item lands (work->capability back-pointers).
 new:
   - plugin/work-lifecycle#plan-and-drive-work-items
+changed:
+  - work#read-a-work-item
+  - work#start-a-work-item
+  - work#complete-a-work-item

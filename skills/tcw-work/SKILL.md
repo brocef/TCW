@@ -11,7 +11,7 @@ description: Use when starting, continuing, triaging, planning, implementing, ve
 
 ## Primary lifecycle
 
-Drive work through the TCW SDLC. Read [`docs/lifecycle.md`](docs/lifecycle.md) whenever planning a work item, driving an item toward completion, resuming mid-flight work whose next stage is unclear, or compressing stages for a small change.
+Drive work through the TCW SDLC. Read [`docs/lifecycle.md`](docs/lifecycle.md) whenever planning a work item, driving an item toward completion, resuming mid-flight work whose next stage is unclear, or compressing stages for a small change. It dispatches to the epic or task lifecycle based on the item relation fields.
 
 The artifact spine is:
 

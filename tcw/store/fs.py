@@ -884,6 +884,27 @@ class FsWorkStore(FsTreeStore, WorkStore):
         items = [self._item_from_dir(d) for d in self._item_dirs()]
         return [i for i in items if status is None or i.status == status]
 
+    def initiative_epic(self, item: WorkItem) -> WorkItem | None:
+        if not item.initiative:
+            return None
+        local = self.get(item.initiative)
+        if local is not None:
+            return local
+        parent = parent_node(self.node_root)
+        while parent is not None:
+            got = FsWorkStore.open(parent).get(item.initiative)
+            if got is not None:
+                return got
+            parent = parent_node(parent)
+        return None
+
+    def initiative_children(self, epic_slug: str) -> list[WorkItem]:
+        children = [i for i in self.query() if i.initiative == epic_slug]
+        for node in child_nodes(self.node_root):
+            children.extend(i for i in FsWorkStore.open(node).query()
+                            if i.initiative == epic_slug)
+        return children
+
     def dod_checklist(self) -> list[str]:
         p = self.root / "dod.yaml"
         if p.exists():

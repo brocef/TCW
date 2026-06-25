@@ -23,12 +23,14 @@ As a user, I assign an integer priority with `tcw work new "<title>" --priority 
 **Subject:** work-item
 
 As a user, I run `tcw work show <slug>` to read an item's state and body (including any recorded blockers), or `tcw work path <slug>` to print its current on-disk path.
+For initiative-related work, `show` includes the item's `type` and `initiative` fields when present so an agent can choose the right lifecycle path.
 
 ## Start a work item
 **Status:** Supported
 **Subject:** work-item/transition
 
 As a user, I run `tcw work start <slug>` to move an item from inbox or backlog into active. The tool refuses if the item has unresolved blockers; I pass `--force` to override.
+For initiative child tasks, the tool also refuses to start the task until its related epic is active.
 
 ## Manage blocking relations
 **Status:** Supported
@@ -41,6 +43,7 @@ As a user, I run `tcw work edit <slug> --blocked-by <refs>` to record that named
 **Subject:** work-item/definition-of-done
 
 As a user, I run `tcw work complete <slug> --resolution <r>`; the tool checks for unresolved blockers (refused unless I pass `--force`), then prints the Definition-of-Done checklist and refuses until I re-run with `--confirm`.
+For epics, the tool refuses completion while related initiative child tasks are still open.
 
 ## Drop a work item
 **Status:** Supported

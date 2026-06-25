@@ -2,12 +2,14 @@
 description: Plan a TCW work item from either an existing item or the user's chat request, producing the lifecycle planning artifacts in the work item folder.
 ---
 
-Use the `tcw-work` skill. Read `skills/tcw-work/docs/lifecycle.md` and run stages
-1-3:
+Use the `tcw-work` skill. Read `skills/tcw-work/docs/lifecycle.md`, choose the
+task or epic lifecycle, and run the planning stages for that lifecycle.
 
-1. Request ingestion -> `initial-request.md`
-2. Request processing -> `spec.md`
-3. Spec processing -> `plan.md`
+For a task, this means request ingestion, request processing, and spec
+processing: `initial-request.md`, `spec.md`, and `plan.md`.
+
+For an epic, this means initiative intake, overview spec, and coordination /
+delegation plan using the same artifact names.
 
 Input may be an existing TCW work item slug/path or a request written directly in
 chat. If the user provides only chat text, create the initial backlog item with

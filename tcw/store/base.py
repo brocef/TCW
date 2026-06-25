@@ -294,6 +294,22 @@ class WorkStore(ABC):
     @abstractmethod
     def dod_checklist(self) -> list[str]: ...
 
+    def initiative_epic(self, item: WorkItem) -> WorkItem | None:
+        """Resolve `item`'s initiative epic, if any.
+
+        Default implementation is local-store only; adapters with cross-node
+        visibility can override this relation query.
+        """
+        return self.get(item.initiative) if item.initiative else None
+
+    def initiative_children(self, epic_slug: str) -> list[WorkItem]:
+        """Items related to `epic_slug` by `initiative:`.
+
+        Default implementation is local-store only; adapters with cross-node
+        visibility can override this relation query.
+        """
+        return [i for i in self.query() if i.initiative == epic_slug]
+
     # -- concrete operations (shared semantics) --
 
     def _require(self, slug: str) -> WorkItem:
@@ -381,6 +397,15 @@ class WorkStore(ABC):
     def start(self, slug: str, force: bool = False) -> WorkItem:
         item = self._require(slug)
         if not force:
+            if item.initiative:
+                epic = self.initiative_epic(item)
+                if epic is None:
+                    raise ValueError(f"Cannot verify initiative epic {item.initiative} "
+                                     f"for {slug}. Run from a node that can resolve "
+                                     f"the epic, or use --force.")
+                if epic.status != "active":
+                    raise ValueError(f"Cannot start work item {slug} before epic "
+                                     f"{item.initiative} is active")
             blockers = self.unresolved_blockers(item)
             if blockers:
                 raise ValueError("blocked by: " + ", ".join(blockers)
@@ -396,6 +421,14 @@ class WorkStore(ABC):
         if (item.status, "completed") not in self.LEGAL_TRANSITIONS:
             raise IllegalTransition(f"cannot complete from {item.status} (only active)")
         if not force:
+            if item.type == "epic":
+                open_children = [i.slug for i in self.initiative_children(slug)
+                                 if i.status != "completed"]
+                if open_children:
+                    raise ValueError(f"Cannot complete epic {slug}; initiative "
+                                     f"children are still open: "
+                                     f"{', '.join(open_children)}. Complete or "
+                                     f"defer them first.")
             blockers = self.unresolved_blockers(item)
             if blockers:
                 raise ValueError("blocked by: " + ", ".join(blockers)

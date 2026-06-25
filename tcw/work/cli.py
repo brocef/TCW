@@ -49,6 +49,10 @@ def _print_item(item: WorkItem) -> None:
     print(f"title: {item.title}")
     if item.parent:
         print(f"parent: {item.parent}")
+    if item.type:
+        print(f"type: {item.type}")
+    if item.initiative:
+        print(f"initiative: {item.initiative}")
     if item.phase:
         print(f"phase: {item.phase}")
     if item.priority is not None:

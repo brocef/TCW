@@ -286,11 +286,11 @@ tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the pare
 tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column
 tcw work list --all                    # include completed items too
-tcw work show "$slug"                  # state + body (includes blocked_by if set)
+tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
-tcw work start "$slug"                 # inbox|backlog → active (refused if blocked)
-tcw work start "$slug" --force         # override unresolved blockers
+tcw work start "$slug"                 # inbox|backlog → active (refused if blocked/gated)
+tcw work start "$slug" --force         # override unresolved blockers or initiative gates
 
 tcw work edit "$slug" --blocked-by other-slug    # record a new blocker
 tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
@@ -298,7 +298,7 @@ tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 
 tcw work complete "$slug" --resolution done --confirm
-tcw work complete "$slug" --resolution done --confirm --force   # override blockers
+tcw work complete "$slug" --resolution done --confirm --force   # override blockers or initiative gates
 tcw work drop some-slug                # delete an inbox|backlog item
 ```
 
@@ -376,6 +376,12 @@ deltas, and the next ready actions — and is **read-only** on the capabilities
 ledger. `delegate`/`escalate` only ever write a request into the target node's
 `inbox/`, never its tracked work, respecting the node write-boundary.
 
+Initiative transitions are relation-gated: a task with `initiative: <epic>` is
+refused at `start` until the epic is active, and an epic is refused at
+`complete` while related child tasks are still open. `--force` overrides these
+gates when the relationship cannot be resolved or the user intentionally
+deviates.
+
 Run an item in an isolated checkout with `--worktree`:
 
 ```sh
@@ -397,9 +403,9 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
 
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — plan a request or existing work item
   through `initial-request.md`, `spec.md`, and `plan.md`; drive implementation
-  through `outcome.md` and user verification in `refined-outcome.md`; triage
-  `docs/work/inbox`; run the start/complete lifecycle; resume active work; and
-  decompose work into a cross-node epic.
+  or epic coordination through `outcome.md` and user verification in
+  `refined-outcome.md`; triage `docs/work/inbox`; run the start/complete
+  lifecycle; resume active work; and decompose work into a cross-node epic.
 - **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
   changes` planning gate, contradiction-detection, the `Missing → Supported`
   ledger flip at completion, product-layer wording coordination, and bootstrapping
