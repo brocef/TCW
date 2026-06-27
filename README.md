@@ -310,7 +310,11 @@ After `tcw work new` and `tcw work start`, the CLI prints the **next transition 
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
 `tcw work new` also prints an "→ edit: …/content.md" line (stderr) pointing at the
-new item's body so you can open it for editing right away.
+new item's body so you can open it for editing right away. `content.md` is the
+always-present body/overview surface for a work item; `initial-request.md` is the
+canonical request lifecycle artifact. Older items that predated the formal
+lifecycle have had their `content.md` text copied into `initial-request.md` when
+they did not already have one.
 
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
 `slug | status | stages | priority | title` (priority is the integer, or `-`

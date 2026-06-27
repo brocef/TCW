@@ -13,3 +13,5 @@ internal module names.
   backlog items with lifecycle artifacts.
 - `tcw work list` now shows compact lifecycle artifact letters so users can see
   which items have request, spec, plan, outcome, and refined-outcome documents.
+- Older work items now have `initial-request.md` backfilled from `content.md`
+  when they were missing a formal request artifact.
