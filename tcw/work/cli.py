@@ -595,11 +595,28 @@ def _list(args: argparse.Namespace) -> int:
     for it in items:                              # board order preserved per sibling group
         by_parent.setdefault(it.parent, []).append(it)
 
+    def stages(it: WorkItem) -> str:
+        d = st.path(it.slug)
+        if d is None:
+            return "-"
+        out = ""
+        for label, name in (
+            ("R", "initial-request.md"),
+            ("S", "spec.md"),
+            ("P", "plan.md"),
+            ("O", "outcome.md"),
+            ("F", "refined-outcome.md"),
+        ):
+            p = d / name
+            if p.is_file() and p.read_text(encoding="utf-8").strip():
+                out += label
+        return out or "-"
+
     def emit(it: WorkItem, depth: int) -> None:
         blockers = st.unresolved_blockers(it)
         suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
         pri = it.priority if it.priority is not None else "-"
-        print(f"{'  ' * depth}{it.slug} | {it.status} | {it.phase or '-'} | "
+        print(f"{'  ' * depth}{it.slug} | {it.status} | {stages(it)} | "
               f"{pri} | {it.title}{suffix}")
         for ch in by_parent.get(it.slug, []):
             emit(ch, depth + 1)

@@ -56,7 +56,7 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | split an item (same repo) | `tcw work new "<sub>" --parent <slug>` (child nests under it; shows indented in `list`) |
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
-| see the board | `tcw work list [--status active]` (hides completed; `--all` to include; sorts by priority, then topologically) |
+| see the board | `tcw work list [--status active]` (hides completed; `--all` to include; shows lifecycle artifact letters in the stages column; sorts by priority, then topologically) |
 | audit backlog relevance | `tcw work audit-work-backlog` (read-only cleanup recommendations for stale, duplicate, broken, blocked, vague, or misplaced backlog items) |
 | migrate external plans | `tcw work consolidate-plans [PATH ...] [--apply] [--delete]` (dry-run first; converts external planning docs into backlog items) |
 | find item files | `tcw work path <slug>` |

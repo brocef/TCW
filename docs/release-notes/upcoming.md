@@ -11,3 +11,5 @@ internal module names.
 - Added `tcw work consolidate-plans`, a dry-run-first migration command that
   finds older planning documents outside TCW work items and can turn them into
   backlog items with lifecycle artifacts.
+- `tcw work list` now shows compact lifecycle artifact letters so users can see
+  which items have request, spec, plan, outcome, and refined-outcome documents.

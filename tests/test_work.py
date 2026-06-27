@@ -527,10 +527,56 @@ def test_cli_list_shows_priority_column(tmp_path, monkeypatch, capsys):
     assert main(["work", "list"]) == 0
     rows = {ln.split(" | ")[0]: ln.split(" | ")
             for ln in capsys.readouterr().out.splitlines()}
-    # row: slug | status | phase | priority | title
+    # row: slug | status | lifecycle-stages | priority | title
     assert rows[hot.slug][3] == "7"
     assert rows[cold.slug][3] == "-"
     assert rows[hot.slug][4] == "Hot"                     # title still follows
+
+
+def test_cli_list_shows_lifecycle_stage_letters(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Planned", created="2026-01-01")
+    d = st.path(item.slug)
+    (d / "initial-request.md").write_text("request\n", encoding="utf-8")
+    (d / "spec.md").write_text("spec\n", encoding="utf-8")
+    (d / "plan.md").write_text("plan\n", encoding="utf-8")
+
+    assert main(["work", "list"]) == 0
+    row = capsys.readouterr().out.strip().split(" | ")
+    assert row[2] == "RSP"
+
+
+def test_cli_list_ignores_empty_lifecycle_artifacts(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Sketch", created="2026-01-01")
+    d = st.path(item.slug)
+    (d / "initial-request.md").write_text("   \n", encoding="utf-8")
+    (d / "spec.md").write_text("spec\n", encoding="utf-8")
+
+    assert main(["work", "list"]) == 0
+    row = capsys.readouterr().out.strip().split(" | ")
+    assert row[2] == "S"
+
+
+def test_cli_list_shows_outcome_and_refined_outcome_stages(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Finished", created="2026-01-01")
+    d = st.path(item.slug)
+    (d / "outcome.md").write_text("outcome\n", encoding="utf-8")
+    (d / "refined-outcome.md").write_text("refined\n", encoding="utf-8")
+
+    assert main(["work", "list"]) == 0
+    row = capsys.readouterr().out.strip().split(" | ")
+    assert row[2] == "OF"
 
 
 # ── audit-work-backlog ───────────────────────────────────────────────────────

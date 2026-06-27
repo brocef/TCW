@@ -313,13 +313,17 @@ lifecycle is hard to skip — the slug still goes to stdout alone, the hint to s
 new item's body so you can open it for editing right away.
 
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
-`slug | status | phase | priority | title` (priority is the integer, or `-` when
-unspecified). It shows the live columns (inbox, backlog, active) and hides
-completed items by default — pass `--status completed` to list them or `--all`
-for everything. It sorts by priority first (higher integer above lower,
-unspecified-priority items keeping creation order), then topologically — blockers
-appear before the items they block, since a priority preference can't jump a hard
-dependency — and annotates blocked items with their unresolved blockers.
+`slug | status | stages | priority | title` (priority is the integer, or `-`
+when unspecified). `stages` is a compact lifecycle artifact string: `R` for
+`initial-request.md`, `S` for `spec.md`, `P` for `plan.md`, `O` for
+`outcome.md`, and `F` for `refined-outcome.md`; missing or empty artifacts do
+not contribute letters, and `-` means no lifecycle artifacts are present. The
+board shows the live columns (inbox, backlog, active) and hides completed items
+by default — pass `--status completed` to list them or `--all` for everything.
+It sorts by priority first (higher integer above lower, unspecified-priority
+items keeping creation order), then topologically — blockers appear before the
+items they block, since a priority preference can't jump a hard dependency —
+and annotates blocked items with their unresolved blockers.
 
 `tcw work audit-work-backlog` reviews backlog items in board order and prints
 read-only cleanup recommendations. It flags likely duplicates or already-finished
