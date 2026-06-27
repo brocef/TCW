@@ -22,4 +22,3 @@
 
 - Docs sync: README, docs/release-notes/upcoming.md, docs/changelogs/upcoming.md. No version cut.
 - Capabilities: declare two new bootstrap capabilities (Missing); body-edit federate-shared-vocabulary (stays Partial).
-

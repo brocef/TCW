@@ -14,4 +14,3 @@ Add `FsWorkStore.body_path(slug)` (keeps the `content.md` filename in the FS ada
 
 ## Meta changes
 None.
-
