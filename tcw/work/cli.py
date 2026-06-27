@@ -12,15 +12,15 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
-    ensure_worktree_ignored, find_node, git_commit, merge_worktree, parent_node,
-    remove_worktree,
+    ensure_worktree_ignored, find_node, git_commit, git_rm, git_stage,
+    merge_worktree, parent_node, remove_worktree,
 )
 from tcw.work.recursion import delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "edit", "complete",
                "drop", "nodes", "reconcile", "delegate", "escalate",
-               "audit-work-backlog"}
+               "audit-work-backlog", "consolidate-plans"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 _ERRORS = (ValueError, IllegalTransition, MultipleMatch)
@@ -353,6 +353,155 @@ def _audit_work_backlog(args: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass
+class _PlanCandidate:
+    path: Path
+    title: str
+
+
+_PLAN_CUES = ("plan", "spec", "proposal", "roadmap", "todo", "followup", "follow-up")
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _default_plan_roots(node_root: Path) -> list[Path]:
+    preferred = [node_root / "docs", node_root / "plans", node_root / "planning"]
+    existing = [p for p in preferred if p.exists()]
+    return existing or [node_root]
+
+
+def _first_heading(text: str) -> str | None:
+    for line in text.splitlines():
+        m = re.match(r"^#\s+(.+)", line.strip())
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def _plan_title(path: Path, text: str) -> str:
+    return _first_heading(text) or path.stem.replace("-", " ").replace("_", " ").title()
+
+
+def _looks_like_plan(path: Path, text: str) -> bool:
+    haystack = f"{path.stem} {path.parent.name} {_first_heading(text) or ''}".lower()
+    return any(cue in haystack for cue in _PLAN_CUES)
+
+
+def _discover_plan_candidates(node_root: Path, roots: list[Path]) -> list[_PlanCandidate]:
+    work_root = node_root / "docs" / "work"
+    candidates: list[_PlanCandidate] = []
+    for root in roots:
+        root = (node_root / root).resolve() if not root.is_absolute() else root.resolve()
+        if not root.exists():
+            continue
+        paths = [root] if root.is_file() else sorted(root.rglob("*.md"))
+        for path in paths:
+            if path.is_symlink() or not path.is_file() or path.suffix.lower() != ".md":
+                continue
+            if any(part in _AUDIT_NODE_SCAN_SKIP for part in path.parts):
+                continue
+            if _is_relative_to(path.resolve(), work_root.resolve()):
+                continue
+            text = path.read_text(encoding="utf-8")
+            if _looks_like_plan(path, text):
+                candidates.append(_PlanCandidate(path, _plan_title(path, text)))
+    return sorted(candidates, key=lambda c: str(c.path.relative_to(node_root)
+                                               if _is_relative_to(c.path, node_root)
+                                               else c.path))
+
+
+def _extract_section(text: str, names: tuple[str, ...]) -> str:
+    lines = text.splitlines()
+    start: int | None = None
+    level = 0
+    for i, line in enumerate(lines):
+        m = re.match(r"^(#+)\s+(.+?)\s*$", line)
+        if m and any(name in m.group(2).lower() for name in names):
+            start = i
+            level = len(m.group(1))
+            break
+    if start is None:
+        return ""
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        m = re.match(r"^(#+)\s+", lines[i])
+        if m and len(m.group(1)) <= level:
+            end = i
+            break
+    return "\n".join(lines[start:end]).strip() + "\n"
+
+
+def _write_migrated_artifacts(st: FsWorkStore, item: WorkItem, source: Path, text: str) -> None:
+    d = st.path(item.slug)
+    if d is None:
+        raise ValueError(f"created item cannot be resolved: {item.slug}")
+    rel_source = source.relative_to(st.node_root) if _is_relative_to(source, st.node_root) else source
+    request = (
+        f"# Initial request — {item.title}\n\n"
+        f"Imported from `{rel_source}` by `tcw work consolidate-plans`.\n\n"
+        "## Source document\n\n"
+        f"{text.strip()}\n"
+    )
+    (d / "initial-request.md").write_text(request, encoding="utf-8")
+    spec = _extract_section(text, ("spec", "specification"))
+    if spec:
+        (d / "spec.md").write_text(spec, encoding="utf-8")
+    plan = _extract_section(text, ("plan", "implementation"))
+    if plan:
+        (d / "plan.md").write_text(plan, encoding="utf-8")
+    git_stage(st.node_root, *[p for p in (d / "initial-request.md", d / "spec.md", d / "plan.md")
+                             if p.exists()])
+
+
+def _delete_source(node_root: Path, source: Path) -> None:
+    rel = source.relative_to(node_root) if _is_relative_to(source, node_root) else source
+    tracked = subprocess.run(
+        ["git", "-C", str(node_root), "ls-files", "--error-unmatch", str(rel)],
+        capture_output=True, text=True,
+    ).returncode == 0
+    if tracked:
+        git_rm(node_root, source)
+    else:
+        source.unlink()
+
+
+def _consolidate_plans(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    roots = [Path(p) for p in args.paths] if args.paths else _default_plan_roots(st.node_root)
+    candidates = _discover_plan_candidates(st.node_root, roots)
+    if not candidates:
+        print("No external planning documents found.")
+        return 0
+    migrated: list[tuple[Path, str]] = []
+    try:
+        for candidate in candidates:
+            rel = candidate.path.relative_to(st.node_root) if _is_relative_to(
+                candidate.path, st.node_root) else candidate.path
+            if not args.apply:
+                print(f"{rel} | {candidate.title}")
+                continue
+            text = candidate.path.read_text(encoding="utf-8")
+            item = st.create(candidate.title)
+            _write_migrated_artifacts(st, item, candidate.path, text)
+            migrated.append((candidate.path, item.slug))
+            print(f"{rel} -> {item.slug}")
+    except _ERRORS as e:
+        print(f"tcw work consolidate-plans: {e}", file=sys.stderr)
+        return 1
+    if args.apply and args.delete:
+        for source, _slug in migrated:
+            _delete_source(st.node_root, source)
+    return 0
+
+
 def _reconcile(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:
@@ -645,6 +794,17 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         description="Review backlog items and print cleanup recommendations.",
     )
     pab.set_defaults(func=_audit_work_backlog)
+
+    pcp = g.add_parser(
+        "consolidate-plans",
+        help="find external planning docs and migrate them into work items",
+        description="Find external planning documents and migrate them into TCW work items.",
+    )
+    pcp.add_argument("paths", nargs="*", help="files or folders to search")
+    pcp.add_argument("--apply", action="store_true", help="create backlog items")
+    pcp.add_argument("--delete", action="store_true",
+                     help="delete source documents after successful --apply")
+    pcp.set_defaults(func=_consolidate_plans)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")

@@ -287,6 +287,9 @@ tcw work list                          # the board: priority first, then topolog
 tcw work list --status active          # filter to one column
 tcw work list --all                    # include completed items too
 tcw work audit-work-backlog            # report stale, duplicate, blocked, or misplaced backlog items
+tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
+tcw work consolidate-plans docs/plans --apply --delete
+                                       # create backlog items, then delete migrated sources
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
@@ -324,6 +327,14 @@ work, broken local file references, stale blockers, malformed capability deltas,
 vague or under-specified items, and items that appear to belong in another TCW
 node. The command reports evidence and suggested next actions; it does not move,
 complete, drop, or rewrite items.
+
+`tcw work consolidate-plans [PATH ...]` finds Markdown planning documents outside
+`docs/work/` and migrates them into backlog items. It is dry-run by default:
+without `--apply`, it prints each candidate source and inferred title. With
+`--apply`, it creates one backlog item per source, writes `initial-request.md`
+with the source content and provenance, and copies obvious spec/plan sections
+into `spec.md` and `plan.md`. With `--delete`, it removes each source document
+only after its work item has been created successfully.
 
 A large item can be **decomposed into child items** with `tcw work new
 "<title>" --parent <slug>`: the child's folder is created inside the parent's,

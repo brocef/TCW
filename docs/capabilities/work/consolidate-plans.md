@@ -1,7 +1,7 @@
 # Consolidate Plans — capabilities
 
 ## Consolidate external plans into TCW work
-**Status:** Missing
+**Status:** Supported
 **Planning doc:** 2026-06-27-consolidate-external-planning-documents-into-tcw-work
 
 As a user, I run `tcw work consolidate-plans [PATH ...]` to find planning

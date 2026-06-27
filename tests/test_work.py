@@ -648,6 +648,87 @@ def test_cli_audit_work_backlog_flags_wrong_node_candidate(tmp_path, monkeypatch
     assert f"{item.slug} | move-to-node mobile | medium" in out
 
 
+# ── consolidate-plans ────────────────────────────────────────────────────────
+
+def test_cli_consolidate_plans_help(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    with pytest.raises(SystemExit) as e:
+        main(["work", "consolidate-plans", "--help"])
+    assert e.value.code == 0
+    assert "migrate them into TCW work items" in capsys.readouterr().out
+
+
+def test_cli_consolidate_plans_dry_run_is_read_only_and_scoped(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    docs = root / "docs"
+    other = root / "other"
+    other.mkdir()
+    plan = docs / "legacy-plan.md"
+    plan.write_text("# Legacy export plan\n\nDo it.\n", encoding="utf-8")
+    (other / "other-plan.md").write_text("# Other plan\n\nSkip it.\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "consolidate-plans", "docs"]) == 0
+    out = capsys.readouterr().out
+    assert "docs/legacy-plan.md | Legacy export plan" in out
+    assert "other-plan.md" not in out
+    assert not any(FsWorkStore.open(root).query(status="backlog"))
+
+
+def test_cli_consolidate_plans_excludes_docs_work(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    internal = root / "docs/work/backlog/not-a-source-plan.md"
+    internal.write_text("# Internal plan\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "consolidate-plans", "docs"]) == 0
+    assert "No external planning documents found." in capsys.readouterr().out
+
+
+def test_cli_consolidate_plans_apply_creates_lifecycle_artifacts(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    source = root / "docs/checkout-plan.md"
+    source.write_text(
+        "# Checkout cleanup\n\n"
+        "Intro.\n\n"
+        "## Specification\n\nAcceptance criteria here.\n\n"
+        "## Plan\n\n- Change it.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(root)
+
+    assert main(["work", "consolidate-plans", "docs", "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "docs/checkout-plan.md -> " in out
+    item = next(i for i in FsWorkStore.open(root).query(status="backlog")
+                if i.title == "Checkout cleanup")
+    d = FsWorkStore.open(root).path(item.slug)
+    assert "Imported from `docs/checkout-plan.md`" in (d / "initial-request.md").read_text()
+    assert "## Specification" in (d / "spec.md").read_text()
+    assert "## Plan" in (d / "plan.md").read_text()
+    assert source.exists()
+
+
+def test_cli_consolidate_plans_apply_delete_removes_source_after_migration(
+        tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    source = root / "docs/old-roadmap.md"
+    source.write_text("# Old roadmap\n\nMove this.\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "consolidate-plans", "docs", "--apply", "--delete"]) == 0
+    out = capsys.readouterr().out
+    assert "docs/old-roadmap.md -> " in out
+    assert not source.exists()
+    assert any(i.title == "Old roadmap" for i in FsWorkStore.open(root).query(status="backlog"))
+
+
 def test_cli_work_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = tmp_path / "fresh"

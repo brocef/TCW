@@ -9,6 +9,9 @@ category, with commit hash ranges so entries trace back to source.
   findings for duplicates/completed overlap, missing lifecycle artifacts, broken
   local references, stale blockers, malformed capability deltas, wrong-node
   candidates, and actionability issues.
+- `c0d7724..HEAD` — Added `tcw work consolidate-plans` with dry-run discovery,
+  `--apply` backlog-item migration, lifecycle artifact import, optional
+  post-migration `--delete`, and focused CLI tests.
 
 ## Changed
 
