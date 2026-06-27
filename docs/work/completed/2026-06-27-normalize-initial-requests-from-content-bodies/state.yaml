@@ -2,5 +2,11 @@ slug: 2026-06-27-normalize-initial-requests-from-content-bodies
 title: Normalize initial requests from content bodies
 phase: ''
 created: '2026-06-27'
-resolution: null
+resolution: done
 priority: null
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
