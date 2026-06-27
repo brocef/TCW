@@ -18,6 +18,6 @@ category, with commit hash ranges so entries trace back to source.
 - `f6d9e71..46457a1` — Made work-item `capabilities.yaml` loading tolerant of YAML
   parse errors so malformed capability deltas can be reported by audits instead
   of crashing backlog reads.
-- `909082a..HEAD` — Changed `tcw work list` to print lifecycle artifact stages
+- `909082a..866786b` — Changed `tcw work list` to print lifecycle artifact stages
   (`RSPOF`) in the third column instead of the usually-empty `phase` value, with
   tests for nonempty artifacts and empty-file omission.
