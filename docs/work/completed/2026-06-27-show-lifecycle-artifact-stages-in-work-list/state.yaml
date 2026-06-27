@@ -2,5 +2,11 @@ slug: 2026-06-27-show-lifecycle-artifact-stages-in-work-list
 title: Show lifecycle artifact stages in work list
 phase: ''
 created: '2026-06-27'
-resolution: null
+resolution: done
 priority: null
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
