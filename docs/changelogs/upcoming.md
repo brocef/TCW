@@ -21,6 +21,6 @@ category, with commit hash ranges so entries trace back to source.
 - `909082a..866786b` — Changed `tcw work list` to print lifecycle artifact stages
   (`RSPOF`) in the third column instead of the usually-empty `phase` value, with
   tests for nonempty artifacts and empty-file omission.
-- `90ca317..HEAD` — Backfilled missing `initial-request.md` artifacts from
+- `90ca317..c6aca34` — Backfilled missing `initial-request.md` artifacts from
   existing `content.md` bodies and documented `content.md` as the item
   body/overview surface rather than a lifecycle stage.
