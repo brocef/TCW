@@ -4,7 +4,7 @@
 **Status:** Supported
 **Subject:** work-item
 
-As a user, I run `tcw work new "<title>"` (with an optional piped body) to create a backlog item; the tool prints its generated slug (to stdout) and, to stderr, the path to the new item's `content.md` so I can open its body/overview surface right away. `content.md` is not a lifecycle stage; `initial-request.md` is the canonical request artifact. I can pass `--blocked-by <refs>` (comma-separated slugs or external strings) to attach blockers at creation time.
+As a user, I run `tcw work new "<title>"` (with an optional piped body) to create a backlog item; the tool prints its generated slug (to stdout) and, to stderr, the path to the new item's `initial-request.md` so I can open its body right away. `initial-request.md` is always-present and serves as both the body/overview surface and the canonical request artifact. I can pass `--blocked-by <refs>` (comma-separated slugs or external strings) to attach blockers at creation time.
 
 ## View the board
 **Status:** Supported

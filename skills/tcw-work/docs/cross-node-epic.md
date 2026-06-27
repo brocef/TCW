@@ -23,7 +23,7 @@ whole thing lives in one repo (see [`decompose.md`](decompose.md)).
 5. **Roll up progress** from the orchestrator:
    `tcw work reconcile <epic-slug>` scans every node for
    `initiative == <epic-slug>` and writes a consolidated table (node, slug,
-   status, blockers, next-ready) into the epic's `content.md`. Re-run it to
+   status, blockers, next-ready) into the epic's `initial-request.md`. Re-run it to
    refresh before deciding the next move.
 
 **Which path?** Same repo, one big item → `--parent` children

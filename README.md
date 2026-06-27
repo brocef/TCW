@@ -309,12 +309,11 @@ tcw work drop some-slug                # delete an inbox|backlog item
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
-`tcw work new` also prints an "→ edit: …/content.md" line (stderr) pointing at the
-new item's body so you can open it for editing right away. `content.md` is the
-always-present body/overview surface for a work item; `initial-request.md` is the
-canonical request lifecycle artifact. Older items that predated the formal
-lifecycle have had their `content.md` text copied into `initial-request.md` when
-they did not already have one.
+`tcw work new` also prints an "→ edit: …/initial-request.md" line (stderr) pointing
+at the new item's body so you can open it for editing right away.
+`initial-request.md` is always-present — it is the item body/overview surface and
+the canonical request lifecycle artifact, seeded with title, the three-axis scaffold
+(Product / Technical / Meta changes), and any piped stdin.
 
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
 `slug | status | stages | priority | title` (priority is the integer, or `-`
@@ -398,7 +397,7 @@ echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # reque
 ```
 
 `reconcile` consolidates every child task for an initiative into a managed
-rollup block in the epic's `content.md` — a slice table, surfaced capability
+rollup block in the epic's `initial-request.md` — a slice table, surfaced capability
 deltas, and the next ready actions — and is **read-only** on the capabilities
 ledger. `delegate`/`escalate` only ever write a request into the target node's
 `inbox/`, never its tracked work, respecting the node write-boundary.

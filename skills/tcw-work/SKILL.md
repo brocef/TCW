@@ -17,10 +17,8 @@ The artifact spine is:
 
 `initial-request.md` → `spec.md` → `plan.md` → `outcome.md` → `refined-outcome.md`
 
-`content.md` is not a lifecycle stage. It is the always-present work item body,
-overview, scratch surface, or managed rollup target. For legacy items, when
-`initial-request.md` is absent, treat `content.md` as request source material and
-copy it into `initial-request.md` before driving the formal lifecycle.
+`initial-request.md` is always-present — it serves as the item body/overview
+surface, scratch space, and the managed rollup target for epics.
 
 For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, run the tcw-capabilities planning gate before writing the technical plan.
 
@@ -40,7 +38,7 @@ Keep status in step *as you go*; don't batch the transitions at the end. The per
 
 ## Resume (across sessions)
 
-`tcw work list --status active` → `tcw work show <slug>` → read the item's `content.md` body plus whatever lifecycle artifacts exist (`initial-request.md`, `spec.md`, `plan.md`, `outcome.md`, `refined-outcome.md`). If `initial-request.md` is missing on a legacy item, copy the useful `content.md` material into it before continuing. For an epic, `tcw work reconcile <slug>` to refresh the rollup before choosing the next action.
+`tcw work list --status active` → `tcw work show <slug>` → read the item's `initial-request.md` body plus whatever lifecycle artifacts exist (`spec.md`, `plan.md`, `outcome.md`, `refined-outcome.md`). For an epic, `tcw work reconcile <slug>` to refresh the rollup before choosing the next action.
 
 ## Sub-procedures (read on demand)
 

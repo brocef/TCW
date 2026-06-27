@@ -1,12 +1,11 @@
 # TCW work lifecycle
 
-Use this file to choose the smallest lifecycle document needed for the current work item. TCW's durable unit is the work item folder; lifecycle artifacts live beside `content.md` so the item can move through `backlog`, `active`, and `completed` without losing context. `content.md` is the item body/overview surface, not a lifecycle stage; `initial-request.md` is the canonical request artifact.
+Use this file to choose the smallest lifecycle document needed for the current work item. TCW's durable unit is the work item folder; lifecycle artifacts live beside `initial-request.md` so the item can move through `backlog`, `active`, and `completed` without losing context. `initial-request.md` is the always-present body/overview surface and canonical request artifact.
 
 ## Common rules
 
 - Do not hand-edit `docs/work/` when a `tcw work` command exists.
 - Preserve the work item as the source of truth. `docs/work/inbox/` is raw intake only; convert an inbox request into a backlog item, write `initial-request.md`, then remove the inbox source during ingestion.
-- For legacy items that have useful request context in `content.md` but no `initial-request.md`, copy the content into `initial-request.md` before continuing through the lifecycle.
 - For product changes, run the tcw-capabilities planning gate before writing the technical plan, and reconcile capabilities before completion.
 - For small changes, offer to compress unnecessary planning detail, but keep enough artifact context for another agent to resume safely.
 - `tcw work start <slug>` is the implementation boundary. Run it before the first code edit and commit that status transition before implementation changes.

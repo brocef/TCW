@@ -18,7 +18,7 @@ tcw work new "<sub-item title>" --parent <parent-slug>
   **child** on its own promotes it to a top-level item (it de-nests).
 - Decompose at *planning* time (in the parent's `plan.md`, list the children you
   intend to spin off), then create them. Each child gets its own
-  `content.md`/`spec.md`/`plan.md` as it's planned — the parent stays a thin
+  `initial-request.md`/`spec.md`/`plan.md` as it's planned — the parent stays a thin
   umbrella.
 
 Reach for this **before** an item grows unwieldy. A parent with three focused
