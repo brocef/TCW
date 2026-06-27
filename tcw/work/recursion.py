@@ -91,12 +91,12 @@ def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]]) -> str:
 
 def reconcile(node_root: Path, epic_slug: str, commit: bool = False) -> str:
     """Scan children for `initiative == epic_slug`; write a consolidated rollup
-    into the epic's content.md managed block. Read-only on capabilities."""
+    into the epic's initial-request.md managed block. Read-only on capabilities."""
     store = FsWorkStore.open(node_root)
     if store.get(epic_slug) is None:
         raise ValueError(f"no such epic: {epic_slug}")
     block = _render(epic_slug, _tasks_for(node_root, epic_slug))
-    content = store.path(epic_slug) / "content.md"
+    content = store.path(epic_slug) / "initial-request.md"
     original = content.read_text(encoding="utf-8") if content.exists() else ""
     text = ROLLUP_RE.sub(block, original) if ROLLUP_RE.search(original) \
         else f"{original.rstrip()}\n\n{block}\n"

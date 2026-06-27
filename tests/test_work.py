@@ -37,11 +37,11 @@ def test_slug_generation_collision_and_immutability(tmp_path):
     assert st.get(a.slug).slug == a.slug               # ...slug is frozen
 
 
-def test_body_path_points_at_content_md(tmp_path):
+def test_body_path_points_at_initial_request_md(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
     item = st.create("Task", created="2026-01-01")
     body = st.body_path(item.slug)
-    assert body == st.path(item.slug) / "content.md"
+    assert body == st.path(item.slug) / "initial-request.md"
     assert body.exists()
     assert st.body_path("no-such-slug") is None
 
@@ -576,7 +576,7 @@ def test_cli_list_shows_outcome_and_refined_outcome_stages(tmp_path, monkeypatch
 
     assert main(["work", "list"]) == 0
     row = capsys.readouterr().out.strip().split(" | ")
-    assert row[2] == "OF"
+    assert row[2] == "ROF"
 
 
 # ── audit-work-backlog ───────────────────────────────────────────────────────

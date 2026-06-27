@@ -107,7 +107,7 @@ class _AuditFinding:
 
 
 _LIFECYCLE_ARTIFACTS = (
-    "content.md", "initial-request.md", "spec.md", "plan.md", "outcome.md",
+    "initial-request.md", "spec.md", "plan.md", "outcome.md",
     "refined-outcome.md",
 )
 _AUDIT_ARTIFACTS = _LIFECYCLE_ARTIFACTS[:4]

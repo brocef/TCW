@@ -833,8 +833,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return self._find(slug)
 
     def body_path(self, slug: str) -> Path | None:
-        d = self._find(slug)                          # content.md filename: FS realization, kept here
-        return d / "content.md" if d is not None else None
+        d = self._find(slug)                          # initial-request.md: FS realization of body surface
+        return d / "initial-request.md" if d is not None else None
 
     def _unique_slug(self, created: str, title: str) -> str:
         base = f"{created}-{slugify(title)}"
@@ -856,7 +856,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def _item_from_dir(self, d: Path) -> WorkItem:
         state = self._safe_yaml(d / "state.yaml")
-        content = d / "content.md"
+        request = d / "initial-request.md"
         caps = d / "capabilities.yaml"
         capabilities = None
         if caps.exists():
@@ -872,7 +872,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             created=state.get("created", ""),
             resolution=state.get("resolution"),
             priority=state.get("priority"),
-            body=content.read_text(encoding="utf-8") if content.exists() else "",
+            body=request.read_text(encoding="utf-8") if request.exists() else "",
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=capabilities,
             initiative=state.get("initiative", ""),
@@ -935,13 +935,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         else:
             d = self.root / "backlog" / slug
         d.mkdir(parents=True)
-        (d / "content.md").write_text(
+        (d / "initial-request.md").write_text(
             f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
             f"{body}\n", encoding="utf-8")
         dump_yaml(d / "state.yaml", {
             "slug": slug, "title": title, "phase": "", "created": created,
             "resolution": None, "priority": priority})
-        self._stage(d / "content.md", d / "state.yaml")
+        self._stage(d / "initial-request.md", d / "state.yaml")
         return self.get(slug)
 
     def set_field(self, slug: str, key: str, value) -> None:

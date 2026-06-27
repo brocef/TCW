@@ -184,7 +184,7 @@ def test_reconcile_rollup_keys_by_node_and_is_idempotent(tmp_path):
     assert "| child-a | 2026-01-01-slice |" in block
     assert "| child-b | 2026-01-01-slice |" in block
     assert reconcile(parent, epic.slug) == block          # idempotent
-    content = (FsWorkStore.open(parent).path(epic.slug) / "content.md").read_text()
+    content = (FsWorkStore.open(parent).path(epic.slug) / "initial-request.md").read_text()
     assert content.count("<!-- tcw:rollup -->") == 1      # no duplicate block
 
 
@@ -318,7 +318,7 @@ def test_complete_merges_worktree_branch_before_teardown(tmp_path, monkeypatch, 
     main(["work", "start", slug, "--worktree"]); capsys.readouterr()
     wt = root / ".worktrees" / slug
     # implementation commit I on work/<slug>: modify the tracked item doc AND add code
-    (wt / "docs" / "work" / "active" / slug / "content.md").write_text("worktree edit\n")
+    (wt / "docs" / "work" / "active" / slug / "initial-request.md").write_text("worktree edit\n")
     (wt / "feature.py").write_text("x = 1\n")
     subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "impl"], check=True)
@@ -348,7 +348,7 @@ def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):
     main(["work", "new", "Ship"]); slug = capsys.readouterr().out.strip()
     main(["work", "start", slug, "--worktree"]); capsys.readouterr()
     wt = root / ".worktrees" / slug
-    item_doc = ["docs", "work", "active", slug, "content.md"]
+    item_doc = ["docs", "work", "active", slug, "initial-request.md"]
     # diverging edits to the SAME tracked file → conflicting merge
     (wt.joinpath(*item_doc)).write_text("worktree side\n")
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-am", "wt"], check=True)
