@@ -533,6 +533,121 @@ def test_cli_list_shows_priority_column(tmp_path, monkeypatch, capsys):
     assert rows[hot.slug][4] == "Hot"                     # title still follows
 
 
+# ── audit-work-backlog ───────────────────────────────────────────────────────
+
+def _write_planning(st, slug, extra: str = ""):
+    d = st.path(slug)
+    (d / "initial-request.md").write_text("# Request\n\nDo the work.\n", encoding="utf-8")
+    (d / "spec.md").write_text(
+        "# Spec\n\n## Acceptance criteria\n\n- Works.\n" + extra, encoding="utf-8")
+    (d / "plan.md").write_text("# Plan\n\n- Implement it.\n", encoding="utf-8")
+
+
+def test_cli_audit_work_backlog_help(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    with pytest.raises(SystemExit) as e:
+        main(["work", "audit-work-backlog", "--help"])
+    assert e.value.code == 0
+    assert "cleanup recommendations" in capsys.readouterr().out
+
+
+def test_cli_audit_work_backlog_keep_is_read_only(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Concrete backlog item", created="2026-01-01")
+    _write_planning(st, item.slug)
+    before = {p.relative_to(root): p.read_bytes()
+              for p in sorted(st.path(item.slug).rglob("*")) if p.is_file()}
+
+    assert main(["work", "audit-work-backlog"]) == 0
+    out = capsys.readouterr().out
+    assert f"{item.slug} | keep | info | no cleanup findings" in out
+    after = {p.relative_to(root): p.read_bytes()
+             for p in sorted(st.path(item.slug).rglob("*")) if p.is_file()}
+    assert after == before
+
+
+def test_cli_audit_work_backlog_flags_completed_duplicate(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    done = st.create("Export reports", created="2026-01-01")
+    st.start(done.slug)
+    st.complete(done.slug, "done", [])
+    backlog = st.create("Export reports", created="2026-01-02")
+    _write_planning(st, backlog.slug)
+
+    assert main(["work", "audit-work-backlog"]) == 0
+    out = capsys.readouterr().out
+    assert f"{backlog.slug} | complete-as-duplicate | high | duplicate" in out
+    assert done.slug in out
+
+
+def test_cli_audit_work_backlog_flags_broken_reference(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Fix stale plan", created="2026-01-01")
+    _write_planning(st, item.slug, "\nSee tcw/missing_module.py for the old code.\n")
+
+    assert main(["work", "audit-work-backlog"]) == 0
+    out = capsys.readouterr().out
+    assert f"{item.slug} | revise | high | broken local file reference" in out
+    assert "tcw/missing_module.py" in out
+
+
+def test_cli_audit_work_backlog_flags_stale_blocker(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    blocker = st.create("Blocker", created="2026-01-01")
+    item = st.create("Blocked item", created="2026-01-02")
+    _write_planning(st, item.slug)
+    st.add_blocker(item.slug, blocker.slug)
+    st.start(blocker.slug)
+    st.complete(blocker.slug, "done", [])
+
+    assert main(["work", "audit-work-backlog"]) == 0
+    out = capsys.readouterr().out
+    assert f"{item.slug} | revise | low | blocker is already completed" in out
+    assert blocker.slug in out
+
+
+def test_cli_audit_work_backlog_flags_malformed_capabilities(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Capability cleanup", created="2026-01-01")
+    _write_planning(st, item.slug)
+    (st.path(item.slug) / "capabilities.yaml").write_text("changed: [", encoding="utf-8")
+
+    assert main(["work", "audit-work-backlog"]) == 0
+    out = capsys.readouterr().out
+    assert f"{item.slug} | revise | high | malformed capabilities.yaml" in out
+
+
+def test_cli_audit_work_backlog_flags_wrong_node_candidate(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path, "parent")
+    node(root, "mobile")
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    item = st.create("Mobile checkout cleanup", created="2026-01-01")
+    _write_planning(st, item.slug)
+
+    assert main(["work", "audit-work-backlog"]) == 0
+    out = capsys.readouterr().out
+    assert f"{item.slug} | move-to-node mobile | medium" in out
+
+
 def test_cli_work_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = tmp_path / "fresh"

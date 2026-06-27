@@ -57,6 +57,7 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
 | see the board | `tcw work list [--status active]` (hides completed; `--all` to include; sorts by priority, then topologically) |
+| audit backlog relevance | `tcw work audit-work-backlog` (read-only cleanup recommendations for stale, duplicate, broken, blocked, vague, or misplaced backlog items) |
 | find item files | `tcw work path <slug>` |
 | set priority | `tcw work new "<t>" --priority N` · `tcw work edit <slug> --priority N` (higher int = higher; default unspecified) |
 | topology | `tcw work nodes` |

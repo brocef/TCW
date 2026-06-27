@@ -858,6 +858,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         state = self._safe_yaml(d / "state.yaml")
         content = d / "content.md"
         caps = d / "capabilities.yaml"
+        capabilities = None
+        if caps.exists():
+            try:
+                capabilities = load_yaml(caps)
+            except yaml.YAMLError as e:
+                capabilities = {"_tcw_parse_error": str(e)}
         return WorkItem(
             slug=d.name,
             title=state.get("title", d.name),
@@ -868,7 +874,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             priority=state.get("priority"),
             body=content.read_text(encoding="utf-8") if content.exists() else "",
             blocked_by=list(state.get("blocked_by") or []),
-            capabilities=load_yaml(caps) if caps.exists() else None,
+            capabilities=capabilities,
             initiative=state.get("initiative", ""),
             type=state.get("type", ""),
             worktree=state.get("worktree", ""),

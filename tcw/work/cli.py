@@ -1,14 +1,17 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+from dataclasses import dataclass, field
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 from tcw.store.base import (
     WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
 )
 from tcw.store.fs import (
-    COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
+    COMPONENTS, SENTINEL, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
     ensure_worktree_ignored, find_node, git_commit, merge_worktree, parent_node,
     remove_worktree,
 )
@@ -16,7 +19,8 @@ from tcw.work.recursion import delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "edit", "complete",
-               "drop", "nodes", "reconcile", "delegate", "escalate"}
+               "drop", "nodes", "reconcile", "delegate", "escalate",
+               "audit-work-backlog"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 _ERRORS = (ValueError, IllegalTransition, MultipleMatch)
@@ -89,6 +93,263 @@ def _nodes(args: argparse.Namespace) -> int:
             print(f"  {c.relative_to(node)}")
     else:
         print("children: (none — leaf)")
+    return 0
+
+
+@dataclass
+class _AuditFinding:
+    slug: str
+    recommendation: str
+    severity: str
+    reason: str
+    evidence: list[str] = field(default_factory=list)
+    action: str = ""
+
+
+_LIFECYCLE_ARTIFACTS = (
+    "content.md", "initial-request.md", "spec.md", "plan.md", "outcome.md",
+    "refined-outcome.md",
+)
+_AUDIT_ARTIFACTS = _LIFECYCLE_ARTIFACTS[:4]
+_AUDIT_NODE_SCAN_SKIP = {
+    ".git", ".hg", ".svn", ".worktrees", ".venv", "venv", "node_modules",
+    "__pycache__", ".pytest_cache", ".mypy_cache", "build", "dist", "plugins",
+}
+_PATH_REF_RE = re.compile(
+    r"(?<![\w/.-])([A-Za-z0-9_./-]+\.(?:py|md|toml|yaml|yml|json|sh))(?::\d+)?"
+)
+
+
+def _words(text: str) -> set[str]:
+    stop = {"a", "an", "and", "for", "in", "of", "the", "to", "with"}
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in stop}
+
+
+def _read_artifacts(st: FsWorkStore, item: WorkItem) -> dict[str, str]:
+    d = st.path(item.slug)
+    if d is None:
+        return {}
+    out: dict[str, str] = {}
+    for name in _AUDIT_ARTIFACTS:
+        p = d / name
+        if p.is_file():
+            out[name] = p.read_text(encoding="utf-8")
+    return out
+
+
+def _missing_artifact_findings(st: FsWorkStore, item: WorkItem) -> list[_AuditFinding]:
+    d = st.path(item.slug)
+    if d is None:
+        return []
+    missing = [name for name in ("initial-request.md", "spec.md", "plan.md")
+               if not (d / name).is_file() or not (d / name).read_text(encoding="utf-8").strip()]
+    if not missing:
+        return []
+    return [_AuditFinding(
+        item.slug, "revise", "medium", "missing lifecycle planning artifacts",
+        [", ".join(missing)], "write or regenerate the missing lifecycle artifacts",
+    )]
+
+
+def _broken_reference_findings(st: FsWorkStore, item: WorkItem,
+                               artifacts: dict[str, str]) -> list[_AuditFinding]:
+    findings: list[_AuditFinding] = []
+    seen: set[str] = set()
+    item_dir = st.path(item.slug)
+    for name, text in artifacts.items():
+        for ref in _PATH_REF_RE.findall(text):
+            if ref.startswith(("http", "https")) or ref in seen or ref in _LIFECYCLE_ARTIFACTS:
+                continue
+            seen.add(ref)
+            if not (st.node_root / ref).exists() and not (
+                item_dir is not None and (item_dir / ref).exists()
+            ):
+                findings.append(_AuditFinding(
+                    item.slug, "revise", "high", "broken local file reference",
+                    [f"{name}: {ref}"], "update or remove the stale reference",
+                ))
+    return findings
+
+
+def _duplicate_findings(item: WorkItem, items: list[WorkItem]) -> list[_AuditFinding]:
+    item_words = _words(f"{item.title} {item.body}")
+    if not item_words:
+        return []
+    findings: list[_AuditFinding] = []
+    for other in items:
+        if other.slug == item.slug:
+            continue
+        other_words = _words(f"{other.title} {other.body}")
+        if not other_words:
+            continue
+        score = len(item_words & other_words) / len(item_words | other_words)
+        exact_title = item.title.strip().lower() == other.title.strip().lower()
+        if exact_title or score >= 0.65:
+            if other.status == "completed":
+                recommendation = "complete-as-duplicate"
+                severity = "high"
+                action = f"compare with completed item {other.slug}"
+            else:
+                recommendation = "revise"
+                severity = "medium"
+                action = f"merge, split, or mark duplicate of {other.slug}"
+            findings.append(_AuditFinding(
+                item.slug, recommendation, severity, "duplicate or overlapping work item",
+                [f"{other.status}: {other.slug}"], action,
+            ))
+            break
+    return findings
+
+
+def _blocker_findings(st: FsWorkStore, item: WorkItem) -> list[_AuditFinding]:
+    findings: list[_AuditFinding] = []
+    for blocker in item.blocked_by:
+        if "external" in blocker:
+            label = str(blocker["external"])
+            if not re.search(r"\b(owner|by|until|waiting on|ticket|issue|jira)\b", label, re.I):
+                findings.append(_AuditFinding(
+                    item.slug, "revise", "medium", "external blocker has no next action",
+                    [f"external: {label}"], "record owner, wait condition, or follow-up action",
+                ))
+        elif "slug" in blocker:
+            blocked_by = st.get(blocker["slug"])
+            if blocked_by is None:
+                findings.append(_AuditFinding(
+                    item.slug, "revise", "low", "blocker no longer resolves",
+                    [blocker["slug"]], "remove the stale blocker reference",
+                ))
+            elif blocked_by.status == "completed":
+                findings.append(_AuditFinding(
+                    item.slug, "revise", "low", "blocker is already completed",
+                    [blocker["slug"]], "remove the resolved blocker reference",
+                ))
+    return findings
+
+
+def _capability_findings(st: FsWorkStore, item: WorkItem) -> list[_AuditFinding]:
+    caps = item.capabilities
+    if not caps:
+        return []
+    if isinstance(caps, dict) and caps.get("_tcw_parse_error"):
+        return [_AuditFinding(
+            item.slug, "revise", "high", "malformed capabilities.yaml",
+            [str(caps["_tcw_parse_error"]).splitlines()[0]],
+            "repair or remove the malformed capability delta file",
+        )]
+    if isinstance(caps, dict):
+        refs = []
+        for values in caps.values():
+            if isinstance(values, list):
+                refs.extend(str(v).split("#", 1)[0] for v in values if isinstance(v, str))
+        broken = [ref for ref in refs if ref and not (st.node_root / "docs" / "capabilities" /
+                                                      f"{ref}.md").exists()
+                  and not (st.node_root / "docs" / "capabilities" / ref /
+                           "capabilities.md").exists()]
+        if broken:
+            return [_AuditFinding(
+                item.slug, "revise", "medium", "capability reference no longer resolves",
+                [", ".join(sorted(set(broken)))], "update capabilities.yaml references",
+            )]
+    elif not isinstance(caps, list):
+        return [_AuditFinding(
+            item.slug, "revise", "low", "capabilities.yaml has an unexpected shape",
+            [type(caps).__name__], "normalize the capability delta file",
+        )]
+    return []
+
+
+def _audit_child_nodes(root: Path) -> list[Path]:
+    found: list[Path] = []
+
+    def walk(d: Path) -> None:
+        for child in sorted(d.iterdir()):
+            if child.name in _AUDIT_NODE_SCAN_SKIP or child.is_symlink() or not child.is_dir():
+                continue
+            if (child / SENTINEL).is_file() and (child / "docs" / "work").is_dir():
+                found.append(child)
+                continue
+            walk(child)
+
+    walk(root)
+    return found
+
+
+def _wrong_node_findings(st: FsWorkStore, item: WorkItem, text: str,
+                         node_candidates: list[Path]) -> list[_AuditFinding]:
+    findings: list[_AuditFinding] = []
+    haystack = f"{item.title}\n{text}".lower()
+    for child in node_candidates:
+        rel = str(child.relative_to(st.node_root))
+        tokens = {rel.lower(), child.name.lower()}
+        if any(tok and re.search(rf"\b{re.escape(tok)}\b", haystack) for tok in tokens):
+            findings.append(_AuditFinding(
+                item.slug, f"move-to-node {rel}", "medium", "item appears to target another TCW node",
+                [rel], f"move or split the item into node {rel}",
+            ))
+            break
+    return findings
+
+
+def _actionability_findings(item: WorkItem, artifacts: dict[str, str]) -> list[_AuditFinding]:
+    text = "\n".join(artifacts.values())
+    findings: list[_AuditFinding] = []
+    if len(_words(item.title)) <= 1:
+        findings.append(_AuditFinding(
+            item.slug, "revise", "low", "title is too vague",
+            [item.title], "rename the item with a concrete outcome",
+        ))
+    if "acceptance criteria" not in text.lower() and "acceptance" not in text.lower():
+        findings.append(_AuditFinding(
+            item.slug, "revise", "low", "acceptance criteria are missing",
+            ["no acceptance criteria section found"], "add concrete acceptance criteria",
+        ))
+    if len(text) > 40000:
+        findings.append(_AuditFinding(
+            item.slug, "split", "medium", "work item artifacts are oversized",
+            [f"{len(text)} bytes"], "split the work into smaller items",
+        ))
+    return findings
+
+
+def _audit_item(st: FsWorkStore, item: WorkItem, all_items: list[WorkItem],
+                node_candidates: list[Path]) -> list[_AuditFinding]:
+    artifacts = _read_artifacts(st, item)
+    text = "\n".join(artifacts.values())
+    findings: list[_AuditFinding] = []
+    findings += _duplicate_findings(item, all_items)
+    findings += _missing_artifact_findings(st, item)
+    findings += _broken_reference_findings(st, item, artifacts)
+    findings += _wrong_node_findings(st, item, text, node_candidates)
+    findings += _blocker_findings(st, item)
+    findings += _capability_findings(st, item)
+    findings += _actionability_findings(item, artifacts)
+    if not findings:
+        findings.append(_AuditFinding(
+            item.slug, "keep", "info", "no cleanup findings",
+            ["backlog item has readable planning artifacts"], "leave the item in backlog",
+        ))
+    return findings
+
+
+def _audit_work_backlog(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        backlog = st.board(status="backlog")
+        all_items = st.query()
+        node_candidates = _audit_child_nodes(st.node_root)
+    except _ERRORS as e:
+        print(f"tcw work audit-work-backlog: {e}", file=sys.stderr)
+        return 1
+    for item in backlog:
+        for finding in _audit_item(st, item, all_items, node_candidates):
+            print(f"{finding.slug} | {finding.recommendation} | "
+                  f"{finding.severity} | {finding.reason}")
+            for evidence in finding.evidence:
+                print(f"  evidence: {evidence}")
+            if finding.action:
+                print(f"  action: {finding.action}")
     return 0
 
 
@@ -377,6 +638,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pes.add_argument("title")
     pes.add_argument("--initiative", help="stamp the request with an initiative slug")
     pes.set_defaults(func=_escalate)
+
+    pab = g.add_parser(
+        "audit-work-backlog",
+        help="review backlog items and print cleanup recommendations",
+        description="Review backlog items and print cleanup recommendations.",
+    )
+    pab.set_defaults(func=_audit_work_backlog)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")

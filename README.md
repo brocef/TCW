@@ -286,6 +286,7 @@ tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the pare
 tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column
 tcw work list --all                    # include completed items too
+tcw work audit-work-backlog            # report stale, duplicate, blocked, or misplaced backlog items
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
@@ -316,6 +317,13 @@ for everything. It sorts by priority first (higher integer above lower,
 unspecified-priority items keeping creation order), then topologically — blockers
 appear before the items they block, since a priority preference can't jump a hard
 dependency — and annotates blocked items with their unresolved blockers.
+
+`tcw work audit-work-backlog` reviews backlog items in board order and prints
+read-only cleanup recommendations. It flags likely duplicates or already-finished
+work, broken local file references, stale blockers, malformed capability deltas,
+vague or under-specified items, and items that appear to belong in another TCW
+node. The command reports evidence and suggested next actions; it does not move,
+complete, drop, or rewrite items.
 
 A large item can be **decomposed into child items** with `tcw work new
 "<title>" --parent <slug>`: the child's folder is created inside the parent's,

@@ -1,7 +1,7 @@
 # Audit Work Backlog — capabilities
 
 ## Audit and prune the work backlog
-**Status:** Missing
+**Status:** Supported
 **Planning doc:** 2026-06-27-audit-and-prune-the-work-backlog
 
 As a user, I run `tcw work audit-work-backlog` to review backlog items and get a
