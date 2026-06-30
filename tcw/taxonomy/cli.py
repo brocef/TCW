@@ -36,6 +36,9 @@ def _stdin_body() -> str:
 
 def _print_term(term: Term) -> None:
     print(f"{term.name}  ({term.qualified}, {term.origin})")
+    print(f"kind: {term.kind}")
+    if term.vocabulary:
+        print(f"vocabulary: {', '.join(term.vocabulary)}")
     if term.relates_to:
         print(f"relatesTo: {', '.join(term.relates_to)}")
     if term.attachments:
@@ -52,7 +55,8 @@ def _list(args: argparse.Namespace) -> int:
         return 1
     for t in sorted(st.list(local_only=args.local), key=lambda t: (t.origin != "local", t.qualified)):
         indent = "  " * t.slug.count("/")
-        print(f"{indent}{t.slug.rsplit('/', 1)[-1]}  ({t.origin})")
+        marker = "F" if t.kind == "Feature" else "V"
+        print(f"{indent}{t.slug.rsplit('/', 1)[-1]}  [{marker}] ({t.origin})")
     return 0
 
 
@@ -62,7 +66,8 @@ def _add(args: argparse.Namespace) -> int:
         return 1
     try:
         term = st.add(args.name, slug=args.slug, parent=args.parent,
-                      description=args.description or _stdin_body())
+                      description=args.description or _stdin_body(),
+                      kind=args.kind, vocabulary=args.vocab)
     except ValueError as e:
         print(f"tcw taxonomy add: {e}", file=sys.stderr)
         return 1
@@ -163,32 +168,36 @@ def _extends_rm(args: argparse.Namespace) -> int:
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser(NAME, help="the nouns — domain terms")
+    p = sub.add_parser(NAME, help="vocabulary and feature entries")
     g = p.add_subparsers(dest="cmd", required=True)
 
     g.add_parser("init", help="scaffold docs/taxonomy/ (mirror of `tcw init taxonomy`)") \
         .set_defaults(func=_init)
 
-    pl = g.add_parser("list", help="list terms as a tree, flagged by origin")
-    pl.add_argument("--local", action="store_true", help="local terms only")
+    pl = g.add_parser("list", help="list entries as a tree, flagged by kind and origin")
+    pl.add_argument("--local", action="store_true", help="local entries only")
     pl.set_defaults(func=_list)
 
-    pa = g.add_parser("add", help="create a term")
+    pa = g.add_parser("add", help="create a vocabulary term or feature")
     pa.add_argument("name")
     pa.add_argument("description", nargs="?")
     pa.add_argument("-s", "--slug", help="leaf slug (default: slugified name)")
     pa.add_argument("-p", "--parent", help="parent term path (default: root)")
+    pa.add_argument("--kind", choices=("vocabulary", "feature"), default="vocabulary",
+                    help="taxonomy object kind (default: vocabulary)")
+    pa.add_argument("--vocab", action="append", metavar="REF",
+                    help="vocabulary ref involved by a feature (repeatable)")
     pa.set_defaults(func=_add)
 
-    ps = g.add_parser("show", help="read a term")
+    ps = g.add_parser("show", help="read an entry")
     ps.add_argument("path")
     ps.set_defaults(func=_show)
 
-    pr = g.add_parser("rm", help="remove a local term")
+    pr = g.add_parser("rm", help="remove a local entry")
     pr.add_argument("path")
     pr.set_defaults(func=_rm)
 
-    pse = g.add_parser("search", help="search names + descriptions")
+    pse = g.add_parser("search", help="search entry names + descriptions")
     pse.add_argument("query")
     pse.set_defaults(func=_search)
 

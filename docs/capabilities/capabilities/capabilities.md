@@ -27,5 +27,6 @@ As a user, I run `tcw capabilities search <query>` to find capabilities whose na
 ## Validate capabilities
 **Status:** Supported
 **Subject:** capability/subject
+**Feature:** capability-feature-association
 
-As a user, I run `tcw capabilities check` to validate cross-reference identifiers, the locked metadata vocabulary and required-when fields, role/condition slugs, and every `Subject:` ref against the taxonomy store.
+As a user, I run `tcw capabilities check` to validate cross-reference identifiers, the locked metadata vocabulary and required-when fields, role/condition slugs, every `Subject:` ref against the taxonomy store, and every `Feature:` ref as a registered taxonomy feature.

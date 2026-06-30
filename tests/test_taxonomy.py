@@ -18,12 +18,17 @@ def node(tmp_path: Path, name: str) -> Path:
     return root
 
 
-def write_term(root: Path, slug: str, name=None, relates_to=None, description=""):
+def write_term(root: Path, slug: str, name=None, relates_to=None, description="",
+               kind=None, vocabulary=None):
     d = root / "docs" / "taxonomy" / slug
     d.mkdir(parents=True, exist_ok=True)
     import yaml
-    (d / "meta.yaml").write_text(
-        yaml.safe_dump({"name": name or slug, "relatesTo": relates_to or []}))
+    meta = {"name": name or slug, "relatesTo": relates_to or []}
+    if kind:
+        meta["kind"] = kind
+    if vocabulary:
+        meta["vocabulary"] = vocabulary
+    (d / "meta.yaml").write_text(yaml.safe_dump(meta))
     (d / "description.md").write_text(description)
 
 
@@ -45,6 +50,23 @@ def test_add_nesting_and_slug_is_path(tmp_path):
     st.add("Object")
     st.add("Permission", parent="object")
     assert st.get("object/permission").slug == "object/permission"
+
+
+def test_add_feature_with_vocabulary_refs(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("User")
+    feature = st.add("User Authentication", kind="Feature", vocabulary=["user"])
+    assert feature.kind == "Feature"
+    assert feature.vocabulary == ["user"]
+    assert st.check() == []
+
+
+def test_missing_kind_defaults_to_vocabulary(tmp_path):
+    root = node(tmp_path, "repo")
+    write_term(root, "user", name="User")
+    term = FsTaxonomyStore.open(root).get("user")
+    assert term.kind == "Vocabulary"
 
 
 def test_add_refuses_collision(tmp_path):
@@ -130,6 +152,20 @@ def test_check_dangling_relatesto(tmp_path):
     assert any("dangling" in p for p in problems)
 
 
+def test_check_feature_vocabulary_refs(tmp_path):
+    root = node(tmp_path, "repo")
+    write_term(root, "user", name="User")
+    write_term(root, "user-authentication", name="User Authentication",
+               kind="Feature", vocabulary=["user"])
+    write_term(root, "password-reset", name="Password Reset",
+               kind="Feature", vocabulary=["user-authentication"])
+    write_term(root, "ghost-feature", name="Ghost Feature",
+               kind="Feature", vocabulary=["ghost"])
+    problems = FsTaxonomyStore.open(root).check()
+    assert any("password-reset" in p and "expected Vocabulary" in p for p in problems)
+    assert any("ghost-feature" in p and "dangling vocabulary" in p for p in problems)
+
+
 def test_check_ambiguous_relatesto(tmp_path):
     a = node(tmp_path, "a"); write_term(a, "Term")
     b = node(tmp_path, "b"); write_term(b, "Term")
@@ -180,6 +216,23 @@ def test_cli_bare_path_is_show(tmp_path, monkeypatch, capsys):
     main(["taxonomy", "add", "Admin"])
     assert main(["taxonomy", "admin"]) == 0          # bare path → show
     assert "Admin" in capsys.readouterr().out
+
+
+def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    monkeypatch.chdir(root)
+    assert main(["taxonomy", "add", "User"]) == 0
+    capsys.readouterr()
+    assert main(["taxonomy", "add", "User Authentication", "--kind", "feature",
+                 "--vocab", "user"]) == 0
+    capsys.readouterr()
+    assert main(["taxonomy", "list"]) == 0
+    assert "user-authentication  [F]" in capsys.readouterr().out
+    assert main(["taxonomy", "show", "user-authentication"]) == 0
+    out = capsys.readouterr().out
+    assert "kind: Feature" in out
+    assert "vocabulary: user" in out
 
 
 def test_cli_taxonomy_init_mirrors_top_level(tmp_path, monkeypatch, capsys):

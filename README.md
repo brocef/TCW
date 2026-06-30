@@ -198,13 +198,17 @@ shortcut (`tcw taxonomy <path>` == `tcw taxonomy show <path>`).
 
 ### `tcw taxonomy` — the nouns
 
-Terms form a **forest, and the slug *is* the path**: `admin/permission` is a
-different term from `billing/permission`, and addressing is by that path.
+Taxonomy entries form a **forest, and the slug *is* the path**:
+`admin/permission` is a different entry from `billing/permission`, and addressing
+is by that path. Entries have two kinds: **Vocabulary** for the fundamental
+language of the project, and **Feature** for the user- or application-facing
+manifestations that operate on or involve vocabulary.
 
 ```sh
-tcw taxonomy add Invoice "A bill issued to a customer."     # root-level term
-tcw taxonomy add Permission -p admin                        # → admin/permission
+tcw taxonomy add Invoice "A bill issued to a customer."     # vocabulary by default
+tcw taxonomy add Permission -p admin                        # -> admin/permission
 tcw taxonomy add Note -p invoice -s memo                    # custom leaf slug
+tcw taxonomy add "User Authentication" --kind feature --vocab user
 
 tcw taxonomy list                  # the forest, indented, flagged by origin
 tcw taxonomy list --local          # local terms only (hide imported)
@@ -216,8 +220,10 @@ tcw taxonomy extends add acme ../acme-shared   # import another repo's terms
 tcw taxonomy extends rm acme                   # drop the import
 ```
 
-A term's body comes from the argument or from **stdin** (`echo "..." | tcw
-taxonomy add Foo`). Taxonomies can **federate**: `tcw taxonomy extends add
+A taxonomy entry's body comes from the argument or from **stdin** (`echo "..." | tcw
+taxonomy add Foo`). Feature entries can carry repeatable `--vocab <ref>` links
+to the vocabulary they involve; `tcw taxonomy check` validates those refs.
+Taxonomies can **federate**: `tcw taxonomy extends add
 <alias> <repo-path>` maps a consumer-chosen alias to a source taxonomy (writing
 the `extends` map in `config.yaml`), each alias is its own namespace, and there
 is **no silent merge** — a local `permission` and an imported `acme/permission`
@@ -233,8 +239,9 @@ your code, proposes a first draft, refines it with you, and writes it.
 
 A capability is one `## heading` user story inside a `capabilities.md`,
 addressed as `namespace/path#heading`. Each carries metadata fields — notably
-**`Subject:`** (a loose pointer to a taxonomy term) and **`Planning doc:`** (the
-forward pointer to a work item).
+**`Subject:`** (a loose pointer to a taxonomy entry), **`Feature:`** (a strong
+pointer to a taxonomy feature), and **`Planning doc:`** (the forward pointer to a
+work item).
 
 ```sh
 tcw capabilities add billing/invoices "Download an invoice as PDF"
@@ -245,7 +252,7 @@ tcw capabilities list --status Missing     # filter by status
 tcw capabilities show billing/invoices     # whole file…
 tcw capabilities show billing/invoices#download-an-invoice-as-pdf   # …or one heading
 tcw capabilities search pdf
-tcw capabilities check                     # identifiers, metadata vocab, Subject refs
+tcw capabilities check                     # identifiers, metadata vocab, Subject/Feature refs
 
 tcw capabilities set billing/invoices#download-an-invoice-as-pdf --status Supported
 tcw capabilities set billing/invoices --field "Planning doc=2026-06-19-pdf-export"
@@ -256,9 +263,9 @@ the work→capability lifecycle uses to flip `Missing → Supported` at completi
 A `#heading` is required when a file holds more than one capability.
 
 Status is one of `Supported · Partial · Missing · Blocked · Omitted`. `check`
-validates the metadata vocabulary *and* resolves each `Subject:` pointer against
-the taxonomy store — the one cross-component link, kept loose: the tool never
-parses capability prose, it only follows pointers.
+validates the metadata vocabulary, resolves each `Subject:` pointer against the
+taxonomy store, and verifies that each `Feature:` pointer resolves to a taxonomy
+feature. The tool never parses capability prose; it only follows pointers.
 
 ### `tcw work` — the changes
 
@@ -436,9 +443,10 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
   changes` planning gate, contradiction-detection, the `Missing → Supported`
   ledger flip at completion, product-layer wording coordination, and bootstrapping
   a capabilities ledger (`/tcw-capabilities-init`).
-- **[`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)** — declaring domain terms,
-  `relatesTo` links, federating shared vocabulary (`tcw taxonomy extends`), and
-  bootstrapping a taxonomy from an existing codebase (`/tcw-taxonomy-init`).
+- **[`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)** — declaring vocabulary and
+  feature entries, linking features to vocabulary, `relatesTo` links, federating
+  shared vocabulary (`tcw taxonomy extends`), and bootstrapping a taxonomy from
+  an existing codebase (`/tcw-taxonomy-init`).
 - **[`tcw-plugin`](skills/tcw-plugin/SKILL.md)** — install/repair the `tcw` CLI
   from the plugin's own clone (pipx); the single source of the `/tcw-init` and
   `/tcw-doctor` procedure, and the Codex shim for them.

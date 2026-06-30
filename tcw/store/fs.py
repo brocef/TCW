@@ -322,6 +322,14 @@ class FsTreeStore:
 # ── FsTaxonomyStore ─────────────────────────────────────────────────────────
 
 _TAX_RESERVED = {"config.yaml", "meta.yaml", "description.md"}
+TAXONOMY_KINDS = {"Vocabulary", "Feature"}
+
+
+def _normalize_taxonomy_kind(kind: str | None) -> str:
+    if not kind:
+        return "Vocabulary"
+    by_lower = {k.lower(): k for k in TAXONOMY_KINDS}
+    return by_lower.get(str(kind).lower(), str(kind))
 
 
 class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
@@ -355,7 +363,9 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             slug=slug,
             name=meta.get("name") or slug.rsplit("/", 1)[-1].replace("-", " ").title(),
             description=desc.read_text(encoding="utf-8") if desc.exists() else "",
+            kind=_normalize_taxonomy_kind(meta.get("kind")),
             relates_to=list(meta.get("relatesTo") or []),
+            vocabulary=list(meta.get("vocabulary") or []),
             attachments=attachments,
             origin=origin,
         )
@@ -405,16 +415,24 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     # -- writes --
 
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
-            description: str = "") -> Term:
+            description: str = "", kind: str = "Vocabulary",
+            vocabulary: list[str] | None = None) -> Term:
         leaf = slug or slugify(name)
         full = f"{parent.strip('/')}/{leaf}" if parent else leaf
         if parent and not (self.root / parent).is_dir():
             raise ValueError(f"parent term does not exist: {parent}")
+        kind = _normalize_taxonomy_kind(kind)
+        if kind not in TAXONOMY_KINDS:
+            raise ValueError(f"invalid taxonomy kind '{kind}' "
+                             f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
         d = self.root / full
         if d.exists():
             raise ValueError(f"term already exists: {full}")
         d.mkdir(parents=True)
-        dump_yaml(d / "meta.yaml", {"name": name, "relatesTo": []})
+        meta = {"name": name, "kind": kind, "relatesTo": []}
+        if vocabulary:
+            meta["vocabulary"] = list(vocabulary)
+        dump_yaml(d / "meta.yaml", meta)
         (d / "description.md").write_text(description, encoding="utf-8")
         self._stage(d / "meta.yaml", d / "description.md")
         return self._term(full)
@@ -487,12 +505,28 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                 problems.append(f"alias '{alias}' collides with local top-level term")
 
         for term in self.list(local_only=True):
+            if term.kind not in TAXONOMY_KINDS:
+                problems.append(f"{term.slug}: unknown kind '{term.kind}'")
             for ref in term.relates_to:
                 try:
                     if self.get(ref) is None:
                         problems.append(f"{term.slug}: dangling relatesTo ref '{ref}'")
                 except AmbiguousRef:
                     problems.append(f"{term.slug}: ambiguous relatesTo ref '{ref}'")
+            if term.kind == "Feature":
+                if not term.vocabulary:
+                    problems.append(f"{term.slug}: Feature requires at least one vocabulary ref")
+                for ref in term.vocabulary:
+                    try:
+                        target = self.get(ref)
+                    except AmbiguousRef:
+                        problems.append(f"{term.slug}: ambiguous vocabulary ref '{ref}'")
+                        continue
+                    if target is None:
+                        problems.append(f"{term.slug}: dangling vocabulary ref '{ref}'")
+                    elif target.kind != "Vocabulary":
+                        problems.append(f"{term.slug}: vocabulary ref '{ref}' "
+                                        f"points to {target.kind}, expected Vocabulary")
         return problems
 
     def _cycles(self, taxonomy_root: Path, seen: set[Path]) -> bool:
@@ -764,6 +798,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                     problems.append(f"{where}: Superseded by → {e}")
                 problems += self._check_globals(where, f)
                 problems += self._check_subject(where, f, taxonomy)
+                problems += self._check_feature(where, f, taxonomy)
         return problems
 
     def _check_globals(self, where: str, f: dict) -> list[str]:
@@ -785,6 +820,21 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return [] if taxonomy.get(subj) is not None else [f"{where}: Subject → dangling ref '{subj}'"]
         except AmbiguousRef:
             return [f"{where}: Subject → ambiguous ref '{subj}'"]
+
+    def _check_feature(self, where: str, f: dict, taxonomy: TaxonomyStore | None) -> list[str]:
+        feature = f.get("Feature")
+        if not feature or taxonomy is None:
+            return []
+        try:
+            target = taxonomy.get(feature)
+        except AmbiguousRef:
+            return [f"{where}: Feature → ambiguous ref '{feature}'"]
+        if target is None:
+            return [f"{where}: Feature → dangling ref '{feature}'"]
+        if getattr(target, "kind", "Vocabulary") != "Feature":
+            return [f"{where}: Feature → ref '{feature}' points to "
+                    f"{getattr(target, 'kind', 'Vocabulary')}, expected Feature"]
+        return []
 
 
 # ── FsWorkStore ──────────────────────────────────────────────────────────────

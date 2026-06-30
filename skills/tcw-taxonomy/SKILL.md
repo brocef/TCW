@@ -5,25 +5,38 @@ description: Use when planning, seeding, or maintaining a project's domain terms
 
 # The taxonomy process
 
-**What it is:** the taxonomy axis is the *nouns* — the canonical domain terms a
-project reasons about (its ubiquitous language). It exists so the other axes point
-at shared, unambiguous concepts instead of re-defining words: capabilities name a
-term as their **Subject**, work references terms. The pointers are one-directional —
-**taxonomy never points back** at capabilities or work.
+**What it is:** the taxonomy axis is the project's registered language and
+feature registry. It has two entry kinds:
 
-Drive `tcw taxonomy`; never hand-edit term markdown when a command applies. Read
+- **Vocabulary** — the canonical conceptual terms a project reasons about.
+- **Feature** — the user- or application-facing manifestations that operate on
+  or involve vocabulary terms.
+
+It exists so the other axes point at shared, unambiguous entries instead of
+re-defining words: capabilities can name a loose **Subject** and a strong
+**Feature**, and work references taxonomy entries. The pointers are
+one-directional — **taxonomy never points back** at capabilities or work.
+
+Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
 local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-capabilities**.
 
 ## Judgment
 
-- **One term per distinct concept.** A near-synonym or merely-related concept is a
+- **One entry per distinct concept or feature.** A near-synonym or merely-related concept is a
   `relatesTo` link (in the term's `meta.yaml`), not a second term.
+- **Choose Vocabulary vs Feature deliberately.** Vocabulary is conceptual
+  language; Feature is how users or applications interact with that language.
+  Users do not interact with vocabulary directly — they interact through
+  features.
+- **Features list vocabulary.** Create feature entries with `--kind feature` and
+  repeat `--vocab <ref>` for each vocabulary term they operate on or involve.
 - **Nest specializations** under a parent: `tcw taxonomy add <Name> --parent <path>`
   (`-s` to override the leaf slug; description inline or piped on stdin).
 - **Keep descriptions short** — one or two sentences of what the noun means here.
-- **Run `tcw taxonomy check` after edits** — it validates extends aliases and every
-  relatesTo / subject reference (cycles, dup aliases, dangling/ambiguous refs).
+- **Run `tcw taxonomy check` after edits** — it validates extends aliases,
+  taxonomy kinds, feature vocabulary refs, and every relatesTo / subject
+  reference (cycles, dup aliases, dangling/ambiguous refs).
 
 ## Inheritance (federation)
 
@@ -43,7 +56,8 @@ refine with the user → write) → read [`docs/init.md`](docs/init.md).
 
 | Goal | Command |
 |---|---|
-| add a term | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]` |
+| add vocabulary | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]` |
+| add a feature | `tcw taxonomy add "<Name>" --kind feature --vocab <term> [--vocab <term>...]` |
 | nest under a parent | `tcw taxonomy add "<Name>" --parent <path>` |
 | link related terms | edit `relatesTo` in the term's `meta.yaml`, then `check` |
 | browse / read / find | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>` |

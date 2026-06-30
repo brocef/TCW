@@ -5,7 +5,7 @@ description: Use when planning or completing a tcw work item that has a product 
 
 # The capabilities process
 
-The standing ledger (`docs/capabilities/`) describes *what a user can currently do*. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability markdown when `set` applies. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
+The standing ledger (`docs/capabilities/`) describes *what a user can currently do*. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability markdown when `set` applies. Capabilities may carry `Subject` as a loose taxonomy pointer and `Feature` as a strong pointer to a taxonomy feature. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
 
 ## The `## Capability changes` planning gate (at `tcw work new`)
 
@@ -17,6 +17,11 @@ When a work item has a product delta, name each new / changed / removed capabili
 ## Contradiction-detection (at the moment of change)
 
 Before recording or altering a capability, check it against the standing ledger: `tcw capabilities search <term>` / `tcw capabilities show <id>` for an existing capability the change would contradict (a new capability that conflicts with a `Supported` one; a status that disagrees with reality). Run `tcw capabilities check` (non-zero ⇒ structural problems to fix first). Whether two capabilities *semantically* contradict is judgment — surface candidates to the human; never silently overwrite.
+
+When a capability describes behavior around a registered taxonomy feature, set
+`Feature=<feature-ref>` in addition to any useful `Subject=<taxonomy-ref>`.
+`tcw capabilities check` verifies that `Feature` resolves to a taxonomy entry
+whose kind is `Feature`.
 
 ## The ledger flip (at `tcw work complete`)
 
@@ -45,6 +50,7 @@ codebase → draft → refine with the user → write) → read [`docs/init.md`]
 | declare a new capability | `tcw capabilities add <ns/path> "<Name>" --status Missing` |
 | record the planning back-pointer | `tcw capabilities set <ns/path> --field "Planning doc=<slug>"` |
 | flip status at completion | `tcw capabilities set <id>#<heading> --status Supported` |
+| associate a feature | `tcw capabilities set <id>#<heading> --field "Feature=<feature-ref>"` |
 | check the ledger | `tcw capabilities check` |
 | find / read | `tcw capabilities search <term>` · `tcw capabilities show <id>` |
 | ask the orchestrator for wording | `tcw work escalate "capability wording: <name>"` |

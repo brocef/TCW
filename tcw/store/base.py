@@ -22,7 +22,7 @@ class AmbiguousRef(RefError):
 
 @dataclass
 class Term:
-    """A taxonomy node: a domain entity/concept addressed by its path.
+    """A taxonomy node: a vocabulary term or feature addressed by its path.
 
     `slug` is the identity (path from the taxonomy root, e.g. `admin/permission`).
     `origin` is `"local"` or the `extends` alias the term was resolved through.
@@ -30,7 +30,9 @@ class Term:
     slug: str
     name: str
     description: str = ""
+    kind: str = "Vocabulary"
     relates_to: list[str] = field(default_factory=list)
+    vocabulary: list[str] = field(default_factory=list)
     attachments: list[str] = field(default_factory=list)
     origin: str = "local"
 
@@ -56,7 +58,8 @@ class TaxonomyStore(ABC):
 
     @abstractmethod
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
-            description: str = "") -> Term:
+            description: str = "", kind: str = "Vocabulary",
+            vocabulary: list[str] | None = None) -> Term:
         """Create a local term under `parent` (root by default). Refuse a collision."""
 
     @abstractmethod
@@ -94,7 +97,7 @@ CAP_PRIORITIES = {"P0", "P1", "P2", "P3"}
 CAP_LIFECYCLES = {"Experimental", "Stable", "Deprecated"}
 CAP_FIELDS = {
     "Status", "Priority", "Lifecycle", "Superseded by", "Tracker", "Subject",
-    "Roles", "When", "Gaps", "Blocked by", "Planning doc",
+    "Feature", "Roles", "When", "Gaps", "Blocked by", "Planning doc",
 }
 
 

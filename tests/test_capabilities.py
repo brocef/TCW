@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import RefError
+from tcw.store.base import RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 
 
@@ -30,6 +30,18 @@ class StubTax:
 
     def get(self, ref):
         return object() if ref in self.known else None
+
+
+class FeatureTax:
+    def __init__(self):
+        self.terms = {
+            "user": Term("user", "User", kind="Vocabulary"),
+            "user-authentication": Term("user-authentication", "User Authentication",
+                                        kind="Feature", vocabulary=["user"]),
+        }
+
+    def get(self, ref):
+        return self.terms.get(ref)
 
 
 # ── add (flat + folder) + collision ──────────────────────────────────────────
@@ -119,6 +131,23 @@ def test_check_bad_subject_ref(tmp_path):
               "# X — capabilities\n\n## Do x\n**Status:** Supported\n**Subject:** nope/missing\n")
     problems = FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))
     assert any("Subject" in p and "dangling" in p for p in problems)
+
+
+def test_check_feature_ref(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "routes/x.md",
+              "# X — capabilities\n\n## Do x\n**Status:** Supported\n"
+              "**Feature:** user-authentication\n")
+    assert FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax()) == []
+
+
+def test_check_bad_feature_ref(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "routes/x.md",
+              "# X — capabilities\n\n## Do x\n**Status:** Supported\n"
+              "**Feature:** user\n")
+    problems = FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax())
+    assert any("Feature" in p and "expected Feature" in p for p in problems)
 
 
 def test_check_unknown_field(tmp_path):
