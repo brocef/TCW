@@ -9,3 +9,6 @@ dist/
 # Virtualenvs
 .venv/
 venv/
+
+# Local artifacts
+logs/
