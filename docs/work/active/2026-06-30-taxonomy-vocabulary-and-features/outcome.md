@@ -23,6 +23,8 @@ Work completed successfully.
 - Addressed the local review's concrete follow-up: unknown taxonomy kinds now show `?` in list output instead of looking like vocabulary, and focused tests now cover missing feature vocabulary refs, ambiguous capability feature refs, repeatable `--vocab`, and mixed `[V]` / `[F]` list output.
 - `pytest tests/test_taxonomy.py tests/test_capabilities.py` after local-review follow-up -> 52 passed.
 - `pytest` after local-review follow-up -> 215 passed.
+- Updated TCW skill guidance after user review: `tcw-plugin` now explains the cross-skill map, `tcw-taxonomy` / `tcw-capabilities` / `tcw-work` describe their roles in the Vocabulary -> Features -> Capabilities -> Work chain, and `skills/tcw-taxonomy/docs/init.md` now bootstraps both Vocabulary and Features.
+- `pytest tests/test_skill_flow.py tests/test_plugin_manifests.py` after skill-guidance updates -> 5 passed.
 
 ## Deviations
 

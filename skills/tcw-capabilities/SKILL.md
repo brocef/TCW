@@ -1,11 +1,11 @@
 ---
 name: tcw-capabilities
-description: Use when planning or completing a tcw work item that has a product (user-facing) delta, or when coordinating capability wording across repos — declaring new capabilities, checking a change against the standing ledger, flipping a capability's status as work completes, or relaying canonical product-layer wording. Drives `tcw capabilities`; the work axis is tcw-work.
+description: Use when planning or completing a tcw work item that has a product (user-facing) delta, or when coordinating capability wording across repos — declaring new capabilities, linking them to taxonomy Features, checking a change against the standing ledger, flipping a capability's status as work completes, or relaying canonical product-layer wording. Drives `tcw capabilities`; the taxonomy axis is tcw-taxonomy and the work axis is tcw-work.
 ---
 
 # The capabilities process
 
-The standing ledger (`docs/capabilities/`) describes *what a user can currently do*. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability markdown when `set` applies. Capabilities may carry `Subject` as a loose taxonomy pointer and `Feature` as a strong pointer to a taxonomy feature. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
+The standing ledger (`docs/capabilities/`) describes *what a user can currently do*. It is the third layer in the TCW chain: `Vocabulary -> Features -> Capabilities -> Work`. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability markdown when `set` applies. Capabilities may carry `Subject` as a loose taxonomy pointer and `Feature` as a strong pointer to a taxonomy feature. The taxonomy axis is **REQUIRED SUB-SKILL: Use tcw-taxonomy** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
 
 ## The `## Capability changes` planning gate (at `tcw work new`)
 
@@ -22,6 +22,10 @@ When a capability describes behavior around a registered taxonomy feature, set
 `Feature=<feature-ref>` in addition to any useful `Subject=<taxonomy-ref>`.
 `tcw capabilities check` verifies that `Feature` resolves to a taxonomy entry
 whose kind is `Feature`.
+
+If no suitable Feature exists, do not invent an unregistered string in the
+capability. Use `tcw-taxonomy` to add or clarify the Feature first, then link it
+from the capability.
 
 ## The ledger flip (at `tcw work complete`)
 

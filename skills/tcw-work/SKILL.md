@@ -7,6 +7,13 @@ description: Use when starting, continuing, triaging, planning, implementing, ve
 
 `tcw work` is the change-tracking state machine: items move `inbox → backlog → active → completed` by changing directory; blocked is a derived overlay, not a status. This skill is the *judgment* on top of the tool. Name `tcw …` commands; never hand-edit `docs/work/` when a command exists. The capability axis is **REQUIRED SUB-SKILL: Use tcw-capabilities** at the planning and completion gates.
 
+Work is the final layer in the TCW chain: `Vocabulary -> Features ->
+Capabilities -> Work`. A work item can describe changes to any earlier layer:
+new vocabulary, new or changed features, new or changed capabilities, code, docs,
+or the project process itself. For product changes, check the earlier layers in
+order before settling the plan: vocabulary terms first, then taxonomy Features,
+then capabilities. See `tcw-plugin` for the cross-skill map.
+
 **Node identity:** `tcw init` marks the **current directory** a TCW node by writing a `tcw-config.yaml` sentinel there. All `tcw` commands resolve to the nearest `tcw-config.yaml` ancestor — so in a multi-project repo, `cd project-b && tcw work list` shows project-b's board. If a command fails with "no tcw … node here", run `tcw init` in the project folder first. Cross-node discovery (`tcw work nodes` / epics / delegate / escalate) still locates peers by git-repo root (see `docs/cross-node-epic.md`).
 
 ## Primary lifecycle
@@ -20,7 +27,7 @@ The artifact spine is:
 `initial-request.md` is always-present — it serves as the item body/overview
 surface, scratch space, and the managed rollup target for epics.
 
-For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, run the tcw-capabilities planning gate before writing the technical plan.
+For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, check whether taxonomy Vocabulary or Feature entries need to be added/updated, then run the tcw-capabilities planning gate before writing the technical plan.
 
 ## The lifecycle handshake
 

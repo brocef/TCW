@@ -1,6 +1,6 @@
 ---
 name: tcw-taxonomy
-description: Use when planning, seeding, or maintaining a project's domain terms — declaring nouns, linking related terms, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase. Drives `tcw taxonomy`; the capabilities axis is tcw-capabilities, the work axis is tcw-work.
+description: Use when planning, seeding, or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, linking related entries, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase. Drives `tcw taxonomy`; the capabilities axis is tcw-capabilities, the work axis is tcw-work.
 ---
 
 # The taxonomy process
@@ -12,10 +12,12 @@ feature registry. It has two entry kinds:
 - **Feature** — the user- or application-facing manifestations that operate on
   or involve vocabulary terms.
 
-It exists so the other axes point at shared, unambiguous entries instead of
-re-defining words: capabilities can name a loose **Subject** and a strong
-**Feature**, and work references taxonomy entries. The pointers are
-one-directional — **taxonomy never points back** at capabilities or work.
+It is the first layer in the TCW chain: `Vocabulary -> Features -> Capabilities
+-> Work`. It exists so the other axes point at shared, unambiguous entries
+instead of re-defining words: capabilities can name a loose **Subject** and a
+strong **Feature**, and work references taxonomy entries. The pointers are
+one-directional — **taxonomy never points back** at capabilities or work. See
+`tcw-plugin` for the cross-skill map.
 
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
@@ -31,6 +33,9 @@ local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-cap
   features.
 - **Features list vocabulary.** Create feature entries with `--kind feature` and
   repeat `--vocab <ref>` for each vocabulary term they operate on or involve.
+- **Stop at the registry boundary.** A taxonomy Feature names the interaction
+  area; it does not describe behavior, acceptance criteria, support status, or
+  user stories. Put those details in capabilities.
 - **Nest specializations** under a parent: `tcw taxonomy add <Name> --parent <path>`
   (`-s` to override the leaf slug; description inline or piped on stdin).
 - **Keep descriptions short** — one or two sentences of what the noun means here.
