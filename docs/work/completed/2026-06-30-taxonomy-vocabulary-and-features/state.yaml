@@ -2,5 +2,11 @@ slug: 2026-06-30-taxonomy-vocabulary-and-features
 title: Taxonomy vocabulary and features
 phase: ''
 created: '2026-06-30'
-resolution: null
+resolution: done
 priority: null
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
