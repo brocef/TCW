@@ -166,6 +166,13 @@ def test_check_feature_vocabulary_refs(tmp_path):
     assert any("ghost-feature" in p and "dangling vocabulary" in p for p in problems)
 
 
+def test_check_feature_requires_vocabulary_refs(tmp_path):
+    root = node(tmp_path, "repo")
+    write_term(root, "user-authentication", name="User Authentication", kind="Feature")
+    problems = FsTaxonomyStore.open(root).check()
+    assert any("Feature requires at least one vocabulary ref" in p for p in problems)
+
+
 def test_check_ambiguous_relatesto(tmp_path):
     a = node(tmp_path, "a"); write_term(a, "Term")
     b = node(tmp_path, "b"); write_term(b, "Term")
@@ -224,15 +231,28 @@ def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(root)
     assert main(["taxonomy", "add", "User"]) == 0
     capsys.readouterr()
+    assert main(["taxonomy", "add", "Password", "--slug", "password"]) == 0
+    capsys.readouterr()
     assert main(["taxonomy", "add", "User Authentication", "--kind", "feature",
-                 "--vocab", "user"]) == 0
+                 "--vocab", "user", "--vocab", "password"]) == 0
     capsys.readouterr()
     assert main(["taxonomy", "list"]) == 0
-    assert "user-authentication  [F]" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "user  [V]" in out
+    assert "user-authentication  [F]" in out
     assert main(["taxonomy", "show", "user-authentication"]) == 0
     out = capsys.readouterr().out
     assert "kind: Feature" in out
-    assert "vocabulary: user" in out
+    assert "vocabulary: user, password" in out
+
+
+def test_cli_list_unknown_kind_uses_unknown_marker(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    write_term(root, "mystery", name="Mystery", kind="Mystery")
+    monkeypatch.chdir(root)
+    assert main(["taxonomy", "list"]) == 0
+    assert "mystery  [?]" in capsys.readouterr().out
 
 
 def test_cli_taxonomy_init_mirrors_top_level(tmp_path, monkeypatch, capsys):

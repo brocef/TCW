@@ -55,7 +55,7 @@ def _list(args: argparse.Namespace) -> int:
         return 1
     for t in sorted(st.list(local_only=args.local), key=lambda t: (t.origin != "local", t.qualified)):
         indent = "  " * t.slug.count("/")
-        marker = "F" if t.kind == "Feature" else "V"
+        marker = {"Feature": "F", "Vocabulary": "V"}.get(t.kind, "?")
         print(f"{indent}{t.slug.rsplit('/', 1)[-1]}  [{marker}] ({t.origin})")
     return 0
 

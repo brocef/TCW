@@ -831,9 +831,9 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return [f"{where}: Feature → ambiguous ref '{feature}'"]
         if target is None:
             return [f"{where}: Feature → dangling ref '{feature}'"]
-        if getattr(target, "kind", "Vocabulary") != "Feature":
+        if target.kind != "Feature":
             return [f"{where}: Feature → ref '{feature}' points to "
-                    f"{getattr(target, 'kind', 'Vocabulary')}, expected Feature"]
+                    f"{target.kind}, expected Feature"]
         return []
 
 

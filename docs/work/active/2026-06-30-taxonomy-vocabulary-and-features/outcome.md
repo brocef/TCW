@@ -19,6 +19,10 @@ Work completed successfully.
 - `pytest` -> 212 passed.
 - `tcw taxonomy add --help` shows `--kind {vocabulary,feature}` and `--vocab REF`.
 - `tcw taxonomy show taxonomy-feature-registry` prints `kind: Feature` and its vocabulary refs.
+- Local `bllm-review` over `b6f02e7^..HEAD` saved to `logs/taxonomy-vocabulary-feature-review.md`.
+- Addressed the local review's concrete follow-up: unknown taxonomy kinds now show `?` in list output instead of looking like vocabulary, and focused tests now cover missing feature vocabulary refs, ambiguous capability feature refs, repeatable `--vocab`, and mixed `[V]` / `[F]` list output.
+- `pytest tests/test_taxonomy.py tests/test_capabilities.py` after local-review follow-up -> 52 passed.
+- `pytest` after local-review follow-up -> 215 passed.
 
 ## Deviations
 

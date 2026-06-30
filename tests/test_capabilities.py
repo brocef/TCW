@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import RefError, Term
+from tcw.store.base import AmbiguousRef, RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 
 
@@ -42,6 +42,13 @@ class FeatureTax:
 
     def get(self, ref):
         return self.terms.get(ref)
+
+
+class AmbiguousFeatureTax(FeatureTax):
+    def get(self, ref):
+        if ref == "user-authentication":
+            raise AmbiguousRef(ref)
+        return super().get(ref)
 
 
 # ── add (flat + folder) + collision ──────────────────────────────────────────
@@ -148,6 +155,15 @@ def test_check_bad_feature_ref(tmp_path):
               "**Feature:** user\n")
     problems = FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax())
     assert any("Feature" in p and "expected Feature" in p for p in problems)
+
+
+def test_check_ambiguous_feature_ref(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "routes/x.md",
+              "# X — capabilities\n\n## Do x\n**Status:** Supported\n"
+              "**Feature:** user-authentication\n")
+    problems = FsCapabilitiesStore.open(root).check(taxonomy=AmbiguousFeatureTax())
+    assert any("Feature" in p and "ambiguous" in p for p in problems)
 
 
 def test_check_unknown_field(tmp_path):
