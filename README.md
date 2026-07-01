@@ -173,7 +173,10 @@ cd ../project-b && tcw init     # scaffold + write sentinel in project-b/
 ```
 
 Each `tcw` invocation operates on the nearest `tcw-config.yaml` ancestor — so
-`cd project-b && tcw work list` shows project-b's board, not project-a's.
+`cd project-b && tcw work list` shows project-b's board, not project-a's. To see
+them together, run `tcw work list --include-descendants` from the enclosing
+folder — it lists the current node's board plus every descendant node's, grouped
+by node.
 
 Taxonomy `extends` works across sibling subfolder projects. Add an `extends`
 block in `project-b/docs/taxonomy/config.yaml` pointing at the sibling:
@@ -295,6 +298,7 @@ tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the pare
 tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column
 tcw work list --all                    # include completed items too
+tcw work list --include-descendants    # also list every descendant work node's board, grouped by node
 tcw work audit-work-backlog            # report stale, duplicate, blocked, or misplaced backlog items
 tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
 tcw work consolidate-plans docs/plans --apply --delete
@@ -337,6 +341,13 @@ It sorts by priority first (higher integer above lower, unspecified-priority
 items keeping creation order), then topologically — blockers appear before the
 items they block, since a priority preference can't jump a hard dependency —
 and annotates blocked items with their unresolved blockers.
+
+Pass `--include-descendants` to also list every **descendant work node** — any
+subfolder marked as its own TCW node (see [Multiple projects in one
+repo](#multiple-projects-in-one-repo)). The output is grouped by node, each
+board preceded by a `# <path>` header (`# .` for the current node, `# ./sub/proj`
+for a descendant, relative to the current node root), and the same `--status` /
+`--all` filters apply to every group.
 
 `tcw work audit-work-backlog` reviews backlog items in board order and prints
 read-only cleanup recommendations. It flags likely duplicates or already-finished
