@@ -289,6 +289,8 @@ slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
                                        # create with blockers pre-attached
 tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
+tcw work new "Big rework" --effort high --complexity very-high
+                                       # optional estimates (low|medium|high|very-high)
 tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the parent's folder
 tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column
@@ -297,7 +299,7 @@ tcw work audit-work-backlog            # report stale, duplicate, blocked, or mi
 tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
 tcw work consolidate-plans docs/plans --apply --delete
                                        # create backlog items, then delete migrated sources
-tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative if set)
+tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
 tcw work start "$slug"                 # inbox|backlog → active (refused if blocked/gated)
@@ -307,6 +309,7 @@ tcw work edit "$slug" --blocked-by other-slug    # record a new blocker
 tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
 tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker
 tcw work edit "$slug" --priority 9               # set/raise integer priority
+tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers or initiative gates
