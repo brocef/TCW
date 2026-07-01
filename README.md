@@ -293,7 +293,7 @@ tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
                                        # create with blockers pre-attached
 tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
 tcw work new "Big rework" --effort high --complexity very-high
-                                       # optional estimates (low|medium|high|very-high)
+                                       # optional estimates (low|medium|high|very-high; L/M/H/VH shorthand ok)
 tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the parent's folder
 tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column

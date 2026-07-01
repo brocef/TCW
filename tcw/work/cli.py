@@ -5,7 +5,8 @@ import subprocess
 import sys
 
 from tcw.store.base import (
-    WORK_LEVELS, WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
+    WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
+    normalize_work_level,
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
@@ -20,6 +21,15 @@ SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "edit", "complete
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 _ERRORS = (ValueError, IllegalTransition, MultipleMatch)
+
+
+def _work_level(value: str) -> str:
+    """argparse ``type=`` for --effort/--complexity: normalize input to canonical,
+    re-raising as ArgumentTypeError so the message reaches the user cleanly."""
+    try:
+        return normalize_work_level(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e))
 
 
 def _store() -> FsWorkStore | None:
@@ -423,8 +433,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")
     pn.add_argument("--priority", type=int, help="integer priority (higher = higher)")
-    pn.add_argument("--effort", choices=WORK_LEVELS, help="estimated effort")
-    pn.add_argument("--complexity", choices=WORK_LEVELS, help="estimated complexity")
+    pn.add_argument("--effort", type=_work_level,
+                    help="estimated effort: low|medium|high|very-high (or L/M/H/VH)")
+    pn.add_argument("--complexity", type=_work_level,
+                    help="estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pn.add_argument("--blocked-by", help="comma-separated slugs/externals that block it")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
     pn.add_argument("--parent", help="create as a child nested under this item's slug")
@@ -459,8 +471,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--blocks", help="comma-separated items this item blocks")
     pe.add_argument("--unblocked-by", help="comma-separated blockers to remove")
     pe.add_argument("--priority", type=int, help="set integer priority (higher = higher)")
-    pe.add_argument("--effort", choices=WORK_LEVELS, help="set estimated effort")
-    pe.add_argument("--complexity", choices=WORK_LEVELS, help="set estimated complexity")
+    pe.add_argument("--effort", type=_work_level,
+                    help="set estimated effort: low|medium|high|very-high (or L/M/H/VH)")
+    pe.add_argument("--complexity", type=_work_level,
+                    help="set estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
     pe.set_defaults(func=_edit)
 

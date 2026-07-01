@@ -71,7 +71,7 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | migrate external plans | `tcw work consolidate-plans [PATH ...] [--apply] [--delete]` (dry-run first; converts external planning docs into backlog items) |
 | find item files | `tcw work path <slug>` |
 | set priority | `tcw work new "<t>" --priority N` · `tcw work edit <slug> --priority N` (higher int = higher; default unspecified) |
-| set estimates | `tcw work new "<t>" --effort <l> --complexity <l>` · `tcw work edit <slug> --effort <l> --complexity <l>` (`<l>` = low\|medium\|high\|very-high; optional; shown in `show`, not `list`) |
+| set estimates | `tcw work new "<t>" --effort <l> --complexity <l>` · `tcw work edit <slug> --effort <l> --complexity <l>` (`<l>` = low\|medium\|high\|very-high, or L/M/H/VH shorthand; optional; shown in `show`, not `list`) |
 | topology | `tcw work nodes` |
 | epic rollup | `tcw work reconcile <epic-slug>` |
 | hand work down / up | `tcw work delegate <child> "<t>"` · `tcw work escalate "<t>"` |

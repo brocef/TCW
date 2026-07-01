@@ -183,6 +183,25 @@ LEGAL_TRANSITIONS = {
 }
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
 WORK_LEVELS = ("low", "medium", "high", "very-high")  # effort/complexity scale
+WORK_LEVEL_ALIASES = {"l": "low", "m": "medium", "h": "high", "vh": "very-high"}
+
+
+def normalize_work_level(value: str) -> str:
+    """Map an effort/complexity input onto a canonical ``WORK_LEVELS`` value.
+
+    Accepts the canonical values and the case-insensitive shorthand aliases
+    (``L``/``M``/``H``/``VH``); raises ``ValueError`` on anything else. Input
+    normalization only — the returned value is always canonical.
+    """
+    v = value.strip().lower()
+    if v in WORK_LEVELS:
+        return v
+    if v in WORK_LEVEL_ALIASES:
+        return WORK_LEVEL_ALIASES[v]
+    raise ValueError(
+        f"invalid level '{value}'; choose from {', '.join(WORK_LEVELS)} "
+        "(or shorthand L/M/H/VH)"
+    )
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
                "reviewed", "version offered")
 

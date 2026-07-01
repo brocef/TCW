@@ -807,3 +807,56 @@ def test_list_without_flag_has_no_node_headers(tmp_path, monkeypatch, capsys):
     assert main(["work", "list"]) == 0
     out = capsys.readouterr().out
     assert "# ." not in out and "Project-A" not in out      # descendants untouched without the flag
+
+
+# ── effort/complexity level normalization ────────────────────────────────────
+
+def test_normalize_work_level_aliases_case_and_passthrough():
+    from tcw.store.base import normalize_work_level
+    assert normalize_work_level("h") == "high"
+    assert normalize_work_level("VH") == "very-high"
+    assert normalize_work_level("L") == "low"
+    assert normalize_work_level("m") == "medium"
+    assert normalize_work_level("HIGH") == "high"          # canonical, case-insensitive
+    assert normalize_work_level("very-high") == "very-high"
+
+
+def test_normalize_work_level_rejects_unknown():
+    from tcw.store.base import normalize_work_level
+    with pytest.raises(ValueError, match="L/M/H/VH"):
+        normalize_work_level("s")                          # T-shirt slip, not a level
+    for junk in ("", "   ", "xl"):                          # empty/whitespace/unknown all rejected
+        with pytest.raises(ValueError, match="invalid level"):
+            normalize_work_level(junk)
+
+
+def test_cli_new_effort_alias_stored_canonical(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "new", "Task", "--effort", "h", "--complexity", "vh"]) == 0
+    slug = capsys.readouterr().out.strip()
+    item = FsWorkStore.open(root).get(slug)
+    assert item.effort == "high" and item.complexity == "very-high"
+
+
+def test_cli_new_effort_invalid_exits(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    with pytest.raises(SystemExit):                         # argparse rejects the bad value
+        main(["work", "new", "Task", "--effort", "xl"])
+    assert "L/M/H/VH" in capsys.readouterr().err
+
+
+def test_cli_edit_effort_alias_stored_canonical(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    item = FsWorkStore.open(root).create("Task", created="2026-01-01")
+
+    assert main(["work", "edit", item.slug, "--effort", "M", "--complexity", "l"]) == 0
+    edited = FsWorkStore.open(root).get(item.slug)
+    assert edited.effort == "medium" and edited.complexity == "low"
