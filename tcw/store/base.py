@@ -182,6 +182,7 @@ LEGAL_TRANSITIONS = {
     ("active", "completed"),                        # complete (DoD gate)
 }
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
+WORK_LEVELS = ("low", "medium", "high", "very-high")  # effort/complexity scale
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
                "reviewed", "version offered")
 
@@ -204,6 +205,8 @@ class WorkItem:
     created: str = ""
     resolution: str | None = None
     priority: int | None = None     # higher int = higher priority; None = unspecified
+    effort: str = ""                # WORK_LEVELS or "" (unset); triage signal only
+    complexity: str = ""            # WORK_LEVELS or "" (unset); triage signal only
     body: str = ""
     blocked_by: list[dict] = field(default_factory=list)
     capabilities: object = None     # opaque blob in Spec 1 (B.4)

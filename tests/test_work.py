@@ -681,3 +681,62 @@ def test_cli_new_unknown_parent_errors(tmp_path, monkeypatch):
     root = node(tmp_path)
     monkeypatch.chdir(root)
     assert main(["work", "new", "X", "--parent", "nope"]) == 1
+
+
+# ── effort / complexity ──────────────────────────────────────────────────────
+
+def test_effort_complexity_persist_and_read_back(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    assert main(["work", "new", "A", "--effort", "high", "--complexity", "low"]) == 0
+    a = st.query(status="backlog")[0]
+    assert (a.effort, a.complexity) == ("high", "low")
+    # persisted as real state.yaml keys
+    import yaml
+    state = yaml.safe_load((st.path(a.slug) / "state.yaml").read_text())
+    assert state["effort"] == "high" and state["complexity"] == "low"
+
+
+def test_edit_effort_leaves_complexity_untouched(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")
+    st.set_field(a.slug, "complexity", "high")
+    assert main(["work", "edit", a.slug, "--effort", "medium"]) == 0
+    got = FsWorkStore.open(root).get(a.slug)
+    assert (got.effort, got.complexity) == ("medium", "high")   # complexity preserved
+
+
+def test_show_displays_when_set_omits_when_unset(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")
+    assert main(["work", "show", a.slug]) == 0
+    assert "effort:" not in capsys.readouterr().out          # omitted when unset
+    st.set_field(a.slug, "effort", "very-high")
+    assert main(["work", "show", a.slug]) == 0
+    assert "effort: very-high" in capsys.readouterr().out
+
+
+def test_invalid_effort_rejected_and_no_write(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    with pytest.raises(SystemExit):                           # argparse choices=
+        main(["work", "new", "A", "--effort", "bogus"])
+    assert FsWorkStore.open(root).query(status="backlog") == []   # nothing created
+
+
+def test_missing_and_null_keys_read_as_empty(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")                 # no effort/complexity keys
+    assert (st.get(a.slug).effort, st.get(a.slug).complexity) == ("", "")
+    st.set_field(a.slug, "effort", None)                     # bare YAML `effort:` (null)
+    assert FsWorkStore.open(root).get(a.slug).effort == ""   # `or ""` coercion

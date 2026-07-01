@@ -922,6 +922,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             created=state.get("created", ""),
             resolution=state.get("resolution"),
             priority=state.get("priority"),
+            effort=state.get("effort") or "",        # `or ""`: bare YAML `effort:` (null) → ""
+            complexity=state.get("complexity") or "",
             body=request.read_text(encoding="utf-8") if request.exists() else "",
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=capabilities,

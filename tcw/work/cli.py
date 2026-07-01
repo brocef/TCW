@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from tcw.store.base import (
-    WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
+    WORK_LEVELS, WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
@@ -57,6 +57,10 @@ def _print_item(item: WorkItem) -> None:
         print(f"phase: {item.phase}")
     if item.priority is not None:
         print(f"priority: {item.priority}")
+    if item.effort:
+        print(f"effort: {item.effort}")
+    if item.complexity:
+        print(f"complexity: {item.complexity}")
     if item.resolution:
         print(f"resolution: {item.resolution}")
     if item.blocked_by:
@@ -163,6 +167,10 @@ def _new(args: argparse.Namespace) -> int:
         st.set_field(item.slug, "type", "epic")
     if args.initiative:
         st.set_field(item.slug, "initiative", args.initiative)
+    if args.effort is not None:
+        st.set_field(item.slug, "effort", args.effort)
+    if args.complexity is not None:
+        st.set_field(item.slug, "complexity", args.complexity)
     print(item.slug)
     body = st.body_path(item.slug)
     if body is not None:
@@ -302,6 +310,10 @@ def _edit(args: argparse.Namespace) -> int:
             st.set_field(args.slug, "initiative", args.initiative)
         if args.priority is not None:
             st.set_field(args.slug, "priority", args.priority)
+        if args.effort is not None:
+            st.set_field(args.slug, "effort", args.effort)
+        if args.complexity is not None:
+            st.set_field(args.slug, "complexity", args.complexity)
     except _ERRORS as e:
         print(f"tcw work edit: {e}", file=sys.stderr)
         return 1
@@ -398,6 +410,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")
     pn.add_argument("--priority", type=int, help="integer priority (higher = higher)")
+    pn.add_argument("--effort", choices=WORK_LEVELS, help="estimated effort")
+    pn.add_argument("--complexity", choices=WORK_LEVELS, help="estimated complexity")
     pn.add_argument("--blocked-by", help="comma-separated slugs/externals that block it")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
     pn.add_argument("--parent", help="create as a child nested under this item's slug")
@@ -430,6 +444,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--blocks", help="comma-separated items this item blocks")
     pe.add_argument("--unblocked-by", help="comma-separated blockers to remove")
     pe.add_argument("--priority", type=int, help="set integer priority (higher = higher)")
+    pe.add_argument("--effort", choices=WORK_LEVELS, help="set estimated effort")
+    pe.add_argument("--complexity", choices=WORK_LEVELS, help="set estimated complexity")
     pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
     pe.set_defaults(func=_edit)
 
