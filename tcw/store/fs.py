@@ -140,6 +140,31 @@ def parent_node(root: Path) -> Path | None:
     return None
 
 
+def descendant_nodes(root: Path) -> list[Path]:
+    """All descendant work nodes (tcw-config.yaml + docs/work/) at any depth below
+    `root`. Sentinel-based (matches find_node_root), so it finds plain subdirs of
+    one repo — unlike git-root-based child_nodes(), which returns only nearest-repo
+    children. Transitive: descends past found nodes so nested nodes are returned
+    too. Skips symlinked dirs (cycle-safe; we don't chase symlinked trees). Returned
+    depth-first, path-sorted (deterministic). FS-adapter-local.
+    ponytail: walks the whole tree pruning .git/.worktrees by name — the only
+    sentinel-bearing noise (a --worktree checkout copies the sentinel). Prune more
+    (or handle a real dir literally named .worktrees) only if it ever bites.
+    """
+    root = root.resolve()
+    found: list[Path] = []
+
+    def walk(d: Path) -> None:
+        for child in sorted(p for p in d.iterdir()
+                            if p.is_dir() and not p.is_symlink()
+                            and p.name not in (".git", WORKTREES_DIR)):
+            if (child / SENTINEL).is_file() and (child / "docs" / "work").is_dir():
+                found.append(child)
+            walk(child)                    # transitive — nested nodes count too
+    walk(root)
+    return found
+
+
 def git_stage(node_root: Path, *paths: Path) -> None:
     subprocess.run(["git", "-C", str(node_root), "add", "--", *map(str, paths)], check=True)
 

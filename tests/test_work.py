@@ -17,6 +17,15 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
     return root
 
 
+def subnode(parent: Path, rel: str) -> Path:
+    """A same-repo subdir node: sentinel + docs/work, NO separate git init — the
+    layout descendant_nodes (unlike git-root-based child_nodes) is meant to find."""
+    d = parent / rel
+    d.mkdir(parents=True)
+    init(["work"], d)
+    return d
+
+
 # ── init / slug ──────────────────────────────────────────────────────────────
 
 def test_init_gitkeep_persistence(tmp_path):
@@ -740,3 +749,61 @@ def test_missing_and_null_keys_read_as_empty(tmp_path):
     assert (st.get(a.slug).effort, st.get(a.slug).complexity) == ("", "")
     st.set_field(a.slug, "effort", None)                     # bare YAML `effort:` (null)
     assert FsWorkStore.open(root).get(a.slug).effort == ""   # `or ""` coercion
+
+
+# ── list --include-descendants ───────────────────────────────────────────────
+
+def test_list_include_descendants_groups_by_node(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+    FsWorkStore.open(subnode(root, "Project-A")).create("A feature", created="2026-01-01")
+    FsWorkStore.open(subnode(root, "Project-B")).create("B feature", created="2026-01-01")
+    (root / "plain-subdir").mkdir()                          # no sentinel → not a node
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
+    out = capsys.readouterr().out
+
+    # root-first, then path-sorted; a non-node subdir is never a group
+    assert out.index("# .\n") < out.index("# ./Project-A") < out.index("# ./Project-B")
+    assert "plain-subdir" not in out
+    # each node's item shows under its own header (node-bounded boards)
+    assert out.index("2026-01-01-a-feature") < out.index("# ./Project-B")
+    assert "2026-01-01-b-feature" in out.split("# ./Project-B", 1)[1]
+    assert "2026-01-01-root-thing" in out.split("# ./Project-A", 1)[0]
+
+
+def test_list_include_descendants_skips_own_worktree(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+    subnode(root, ".worktrees/some-item")                   # a --worktree checkout copies the sentinel
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
+    assert ".worktrees" not in capsys.readouterr().out
+
+
+def test_list_include_descendants_nested(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(subnode(root, "Project-A/Nested")).create("deep", created="2026-01-01")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
+    out = capsys.readouterr().out
+    assert "# ./Project-A/Nested" in out                    # transitive: nested node is its own group
+    assert "2026-01-01-deep" in out
+
+
+def test_list_without_flag_has_no_node_headers(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+    subnode(root, "Project-A")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "# ." not in out and "Project-A" not in out      # descendants untouched without the flag

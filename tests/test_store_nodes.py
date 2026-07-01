@@ -1,4 +1,15 @@
-from tcw.store.fs import SENTINEL, find_node, find_node_root, init, write_sentinel
+from tcw.store.fs import (
+    SENTINEL, child_nodes, descendant_nodes, find_node, find_node_root, init,
+    write_sentinel,
+)
+
+
+def _work_node(d):
+    """Mark `d` a work node (sentinel + docs/work) with no git init."""
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "docs" / "work").mkdir(parents=True, exist_ok=True)
+    write_sentinel(d)
+    return d.resolve()
 
 
 def test_find_node_root_nearest(tmp_path):
@@ -43,3 +54,34 @@ def test_write_sentinel_idempotent(tmp_path):
 def test_init_writes_sentinel(tmp_path):
     init(["work"], tmp_path)
     assert (tmp_path / SENTINEL).is_file()
+
+
+# ── descendant_nodes (sentinel-based, transitive) ────────────────────────────
+
+def test_descendant_nodes_sentinel_based(tmp_path):
+    _work_node(tmp_path)
+    a = _work_node(tmp_path / "Project-A")          # plain subdir, no git repo
+    assert descendant_nodes(tmp_path) == [a]
+    assert child_nodes(tmp_path) == []              # git-root-based → misses same-repo subdirs
+
+
+def test_descendant_nodes_transitive_and_sorted(tmp_path):
+    _work_node(tmp_path)
+    a = _work_node(tmp_path / "Project-A")
+    nested = _work_node(tmp_path / "Project-A" / "Nested")
+    b = _work_node(tmp_path / "Project-B")
+    assert descendant_nodes(tmp_path) == [a, nested, b]   # depth-first, path-sorted
+
+
+def test_descendant_nodes_skips_worktrees_and_git(tmp_path):
+    _work_node(tmp_path)
+    _work_node(tmp_path / ".worktrees" / "item")    # a --worktree checkout copies the sentinel
+    (tmp_path / ".git").mkdir()
+    assert descendant_nodes(tmp_path) == []
+
+
+def test_descendant_nodes_skips_symlink_cycle(tmp_path):
+    _work_node(tmp_path)
+    a = _work_node(tmp_path / "Project-A")
+    (a / "loop").symlink_to(tmp_path)               # naive walk would recurse forever
+    assert descendant_nodes(tmp_path) == [a]        # terminates; symlink not followed

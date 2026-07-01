@@ -9,8 +9,8 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
-    ensure_worktree_ignored, find_node, git_commit, merge_worktree, parent_node,
-    remove_worktree,
+    descendant_nodes, ensure_worktree_ignored, find_node, git_commit,
+    merge_worktree, parent_node, remove_worktree,
 )
 from tcw.work.recursion import delegate, escalate, reconcile
 
@@ -181,12 +181,9 @@ def _new(args: argparse.Namespace) -> int:
     return rc
 
 
-def _list(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    items = st.board(status=args.status)
-    if args.status is None and not args.all:
+def _render_board(st: FsWorkStore, status: str | None, show_all: bool) -> None:
+    items = st.board(status=status)
+    if status is None and not show_all:
         items = [i for i in items if i.status != "completed"]
     present = {i.slug for i in items}
     by_parent: dict[str, list[WorkItem]] = {}
@@ -223,6 +220,22 @@ def _list(args: argparse.Namespace) -> int:
         if it.parent in present:                  # a visible parent will emit it
             continue
         emit(it, 0)
+
+
+def _list(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    if not args.include_descendants:
+        _render_board(st, args.status, args.all)
+        return 0
+    node = st.node_root.resolve()                 # descendant_nodes returns resolved
+    for i, root in enumerate([node, *descendant_nodes(node)]):   # paths → relative_to
+        if i:
+            print()                               # blank line between node groups
+        rel = "." if root == node else f"./{root.relative_to(node)}"
+        print(f"# {rel}")
+        _render_board(FsWorkStore.open(root), args.status, args.all)
     return 0
 
 
@@ -421,6 +434,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl = g.add_parser("list", help="the board (hides completed unless --status/--all)")
     pl.add_argument("--status")
     pl.add_argument("--all", action="store_true", help="include completed items")
+    pl.add_argument("--include-descendants", action="store_true",
+                    help="also list every descendant work node's board, grouped by node")
     pl.set_defaults(func=_list)
 
     psh = g.add_parser("show", help="resolve slug → item; print state + body")
