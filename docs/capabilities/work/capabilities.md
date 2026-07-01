@@ -22,7 +22,7 @@ As a user, I assign an integer priority with `tcw work new "<title>" --priority 
 **Status:** Supported
 **Subject:** work-item
 
-As a user, I record coarse estimates with `tcw work new "<title>" --effort <level> --complexity <level>` or `tcw work edit <slug> --effort <level> --complexity <level>`, where `<level>` is one of `low | medium | high | very-high`. Both fields are optional and default to unset. `tcw work show` displays them when set (alongside priority); they do not appear in `tcw work list`. They are estimation signals only and do not affect board ordering.
+As a user, I record coarse estimates with `tcw work new "<title>" --effort <level> --complexity <level>` or `tcw work edit <slug> --effort <level> --complexity <level>`, where `<level>` is one of `low | medium | high | very-high` (case-insensitive `L`/`M`/`H`/`VH` shorthand is also accepted as input and normalized to the canonical value). Both fields are optional and default to unset. `tcw work show` displays them when set (alongside priority); they do not appear in `tcw work list`. They are estimation signals only and do not affect board ordering.
 
 ## Read a work item
 **Status:** Supported
