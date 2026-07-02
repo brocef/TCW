@@ -2,7 +2,13 @@ slug: 2026-07-01-local-read-only-web-viewer-tcw-serve
 title: Local read-only web viewer (tcw serve)
 phase: ''
 created: '2026-07-01'
-resolution: null
+resolution: done
 priority: null
 effort: medium
 complexity: medium
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
