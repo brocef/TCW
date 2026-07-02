@@ -15,8 +15,9 @@ import yaml
 
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, DEFAULT_DOD,
-    AmbiguousRef, Capability, CapabilitiesStore, CapabilityFile, Collision,
-    MultipleMatch, RefError, TaxonomyStore, Term, WorkItem, WorkStore,
+    WORK_ARTIFACTS, AmbiguousRef, Artifact, Capability, CapabilitiesStore,
+    CapabilityFile, Collision, MultipleMatch, RefError, TaxonomyStore, Term,
+    WorkItem, WorkStore,
 )
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
@@ -910,6 +911,31 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def body_path(self, slug: str) -> Path | None:
         d = self._find(slug)                          # initial-request.md: FS realization of body surface
         return d / "initial-request.md" if d is not None else None
+
+    @staticmethod
+    def _artifact_filename(name: str) -> str:
+        return f"{name}.md"
+
+    def artifacts(self, slug: str) -> list[Artifact]:
+        d = self._find(slug)
+        if d is None:
+            return []
+        out: list[Artifact] = []
+        for name in WORK_ARTIFACTS:
+            p = d / self._artifact_filename(name)
+            out.append(Artifact(
+                name=name,
+                present=p.is_file() and bool(p.read_text(encoding="utf-8").strip()),
+            ))
+        return out
+
+    def artifact_locator(self, slug: str, name: str) -> str | None:
+        if name not in WORK_ARTIFACTS:
+            return None
+        d = self._find(slug)
+        if d is None:
+            return None
+        return str(d / self._artifact_filename(name))
 
     def _unique_slug(self, created: str, title: str) -> str:
         base = f"{created}-{slugify(title)}"

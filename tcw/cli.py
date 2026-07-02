@@ -10,6 +10,7 @@ from pathlib import Path
 
 from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
+from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import COMPONENTS, SENTINEL, git_root, init
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
@@ -51,6 +52,10 @@ def _not_yet(name: str):
     return run
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    return serve(port=args.port, open_browser=not args.no_open)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tcw", description="Taxonomy · Capabilities · Work.")
     parser.add_argument("--version", action="version", version=f"tcw {__version__}")
@@ -60,6 +65,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("components", nargs="*",
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")
     p_init.set_defaults(func=_cmd_init)
+
+    p_serve = sub.add_parser("serve", help="serve a local read-only web viewer")
+    p_serve.add_argument("--port", type=int, default=DEFAULT_PORT,
+                         help=f"loopback port to bind (default: {DEFAULT_PORT})")
+    p_serve.add_argument("--no-open", action="store_true",
+                         help="do not open a browser automatically")
+    p_serve.set_defaults(func=_cmd_serve)
 
     for mod in _BUILT:
         mod.add_subparser(sub)

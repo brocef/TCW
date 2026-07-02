@@ -201,20 +201,17 @@ def _render_board(st: FsWorkStore, status: str | None, show_all: bool) -> None:
         by_parent.setdefault(it.parent, []).append(it)
 
     def stages(it: WorkItem) -> str:
-        d = st.path(it.slug)
-        if d is None:
-            return "-"
+        labels = {
+            "initial-request": "R",
+            "spec": "S",
+            "plan": "P",
+            "outcome": "O",
+            "refined-outcome": "F",
+        }
         out = ""
-        for label, name in (
-            ("R", "initial-request.md"),
-            ("S", "spec.md"),
-            ("P", "plan.md"),
-            ("O", "outcome.md"),
-            ("F", "refined-outcome.md"),
-        ):
-            p = d / name
-            if p.is_file() and p.read_text(encoding="utf-8").strip():
-                out += label
+        for artifact in st.artifacts(it.slug):
+            if artifact.present:
+                out += labels[artifact.name]
         return out or "-"
 
     def emit(it: WorkItem, depth: int) -> None:

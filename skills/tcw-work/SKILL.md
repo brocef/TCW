@@ -27,6 +27,11 @@ The artifact spine is:
 `initial-request.md` is always-present — it serves as the item body/overview
 surface, scratch space, and the managed rollup target for epics.
 
+The work store exposes the bounded lifecycle artifact set through
+`artifacts(slug)` and openable handles through `artifact_locator(slug, name)`.
+Use those store methods for board or viewer behavior; do not reconstruct artifact
+state by globbing item folders outside the filesystem adapter.
+
 For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, check whether taxonomy Vocabulary or Feature entries need to be added/updated, then run the tcw-capabilities planning gate before writing the technical plan.
 
 ## The lifecycle handshake

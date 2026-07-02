@@ -140,7 +140,8 @@ cd your-git-repo
 tcw init                    # scaffold docs/{taxonomy,capabilities,work}/
 tcw init taxonomy work      # …or just the components you name
 tcw work init               # …or per-component: same as `tcw init work`
-tcw --help                  # top-level groups: init | taxonomy | capabilities | work
+tcw serve --no-open          # browse Work, Taxonomy, and Capabilities locally
+tcw --help                  # top-level groups: init | serve | taxonomy | capabilities | work
 ```
 
 `tcw init` marks the **current directory** as a TCW node by writing a
@@ -198,6 +199,22 @@ project-b's taxonomy commands then inherit project-a's terms automatically.
 
 Every group has a `--help`, a `check` that validates the tree, and a bare-path
 shortcut (`tcw taxonomy <path>` == `tcw taxonomy show <path>`).
+
+### `tcw serve` — the local web viewer
+
+`tcw serve` starts a read-only web app on `127.0.0.1` for the current TCW node:
+
+```sh
+tcw serve                    # http://127.0.0.1:8765/ and open a browser
+tcw serve --no-open           # start the server without opening a browser
+tcw serve --port 9000         # choose a different loopback port
+```
+
+The viewer has tabs for the Work board, Taxonomy tree, and Capabilities ledger.
+It reads through the same store interfaces as the CLI, so later editing and
+transition endpoints can be added without replacing the UI contract. Work detail
+renders `initial-request.md` inline; other lifecycle artifacts appear as links
+that ask the local server to open the file with the desktop's default app.
 
 ### `tcw taxonomy` — the nouns
 

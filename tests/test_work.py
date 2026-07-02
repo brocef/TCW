@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import IllegalTransition, MultipleMatch, topo_order
+from tcw.store.base import WORK_ARTIFACTS, IllegalTransition, MultipleMatch, topo_order
 from tcw.store.fs import FsWorkStore, init
 
 
@@ -53,6 +53,29 @@ def test_body_path_points_at_initial_request_md(tmp_path):
     assert body == st.path(item.slug) / "initial-request.md"
     assert body.exists()
     assert st.body_path("no-such-slug") is None
+
+
+def test_artifacts_report_bounded_presence_and_locator(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    d = st.path(item.slug)
+    (d / "initial-request.md").write_text("request\n", encoding="utf-8")
+    (d / "spec.md").write_text("   \n", encoding="utf-8")
+    (d / "plan.md").write_text("plan\n", encoding="utf-8")
+
+    artifacts = {a.name: a.present for a in st.artifacts(item.slug)}
+    assert tuple(artifacts) == WORK_ARTIFACTS
+    assert artifacts == {
+        "initial-request": True,
+        "spec": False,
+        "plan": True,
+        "outcome": False,
+        "refined-outcome": False,
+    }
+    assert st.artifact_locator(item.slug, "plan") == str(d / "plan.md")
+    assert st.artifact_locator(item.slug, "../plan") is None
+    assert st.artifact_locator("no-such-slug", "plan") is None
 
 
 def test_multiple_match_resolution_error(tmp_path):

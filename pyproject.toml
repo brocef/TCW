@@ -21,6 +21,9 @@ dev = ["pytest"]
 include = ["tcw*"]
 exclude = ["plugins*"]
 
+[tool.setuptools.package-data]
+"tcw.serve" = ["static/*"]
+
 [tool.pytest.ini_options]
 # `plugins/tcw` is a symlink back to the repo root (the Codex marketplace pointer);
 # without these, collection recurses through it infinitely.

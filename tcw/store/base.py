@@ -204,6 +204,7 @@ def normalize_work_level(value: str) -> str:
     )
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
                "reviewed", "version offered")
+WORK_ARTIFACTS = ("initial-request", "spec", "plan", "outcome", "refined-outcome")
 
 
 class IllegalTransition(Exception):
@@ -234,6 +235,13 @@ class WorkItem:
     worktree: str = ""              # node-relative worktree path (start --worktree)
     branch: str = ""                # work branch name (start --worktree)
     parent: str = ""                # slug of the parent item; "" == top-level (node relation)
+
+
+@dataclass
+class Artifact:
+    """A named lifecycle artifact associated with a work item."""
+    name: str
+    present: bool = False
 
 
 def topo_order(items: list[WorkItem]) -> list[WorkItem]:
@@ -306,6 +314,14 @@ class WorkStore(ABC):
 
     @abstractmethod
     def query(self, status: str | None = None) -> list[WorkItem]: ...
+
+    @abstractmethod
+    def artifacts(self, slug: str) -> list[Artifact]:
+        """The bounded lifecycle artifact set for `slug`, with presence only."""
+
+    @abstractmethod
+    def artifact_locator(self, slug: str, name: str) -> str | None:
+        """Resolve an artifact to an openable handle, or None if unavailable."""
 
     @abstractmethod
     def set_field(self, slug: str, key: str, value) -> None: ...
