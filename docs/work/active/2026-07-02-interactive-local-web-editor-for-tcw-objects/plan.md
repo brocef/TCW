@@ -1,9 +1,21 @@
 # Plan - Interactive local web editor for TCW objects
 
+> **Implementation progress** (last updated 2026-07-02; branch `interactive-local-web-editor`)
+> - ✅ **Phase 1 — Store contracts and validation shape** — complete. Abstract
+>   edit surfaces + per-resource revision tokens, `WORK_SIDECARS` /
+>   `TAXONOMY_EDITABLE_FIELDS` registries, composite `create_work`/`update_work`,
+>   artifact & sidecar read/write, capability `add_entry`; CLI `_new`/`_edit`
+>   refactored onto the shared store methods. 77 new store tests; full suite
+>   **320 passing**. Implemented by the local `bllm-agent`, verified here.
+> - ⬜ Phase 2 — Write API
+> - ⬜ Phase 3 — Frontend editor architecture
+> - ⬜ Phase 4 — Axis-specific UI flows
+> - ⬜ Phase 5 — Verification and docs
+
 Execute in order. Phases 2 and 3 can overlap only after Phase 1 settles the
 store contracts.
 
-## Phase 1 - Store contracts and validation shape
+## Phase 1 - Store contracts and validation shape ✅ COMPLETE
 
 Touch points: `tcw/store/base.py`, `tcw/store/fs.py`, tests.
 

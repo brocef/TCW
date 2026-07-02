@@ -10,6 +10,7 @@ extracted in Phase 4 — not pre-abstracted here.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
 
 
 class RefError(Exception):
@@ -18,6 +19,19 @@ class RefError(Exception):
 
 class AmbiguousRef(RefError):
     """A bare reference matches more than one namespace — author must qualify."""
+
+
+class StaleRevision(Exception):
+    """A write was rejected because the provided revision token no longer matches.
+
+    The editable resource was modified (by another editor or CLI) since the caller
+    last read it. The caller should re-read the current version and re-apply edits.
+    """
+
+
+# Sentinel to distinguish "field not provided" from "set to None" in
+# partial-update operations.  Omitted → unchanged; None → clear nullable.
+_UNSET = object()
 
 
 @dataclass
@@ -85,6 +99,78 @@ class TaxonomyStore(ABC):
     @abstractmethod
     def extends_remove(self, alias: str) -> None:
         """Drop a federation alias. Refuse if it isn't present."""
+
+    @abstractmethod
+    def get_term_detail(self, ref: str) -> "TermDetail" | None:
+        """Resolve a reference to its term plus a core revision token.
+
+        Returns ``None`` when the ref resolves to nothing (same as ``get``).
+        Raises ``AmbiguousRef`` on collisions.
+        """
+
+    @abstractmethod
+    def update_term(self, ref: str, *,
+                    name: Any = _UNSET,
+                    description: Any = _UNSET,
+                    relates_to: Any = _UNSET,
+                    vocabulary: Any = _UNSET,
+                    kind: Any = _UNSET,
+                    core_revision: str | None = None) -> "TermDetail":
+        """Partial-merge update for an existing local term.
+
+        Only keys that are *not* ``_UNSET`` are changed.  Passing ``None``
+        clears a field to its default (empty string / empty list).  Empty
+        strings are explicit values and are preserved.  Refers to
+        ``TAXONOMY_EDITABLE_FIELDS`` for the allowed set.
+
+        ``core_revision`` (when provided) must match the current token; a
+        stale token raises ``StaleRevision`` and performs no write.
+
+        Returns the updated ``TermDetail`` with a fresh revision.
+        """
+
+
+# ── Revision-bearing resource types ──────────────────────────────────────────
+
+@dataclass
+class ArtifactResource:
+    """A lifecycle artifact's content, media type, and revision token."""
+    name: str
+    content: str
+    media_type: str = "text/markdown"
+    revision: str = ""
+
+
+@dataclass
+class SidecarResource:
+    """A bounded work sidecar's content, media type, and revision token."""
+    name: str
+    content: str
+    media_type: str = ""
+    revision: str = ""
+
+
+@dataclass
+class WorkDetail:
+    """A work item with revision tokens for every editable resource."""
+    item: WorkItem
+    core_revision: str = ""
+    artifact_revisions: dict[str, str] = field(default_factory=dict)
+    sidecar_revisions: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class TermDetail:
+    """A taxonomy term with its core revision token."""
+    term: Term
+    core_revision: str = ""
+
+
+@dataclass
+class CapabilityDetail:
+    """A single capability entry with its core revision token."""
+    capability: Capability
+    core_revision: str = ""
 
 
 # ── Capabilities (Phase 3) ───────────────────────────────────────────────────
@@ -169,6 +255,47 @@ class CapabilitiesStore(ABC):
     def check(self, taxonomy: "TaxonomyStore | None" = None) -> list[str]:
         """Validate identifiers, metadata vocabulary, and (cross-component) Subject refs."""
 
+    @abstractmethod
+    def get_capability_detail(self, identifier: str,
+                              heading_slug: str | None = None) -> "CapabilityDetail" | None:
+        """Resolve a specific capability entry to its data plus a revision token.
+
+        ``heading_slug`` disambiguates when the file holds multiple capabilities.
+        Returns ``None`` for dangling identifiers.
+        """
+
+    @abstractmethod
+    def update_capability(self, identifier: str,
+                          heading_slug: str | None = None, *,
+                          body: Any = _UNSET,
+                          fields: Any = _UNSET,
+                          core_revision: str | None = None) -> "CapabilityDetail":
+        """Partial-merge update for an existing capability entry.
+
+        ``body``: ``None`` clears to empty string; any string sets it.
+        ``fields``: a dict of ``{key: value}`` pairs to merge into the
+        capability's metadata (keys validated against ``CAP_FIELDS``).
+        ``core_revision`` enforces stale-write rejection.
+
+        Returns the updated ``CapabilityDetail`` with a fresh revision.
+        """
+
+    @abstractmethod
+    def add_entry(self, collection: str, name: str, *,
+                  status: str = "Missing", body: str = "",
+                  fields: dict[str, str] | None = None) -> "CapabilityDetail":
+        """Create a capability entry inside a named collection (namespace).
+
+        If the collection already exists (file present) the new entry is added
+        to it; otherwise the collection file is created.  The adapter decides
+        whether that realizes as a new flat file or a folder entry.
+
+        This is an abstract "create-entry-in-collection" — never
+        "append-heading-at-path".  The collection name is the placement.
+
+        Returns the created ``CapabilityDetail`` with a fresh revision.
+        """
+
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────
 
@@ -205,6 +332,18 @@ def normalize_work_level(value: str) -> str:
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
                "reviewed", "version offered")
 WORK_ARTIFACTS = ("initial-request", "spec", "plan", "outcome", "refined-outcome")
+
+# Bounded sidecar registry — each entry declares the expected media type and
+# the validation rule applied before persistence.  New sidecars are added here.
+WORK_SIDECARS: dict[str, dict[str, str]] = {
+    "capabilities.yaml": {
+        "media_type": "application/yaml",
+        "validation": "yaml_mapping",
+    },
+}
+
+# Taxonomy term fields that the abstract ``update_term`` operation may modify.
+TAXONOMY_EDITABLE_FIELDS = frozenset({"name", "description", "kind", "relates_to", "vocabulary"})
 
 
 class IllegalTransition(Exception):
@@ -334,6 +473,112 @@ class WorkStore(ABC):
 
     @abstractmethod
     def dod_checklist(self) -> list[str]: ...
+
+    # -- revision-bearing reads --
+
+    @abstractmethod
+    def get_detail(self, slug: str) -> "WorkDetail" | None:
+        """Resolve a slug to a ``WorkDetail`` (item + revision tokens).
+
+        Returns ``None`` for unknown slugs.  The revision map covers the
+        object core (fields + body), every lifecycle artifact, and every
+        bounded sidecar.
+        """
+
+    # -- composite create / update --
+
+    @abstractmethod
+    def create_work(self, title: str, *,
+                    created: str | None = None,
+                    body: str = "",
+                    priority: int | None = None,
+                    effort: str = "",
+                    complexity: str = "",
+                    blockers: list[str] | None = None,
+                    parent: str | None = None,
+                    initiative: str = "",
+                    type: str = "") -> "WorkDetail":
+        """Create a work item with all fields in one atomic operation.
+
+        * ``title`` — required, non-empty display name.
+        * ``effort`` / ``complexity`` — must be in ``WORK_LEVELS`` (or empty).
+        * ``blockers`` — list of refs to resolve; unresolvable refs become
+          external entries.
+        * ``parent`` — must resolve to an existing item.
+        * ``type`` — only ``""`` (default) or ``"epic"`` are valid.
+
+        All fields are validated **before** any persistence.  Returns the
+        created ``WorkDetail`` with fresh revision tokens.
+        """
+
+    @abstractmethod
+    def update_work(self, slug: str, *,
+                    title: Any = _UNSET,
+                    body: Any = _UNSET,
+                    priority: Any = _UNSET,
+                    effort: Any = _UNSET,
+                    complexity: Any = _UNSET,
+                    blockers: Any = _UNSET,
+                    initiative: Any = _UNSET,
+                    parent: Any = _UNSET,
+                    core_revision: str | None = None) -> "WorkDetail":
+        """Partial-merge update for an existing work item.
+
+        Only fields whose keyword is *not* ``_UNSET`` are changed.  Passing
+        ``None`` clears a nullable field (``priority``, ``blockers``).  Empty
+        strings are explicit values and are preserved.
+
+        ``core_revision`` (when provided) must match the current core token;
+        a stale token raises ``StaleRevision`` and performs no write.
+
+        Returns the updated ``WorkDetail`` with a fresh revision.
+        """
+
+    # -- artifact read / write --
+
+    @abstractmethod
+    def read_artifact(self, slug: str, name: str) -> "ArtifactResource" | None:
+        """Read a lifecycle artifact by bounded name.
+
+        Returns ``None`` when the artifact has not been written yet.
+        Raises ``ValueError`` for unknown artifact names.
+        """
+
+    @abstractmethod
+    def write_artifact(self, slug: str, name: str, content: str,
+                       revision: str | None = None) -> "ArtifactResource":
+        """Write a lifecycle artifact.
+
+        ``revision`` (when provided) must match the current token; stale →
+        ``StaleRevision``.  Content must be plain text (Markdown).
+        Returns the written ``ArtifactResource`` with a fresh revision.
+        """
+
+    # -- sidecar read / write --
+
+    @abstractmethod
+    def read_sidecar(self, slug: str, name: str) -> "SidecarResource" | None:
+        """Read a bounded sidecar by registry name.
+
+        Returns ``None`` when the sidecar has not been written yet.
+        Raises ``ValueError`` for unknown sidecar names.
+        """
+
+    @abstractmethod
+    def write_sidecar(self, slug: str, name: str, content: str,
+                      media_type: str | None = None,
+                      revision: str | None = None) -> "SidecarResource":
+        """Write a bounded sidecar.
+
+        ``name`` must be in ``WORK_SIDECARS``.  ``media_type`` defaults to
+        the registry entry.  ``revision`` enforces stale-write rejection.
+
+        Before persistence the content is validated against the registry's
+        ``validation`` rule (e.g. ``yaml_mapping`` → must parse as valid YAML).
+        A validation failure leaves the store unchanged and raises ``ValueError``.
+
+        Returns the written ``SidecarResource`` with a fresh revision.
+        """
 
     def initiative_epic(self, item: WorkItem) -> WorkItem | None:
         """Resolve `item`'s initiative epic, if any.

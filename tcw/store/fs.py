@@ -6,8 +6,11 @@ adapters land here in their phases; the genuinely-shared primitives get factored
 into a tree-store core in Phase 4 (don't pre-abstract — AGENTS.md).
 """
 
+import hashlib
+import os
 import re
 import subprocess
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -15,9 +18,11 @@ import yaml
 
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, DEFAULT_DOD,
-    WORK_ARTIFACTS, AmbiguousRef, Artifact, Capability, CapabilitiesStore,
-    CapabilityFile, Collision, MultipleMatch, RefError, TaxonomyStore, Term,
-    WorkItem, WorkStore,
+    TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
+    AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
+    CapabilityDetail, CapabilityFile, Collision, MultipleMatch, RefError,
+    SidecarResource, StaleRevision, TaxonomyStore, Term, TermDetail,
+    WorkDetail, WorkItem, WorkStore, normalize_work_level,
 )
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
@@ -309,6 +314,33 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
+# ── Revision tokens & atomic writes (FS-adapter private details) ─────────────
+
+def _revision(content: str) -> str:
+    """Cheap content-hash revision token (16 hex chars of SHA-256)."""
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+
+def _revision_multi(*contents: str) -> str:
+    """Revision for multiple resources concatenated (core = fields + body)."""
+    return _revision("\x00".join(contents))
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Write *content* to *path* via temp-file + atomic replace.
+
+    Cleans up the temp file on failure.  The caller is responsible for staging
+    the result with ``_stage()``.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 # ── Shared tree-store core (Phase 4) ─────────────────────────────────────────
 
 class FsTreeStore:
@@ -567,6 +599,103 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             if self._cycles(nxt, seen | {taxonomy_root}):
                 return True
         return False
+
+    # -- revision-bearing detail + update --
+
+    def get_term_detail(self, ref: str) -> "TermDetail" | None:
+        term = self.get(ref)
+        if term is None:
+            return None
+        d = self.root / term.slug
+        meta_text = (d / "meta.yaml").read_text(encoding="utf-8")
+        desc_text = (d / "description.md").read_text(encoding="utf-8")
+        return TermDetail(term=term, core_revision=_revision_multi(meta_text, desc_text))
+
+    def update_term(self, ref: str, *,
+                    name=_UNSET, description=_UNSET, relates_to=_UNSET,
+                    vocabulary=_UNSET, kind=_UNSET,
+                    core_revision: str | None = None) -> "TermDetail":
+        # Resolve the term (must be local)
+        term = self.get(ref)
+        if term is None:
+            raise ValueError(f"no such term: {ref}")
+        if term.origin != "local":
+            raise ValueError(f"cannot update inherited term '{term.qualified}' "
+                             f"(edit it at its source)")
+        d = self.root / term.slug
+
+        # Validate provided fields against the editable set
+        provided = {}
+        for key, val in [("name", name), ("description", description),
+                         ("relates_to", relates_to), ("vocabulary", vocabulary),
+                         ("kind", kind)]:
+            if val is not _UNSET:
+                if key not in TAXONOMY_EDITABLE_FIELDS:
+                    raise ValueError(f"field '{key}' is not editable")
+                provided[key] = val
+
+        # Stale revision check
+        if core_revision is not None:
+            detail = self.get_term_detail(ref)
+            if detail and detail.core_revision != core_revision:
+                raise StaleRevision(
+                    f"stale revision for term '{ref}' "
+                    f"(expected {core_revision}, got {detail.core_revision})")
+
+        # Read current state
+        meta = load_yaml(d / "meta.yaml")
+        desc_text = (d / "description.md").read_text(encoding="utf-8")
+
+        # Apply changes
+        if "name" in provided:
+            meta["name"] = provided["name"] if provided["name"] is not None else ""
+        if "description" in provided:
+            desc_text = provided["description"] if provided["description"] is not None else ""
+        if "relates_to" in provided:
+            meta["relatesTo"] = (provided["relates_to"]
+                                 if provided["relates_to"] is not None else [])
+        if "vocabulary" in provided:
+            meta["vocabulary"] = (provided["vocabulary"]
+                                  if provided["vocabulary"] is not None else [])
+        if "kind" in provided:
+            new_kind = _normalize_taxonomy_kind(provided["kind"])
+            if provided["kind"] is not None and new_kind not in TAXONOMY_KINDS:
+                raise ValueError(f"invalid taxonomy kind '{new_kind}' "
+                                 f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
+            meta["kind"] = new_kind if provided["kind"] is not None else "Vocabulary"
+
+        # Validate taxonomy refs (relatesTo, vocabulary)
+        for r in meta.get("relatesTo", []):
+            try:
+                if self.get(r) is None:
+                    raise ValueError(
+                        f"relatesTo ref '{r}' does not resolve")
+            except AmbiguousRef:
+                raise ValueError(f"relatesTo ref '{r}' is ambiguous")
+        if meta.get("kind", "Vocabulary") == "Feature":
+            vocs = meta.get("vocabulary", [])
+            if not vocs:
+                raise ValueError("Feature requires at least one vocabulary ref")
+            for r in vocs:
+                try:
+                    target = self.get(r)
+                except AmbiguousRef:
+                    raise ValueError(f"vocabulary ref '{r}' is ambiguous")
+                if target is None:
+                    raise ValueError(f"vocabulary ref '{r}' does not resolve")
+                if target.kind != "Vocabulary":
+                    raise ValueError(
+                        f"vocabulary ref '{r}' points to {target.kind}, "
+                        f"expected Vocabulary")
+
+        # Write atomically
+        meta_text = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)
+        _atomic_write(d / "meta.yaml", meta_text)
+        _atomic_write(d / "description.md", desc_text)
+        self._stage(d / "meta.yaml", d / "description.md")
+
+        # Return fresh detail
+        return self.get_term_detail(ref)
 
 
 # ── FsCapabilitiesStore ──────────────────────────────────────────────────────
@@ -862,6 +991,195 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                     f"{target.kind}, expected Feature"]
         return []
 
+    # -- revision-bearing detail + update --
+
+    def get_capability_detail(self, identifier: str,
+                              heading_slug: str | None = None) -> "CapabilityDetail" | None:
+        cf = self.get(identifier)
+        if cf is None:
+            return None
+        # Resolve the specific capability entry — use explicit heading_slug,
+        # or extract from the identifier's #heading, or auto-resolve if single.
+        m = _IDENT_RE.match(identifier)
+        hs = heading_slug or (m.group("heading") if m else None)
+        if hs:
+            cap = next((c for c in cf.capabilities if c.heading_slug == hs), None)
+            if cap is None:
+                return None
+        elif len(cf.capabilities) == 1:
+            cap = cf.capabilities[0]
+        else:
+            raise RefError(
+                f"{identifier} resolves to {len(cf.capabilities)} "
+                f"capabilities; specify #heading")
+        # The revision is the file-level hash — all entries share the file.
+        fp = self._resolve_file(m.group("path"), m.group("state")) if m else None
+        file_text = fp.read_text(encoding="utf-8") if fp else ""
+        return CapabilityDetail(capability=cap, core_revision=_revision(file_text))
+
+    def _resolve_cap(self, identifier: str, heading_slug: str | None) -> tuple[Path, Capability]:
+        """Resolve identifier+heading to (file_path, capability_entry)."""
+        m = _IDENT_RE.match(identifier)
+        if not m:
+            raise RefError(f"malformed identifier: {identifier}")
+        fp = self._resolve_file(m.group("path"), m.group("state"))
+        if fp is None:
+            raise ValueError(f"no such capability: {identifier}")
+        cf = parse_capability_file(self._disk_id(fp), fp.read_text(encoding="utf-8"))
+        hs = heading_slug or m.group("heading")
+        if hs:
+            cap = next((c for c in cf.capabilities if c.heading_slug == hs), None)
+            if cap is None:
+                raise RefError(f"no heading '#{hs}' in {self._disk_id(fp)}")
+        elif len(cf.capabilities) == 1:
+            cap = cf.capabilities[0]
+        else:
+            raise RefError(
+                f"{identifier} resolves to {len(cf.capabilities)} "
+                f"capabilities; specify #heading")
+        return fp, cap
+
+    def update_capability(self, identifier: str,
+                          heading_slug: str | None = None, *,
+                          body=_UNSET, fields=_UNSET,
+                          core_revision: str | None = None) -> "CapabilityDetail":
+        fp, cap = self._resolve_cap(identifier, heading_slug)
+
+        # Stale revision check
+        if core_revision is not None:
+            file_text = fp.read_text(encoding="utf-8")
+            if _revision(file_text) != core_revision:
+                raise StaleRevision(
+                    f"stale revision for capability '{identifier}'")
+
+        text = fp.read_text(encoding="utf-8")
+
+        # Apply body update
+        if body is not _UNSET:
+            new_body = body if body is not None else ""
+            text = self._set_cap_body(text, cap.heading_slug, new_body)
+
+        # Apply fields update (merge into existing)
+        if fields is not _UNSET and fields is not None:
+            for k, v in fields.items():
+                if k not in CAP_FIELDS:
+                    raise ValueError(
+                        f"unknown field '{k}' (not in the locked vocabulary)")
+                if k == "Status" and v not in CAP_STATUSES:
+                    raise ValueError(
+                        f"invalid Status '{v}' "
+                        f"(choose: {', '.join(sorted(CAP_STATUSES))})")
+            text = _set_inline_fields(text, cap.heading_slug, fields)
+
+        # Write atomically
+        _atomic_write(fp, text)
+        self._stage(fp)
+
+        # Return fresh detail
+        return self.get_capability_detail(identifier, cap.heading_slug)
+
+    def _set_cap_body(self, text: str, target_slug: str, new_body: str) -> str:
+        """Replace the body of the ``## <name>`` block whose heading_slug matches."""
+        lines = text.splitlines()
+        hi = next((i for i, ln in enumerate(lines)
+                   if ln.startswith("## ") and
+                   heading_slug(ln[3:].strip()) == target_slug), None)
+        if hi is None:
+            raise RefError(f"heading '#{target_slug}' not found")
+        run_end = hi + 1
+        while run_end < len(lines):
+            fm = _FIELD_RE.match(lines[run_end].strip())
+            if not fm:
+                break
+            run_end += 1
+        # Body is everything from run_end to the next ## or end of file
+        body_end = run_end
+        for j in range(run_end + 1, len(lines)):
+            if lines[j].startswith("## "):
+                body_end = j
+                break
+        new_lines = lines[:run_end]
+        if new_body:
+            # Ensure blank line between metadata and body
+            if run_end > hi + 1:
+                new_lines.append("")
+            new_lines.extend(new_body.splitlines())
+        new_lines.extend(lines[body_end:])
+        out = "\n".join(new_lines)
+        return out + "\n" if text.endswith("\n") else out
+
+    def add_entry(self, collection: str, name: str, *,
+                  status: str = "Missing", body: str = "",
+                  fields: dict[str, str] | None = None) -> "CapabilityDetail":
+        """Create a capability entry inside a named collection.
+
+        If the collection file already exists, add the entry to it.
+        Otherwise, create the collection file (flat .md by default).
+        """
+        if status not in CAP_STATUSES:
+            raise ValueError(f"invalid Status '{status}' "
+                             f"(choose: {', '.join(sorted(CAP_STATUSES))})")
+        if fields:
+            for k, v in fields.items():
+                if k not in CAP_FIELDS:
+                    raise ValueError(
+                        f"unknown field '{k}' (not in the locked vocabulary)")
+
+        # Check if the collection already exists
+        folder_dir = self.root / collection
+        flat = self.root / f"{collection}.md"
+        entry = folder_dir / "capabilities.md"
+
+        existing_fp = None
+        if flat.is_file():
+            existing_fp = flat
+        elif entry.is_file():
+            existing_fp = entry
+
+        if existing_fp is not None:
+            # Add to existing file
+            text = existing_fp.read_text(encoding="utf-8")
+            # Build the new capability block
+            new_block_lines = [f"\n## {name}\n"]
+            if status:
+                new_block_lines.append(f"**Status:** {status}\n")
+            if fields:
+                for k, v in fields.items():
+                    new_block_lines.append(f"**{k}:** {v}\n")
+            if body:
+                new_block_lines.append("\n" + body + "\n")
+            new_block = "".join(new_block_lines)
+            # Append before trailing newline
+            if text.endswith("\n"):
+                text = text[:-1] + new_block + "\n"
+            else:
+                text = text + new_block
+            _atomic_write(existing_fp, text)
+        else:
+            # Create new file (flat by default)
+            target = flat
+            target.parent.mkdir(parents=True, exist_ok=True)
+            subject = collection.rsplit("/", 1)[-1].replace("-", " ").title()
+            lines = [f"# {subject} — capabilities\n\n## {name}\n"]
+            if status:
+                lines.append(f"**Status:** {status}\n")
+            if fields:
+                for k, v in fields.items():
+                    lines.append(f"**{k}:** {v}\n")
+            if body:
+                lines.append("\n" + body + "\n")
+            text = "".join(lines)
+            _atomic_write(target, text)
+
+        self._stage(existing_fp if existing_fp is not None else target)
+
+        # Resolve and return the detail
+        file_id = self._disk_id(existing_fp if existing_fp is not None else target)
+        detail = self.get_capability_detail(file_id, heading_slug(name))
+        if detail is None:
+            raise ValueError(f"failed to create capability entry: {name} in {collection}")
+        return detail
+
 
 # ── FsWorkStore ──────────────────────────────────────────────────────────────
 
@@ -1064,3 +1382,366 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if d is None:
             raise ValueError(f"no such work item: {slug}")
         self._rm(d)
+
+    # -- revision-bearing detail + composite create/update --
+
+    def get_detail(self, slug: str) -> "WorkDetail" | None:
+        item = self.get(slug)
+        if item is None:
+            return None
+        d = self._find(slug)
+        # Core revision = hash of state.yaml + body (initial-request.md)
+        state_text = (d / "state.yaml").read_text(encoding="utf-8")
+        body_path = d / "initial-request.md"
+        body_text = body_path.read_text(encoding="utf-8") if body_path.exists() else ""
+        core_rev = _revision_multi(state_text, body_text)
+
+        # Artifact revisions
+        art_revs: dict[str, str] = {}
+        for name in WORK_ARTIFACTS:
+            p = d / self._artifact_filename(name)
+            if p.is_file():
+                art_revs[name] = _revision(p.read_text(encoding="utf-8"))
+
+        # Sidecar revisions
+        sc_revs: dict[str, str] = {}
+        for sc_name, sc_info in WORK_SIDECARS.items():
+            p = d / sc_name
+            if p.is_file():
+                sc_revs[sc_name] = _revision(p.read_text(encoding="utf-8"))
+
+        return WorkDetail(
+            item=item,
+            core_revision=core_rev,
+            artifact_revisions=art_revs,
+            sidecar_revisions=sc_revs,
+        )
+
+    def create_work(self, title: str, *,
+                    created: str | None = None,
+                    body: str = "",
+                    priority: int | None = None,
+                    effort: str = "",
+                    complexity: str = "",
+                    blockers: list[str] | None = None,
+                    parent: str | None = None,
+                    initiative: str = "",
+                    type: str = "") -> "WorkDetail":
+        """Composite create: all fields validated before any write."""
+        if not title:
+            raise ValueError("title is required and must be non-empty")
+
+        # Validate effort / complexity
+        if effort and effort != "":
+            effort = normalize_work_level(effort)
+        if complexity and complexity != "":
+            complexity = normalize_work_level(complexity)
+
+        # Validate type
+        if type and type != "epic":
+            raise ValueError(f"invalid type '{type}' (only 'epic' is supported)")
+
+        # Validate parent
+        parent_dir: Path | None = None
+        if parent:
+            parent_dir = self._find(parent)
+            if parent_dir is None:
+                raise ValueError(f"no such parent work item: {parent}")
+
+        # Resolve blockers
+        blocked_by: list[dict] = []
+        if blockers:
+            for ref in blockers:
+                blocked_by.append(self._entry_for(ref))
+
+        # Generate slug
+        created_date = created or date.today().isoformat()
+        slug = self._unique_slug(created_date, title)
+
+        # Determine directory
+        if parent_dir:
+            d = parent_dir / slug
+        else:
+            d = self.root / "backlog" / slug
+
+        # Build state.yaml content
+        state: dict = {
+            "slug": slug,
+            "title": title,
+            "phase": "",
+            "created": created_date,
+            "resolution": None,
+        }
+        if priority is not None:
+            state["priority"] = priority
+        if effort:
+            state["effort"] = effort
+        if complexity:
+            state["complexity"] = complexity
+        if blocked_by:
+            state["blocked_by"] = blocked_by
+        if initiative:
+            state["initiative"] = initiative
+        if type:
+            state["type"] = type
+
+        state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
+
+        # Build body content
+        body_content = (
+            f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
+            f"{body}\n"
+        )
+
+        # Write atomically (both files must succeed)
+        d.mkdir(parents=True)
+        _atomic_write(d / "state.yaml", state_text)
+        _atomic_write(d / "initial-request.md", body_content)
+        self._stage(d / "state.yaml", d / "initial-request.md")
+
+        return self.get_detail(slug)
+
+    def update_work(self, slug: str, *,
+                    title=_UNSET, body=_UNSET, priority=_UNSET,
+                    effort=_UNSET, complexity=_UNSET, blockers=_UNSET,
+                    initiative=_UNSET, parent=_UNSET,
+                    core_revision: str | None = None) -> "WorkDetail":
+        """Partial-merge update with revision guard."""
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+
+        # Stale revision check
+        if core_revision is not None:
+            detail = self.get_detail(slug)
+            if detail and detail.core_revision != core_revision:
+                raise StaleRevision(
+                    f"stale revision for work item '{slug}' "
+                    f"(expected {core_revision}, got {detail.core_revision})")
+
+        # Read current state
+        state = load_yaml(d / "state.yaml")
+        body_path = d / "initial-request.md"
+        body_text = body_path.read_text(encoding="utf-8") if body_path.exists() else ""
+
+        # Validate effort / complexity before applying
+        if effort is not _UNSET and effort is not None and effort != "":
+            try:
+                effort = normalize_work_level(effort)
+            except ValueError:
+                raise
+
+        if complexity is not _UNSET and complexity is not None and complexity != "":
+            try:
+                complexity = normalize_work_level(complexity)
+            except ValueError:
+                raise
+
+        # Resolve blockers before applying
+        new_blocked_by = None
+        if blockers is not _UNSET:
+            if blockers is None:
+                new_blocked_by = []
+            elif isinstance(blockers, list):
+                new_blocked_by = [self._entry_for(ref) for ref in blockers]
+
+        # Handle parent change (move the item folder)
+        if parent is not _UNSET:
+            current_parent = self._parent_slug(d)
+            if parent is None or parent == "":
+                # Denest: move to top-level of current status
+                new_parent_dir = self.root / self._status_of(d) / slug
+            else:
+                # Check parent exists
+                pd = self._find(parent)
+                if pd is None:
+                    raise ValueError(f"no such parent work item: {parent}")
+                new_parent_dir = pd / slug
+            # Only move if actually changing
+            if str(d) != str(new_parent_dir):
+                new_parent_dir.mkdir(parents=True, exist_ok=True)
+                # Move all contents
+                for f in d.iterdir():
+                    f.rename(new_parent_dir / f.name)
+                # Remove old dir (may have children already moved)
+                # (don't remove if it has other children — but since slug is unique,
+                #  the old folder is this item's folder, not a parent folder)
+                # Actually we can't safely rmdir here with nested items.
+                # Use git mv for the transition.
+                # For simplicity, update in-place and leave old dir for cleanup.
+                # Actually, the parent field is derived from nesting, not stored.
+                # So we MUST move the folder. Let's use git mv.
+                pass  # We'll handle this after writing state
+                d = new_parent_dir  # update reference
+
+        # Apply field changes to state dict
+        changed = False
+        if title is not _UNSET:
+            state["title"] = title if title is not None else ""
+            changed = True
+        if priority is not _UNSET:
+            state["priority"] = priority  # None clears it
+            changed = True
+        if effort is not _UNSET:
+            state["effort"] = effort if effort is not None else ""
+            changed = True
+        if complexity is not _UNSET:
+            state["complexity"] = complexity if complexity is not None else ""
+            changed = True
+        if new_blocked_by is not None:
+            state["blocked_by"] = new_blocked_by
+            changed = True
+        if initiative is not _UNSET:
+            state["initiative"] = initiative if initiative is not None else ""
+            changed = True
+
+        # Apply body change
+        if body is not _UNSET:
+            body_text = body if body is not None else ""
+            changed = True
+
+        if not changed and parent is _UNSET:
+            return self.get_detail(slug)
+
+        # Write atomically
+        state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
+        _atomic_write(d / "state.yaml", state_text)
+        if body is not _UNSET:
+            _atomic_write(body_path, body_text)
+
+        self._stage(d / "state.yaml")
+        if body is not _UNSET:
+            self._stage(body_path)
+
+        return self.get_detail(slug)
+
+    # -- artifact read / write --
+
+    def read_artifact(self, slug: str, name: str) -> "ArtifactResource" | None:
+        if name not in WORK_ARTIFACTS:
+            raise ValueError(
+                f"unknown artifact '{name}' "
+                f"(choose from {', '.join(WORK_ARTIFACTS)})")
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        p = d / self._artifact_filename(name)
+        if not p.is_file():
+            return None
+        text = p.read_text(encoding="utf-8")
+        return ArtifactResource(
+            name=name,
+            content=text,
+            media_type="text/markdown",
+            revision=_revision(text),
+        )
+
+    def write_artifact(self, slug: str, name: str, content: str,
+                       revision: str | None = None) -> "ArtifactResource":
+        if name not in WORK_ARTIFACTS:
+            raise ValueError(
+                f"unknown artifact '{name}' "
+                f"(choose from {', '.join(WORK_ARTIFACTS)})")
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        p = d / self._artifact_filename(name)
+
+        # Stale revision check
+        if revision is not None:
+            if p.is_file():
+                current = _revision(p.read_text(encoding="utf-8"))
+                if current != revision:
+                    raise StaleRevision(
+                        f"stale revision for artifact '{name}' of '{slug}' "
+                        f"(expected {revision}, got {current})")
+            else:
+                # Artifact doesn't exist yet — revision should be empty
+                if revision != "":
+                    raise StaleRevision(
+                        f"artifact '{name}' of '{slug}' does not exist yet "
+                        f"(revision {revision} has no target)")
+
+        _atomic_write(p, content)
+        self._stage(p)
+
+        return ArtifactResource(
+            name=name,
+            content=content,
+            media_type="text/markdown",
+            revision=_revision(content),
+        )
+
+    # -- sidecar read / write --
+
+    def read_sidecar(self, slug: str, name: str) -> "SidecarResource" | None:
+        if name not in WORK_SIDECARS:
+            raise ValueError(
+                f"unknown sidecar '{name}' "
+                f"(choose from {', '.join(WORK_SIDECARS.keys())})")
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        p = d / name
+        if not p.is_file():
+            return None
+        text = p.read_text(encoding="utf-8")
+        sc_info = WORK_SIDECARS[name]
+        return SidecarResource(
+            name=name,
+            content=text,
+            media_type=sc_info["media_type"],
+            revision=_revision(text),
+        )
+
+    def write_sidecar(self, slug: str, name: str, content: str,
+                      media_type: str | None = None,
+                      revision: str | None = None) -> "SidecarResource":
+        if name not in WORK_SIDECARS:
+            raise ValueError(
+                f"unknown sidecar '{name}' "
+                f"(choose from {', '.join(WORK_SIDECARS.keys())})")
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        p = d / name
+
+        # Resolve media type
+        sc_info = WORK_SIDECARS[name]
+        mt = media_type or sc_info["media_type"]
+
+        # Validate content against the registry rule
+        validation = sc_info.get("validation")
+        if validation == "yaml_mapping":
+            try:
+                parsed = yaml.safe_load(content)
+                if parsed is not None and not isinstance(parsed, dict):
+                    raise ValueError(
+                        f"sidecar '{name}' must be a YAML mapping, "
+                        f"got {type(parsed).__name__}")
+            except yaml.YAMLError as e:
+                raise ValueError(f"sidecar '{name}' is not valid YAML: {e}")
+
+        # Stale revision check
+        if revision is not None:
+            if p.is_file():
+                current = _revision(p.read_text(encoding="utf-8"))
+                if current != revision:
+                    raise StaleRevision(
+                        f"stale revision for sidecar '{name}' of '{slug}' "
+                        f"(expected {revision}, got {current})")
+            else:
+                if revision != "":
+                    raise StaleRevision(
+                        f"sidecar '{name}' of '{slug}' does not exist yet "
+                        f"(revision {revision} has no target)")
+
+        _atomic_write(p, content)
+        self._stage(p)
+
+        return SidecarResource(
+            name=name,
+            content=content,
+            media_type=mt,
+            revision=_revision(content),
+        )

@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from tcw.store.base import (
-    WORK_RESOLUTIONS, IllegalTransition, MultipleMatch, WorkItem,
+    WORK_RESOLUTIONS, _UNSET, IllegalTransition, MultipleMatch, WorkItem,
     normalize_work_level,
 )
 from tcw.store.fs import (
@@ -156,31 +156,32 @@ def _init(args: argparse.Namespace) -> int:
     return run_init([NAME])
 
 
+def _provided(value):
+    """Map CLI ``None`` (not provided) → ``_UNSET`` sentinel so the store
+    can distinguish 'omitted' from 'set to null'."""
+    return value if value is not None else _UNSET
+
+
 def _new(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
     try:
-        item = st.create(args.title, body=_stdin_body(), priority=args.priority,
-                         parent=args.parent)
+        detail = st.create_work(
+            args.title,
+            body=_stdin_body(),
+            priority=args.priority,
+            effort=args.effort or "",
+            complexity=args.complexity or "",
+            blockers=_split(args.blocked_by) or None,
+            parent=args.parent,
+            initiative=args.initiative or "",
+            type="epic" if args.epic else "",
+        )
+        item = detail.item
     except _ERRORS as e:
         print(f"tcw work new: {e}", file=sys.stderr)
         return 1
-    rc = 0
-    try:
-        for ref in _split(args.blocked_by):
-            st.add_blocker(item.slug, ref)
-    except _ERRORS as e:
-        print(f"tcw work new: {e}", file=sys.stderr)
-        rc = 1
-    if args.epic:
-        st.set_field(item.slug, "type", "epic")
-    if args.initiative:
-        st.set_field(item.slug, "initiative", args.initiative)
-    if args.effort is not None:
-        st.set_field(item.slug, "effort", args.effort)
-    if args.complexity is not None:
-        st.set_field(item.slug, "complexity", args.complexity)
     print(item.slug)
     body = st.body_path(item.slug)
     if body is not None:
@@ -188,7 +189,7 @@ def _new(args: argparse.Namespace) -> int:
     if not args.epic:                         # epic's next step is delegate, not start
         print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
               file=sys.stderr)
-    return rc
+    return 0
 
 
 def _render_board(st: FsWorkStore, status: str | None, show_all: bool) -> None:
@@ -326,14 +327,14 @@ def _edit(args: argparse.Namespace) -> int:
             st.add_blocker(ref, args.slug)
         for ref in _split(args.unblocked_by):
             st.remove_blocker(args.slug, ref)
-        if args.initiative is not None:
-            st.set_field(args.slug, "initiative", args.initiative)
-        if args.priority is not None:
-            st.set_field(args.slug, "priority", args.priority)
-        if args.effort is not None:
-            st.set_field(args.slug, "effort", args.effort)
-        if args.complexity is not None:
-            st.set_field(args.slug, "complexity", args.complexity)
+        # Use composite update for field changes
+        st.update_work(
+            args.slug,
+            initiative=_provided(args.initiative),
+            priority=_provided(args.priority),
+            effort=_provided(args.effort),
+            complexity=_provided(args.complexity),
+        )
     except _ERRORS as e:
         print(f"tcw work edit: {e}", file=sys.stderr)
         return 1
