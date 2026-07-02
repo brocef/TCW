@@ -1,16 +1,17 @@
 # Plan - Interactive local web editor for TCW objects
 
 Execute in order. Phases 2 and 3 can overlap only after Phase 1 settles the
-store contracts and editor packaging boundary.
+store contracts.
 
 ## Phase 1 - Store contracts and validation shape
 
 Touch points: `tcw/store/base.py`, `tcw/store/fs.py`, tests.
 
-1. Prototype the MDX Editor packaging boundary before committing to the
-   frontend approach. Confirm whether a build pipeline or vendored bundle can
-   work with installed-package static assets and CSP; choose a fallback editor
-   if not.
+1. No frontend build/packaging prototype is needed: v1 Markdown editing is a
+   raw-Markdown editor with live preview reusing the vendored `marked.js`. A
+   richer vendored editor is tracked separately
+   (`2026-07-02-add-a-vendored-rich-markdown-editor-to-the-local-web-app`) and is
+   out of scope here.
 2. Define bounded edit surfaces in the abstract stores:
    - work body, lifecycle artifacts, allowed fields, and bounded sidecars;
    - taxonomy description and metadata fields;
@@ -22,10 +23,11 @@ Touch points: `tcw/store/base.py`, `tcw/store/fs.py`, tests.
    - taxonomy editable fields.
 4. Define revision-token support for editable payloads. Use a cheap
    adapter-owned token, preferably a content hash; expose it abstractly as an
-   opaque string. The token changes after every successful write and after any
-   external filesystem edit that changes the underlying content. Read/detail
-   operations for editable objects must return revision tokens for the
-   fields/bodies/artifacts they expose.
+   opaque string. Scope one token per **editable resource** — object-core
+   (fields + body), each lifecycle artifact, each sidecar — not one per field.
+   The token changes after every successful write and after any external
+   filesystem edit that changes that resource. Read/detail operations return the
+   token for each editable resource they expose.
 5. Define composite work create/update operations that cover title, body,
    priority, effort, complexity, blockers, parent, and initiative with full
    prevalidation before persistence. Store update semantics are partial merge:
@@ -34,10 +36,13 @@ Touch points: `tcw/store/base.py`, `tcw/store/fs.py`, tests.
 6. Define lifecycle action support through semantic operations only: `start`
    and `complete`. Keep browser worktree creation/merge handling out of scope.
    Dropping a work item remains a resource deletion mapped to `WorkStore.drop`.
-7. Define capability creation semantics for both new files and adding a
-   capability heading to an existing capability file through a portable abstract
-   operation. The API/UI must require an explicit target mode (`newFile` or
-   `existingFile`) rather than inferring placement heuristically.
+7. Define capability creation as "create an entry in a named capability
+   collection (namespace)" — a portable abstract operation. The caller names the
+   target collection; the filesystem adapter creates the collection's file if it
+   does not exist yet, or adds the entry to the existing file. Frame it as
+   create-entry-in-collection, never append-heading-at-path (the latter leaks
+   Markdown/file structure and fails the litmus test). The collection name is
+   the placement, so no explicit `newFile`/`existingFile` mode is needed.
 8. Define validation ownership: the HTTP layer checks request shape, while store
    methods enforce field allowlists, sidecar schemas, taxonomy/capability refs,
    stale revision tokens, and no-write-on-validation-failure.
@@ -68,7 +73,10 @@ Touch points: `tcw/serve/__init__.py`, tests.
    reusable response helpers for 400, 404, stale revision 409,
    semantic validation 422, oversized payload, and 500-class I/O failures.
    Enforce `Content-Length` before full body read/JSON parsing where possible;
-   define malformed or missing length behavior in tests.
+   define malformed or missing length behavior in tests. Reject mutating
+   requests that are not `Content-Type: application/json`, or whose `Host`/
+   `Origin` is not the loopback origin, before touching stores (local-CSRF /
+   DNS-rebind defense); cover both rejections with tests.
 2. Add shared route parsing helpers that decode path parameters exactly once and
    support single-segment RFC 3986 percent-encoded refs containing `/` and `#`.
 3. Match specific subresource routes before existing catch-all work-detail
@@ -119,15 +127,15 @@ Touch points: `tcw/serve/__init__.py`, tests.
 Touch points: `tcw/serve/static/`, package-data config, possibly new frontend
 source/build files.
 
-1. Implement the chosen MDX Editor packaging approach from Phase 1:
-   - small build pipeline that emits package-data static assets; or
-   - vendored prebuilt bundle with source/version/license documentation.
-2. Update package-data and static routing for recursive bundled assets if the
-   editor build emits nested or hashed files.
+1. Implement Markdown editing as a raw-Markdown `<textarea>` with a live preview
+   pane rendered by the vendored `marked.js`. No build pipeline, no new runtime
+   dependency, no new bundled assets.
+2. No package-data/static-routing changes are needed for v1 (the asset set stays
+   flat). A future rich editor emitting nested/hashed assets handles this under
+   its own item.
 3. Keep installed-package runtime dependency-free from npm/CDN.
-4. Define the CSP policy for the chosen editor before wiring the UI. Avoid
-   `unsafe-inline` where possible; document and test any unavoidable relaxation,
-   including `blob:` or style allowances.
+4. Keep the existing `default-src 'self'` CSP; the textarea+preview editor needs
+   no CSP relaxation.
 5. Add editor states:
    - selected item view mode;
    - edit mode;
@@ -160,7 +168,10 @@ Touch points: `tcw/serve/static/app.js`, `style.css`, tests where practical.
    - edit bounded sidecars such as `capabilities.yaml`;
    - expose start/complete/drop actions only where legal. Use a confirmation
      modal for complete/drop; complete must require explicit DoD acknowledgments
-     and show blocker/illegal-transition errors inline.
+     and show blocker/illegal-transition errors inline. The complete modal must
+     also surface the tcw-capabilities reconciliation reminder (flip affected
+     capability statuses) so web-complete does not bypass the ledger discipline
+     the CLI/skill enforces.
 2. Taxonomy:
    - create Vocabulary or Feature entries;
    - edit name, description, kind where legal, `relatesTo`, and Feature
@@ -179,15 +190,17 @@ Touch points: `tcw/serve/static/app.js`, `style.css`, tests where practical.
 2. Run `tcw taxonomy check` and `tcw capabilities check`.
 3. Smoke-test `tcw serve --no-open --port 8765` and write routes with `curl` or
    a browser.
-4. Verify installed package static assets if a frontend build/vendor step is
-   added, including nested/hashed editor assets.
+4. No frontend build/vendor step in v1; verify the existing flat static asset
+   set still serves from the installed package.
 5. Check `tcw/serve` for accidental direct `docs/` path access.
 6. Verify route parsing with encoded `/` and `#` refs.
 7. Verify stale writes are rejected for at least one object update and one
    artifact/sidecar update.
 8. Verify validation failures leave the backing files unchanged.
 9. Verify oversized request bodies are rejected before full body parsing and
-   document the configured limit in the public/API docs.
+   document the configured limit in the public/API docs. Verify mutating
+   requests with a non-loopback `Host`/`Origin` or a non-JSON `Content-Type` are
+   rejected before any store write.
 10. Verify taxonomy/capability check behavior for both pre-rejected bad refs and
    post-write whole-ledger warnings.
 11. Run the frontend/browser verification from Phase 3 for editor save/cancel,

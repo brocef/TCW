@@ -43,8 +43,10 @@ directly.
     initiative fields where supported;
   - taxonomy Vocabulary and Feature entries, including feature vocabulary refs;
   - capability entries, including status and metadata.
-- Provide rich Markdown editing for Markdown-required lifecycle files and other
-  Markdown body surfaces. MDX Editor is the reference candidate.
+- Provide Markdown editing for Markdown-required lifecycle files and other
+  Markdown body surfaces via a raw-Markdown editor with live preview (reusing
+  the vendored `marked.js`). A richer vendored WYSIWYG editor is deferred to
+  `2026-07-02-add-a-vendored-rich-markdown-editor-to-the-local-web-app`.
 - Route all writes through abstract store operations. Filesystem-specific
   Markdown/YAML details stay in `Fs*Store` adapters.
 - Keep the app local-first: loopback binding, no auth scope expansion, no remote
@@ -69,14 +71,21 @@ directly.
   filesystem-adapter detail or redesign it.
 - All web write endpoints must validate structured input before mutating stores.
 - The server continues to bind to `127.0.0.1` only.
-- Markdown editing must preserve Markdown files as Markdown. MDX syntax support
-  is acceptable, but the stored artifact remains `.md` text unless the project
-  deliberately changes that contract.
-- If MDX Editor is used, package it so installed `tcw serve` works without
-  fetching from a CDN at runtime.
-- Editable object/detail payloads carry a revision token. Update requests must
-  include the revision they were based on; stale writes return `409` instead of
-  silently overwriting concurrent CLI/editor changes.
+- Write routes must defend against local-CSRF / DNS-rebinding (any site open in
+  the user's browser can reach `127.0.0.1`). Require `Content-Type:
+  application/json` on mutating requests (forcing a CORS preflight the server
+  never satisfies) and reject requests whose `Host`/`Origin` header is not the
+  loopback origin. No cookies or ambient auth are used.
+- Markdown editing must preserve Markdown files as Markdown. The stored artifact
+  remains `.md` text.
+- Markdown editing adds no runtime npm/CDN dependency. v1 reuses the already-
+  vendored `marked.js` for preview; any future rich editor is vendored as a
+  static asset (never fetched at runtime) under the deferred item.
+- Editable payloads carry a revision token, scoped per **editable resource** —
+  one token for an object's core (its fields + body together), one per lifecycle
+  artifact, one per sidecar — not one token per individual field. Update
+  requests must include the revision they were based on; stale writes return
+  `409` instead of silently overwriting concurrent CLI/editor changes.
 - Store methods own final validation and write atomicity. The HTTP layer may do
   request-shape checks, but it must not be the only enforcement point.
 - Requests have a documented maximum body size; oversized writes are rejected
@@ -124,9 +133,13 @@ Add the smallest abstract write operations needed for the UI:
 - `CapabilitiesStore`:
   - update capability body text;
   - continue using `set` for metadata fields;
-  - create capability objects in a new file or, when explicitly requested, add a
-    new heading to an existing capability file through a portable abstract
-    operation. Do not pretend `add(file_id)` can append to an existing file.
+  - create a capability entry within a named target collection (namespace). The
+    caller names the collection; the filesystem adapter decides whether that
+    realizes as a new file or an added entry inside an existing file. Frame the
+    abstract operation as "create entry in collection," never "append a heading
+    at a path" — the latter leaks Markdown/file structure and fails the litmus
+    test. Because the collection name *is* the placement, no explicit
+    `newFile`/`existingFile` mode is needed.
 
 The filesystem adapter owns the exact YAML/Markdown file layout. The web layer
 talks in object ids, field names, artifact names, sidecar names, and content.
@@ -197,7 +210,8 @@ three-axis layout should gain:
 - Edit and Create commands in each axis.
 - Form controls for structured fields, using selects/toggles/text inputs where
   the value space is bounded.
-- Rich Markdown editor panes for Markdown bodies and lifecycle artifacts.
+- A raw-Markdown editor with a live preview pane (rendered by the vendored
+  `marked.js`) for Markdown bodies and lifecycle artifacts.
 - Raw YAML editor panes for bounded YAML sidecars/metadata only where a
   structured form would hide necessary expressiveness. Prefer structured forms
   for known fields and reserve raw YAML for advanced editing.
@@ -205,18 +219,20 @@ three-axis layout should gain:
 - Browser close, hard refresh, and tab/view switches warn or block when there
   are unsaved edits.
 
-MDX Editor is the preferred rich Markdown editor if it can be packaged cleanly.
-Because it is a React package rather than a drop-in script, implementation must
-choose one of:
-
-- introduce a small frontend build pipeline that produces static assets shipped
-  inside the Python package; or
-- vendor a prebuilt editor bundle with license/source documentation similar to
-  `marked.min.js`.
+v1 deliberately avoids a frontend build step and any new runtime dependency: the
+Markdown editor is a raw-Markdown `<textarea>` paired with a live preview
+rendered by the already-vendored `marked.js`. A richer vendored WYSIWYG editor
+(EasyMDE / Toast UI / MDX Editor) is a separate, deferred work item
+(`2026-07-02-add-a-vendored-rich-markdown-editor-to-the-local-web-app`) that
+swaps this widget without changing the write API, revision tokens, or the
+validation surfaces.
 
 ### 4. Safety and validation
 
-- Keep loopback-only serving.
+- Keep loopback-only serving. Additionally require `Content-Type:
+  application/json` on writes and validate the `Host`/`Origin` header is the
+  loopback origin before mutating, so a malicious page in the user's browser
+  cannot drive writes (local-CSRF / DNS-rebinding).
 - Do not add arbitrary path inputs. Artifact and sidecar names must come from
   bounded registries.
 - Validate request bodies before mutation. For raw YAML sidecars, parse and
@@ -233,16 +249,17 @@ choose one of:
   blocker/DoD semantics.
 - Preserve CSP and avoid inline scripts. If the editor requires additional CSP
   allowances, document the specific reason and keep them narrow.
-- Route static assets recursively enough to serve the chosen editor bundle; keep
-  package-data coverage in sync with the emitted asset tree.
+- v1 adds no new bundled/nested static assets; the existing flat static routing
+  is sufficient. (A future rich editor that emits nested/hashed assets must
+  extend static routing and package-data coverage under its own item.)
 
 ## Acceptance criteria
 
 - Users can create Work, Taxonomy, and Capability objects in the local web app.
 - Users can edit existing Work, Taxonomy, and Capability objects in the local
   web app, including Markdown bodies/artifacts and metadata fields.
-- Markdown lifecycle files use a rich Markdown editing experience and are stored
-  as Markdown.
+- Markdown lifecycle files use a Markdown editor with live preview and are
+  stored as Markdown.
 - Write endpoints mutate stores through abstract interfaces, not direct `docs/`
   path manipulation in `tcw/serve`.
 - Multi-field writes are prevalidated and fail without partial persistence on
@@ -260,10 +277,10 @@ choose one of:
 
 ## Risks and decisions
 
-- **Frontend dependency shape:** MDX Editor likely means React and a build step.
-  This is acceptable only if the built static assets are shipped recursively
-  with TCW, static routing serves them from the installed package, license/source
-  notes are recorded, and `tcw serve` works without npm or a CDN at runtime.
+- **Frontend dependency shape:** resolved by scoping v1 to a raw-Markdown editor
+  with `marked.js` preview — no React, no build step, no new runtime dependency.
+  The richer vendored editor (and any packaging/CSP cost it carries) is deferred
+  to `2026-07-02-add-a-vendored-rich-markdown-editor-to-the-local-web-app`.
 - **YAML editing:** raw YAML can expose invalid states. Prefer structured
   metadata forms for known fields and use raw YAML only for bounded sidecars or
   advanced metadata where the validation story is clear.

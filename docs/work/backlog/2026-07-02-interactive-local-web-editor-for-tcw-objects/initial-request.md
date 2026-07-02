@@ -29,8 +29,9 @@ constraints of packaging TCW as a Python CLI/plugin.
   analog: create item, update bounded fields, update body/content, update named
   attachments, and update lifecycle artifacts.
 - Keep filesystem-specific YAML/Markdown persistence inside filesystem adapters.
-- Decide whether to introduce a frontend build step for MDX Editor or to vendor
-  compiled assets in a way that still works for plugin/pip installs.
+- Markdown editing ships build-step-free (raw editor + vendored `marked.js`
+  preview); a richer vendored editor is deferred to
+  `2026-07-02-add-a-vendored-rich-markdown-editor-to-the-local-web-app`.
 
 ## Meta changes
 
