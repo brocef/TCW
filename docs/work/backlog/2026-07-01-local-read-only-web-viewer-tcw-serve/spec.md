@@ -204,21 +204,16 @@ HTML; CSP + external-JS is the dep-free mitigation, see Risks). No SPA framework
 
 ## Open questions & decisions to finalize
 
-All review findings triaged. Clear fixes are folded into the spec above. The
-remaining items below are the only ones needing your input.
+All review findings triaged and every decision is now settled — nothing open.
 
-**Need your call:**
+**Decided by you:**
 
-- **Markdown sanitization depth (S5).** I applied the dep-free mitigation (CSP +
-  external JS) and documented the residual risk as accepted for a single-user
-  loopback tool. Good enough, or do you want DOMPurify vendored too (a second
-  static asset)?
-- **`/open` REST shape (N6).** I moved to the path-segment form
-  `POST /api/work/<slug>/artifacts/<name>/open` (cleaner, consistent with future
-  write endpoints) over the earlier `?artifact=` query form. Fine, or revert?
-
-**Decided earlier by you (unchanged):**
-
+- **Markdown sanitization (S5):** dep-free mitigation only — CSP (`default-src
+  'self'`) + all JS external. No DOMPurify. Residual risk accepted for a
+  single-user loopback tool.
+- **`/open` REST shape (N6):** path-segment form
+  `POST /api/work/<slug>/artifacts/<name>/open` (consistent with future write
+  endpoints).
 - Default port `8765` (overridable with `--port`).
 - GUI-opener-only for artifacts (no `$EDITOR`/`$VISUAL` — a TTY editor would hang
   the server thread).
