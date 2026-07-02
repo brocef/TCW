@@ -168,21 +168,17 @@ clicking a link POSTs `…/open`. No SPA framework.
 
 ## Open questions & decisions to finalize
 
-Surfaced by the dual review (bllm-review-many: qwen25 + gemma4). Resolved-with-a-
-default items are applied in the spec above — flagged here so you can override.
+Surfaced by the dual review (bllm-review-many: qwen25 + gemma4). All resolved.
 
-**Genuinely open (need your call):**
+**Decided by the user:**
 
-- **Default port.** Proposal: `8765` (uncommon, easy to recall), overridable with
-  `--port`. Pick a different one if you prefer.
-- **GUI-opener-only for artifacts.** Review-driven: I dropped `$EDITOR`/`$VISUAL`
-  because a TTY editor launched from a server thread hangs it; artifacts now open
-  in the desktop's default GUI app (`open`/`xdg-open`/`os.startfile`). Trade-off:
-  a terminal-editor user won't get *their* editor from the web link. Acceptable,
-  or do you want a different mechanism (e.g. a "copy path" button instead of an
-  opener)?
+- **Default port** → `8765`, overridable with `--port`.
+- **GUI-opener-only for artifacts** → accepted. `$EDITOR`/`$VISUAL` dropped (a TTY
+  editor launched from a server thread hangs it); artifacts open in the desktop's
+  default GUI app (`open`/`xdg-open`/`os.startfile`). A terminal-editor user won't
+  get *their* editor from the web link — accepted trade-off.
 
-**Resolved with a default (override if you disagree):**
+**Resolved with a default (during review):**
 
 - **Per-request store construction** — kept (always fresh, no cache/invalidation
   logic). Ceiling: an `rglob` per request; negligible for local boards of
