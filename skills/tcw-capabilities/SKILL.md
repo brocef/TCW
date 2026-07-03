@@ -1,6 +1,11 @@
 ---
 name: tcw-capabilities
-description: Use when planning or completing a tcw work item that has a product (user-facing) delta, or when coordinating capability wording across repos — declaring new capabilities, linking them to taxonomy Features, checking a change against the standing ledger, flipping a capability's status as work completes, or relaying canonical product-layer wording. Drives `tcw capabilities`; the taxonomy axis is tcw-taxonomy and the work axis is tcw-work.
+description: Drives `tcw capabilities` — the Capabilities axis of TCW (what a user can do). Use when a tcw work item has a product (user-facing) delta, or when coordinating capability wording across repos. The taxonomy axis is tcw-taxonomy, the work axis is tcw-work.
+when_to_use: Use when planning or completing a tcw work item that has a product (user-facing) delta, or when coordinating capability wording across repos — declaring new capabilities, linking them to taxonomy Features, checking a change against the standing ledger, flipping a capability's status as work completes, or relaying canonical product-layer wording.
+allowed-tools: Bash(tcw *), Read, Grep, Glob
+metadata:
+  author: Brian Cefali
+license: Apache-2.0
 ---
 
 # The capabilities process
@@ -47,7 +52,7 @@ The protocol is **non-blocking** — never wait on a reply. If canonical wording
 ## Bootstrap (read on demand)
 
 To seed `docs/capabilities/` for a project newly adopting TCW (deep-dive the
-codebase → draft → refine with the user → write) → read [`docs/init.md`](docs/init.md).
+codebase → draft → refine with the user → write) → read [`references/init.md`](references/init.md).
 
 ## Quick reference
 

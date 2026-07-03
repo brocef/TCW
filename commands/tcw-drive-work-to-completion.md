@@ -1,8 +1,15 @@
 ---
 description: Drive a TCW work item through every remaining lifecycle stage up to user verification, then close out only after explicit approval.
+argument-hint: <work-item-slug>
+allowed-tools: Bash(tcw *)
+disable-model-invocation: true
 ---
 
-Use the `tcw-work` skill. Read `skills/tcw-work/docs/lifecycle.md` and detect the
+Current state of the requested item (empty if no/invalid slug):
+
+!`tcw work show $ARGUMENTS 2>/dev/null`
+
+Use the `tcw-work` skill. Read `skills/tcw-work/references/lifecycle.md` and detect the
 current lifecycle path and stage from the item type, item status, and existing
 artifacts:
 

@@ -2,7 +2,7 @@
 description: Plan a TCW work item from either an existing item or the user's chat request, producing the lifecycle planning artifacts in the work item folder.
 ---
 
-Use the `tcw-work` skill. Read `skills/tcw-work/docs/lifecycle.md`, choose the
+Use the `tcw-work` skill. Read `skills/tcw-work/references/lifecycle.md`, choose the
 task or epic lifecycle, and run the planning stages for that lifecycle.
 
 For a task, this means request ingestion, request processing, and spec

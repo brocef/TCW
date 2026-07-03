@@ -1,6 +1,11 @@
 ---
 name: tcw-taxonomy
-description: Use when planning, seeding, or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, linking related entries, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase. Drives `tcw taxonomy`; the capabilities axis is tcw-capabilities, the work axis is tcw-work.
+description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase. The capabilities axis is tcw-capabilities, the work axis is tcw-work.
+when_to_use: Use when planning, seeding, or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, linking related entries, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase.
+allowed-tools: Bash(tcw *), Read, Grep, Glob
+metadata:
+  author: Brian Cefali
+license: Apache-2.0
 ---
 
 # The taxonomy process
@@ -58,7 +63,7 @@ removed locally. Remote git/URL sources are not yet supported (local paths only)
 ## Bootstrap (read on demand)
 
 To seed a new or empty taxonomy from an existing codebase (deep-dive → draft →
-refine with the user → write) → read [`docs/init.md`](docs/init.md).
+refine with the user → write) → read [`references/init.md`](references/init.md).
 
 ## Quick reference
 

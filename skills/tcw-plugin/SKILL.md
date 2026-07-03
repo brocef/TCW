@@ -1,6 +1,12 @@
 ---
 name: tcw-plugin
-description: Use for TCW orientation across the plugin's skills, or when the `tcw` CLI is missing or broken — not found on PATH, `tcw --version` fails, or a plugin update left it stale — to install or repair it from this plugin's own clone. The `/tcw-init` and `/tcw-doctor` commands route here; Codex (no slash commands) uses this skill directly.
+description: TCW orientation across the plugin's skills, plus install/repair of the `tcw` CLI from the plugin's own clone. Use for cross-skill orientation, or when `tcw` is missing or broken — not on PATH, `tcw --version` fails, or a plugin update left it stale. The `/tcw-init` and `/tcw-doctor` commands route here; Codex (no slash commands) uses this skill directly.
+when_to_use: Use for TCW orientation across the plugin's skills, or when the `tcw` CLI is missing or broken — not found on PATH, `tcw --version` fails, or a plugin update left it stale — to install or repair it from this plugin's own clone.
+allowed-tools: Bash(tcw *), Bash(command -v *), Bash(pipx list *), Read
+metadata:
+  author: Brian Cefali
+compatibility: Requires Python 3.11+; installs the tcw CLI via pipx from the plugin clone.
+license: Apache-2.0
 ---
 
 # TCW skill map
@@ -46,8 +52,8 @@ tcw --version      # works? → nothing to do. stop here.
 ```
 
 If `tcw` is **missing or broken**, read the matching procedure in this skill's
-`docs/` and follow it:
+`references/` and follow it:
 
-- **Install** `tcw` from the plugin clone → read [`docs/setup.md`](docs/setup.md)
+- **Install** `tcw` from the plugin clone → read [`references/setup.md`](references/setup.md)
 - **Diagnose / repair** a stale, wrong, or shadowed install →
-  read [`docs/doctor.md`](docs/doctor.md)
+  read [`references/doctor.md`](references/doctor.md)

@@ -1,6 +1,11 @@
 ---
 name: tcw-work
-description: Use when starting, continuing, triaging, planning, implementing, verifying, or decomposing tcw work items — when a user asks to plan work, drive work to completion, process a docs/work/inbox request, start or complete an item, resume an active item across sessions, break a large item into child items (`tcw work new --parent`), or coordinate orchestrator-level work across sub-project nodes via a cross-node epic. Drives the `tcw work` CLI; does not reimplement it.
+description: Drives the `tcw work` change-tracking CLI — the Work axis of TCW (Taxonomy · Capabilities · Work). Use when planning, starting, implementing, verifying, or completing a tcw work item; resuming one across sessions; triaging a docs/work/inbox request; decomposing an item into child items; or coordinating a cross-node epic. Does not reimplement the CLI.
+when_to_use: Use when starting, continuing, triaging, planning, implementing, verifying, or decomposing tcw work items — when a user asks to plan work, drive work to completion, process a docs/work/inbox request, start or complete an item, resume an active item across sessions, break a large item into child items (`tcw work new --parent`), or coordinate orchestrator-level work across sub-project nodes via a cross-node epic.
+allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+metadata:
+  author: Brian Cefali
+license: Apache-2.0
 ---
 
 # Driving `tcw work`
@@ -16,11 +21,11 @@ or the project process itself. For product changes, check the earlier layers in
 order before settling the plan: vocabulary terms first, then taxonomy Features,
 then capabilities. See `tcw-plugin` for the cross-skill map.
 
-**Node identity:** `tcw init` marks the **current directory** a TCW node by writing a `tcw-config.yaml` sentinel there. All `tcw` commands resolve to the nearest `tcw-config.yaml` ancestor — so in a multi-project repo, `cd project-b && tcw work list` shows project-b's board. If a command fails with "no tcw … node here", run `tcw init` in the project folder first. Cross-node discovery (`tcw work nodes` / epics / delegate / escalate) still locates peers by git-repo root (see `docs/cross-node-epic.md`).
+**Node identity:** `tcw init` marks the **current directory** a TCW node by writing a `tcw-config.yaml` sentinel there. All `tcw` commands resolve to the nearest `tcw-config.yaml` ancestor — so in a multi-project repo, `cd project-b && tcw work list` shows project-b's board. If a command fails with "no tcw … node here", run `tcw init` in the project folder first. Cross-node discovery (`tcw work nodes` / epics / delegate / escalate) still locates peers by git-repo root (see `references/cross-node-epic.md`).
 
 ## Primary lifecycle
 
-Drive work through the TCW SDLC. Read [`docs/lifecycle.md`](docs/lifecycle.md) whenever planning a work item, driving an item toward completion, resuming mid-flight work whose next stage is unclear, or compressing stages for a small change. It dispatches to the epic or task lifecycle based on the item relation fields.
+Drive work through the TCW SDLC. Read [`references/lifecycle.md`](references/lifecycle.md) whenever planning a work item, driving an item toward completion, resuming mid-flight work whose next stage is unclear, or compressing stages for a small change. It dispatches by the item relation fields to one of two leaves, which you can also read directly: [`references/epic-lifecycle.md`](references/epic-lifecycle.md) for a `type: epic` item, [`references/task-lifecycle.md`](references/task-lifecycle.md) for a standalone item or initiative child task.
 
 The artifact spine is:
 
@@ -58,17 +63,17 @@ Keep status in step *as you go*; don't batch the transitions at the end. The per
 
 The core lifecycle above is self-sufficient. For these rarer situations, read the matching doc and follow it:
 
-- **Planning, implementation, verification, and closeout across the SDLC** → [`docs/lifecycle.md`](docs/lifecycle.md)
-- **Triaging a `docs/work/inbox/` doc** (raw request / `delegate`/`escalate` drop) → [`docs/process-inbox.md`](docs/process-inbox.md)
-- **Splitting a too-large item into child items** in the same repo (`--parent`) → [`docs/decompose.md`](docs/decompose.md)
-- **Coordinating work across separate sub-project repos** (a cross-node `--epic`, `delegate`/`--initiative`/`reconcile`) → [`docs/cross-node-epic.md`](docs/cross-node-epic.md)
+- **Planning, implementation, verification, and closeout across the SDLC** → [`references/lifecycle.md`](references/lifecycle.md)
+- **Triaging a `docs/work/inbox/` doc** (raw request / `delegate`/`escalate` drop) → [`references/process-inbox.md`](references/process-inbox.md)
+- **Splitting a too-large item into child items** in the same repo (`--parent`) → [`references/decompose.md`](references/decompose.md)
+- **Coordinating work across separate sub-project repos** (a cross-node `--epic`, `delegate`/`--initiative`/`reconcile`) → [`references/cross-node-epic.md`](references/cross-node-epic.md)
 
 ## Quick reference
 
 | Goal | Command |
 |---|---|
-| plan a request/item | `/tcw-plan-work` or read [`docs/lifecycle.md`](docs/lifecycle.md) |
-| drive remaining stages | `/tcw-drive-work-to-completion` or read [`docs/lifecycle.md`](docs/lifecycle.md) |
+| plan a request/item | `/tcw-plan-work` or read [`references/lifecycle.md`](references/lifecycle.md) |
+| drive remaining stages | `/tcw-drive-work-to-completion` or read [`references/lifecycle.md`](references/lifecycle.md) |
 | triage an inbox doc | read → `tcw work new "<title>" [--initiative <slug>]` → write `initial-request.md` → `git rm` the doc |
 | split an item (same repo) | `tcw work new "<sub>" --parent <slug>` (child nests under it; shows indented in `list`) |
 | start work | `tcw work start <slug> [--worktree]` |

@@ -1,5 +1,6 @@
 ---
 description: Find planning documents outside TCW work, migrate them into TCW work items, and remove the old documents after successful migration.
+disable-model-invocation: true
 ---
 
 Use the `tcw-work` skill. This is an AI-driven migration workflow, not a `tcw`
