@@ -100,9 +100,15 @@ def test_work_detail_includes_artifacts_without_paths(server):
     assert payload["item"]["blocked_by"] == [{"external": "vendor"}]
     assert payload["item"]["capabilities"] == {"links": ["web"]}
     artifacts = {a["name"]: a for a in payload["artifacts"]}
-    assert artifacts["initial-request"] == {"name": "initial-request", "present": True}
-    assert artifacts["spec"] == {"name": "spec", "present": True}
+    assert artifacts["initial-request"]["name"] == "initial-request"
+    assert artifacts["initial-request"]["present"] is True
+    assert "revision" in artifacts["initial-request"]  # revision-bearing
+    assert artifacts["spec"]["name"] == "spec"
+    assert artifacts["spec"]["present"] is True
     assert "locator" not in artifacts["spec"]
+    # New fields in detail payload
+    assert "coreRevision" in payload
+    assert "sidecars" in payload
 
 
 def test_open_endpoint_validates_inputs_without_popen(server, monkeypatch):

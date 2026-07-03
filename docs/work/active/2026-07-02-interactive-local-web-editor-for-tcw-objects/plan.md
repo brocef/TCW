@@ -7,7 +7,13 @@
 >   artifact & sidecar read/write, capability `add_entry`; CLI `_new`/`_edit`
 >   refactored onto the shared store methods. 77 new store tests; full suite
 >   **320 passing**. Implemented by the local `bllm-agent`, verified here.
-> - ⬜ Phase 2 — Write API
+> - ✅ **Phase 2 — Write API** — complete. `do_PATCH`/`do_PUT`/`do_DELETE` +
+>   resource-oriented write routes for all three axes, calling the Phase 1 store
+>   methods (no `docs/` path logic in `serve`). Revision-bearing detail reads,
+>   sidecar discovery, JSON envelopes, `MAX_BODY_BYTES` (1 MiB) pre-parse guard,
+>   local-CSRF/DNS-rebind defense (JSON-only + loopback `Host`/`Origin`), stale
+>   409, deterministic exception→status mapping, single-decode encoded-ref
+>   parsing. 101 new API tests; full suite **421 passing**. Local `bllm-agent`, verified here.
 > - ⬜ Phase 3 — Frontend editor architecture
 > - ⬜ Phase 4 — Axis-specific UI flows
 > - ⬜ Phase 5 — Verification and docs
@@ -77,7 +83,7 @@ Touch points: `tcw/store/base.py`, `tcw/store/fs.py`, tests.
    paths, including permission/write/replace failures, and assert previous file
    content remains readable and uncorrupted.
 
-## Phase 2 - Write API
+## Phase 2 - Write API ✅ COMPLETE
 
 Touch points: `tcw/serve/__init__.py`, tests.
 
