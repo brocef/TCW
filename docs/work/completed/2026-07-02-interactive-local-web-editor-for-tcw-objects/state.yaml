@@ -2,7 +2,13 @@ slug: 2026-07-02-interactive-local-web-editor-for-tcw-objects
 title: Interactive local web editor for TCW objects
 phase: ''
 created: '2026-07-02'
-resolution: null
+resolution: done
 priority: 20
 effort: high
 complexity: high
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
