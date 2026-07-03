@@ -14,7 +14,16 @@
 >   local-CSRF/DNS-rebind defense (JSON-only + loopback `Host`/`Origin`), stale
 >   409, deterministic exception→status mapping, single-decode encoded-ref
 >   parsing. 101 new API tests; full suite **421 passing**. Local `bllm-agent`, verified here.
-> - ⬜ Phase 3 — Frontend editor architecture
+> - ✅ **Phase 3 — Frontend editor architecture** — complete. Reusable editor
+>   framework in `app.js` (247→995 lines): view/edit/create/dirty/saving/error
+>   state machine, raw-Markdown `<textarea>` + live `marked.js` preview, generic
+>   structured-field renderer, revision tokens carried in editor state with 409
+>   conflict recovery (draft preserved, server version fetched), `beforeunload` +
+>   app-level dirty-navigation guards. Work axis wired as the proving slice
+>   (body + artifact editing). No new deps/build/CDN; CSP intact; `esc()`
+>   escaping preserved. 421 pytest pass; write-path smoke 10/10 end-to-end.
+>   Live in-browser click-through deferred to Phase 5 (item 11), per plan.
+>   Local `bllm-agent` (stopped near end; code complete), verified here.
 > - ⬜ Phase 4 — Axis-specific UI flows
 > - ⬜ Phase 5 — Verification and docs
 
@@ -140,7 +149,7 @@ Touch points: `tcw/serve/__init__.py`, tests.
    - reject unknown refs, unknown fields, invalid statuses, invalid taxonomy
      feature refs, invalid artifact names, and malformed YAML/JSON.
 
-## Phase 3 - Frontend editor architecture
+## Phase 3 - Frontend editor architecture ✅ COMPLETE
 
 Touch points: `tcw/serve/static/`, package-data config, possibly new frontend
 source/build files.

@@ -249,4 +249,321 @@ h1 {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
+
+  .md-editor {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Detail actions (Edit button in header) ─────────────────────────── */
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.edit-btn {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 28px;
+}
+
+.edit-btn:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* ── Artifact group (artifact + edit button) ────────────────────────── */
+
+.artifact-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.artifact-edit {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 5px;
+  min-height: 24px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.artifact-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Editor container ───────────────────────────────────────────────── */
+
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.editor-container.saving {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.editor-container.saving .editor-actions {
+  pointer-events: auto;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.editor-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dirty-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.save-btn,
+.cancel-btn {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 32px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.save-btn {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.save-btn:hover {
+  opacity: 0.9;
+}
+
+.cancel-btn:hover {
+  border-color: var(--accent);
+}
+
+.editor-section {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── Structured field inputs ────────────────────────────────────────── */
+
+.editor-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-group label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.field-input,
+.field-select {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 9px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.field-input:focus,
+.field-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Markdown editor ────────────────────────────────────────────────── */
+
+.md-editor {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-height: 300px;
+}
+
+.md-input {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.md-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.md-preview {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--panel);
+  overflow-y: auto;
+  max-height: 600px;
+  line-height: 1.55;
+}
+
+.md-preview h1,
+.md-preview h2,
+.md-preview h3 {
+  margin: 14px 0 6px;
+}
+
+.md-preview p,
+.md-preview ul,
+.md-preview ol {
+  margin: 8px 0;
+}
+
+.md-preview pre {
+  background: #f5f5f3;
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+/* ── Validation errors ──────────────────────────────────────────────── */
+
+.validation-errors {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.validation-errors strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.validation-errors ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* ── Conflict banner (409 recovery) ─────────────────────────────────── */
+
+.conflict-banner {
+  background: #fef9ee;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 12px;
+  color: #78350f;
+  font-size: 13px;
+}
+
+.conflict-banner h3 {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.conflict-banner p {
+  margin: 0 0 8px;
+}
+
+.conflict-server {
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.conflict-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.conflict-refresh,
+.conflict-copy,
+.conflict-discard {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 28px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.conflict-refresh:hover,
+.conflict-copy:hover {
+  border-color: var(--accent);
+}
+
+.conflict-discard {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
 }
