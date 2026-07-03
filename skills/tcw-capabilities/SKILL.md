@@ -7,6 +7,8 @@ description: Use when planning or completing a tcw work item that has a product 
 
 The standing ledger (`docs/capabilities/`) describes *what a user can currently do*. It is the third layer in the TCW chain: `Vocabulary -> Features -> Capabilities -> Work`. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability markdown when `set` applies. Capabilities may carry `Subject` as a loose taxonomy pointer and `Feature` as a strong pointer to a taxonomy feature. The taxonomy axis is **REQUIRED SUB-SKILL: Use tcw-taxonomy** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
 
+> **Web editing:** Capabilities can also be created and edited through the local `tcw serve` web app; check failures are surfaced in the UI.
+
 ## The `## Capability changes` planning gate (at `tcw work new`)
 
 When a work item has a product delta, name each new / changed / removed capability and record it:

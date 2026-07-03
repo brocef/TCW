@@ -202,7 +202,7 @@ shortcut (`tcw taxonomy <path>` == `tcw taxonomy show <path>`).
 
 ### `tcw serve` — the local web viewer
 
-`tcw serve` starts a read-only web app on `127.0.0.1` for the current TCW node:
+`tcw serve` starts a local web app on `127.0.0.1` for the current TCW node:
 
 ```sh
 tcw serve                    # http://127.0.0.1:8765/ and open a browser
@@ -210,11 +210,32 @@ tcw serve --no-open           # start the server without opening a browser
 tcw serve --port 9000         # choose a different loopback port
 ```
 
-The viewer has tabs for the Work board, Taxonomy tree, and Capabilities ledger.
-It reads through the same store interfaces as the CLI, so later editing and
-transition endpoints can be added without replacing the UI contract. Work detail
-renders `initial-request.md` inline; other lifecycle artifacts appear as links
-that ask the local server to open the file with the desktop's default app.
+The app has tabs for the Work board, Taxonomy tree, and Capabilities ledger.
+Beyond browsing, you can **create and edit** any object directly from the
+browser:
+
+- **Work items** — create new items with all fields (title, priority, effort,
+  complexity, blockers, parent, initiative); edit body and metadata; edit
+  lifecycle artifacts and the `capabilities.yaml` sidecar using a Markdown
+  editor with live preview; and run lifecycle actions (start, complete, drop).
+  The complete action requires resolving blockers and acknowledging every
+  Definition-of-Done item, plus a capabilities reconciliation reminder.
+- **Taxonomy entries** — create Vocabulary or Feature entries; edit name,
+  description, kind, and relations. Validation check failures are shown in the
+  UI after saving.
+- **Capabilities** — create new capability entries, add entries to existing
+  capability files, and edit metadata and Markdown body. Check failures are
+  surfaced in the UI.
+
+All Markdown editing uses a raw-Markdown textarea paired with a live-rendered
+preview pane — no build step or external dependency is required.
+
+**Local-first safety:** the server binds only to `127.0.0.1` (loopback). Mutating
+requests (create, edit, lifecycle actions) additionally require
+`Content-Type: application/json` and a loopback `Host`/`Origin` header, blocking
+cross-origin or DNS-rebinding attacks. Request bodies are capped at 1 MiB.
+Concurrent stale edits are rejected (HTTP 409) so two editors never silently
+overwrite each other.
 
 ### `tcw taxonomy` — the nouns
 

@@ -36,7 +36,13 @@
 >   duplicate `showCompleteModal` (agent's abandoned first attempt). Local
 >   `bllm-agent`, verified here. NOTE: dirty-nav guard uses native `confirm()`
 >   (inherited from Phase 3) — flagged for review. Live browser click-through → Phase 5.
-> - ⬜ Phase 5 — Verification and docs
+> - ✅ **Phase 5 — Verification & docs** — complete. Updated README, release
+>   notes, changelog (range `14371ca..HEAD`), and the three driving skills.
+>   documentation-sync gate passed. **Dual review** (subagent + `bllm-review-many`)
+>   found 5 real High/Med defects the test gate missed (UI-blocker corruption,
+>   `update_work` parent-move data loss, path traversal, `/open` CSRF gap,
+>   duplicate-capability append) — all fixed with regression tests; full suite
+>   **436 passing**. Capability flip + version bump held for closeout.
 
 Execute in order. Phases 2 and 3 can overlap only after Phase 1 settles the
 store contracts.
@@ -222,7 +228,7 @@ Touch points: `tcw/serve/static/app.js`, `style.css`, tests where practical.
    - edit body through the Markdown editor;
    - surface capabilities check failures.
 
-## Phase 5 - Verification and docs
+## Phase 5 - Verification and docs ✅ COMPLETE
 
 1. Run `python -m pytest`.
 2. Run `tcw taxonomy check` and `tcw capabilities check`.

@@ -7,6 +7,8 @@ description: Use when starting, continuing, triaging, planning, implementing, ve
 
 `tcw work` is the change-tracking state machine: items move `inbox → backlog → active → completed` by changing directory; blocked is a derived overlay, not a status. This skill is the *judgment* on top of the tool. Name `tcw …` commands; never hand-edit `docs/work/` when a command exists. The capability axis is **REQUIRED SUB-SKILL: Use tcw-capabilities** at the planning and completion gates.
 
+> **Web editing:** Work items, lifecycle artifacts, and the `capabilities.yaml` sidecar can also be created and edited through the local `tcw serve` web app. The web-complete modal surfaces the DoD acknowledgments and the capabilities reconciliation reminder, matching the CLI gate.
+
 Work is the final layer in the TCW chain: `Vocabulary -> Features ->
 Capabilities -> Work`. A work item can describe changes to any earlier layer:
 new vocabulary, new or changed features, new or changed capabilities, code, docs,
