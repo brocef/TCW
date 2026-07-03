@@ -326,6 +326,23 @@ def _revision_multi(*contents: str) -> str:
     return _revision("\x00".join(contents))
 
 
+def _safe_store_id(value: str, label: str) -> str:
+    """Validate a caller-supplied identifier that will be joined into a store
+    path. Nested ids ('web/editing') are allowed; traversal is not — reject
+    absolute paths, '..'/'.'/empty segments, backslashes, and NUL bytes. Returns
+    the trimmed id. (Web writes reach these with arbitrary input; the bounded-
+    input rule in the spec forbids escaping the store root.)"""
+    v = (value or "").strip()
+    if not v:
+        raise ValueError(f"{label} is required")
+    if v.startswith(("/", "\\")) or "\\" in v or "\x00" in v:
+        raise ValueError(f"invalid {label}: {value!r}")
+    for seg in v.split("/"):
+        if seg in ("", ".", "..") or seg != seg.strip():
+            raise ValueError(f"invalid {label}: {value!r}")
+    return v
+
+
 def _atomic_write(path: Path, content: str) -> None:
     """Write *content* to *path* via temp-file + atomic replace.
 
@@ -475,7 +492,9 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
             description: str = "", kind: str = "Vocabulary",
             vocabulary: list[str] | None = None) -> Term:
-        leaf = slug or slugify(name)
+        leaf = _safe_store_id(slug or slugify(name), "slug")
+        if parent:
+            parent = _safe_store_id(parent, "parent")
         full = f"{parent.strip('/')}/{leaf}" if parent else leaf
         if parent and not (self.root / parent).is_dir():
             raise ValueError(f"parent term does not exist: {parent}")
@@ -1125,6 +1144,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                     raise ValueError(
                         f"unknown field '{k}' (not in the locked vocabulary)")
 
+        collection = _safe_store_id(collection, "collection")
+
         # Check if the collection already exists
         folder_dir = self.root / collection
         flat = self.root / f"{collection}.md"
@@ -1139,6 +1160,12 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         if existing_fp is not None:
             # Add to existing file
             text = existing_fp.read_text(encoding="utf-8")
+            # Refuse a duplicate heading (spec: create fails on collision).
+            existing_slugs = {heading_slug(m.group(1).strip())
+                              for m in re.finditer(r"^##\s+(.+)$", text, re.M)}
+            if heading_slug(name) in existing_slugs:
+                raise ValueError(
+                    f"capability '{name}' already exists in collection '{collection}'")
             # Build the new capability block
             new_block_lines = [f"\n## {name}\n"]
             if status:
@@ -1452,6 +1479,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         blocked_by: list[dict] = []
         if blockers:
             for ref in blockers:
+                if not isinstance(ref, str):
+                    raise ValueError(
+                        "blocker refs must be strings")
                 blocked_by.append(self._entry_for(ref))
 
         # Generate slug
@@ -1543,36 +1573,33 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if blockers is None:
                 new_blocked_by = []
             elif isinstance(blockers, list):
+                for ref in blockers:
+                    if not isinstance(ref, str):
+                        raise ValueError(
+                            "blocker refs must be strings")
                 new_blocked_by = [self._entry_for(ref) for ref in blockers]
+            else:
+                raise ValueError("blockers must be a list or None")
 
-        # Handle parent change (move the item folder)
+        # Handle parent change: validate the target here, but effect the folder
+        # move AFTER the state/body writes (below) so edits land in the current
+        # location and the re-parent stays a single git-atomic rename that also
+        # carries any nested children. Parent is derived from nesting, not stored.
+        move_to: Path | None = None
         if parent is not _UNSET:
-            current_parent = self._parent_slug(d)
             if parent is None or parent == "":
-                # Denest: move to top-level of current status
+                # Denest: move to top-level of the item's current status folder.
                 new_parent_dir = self.root / self._status_of(d) / slug
             else:
-                # Check parent exists
                 pd = self._find(parent)
                 if pd is None:
                     raise ValueError(f"no such parent work item: {parent}")
+                if pd.resolve() == d.resolve() or d.resolve() in pd.resolve().parents:
+                    raise ValueError(
+                        "cannot re-parent an item under itself or a descendant")
                 new_parent_dir = pd / slug
-            # Only move if actually changing
-            if str(d) != str(new_parent_dir):
-                new_parent_dir.mkdir(parents=True, exist_ok=True)
-                # Move all contents
-                for f in d.iterdir():
-                    f.rename(new_parent_dir / f.name)
-                # Remove old dir (may have children already moved)
-                # (don't remove if it has other children — but since slug is unique,
-                #  the old folder is this item's folder, not a parent folder)
-                # Actually we can't safely rmdir here with nested items.
-                # Use git mv for the transition.
-                # For simplicity, update in-place and leave old dir for cleanup.
-                # Actually, the parent field is derived from nesting, not stored.
-                # So we MUST move the folder. Let's use git mv.
-                pass  # We'll handle this after writing state
-                d = new_parent_dir  # update reference
+            if new_parent_dir.resolve() != d.resolve():
+                move_to = new_parent_dir
 
         # Apply field changes to state dict
         changed = False
@@ -1612,6 +1639,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         self._stage(d / "state.yaml")
         if body is not _UNSET:
             self._stage(body_path)
+
+        # Effect the re-parent last: a git-aware folder rename that moves the
+        # whole item directory (including any nested children) and stages it,
+        # leaving no orphaned source directory.
+        if move_to is not None:
+            move_to.parent.mkdir(parents=True, exist_ok=True)
+            self._mv(d, move_to)
 
         return self.get_detail(slug)
 

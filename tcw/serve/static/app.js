@@ -586,11 +586,8 @@ async function _saveWorkCore() {
   var draftBlockers = editor.draft.blockers || [];
   var origBlockers = editor.original.blockers || [];
   if (JSON.stringify(draftBlockers) !== JSON.stringify(origBlockers)) {
-    // Convert to {slug} or {external} format
-    var blockerEntries = draftBlockers.map(function (ref) {
-      return { slug: ref };
-    });
-    fields.blockers = blockerEntries;
+    // Send plain string refs; the store resolves each to {slug}/{external}.
+    fields.blockers = draftBlockers.slice();
   }
 
   var bodyChanged = editor.draft.body !== editor.original.body;
@@ -925,7 +922,7 @@ async function saveWorkCreate() {
   if (d.complexity) body.complexity = d.complexity;
   if (d.parent && d.parent.trim()) body.parent = d.parent.trim();
   if (d.initiative && d.initiative.trim()) body.initiative = d.initiative.trim();
-  var blockers = (d.blockers || []).filter(Boolean).map(function (ref) { return { slug: ref }; });
+  var blockers = (d.blockers || []).filter(Boolean);
   if (blockers.length > 0) body.blockers = blockers;
   if (d.body) body.body = d.body;
 
@@ -2380,7 +2377,7 @@ async function openArtifact(slug, name) {
   try {
     var res = await fetch(
       "/api/work/" + encodeURIComponent(slug) + "/artifacts/" + encodeURIComponent(name) + "/open",
-      { method: "POST" }
+      { method: "POST", headers: { "Content-Type": "application/json" } }
     );
     if (!res.ok) throw new Error(res.status + " " + res.statusText);
     if (res.status === 204) {

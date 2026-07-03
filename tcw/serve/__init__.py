@@ -33,8 +33,9 @@ HOST = "127.0.0.1"
 MAX_BODY_BYTES = 1 * 1024 * 1024
 
 # Loopback addresses allowed for Host/Origin on mutating requests.
+# 0.0.0.0 is a bind address, not a client origin — deliberately excluded.
 _LOOPBACK_ADDRS = frozenset({
-    "127.0.0.1", "localhost", "::1", "0.0.0.0",
+    "127.0.0.1", "localhost", "::1",
 })
 
 STATIC_TYPES = {
@@ -201,7 +202,10 @@ def _is_loopback_origin(host: str | None, origin: str | None) -> bool:
             hdr = hdr.rsplit("@", 1)[-1]
         # Remove path
         hdr = hdr.split("/", 1)[0]
-        # Remove port
+        # Bracketed IPv6 literal, e.g. "[::1]:8765" -> "::1"
+        if hdr.startswith("["):
+            return hdr[1:hdr.find("]")] if "]" in hdr else hdr[1:]
+        # Remove :port (IPv4 / hostname)
         return hdr.split(":")[0]
 
     # If Origin is set, it MUST be loopback
@@ -584,6 +588,15 @@ class TcwHandler(BaseHTTPRequestHandler):
     def _post(self) -> None:
         path = urlparse(self.path).path
 
+        # Every POST is a mutating action — including the artifact /open endpoint,
+        # which spawns the desktop opener. Enforce CSRF/loopback + JSON content
+        # type for ALL of them before dispatching (a cross-origin simple POST must
+        # not reach /open).
+        reject = _validate_mutating_request(self)
+        if reject:
+            self._send(reject[0], reject[1], "application/json; charset=utf-8")
+            return
+
         # ── Legacy: artifact open endpoint ──
         # POST /api/work/<slug>/artifacts/<name>/open
         prefix = "/api/work/"
@@ -592,12 +605,6 @@ class TcwHandler(BaseHTTPRequestHandler):
         if (path.startswith(prefix) and path.endswith(suffix)
                 and marker in path):
             self._handle_open(path)
-            return
-
-        # All other POST routes require CSRF + JSON validation
-        reject = _validate_mutating_request(self)
-        if reject:
-            self._send(reject[0], reject[1], "application/json; charset=utf-8")
             return
 
         body, err = _read_json_body(self)

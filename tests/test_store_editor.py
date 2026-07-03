@@ -912,3 +912,87 @@ def test_update_capability_yaml_parse_in_existing(tmp_path):
     st.add("routes/login", name="Sign in")
     detail = st.update_capability("routes/login", body="new body")
     assert detail.capability.body == "new body"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Review-fix regressions (dual review of the interactive web editor)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def test_create_work_rejects_non_string_blocker(tmp_path):
+    """#1 — a non-string blocker ref (e.g. the old UI's {slug: ref}) must fail
+    loudly instead of being silently stored as a malformed external entry."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    with pytest.raises(ValueError, match="blocker refs must be strings"):
+        st.create_work("X", blockers=[{"slug": "y"}])
+    assert st.query() == []
+
+
+def test_update_work_rejects_non_string_blocker(tmp_path):
+    st = FsWorkStore.open(_work_node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    with pytest.raises(ValueError, match="blocker refs must be strings"):
+        st.update_work(item.slug, blockers=[{"slug": "y"}])
+
+
+def test_update_work_reparent_preserves_body_edit(tmp_path):
+    """#2 — re-parenting AND editing the body in one call must land the new body
+    on the moved item (not lose it to an orphaned source directory)."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    parent = st.create("Parent", created="2026-01-01")
+    child = st.create("Child", created="2026-01-02")
+    detail = st.update_work(child.slug, parent=parent.slug, body="RELOCATED BODY")
+    assert detail.item.parent == parent.slug
+    got = st.get_detail(child.slug)
+    assert "RELOCATED BODY" in got.item.body
+    assert got.item.parent == parent.slug
+    # Exactly one item folder for the child — no orphan/duplicate left behind.
+    assert len([i for i in st.query() if i.slug == child.slug]) == 1
+
+
+def test_update_work_denest(tmp_path):
+    """#2 — clearing the parent moves the item back to the top of its status."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    parent = st.create("Parent", created="2026-01-01")
+    child = st.create("Child", created="2026-01-02", parent=parent.slug)
+    assert st.get(child.slug).parent == parent.slug
+    st.update_work(child.slug, parent="")
+    assert st.get(child.slug).parent == ""
+    assert len([i for i in st.query() if i.slug == child.slug]) == 1
+
+
+def test_update_work_reparent_rejects_self_and_descendant(tmp_path):
+    """#2 — an item cannot be nested under itself or one of its descendants."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    parent = st.create("Parent", created="2026-01-01")
+    child = st.create("Child", created="2026-01-02", parent=parent.slug)
+    with pytest.raises(ValueError, match="itself or a descendant"):
+        st.update_work(parent.slug, parent=parent.slug)
+    with pytest.raises(ValueError, match="itself or a descendant"):
+        st.update_work(parent.slug, parent=child.slug)
+
+
+def test_add_entry_rejects_path_traversal(tmp_path):
+    """#3 — a caller-supplied collection must not escape the store root."""
+    st = FsCapabilitiesStore.open(_cap_node(tmp_path))
+    for bad in ["../evil", "/tmp/evil", "a/../../evil", "..\\evil"]:
+        with pytest.raises(ValueError, match="invalid collection"):
+            st.add_entry(bad, "Do X")
+    assert list(tmp_path.rglob("evil*")) == []
+
+
+def test_taxonomy_add_rejects_path_traversal(tmp_path):
+    """#3 — a caller-supplied taxonomy slug must not escape the store root."""
+    st = FsTaxonomyStore.open(_tax_node(tmp_path))
+    with pytest.raises(ValueError, match="invalid slug"):
+        st.add("Evil", slug="../evil")
+    assert list(tmp_path.rglob("evil*")) == []
+
+
+def test_add_entry_rejects_duplicate_in_collection(tmp_path):
+    """#5 — adding a capability whose heading already exists must fail, not
+    append a duplicate ## heading."""
+    st = FsCapabilitiesStore.open(_cap_node(tmp_path))
+    st.add_entry("routes/login", "Sign in")
+    with pytest.raises(ValueError, match="already exists"):
+        st.add_entry("routes/login", "Sign in")

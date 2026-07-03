@@ -57,7 +57,9 @@ def get_json(base: str, path: str):
 
 
 def post(base: str, path: str):
+    # /open is a mutating action: send the JSON content type it now requires.
     req = Request(f"{base}{path}", method="POST")
+    req.add_header("Content-Type", "application/json")
     with urlopen(req) as res:
         return res.status, res.read()
 
@@ -127,6 +129,21 @@ def test_open_endpoint_validates_inputs_without_popen(server, monkeypatch):
     with pytest.raises(HTTPError) as absent:
         post(base, f"/api/work/{slug}/artifacts/plan/open")
     assert absent.value.code == 404
+    assert calls == []
+
+
+def test_open_endpoint_rejects_non_json_content_type(server, monkeypatch):
+    """#4 — /open spawns the desktop opener, so it is a mutating action: a
+    cross-origin simple POST (non-JSON content type) must be rejected before
+    dispatch, and the opener must never run."""
+    base, slug = server
+    calls = []
+    monkeypatch.setattr("tcw.serve.subprocess.Popen", lambda argv: calls.append(argv))
+    req = Request(f"{base}/api/work/{slug}/artifacts/spec/open", method="POST")
+    req.add_header("Content-Type", "text/plain")
+    with pytest.raises(HTTPError) as err:
+        urlopen(req)
+    assert err.value.code == 400
     assert calls == []
 
 
