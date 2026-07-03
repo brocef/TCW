@@ -24,7 +24,18 @@
 >   escaping preserved. 421 pytest pass; write-path smoke 10/10 end-to-end.
 >   Live in-browser click-through deferred to Phase 5 (item 11), per plan.
 >   Local `bllm-agent` (stopped near end; code complete), verified here.
-> - ⬜ Phase 4 — Axis-specific UI flows
+> - ✅ **Phase 4 — Axis-specific UI flows** — complete. All three axes wired on the
+>   Phase 3 framework: work create/edit forms (all fields + blocked-by), lifecycle
+>   artifact + `capabilities.yaml` sidecar editors, and start/complete/drop actions
+>   shown only where legal — complete uses an in-page modal requiring resolution +
+>   all DoD acks + the capabilities reconciliation reminder, with inline
+>   blocker/force handling. Taxonomy + capability create/edit forms with post-write
+>   `check()` warnings surfaced. Two bounded backend additions: `dodChecklist` in
+>   work detail; `warnings` from taxonomy/capability writes (6 new tests). Full
+>   suite **427 passing**; `node --check` clean. Verification removed one dead
+>   duplicate `showCompleteModal` (agent's abandoned first attempt). Local
+>   `bllm-agent`, verified here. NOTE: dirty-nav guard uses native `confirm()`
+>   (inherited from Phase 3) — flagged for review. Live browser click-through → Phase 5.
 > - ⬜ Phase 5 — Verification and docs
 
 Execute in order. Phases 2 and 3 can overlap only after Phase 1 settles the
@@ -183,7 +194,7 @@ source/build files.
    cancel, validation error rendering, stale-write recovery, and dirty
    navigation warnings.
 
-## Phase 4 - Axis-specific UI flows
+## Phase 4 - Axis-specific UI flows ✅ COMPLETE
 
 Touch points: `tcw/serve/static/app.js`, `style.css`, tests where practical.
 

@@ -567,3 +567,328 @@ h1 {
   color: #991b1b;
   border-color: #fecaca;
 }
+
+/* ── Create button (in list header) ──────────────────────────────────── */
+
+.create-btn {
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 32px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.create-btn:hover {
+  background: var(--accent);
+  color: var(--accent-head);
+}
+
+/* ── Lifecycle action buttons ───────────────────────────────────────── */
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 32px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.action-btn.start {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.action-btn.start:hover {
+  background: var(--ok);
+  color: var(--accent-ink);
+}
+
+.action-btn.complete {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.action-btn.complete:hover {
+  background: var(--ok);
+  color: var(--accent-ink);
+}
+
+.action-btn.drop {
+  border-color: #991b1b;
+  color: #991b1b;
+}
+
+.action-btn.drop:hover {
+  background: #991b1b;
+  color: var(--accent-ink);
+}
+
+/* ── Sidecars section ───────────────────────────────────────────────── */
+
+.sidecars-section {
+  margin: 14px 0;
+}
+
+.sidecars-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sidecar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.sidecar-name {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sidecar-edit-btn {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  min-height: 24px;
+  font-size: 12px;
+}
+
+.sidecar-edit-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Warnings banner (non-blocking, post-write) ─────────────────────── */
+
+.warnings-banner {
+  background: #fef9ee;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #78350f;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.warnings-banner strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.warnings-banner ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* ── Modal (in-page dialog) ─────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px 24px;
+  max-width: min(560px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+}
+
+.modal-box h2 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.modal-box p {
+  margin: 8px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.modal-box .field-group {
+  margin: 10px 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.modal-actions button {
+  min-width: 80px;
+}
+
+.modal-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--muted);
+  min-height: auto;
+  padding: 4px 8px;
+}
+
+.modal-dismiss:hover {
+  color: var(--ink);
+}
+
+/* ── DoD checklist in modal ─────────────────────────────────────────── */
+
+.dod-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+
+.dod-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.dod-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.dod-item label {
+  cursor: pointer;
+}
+
+.reconciliation-reminder {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #1e40af;
+  font-size: 13px;
+  margin: 12px 0;
+  line-height: 1.5;
+}
+
+.modal-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #991b1b;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.force-override {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.force-override label {
+  cursor: pointer;
+}
+
+/* ── Raw text editor (sidecar YAML, no split preview) ───────────────── */
+
+.raw-editor {
+  min-height: 300px;
+}
+
+.raw-input {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.raw-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Blocker tag input ──────────────────────────────────────────────── */
+
+.blocker-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.blocker-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f0f0ed;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.blocker-tag button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 0 2px;
+  min-height: auto;
+}
+
+.blocker-tag button:hover {
+  color: #991b1b;
+}

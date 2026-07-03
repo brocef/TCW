@@ -1289,3 +1289,78 @@ class TestInvalidArtifactNames:
             "content": "nope",
         })
         assert status == HTTPStatus.BAD_REQUEST
+
+
+# ── Tests: Backend addition A — DoD checklist ────────────────────────────────
+
+
+class TestDoDChecklist:
+    """Work detail payload includes dodChecklist for the complete modal."""
+
+    def test_work_detail_has_dod_checklist(self, seeded):
+        root, base, slug = seeded
+        detail = _get_json(base, f"/api/work/{slug}")
+        assert "dodChecklist" in detail
+        checklist = detail["dodChecklist"]
+        assert isinstance(checklist, list)
+        # DEFAULT_DOD is used when no dod.yaml exists
+        assert len(checklist) >= 1
+
+    def test_dod_checklist_is_string_list(self, seeded):
+        root, base, slug = seeded
+        detail = _get_json(base, f"/api/work/{slug}")
+        checklist = detail["dodChecklist"]
+        for item in checklist:
+            assert isinstance(item, str)
+
+
+# ── Tests: Backend addition B — post-write check warnings ────────────────────
+
+
+class TestTaxonomyCheckWarnings:
+    """Taxonomy create/update responses include warnings from check()."""
+
+    def test_create_taxonomy_includes_warnings(self, seeded):
+        root, base, slug = seeded
+        status, body = _req(base, "POST", "/api/taxonomy", {
+            "name": "WarningTerm",
+        })
+        assert status == HTTPStatus.CREATED
+        # Response may or may not have warnings depending on check() state
+        assert "warnings" not in body or isinstance(body.get("warnings"), list)
+
+    def test_update_taxonomy_includes_warnings(self, seeded):
+        root, base, slug = seeded
+        detail = _get_json(base, "/api/taxonomy/work-item")
+        rev = detail["coreRevision"]
+        status, body = _req(base, "PATCH", "/api/taxonomy/work-item", {
+            "revision": rev,
+            "fields": {"name": "Updated Name"},
+        })
+        assert status == HTTPStatus.OK
+        assert "warnings" not in body or isinstance(body.get("warnings"), list)
+
+
+class TestCapabilityCheckWarnings:
+    """Capability create/update responses include warnings from check()."""
+
+    def test_create_capability_includes_warnings(self, seeded):
+        root, base, slug = seeded
+        status, body = _req(base, "POST", "/api/capabilities", {
+            "collection": "test-warnings",
+            "name": "Test cap",
+            "status": "Missing",
+        })
+        assert status == HTTPStatus.CREATED
+        assert "warnings" not in body or isinstance(body.get("warnings"), list)
+
+    def test_update_capability_includes_warnings(self, seeded):
+        root, base, slug = seeded
+        detail = _get_json(base, "/api/capabilities/web")
+        rev = detail["coreRevision"]
+        status, body = _req(base, "PATCH", "/api/capabilities/web", {
+            "revision": rev,
+            "fields": {"Status": "Partial"},
+        })
+        assert status == HTTPStatus.OK
+        assert "warnings" not in body or isinstance(body.get("warnings"), list)

@@ -523,6 +523,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 "artifacts": artifacts_list,
                 "sidecars": sidecars,
                 "coreRevision": detail.core_revision,
+                "dodChecklist": work.dod_checklist(),
             })
             return
 
@@ -712,10 +713,15 @@ class TcwHandler(BaseHTTPRequestHandler):
                 # Return with revision
                 ref = term.slug
                 detail = taxonomy.get_term_detail(ref)
-                self._send_json(HTTPStatus.CREATED, {
+                response = {
                     "term": _jsonable(term),
                     "coreRevision": detail.core_revision if detail else "",
-                })
+                }
+                # Run post-write check and include warnings
+                warnings = taxonomy.check()
+                if warnings:
+                    response["warnings"] = warnings
+                self._send_json(HTTPStatus.CREATED, response)
             except (ValueError, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -746,10 +752,15 @@ class TcwHandler(BaseHTTPRequestHandler):
                     body=body_text,
                     fields=fields or None,
                 )
-                self._send_json(HTTPStatus.CREATED, {
+                response = {
                     "capability": _jsonable(detail.capability),
                     "coreRevision": detail.core_revision,
-                })
+                }
+                # Run post-write check and include warnings
+                warnings = capabilities.check(taxonomy=taxonomy)
+                if warnings:
+                    response["warnings"] = warnings
+                self._send_json(HTTPStatus.CREATED, response)
             except (ValueError, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -849,10 +860,15 @@ class TcwHandler(BaseHTTPRequestHandler):
 
             try:
                 detail = taxonomy.update_term(ref, **kw)
-                self._send_json(HTTPStatus.OK, {
+                response = {
                     "term": _jsonable(detail.term),
                     "coreRevision": detail.core_revision,
-                })
+                }
+                # Run post-write check and include warnings
+                warnings = taxonomy.check()
+                if warnings:
+                    response["warnings"] = warnings
+                self._send_json(HTTPStatus.OK, response)
             except (ValueError, StaleRevision, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -879,10 +895,15 @@ class TcwHandler(BaseHTTPRequestHandler):
 
             try:
                 detail = capabilities.update_capability(ref, **kw)
-                self._send_json(HTTPStatus.OK, {
+                response = {
                     "capability": _jsonable(detail.capability),
                     "coreRevision": detail.core_revision,
-                })
+                }
+                # Run post-write check and include warnings
+                warnings = capabilities.check(taxonomy=taxonomy)
+                if warnings:
+                    response["warnings"] = warnings
+                self._send_json(HTTPStatus.OK, response)
             except (ValueError, StaleRevision, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
