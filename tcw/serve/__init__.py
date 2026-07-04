@@ -22,8 +22,8 @@ from tcw.store.base import (
     IllegalTransition, RefError, StaleRevision,
 )
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, find_node_root,
-    heading_slug,
+    FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
+    find_node_root, heading_slug, resolve_qualified_work_ref,
 )
 
 DEFAULT_PORT = 8765
@@ -307,9 +307,11 @@ def _read_json_body(
 class TcwServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
-    def __init__(self, server_address: tuple[str, int], node_root: Path):
+    def __init__(self, server_address: tuple[str, int], node_root: Path,
+                 include_descendants: bool = False):
         super().__init__(server_address, TcwHandler)
         self.node_root = node_root
+        self.include_descendants = include_descendants
 
 
 class TcwHandler(BaseHTTPRequestHandler):
@@ -344,6 +346,31 @@ class TcwHandler(BaseHTTPRequestHandler):
             FsTaxonomyStore.open(root),
             FsCapabilitiesStore.open(root),
         )
+
+    def _resolve_work(self, slug: str) -> "tuple[FsWorkStore, str] | None":
+        """(store, bare_slug) for a work slug — gated on --include-descendants.
+
+        Flag off: always (anchor store, slug), so a bare slug works as before and a
+        '/'-bearing slug matches no folder name → 404 (serve byte-for-byte
+        unchanged, no descendant read or mutated). Flag on: resolve sub/proj/<slug>
+        to the descendant store; None (unknown/traversal) → the caller sends 404."""
+        if self.server.include_descendants:
+            return resolve_qualified_work_ref(self.server.node_root, slug)
+        return FsWorkStore.open(self.server.node_root), slug
+
+    def _board(self) -> list:
+        """The board; with --include-descendants, the anchor plus every descendant
+        node's board, each descendant item's slug qualified (`sub/proj/<slug>`)."""
+        anchor = self.server.node_root.resolve()
+        if not self.server.include_descendants:
+            return FsWorkStore.open(anchor).board()
+        items = []
+        for root in [anchor, *descendant_nodes(anchor)]:
+            prefix = "" if root == anchor else f"{root.relative_to(anchor)}/"
+            for it in FsWorkStore.open(root).board():
+                it.slug = f"{prefix}{it.slug}"        # fresh WorkItems — safe to mutate
+                items.append(it)
+        return items
 
     # ── HTTP method dispatchers ───────────────────────────────────────────
 
@@ -397,7 +424,7 @@ class TcwHandler(BaseHTTPRequestHandler):
         # ── Work routes ──
 
         if path == "/api/work":
-            self._send_json(HTTPStatus.OK, work.board())
+            self._send_json(HTTPStatus.OK, self._board())
             return
 
         # Subresource routes for work must be matched BEFORE the catch-all
@@ -411,6 +438,11 @@ class TcwHandler(BaseHTTPRequestHandler):
             if name not in WORK_ARTIFACTS:
                 self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
                 return
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             item = work.get(slug)
             if item is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -439,6 +471,11 @@ class TcwHandler(BaseHTTPRequestHandler):
             if name not in WORK_SIDECARS:
                 self._send(HTTPStatus.BAD_REQUEST, b"unknown sidecar")
                 return
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             item = work.get(slug)
             if item is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -463,6 +500,11 @@ class TcwHandler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/work/([^/]+)/sidecars$", path)
         if m:
             slug = _decode_path_param(m.group(1))
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             item = work.get(slug)
             if item is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -491,12 +533,21 @@ class TcwHandler(BaseHTTPRequestHandler):
             if not slug:
                 self._send(HTTPStatus.NOT_FOUND, b"not found")
                 return
+            qslug = slug                          # preserve the addressed (qualified) slug
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             detail = work.get_detail(slug)
             if detail is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
                 return
-            # Build response with revision-bearing detail
+            # Build response with revision-bearing detail. Echo the *qualified*
+            # slug so the (unchanged) web UI keeps addressing this descendant item
+            # when it derives artifact/sidecar/action URLs from item.slug.
             item_data = _jsonable(detail.item)
+            item_data["slug"] = qslug
             artifacts_list = []
             for name in WORK_ARTIFACTS:
                 try:
@@ -661,10 +712,17 @@ class TcwHandler(BaseHTTPRequestHandler):
         if m:
             slug = _decode_path_param(m.group(1))
             action = _decode_path_param(m.group(2))
+            qslug = slug                          # preserve the addressed (qualified) slug
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             if action == "start":
                 force = bool(body.get("force", False))
                 try:
                     item = work.start(slug, force=force)
+                    item.slug = qslug             # echo the qualified slug to the UI
                     self._send_json(HTTPStatus.OK, _jsonable(item))
                 except (ValueError, StaleRevision, IllegalTransition, RefError) as e:
                     sc, bb = _map_store_error(e)
@@ -685,6 +743,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     dod_ack = []
                 try:
                     item = work.complete(slug, resolution, dod_ack, force=force)
+                    item.slug = qslug             # echo the qualified slug to the UI
                     self._send_json(HTTPStatus.OK, _jsonable(item))
                 except (ValueError, StaleRevision, IllegalTransition, RefError) as e:
                     sc, bb = _map_store_error(e)
@@ -800,6 +859,12 @@ class TcwHandler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/work/([^/]+)$", path)
         if m:
             slug = _decode_path_param(m.group(1))
+            qslug = slug                          # preserve the addressed (qualified) slug
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             core_revision = body.get("revision")
             fields = body.get("fields", {})
             body_text = body.get("body")
@@ -824,8 +889,10 @@ class TcwHandler(BaseHTTPRequestHandler):
 
             try:
                 detail = work.update_work(slug, **kw)
+                item_data = _jsonable(detail.item)
+                item_data["slug"] = qslug         # echo the qualified slug to the UI
                 self._send_json(HTTPStatus.OK, {
-                    "item": _jsonable(detail.item),
+                    "item": item_data,
                     "coreRevision": detail.core_revision,
                     "artifactRevisions": detail.artifact_revisions,
                     "sidecarRevisions": detail.sidecar_revisions,
@@ -947,6 +1014,11 @@ class TcwHandler(BaseHTTPRequestHandler):
             if name not in WORK_ARTIFACTS:
                 self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
                 return
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             item = work.get(slug)
             if item is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -981,6 +1053,11 @@ class TcwHandler(BaseHTTPRequestHandler):
             if name not in WORK_SIDECARS:
                 self._send(HTTPStatus.BAD_REQUEST, b"unknown sidecar")
                 return
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             item = work.get(slug)
             if item is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1028,6 +1105,11 @@ class TcwHandler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/work/([^/]+)$", path)
         if m:
             slug = _decode_path_param(m.group(1))
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
             try:
                 work.drop(slug)
                 self._send(HTTPStatus.NO_CONTENT)
@@ -1058,7 +1140,11 @@ class TcwHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
             return
 
-        work = FsWorkStore.open(self.server.node_root)
+        resolved = self._resolve_work(slug)
+        if resolved is None:
+            self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+            return
+        work, slug = resolved
         item = work.get(slug)
         if item is None:
             self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1083,14 +1169,14 @@ from tcw.store.base import AmbiguousRef  # noqa: E402, isort:skip
 
 
 def serve(port: int = DEFAULT_PORT, open_browser: bool = True,
-          node_root: Path | None = None) -> int:
+          node_root: Path | None = None, include_descendants: bool = False) -> int:
     root = node_root or find_node_root()
     if root is None:
         print("tcw serve: no tcw node here — run `tcw init` in the project folder.",
               file=sys.stderr)
         return 1
     try:
-        httpd = TcwServer((HOST, port), root)
+        httpd = TcwServer((HOST, port), root, include_descendants)
     except OSError as e:
         print(f"tcw serve: cannot bind {HOST}:{port}: {e}", file=sys.stderr)
         return 1
