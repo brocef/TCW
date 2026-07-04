@@ -2,7 +2,13 @@ slug: 2026-07-02-bring-plugin-skills-into-full-agentskills-claude-spec-complianc
 title: Bring plugin skills into full agentskills/Claude spec compliance
 phase: ''
 created: '2026-07-02'
-resolution: null
+resolution: done
 priority: null
 effort: medium
 complexity: low
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
