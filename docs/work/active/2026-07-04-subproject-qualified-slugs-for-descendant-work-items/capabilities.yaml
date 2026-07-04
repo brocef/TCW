@@ -1,0 +1,7 @@
+# Capability deltas this work item lands (work->capability back-pointers).
+# No new capability; these existing entries gain scope/wording at completion.
+changed:
+  - cli/host-multiple-projects-in-one-repo#host-multiple-projects-in-one-repo  # address a descendant item by sub/proj/<slug> from an ancestor
+  - work#view-the-board            # list --include-descendants prints qualified, addressable slugs
+  - web#browse-tcw-content-in-a-local-web-app   # serve --include-descendants aggregates descendant boards
+  - web/editing#edit-tcw-content-in-a-local-web-app  # serve can open/edit descendant items by qualified slug
