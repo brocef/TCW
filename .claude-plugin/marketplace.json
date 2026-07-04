@@ -8,7 +8,7 @@
       "name": "tcw",
       "source": "./",
       "description": "Taxonomy · Capabilities · Work — skills + slash commands that drive the tcw CLI.",
-      "version": "0.9.0"
+      "version": "0.10.0"
     }
   ]
 }
