@@ -6,3 +6,5 @@
 **Planning doc:** 2026-06-22-node-sentinel-tcw-config-yaml-and-sentinel-based-node-detection
 
 As a user, I keep several TCW projects as subfolders of one git repo — each with its own `docs/{taxonomy,capabilities,work}/` — by marking each project folder with a `tcw-config.yaml` sentinel. `tcw` resolves the nearest enclosing sentinel as the active node, so running it inside `project-b/` operates on `project-b`, not the whole repo. Sibling projects can inherit each other's vocabulary through taxonomy `extends` (e.g. `project-b` extends `project-a`). `tcw init` marks the current folder as a node.
+
+From an enclosing node I can also address a descendant project's work item directly by a **subproject-qualified slug** — `sub/proj/<slug>` — with any work command (`tcw work show sub/proj/<slug>`, `start`, `edit`, `complete`, `drop`). It resolves to that descendant item exactly as if I had `cd`-ed into `sub/proj/` first; a bare slug still refers to the current node only. `tcw work list --include-descendants` prints those qualified slugs, and `tcw serve --include-descendants` does the same across the local web app.
