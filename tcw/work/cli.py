@@ -11,7 +11,7 @@ from tcw.store.base import (
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
     descendant_nodes, ensure_worktree_ignored, find_node, git_commit,
-    merge_worktree, parent_node, remove_worktree,
+    merge_worktree, parent_node, remove_worktree, resolve_qualified_work_ref,
 )
 from tcw.work.recursion import delegate, escalate, reconcile
 
@@ -38,6 +38,25 @@ def _store() -> FsWorkStore | None:
         print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return None
     return FsWorkStore.open(node)
+
+
+def _resolve(slug: str, label: str) -> tuple[FsWorkStore, str] | None:
+    """Resolve a (possibly subproject-qualified) slug to (store, bare_slug).
+
+    A bare slug stays on the anchor node (unchanged); `sub/proj/<slug>` resolves
+    to the descendant node's store — equivalent to `cd`-ing there first. Prints
+    the right message and returns None on failure (no work node here, or the
+    qualifier names no real node) so callers just `return 1`. Item existence is
+    still the caller's `get`/`path` check — the returned slug is always bare."""
+    node = find_node(NAME)
+    if node is None:
+        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
+        return None
+    resolved = resolve_qualified_work_ref(node, slug)
+    if resolved is None:                          # qualifier names no node within anchor
+        print(f"tcw work {label}: no such work item: {slug}", file=sys.stderr)
+        return None
+    return resolved
 
 
 def _stdin_body() -> str:
@@ -192,7 +211,8 @@ def _new(args: argparse.Namespace) -> int:
     return 0
 
 
-def _render_board(st: FsWorkStore, status: str | None, show_all: bool) -> None:
+def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
+                  prefix: str = "") -> None:
     items = st.board(status=status)
     if status is None and not show_all:
         items = [i for i in items if i.status != "completed"]
@@ -219,7 +239,7 @@ def _render_board(st: FsWorkStore, status: str | None, show_all: bool) -> None:
         blockers = st.unresolved_blockers(it)
         suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
         pri = it.priority if it.priority is not None else "-"
-        print(f"{'  ' * depth}{it.slug} | {it.status} | {stages(it)} | "
+        print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages(it)} | "
               f"{pri} | {it.title}{suffix}")
         for ch in by_parent.get(it.slug, []):
             emit(ch, depth + 1)
@@ -243,16 +263,18 @@ def _list(args: argparse.Namespace) -> int:
             print()                               # blank line between node groups
         rel = "." if root == node else f"./{root.relative_to(node)}"
         print(f"# {rel}")
-        _render_board(FsWorkStore.open(root), args.status, args.all)
+        prefix = "" if root == node else f"{root.relative_to(node)}/"  # qualified slugs
+        _render_board(FsWorkStore.open(root), args.status, args.all, prefix)
     return 0
 
 
 def _show(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
+    resolved = _resolve(args.slug, "show")
+    if resolved is None:
         return 1
+    st, bare = resolved
     try:
-        item = st.get(args.slug)
+        item = st.get(bare)
     except MultipleMatch as e:
         print(f"tcw work show: {e}", file=sys.stderr)
         return 1
@@ -264,10 +286,15 @@ def _show(args: argparse.Namespace) -> int:
 
 
 def _path(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
+    resolved = _resolve(args.slug, "path")
+    if resolved is None:
         return 1
-    p = st.path(args.slug)
+    st, bare = resolved
+    try:
+        p = st.path(bare)
+    except MultipleMatch as e:                    # wrap consistently with _show/_complete
+        print(f"tcw work path: {e}", file=sys.stderr)
+        return 1
     if p is None:
         print(f"tcw work path: no such work item: {args.slug}", file=sys.stderr)
         return 1
@@ -281,11 +308,12 @@ def _complete_hint(slug: str) -> None:
 
 
 def _start(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
+    resolved = _resolve(args.slug, "start")
+    if resolved is None:
         return 1
+    st, bare = resolved
     try:
-        st.start(args.slug, force=args.force)
+        st.start(bare, force=args.force)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
@@ -295,11 +323,11 @@ def _start(args: argparse.Namespace) -> int:
         return 0
     node = st.node_root
     ensure_worktree_ignored(node)
-    st.set_field(args.slug, "worktree", f"{WORKTREES_DIR}/{args.slug}")
-    st.set_field(args.slug, "branch", f"work/{args.slug}")
+    st.set_field(bare, "worktree", f"{WORKTREES_DIR}/{bare}")
+    st.set_field(bare, "branch", f"work/{bare}")
     try:
-        git_commit(node, f"tcw work: start {args.slug} (worktree)", "docs/work", ".gitignore")
-        wt, _branch = add_worktree(node, args.slug)
+        git_commit(node, f"tcw work: start {bare} (worktree)", "docs/work", ".gitignore")
+        wt, _branch = add_worktree(node, bare)
     except subprocess.CalledProcessError as e:
         print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
         return 1
@@ -309,11 +337,12 @@ def _start(args: argparse.Namespace) -> int:
 
 
 def _edit(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
+    resolved = _resolve(args.slug, "edit")
+    if resolved is None:
         return 1
+    st, bare = resolved                           # blocker refs are node-local to `st`
     try:
-        if st.get(args.slug) is None:
+        if st.get(bare) is None:
             print(f"tcw work edit: no such work item: {args.slug}", file=sys.stderr)
             return 1
         blocks = _split(args.blocks)
@@ -322,14 +351,14 @@ def _edit(args: argparse.Namespace) -> int:
                 print(f"tcw work edit: no such work item: {ref}", file=sys.stderr)
                 return 1
         for ref in _split(args.blocked_by):
-            st.add_blocker(args.slug, ref)
+            st.add_blocker(bare, ref)
         for ref in blocks:
-            st.add_blocker(ref, args.slug)
+            st.add_blocker(ref, bare)             # reverse link: bare into ref's blocked_by
         for ref in _split(args.unblocked_by):
-            st.remove_blocker(args.slug, ref)
+            st.remove_blocker(bare, ref)
         # Use composite update for field changes
         st.update_work(
-            args.slug,
+            bare,
             initiative=_provided(args.initiative),
             priority=_provided(args.priority),
             effort=_provided(args.effort),
@@ -343,11 +372,12 @@ def _edit(args: argparse.Namespace) -> int:
 
 
 def _complete(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
+    resolved = _resolve(args.slug, "complete")
+    if resolved is None:
         return 1
+    st, bare = resolved
     try:
-        item = st.get(args.slug)
+        item = st.get(bare)
     except MultipleMatch as e:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
@@ -375,31 +405,28 @@ def _complete(args: argparse.Namespace) -> int:
             print(f"tcw work complete: {err}", file=sys.stderr)
             return 1
     try:
-        st.complete(args.slug, args.resolution, dod_ack=checklist, force=args.force)
+        st.complete(bare, args.resolution, dod_ack=checklist, force=args.force)
     except _ERRORS as e:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
     print(f"completed {args.slug} ({args.resolution})")
     if has_worktree:
-        for w in remove_worktree(st.node_root, args.slug, branch):
+        for w in remove_worktree(st.node_root, bare, branch):
             print(f"tcw work complete: {w}", file=sys.stderr)
     return 0
 
 
 def _drop(args: argparse.Namespace) -> int:
-    return _run(lambda st: st.drop(args.slug), f"dropped {args.slug}")
-
-
-def _run(op, success: str) -> int:
-    st = _store()
-    if st is None:
+    resolved = _resolve(args.slug, "drop")
+    if resolved is None:
         return 1
+    st, bare = resolved
     try:
-        op(st)
+        st.drop(bare)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
-    print(success)
+    print(f"dropped {args.slug}")
     return 0
 
 

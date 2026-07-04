@@ -883,3 +883,151 @@ def test_cli_edit_effort_alias_stored_canonical(tmp_path, monkeypatch, capsys):
     assert main(["work", "edit", item.slug, "--effort", "M", "--complexity", "l"]) == 0
     edited = FsWorkStore.open(root).get(item.slug)
     assert edited.effort == "medium" and edited.complexity == "low"
+
+
+# ── qualified (subproject-relative) slugs ────────────────────────────────────
+
+def _git_subnode(parent: Path, rel: str) -> Path:
+    """A descendant that is its OWN committed git repo — worktree flows need a
+    repo with a HEAD (a plain subnode shares the enclosing repo)."""
+    d = parent / rel
+    d.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "--initial-branch=main", str(d)], check=True)
+    subprocess.run(["git", "-C", str(d), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(d), "config", "user.name", "t"], check=True)
+    init(["work"], d)
+    subprocess.run(["git", "-C", str(d), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(d), "commit", "-q", "-m", "init"], check=True)
+    return d
+
+
+def test_list_include_descendants_qualifies_slugs(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+    FsWorkStore.open(subnode(root, "Project-A")).create("a feature", created="2026-01-01")
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
+    out = capsys.readouterr().out
+    assert "Project-A/2026-01-01-a-feature |" in out          # descendant slug qualified
+    anchor_line = next(l for l in out.splitlines() if "root-thing" in l)
+    assert anchor_line.lstrip().startswith("2026-01-01-root-thing |")  # anchor stays bare
+
+
+def test_show_and_path_resolve_qualified_slug(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = subnode(root, "Project-A")
+    slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "show", f"Project-A/{slug}"]) == 0
+    assert slug in capsys.readouterr().out
+    assert main(["work", "path", f"Project-A/{slug}"]) == 0
+    out = capsys.readouterr().out.strip()
+    assert out == str(sub / "docs" / "work" / "backlog" / slug)
+
+
+def test_qualified_resolution_from_mid_tree_node(tmp_path, monkeypatch, capsys):
+    """Anchor is wherever you invoke — a mid-tree node resolves a slug relative to
+    itself, not the repo root."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    mid = subnode(root, "Project-A")
+    grand = subnode(root, "Project-A/Nested")
+    slug = FsWorkStore.open(grand).create("deep", created="2026-01-01").slug
+    monkeypatch.chdir(mid)
+    assert main(["work", "show", f"Nested/{slug}"]) == 0
+    assert slug in capsys.readouterr().out
+
+
+def test_start_complete_via_qualified_slug(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = subnode(root, "Project-A")
+    slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "start", f"Project-A/{slug}"]) == 0
+    out = capsys.readouterr()
+    assert f"started Project-A/{slug}" in out.out
+    assert f"complete Project-A/{slug}" in out.err            # hint echoes QUALIFIED slug
+    assert FsWorkStore.open(sub).get(slug).status == "active"
+    assert main(["work", "complete", f"Project-A/{slug}",
+                 "--resolution", "done", "--confirm"]) == 0
+    assert FsWorkStore.open(sub).get(slug).status == "completed"
+
+
+def test_worktree_roundtrip_via_qualified_slug(tmp_path, monkeypatch, capsys):
+    """start --worktree then complete on a descendant addressed by qualified slug:
+    the worktree lands under the DESCENDANT's .worktrees/<bare> and is removed on
+    complete (guards remove_worktree using bare, not the qualified slug)."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = _git_subnode(root, "Project-A")
+    slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "start", f"Project-A/{slug}", "--worktree"]) == 0
+    capsys.readouterr()
+    assert (sub / ".worktrees" / slug / "docs" / "work" / "active" / slug).is_dir()
+    assert main(["work", "complete", f"Project-A/{slug}",
+                 "--resolution", "done", "--confirm"]) == 0
+    assert not (sub / ".worktrees" / slug).exists()          # torn down via bare path
+    assert FsWorkStore.open(sub).get(slug).status == "completed"
+
+
+def test_drop_via_qualified_slug(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = subnode(root, "Project-A")
+    slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", f"Project-A/{slug}"]) == 0
+    assert FsWorkStore.open(sub).get(slug) is None
+
+
+def test_edit_blocks_reverse_stores_bare_ref(tmp_path, monkeypatch, capsys):
+    """--blocks on a qualified slug must persist a BARE ref into the other item's
+    node-local blocked_by (never the qualified form)."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = subnode(root, "Project-A")
+    s = FsWorkStore.open(sub)
+    a = s.create("item a", created="2026-01-01").slug
+    b = s.create("item b", created="2026-01-02").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "edit", f"Project-A/{a}", "--blocks", b]) == 0
+    blockers = [x.get("slug") for x in FsWorkStore.open(sub).get(b).blocked_by]
+    assert a in blockers and f"Project-A/{a}" not in blockers
+
+
+def test_bare_slug_not_found_across_nodes(tmp_path, monkeypatch, capsys):
+    """Backward compat: a descendant-only slug is NOT resolvable bare from the anchor."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = subnode(root, "Project-A")
+    slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "show", slug]) == 1                  # bare -> anchor only
+    assert f"no such work item: {slug}" in capsys.readouterr().err
+    assert main(["work", "show", f"Project-A/{slug}"]) == 0   # qualified resolves
+
+
+def test_unresolvable_qualifier_errors_with_qualified_slug(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "show", "Nope/2026-01-01-foo"]) == 1
+    assert "tcw work show: no such work item: Nope/2026-01-01-foo" in capsys.readouterr().err
+
+
+def test_qualified_ambiguous_bare_surfaces_multiple_match(tmp_path, monkeypatch, capsys):
+    """A qualified ref whose bare part collides inside the descendant still errors."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = subnode(root, "Project-A")
+    for status in ("active", "backlog"):                      # two items named 'dup'
+        d = sub / "docs/work" / status / "dup"
+        d.mkdir(parents=True)
+        (d / "state.yaml").write_text("slug: dup\n")
+    monkeypatch.chdir(root)
+    assert main(["work", "show", "Project-A/dup"]) == 1
+    assert "resolves to 2 items" in capsys.readouterr().err
