@@ -171,6 +171,45 @@ def descendant_nodes(root: Path) -> list[Path]:
     return found
 
 
+def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, str] | None":
+    """Resolve a (possibly qualified) work ref against `anchor`.
+
+    Bare slug (no '/')  -> (anchor store, slug)             [unchanged]
+    'sub/proj/<slug>'   -> (descendant-node store, <slug>)  [cross-node addressing]
+
+    The qualifier is the descendant node's path relative to `anchor`. A slug never
+    contains '/' (slugify -> [a-z0-9-]), so the final '/'-segment is always the
+    bare slug and everything before it the qualifier — unambiguous. If that
+    invariant changes, revisit this split.
+
+    Returns None when the qualifier is not a real node genuinely inside `anchor`:
+    an unknown path, a traversal/absolute/symlink *escape*, or a path through
+    `.git`/`.worktrees` (a `start --worktree` checkout copies the sentinel, so it
+    would otherwise look like a real node the board never emits). Equivalent to
+    `cd`-ing into the node, so it belongs in the FS adapter, not the abstract
+    store — cross-node addressing realized over the filesystem tree.
+    """
+    anchor = anchor.resolve()                      # lexical guards below need a real path
+    ref = ref.strip()
+    if ref.startswith("./"):
+        ref = ref[2:]
+    if "/" not in ref:                             # bare slug -> anchor node (unchanged)
+        return FsWorkStore.open(anchor), ref
+    qualifier, _, bare = ref.rpartition("/")
+    if not qualifier or not bare:                  # '/', '/slug', 'slug/' -> malformed
+        return None
+    target = (anchor / qualifier).resolve()
+    if not target.is_relative_to(anchor):          # '..' / absolute / symlink escape
+        return None
+    if set(target.relative_to(anchor).parts) & {".git", WORKTREES_DIR}:
+        return None                                # inside .git/.worktrees (resolved segs)
+    if target != anchor and not (                  # anchor itself is always a valid node
+        (target / SENTINEL).is_file() and (target / "docs" / "work").is_dir()
+    ):
+        return None                                # qualifier is not a real node
+    return FsWorkStore.open(target), bare
+
+
 def git_stage(node_root: Path, *paths: Path) -> None:
     subprocess.run(["git", "-C", str(node_root), "add", "--", *map(str, paths)], check=True)
 
