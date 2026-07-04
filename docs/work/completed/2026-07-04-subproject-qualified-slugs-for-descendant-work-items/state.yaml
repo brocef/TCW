@@ -2,4 +2,10 @@ slug: 2026-07-04-subproject-qualified-slugs-for-descendant-work-items
 title: Subproject-qualified slugs for descendant work items
 phase: ''
 created: '2026-07-04'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
