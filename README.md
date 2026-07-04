@@ -177,7 +177,10 @@ Each `tcw` invocation operates on the nearest `tcw-config.yaml` ancestor — so
 `cd project-b && tcw work list` shows project-b's board, not project-a's. To see
 them together, run `tcw work list --include-descendants` from the enclosing
 folder — it lists the current node's board plus every descendant node's, grouped
-by node.
+by node. Descendant items there carry a **subproject-qualified slug**
+(`sub/proj/<slug>`) that any work command accepts from the enclosing node
+(e.g. `tcw work show sub/proj/<slug>`) — resolving to that descendant item just as
+`cd sub/proj && tcw work show <slug>` would.
 
 Taxonomy `extends` works across sibling subfolder projects. Add an `extends`
 block in `project-b/docs/taxonomy/config.yaml` pointing at the sibling:
@@ -208,7 +211,12 @@ shortcut (`tcw taxonomy <path>` == `tcw taxonomy show <path>`).
 tcw serve                    # http://127.0.0.1:8765/ and open a browser
 tcw serve --no-open           # start the server without opening a browser
 tcw serve --port 9000         # choose a different loopback port
+tcw serve --include-descendants   # also show descendant nodes' boards (qualified slugs)
 ```
+
+Pass `--include-descendants` to aggregate every descendant node's board alongside
+the current one (descendant items carry `sub/proj/<slug>` slugs, resolvable across
+the web app). Without the flag, `tcw serve` shows only the current node, unchanged.
 
 The app has tabs for the Work board, Taxonomy tree, and Capabilities ledger.
 Beyond browsing, you can **create and edit** any object directly from the
@@ -386,6 +394,15 @@ repo](#multiple-projects-in-one-repo)). The output is grouped by node, each
 board preceded by a `# <path>` header (`# .` for the current node, `# ./sub/proj`
 for a descendant, relative to the current node root), and the same `--status` /
 `--all` filters apply to every group.
+
+Descendant items are printed with a **subproject-qualified slug** —
+`sub/proj/<slug>` — so each printed slug is a usable address. You can pass that
+qualified slug to any work command from the enclosing node
+(`tcw work show sub/proj/<slug>`, `start`, `edit`, `complete`, `drop`, …); it
+resolves to the descendant item exactly as if you had `cd`-ed into `sub/proj/`
+first. A **bare** slug still resolves against the current node only. (`blocked-by:`
+refs shown on a qualified row stay node-local — they are bare slugs within that
+descendant.)
 
 `tcw work audit-work-backlog` reviews backlog items in board order and prints
 read-only cleanup recommendations. It flags likely duplicates or already-finished
