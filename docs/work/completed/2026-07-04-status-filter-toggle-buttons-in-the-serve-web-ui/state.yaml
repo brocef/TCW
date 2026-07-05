@@ -2,4 +2,10 @@ slug: 2026-07-04-status-filter-toggle-buttons-in-the-serve-web-ui
 title: Status filter toggle buttons in the serve web UI
 phase: ''
 created: '2026-07-04'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
