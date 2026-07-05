@@ -1251,7 +1251,7 @@ function renderStatusFilters() {
   statusFiltersEl.hidden = false;
   statusFiltersEl.innerHTML = WORK_STATUSES.map(function (s) {
     var on = state.statusFilter[s] !== false;
-    return '<button type="button" class="status-toggle' + (on ? " on" : "") +
+    return '<button type="button" class="status-toggle st-' + esc(s) + (on ? " on" : "") +
       '" data-status="' + esc(s) + '" aria-pressed="' + on + '">' + esc(s) + "</button>";
   }).join("");
   statusFiltersEl.querySelectorAll(".status-toggle").forEach(function (btn) {
@@ -1277,7 +1277,9 @@ function itemKey(item) {
 
 function itemMeta(item) {
   if (state.view === "work") {
-    return meta([item.status, item.effort && ("effort " + item.effort), item.complexity && ("complexity " + item.complexity)]);
+    var badge = '<span class="status-badge st-' + esc(item.status) + '">' + esc(item.status) + "</span>";
+    var extra = meta([item.effort && ("effort " + item.effort), item.complexity && ("complexity " + item.complexity)]);
+    return badge + (extra ? " " + extra : "");
   }
   if (state.view === "taxonomy") {
     return meta([item.kind, item.origin, item.slug]);

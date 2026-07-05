@@ -109,6 +109,13 @@ h1 {
   color: var(--ink);
 }
 
+/* Per-status accent (--st) — shared by the list-item badges and the filter
+   toggles so a status reads the same color in both places. */
+.st-inbox     { --st: #6d5bd0; }  /* violet */
+.st-backlog   { --st: #b45309; }  /* amber */
+.st-active    { --st: #1b6f68; }  /* teal */
+.st-completed { --st: #4b5563; }  /* slate */
+
 .status-filters {
   display: flex;
   flex-wrap: wrap;
@@ -122,23 +129,35 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
-  color: var(--muted);
+  color: var(--st, var(--muted));   /* status hue even when off */
   font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
   cursor: pointer;
-  opacity: 0.65;
+  opacity: 0.7;
 }
 
 .status-toggle.on {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
+  background: var(--st, var(--accent));
+  color: #fff;
+  border-color: var(--st, var(--accent));
   opacity: 1;
 }
 
 .status-toggle:hover {
-  border-color: var(--accent);
+  opacity: 1;
+}
+
+/* Colored status pill on each work list item. */
+.status-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--st, var(--muted));
+  background: color-mix(in srgb, var(--st, var(--muted)) 14%, transparent);
 }
 
 .list {
