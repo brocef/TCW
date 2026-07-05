@@ -13,3 +13,7 @@ category, with commit hash ranges so entries trace back to source.
   backend/API change); the toggle bar renders in the Work view only and composes
   with the existing text filter (AND). `state.statusFilter` is derived from a new
   `WORK_STATUSES` constant so it can't drift from the button set.
+- ddfde06..HEAD — Per-status color coding in the same board: a `--st` accent per
+  status (violet inbox / amber backlog / teal active / slate completed) shared by
+  each list item's status badge and the matching filter toggle, so a status reads
+  the same color in both. Falls back to muted for an unexpected status.
