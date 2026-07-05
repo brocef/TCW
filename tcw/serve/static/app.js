@@ -32,11 +32,18 @@
 // STATE
 // ============================================================
 
+// Work status vocabulary (mirrors WORK_STATUSES in tcw/store/base.py), in
+// lifecycle order. Drives the status-filter toggle bar on the Work board.
+const WORK_STATUSES = ["inbox", "backlog", "active", "completed"];
+
 const state = {
   view: "work",
   data: { work: [], taxonomy: [], capabilities: [] },
   selected: null,
   filter: "",
+  // Which work statuses are visible; completed hidden by default. Derived from
+  // WORK_STATUSES so the map can't drift from the toggle-button set.
+  statusFilter: Object.fromEntries(WORK_STATUSES.map(function (s) { return [s, s !== "completed"]; })),
   cachedWorkDetail: null, // payload cached by renderWork for editor use
   cachedTaxonomyDetail: null,
   cachedCapabilityDetail: null,
@@ -140,6 +147,7 @@ const detail = document.querySelector("#detail");
 const summary = document.querySelector("#summary");
 const filterEl = document.querySelector("#filter");
 const listTitle = document.querySelector("#list-title");
+const statusFiltersEl = document.querySelector("#status-filters");
 const toast = document.querySelector("#toast");
 
 // ============================================================
@@ -1192,6 +1200,7 @@ function render() {
     state.data.taxonomy.length + " taxonomy · " +
     state.data.capabilities.length + " capabilities";
   summary.textContent = counts;
+  renderStatusFilters();
   renderList();
   if (editor.mode) {
     renderEditor();
@@ -1222,9 +1231,36 @@ function renderEditor() {
 
 function currentItems() {
   var items = state.data[state.view] || [];
+  if (state.view === "work") {
+    // Hide a status only when its toggle is explicitly off; unknown statuses stay.
+    items = items.filter(function (item) { return state.statusFilter[item.status] !== false; });
+  }
   if (!state.filter) return items;
   var q = state.filter.toLowerCase();
   return items.filter(function (item) { return JSON.stringify(item).toLowerCase().includes(q); });
+}
+
+// Toggle bar above the work list: one button per status, on = visible. Work view
+// only (statuses are a work concept); re-renders on toggle.
+function renderStatusFilters() {
+  if (state.view !== "work") {
+    statusFiltersEl.hidden = true;
+    statusFiltersEl.innerHTML = "";
+    return;
+  }
+  statusFiltersEl.hidden = false;
+  statusFiltersEl.innerHTML = WORK_STATUSES.map(function (s) {
+    var on = state.statusFilter[s] !== false;
+    return '<button type="button" class="status-toggle' + (on ? " on" : "") +
+      '" data-status="' + esc(s) + '" aria-pressed="' + on + '">' + esc(s) + "</button>";
+  }).join("");
+  statusFiltersEl.querySelectorAll(".status-toggle").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var s = btn.dataset.status;
+      state.statusFilter[s] = !state.statusFilter[s];  // flip (always a defined bool)
+      render();
+    });
+  });
 }
 
 function itemTitle(item) {
