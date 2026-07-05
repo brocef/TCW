@@ -218,8 +218,11 @@ Pass `--include-descendants` to aggregate every descendant node's board alongsid
 the current one (descendant items carry `sub/proj/<slug>` slugs, resolvable across
 the web app). Without the flag, `tcw serve` shows only the current node, unchanged.
 
-The app has tabs for the Work board, Taxonomy tree, and Capabilities ledger.
-Beyond browsing, you can **create and edit** any object directly from the
+The app has tabs for the Work board, Taxonomy tree, and Capabilities ledger. The
+Work board carries a row of **status-filter toggles** (`inbox` / `backlog` /
+`active` / `completed`) above the list — toggle one on to show items of that
+status. `completed` is hidden by default; the toggles compose with the text
+filter. Beyond browsing, you can **create and edit** any object directly from the
 browser:
 
 - **Work items** — create new items with all fields (title, priority, effort,
