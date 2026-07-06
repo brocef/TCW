@@ -157,8 +157,8 @@ class TestLoneProject:
         st.add("User")
         assert st.get("admin").name == "Admin"
         assert st.get("admin/permission").slug == "admin/permission"
-        assert {t.slug for t in st.list()} == {"admin", "admin/permission", "user"}
-        assert {t.slug for t in st.list(local_only=True)} == {"admin", "admin/permission", "user"}
+        assert {t.slug for t in st.list_all()} == {"admin", "admin/permission", "user"}
+        assert {t.slug for t in st.list_all(local_only=True)} == {"admin", "admin/permission", "user"}
         assert st.search("admin")
         assert not st.search("nonexistent")
 
@@ -189,7 +189,7 @@ class TestLoneProject:
         st = FsCapabilitiesStore.open(root)
         st.add("routes/login", name="Sign in")
         st.add("api/auth", name="Auth", folder=True)
-        assert {c.file_id for c in st.list()} == {"routes/login", "api/auth"}
+        assert {c.file_id for c in st.list_all()} == {"routes/login", "api/auth"}
         assert any(c.name == "Sign in" for c in st.search("sign"))
 
     def test_capabilities_set_status(self, tmp_path):

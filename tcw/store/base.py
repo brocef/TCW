@@ -8,6 +8,12 @@ add their interfaces here in their phases. The shared tree-store core is
 extracted in Phase 4 — not pre-abstracted here.
 """
 
+# Defer annotation evaluation (PEP 563): the store interfaces use forward refs
+# (`"TermDetail" | None`) and self-referential dataclass fields that only resolve
+# lazily. Without this, importing on Python 3.11–3.13 raises at class-definition
+# time. Python 3.14 defers natively (PEP 649); this keeps <3.14 working too.
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -60,7 +66,7 @@ class TaxonomyStore(ABC):
     """The taxonomy axis: a forest of terms, optionally federated via `extends`."""
 
     @abstractmethod
-    def list(self, local_only: bool = False) -> list[Term]:
+    def list_all(self, local_only: bool = False) -> list[Term]:
         """All terms (local + inherited), each flagged by `origin`."""
 
     @abstractmethod
@@ -225,7 +231,7 @@ class CapabilitiesStore(ABC):
     """
 
     @abstractmethod
-    def list(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
+    def list_all(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
         ...
 
     @abstractmethod

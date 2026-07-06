@@ -53,7 +53,7 @@ def _list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    for c in st.list(status=args.status, namespace=args.namespace):
+    for c in st.list_all(status=args.status, namespace=args.namespace):
         print(f"[{c.status}]\t{c.ref}\t{c.name}")
     return 0
 

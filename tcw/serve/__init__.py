@@ -585,7 +585,7 @@ class TcwHandler(BaseHTTPRequestHandler):
         # ── Taxonomy routes ──
 
         if path == "/api/taxonomy":
-            self._send_json(HTTPStatus.OK, taxonomy.list())
+            self._send_json(HTTPStatus.OK, taxonomy.list_all())
             return
 
         # GET /api/taxonomy/<ref> — detail with revision
@@ -610,7 +610,7 @@ class TcwHandler(BaseHTTPRequestHandler):
         # ── Capability routes ──
 
         if path == "/api/capabilities":
-            self._send_json(HTTPStatus.OK, capabilities.list())
+            self._send_json(HTTPStatus.OK, capabilities.list_all())
             return
 
         # GET /api/capabilities/<ref> — detail with revision

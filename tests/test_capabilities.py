@@ -101,10 +101,10 @@ def test_resolution_forms(tmp_path):
 
 def test_list_search_show(tmp_path):
     st = FsCapabilitiesStore.open(small_tree(tmp_path))
-    ids = {c.file_id for c in st.list()}
+    ids = {c.file_id for c in st.list_all()}
     assert {"routes/login", "api/auth/login", "components/button"} <= ids
-    assert st.list(namespace="routes") and all(
-        c.file_id.startswith("routes") for c in st.list(namespace="routes"))
+    assert st.list_all(namespace="routes") and all(
+        c.file_id.startswith("routes") for c in st.list_all(namespace="routes"))
     assert any(c.file_id == "routes/login" for c in st.search("signs in"))
 
 

@@ -6,6 +6,10 @@ adapters land here in their phases; the genuinely-shared primitives get factored
 into a tree-store core in Phase 4 (don't pre-abstract — AGENTS.md).
 """
 
+# Defer annotation evaluation (PEP 563) so forward refs like `"TermDetail" | None`
+# don't raise at class-definition time on Python 3.11–3.13. See tcw/store/base.py.
+from __future__ import annotations
+
 import hashlib
 import os
 import re
@@ -491,7 +495,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         return sorted(
             str(p.relative_to(self.root)) for p in self.root.rglob("*") if p.is_dir())
 
-    def list(self, local_only: bool = False) -> list[Term]:
+    def list_all(self, local_only: bool = False) -> list[Term]:
         terms = [self._term(s) for s in self._local_slugs()]
         if not local_only:
             for alias, st in self.extends.items():
@@ -523,7 +527,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
     def search(self, query: str) -> list[Term]:
         q = query.lower()
-        return [t for t in self.list()
+        return [t for t in self.list_all()
                 if q in t.name.lower() or q in t.description.lower()]
 
     # -- writes --
@@ -594,7 +598,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
     def relators(self, slug: str) -> list[str]:
         """Local term slugs whose `relatesTo` points at `slug` (for rm warnings)."""
-        return [t.slug for t in self.list(local_only=True)
+        return [t.slug for t in self.list_all(local_only=True)
                 if any(r == slug or r.rsplit("/", 1)[-1] == slug for r in t.relates_to)]
 
     # -- validation --
@@ -620,7 +624,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             if alias in top_level:
                 problems.append(f"alias '{alias}' collides with local top-level term")
 
-        for term in self.list(local_only=True):
+        for term in self.list_all(local_only=True):
             if term.kind not in TAXONOMY_KINDS:
                 problems.append(f"{term.slug}: unknown kind '{term.kind}'")
             for ref in term.relates_to:
@@ -878,7 +882,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return None
         return parse_capability_file(self._disk_id(fp), fp.read_text(encoding="utf-8"))
 
-    def list(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
+    def list_all(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
         caps: list[Capability] = []
         for p in self._cap_files():
             for c in parse_capability_file(self._disk_id(p), p.read_text(encoding="utf-8")).capabilities:

@@ -92,10 +92,10 @@ def consumer_with_shared(tmp_path, alias="shared", local_dup=False):
 def test_list_flags_inherited_origin(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
-    by_slug = {t.slug: t for t in st.list()}
+    by_slug = {t.slug: t for t in st.list_all()}
     assert by_slug["Argument"].origin == "shared"
     assert st.get("shared/Argument").qualified == "shared/Argument"
-    assert FsTaxonomyStore.open(cons).list(local_only=True) == []
+    assert FsTaxonomyStore.open(cons).list_all(local_only=True) == []
 
 
 def test_resolution_unique_extended(tmp_path):
@@ -276,7 +276,7 @@ def test_extends_add_writes_map_and_resolves(tmp_path):
     consumer = node(tmp_path, "consumer")
     FsTaxonomyStore.open(consumer).extends_add("shared", "../base")
     st = FsTaxonomyStore.open(consumer)            # reopen to load the new federation
-    assert "shared/widget" in {t.qualified for t in st.list()}
+    assert "shared/widget" in {t.qualified for t in st.list_all()}
     assert st.get("shared/widget").name == "Widget"
 
 

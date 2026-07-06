@@ -53,7 +53,7 @@ def _list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    for t in sorted(st.list(local_only=args.local), key=lambda t: (t.origin != "local", t.qualified)):
+    for t in sorted(st.list_all(local_only=args.local), key=lambda t: (t.origin != "local", t.qualified)):
         indent = "  " * t.slug.count("/")
         marker = {"Feature": "F", "Vocabulary": "V"}.get(t.kind, "?")
         print(f"{indent}{t.slug.rsplit('/', 1)[-1]}  [{marker}] ({t.origin})")
