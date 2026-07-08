@@ -42,3 +42,14 @@ Commit range: `494d693..HEAD` (branch `web-viewer-improvements`).
 
 ### Removed
 - `tcw serve --include-descendants` flag (now the default behavior).
+
+## Node-scan performance
+
+### Fixed
+- `child_nodes()` and `descendant_nodes()` (`tcw/store/fs.py`) walked the entire
+  subtree — `child_nodes` spawning a `git` subprocess per directory — pruning only
+  `.git`/`.worktrees`. In a multi-repo workspace with `node_modules`, this hung
+  `tcw work complete <epic>` / `nodes` / `reconcile` for minutes (and pushed users
+  to `--force`, skipping the open-children safety walk). Both now prune a shared
+  `NODE_SCAN_SKIP = {".git", ".worktrees", "node_modules"}`; `child_nodes` also
+  skips dot-directories. Genuine nested nodes are still discovered.

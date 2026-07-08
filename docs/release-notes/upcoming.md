@@ -28,3 +28,7 @@ The `tcw serve` web app got a round of improvements:
 
 - Opening a taxonomy term that a project **inherits** from another project no longer
   errors out — it now displays correctly.
+- Working with epics in a multi-repo workspace no longer hangs. Completing,
+  reconciling, or listing nodes across projects that have `node_modules` (or other
+  dependency folders) is now fast, and completing an epic no longer needs `--force`
+  to get past the slowdown — so its open-children safety check keeps working.
