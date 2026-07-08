@@ -80,6 +80,15 @@ def test_descendant_nodes_skips_worktrees_and_git(tmp_path):
     assert descendant_nodes(tmp_path) == []
 
 
+def test_descendant_nodes_prunes_node_modules(tmp_path):
+    # descendant_nodes is on the `tcw serve` hot path; it must not chew through a
+    # dependency dir (which can't hold a genuine node anyway).
+    _work_node(tmp_path)
+    a = _work_node(tmp_path / "Project-A")
+    _work_node(tmp_path / "node_modules" / "pkg")   # sentinel buried in deps
+    assert descendant_nodes(tmp_path) == [a]
+
+
 def test_descendant_nodes_skips_symlink_cycle(tmp_path):
     _work_node(tmp_path)
     a = _work_node(tmp_path / "Project-A")

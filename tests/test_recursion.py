@@ -55,6 +55,27 @@ def test_child_nodes_finds_children_excludes_own_worktree_keeps_nested_repo(tmp_
     assert plain_repo.resolve() not in found               # repo without docs/work is not a node
 
 
+def test_child_nodes_prunes_node_modules_and_dotdirs(tmp_path, monkeypatch):
+    # Regression: child_nodes walked the whole tree spawning git_root() per dir,
+    # hanging on node_modules. It must skip node_modules and dot-dirs entirely.
+    import tcw.store.fs as fs
+    parent = mk_node(tmp_path, "parent")
+    subprocess.run(["git", "-C", str(parent), "add", "docs"], check=True)
+    subprocess.run(["git", "-C", str(parent), "commit", "-qm", "init"], check=True)
+    real = mk_node(parent, "child")                        # genuine child node
+    mk_node(parent / "node_modules" / "pkg", "buried")     # decoy node in deps
+    mk_node(parent / ".cache", "hidden")                   # decoy node in a dot-dir
+
+    seen = []
+    orig = fs.git_root
+    monkeypatch.setattr(fs, "git_root", lambda p: (seen.append(str(p)), orig(p))[1])
+
+    found = {str(p.resolve()) for p in fs.child_nodes(parent)}
+    assert str(real.resolve()) in found
+    assert not any("node_modules" in p or "/.cache" in p for p in found)  # pruned
+    assert not any("node_modules" in p for p in seen)      # no git spawn under node_modules
+
+
 def test_parent_node(tmp_path):
     parent = mk_node(tmp_path, "parent")
     child = mk_node(parent, "child")

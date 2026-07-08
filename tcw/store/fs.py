@@ -115,15 +115,18 @@ def child_nodes(root: Path) -> list[Path]:
     Descent stops at each found node (its children are its own — A.2). Excludes
     `root`'s own linked worktrees: a candidate whose git-common-dir equals
     `root`'s is the same logical node, not a child. FS-adapter-local.
-    ponytail: shells out per dir and walks the whole tree — fine for a docs
-    repo; prune by .gitignore only if it ever bites.
+    Shells `git_root` per dir, so it prunes NODE_SCAN_SKIP and all dot-dirs (a
+    child node lives in a plainly-named dir) — else a `node_modules/` would mean a
+    git spawn per package dir, which hung epic-complete/nodes/reconcile.
     """
     root = root.resolve()
     own_common = _git_common_dir(root)
     found: list[Path] = []
 
     def walk(d: Path) -> None:
-        for child in sorted(p for p in d.iterdir() if p.is_dir() and p.name != ".git"):
+        for child in sorted(p for p in d.iterdir()
+                            if p.is_dir() and p.name not in NODE_SCAN_SKIP
+                            and not p.name.startswith(".")):
             top = git_root(child)
             is_node = (top is not None and top.resolve() == child.resolve()
                        and (child / "docs" / "work").is_dir())
@@ -157,9 +160,9 @@ def descendant_nodes(root: Path) -> list[Path]:
     children. Transitive: descends past found nodes so nested nodes are returned
     too. Skips symlinked dirs (cycle-safe; we don't chase symlinked trees). Returned
     depth-first, path-sorted (deterministic). FS-adapter-local.
-    ponytail: walks the whole tree pruning .git/.worktrees by name — the only
-    sentinel-bearing noise (a --worktree checkout copies the sentinel). Prune more
-    (or handle a real dir literally named .worktrees) only if it ever bites.
+    ponytail: walks the whole tree pruning NODE_SCAN_SKIP by name — VCS/worktree
+    noise plus node_modules (this is on the `tcw serve` descendant path). Prune
+    more (or handle a real dir literally named .worktrees) only if it ever bites.
     """
     root = root.resolve()
     found: list[Path] = []
@@ -167,7 +170,7 @@ def descendant_nodes(root: Path) -> list[Path]:
     def walk(d: Path) -> None:
         for child in sorted(p for p in d.iterdir()
                             if p.is_dir() and not p.is_symlink()
-                            and p.name not in (".git", WORKTREES_DIR)):
+                            and p.name not in NODE_SCAN_SKIP):
             if (child / SENTINEL).is_file() and (child / "docs" / "work").is_dir():
                 found.append(child)
             walk(child)                    # transitive — nested nodes count too
@@ -231,6 +234,12 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
 
 
 WORKTREES_DIR = ".worktrees"
+
+# Directory names never descended when scanning a workspace for TCW nodes: VCS
+# internals, the worktree store, and heavy dependency dirs that can't hold a node.
+# ponytail: name-based prune; make it .gitignore-aware only if some other build
+# dir (dist/, target/, vendor/) ever causes a slow scan.
+NODE_SCAN_SKIP = {".git", WORKTREES_DIR, "node_modules"}
 
 
 def git_commit(node_root: Path, message: str, *paths: str) -> None:
