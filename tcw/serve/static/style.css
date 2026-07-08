@@ -76,8 +76,21 @@ h1 {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(260px, 34vw) 1fr;
+  grid-template-columns: var(--list-width, minmax(260px, 34vw)) 6px 1fr;
   min-height: calc(100vh - 78px);
+}
+
+/* Drag handles for the two resizable splits (list↔detail, editor↔preview). */
+.col-resizer,
+.md-resizer {
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.col-resizer:hover,
+.md-resizer:hover {
+  background: var(--accent);
 }
 
 .list-pane {
@@ -348,6 +361,12 @@ h1 {
   .md-editor {
     grid-template-columns: 1fr;
   }
+
+  /* Single-column layout has no split to drag. */
+  .col-resizer,
+  .md-resizer {
+    display: none;
+  }
 }
 
 /* ── Detail actions (Edit button in header) ─────────────────────────── */
@@ -522,7 +541,7 @@ h1 {
 
 .md-editor {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: var(--md-split, 1fr) 6px 1fr;
   gap: 12px;
   min-height: 300px;
 }

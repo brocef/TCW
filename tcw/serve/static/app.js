@@ -333,6 +333,58 @@ function updatePreview(md, previewEl) {
 }
 
 // ============================================================
+// RESIZABLE SPLITS
+// ============================================================
+
+/**
+ * Make a 2-pane CSS grid resizable by dragging `handleEl`. The first track width
+ * is written to `cssVar` (as px) on the grid element. `min`/`max` are fractions
+ * of the grid width. If `persistKey` is set, the width is saved to localStorage
+ * (best-effort — a SecurityError in private mode is swallowed, never crashes).
+ */
+function makeResizable(gridEl, handleEl, cssVar, opts) {
+  opts = opts || {};
+  var min = opts.min != null ? opts.min : 0.15;
+  var max = opts.max != null ? opts.max : 0.85;
+  handleEl.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    handleEl.setPointerCapture(e.pointerId);
+    var rect = gridEl.getBoundingClientRect();
+    function onMove(ev) {
+      var frac = (ev.clientX - rect.left) / rect.width;
+      frac = Math.max(min, Math.min(max, frac));
+      var px = Math.round(frac * rect.width);
+      gridEl.style.setProperty(cssVar, px + "px");
+      if (opts.persistKey) {
+        try { localStorage.setItem(opts.persistKey, px + "px"); } catch (_e) { /* no persist */ }
+      }
+    }
+    function onUp() {
+      handleEl.removeEventListener("pointermove", onMove);
+      handleEl.removeEventListener("pointerup", onUp);
+    }
+    handleEl.addEventListener("pointermove", onMove);
+    handleEl.addEventListener("pointerup", onUp);
+  });
+}
+
+/**
+ * Inject a drag handle into the markdown editor grid (if one was just rendered)
+ * and make the textarea/preview split resizable. No persistence — the editor is
+ * re-created per session. Sidecar editors have no preview, so this is a no-op.
+ */
+function setupMdResizer() {
+  var grid = detail.querySelector(".md-editor");
+  if (!grid) return;
+  var preview = grid.querySelector(".md-preview");
+  if (!preview || grid.querySelector(".md-resizer")) return;
+  var handle = document.createElement("div");
+  handle.className = "md-resizer";
+  grid.insertBefore(handle, preview);
+  makeResizable(grid, handle, "--md-split", { min: 0.15, max: 0.85 });
+}
+
+// ============================================================
 // EDITOR STATE MANAGEMENT
 // ============================================================
 
@@ -1208,6 +1260,7 @@ function render() {
   renderList();
   if (editor.mode) {
     renderEditor();
+    setupMdResizer();
   } else {
     renderDetail();
   }
@@ -2725,5 +2778,18 @@ filterEl.addEventListener("input", function () {
   state.selected = null;
   render();
 });
+
+// Resizable list column: restore saved width, then wire the drag handle.
+(function initColResizer() {
+  var shell = document.querySelector(".shell");
+  var handle = document.querySelector("#colResizer");
+  if (!shell || !handle) return;
+  try {
+    var saved = localStorage.getItem("tcw.listWidth");
+    if (saved) shell.style.setProperty("--list-width", saved);
+  } catch (_e) { /* no restore */ }
+  makeResizable(shell, handle, "--list-width",
+    { min: 0.12, max: 0.6, persistKey: "tcw.listWidth" });
+})();
 
 load();
