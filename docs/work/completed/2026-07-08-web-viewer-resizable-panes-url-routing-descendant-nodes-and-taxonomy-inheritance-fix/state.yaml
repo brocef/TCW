@@ -3,4 +3,10 @@ title: 'Web viewer: resizable panes, URL routing, descendant nodes, and taxonomy
   fix'
 phase: ''
 created: '2026-07-08'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
