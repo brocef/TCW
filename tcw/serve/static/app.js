@@ -36,6 +36,10 @@
 // lifecycle order. Drives the status-filter toggle bar on the Work board.
 const WORK_STATUSES = ["inbox", "backlog", "active", "completed"];
 
+// Top-to-bottom grouping order for the work list (distinct from the lifecycle
+// order above, which drives the status-filter toggles). Do not conflate the two.
+const WORK_STATUS_GROUP_ORDER = ["active", "backlog", "inbox", "completed"];
+
 const state = {
   view: "work",
   data: { work: [], taxonomy: [], capabilities: [] },
@@ -326,6 +330,58 @@ function updatePreview(md, previewEl) {
   } catch (e) {
     previewEl.textContent = "Preview render error: " + e.message;
   }
+}
+
+// ============================================================
+// RESIZABLE SPLITS
+// ============================================================
+
+/**
+ * Make a 2-pane CSS grid resizable by dragging `handleEl`. The first track width
+ * is written to `cssVar` (as px) on the grid element. `min`/`max` are fractions
+ * of the grid width. If `persistKey` is set, the width is saved to localStorage
+ * (best-effort — a SecurityError in private mode is swallowed, never crashes).
+ */
+function makeResizable(gridEl, handleEl, cssVar, opts) {
+  opts = opts || {};
+  var min = opts.min != null ? opts.min : 0.15;
+  var max = opts.max != null ? opts.max : 0.85;
+  handleEl.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    handleEl.setPointerCapture(e.pointerId);
+    var rect = gridEl.getBoundingClientRect();
+    function onMove(ev) {
+      var frac = (ev.clientX - rect.left) / rect.width;
+      frac = Math.max(min, Math.min(max, frac));
+      var px = Math.round(frac * rect.width);
+      gridEl.style.setProperty(cssVar, px + "px");
+      if (opts.persistKey) {
+        try { localStorage.setItem(opts.persistKey, px + "px"); } catch (_e) { /* no persist */ }
+      }
+    }
+    function onUp() {
+      handleEl.removeEventListener("pointermove", onMove);
+      handleEl.removeEventListener("pointerup", onUp);
+    }
+    handleEl.addEventListener("pointermove", onMove);
+    handleEl.addEventListener("pointerup", onUp);
+  });
+}
+
+/**
+ * Inject a drag handle into the markdown editor grid (if one was just rendered)
+ * and make the textarea/preview split resizable. No persistence — the editor is
+ * re-created per session. Sidecar editors have no preview, so this is a no-op.
+ */
+function setupMdResizer() {
+  var grid = detail.querySelector(".md-editor");
+  if (!grid) return;
+  var preview = grid.querySelector(".md-preview");
+  if (!preview || grid.querySelector(".md-resizer")) return;
+  var handle = document.createElement("div");
+  handle.className = "md-resizer";
+  grid.insertBefore(handle, preview);
+  makeResizable(grid, handle, "--md-split", { min: 0.15, max: 0.85 });
 }
 
 // ============================================================
@@ -1196,14 +1252,15 @@ function render() {
     tab.classList.toggle("active", tab.dataset.view === state.view);
   });
   listTitle.textContent = labels[state.view];
-  var counts = state.data.work.length + " work · " +
-    state.data.taxonomy.length + " taxonomy · " +
-    state.data.capabilities.length + " capabilities";
+  var counts = state.data.taxonomy.length + " taxonomy · " +
+    state.data.capabilities.length + " capabilities · " +
+    state.data.work.length + " work items";
   summary.textContent = counts;
   renderStatusFilters();
   renderList();
   if (editor.mode) {
     renderEditor();
+    setupMdResizer();
   } else {
     renderDetail();
   }
@@ -1287,6 +1344,37 @@ function itemMeta(item) {
   return meta([item.status, item.file_id]);
 }
 
+// One list row. Work rows are wrapped so a copy-slug button can sit beside the
+// (full-width) item button — a button can't nest inside another button.
+function itemRowHtml(item) {
+  var key = itemKey(item);
+  var active = state.selected === key ? " active" : "";
+  var btn = '<button class="item' + active + '" type="button" data-key="' + esc(key) + '">' +
+    '<div class="item-title">' + esc(itemTitle(item)) + "</div>" +
+    '<div class="item-meta">' + itemMeta(item) + "</div></button>";
+  if (state.view !== "work") return btn;
+  var copyBtn = '<button class="copy-slug" type="button" data-slug="' + esc(key) +
+    '" title="Copy slug" aria-label="Copy slug to clipboard">&#9112;</button>';
+  return '<div class="item-row">' + btn + copyBtn + "</div>";
+}
+
+// Work list grouped under status headers in WORK_STATUS_GROUP_ORDER; empty groups
+// are skipped; unknown statuses (shouldn't occur) fall after the known ones.
+function groupedWorkHtml(items) {
+  var order = WORK_STATUS_GROUP_ORDER.slice();
+  var seen = {};
+  order.forEach(function (s) { seen[s] = true; });
+  items.forEach(function (it) {
+    if (!seen[it.status]) { order.push(it.status); seen[it.status] = true; }
+  });
+  return order.map(function (status) {
+    var group = items.filter(function (it) { return it.status === status; });
+    if (!group.length) return "";
+    return '<div class="status-group">' + esc(status) + "</div>" +
+      group.map(itemRowHtml).join("");
+  }).join("");
+}
+
 function renderList() {
   var items = currentItems();
   var createHtml = '<button class="create-btn" type="button">+ Create ' + esc(labels[state.view]) + "</button>";
@@ -1296,15 +1384,10 @@ function renderList() {
       '<p class="empty">No ' + esc(labels[state.view].toLowerCase()) + ' entries.</p>' +
       createHtml;
   } else {
-    listEl.innerHTML =
-      items.map(function (item) {
-        var key = itemKey(item);
-        var active = state.selected === key ? " active" : "";
-        return '<button class="item' + active + '" type="button" data-key="' + esc(key) + '">' +
-          '<div class="item-title">' + esc(itemTitle(item)) + "</div>" +
-          '<div class="item-meta">' + itemMeta(item) + "</div></button>";
-      }).join("") +
-      createHtml;
+    var listHtml = state.view === "work"
+      ? groupedWorkHtml(items)
+      : items.map(itemRowHtml).join("");
+    listEl.innerHTML = listHtml + createHtml;
   }
 
   listEl.querySelectorAll(".item").forEach(function (button) {
@@ -1312,7 +1395,21 @@ function renderList() {
       if (editor.mode && !canLeaveEditor()) return;
       exitEditor();
       state.selected = button.dataset.key;
+      pushRoute();
       render();
+    });
+  });
+
+  // Copy-slug buttons (work view). Sibling of .item, so it won't select the row.
+  listEl.querySelectorAll(".copy-slug").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var slug = btn.dataset.slug;
+      navigator.clipboard.writeText(slug).then(function () {
+        showToast("Copied: " + slug);
+      }).catch(function () {
+        showToast("Copy failed");
+      });
     });
   });
 
@@ -1333,9 +1430,10 @@ function renderList() {
 // ============================================================
 
 function selectedItem() {
-  var items = currentItems();
-  if (!items.length) return null;
-  return items.find(function (item) { return itemKey(item) === state.selected; }) || items[0];
+  // No auto-open fallback: a bare list URL (/work, /taxonomy) shows the list with
+  // an empty detail pane until the user (or a deep link) selects an item.
+  if (!state.selected) return null;
+  return currentItems().find(function (item) { return itemKey(item) === state.selected; }) || null;
 }
 
 function renderDetail() {
@@ -2642,6 +2740,58 @@ window.addEventListener("beforeunload", function (e) {
 // INITIALIZATION
 // ============================================================
 
+// ============================================================
+// URL ROUTING (History API — real paths, deep-linkable)
+// ============================================================
+//
+// URL scheme: /{namespace}/{axis}/{identifier}, axis ∈ work|taxonomy|capabilities.
+// The object key = namespace + "/" + identifier; local objects have no namespace.
+// For work, the (subproject) namespace precedes the axis: /sub/proj/work/<slug>.
+// For taxonomy/capabilities the namespace is always empty: /taxonomy/<ref>.
+// Each path segment is percent-encoded (capability refs contain '#').
+
+const AXES = ["taxonomy", "capabilities", "work"];
+
+function parsePath(pathname) {
+  var segs = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  var axisIdx = -1;
+  for (var i = 0; i < segs.length; i++) {
+    if (AXES.indexOf(segs[i]) !== -1) { axisIdx = i; break; }
+  }
+  if (axisIdx === -1) return { axis: "work", key: null };   // "/" → work board
+  var rest = segs.slice(0, axisIdx).concat(segs.slice(axisIdx + 1));
+  return { axis: segs[axisIdx], key: rest.length ? rest.join("/") : null };
+}
+
+function pathFor(axis, key) {
+  if (!key) return "/" + axis;
+  if (axis === "work") {
+    var parts = key.split("/");
+    var slug = parts.pop();                       // namespace precedes the axis
+    return "/" + parts.concat(["work", slug]).map(encodeURIComponent).join("/");
+  }
+  return "/" + [axis].concat(key.split("/")).map(encodeURIComponent).join("/");
+}
+
+function currentPath() { return pathFor(state.view, state.selected); }
+
+function pushRoute() {
+  if (location.pathname !== currentPath()) history.pushState({}, "", currentPath());
+}
+
+function replaceRoute() { history.replaceState({}, "", currentPath()); }
+
+// Apply a parsed route to state. Selects the key only if it names a loaded object;
+// otherwise falls back to the axis list (no auto-open). `sync` rewrites the URL.
+function applyRoute(route, sync) {
+  state.view = route.axis;
+  var items = state.data[state.view] || [];
+  var found = route.key && items.some(function (it) { return itemKey(it) === route.key; });
+  state.selected = found ? route.key : null;
+  render();
+  if (sync) replaceRoute();
+}
+
 async function load() {
   try {
     var results = await Promise.all([
@@ -2652,12 +2802,30 @@ async function load() {
     state.data = { work: results[0], taxonomy: results[1], capabilities: results[2] };
     state.selected = null;
     render();
+    replaceRoute();                               // URL reflects the reset-to-list state
   } catch (err) {
     detail.innerHTML = '<p class="empty">Failed to load: ' + esc(err.message) +
       '</p><button class="retry" type="button">Retry</button>';
     detail.querySelector(".retry").addEventListener("click", load);
   }
 }
+
+// Initial load: honor a deep link in the URL.
+async function routedInit() {
+  var route = parsePath(location.pathname);
+  state.view = route.axis;
+  await load();                                   // loads data, renders the list
+  applyRoute(route, true);                         // then select the deep-linked object
+}
+
+window.addEventListener("popstate", function () {
+  if (editor.mode && !canLeaveEditor()) {
+    history.pushState({}, "", currentPath());     // cancelled — keep URL in sync with UI
+    return;
+  }
+  exitEditor();
+  applyRoute(parsePath(location.pathname), false); // URL already changed; don't re-sync
+});
 
 // Tab clicks - with dirty guard
 document.querySelectorAll(".tab").forEach(function (tab) {
@@ -2668,6 +2836,7 @@ document.querySelectorAll(".tab").forEach(function (tab) {
     }
     state.view = tab.dataset.view;
     state.selected = null;
+    pushRoute();
     render();
   });
 });
@@ -2680,7 +2849,21 @@ filterEl.addEventListener("input", function () {
   }
   state.filter = filterEl.value;
   state.selected = null;
+  replaceRoute();                                 // filtering clears any selection
   render();
 });
 
-load();
+// Resizable list column: restore saved width, then wire the drag handle.
+(function initColResizer() {
+  var shell = document.querySelector(".shell");
+  var handle = document.querySelector("#colResizer");
+  if (!shell || !handle) return;
+  try {
+    var saved = localStorage.getItem("tcw.listWidth");
+    if (saved) shell.style.setProperty("--list-width", saved);
+  } catch (_e) { /* no restore */ }
+  makeResizable(shell, handle, "--list-width",
+    { min: 0.12, max: 0.6, persistKey: "tcw.listWidth" });
+})();
+
+routedInit();

@@ -79,7 +79,7 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
 | see the board | `tcw work list [--status active]` (hides completed; `--all` to include; `--include-descendants` to also list every descendant node's board grouped by node — descendant items print a **subproject-qualified slug** `sub/proj/<slug>`; shows lifecycle artifact letters in the stages column; sorts by priority, then topologically) |
-| address a descendant item | pass a qualified `sub/proj/<slug>` to any work command (`show`/`path`/`start`/`edit`/`complete`/`drop`) from an enclosing node — resolves as if you `cd`-ed into `sub/proj/` first; a bare slug still resolves against the current node only (`tcw serve --include-descendants` does the same over the web app) |
+| address a descendant item | pass a qualified `sub/proj/<slug>` to any work command (`show`/`path`/`start`/`edit`/`complete`/`drop`) from an enclosing node — resolves as if you `cd`-ed into `sub/proj/` first; a bare slug still resolves against the current node only (`tcw serve` does the same over the web app — it aggregates descendant boards by default) |
 | audit backlog relevance | `tcw work audit-work-backlog` (read-only cleanup recommendations for stale, duplicate, broken, blocked, vague, or misplaced backlog items) |
 | migrate external plans | `tcw work consolidate-plans [PATH ...] [--apply] [--delete]` (dry-run first; converts external planning docs into backlog items) |
 | find item files | `tcw work path <slug>` |

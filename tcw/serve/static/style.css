@@ -76,8 +76,21 @@ h1 {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(260px, 34vw) 1fr;
+  grid-template-columns: var(--list-width, minmax(260px, 34vw)) 6px 1fr;
   min-height: calc(100vh - 78px);
+}
+
+/* Drag handles for the two resizable splits (list↔detail, editor↔preview). */
+.col-resizer,
+.md-resizer {
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.col-resizer:hover,
+.md-resizer:hover {
+  background: var(--accent);
 }
 
 .list-pane {
@@ -187,6 +200,50 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+/* Work rows: item button (full width) + copy-slug button pinned top-right. */
+.item-row {
+  position: relative;
+}
+
+.copy-slug {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.item-row:hover .copy-slug,
+.copy-slug:focus {
+  opacity: 1;
+}
+
+.copy-slug:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Status group header in the work list. */
+.status-group {
+  margin: 10px 4px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.status-group:first-child {
+  margin-top: 0;
 }
 
 .detail-pane {
@@ -303,6 +360,12 @@ h1 {
 
   .md-editor {
     grid-template-columns: 1fr;
+  }
+
+  /* Single-column layout has no split to drag. */
+  .col-resizer,
+  .md-resizer {
+    display: none;
   }
 }
 
@@ -478,7 +541,7 @@ h1 {
 
 .md-editor {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: var(--md-split, 1fr) 6px 1fr;
   gap: 12px;
   min-height: 300px;
 }

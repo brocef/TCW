@@ -419,6 +419,14 @@ class TcwHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, body, ctype)
             return
 
+        # SPA fallback: any non-API GET that isn't a known static asset serves the
+        # app shell, so History-API deep links / reloads work (/work/<slug>,
+        # /taxonomy, /sub/proj/work/<slug>, …). API paths keep their own 404s.
+        if not path.startswith("/api/"):
+            body, ctype = _static_bytes("index.html")
+            self._send(HTTPStatus.OK, body, ctype)
+            return
+
         work, taxonomy, capabilities = self._stores()
 
         # ── Work routes ──

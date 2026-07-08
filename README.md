@@ -211,19 +211,24 @@ shortcut (`tcw taxonomy <path>` == `tcw taxonomy show <path>`).
 tcw serve                    # http://127.0.0.1:8765/ and open a browser
 tcw serve --no-open           # start the server without opening a browser
 tcw serve --port 9000         # choose a different loopback port
-tcw serve --include-descendants   # also show descendant nodes' boards (qualified slugs)
 ```
 
-Pass `--include-descendants` to aggregate every descendant node's board alongside
-the current one (descendant items carry `sub/proj/<slug>` slugs, resolvable across
-the web app). Without the flag, `tcw serve` shows only the current node, unchanged.
+When the served node has **descendant TCW nodes** (the orchestrator/subproject
+pattern), `tcw serve` aggregates every descendant node's board alongside the
+current one automatically — the same items as `tcw work list --include-descendants`.
+Descendant items carry `sub/proj/<slug>` slugs, resolvable across the web app, and
+their URLs are namespaced (e.g. `/sub/proj/work/<slug>`).
 
-The app has tabs for the Work board, Taxonomy tree, and Capabilities ledger. The
-Work board carries a row of **status-filter toggles** (`inbox` / `backlog` /
-`active` / `completed`) above the list — toggle one on to show items of that
-status. `completed` is hidden by default; the toggles compose with the text
-filter. Beyond browsing, you can **create and edit** any object directly from the
-browser:
+The app has tabs for the Taxonomy tree, Capabilities ledger, and Work board, and
+its **URL reflects the current view** (`/taxonomy`, `/work/<slug>`, …) so any state
+is deep-linkable and Back/Forward work. The list/detail divider and the
+editor/preview split are **drag-resizable**. The Work board carries a row of
+**status-filter toggles** (`inbox` / `backlog` / `active` / `completed`) above the
+list — toggle one on to show items of that status; `completed` is hidden by
+default and the toggles compose with the text filter. Work items are **grouped by
+status** (active → backlog → inbox → completed) and each row has a button to copy
+its slug to the clipboard. Beyond browsing, you can **create and edit** any object
+directly from the browser:
 
 - **Work items** — create new items with all fields (title, priority, effort,
   complexity, blockers, parent, initiative); edit body and metadata; edit

@@ -94,6 +94,58 @@ def test_api_lists_all_three_axes(server):
     assert capabilities[0]["ref"] == "web#browse-tcw-content"
 
 
+def test_spa_fallback_serves_app_shell_for_app_routes(server):
+    # History-API deep links / reloads: a non-API, non-asset GET returns index.html.
+    base, slug = server
+    shell, _ = _static_bytes("index.html")
+    for route in ("/work/some-slug", "/taxonomy", "/sub/proj/work/foo"):
+        with urlopen(f"{base}{route}") as res:
+            assert res.status == 200
+            assert res.read() == shell
+
+
+def test_static_assets_still_serve_own_bytes(server):
+    # The SPA fallback must not shadow the real static files.
+    base, _ = server
+    with urlopen(f"{base}/app.js") as res:
+        assert b"routedInit" in res.read()
+    with urlopen(f"{base}/style.css") as res:
+        assert b".shell" in res.read()
+
+
+def test_unknown_api_route_still_404s(server):
+    base, _ = server
+    with pytest.raises(HTTPError) as exc:
+        urlopen(f"{base}/api/does-not-exist")
+    assert exc.value.code == 404
+
+
+def test_inherited_taxonomy_term_detail_is_200_not_500(tmp_path):
+    # Regression: selecting an inherited term returned 500 because get_term_detail
+    # read files under the extending store's root. Serve the qualified ref → 200.
+    shared = node(tmp_path)
+    FsTaxonomyStore.open(shared).add("Argument", slug="argument")
+    cons = tmp_path / "consumer"
+    cons.mkdir()
+    subprocess.run(["git", "init", "-q", str(cons)], check=True)
+    init(["taxonomy", "capabilities", "work"], cons)
+    (cons / "docs" / "taxonomy" / "config.yaml").write_text(
+        "extends:\n  shared: ../repo\n", encoding="utf-8")
+
+    httpd = TcwServer((HOST, 0), cons)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://{HOST}:{httpd.server_port}"
+        detail = get_json(base, "/api/taxonomy/shared%2Fargument")
+        assert detail["term"]["name"] == "Argument"
+        assert detail["term"]["origin"] == "shared"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=2)
+
+
 def test_work_detail_includes_artifacts_without_paths(server):
     base, slug = server
     payload = get_json(base, f"/api/work/{slug}")

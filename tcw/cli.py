@@ -53,8 +53,10 @@ def _not_yet(name: str):
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
+    # Descendant node boards are aggregated by default (like
+    # `tcw work list --include-descendants`).
     return serve(port=args.port, open_browser=not args.no_open,
-                 include_descendants=args.include_descendants)
+                 include_descendants=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,8 +74,6 @@ def build_parser() -> argparse.ArgumentParser:
                          help=f"loopback port to bind (default: {DEFAULT_PORT})")
     p_serve.add_argument("--no-open", action="store_true",
                          help="do not open a browser automatically")
-    p_serve.add_argument("--include-descendants", action="store_true",
-                         help="aggregate descendant node boards + resolve qualified slugs")
     p_serve.set_defaults(func=_cmd_serve)
 
     for mod in _BUILT:
