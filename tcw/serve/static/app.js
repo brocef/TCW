@@ -36,6 +36,10 @@
 // lifecycle order. Drives the status-filter toggle bar on the Work board.
 const WORK_STATUSES = ["inbox", "backlog", "active", "completed"];
 
+// Top-to-bottom grouping order for the work list (distinct from the lifecycle
+// order above, which drives the status-filter toggles). Do not conflate the two.
+const WORK_STATUS_GROUP_ORDER = ["active", "backlog", "inbox", "completed"];
+
 const state = {
   view: "work",
   data: { work: [], taxonomy: [], capabilities: [] },
@@ -1196,9 +1200,9 @@ function render() {
     tab.classList.toggle("active", tab.dataset.view === state.view);
   });
   listTitle.textContent = labels[state.view];
-  var counts = state.data.work.length + " work · " +
-    state.data.taxonomy.length + " taxonomy · " +
-    state.data.capabilities.length + " capabilities";
+  var counts = state.data.taxonomy.length + " taxonomy · " +
+    state.data.capabilities.length + " capabilities · " +
+    state.data.work.length + " work items";
   summary.textContent = counts;
   renderStatusFilters();
   renderList();
@@ -1287,6 +1291,37 @@ function itemMeta(item) {
   return meta([item.status, item.file_id]);
 }
 
+// One list row. Work rows are wrapped so a copy-slug button can sit beside the
+// (full-width) item button — a button can't nest inside another button.
+function itemRowHtml(item) {
+  var key = itemKey(item);
+  var active = state.selected === key ? " active" : "";
+  var btn = '<button class="item' + active + '" type="button" data-key="' + esc(key) + '">' +
+    '<div class="item-title">' + esc(itemTitle(item)) + "</div>" +
+    '<div class="item-meta">' + itemMeta(item) + "</div></button>";
+  if (state.view !== "work") return btn;
+  var copyBtn = '<button class="copy-slug" type="button" data-slug="' + esc(key) +
+    '" title="Copy slug" aria-label="Copy slug to clipboard">&#9112;</button>';
+  return '<div class="item-row">' + btn + copyBtn + "</div>";
+}
+
+// Work list grouped under status headers in WORK_STATUS_GROUP_ORDER; empty groups
+// are skipped; unknown statuses (shouldn't occur) fall after the known ones.
+function groupedWorkHtml(items) {
+  var order = WORK_STATUS_GROUP_ORDER.slice();
+  var seen = {};
+  order.forEach(function (s) { seen[s] = true; });
+  items.forEach(function (it) {
+    if (!seen[it.status]) { order.push(it.status); seen[it.status] = true; }
+  });
+  return order.map(function (status) {
+    var group = items.filter(function (it) { return it.status === status; });
+    if (!group.length) return "";
+    return '<div class="status-group">' + esc(status) + "</div>" +
+      group.map(itemRowHtml).join("");
+  }).join("");
+}
+
 function renderList() {
   var items = currentItems();
   var createHtml = '<button class="create-btn" type="button">+ Create ' + esc(labels[state.view]) + "</button>";
@@ -1296,15 +1331,10 @@ function renderList() {
       '<p class="empty">No ' + esc(labels[state.view].toLowerCase()) + ' entries.</p>' +
       createHtml;
   } else {
-    listEl.innerHTML =
-      items.map(function (item) {
-        var key = itemKey(item);
-        var active = state.selected === key ? " active" : "";
-        return '<button class="item' + active + '" type="button" data-key="' + esc(key) + '">' +
-          '<div class="item-title">' + esc(itemTitle(item)) + "</div>" +
-          '<div class="item-meta">' + itemMeta(item) + "</div></button>";
-      }).join("") +
-      createHtml;
+    var listHtml = state.view === "work"
+      ? groupedWorkHtml(items)
+      : items.map(itemRowHtml).join("");
+    listEl.innerHTML = listHtml + createHtml;
   }
 
   listEl.querySelectorAll(".item").forEach(function (button) {
@@ -1313,6 +1343,19 @@ function renderList() {
       exitEditor();
       state.selected = button.dataset.key;
       render();
+    });
+  });
+
+  // Copy-slug buttons (work view). Sibling of .item, so it won't select the row.
+  listEl.querySelectorAll(".copy-slug").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var slug = btn.dataset.slug;
+      navigator.clipboard.writeText(slug).then(function () {
+        showToast("Copied: " + slug);
+      }).catch(function () {
+        showToast("Copy failed");
+      });
     });
   });
 

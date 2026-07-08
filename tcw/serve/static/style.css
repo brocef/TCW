@@ -189,6 +189,50 @@ h1 {
   line-height: 1.35;
 }
 
+/* Work rows: item button (full width) + copy-slug button pinned top-right. */
+.item-row {
+  position: relative;
+}
+
+.copy-slug {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.item-row:hover .copy-slug,
+.copy-slug:focus {
+  opacity: 1;
+}
+
+.copy-slug:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Status group header in the work list. */
+.status-group {
+  margin: 10px 4px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.status-group:first-child {
+  margin-top: 0;
+}
+
 .detail-pane {
   padding: 18px 22px 40px;
   min-width: 0;
