@@ -2,4 +2,10 @@ slug: 2026-07-08-child-nodes-walk-hangs-on-node-modules-epic-complete-nodes-reco
 title: child_nodes walk hangs on node_modules (epic complete / nodes / reconcile)
 phase: ''
 created: '2026-07-08'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
