@@ -1395,6 +1395,7 @@ function renderList() {
       if (editor.mode && !canLeaveEditor()) return;
       exitEditor();
       state.selected = button.dataset.key;
+      pushRoute();
       render();
     });
   });
@@ -1429,9 +1430,10 @@ function renderList() {
 // ============================================================
 
 function selectedItem() {
-  var items = currentItems();
-  if (!items.length) return null;
-  return items.find(function (item) { return itemKey(item) === state.selected; }) || items[0];
+  // No auto-open fallback: a bare list URL (/work, /taxonomy) shows the list with
+  // an empty detail pane until the user (or a deep link) selects an item.
+  if (!state.selected) return null;
+  return currentItems().find(function (item) { return itemKey(item) === state.selected; }) || null;
 }
 
 function renderDetail() {
@@ -2738,6 +2740,58 @@ window.addEventListener("beforeunload", function (e) {
 // INITIALIZATION
 // ============================================================
 
+// ============================================================
+// URL ROUTING (History API — real paths, deep-linkable)
+// ============================================================
+//
+// URL scheme: /{namespace}/{axis}/{identifier}, axis ∈ work|taxonomy|capabilities.
+// The object key = namespace + "/" + identifier; local objects have no namespace.
+// For work, the (subproject) namespace precedes the axis: /sub/proj/work/<slug>.
+// For taxonomy/capabilities the namespace is always empty: /taxonomy/<ref>.
+// Each path segment is percent-encoded (capability refs contain '#').
+
+const AXES = ["taxonomy", "capabilities", "work"];
+
+function parsePath(pathname) {
+  var segs = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  var axisIdx = -1;
+  for (var i = 0; i < segs.length; i++) {
+    if (AXES.indexOf(segs[i]) !== -1) { axisIdx = i; break; }
+  }
+  if (axisIdx === -1) return { axis: "work", key: null };   // "/" → work board
+  var rest = segs.slice(0, axisIdx).concat(segs.slice(axisIdx + 1));
+  return { axis: segs[axisIdx], key: rest.length ? rest.join("/") : null };
+}
+
+function pathFor(axis, key) {
+  if (!key) return "/" + axis;
+  if (axis === "work") {
+    var parts = key.split("/");
+    var slug = parts.pop();                       // namespace precedes the axis
+    return "/" + parts.concat(["work", slug]).map(encodeURIComponent).join("/");
+  }
+  return "/" + [axis].concat(key.split("/")).map(encodeURIComponent).join("/");
+}
+
+function currentPath() { return pathFor(state.view, state.selected); }
+
+function pushRoute() {
+  if (location.pathname !== currentPath()) history.pushState({}, "", currentPath());
+}
+
+function replaceRoute() { history.replaceState({}, "", currentPath()); }
+
+// Apply a parsed route to state. Selects the key only if it names a loaded object;
+// otherwise falls back to the axis list (no auto-open). `sync` rewrites the URL.
+function applyRoute(route, sync) {
+  state.view = route.axis;
+  var items = state.data[state.view] || [];
+  var found = route.key && items.some(function (it) { return itemKey(it) === route.key; });
+  state.selected = found ? route.key : null;
+  render();
+  if (sync) replaceRoute();
+}
+
 async function load() {
   try {
     var results = await Promise.all([
@@ -2748,12 +2802,30 @@ async function load() {
     state.data = { work: results[0], taxonomy: results[1], capabilities: results[2] };
     state.selected = null;
     render();
+    replaceRoute();                               // URL reflects the reset-to-list state
   } catch (err) {
     detail.innerHTML = '<p class="empty">Failed to load: ' + esc(err.message) +
       '</p><button class="retry" type="button">Retry</button>';
     detail.querySelector(".retry").addEventListener("click", load);
   }
 }
+
+// Initial load: honor a deep link in the URL.
+async function routedInit() {
+  var route = parsePath(location.pathname);
+  state.view = route.axis;
+  await load();                                   // loads data, renders the list
+  applyRoute(route, true);                         // then select the deep-linked object
+}
+
+window.addEventListener("popstate", function () {
+  if (editor.mode && !canLeaveEditor()) {
+    history.pushState({}, "", currentPath());     // cancelled — keep URL in sync with UI
+    return;
+  }
+  exitEditor();
+  applyRoute(parsePath(location.pathname), false); // URL already changed; don't re-sync
+});
 
 // Tab clicks - with dirty guard
 document.querySelectorAll(".tab").forEach(function (tab) {
@@ -2764,6 +2836,7 @@ document.querySelectorAll(".tab").forEach(function (tab) {
     }
     state.view = tab.dataset.view;
     state.selected = null;
+    pushRoute();
     render();
   });
 });
@@ -2776,6 +2849,7 @@ filterEl.addEventListener("input", function () {
   }
   state.filter = filterEl.value;
   state.selected = null;
+  replaceRoute();                                 // filtering clears any selection
   render();
 });
 
@@ -2792,4 +2866,4 @@ filterEl.addEventListener("input", function () {
     { min: 0.12, max: 0.6, persistKey: "tcw.listWidth" });
 })();
 
-load();
+routedInit();
