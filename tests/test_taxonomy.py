@@ -121,6 +121,22 @@ def test_resolution_ambiguous_errors(tmp_path):
     assert st.get("a/Term").origin == "a"                 # qualified is unambiguous
 
 
+def test_get_term_detail_of_inherited_term(tmp_path):
+    # Regression: get_term_detail read files under the extending store's root,
+    # not the source store's, so an inherited term raised FileNotFoundError (→ 500
+    # in the web viewer). Detail must resolve against the owning store.
+    cons, _ = consumer_with_shared(tmp_path)
+    st = FsTaxonomyStore.open(cons)
+    detail = st.get_term_detail("shared/Argument")
+    assert detail is not None
+    assert detail.term.name == "Argument"
+    assert detail.term.origin == "shared"                 # origin preserved
+    assert detail.term.qualified == "shared/Argument"
+    assert detail.core_revision                            # non-empty revision
+    # bare ref (unique extend) resolves the same way
+    assert st.get_term_detail("Argument").term.origin == "shared"
+
+
 # ── rm ──────────────────────────────────────────────────────────────────────
 
 def test_rm_local(tmp_path):

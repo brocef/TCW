@@ -668,7 +668,9 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         term = self.get(ref)
         if term is None:
             return None
-        d = self.root / term.slug
+        # Inherited terms' files live under the source store's root, not ours.
+        owner = self if term.origin == "local" else self.extends[term.origin]
+        d = owner.root / term.slug
         meta_text = (d / "meta.yaml").read_text(encoding="utf-8")
         desc_text = (d / "description.md").read_text(encoding="utf-8")
         return TermDetail(term=term, core_revision=_revision_multi(meta_text, desc_text))

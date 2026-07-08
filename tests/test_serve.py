@@ -94,6 +94,32 @@ def test_api_lists_all_three_axes(server):
     assert capabilities[0]["ref"] == "web#browse-tcw-content"
 
 
+def test_inherited_taxonomy_term_detail_is_200_not_500(tmp_path):
+    # Regression: selecting an inherited term returned 500 because get_term_detail
+    # read files under the extending store's root. Serve the qualified ref → 200.
+    shared = node(tmp_path)
+    FsTaxonomyStore.open(shared).add("Argument", slug="argument")
+    cons = tmp_path / "consumer"
+    cons.mkdir()
+    subprocess.run(["git", "init", "-q", str(cons)], check=True)
+    init(["taxonomy", "capabilities", "work"], cons)
+    (cons / "docs" / "taxonomy" / "config.yaml").write_text(
+        "extends:\n  shared: ../repo\n", encoding="utf-8")
+
+    httpd = TcwServer((HOST, 0), cons)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://{HOST}:{httpd.server_port}"
+        detail = get_json(base, "/api/taxonomy/shared%2Fargument")
+        assert detail["term"]["name"] == "Argument"
+        assert detail["term"]["origin"] == "shared"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=2)
+
+
 def test_work_detail_includes_artifacts_without_paths(server):
     base, slug = server
     payload = get_json(base, f"/api/work/{slug}")
