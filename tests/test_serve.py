@@ -91,7 +91,7 @@ def test_api_lists_all_three_axes(server):
 
     assert work[0]["slug"] == slug
     assert taxonomy[0]["slug"] == "work-item"
-    assert capabilities[0]["ref"] == "web#browse-tcw-content"
+    assert capabilities[0]["path"] == "web"
 
 
 def test_spa_fallback_serves_app_shell_for_app_routes(server):

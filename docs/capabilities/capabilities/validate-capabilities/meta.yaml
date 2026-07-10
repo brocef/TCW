@@ -1,0 +1,6 @@
+id: cap-eb9744
+name: Validate capabilities
+Status: Supported
+Subject:
+- capability/subject
+Feature: capability-feature-association

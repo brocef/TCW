@@ -188,8 +188,8 @@ class TestLoneProject:
         root = lone_project(tmp_path)
         st = FsCapabilitiesStore.open(root)
         st.add("routes/login", name="Sign in")
-        st.add("api/auth", name="Auth", folder=True)
-        assert {c.file_id for c in st.list_all()} == {"routes/login", "api/auth"}
+        st.add("api/auth", name="Auth")
+        assert {c.path for c in st.list_all()} == {"routes/login", "api/auth"}
         assert any(c.name == "Sign in" for c in st.search("sign"))
 
     def test_capabilities_set_status(self, tmp_path):
@@ -197,7 +197,7 @@ class TestLoneProject:
         st = FsCapabilitiesStore.open(root)
         st.add("routes/home")
         st.set("routes/home", {"Status": "Supported"})
-        assert st.get("routes/home").capabilities[0].status == "Supported"
+        assert st.get("routes/home").status == "Supported"
 
     def test_capabilities_check_clean(self, tmp_path):
         root = lone_project(tmp_path)
@@ -358,7 +358,7 @@ class TestNestedMonorepo:
         _, child_a, _ = nested_monorepo(tmp_path)
         caps = FsCapabilitiesStore.open(child_a)
         caps.add("routes/local", status="Supported")
-        assert caps.get("routes/local").capabilities[0].status == "Supported"
+        assert caps.get("routes/local").status == "Supported"
         assert caps.check() == []
 
     def test_work_standalone_in_child(self, tmp_path):
@@ -612,7 +612,7 @@ class TestCrossEnvironment:
         root, _ = env
         st = FsCapabilitiesStore.open(root)
         st.add("test/cap", status="Supported")
-        assert st.get("test/cap").capabilities[0].status == "Supported"
+        assert st.get("test/cap").status == "Supported"
 
     def test_work_create_and_transition(self, env):
         root, _ = env

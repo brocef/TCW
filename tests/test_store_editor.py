@@ -587,22 +587,6 @@ def test_get_capability_detail_returns_revision(tmp_path):
     assert detail.core_revision != ""
 
 
-def test_get_capability_detail_multicap_needs_heading(tmp_path):
-    root = _cap_node(tmp_path)
-    cap_file = root / "docs/capabilities/auth.md"
-    cap_file.parent.mkdir(parents=True, exist_ok=True)
-    cap_file.write_text(
-        "# Auth\n\n"
-        "## Sign in\n**Status:** Missing\n\nLogin.\n\n"
-        "## Sign out\n**Status:** Supported\n\nLogout.\n"
-    )
-    st = FsCapabilitiesStore.open(root)
-    detail = st.get_capability_detail("auth#sign-in")
-    assert detail.capability.name == "Sign in"
-    with pytest.raises(Exception, match="specify #heading"):
-        st.get_capability_detail("auth")
-
-
 def test_update_capability_body(tmp_path):
     root = _cap_node(tmp_path)
     st = FsCapabilitiesStore.open(root)
@@ -636,7 +620,7 @@ def test_update_capability_stale_revision(tmp_path):
     st.add("routes/login", name="Sign in")
     old_rev = st.get_capability_detail("routes/login").core_revision
     # External edit
-    (root / "docs/capabilities/routes/login.md").write_text("# X\n\n## Y\n")
+    (root / "docs/capabilities/routes/login/description.md").write_text("changed")
 
     with pytest.raises(StaleRevision):
         st.update_capability("routes/login", body="new",
@@ -659,39 +643,10 @@ def test_update_capability_invalid_status_rejected(tmp_path):
         st.update_capability("routes/login", fields={"Status": "Broken"})
 
 
-def test_add_entry_creates_new_collection(tmp_path):
-    root = _cap_node(tmp_path)
-    st = FsCapabilitiesStore.open(root)
-    detail = st.add_entry("auth/oauth", "Authorize via OAuth", status="Missing")
-    assert detail.capability.name == "Authorize via OAuth"
-    assert detail.capability.status == "Missing"
-    assert detail.core_revision != ""
-
-
-def test_add_entry_adds_to_existing_file(tmp_path):
-    root = _cap_node(tmp_path)
-    st = FsCapabilitiesStore.open(root)
-    st.add("routes/login", name="Sign in")
-    # Add a second entry to the same collection
-    detail = st.add_entry("routes/login", "Sign out")
-    assert detail.capability.name == "Sign out"
-    # Original entry still there
-    cf = st.get("routes/login")
-    names = [c.name for c in cf.capabilities]
-    assert "Sign in" in names
-    assert "Sign out" in names
-
-
-def test_add_entry_invalid_status(tmp_path):
+def test_add_invalid_status(tmp_path):
     st = FsCapabilitiesStore.open(_cap_node(tmp_path))
     with pytest.raises(ValueError, match="invalid Status"):
-        st.add_entry("x", "Cap", status="NotAStatus")
-
-
-def test_add_entry_invalid_field(tmp_path):
-    st = FsCapabilitiesStore.open(_cap_node(tmp_path))
-    with pytest.raises(ValueError, match="unknown field"):
-        st.add_entry("x", "Cap", fields={"Bogus": "x"})
+        st.add("x", status="NotAStatus")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -972,12 +927,12 @@ def test_update_work_reparent_rejects_self_and_descendant(tmp_path):
         st.update_work(parent.slug, parent=child.slug)
 
 
-def test_add_entry_rejects_path_traversal(tmp_path):
-    """#3 — a caller-supplied collection must not escape the store root."""
+def test_add_rejects_path_traversal(tmp_path):
+    """#3 — a caller-supplied path must not escape the store root."""
     st = FsCapabilitiesStore.open(_cap_node(tmp_path))
     for bad in ["../evil", "/tmp/evil", "a/../../evil", "..\\evil"]:
-        with pytest.raises(ValueError, match="invalid collection"):
-            st.add_entry(bad, "Do X")
+        with pytest.raises(ValueError, match="invalid path"):
+            st.add(bad, name="Do X")
     assert list(tmp_path.rglob("evil*")) == []
 
 
@@ -989,10 +944,9 @@ def test_taxonomy_add_rejects_path_traversal(tmp_path):
     assert list(tmp_path.rglob("evil*")) == []
 
 
-def test_add_entry_rejects_duplicate_in_collection(tmp_path):
-    """#5 — adding a capability whose heading already exists must fail, not
-    append a duplicate ## heading."""
+def test_add_rejects_duplicate_path(tmp_path):
+    """#5 — adding a capability at an existing path must fail, not overwrite."""
     st = FsCapabilitiesStore.open(_cap_node(tmp_path))
-    st.add_entry("routes/login", "Sign in")
+    st.add("routes/login", name="Sign in")
     with pytest.raises(ValueError, match="already exists"):
-        st.add_entry("routes/login", "Sign in")
+        st.add("routes/login", name="Sign in")

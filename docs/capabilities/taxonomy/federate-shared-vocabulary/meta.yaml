@@ -1,0 +1,8 @@
+id: cap-24da21
+name: Federate shared vocabulary
+Status: Partial
+Priority: P2
+Gaps: remote git/URL sources, version-pinning, and transitive (multi-level) extends
+  are deferred to Phase 6; only local sibling-repo paths resolve today.
+Subject:
+- namespace

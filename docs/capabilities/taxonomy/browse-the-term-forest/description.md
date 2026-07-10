@@ -1,0 +1,1 @@
+As a user, I run `tcw taxonomy list` to see every entry as an indented forest, each flagged by kind (`Vocabulary` or `Feature`) and origin (`local` or an extends alias). `--local` hides inherited entries.

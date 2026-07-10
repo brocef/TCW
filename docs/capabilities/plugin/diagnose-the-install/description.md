@@ -1,0 +1,1 @@
+As a user, I run `/tcw-doctor` to check whether `tcw` is on PATH, how it was installed (pipx / editable / missing), and whether it matches the active plugin version — and to re-point it if a plugin update left it stale.

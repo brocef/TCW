@@ -1,0 +1,1 @@
+As a user, I run `/tcw-init` (or, in Codex, ask the agent to run the `tcw-plugin` setup) to install the `tcw` CLI from the plugin's own clone via pipx, so the command is on my PATH without a separate manual install.
