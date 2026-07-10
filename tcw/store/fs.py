@@ -819,7 +819,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 # ── FsCapabilitiesStore ──────────────────────────────────────────────────────
 
 # Meta keys that are structural (not part of the locked CAP_FIELDS vocabulary).
-_CAP_STRUCTURAL = {"id", "name"}
+_CAP_STRUCTURAL = {"id", "name", "overrides", "prependedDocs", "appendedDocs"}
 
 
 def heading_slug(text: str) -> str:
@@ -872,17 +872,49 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     def _is_capability(self, d: Path) -> bool:
         return (d / "meta.yaml").is_file()
 
-    def _local_paths(self) -> list[str]:
+    def _all_meta_dirs(self) -> list[str]:
+        """Every folder holding a meta.yaml (capabilities + overrides), minus dot-dirs."""
         out = []
         for p in sorted(self.root.rglob("*")):
             if not p.is_dir():
                 continue
             rel = p.relative_to(self.root)
-            if any(part.startswith(".") for part in rel.parts):   # skip .overrides/ etc.
+            if any(part.startswith(".") for part in rel.parts):
                 continue
             if self._is_capability(p):
                 out.append(str(rel))
         return out
+
+    def _local_paths(self) -> list[str]:
+        """Standalone local capabilities — meta.yaml folders WITHOUT an `overrides`
+        pointer (those are deltas, not caps; see `_override_index`)."""
+        return [p for p in self._all_meta_dirs()
+                if not load_yaml(self.root / p / "meta.yaml").get("overrides")]
+
+    def _override_index(self) -> dict[str, tuple[Path, dict]]:
+        """`overrides` target string → (override folder, override meta)."""
+        idx: dict[str, tuple[Path, dict]] = {}
+        for p in self._all_meta_dirs():
+            meta = load_yaml(self.root / p / "meta.yaml")
+            target = meta.get("overrides")
+            if target:
+                idx[str(target)] = (self.root / p, meta)
+        return idx
+
+    def _compose_body(self, d: Path, meta: dict, raw_desc: str) -> str:
+        """Effective body = prependedDocs + description + appendedDocs (bounded lists)."""
+        parts = []
+        for fn in _as_list(meta.get("prependedDocs")):
+            f = d / fn
+            if f.is_file():
+                parts.append(f.read_text(encoding="utf-8").strip())
+        if raw_desc.strip():
+            parts.append(raw_desc.strip())
+        for fn in _as_list(meta.get("appendedDocs")):
+            f = d / fn
+            if f.is_file():
+                parts.append(f.read_text(encoding="utf-8").strip())
+        return "\n\n".join(parts)
 
     def _capability(self, path: str, origin: str = "local") -> Capability:
         d = self.root / path
@@ -895,12 +927,47 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             name=meta.get("name") or path.rsplit("/", 1)[-1].replace("-", " ").title(),
             id=str(meta.get("id") or ""),
             fields=fields,
-            body=description,
+            body=self._compose_body(d, meta, description),
             origin=origin,
         )
 
+    def _apply_override(self, base: Capability, alias: str,
+                        ov_index: dict[str, tuple[Path, dict]]) -> Capability:
+        """Merge a local override (if any) onto an inherited capability `base`.
+
+        Override matches by upstream id (bare `<id>` or `<alias>/<id>`). Fields
+        partial-merge (YAML null clears); body = child.prepend + (child
+        description.md if present else upstream raw description.md) + child.append.
+        """
+        ov = ov_index.get(base.id) or ov_index.get(f"{alias}/{base.id}")
+        if ov is None:
+            return base                                   # inherited verbatim
+        d, meta = ov
+        merged = dict(base.fields)
+        for k, v in meta.items():
+            if k in _CAP_STRUCTURAL:
+                continue
+            if v is None:
+                merged.pop(k, None)                       # null clears inherited field
+            else:
+                merged[k] = _as_list(v) if k == "Subject" else v
+        up_desc = self.extends[alias].root / base.path / "description.md"
+        upstream_raw = up_desc.read_text(encoding="utf-8") if up_desc.exists() else ""
+        child_desc = d / "description.md"
+        child_raw = child_desc.read_text(encoding="utf-8") if child_desc.exists() else ""
+        mid = child_raw if child_raw.strip() else upstream_raw
+        return Capability(
+            path=base.path,
+            name=meta.get("name") or base.name,
+            id=base.id,
+            fields=merged,
+            body=self._compose_body(d, meta, mid),
+            origin=alias,
+        )
+
     def get_local(self, path: str) -> Capability | None:
-        return self._capability(path) if path and self._is_capability(self.root / path) else None
+        return self._capability(path) if path and self._is_capability(self.root / path) \
+            and not load_yaml(self.root / path / "meta.yaml").get("overrides") else None
 
     def get_by_id(self, cap_id: str) -> Capability | None:
         """Resolve an opaque id to its local capability (keyed lookup)."""
@@ -913,8 +980,10 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     def list_all(self, status=None, namespace=None, local_only=False) -> list[Capability]:
         caps = [self._capability(p) for p in self._local_paths()]
         if not local_only:
+            ov_index = self._override_index()
             for alias, st in self.extends.items():
-                caps += [st._capability(p, origin=alias) for p in st._local_paths()]
+                caps += [self._apply_override(st._capability(p, origin=alias), alias, ov_index)
+                         for p in st._local_paths()]
         out = []
         for c in caps:
             if status and c.status != status:
@@ -935,14 +1004,18 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                    if (c := st.get_local(identifier)) is not None]
         if len(matches) == 1:
             a = matches[0][0]
-            return self.extends[a]._capability(identifier, origin=a)
+            return self._apply_override(self.extends[a]._capability(identifier, origin=a),
+                                        a, self._override_index())
         if len(matches) > 1:
             raise AmbiguousRef(identifier)
         return None
 
     def get_inherited(self, alias: str, path: str) -> Capability | None:
         st = self.extends.get(alias)
-        return st._capability(path, origin=alias) if st and st.get_local(path) else None
+        if not (st and st.get_local(path)):
+            return None
+        return self._apply_override(st._capability(path, origin=alias),
+                                    alias, self._override_index())
 
     def search(self, query: str) -> list[Capability]:
         q = query.lower()
@@ -1104,7 +1177,40 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             problems += self._check_globals(where, f)
             problems += self._check_subject(where, f, taxonomy)
             problems += self._check_feature(where, f, taxonomy)
+
+        # Override + attachment validation (every meta dir, incl. override folders).
+        for p in self._all_meta_dirs():
+            d = self.root / p
+            meta = load_yaml(d / "meta.yaml")
+            listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
+            for fn in listed:
+                if not (d / fn).is_file():
+                    problems.append(f"{p}: missing attachment '{fn}'")
+            for f in d.iterdir():
+                if (f.is_file() and f.suffix == ".md" and f.name != "description.md"
+                        and f.name not in listed):
+                    problems.append(f"{p}: unlisted extra doc '{f.name}'")
+            target = meta.get("overrides")
+            if target and (e := self._override_problem(str(target))):
+                problems.append(f"{p}: {e}")
         return problems
+
+    def _override_problem(self, target: str) -> str | None:
+        """Validate an `overrides: <target>` pointer (dangling / ambiguous / local)."""
+        if "/" in target:                                 # alias-qualified <alias>/<id>
+            alias, _, cid = target.partition("/")
+            st = self.extends.get(alias)
+            if st is None:
+                return f"overrides → unknown alias '{alias}'"
+            return None if st.get_by_id(cid) else f"overrides → dangling id '{target}'"
+        if self.get_by_id(target):
+            return f"overrides → '{target}' targets a local capability (must be inherited)"
+        hits = [a for a, st in self.extends.items() if st.get_by_id(target)]
+        if not hits:
+            return f"overrides → dangling id '{target}'"
+        if len(hits) > 1:
+            return f"overrides → ambiguous id '{target}' (in {', '.join(hits)})"
+        return None
 
     def _ref_error(self, identifier: str) -> str | None:
         try:
