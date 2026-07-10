@@ -1,0 +1,1 @@
+As a user, I run `tcw validate [path]` to check a whole node (or a single file/dir) in one pass — YAML well-formedness, `tcw://` link resolution, and each component's own `check` — and get `validate OK` (exit 0) or a grouped list of problems (exit 1). Scheme examples inside Markdown code spans are ignored so docs that teach `tcw://` don't fail their own validator.

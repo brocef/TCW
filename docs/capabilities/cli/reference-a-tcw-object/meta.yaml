@@ -1,0 +1,6 @@
+id: cap-65e549
+name: Reference a TCW object with a tcw:// link
+Status: Supported
+Subject:
+- reference
+Planning doc: 2026-07-10-add-tcw-reference-protocol-tcw-validate-and-web-view-link-navigation

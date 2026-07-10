@@ -1,0 +1,1 @@
+As a user, I browse Work, Taxonomy, and Capabilities in a local loopback web app (`tcw serve`) with deep-linkable URLs and browser history. Rendered `tcw://` references in an object's body become clickable in-app navigation to the target object; a reference to content this viewer isn't hosting (a foreign project, or a dangling link) renders inert.
