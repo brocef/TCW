@@ -11,7 +11,7 @@ from pathlib import Path
 from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
-from tcw.store.fs import COMPONENTS, SENTINEL, git_root, init
+from tcw.store.fs import COMPONENTS, SENTINEL, find_node_root, git_root, init
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
 
@@ -52,6 +52,23 @@ def _not_yet(name: str):
     return run
 
 
+def _cmd_validate(args: argparse.Namespace) -> int:
+    node_root = find_node_root()
+    if node_root is None:
+        print("tcw validate: no tcw node here — run `tcw init` in the project folder.",
+              file=sys.stderr)
+        return 1
+    from tcw.validate import validate
+    problems = validate(node_root, args.path)
+    for p in problems:
+        print(p, file=sys.stderr)
+    if problems:
+        print(f"{len(problems)} problem(s).", file=sys.stderr)
+        return 1
+    print("validate OK")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     # Descendant node boards are aggregated by default (like
     # `tcw work list --include-descendants`).
@@ -68,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("components", nargs="*",
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")
     p_init.set_defaults(func=_cmd_init)
+
+    p_validate = sub.add_parser(
+        "validate", help="check YAML soundness, tcw:// links, and component integrity")
+    p_validate.add_argument("path", nargs="?",
+                            help="narrow the scan to a single file or directory (default: whole node)")
+    p_validate.set_defaults(func=_cmd_validate)
 
     p_serve = sub.add_parser("serve", help="serve a local read-only web viewer")
     p_serve.add_argument("--port", type=int, default=DEFAULT_PORT,
