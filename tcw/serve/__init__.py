@@ -25,6 +25,12 @@ from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
     find_node_root, heading_slug, resolve_qualified_work_ref,
 )
+from tcw.refs import resolve_tcw_ref
+
+# tcw:// axis letter -> SPA axis word (the client does no TCW parsing itself).
+_AXIS_WORD = {"T": "taxonomy", "C": "capabilities", "W": "work"}
+# Max uris accepted per /api/resolve batch (a rendered body's link count).
+RESOLVE_MAX_URIS = 256
 
 DEFAULT_PORT = 8765
 HOST = "127.0.0.1"
@@ -834,6 +840,25 @@ class TcwHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
                            f"server error: {e}".encode("utf-8"))
+            return
+
+        # ── POST /api/resolve — resolve tcw:// links for the SPA (a read over POST
+        #    so it can carry a body). Descendant work resolves only when the viewer
+        #    aggregates descendants. ──
+        if path == "/api/resolve":
+            uris = body.get("uris")
+            if not isinstance(uris, list):
+                self._send_err(HTTPStatus.BAD_REQUEST, "uris must be a list")
+                return
+            result = {}
+            for uri in uris[:RESOLVE_MAX_URIS]:
+                if not isinstance(uri, str):
+                    continue
+                r = resolve_tcw_ref(self.server.node_root, uri,
+                                    include_descendants=self.server.include_descendants)
+                result[uri] = ({"ok": True, "axis": _AXIS_WORD.get(r.axis), "key": r.key}
+                               if r.ok else {"ok": False})
+            self._send_json(HTTPStatus.OK, result)
             return
 
         self._send(HTTPStatus.NOT_FOUND, b"not found")
