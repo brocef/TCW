@@ -40,6 +40,33 @@ def test_bare_slug_resolves_to_anchor(tmp_path):
     assert bare == "2026-01-01-foo"
 
 
+# ── status-path locator (A-T5) ───────────────────────────────────────────────
+
+def test_status_path_locator_resolves(tmp_path):
+    root = node(tmp_path)
+    item = FsWorkStore.open(root).create("A task", created="2026-01-01")
+    store, bare = resolve_qualified_work_ref(root, f"backlog/{item.slug}")
+    assert store.node_root.resolve() == root.resolve()
+    assert bare == item.slug
+
+
+def test_status_path_intermediate_segments_ignored(tmp_path):
+    root = node(tmp_path)
+    item = FsWorkStore.open(root).create("A task", created="2026-01-01")
+    assert resolve_qualified_work_ref(root, f"backlog/anything/{item.slug}")[1] == item.slug
+
+
+def test_status_path_wrong_status_does_not_resolve(tmp_path):
+    root = node(tmp_path)
+    item = FsWorkStore.open(root).create("A task", created="2026-01-01")   # backlog
+    assert resolve_qualified_work_ref(root, f"active/{item.slug}") is None
+
+
+def test_status_path_unknown_slug_does_not_resolve(tmp_path):
+    root = node(tmp_path)
+    assert resolve_qualified_work_ref(root, "backlog/2026-01-01-ghost") is None
+
+
 def test_qualified_slug_resolves_to_descendant(tmp_path):
     root = node(tmp_path)
     sub = subnode(root, "Project-A")

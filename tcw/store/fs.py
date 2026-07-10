@@ -23,7 +23,7 @@ import yaml
 
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, DEFAULT_DOD,
-    TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
+    TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, WORK_STATUSES, _UNSET,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError,
     SidecarResource, StaleRevision, TaxonomyStore, Term, TermDetail,
@@ -182,8 +182,16 @@ def descendant_nodes(root: Path) -> list[Path]:
 def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, str] | None":
     """Resolve a (possibly qualified) work ref against `anchor`.
 
-    Bare slug (no '/')  -> (anchor store, slug)             [unchanged]
-    'sub/proj/<slug>'   -> (descendant-node store, <slug>)  [cross-node addressing]
+    Bare slug (no '/')      -> (anchor store, slug)             [unchanged]
+    '<status>/…/<slug>'     -> (anchor store, <slug>)           [status-path locator]
+    'sub/proj/<slug>'       -> (descendant-node store, <slug>)  [cross-node addressing]
+
+    A leading segment in `WORK_STATUSES` marks a status-path locator (the path a
+    board/`work path` prints): the last segment is the bare slug, intermediate
+    segments are ignored, and the status segment must equal the item's real
+    status (else the ref doesn't resolve). This is addressing sugar — the slug
+    stays the identity. (A subproject literally named after a status is not
+    addressable via the bare status-prefix form; use its slug.)
 
     The qualifier is the descendant node's path relative to `anchor`. A slug never
     contains '/' (slugify -> [a-z0-9-]), so the final '/'-segment is always the
@@ -203,6 +211,15 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
         ref = ref[2:]
     if "/" not in ref:                             # bare slug -> anchor node (unchanged)
         return FsWorkStore.open(anchor), ref
+    if ref.split("/", 1)[0] in WORK_STATUSES:      # status-path locator (anchor node)
+        bare = ref.rpartition("/")[2]
+        if not bare:
+            return None
+        store = FsWorkStore.open(anchor)
+        item = store.get(bare)                     # MultipleMatch propagates
+        if item is None or item.status != ref.split("/", 1)[0]:
+            return None                            # unknown slug or wrong status segment
+        return store, bare
     qualifier, _, bare = ref.rpartition("/")
     if not qualifier or not bare:                  # '/', '/slug', 'slug/' -> malformed
         return None
