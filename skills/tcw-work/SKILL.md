@@ -83,6 +83,8 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | audit backlog relevance | `tcw work audit-work-backlog` (read-only cleanup recommendations for stale, duplicate, broken, blocked, vague, or misplaced backlog items) |
 | migrate external plans | `tcw work consolidate-plans [PATH ...] [--apply] [--delete]` (dry-run first; converts external planning docs into backlog items) |
 | find item files | `tcw work path <slug>` |
+| validate the node | `tcw validate [path]` (whole node or one file/dir: YAML soundness + `tcw://` link resolution + taxonomy/capabilities checks) |
+| reference another object in prose | `[text](tcw://W/<slug>)` in a body/artifact (or `T`/`C`, `<alias>/…` namespace) — an inline link `tcw validate` resolves and `tcw serve` makes clickable |
 | address by status path | any work command also accepts a `<status>/…/<slug>` locator (e.g. `active/my-item`); the status segment must match the item's real status, intermediate segments are ignored, and the slug stays the identity |
 | set priority | `tcw work new "<t>" --priority N` · `tcw work edit <slug> --priority N` (higher int = higher; default unspecified) |
 | set estimates | `tcw work new "<t>" --effort <l> --complexity <l>` · `tcw work edit <slug> --effort <l> --complexity <l>` (`<l>` = low\|medium\|high\|very-high, or L/M/H/VH shorthand; optional; shown in `show`, not `list`) |

@@ -141,7 +141,8 @@ tcw init                    # scaffold docs/{taxonomy,capabilities,work}/
 tcw init taxonomy work      # …or just the components you name
 tcw work init               # …or per-component: same as `tcw init work`
 tcw serve --no-open          # browse Work, Taxonomy, and Capabilities locally
-tcw --help                  # top-level groups: init | serve | taxonomy | capabilities | work
+tcw validate                # check YAML soundness, tcw:// links, and tree integrity
+tcw --help                  # top-level groups: init | serve | validate | taxonomy | capabilities | work
 ```
 
 `tcw init` marks the **current directory** as a TCW node by writing a
@@ -221,7 +222,10 @@ their URLs are namespaced (e.g. `/sub/proj/work/<slug>`).
 
 The app has tabs for the Taxonomy tree, Capabilities ledger, and Work board, and
 its **URL reflects the current view** (`/taxonomy`, `/work/<slug>`, …) so any state
-is deep-linkable and Back/Forward work. The list/detail divider and the
+is deep-linkable and Back/Forward work. Any `tcw://` reference in an object's body
+(see [`tcw://` links](#tcw-links--reference-a-tcw-object)) renders as a **clickable
+in-app link** that navigates to the target object; a link to something this viewer
+isn't hosting renders inert. The list/detail divider and the
 editor/preview split are **drag-resizable**. The Work board carries a row of
 **status-filter toggles** (`inbox` / `backlog` / `active` / `completed`) above the
 list — toggle one on to show items of that status; `completed` is hidden by
@@ -252,6 +256,46 @@ requests (create, edit, lifecycle actions) additionally require
 cross-origin or DNS-rebinding attacks. Request bodies are capped at 1 MiB.
 Concurrent stale edits are rejected (HTTP 409) so two editors never silently
 overwrite each other.
+
+### `tcw://` links — reference a TCW object
+
+Any object's body prose can point at another TCW object with a `tcw://` link:
+
+```
+tcw://[<namespace>/]<axis>/<ref>
+```
+
+- `<axis>` is `T` (Taxonomy), `C` (Capabilities), or `W` (Work).
+- `<namespace>` (optional) locates the object in another project — an `extends`
+  alias for `T`/`C`, a descendant node path for `W`. Absent = the local node.
+- `<ref>` is the identifier within that axis (taxonomy slug/path, capability
+  path, work slug).
+
+```markdown
+See [Read a capability](tcw://C/capabilities/read-a-capability) and the
+[reference](tcw://T/reference) term, or work item [tcw://W/2026-01-01-x](tcw://W/2026-01-01-x).
+```
+
+These are inline Markdown links, so they render as normal links in any viewer and
+become **in-app navigation** in `tcw serve`. They're additive — they don't replace
+the structured pointers (a capability's `Subject`/`Feature`, a work item's
+`blocked_by`). Stored Markdown is never rewritten.
+
+### `tcw validate` — one-pass soundness check
+
+`tcw validate [path]` checks a whole node (or a single file/directory) in one pass:
+
+```sh
+tcw validate                 # the whole node: docs/{taxonomy,capabilities,work}/
+tcw validate docs/capabilities   # narrow the scan to one tree
+```
+
+It reports, grouped by source, any of: malformed YAML (including duplicate keys),
+a `tcw://` link that doesn't resolve, and the problems surfaced by each
+component's own `check` (taxonomy + capabilities). It exits `0` with `validate OK`
+when clean, else prints the problems and exits `1`. `tcw://` examples inside
+Markdown code spans are ignored, so docs that teach the scheme don't fail
+themselves.
 
 ### `tcw taxonomy` — the nouns
 

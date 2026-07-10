@@ -36,6 +36,12 @@ If no suitable Feature exists, do not invent an unregistered string in the
 capability. Use `tcw-taxonomy` to add or clarify the Feature first, then link it
 from the capability.
 
+A capability's `description.md` body may also cross-reference other objects in
+prose with `[text](tcw://C/<path>)` links (or `T`/`W`, and an `<alias>/`-prefixed
+namespace for federated objects) — additive to the structured `Subject`/`Feature`
+pointers, not a replacement. `tcw validate` resolves these node-wide and the
+`tcw serve` viewer makes them clickable.
+
 ## The ledger flip (at `tcw work complete`)
 
 As the item's final pre-freeze step, apply each declared delta so the ledger describes the present:
@@ -76,6 +82,6 @@ codebase → draft → refine with the user → write) → read [`references/ini
 | link taxonomy (multi-valued) | `tcw capabilities set <path> --field "Subject=term-a,term-b"` |
 | federate another project | `tcw capabilities extends <alias> <path-to-repo>` (`--rm <alias>`) |
 | list only local (not inherited) | `tcw capabilities list --local-only` |
-| check the ledger | `tcw capabilities check` |
+| check the ledger | `tcw capabilities check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
 | find / read | `tcw capabilities search <term>` · `tcw capabilities show <path>` |
 | ask the orchestrator for wording | `tcw work escalate "capability wording: <name>"` |

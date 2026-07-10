@@ -50,6 +50,10 @@ local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-cap
 - **Run `tcw taxonomy check` after edits** — it validates extends aliases,
   taxonomy kinds, feature vocabulary refs, and every relatesTo / subject
   reference (cycles, dup aliases, dangling/ambiguous refs).
+- **Cross-reference in prose with `tcw://` links** — a term description may link
+  to another object with `[text](tcw://T/<slug>)` (or `C`/`W`, and an
+  `<alias>/`-prefixed namespace for federated terms). `tcw validate` resolves
+  those links node-wide and the `tcw serve` viewer makes them clickable.
 
 ## Inheritance (federation)
 
@@ -75,5 +79,5 @@ refine with the user → write) → read [`references/init.md`](references/init.
 | link related terms | edit `relatesTo` in the term's `meta.yaml`, then `check` |
 | browse / read / find | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>` |
 | inherit another node's terms | `tcw taxonomy extends add <alias> <path>` · `… extends rm <alias>` (sibling repo or subfolder) |
-| validate | `tcw taxonomy check` |
+| validate | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
 | remove a local term | `tcw taxonomy rm <path>` |
