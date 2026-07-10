@@ -239,9 +239,9 @@ directly from the browser:
 - **Taxonomy entries** — create Vocabulary or Feature entries; edit name,
   description, kind, and relations. Validation check failures are shown in the
   UI after saving.
-- **Capabilities** — create new capability entries, add entries to existing
-  capability files, and edit metadata and Markdown body. Check failures are
-  surfaced in the UI.
+- **Capabilities** — create path-addressed capability folders and edit metadata
+  and the Markdown body. Inherited (federated) capabilities show their origin.
+  Check failures are surfaced in the UI.
 
 All Markdown editing uses a raw-Markdown textarea paired with a live-rendered
 preview pane — no build step or external dependency is required.
@@ -284,9 +284,10 @@ Taxonomies can **federate**: `tcw taxonomy extends add
 <alias> <repo-path>` maps a consumer-chosen alias to a source taxonomy (writing
 the `extends` map in `config.yaml`), each alias is its own namespace, and there
 is **no silent merge** — a local `permission` and an imported `acme/permission`
-stay distinct. (Vocabulary is canonical-shared, so taxonomy federates *directly*,
-unlike capabilities.) Local sibling-repo paths only; remote git/URL sources are
-not yet supported.
+stay distinct. Capabilities federate the same way, and additionally let a
+consumer **override** an inherited entry per-project (see `tcw capabilities`
+above). Local sibling-repo paths only; remote git/URL sources are not yet
+supported.
 
 To **bootstrap** a taxonomy or capabilities ledger on a project newly adopting
 TCW, run `/tcw-taxonomy-init` or `/tcw-capabilities-init`: the assistant studies
@@ -294,35 +295,53 @@ your code, proposes a first draft, refines it with you, and writes it.
 
 ### `tcw capabilities` — the user stories
 
-A capability is one `## heading` user story inside a `capabilities.md`,
-addressed as `namespace/path#heading`. Each carries metadata fields — notably
-**`Subject:`** (a loose pointer to a taxonomy entry), **`Feature:`** (a strong
-pointer to a taxonomy feature), and **`Planning doc:`** (the forward pointer to a
-work item).
+A capability is a **path-addressed folder** (`docs/capabilities/<path>/` holding
+`meta.yaml` + `description.md`) with an opaque stable `id`. It carries metadata
+fields — notably **`Subject:`** (a loose, **multi-valued** pointer to taxonomy
+entries), **`Feature:`** (a strong pointer to a taxonomy feature), and
+**`Planning doc:`** (the forward pointer to a work item).
 
 ```sh
-tcw capabilities add billing/invoices "Download an invoice as PDF"
-tcw capabilities add billing/invoices --folder        # scaffold a folder + capabilities.md
+tcw capabilities add billing/invoices "Download an invoice as PDF"   # mints a stable id
+tcw capabilities add billing/invoices/bulk "Download many at once"    # nested path
 
-tcw capabilities list                      # every capability, flagged by status
+tcw capabilities list                      # every capability, flagged by status + origin
 tcw capabilities list --status Missing     # filter by status
-tcw capabilities show billing/invoices     # whole file…
-tcw capabilities show billing/invoices#download-an-invoice-as-pdf   # …or one heading
+tcw capabilities list --local-only         # hide inherited (federated) capabilities
+tcw capabilities show billing/invoices     # read one capability by path
 tcw capabilities search pdf
-tcw capabilities check                     # identifiers, metadata vocab, Subject/Feature refs
+tcw capabilities check                     # paths, metadata vocab, Subject/Feature, federation
 
-tcw capabilities set billing/invoices#download-an-invoice-as-pdf --status Supported
+tcw capabilities set billing/invoices --status Supported
+tcw capabilities set billing/invoices --field "Subject=invoice,billing"   # multi-valued
 tcw capabilities set billing/invoices --field "Planning doc=2026-06-19-pdf-export"
 ```
 
 `set` updates a capability's status/fields in place (stage-only) — the mechanism
 the work→capability lifecycle uses to flip `Missing → Supported` at completion.
-A `#heading` is required when a file holds more than one capability.
 
 Status is one of `Supported · Partial · Missing · Blocked · Omitted`. `check`
 validates the metadata vocabulary, resolves each `Subject:` pointer against the
 taxonomy store, and verifies that each `Feature:` pointer resolves to a taxonomy
 feature. The tool never parses capability prose; it only follows pointers.
+
+**Federation.** Capabilities can `extends` another project's — so a web frontend
+and a mobile app that drive the same server declare their shared user stories
+once:
+
+```sh
+tcw capabilities extends shared ../web-frontend   # inherit its capabilities
+tcw capabilities extends --rm shared              # drop the alias
+```
+
+Inherited capabilities surface flagged by origin (`shared/<path>`) and are
+read-only in structure — a project can't delete one, only **override** it. An
+override is a local folder whose `meta.yaml` has `overrides: <upstream-id>` plus
+the changes: metadata fields partial-merge (e.g. `Status: Missing`, or
+`Status: Omitted` for "we deliberately don't have this"; a YAML `null` clears a
+field), and the body composes as `prependedDocs` + (a local `description.md`, if
+present, else the upstream body) + `appendedDocs` — e.g. a mobile app appending
+"…or take a photo with the camera." Local sibling-repo paths only.
 
 ### `tcw work` — the changes
 
