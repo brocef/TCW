@@ -1,7 +1,9 @@
+import hashlib
 import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tcw.store.base import AmbiguousRef, RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
@@ -17,10 +19,15 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
     return root
 
 
-def write_cap(root: Path, relpath: str, text: str) -> None:
-    p = root / "docs" / "capabilities" / relpath
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text)
+def write_cap(root: Path, path: str, body: str = "", **meta) -> None:
+    """Write a folder-model capability node (meta.yaml + description.md)."""
+    d = root / "docs" / "capabilities" / path
+    d.mkdir(parents=True, exist_ok=True)
+    m = {"id": "cap-" + hashlib.sha1(path.encode()).hexdigest()[:6],
+         "name": path.rsplit("/", 1)[-1].replace("-", " ").title()}
+    m.update(meta)
+    (d / "meta.yaml").write_text(yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
+    (d / "description.md").write_text(body)
 
 
 class StubTax:
@@ -51,61 +58,73 @@ class AmbiguousFeatureTax(FeatureTax):
         return super().get(ref)
 
 
-# ── add (flat + folder) + collision ──────────────────────────────────────────
+# ── add + collision ──────────────────────────────────────────────────────────
 
-def test_add_flat_and_folder(tmp_path):
+def test_add_creates_folder_with_id(tmp_path):
     root = node(tmp_path)
     st = FsCapabilitiesStore.open(root)
-    cf = st.add("routes/login", name="Sign in")
-    assert cf.identifier == "routes/login"
-    assert (root / "docs/capabilities/routes/login.md").is_file()
-    cf2 = st.add("api/auth/login", name="Login", folder=True)
-    assert cf2.identifier == "api/auth/login"
-    assert (root / "docs/capabilities/api/auth/login/capabilities.md").is_file()
-    # default status seeded
-    assert st.get("routes/login").capabilities[0].status == "Missing"
+    cap = st.add("routes/login", name="Sign in")
+    assert cap.path == "routes/login"
+    assert cap.id.startswith("cap-")
+    assert (root / "docs/capabilities/routes/login/meta.yaml").is_file()
+    assert (root / "docs/capabilities/routes/login/description.md").is_file()
+    assert st.get("routes/login").status == "Missing"        # default status
 
 
-def test_add_refuses_flat_folder_collision(tmp_path):
-    root = node(tmp_path)
-    st = FsCapabilitiesStore.open(root)
+def test_add_mints_unique_ids(tmp_path):
+    st = FsCapabilitiesStore.open(node(tmp_path))
+    a = st.add("a")
+    b = st.add("b")
+    assert a.id and b.id and a.id != b.id
+
+
+def test_add_refuses_duplicate(tmp_path):
+    st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("components/footer")
     with pytest.raises(ValueError):
-        st.add("components/footer", folder=True)
+        st.add("components/footer")
 
 
-# ── identifier resolution (flat / folder-entry / [state] / #heading) ─────────
+# ── path resolution + list/search ────────────────────────────────────────────
 
 def small_tree(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/login.md",
-              "# Login — capabilities\n\n## Sign in\n**Status:** Supported\n\nUser signs in.\n")
-    write_cap(root, "api/auth/login/capabilities.md",
-              "# Login API — capabilities\n\n## POST login\n**Status:** Supported\n\nAuth endpoint.\n")
-    write_cap(root, "components/button/capabilities.md",
-              "# Button — capabilities\n\n## Click\n**Status:** Supported\n\nCommon.\n")
-    write_cap(root, "components/button/with-icon.md",
-              "# Button (icon) — capabilities\n\n## Click with icon\n**Status:** Supported\n\nIcon.\n")
+    write_cap(root, "routes/login", "User signs in.", Status="Supported")
+    write_cap(root, "api/auth/login", "Auth endpoint.", Status="Supported")
+    write_cap(root, "components/button", "Common.", Status="Supported")
     return root
 
 
-def test_resolution_forms(tmp_path):
+def test_resolution_by_path(tmp_path):
     st = FsCapabilitiesStore.open(small_tree(tmp_path))
-    assert st.get("routes/login").identifier == "routes/login"            # flat
-    assert st.get("api/auth/login").identifier == "api/auth/login"        # folder-entry
-    variant = st.get("components/button[icon]")                           # [state]
-    assert variant.capabilities[0].name == "Click with icon"
-    assert st._ref_error("routes/login#sign-in") is None                 # #heading
-    assert st._ref_error("routes/login#nope") is not None
+    assert st.get("routes/login").path == "routes/login"
+    assert st.get("api/auth/login").path == "api/auth/login"     # nested
+    assert st.get("routes/nope") is None
 
 
-def test_list_search_show(tmp_path):
+def test_list_search(tmp_path):
     st = FsCapabilitiesStore.open(small_tree(tmp_path))
-    ids = {c.file_id for c in st.list_all()}
-    assert {"routes/login", "api/auth/login", "components/button"} <= ids
-    assert st.list_all(namespace="routes") and all(
-        c.file_id.startswith("routes") for c in st.list_all(namespace="routes"))
-    assert any(c.file_id == "routes/login" for c in st.search("signs in"))
+    paths = {c.path for c in st.list_all()}
+    assert {"routes/login", "api/auth/login", "components/button"} <= paths
+    routes = st.list_all(namespace="routes")
+    assert routes and all(c.path.startswith("routes") for c in routes)
+    assert any(c.path == "routes/login" for c in st.search("signs in"))
+
+
+def test_grouping_dir_is_not_a_capability(tmp_path):
+    # `api/` is a pure grouping parent (no meta.yaml); only `api/auth/login` is a cap.
+    st = FsCapabilitiesStore.open(small_tree(tmp_path))
+    paths = {c.path for c in st.list_all()}
+    assert "api" not in paths and "api/auth" not in paths
+
+
+def test_capability_can_also_be_a_grouping_parent(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "web", "Browse.", Status="Supported")
+    write_cap(root, "web/editing", "Edit.", Status="Supported")
+    st = FsCapabilitiesStore.open(root)
+    paths = {c.path for c in st.list_all()}
+    assert {"web", "web/editing"} <= paths
 
 
 def test_heading_slug():
@@ -113,95 +132,119 @@ def test_heading_slug():
     assert heading_slug("401: Invalid credentials") == "401-invalid-credentials"
 
 
+# ── multi-valued Subject ─────────────────────────────────────────────────────
+
+def test_subject_multivalued(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "x", Status="Supported", Subject=["a", "b"])
+    cap = FsCapabilitiesStore.open(root).get("x")
+    assert cap.fields["Subject"] == ["a", "b"]
+
+
+def test_set_subject_comma_replaces(tmp_path):
+    st = FsCapabilitiesStore.open(node(tmp_path))
+    st.add("x")
+    cap = st.set("x", {"Subject": "a,b,c"})
+    assert cap.fields["Subject"] == ["a", "b", "c"]
+
+
+def test_check_resolves_each_subject(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "x", Status="Supported", Subject=["user", "ghost"])
+    problems = FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))
+    assert any("Subject" in p and "ghost" in p for p in problems)
+    assert not any("Subject" in p and "'user'" in p for p in problems)
+
+
 # ── check: each failure class ────────────────────────────────────────────────
 
 def test_check_clean(tmp_path):
     root = small_tree(tmp_path)
-    write_cap(root, "roles/admin.md", "# Admin — capabilities\n\n## Admin role\n**Status:** Supported\n")
-    write_cap(root, "routes/profile.md",
-              "# Profile — capabilities\n\n## View\n**Status:** Supported\n"
-              "**Subject:** user\n**Roles:** roles/admin\n\nProfile.\n")
+    write_cap(root, "roles/admin", Status="Supported")
+    write_cap(root, "routes/profile", "Profile.", Status="Supported",
+              Subject="user", Roles="roles/admin")
     assert FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user")) == []
 
 
-def test_check_dangling_identifier(tmp_path):
+def test_check_dangling_superseded(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/old.md",
-              "# Old — capabilities\n\n## Legacy\n**Status:** Supported\n"
-              "**Lifecycle:** Deprecated\n**Superseded by:** routes/ghost\n")
+    write_cap(root, "routes/old", Status="Supported",
+              Lifecycle="Deprecated", **{"Superseded by": "routes/ghost"})
     assert any("Superseded by" in p for p in FsCapabilitiesStore.open(root).check())
 
 
 def test_check_bad_subject_ref(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x.md",
-              "# X — capabilities\n\n## Do x\n**Status:** Supported\n**Subject:** nope/missing\n")
+    write_cap(root, "routes/x", Status="Supported", Subject="nope/missing")
     problems = FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))
     assert any("Subject" in p and "dangling" in p for p in problems)
 
 
-def test_check_feature_ref(tmp_path):
+def test_check_feature_ref_ok(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x.md",
-              "# X — capabilities\n\n## Do x\n**Status:** Supported\n"
-              "**Feature:** user-authentication\n")
+    write_cap(root, "routes/x", Status="Supported", Feature="user-authentication")
     assert FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax()) == []
 
 
 def test_check_bad_feature_ref(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x.md",
-              "# X — capabilities\n\n## Do x\n**Status:** Supported\n"
-              "**Feature:** user\n")
+    write_cap(root, "routes/x", Status="Supported", Feature="user")
     problems = FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax())
     assert any("Feature" in p and "expected Feature" in p for p in problems)
 
 
 def test_check_ambiguous_feature_ref(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x.md",
-              "# X — capabilities\n\n## Do x\n**Status:** Supported\n"
-              "**Feature:** user-authentication\n")
+    write_cap(root, "routes/x", Status="Supported", Feature="user-authentication")
     problems = FsCapabilitiesStore.open(root).check(taxonomy=AmbiguousFeatureTax())
     assert any("Feature" in p and "ambiguous" in p for p in problems)
 
 
 def test_check_unknown_field(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x.md", "# X — capabilities\n\n## Do x\n**Status:** Supported\n**Bogus:** y\n")
+    write_cap(root, "routes/x", Status="Supported", Bogus="y")
     assert any("unknown field" in p for p in FsCapabilitiesStore.open(root).check())
 
 
 def test_check_missing_required_when_field(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x.md", "# X — capabilities\n\n## Do x\n**Status:** Partial\n")
+    write_cap(root, "routes/x", Status="Partial")
     assert any("Partial requires Gaps" in p for p in FsCapabilitiesStore.open(root).check())
 
 
 def test_check_unresolved_role_slug(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x.md",
-              "# X — capabilities\n\n## Do x\n**Status:** Supported\n**Roles:** roles/ghost\n")
+    write_cap(root, "routes/x", Status="Supported", Roles="roles/ghost")
     assert any("Roles" in p for p in FsCapabilitiesStore.open(root).check())
 
 
-def test_check_flat_folder_collision(tmp_path):
+def test_check_missing_id(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "components/footer.md", "# Footer — capabilities\n\n## Show\n**Status:** Supported\n")
-    write_cap(root, "components/footer/capabilities.md",
-              "# Footer — capabilities\n\n## Show2\n**Status:** Supported\n")
-    assert any("collision" in p for p in FsCapabilitiesStore.open(root).check())
+    d = root / "docs/capabilities/x"
+    d.mkdir(parents=True)
+    (d / "meta.yaml").write_text("name: X\nStatus: Supported\n")
+    (d / "description.md").write_text("")
+    assert any("missing id" in p for p in FsCapabilitiesStore.open(root).check())
 
 
-# ── CLI smoke ────────────────────────────────────────────────────────────────
+def test_check_duplicate_id(tmp_path):
+    root = node(tmp_path)
+    write_cap(root, "a", Status="Supported")
+    write_cap(root, "b", Status="Supported")
+    # Force a duplicate id on b.
+    mb = root / "docs/capabilities/b/meta.yaml"
+    m = yaml.safe_load(mb.read_text())
+    m["id"] = yaml.safe_load((root / "docs/capabilities/a/meta.yaml").read_text())["id"]
+    mb.write_text(yaml.safe_dump(m))
+    assert any("duplicate id" in p for p in FsCapabilitiesStore.open(root).check())
+
 
 def test_cli_check_with_taxonomy(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
     (root / "docs" / "taxonomy" / "user").mkdir(parents=True)
     (root / "docs" / "taxonomy" / "user" / "meta.yaml").write_text("name: User\n")
-    write_cap(root, "routes/x.md",
-              "# X — capabilities\n\n## Do x\n**Status:** Supported\n**Subject:** user\n")
+    write_cap(root, "routes/x", Status="Supported", Subject="user")
     monkeypatch.chdir(root)
     assert main(["capabilities", "check"]) == 0
     assert "capabilities OK" in capsys.readouterr().out
@@ -209,52 +252,36 @@ def test_cli_check_with_taxonomy(tmp_path, monkeypatch, capsys):
 
 # ── set (the ledger-flip affordance) ──────────────────────────────────────────
 
-_MULTI = (
-    "# Auth — capabilities\n\n"
-    "## Sign in with Google\n**Status:** Missing\n\nUser clicks the Google button.\n\n"
-    "## Sign out\n**Status:** Supported\n**Priority:** P1\n\nUser ends the session.\n"
-)
-
-
-def test_set_updates_status_preserving_siblings(tmp_path):
+def test_set_updates_status(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "auth.md", _MULTI)
     st = FsCapabilitiesStore.open(root)
-    cap = st.set("auth#sign-in-with-google", {"Status": "Supported"})
+    st.add("auth/google", name="Sign in with Google", body="User clicks the Google button.")
+    cap = st.set("auth/google", {"Status": "Supported"})
     assert cap.status == "Supported"
-    sign_out = next(c for c in st.get("auth").capabilities if c.name == "Sign out")
-    assert sign_out.status == "Supported" and sign_out.fields.get("Priority") == "P1"
-    assert "User clicks the Google button." in (root / "docs/capabilities/auth.md").read_text()
+    assert "User clicks the Google button." in (
+        root / "docs/capabilities/auth/google/description.md").read_text()
 
 
-def test_set_inserts_new_field_into_metadata_run(tmp_path):
-    root = node(tmp_path)
-    write_cap(root, "auth.md", _MULTI)
-    st = FsCapabilitiesStore.open(root)
-    st.set("auth#sign-in-with-google", {"Planning doc": "2026-01-01-google-sso"})
-    cap = next(c for c in st.get("auth").capabilities if c.name == "Sign in with Google")
+def test_set_inserts_new_field(tmp_path):
+    st = FsCapabilitiesStore.open(node(tmp_path))
+    st.add("auth/google", name="Sign in with Google", body="User clicks.")
+    st.set("auth/google", {"Planning doc": "2026-01-01-google-sso"})
+    cap = st.get("auth/google")
     assert cap.fields.get("Planning doc") == "2026-01-01-google-sso"
     assert cap.body.startswith("User clicks")
 
 
-def test_set_requires_heading_for_multicap(tmp_path):
-    root = node(tmp_path)
-    write_cap(root, "auth.md", _MULTI)
-    with pytest.raises(RefError):
-        FsCapabilitiesStore.open(root).set("auth", {"Status": "Supported"})
-
-
-def test_set_bare_id_on_single_cap(tmp_path):
-    root = node(tmp_path)
-    st = FsCapabilitiesStore.open(root)
-    st.add("routes/login", name="Sign in")
-    cap = st.set("routes/login", {"Status": "Supported"})
-    assert cap.status == "Supported"
+def test_set_clears_field_with_none(tmp_path):
+    st = FsCapabilitiesStore.open(node(tmp_path))
+    st.add("x")
+    st.set("x", {"Priority": "P1"})
+    assert st.get("x").fields.get("Priority") == "P1"
+    st.set("x", {"Priority": None})
+    assert "Priority" not in st.get("x").fields
 
 
 def test_set_rejects_invalid_status_and_unknown_field(tmp_path):
-    root = node(tmp_path)
-    st = FsCapabilitiesStore.open(root)
+    st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("routes/login", name="Sign in")
     with pytest.raises(ValueError):
         st.set("routes/login", {"Status": "Broken"})
@@ -262,10 +289,17 @@ def test_set_rejects_invalid_status_and_unknown_field(tmp_path):
         st.set("routes/login", {"Frobnicate": "x"})
 
 
-def test_set_dangling_id_errors(tmp_path):
+def test_set_dangling_path_errors(tmp_path):
     root = node(tmp_path)
     with pytest.raises((ValueError, RefError)):
         FsCapabilitiesStore.open(root).set("routes/nope", {"Status": "Supported"})
+
+
+def test_remove(tmp_path):
+    st = FsCapabilitiesStore.open(node(tmp_path))
+    st.add("x")
+    st.remove("x")
+    assert st.get("x") is None
 
 
 def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
@@ -275,7 +309,7 @@ def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
     FsCapabilitiesStore.open(root).add("routes/login", name="Sign in")
     assert main(["capabilities", "set", "routes/login", "--status", "Supported"]) == 0
     assert "Set" in capsys.readouterr().out
-    assert FsCapabilitiesStore.open(root).get("routes/login").capabilities[0].status == "Supported"
+    assert FsCapabilitiesStore.open(root).get("routes/login").status == "Supported"
 
 
 def test_cli_capabilities_init_mirrors_top_level(tmp_path, monkeypatch, capsys):

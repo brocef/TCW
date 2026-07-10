@@ -1,0 +1,1 @@
+As a user, I run `tcw capabilities add <namespace/path> [name]` (with `-s <status>`, `--folder`, and a piped body) to scaffold a capability as a flat file or a promoted folder. The tool refuses a flat/folder collision.

@@ -199,59 +199,65 @@ class Collision(RefError):
 
 @dataclass
 class Capability:
-    """One `## name` user story within a capability file."""
-    file_id: str                 # owning file identifier (e.g. "routes/login")
-    name: str                    # the heading text
-    heading_slug: str            # GitHub-flavored anchor
-    fields: dict[str, str] = field(default_factory=dict)
+    """A single user-story capability, addressed by its folder path.
+
+    `path` is the identity (path from the capabilities root, e.g.
+    `auth/providers/github`). `id` is an opaque, immutable stable id — the
+    durable key an override or a `tcw://` reference points at. `origin` is
+    `"local"` or the `extends` alias the capability was resolved through.
+    `fields` holds the locked metadata vocabulary (`CAP_FIELDS`); `Subject` may
+    be a list of taxonomy slugs.
+    """
+    path: str
+    name: str
+    id: str = ""
+    fields: dict[str, Any] = field(default_factory=dict)
     body: str = ""
+    origin: str = "local"
 
     @property
     def status(self) -> str | None:
         return self.fields.get("Status")
 
     @property
-    def ref(self) -> str:
-        return f"{self.file_id}#{self.heading_slug}"
-
-
-@dataclass
-class CapabilityFile:
-    """A resolved capability file: its title + the capabilities it holds."""
-    identifier: str
-    title: str
-    capabilities: list[Capability] = field(default_factory=list)
+    def qualified(self) -> str:
+        """Path prefixed with its origin alias (`shared/auth/login`); bare when local."""
+        return self.path if self.origin == "local" else f"{self.origin}/{self.path}"
 
 
 class CapabilitiesStore(ABC):
-    """The capabilities axis: a bounded tree of user-story files (A.5).
+    """The capabilities axis: a bounded tree of user-story nodes, optionally
+    federated via `extends`.
 
     Deliberately near-identical to `TaxonomyStore` — both are bounded trees of
-    body + named-fields + named-attachments nodes (the Phase-4 shared-core basis).
+    body + named-fields + named-attachments nodes on the shared tree-store core.
     """
 
     @abstractmethod
-    def list_all(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
-        ...
+    def list_all(self, status: str | None = None, namespace: str | None = None,
+                 local_only: bool = False) -> list[Capability]:
+        """All capabilities (local + inherited), each flagged by `origin`."""
 
     @abstractmethod
-    def get(self, identifier: str) -> CapabilityFile | None:
-        """Resolve an identifier (A.6) to its file. Raises `Collision` on flat/folder clash."""
+    def get(self, identifier: str) -> Capability | None:
+        """Resolve a path (A.6) to its capability, or None. Raises `AmbiguousRef`
+        when a bare ref matches multiple extended stores."""
 
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
-            body: str = "", folder: bool = False) -> CapabilityFile:
-        ...
+            body: str = "") -> Capability:
+        """Create a local capability folder at `identifier` (a path). Refuse a collision."""
 
     @abstractmethod
     def remove(self, identifier: str) -> None:
         ...
 
     @abstractmethod
-    def set(self, identifier: str, fields: dict[str, str]) -> Capability:
-        """Update/insert inline metadata fields on the resolved capability;
+    def set(self, identifier: str, fields: dict[str, Any]) -> Capability:
+        """Update/insert metadata fields on the capability at `identifier`;
         return it. Keys must be in CAP_FIELDS; a Status value must be in
-        CAP_STATUSES. Other field-value semantics are `check`'s job (Spec 3)."""
+        CAP_STATUSES. `Subject` accepts a list (or a comma string). Other
+        field-value semantics are `check`'s job (Spec 3)."""
 
     @abstractmethod
     def search(self, query: str) -> list[Capability]:
@@ -259,24 +265,20 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def check(self, taxonomy: "TaxonomyStore | None" = None) -> list[str]:
-        """Validate identifiers, metadata vocabulary, and (cross-component) Subject refs."""
+        """Validate identifiers, metadata vocabulary, federation, and
+        (cross-component) Subject/Feature refs."""
 
     @abstractmethod
-    def get_capability_detail(self, identifier: str,
-                              heading_slug: str | None = None) -> "CapabilityDetail" | None:
-        """Resolve a specific capability entry to its data plus a revision token.
-
-        ``heading_slug`` disambiguates when the file holds multiple capabilities.
-        Returns ``None`` for dangling identifiers.
-        """
+    def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:
+        """Resolve a path to its capability plus a revision token.
+        Returns ``None`` for dangling identifiers."""
 
     @abstractmethod
-    def update_capability(self, identifier: str,
-                          heading_slug: str | None = None, *,
+    def update_capability(self, identifier: str, *,
                           body: Any = _UNSET,
                           fields: Any = _UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
-        """Partial-merge update for an existing capability entry.
+        """Partial-merge update for an existing capability.
 
         ``body``: ``None`` clears to empty string; any string sets it.
         ``fields``: a dict of ``{key: value}`` pairs to merge into the
@@ -287,20 +289,16 @@ class CapabilitiesStore(ABC):
         """
 
     @abstractmethod
-    def add_entry(self, collection: str, name: str, *,
-                  status: str = "Missing", body: str = "",
-                  fields: dict[str, str] | None = None) -> "CapabilityDetail":
-        """Create a capability entry inside a named collection (namespace).
+    def extends_add(self, alias: str, ref: str) -> None:
+        """Declare federation: this store extends another under `alias`.
 
-        If the collection already exists (file present) the new entry is added
-        to it; otherwise the collection file is created.  The adapter decides
-        whether that realizes as a new flat file or a folder entry.
-
-        This is an abstract "create-entry-in-collection" — never
-        "append-heading-at-path".  The collection name is the placement.
-
-        Returns the created ``CapabilityDetail`` with a fresh revision.
+        `ref` is opaque to the interface (a sibling-repo path for the FS adapter,
+        a URL/id for a remote one). Refuse a duplicate alias or an unresolvable ref.
         """
+
+    @abstractmethod
+    def extends_remove(self, alias: str) -> None:
+        """Drop a federation alias. Refuse if it isn't present."""
 
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────

@@ -804,28 +804,21 @@ class TcwHandler(BaseHTTPRequestHandler):
                            f"server error: {e}".encode("utf-8"))
             return
 
-        # ── POST /api/capabilities — create capability entry ──
+        # ── POST /api/capabilities — create a capability folder ──
         if path == "/api/capabilities":
             try:
-                collection = body.get("collection", "")
-                if not collection:
-                    self._send_err(HTTPStatus.BAD_REQUEST,
-                                   "collection is required")
+                cap_path = body.get("path", "")
+                if not cap_path:
+                    self._send_err(HTTPStatus.BAD_REQUEST, "path is required")
                     return
-                name = body.get("name", "")
-                if not name:
-                    self._send_err(HTTPStatus.BAD_REQUEST, "name is required")
-                    return
+                name = body.get("name") or None
                 status = body.get("status", "Missing")
                 body_text = body.get("body", "")
                 fields = body.get("fields")
-                detail = capabilities.add_entry(
-                    collection=collection,
-                    name=name,
-                    status=status,
-                    body=body_text,
-                    fields=fields or None,
-                )
+                capabilities.add(cap_path, name=name, status=status, body=body_text)
+                if fields:
+                    capabilities.set(cap_path, fields)
+                detail = capabilities.get_capability_detail(cap_path)
                 response = {
                     "capability": _jsonable(detail.capability),
                     "coreRevision": detail.core_revision,

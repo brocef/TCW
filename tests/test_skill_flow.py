@@ -30,7 +30,7 @@ def test_product_first_lifecycle_handshake(tmp_path, monkeypatch, capsys):
     # planning gate: declare the capability Missing + the Planning-doc back-pointer
     assert main(["capabilities", "add", "routes/csv-export", "Export CSV", "--status", "Missing"]) == 0
     assert main(["capabilities", "set", "routes/csv-export", "--field", f"Planning doc={slug}"]) == 0
-    cap = FsCapabilitiesStore.open(root).get("routes/csv-export").capabilities[0]
+    cap = FsCapabilitiesStore.open(root).get("routes/csv-export")
     assert cap.status == "Missing" and cap.fields.get("Planning doc") == slug
 
     # start → active
@@ -40,7 +40,7 @@ def test_product_first_lifecycle_handshake(tmp_path, monkeypatch, capsys):
 
     # complete: flip the ledger, then close the item
     assert main(["capabilities", "set", "routes/csv-export", "--status", "Supported"]) == 0
-    assert FsCapabilitiesStore.open(root).get("routes/csv-export").capabilities[0].status == "Supported"
+    assert FsCapabilitiesStore.open(root).get("routes/csv-export").status == "Supported"
     capsys.readouterr()
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
     assert (root / "docs/work/completed" / slug).is_dir()

@@ -1,0 +1,1 @@
+As a user, I run `tcw taxonomy extends add <alias> <repo-path>` (or declare `extends: { <alias>: <repo-path> }` in `docs/taxonomy/config.yaml`) to import another repo's taxonomy under a namespace, so shared nouns mean the same thing everywhere.

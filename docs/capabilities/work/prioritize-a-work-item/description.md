@@ -1,0 +1,1 @@
+As a user, I assign an integer priority with `tcw work new "<title>" --priority N` or `tcw work edit <slug> --priority N` (higher integer = higher priority; the default is unspecified). Higher-priority items sort to the top of the board.

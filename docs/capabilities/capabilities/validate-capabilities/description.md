@@ -1,0 +1,1 @@
+As a user, I run `tcw capabilities check` to validate cross-reference identifiers, the locked metadata vocabulary and required-when fields, role/condition slugs, every `Subject:` ref against the taxonomy store, and every `Feature:` ref as a registered taxonomy feature.

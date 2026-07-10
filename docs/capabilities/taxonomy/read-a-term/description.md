@@ -1,0 +1,1 @@
+As a user, I run `tcw taxonomy show <path>` (or just `tcw taxonomy <path>`) to read an entry's name, qualified path, kind, feature vocabulary refs, relatesTo links, attachments, and the head of its description.

@@ -1,0 +1,1 @@
+As a user, I run `tcw taxonomy check` to validate extends aliases, taxonomy kinds, feature vocabulary refs, and every relatesTo / subject reference — flagging cycles, duplicate aliases, alias/term collisions, dangling or ambiguous refs, and feature refs that do not point at vocabulary.

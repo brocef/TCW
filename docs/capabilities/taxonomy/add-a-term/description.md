@@ -1,0 +1,1 @@
+As a user, I run `tcw taxonomy add <name>` (with optional `-s <slug>`, `-p <parent>`, `--kind vocabulary|feature`, repeatable `--vocab <ref>`, and an inline or piped description) to register vocabulary or feature entries. The slug is the entry's path identity; adding under a parent nests it.

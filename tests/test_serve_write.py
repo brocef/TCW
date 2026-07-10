@@ -175,7 +175,7 @@ class TestDetailReads:
         root, base, slug = seeded
         detail = _get_json(base, "/api/capabilities/web")
         assert "coreRevision" in detail
-        assert detail["capability"]["file_id"] == "web"
+        assert detail["capability"]["path"] == "web"
 
     def test_work_detail_404_unknown(self, seeded):
         root, base, slug = seeded
@@ -704,7 +704,7 @@ class TestCapabilityCRUD:
     def test_create_capability(self, bare):
         root, base = bare
         status, body = _req(base, "POST", "/api/capabilities", {
-            "collection": "auth",
+            "path": "auth",
             "name": "User login",
             "status": "Missing",
         })
@@ -716,7 +716,7 @@ class TestCapabilityCRUD:
     def test_create_with_fields(self, bare):
         root, base = bare
         status, body = _req(base, "POST", "/api/capabilities", {
-            "collection": "auth",
+            "path": "auth",
             "name": "User login",
             "status": "Supported",
             "fields": {"Priority": "P0"},
@@ -724,18 +724,17 @@ class TestCapabilityCRUD:
         assert status == HTTPStatus.CREATED
         assert body["capability"]["fields"]["Priority"] == "P0"
 
-    def test_create_to_existing_collection(self, seeded):
+    def test_create_nested_path(self, seeded):
         root, base, slug = seeded
-        # 'web' collection already exists from seed
+        # 'web' already exists from seed; create a nested capability under it
         status, body = _req(base, "POST", "/api/capabilities", {
-            "collection": "web",
+            "path": "web/editing",
             "name": "Edit content",
         })
         assert status == HTTPStatus.CREATED
-        # Verify the file now has two capabilities
         caps = _get_json(base, "/api/capabilities")
-        web_caps = [c for c in caps if c["file_id"] == "web"]
-        assert len(web_caps) == 2
+        paths = {c["path"] for c in caps}
+        assert {"web", "web/editing"} <= paths
 
     def test_update_capability_fields(self, seeded):
         root, base, slug = seeded
@@ -777,19 +776,21 @@ class TestCapabilityCRUD:
         })
         assert status == HTTPStatus.NOT_FOUND
 
-    def test_create_missing_collection_400(self, bare):
+    def test_create_missing_path_400(self, bare):
         root, base = bare
         status, body = _req(base, "POST", "/api/capabilities", {
-            "name": "No collection",
+            "name": "No path",
         })
         assert status == HTTPStatus.BAD_REQUEST
 
-    def test_create_missing_name_400(self, bare):
+    def test_create_without_name_ok(self, bare):
         root, base = bare
+        # name is optional — derived from the path's last segment
         status, body = _req(base, "POST", "/api/capabilities", {
-            "collection": "auth",
+            "path": "auth/login",
         })
-        assert status == HTTPStatus.BAD_REQUEST
+        assert status == HTTPStatus.CREATED
+        assert body["capability"]["path"] == "auth/login"
 
     def test_update_invalid_status_422(self, seeded):
         root, base, slug = seeded
@@ -833,15 +834,14 @@ class TestEncodedRefs:
             httpd.shutdown()
             httpd.server_close()
 
-    def test_encoded_hash_capability(self, tmp_path):
-        """Test refs like 'web/editing#edit-tcw-content' encoded properly."""
+    def test_encoded_slash_capability(self, tmp_path):
+        """Test nested capability paths like 'web/editing' encoded as 'web%2Fediting'."""
         root = _node(tmp_path)
-        FsCapabilitiesStore.open(root).add("web", "Browse TCW content", status="Missing")
+        FsCapabilitiesStore.open(root).add("web/editing", "Edit TCW content", status="Missing")
         httpd, base = _start_server(root)
         try:
-            # web#browse-tcw-content with # encoded as %23
-            detail = _get_json(base, "/api/capabilities/web%23browse-tcw-content")
-            assert detail["capability"]["file_id"] == "web"
+            detail = _get_json(base, "/api/capabilities/web%2Fediting")
+            assert detail["capability"]["path"] == "web/editing"
         finally:
             httpd.shutdown()
             httpd.server_close()
@@ -1347,7 +1347,7 @@ class TestCapabilityCheckWarnings:
     def test_create_capability_includes_warnings(self, seeded):
         root, base, slug = seeded
         status, body = _req(base, "POST", "/api/capabilities", {
-            "collection": "test-warnings",
+            "path": "test-warnings",
             "name": "Test cap",
             "status": "Missing",
         })

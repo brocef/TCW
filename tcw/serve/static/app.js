@@ -528,7 +528,7 @@ function enterCapabilityEdit() {
   editor.item = cap;
   editor.payload = payload;
   editor.revision = payload.coreRevision;
-  editor.ref = cap.ref;
+  editor.ref = cap.path;
   var fields = cap.fields || {};
   editor.original = {
     fields: Object.assign({}, fields),
@@ -951,7 +951,7 @@ function enterCreate(axis) {
     };
   } else if (axis === "capabilities") {
     editor.createDraft = {
-      collection: "",
+      path: "",
       name: "",
       status: "Missing",
       body: "",
@@ -1070,24 +1070,18 @@ async function saveCapabilityCreate() {
   render();
 
   var d = editor.createDraft;
-  if (!d.collection || !d.collection.trim()) {
-    editor.errors = ["Collection is required"];
-    editor.saving = false;
-    render();
-    return;
-  }
-  if (!d.name || !d.name.trim()) {
-    editor.errors = ["Name is required"];
+  if (!d.path || !d.path.trim()) {
+    editor.errors = ["Path is required"];
     editor.saving = false;
     render();
     return;
   }
 
   var body = {
-    collection: d.collection.trim(),
-    name: d.name.trim(),
+    path: d.path.trim(),
     status: d.status || "Missing",
   };
+  if (d.name && d.name.trim()) body.name = d.name.trim();
   if (d.body) body.body = d.body;
 
   try {
@@ -1323,13 +1317,13 @@ function renderStatusFilters() {
 function itemTitle(item) {
   if (state.view === "work") return item.title || item.slug;
   if (state.view === "taxonomy") return item.name || item.slug;
-  return item.name || item.ref;
+  return item.name || item.path;
 }
 
 function itemKey(item) {
   if (state.view === "work") return item.slug;
   if (state.view === "taxonomy") return item.qualified || item.slug;
-  return item.ref;
+  return item.qualified || item.path;
 }
 
 function itemMeta(item) {
@@ -1341,7 +1335,8 @@ function itemMeta(item) {
   if (state.view === "taxonomy") {
     return meta([item.kind, item.origin, item.slug]);
   }
-  return meta([item.status, item.file_id]);
+  var origin = (item.origin && item.origin !== "local") ? item.origin : null;
+  return meta([item.status, origin, item.path]);
 }
 
 // One list row. Work rows are wrapped so a copy-slug button can sit beside the
@@ -1680,7 +1675,7 @@ async function renderTaxonomy(item) {
 async function renderCapability(item) {
   detail.innerHTML = '<p class="empty">Loading ' + esc(item.name) + "...</p>";
   try {
-    var encodedRef = encodeURIComponent(item.ref);
+    var encodedRef = encodeURIComponent(item.path);
     var payload = await fetchJson("/api/capabilities/" + encodedRef);
     state.cachedCapabilityDetail = payload;
     var cap = payload.capability;
@@ -1690,7 +1685,7 @@ async function renderCapability(item) {
       '<div class="detail-head">' +
         '<div>' +
           '<h2>' + esc(cap.name) + "</h2>" +
-          '<p class="item-meta">' + esc(cap.ref) + "</p>" +
+          '<p class="item-meta">' + esc(cap.qualified || cap.path) + (cap.id ? " · " + esc(cap.id) : "") + "</p>" +
         "</div>" +
         '<div class="detail-actions">' +
           '<span class="badge">' + esc(fields.Status || "Unspecified") + "</span>" +
@@ -2436,13 +2431,14 @@ function renderCapabilityCreate() {
   var d = editor.createDraft;
   var savingClass = editor.saving ? " saving" : "";
 
-  // Collection + name as text, status as select
-  var collectionInput = '<div class="field-group"><label>Collection *</label>' +
-    '<input type="text" class="field-input" data-create-field="collection" value="' + esc(d.collection || "") +
-    '" placeholder="e.g. auth, web, routes"></div>';
+  // Path + name as text, status as select
+  var pathInput = '<div class="field-group"><label>Path *</label>' +
+    '<input type="text" class="field-input" data-create-field="path" value="' + esc(d.path || "") +
+    '" placeholder="e.g. auth/login, web/editing"></div>';
 
-  var nameInput = '<div class="field-group"><label>Name *</label>' +
-    '<input type="text" class="field-input" data-create-field="name" value="' + esc(d.name || "") + '"></div>';
+  var nameInput = '<div class="field-group"><label>Name</label>' +
+    '<input type="text" class="field-input" data-create-field="name" value="' + esc(d.name || "") +
+    '" placeholder="(defaults from the path)"></div>';
 
   var statusSelect = '<div class="field-group"><label>Status</label>' +
     '<select class="field-select" data-create-field="status">' +
@@ -2451,7 +2447,7 @@ function renderCapabilityCreate() {
       return '<option value="' + esc(opt) + '"' + selected + '">' + esc(opt) + '</option>';
     }).join("") + '</select></div>';
 
-  var fieldRows = collectionInput + nameInput + statusSelect;
+  var fieldRows = pathInput + nameInput + statusSelect;
 
   var validationHtml = "";
   if (editor.errors.length > 0) {
@@ -2473,8 +2469,8 @@ function renderCapabilityCreate() {
       validationHtml +
       '<div class="editor-section">Fields</div>' +
       '<div class="editor-fields">' + fieldRows + "</div>" +
-      '<p style="font-size:12px;color:var(--muted)">The collection is the namespace (capability file). ' +
-        'Enter an existing collection name to add to it, or a new name to create a new collection.</p>' +
+      '<p style="font-size:12px;color:var(--muted)">The path is the capability\'s identity and location ' +
+        '(nested with "/", e.g. auth/login). Name is optional — it defaults from the last path segment.</p>' +
       '<div class="editor-section">Body</div>' +
       '<div class="md-editor">' +
         '<textarea class="md-input" id="mdInput" placeholder="Write Markdown..."></textarea>' +

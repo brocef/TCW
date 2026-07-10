@@ -10,7 +10,9 @@ license: Apache-2.0
 
 # The capabilities process
 
-The standing ledger (`docs/capabilities/`) describes *what a user can currently do*. It is the third layer in the TCW chain: `Vocabulary -> Features -> Capabilities -> Work`. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability markdown when `set` applies. Capabilities may carry `Subject` as a loose taxonomy pointer and `Feature` as a strong pointer to a taxonomy feature. The taxonomy axis is **REQUIRED SUB-SKILL: Use tcw-taxonomy** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
+The standing ledger (`docs/capabilities/`) describes *what a user can currently do*. It is the third layer in the TCW chain: `Vocabulary -> Features -> Capabilities -> Work`. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability metadata when `set` applies.
+
+Each capability is a **path-addressed folder** (`docs/capabilities/<path>/` = `meta.yaml` + `description.md`) carrying an opaque stable `id`. Address a capability by its path (e.g. `auth/login`), never a `#heading`. Capabilities may carry `Subject` (a **multi-valued** loose taxonomy pointer — a list of slugs) and `Feature` (a strong pointer to a taxonomy feature). The taxonomy axis is **REQUIRED SUB-SKILL: Use tcw-taxonomy** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
 
 > **Web editing:** Capabilities can also be created and edited through the local `tcw serve` web app; check failures are surfaced in the UI.
 
@@ -18,7 +20,7 @@ The standing ledger (`docs/capabilities/`) describes *what a user can currently 
 
 When a work item has a product delta, name each new / changed / removed capability and record it:
 
-- **New capability:** `tcw capabilities add <namespace/path> "<Capability name>" --status Missing` (seeds `**Status:** Missing`; the heading slug derives from the name), then `tcw capabilities set <namespace/path> --field "Planning doc=<work-slug>"` — the capability→work forward pointer. A freshly-added file is single-capability, so the bare id resolves.
+- **New capability:** `tcw capabilities add <namespace/path> "<Capability name>" --status Missing` (creates the folder, mints a stable `id`, seeds `Status: Missing`), then `tcw capabilities set <namespace/path> --field "Planning doc=<work-slug>"` — the capability→work forward pointer.
 - **Changed / removed existing capability:** record it in the work item's `capabilities.yaml` (the work→capability back-pointer).
 
 ## Contradiction-detection (at the moment of change)
@@ -38,10 +40,19 @@ from the capability.
 
 As the item's final pre-freeze step, apply each declared delta so the ledger describes the present:
 
-- `tcw capabilities set <id>#<heading> --status Supported` (Missing → Supported)
-- scope/body edits; `tcw capabilities set <id>#<heading> --status Omitted` (Supported → Omitted)
+- `tcw capabilities set <path> --status Supported` (Missing → Supported)
+- scope/body edits; `tcw capabilities set <path> --status Omitted` (Supported → Omitted)
 
-At completion these are long-lived multi-capability files, so include the `#heading` (bare ids are refused when a file holds more than one capability). Flips are idempotent (setting the same status twice is a no-op). This satisfies the work DoD "capabilities reconciled" item by **convention** — the tool acknowledges it at `complete`, it does not verify it.
+Address the capability by its path. Flips are idempotent (setting the same status twice is a no-op). This satisfies the work DoD "capabilities reconciled" item by **convention** — the tool acknowledges it at `complete`, it does not verify it.
+
+## Federation (inherit another project's capabilities)
+
+A project can `extends` another's capabilities so shared user stories are declared once — e.g. a web frontend and a mobile app that both drive the same server. `tcw capabilities extends <alias> <path-to-other-repo>` (`--rm <alias>` to drop). Inherited capabilities surface in `list`/`show` flagged by origin (`<alias>/<path>`); they are read-only in structure (`remove` refuses an inherited one) — a child may only:
+
+- **override metadata** — create a local folder whose `meta.yaml` has `overrides: <upstream-id>` (or `<alias>/<id>` to disambiguate) plus the fields to change (e.g. `Status: Missing`, or `Status: Omitted` for "we deliberately don't have this"; a YAML `null` clears an inherited field);
+- **compose the body** — a `description.md` in that override folder replaces the upstream body; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera").
+
+`tcw capabilities check` validates override targets (dangling / ambiguous / must-be-inherited), attachment lists, and federation cycles.
 
 ## Product-layer coordination (orchestrator-relay)
 
@@ -60,8 +71,11 @@ codebase → draft → refine with the user → write) → read [`references/ini
 |---|---|
 | declare a new capability | `tcw capabilities add <ns/path> "<Name>" --status Missing` |
 | record the planning back-pointer | `tcw capabilities set <ns/path> --field "Planning doc=<slug>"` |
-| flip status at completion | `tcw capabilities set <id>#<heading> --status Supported` |
-| associate a feature | `tcw capabilities set <id>#<heading> --field "Feature=<feature-ref>"` |
+| flip status at completion | `tcw capabilities set <path> --status Supported` |
+| associate a feature | `tcw capabilities set <path> --field "Feature=<feature-ref>"` |
+| link taxonomy (multi-valued) | `tcw capabilities set <path> --field "Subject=term-a,term-b"` |
+| federate another project | `tcw capabilities extends <alias> <path-to-repo>` (`--rm <alias>`) |
+| list only local (not inherited) | `tcw capabilities list --local-only` |
 | check the ledger | `tcw capabilities check` |
-| find / read | `tcw capabilities search <term>` · `tcw capabilities show <id>` |
+| find / read | `tcw capabilities search <term>` · `tcw capabilities show <path>` |
 | ask the orchestrator for wording | `tcw work escalate "capability wording: <name>"` |

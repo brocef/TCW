@@ -1,14 +1,15 @@
-"""`tcw capabilities` — the user stories. Subcommands per phase-3-capabilities B.2."""
+"""`tcw capabilities` — the user stories. Path-addressed folder capabilities."""
 
 import argparse
 import sys
 
 from tcw.store.base import Capability, RefError
+from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
 
 NAME = "capabilities"
-SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set"}
-DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <id>` == `tcw capabilities show <id>`
+SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set", "extends"}
+DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <path>` == `tcw capabilities show <path>`
 
 
 def _init(args: argparse.Namespace) -> int:
@@ -39,22 +40,30 @@ def _stdin_body() -> str:
         return ""
 
 
+def _fmt(v) -> str:
+    return ", ".join(v) if isinstance(v, list) else str(v)
+
+
 def _print_cap(cap: Capability) -> None:
-    print(f"## {cap.name}  ({cap.ref})")
+    tag = f"  [{cap.origin}]" if cap.origin != "local" else ""
+    print(f"## {cap.name}  ({cap.qualified}){tag}")
+    if cap.id:
+        print(f"**id:** {cap.id}")
     for k, v in cap.fields.items():
-        print(f"**{k}:** {v}")
+        print(f"**{k}:** {_fmt(v)}")
     body = cap.body.strip()
     if body:
         print()
-        print("\n".join(body.splitlines()[:10]))
+        print(body)
 
 
 def _list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    for c in st.list_all(status=args.status, namespace=args.namespace):
-        print(f"[{c.status}]\t{c.ref}\t{c.name}")
+    for c in st.list_all(status=args.status, namespace=args.namespace,
+                         local_only=args.local_only):
+        print(f"[{c.status}]\t{c.qualified}\t{c.name}")
     return 0
 
 
@@ -63,22 +72,14 @@ def _show(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     try:
-        cf = st.get(args.id)
-    except RefError as e:
+        cap = st.get(args.id)
+    except (RefError, AmbiguousRef) as e:
         print(f"tcw capabilities show: {e}", file=sys.stderr)
         return 1
-    if cf is None:
+    if cap is None:
         print(f"tcw capabilities show: no such capability: {args.id}", file=sys.stderr)
         return 1
-    heading = args.id.split("#", 1)[1] if "#" in args.id else None
-    caps = [c for c in cf.capabilities if c.heading_slug == heading] if heading else cf.capabilities
-    if heading and not caps:
-        print(f"tcw capabilities show: no heading '#{heading}' in {cf.identifier}", file=sys.stderr)
-        return 1
-    print(f"# {cf.title}")
-    for c in caps:
-        print()
-        _print_cap(c)
+    _print_cap(cap)
     return 0
 
 
@@ -87,12 +88,11 @@ def _add(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     try:
-        cf = st.add(args.path, name=args.name, status=args.status,
-                    body=_stdin_body(), folder=args.folder)
+        cap = st.add(args.path, name=args.name, status=args.status, body=_stdin_body())
     except (ValueError, RefError) as e:
         print(f"tcw capabilities add: {e}", file=sys.stderr)
         return 1
-    print(f"Added capability {cf.identifier}")
+    print(f"Added capability {cap.path} ({cap.id})")
     return 0
 
 
@@ -100,7 +100,7 @@ def _set(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    fields: dict[str, str] = {}
+    fields: dict = {}
     if args.status:
         fields["Status"] = args.status
     for kv in (args.field or []):
@@ -117,7 +117,7 @@ def _set(args: argparse.Namespace) -> int:
     except (ValueError, RefError) as e:
         print(f"tcw capabilities set: {e}", file=sys.stderr)
         return 1
-    print(f"Set {cap.ref}")
+    print(f"Set {cap.path}")
     return 0
 
 
@@ -126,7 +126,27 @@ def _search(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     for c in st.search(args.query):
-        print(f"{c.ref}\t{c.name}")
+        print(f"{c.qualified}\t{c.name}")
+    return 0
+
+
+def _extends(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        if args.rm:
+            st.extends_remove(args.alias)
+            print(f"Removed extends alias {args.alias}")
+        else:
+            if not args.ref:
+                print("tcw capabilities extends: need <ref> (or --rm)", file=sys.stderr)
+                return 1
+            st.extends_add(args.alias, args.ref)
+            print(f"Added extends alias {args.alias} → {args.ref}")
+    except (ValueError, RefError) as e:
+        print(f"tcw capabilities extends: {e}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -153,32 +173,39 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     g.add_parser("init", help="scaffold docs/capabilities/ (mirror of `tcw init capabilities`)") \
         .set_defaults(func=_init)
 
-    pl = g.add_parser("list", help="list capabilities, flagged by status")
+    pl = g.add_parser("list", help="list capabilities, flagged by status + origin")
     pl.add_argument("--status")
     pl.add_argument("--namespace")
+    pl.add_argument("--local-only", action="store_true",
+                    help="exclude inherited (federated) capabilities")
     pl.set_defaults(func=_list)
 
-    ps = g.add_parser("show", help="read a capability (file, or a #heading)")
-    ps.add_argument("id")
+    ps = g.add_parser("show", help="read a capability by path")
+    ps.add_argument("id", metavar="path")
     ps.set_defaults(func=_show)
 
-    pa = g.add_parser("add", help="scaffold a capability file/heading")
+    pa = g.add_parser("add", help="scaffold a capability folder")
     pa.add_argument("path", metavar="namespace/path")
     pa.add_argument("name", nargs="?")
     pa.add_argument("-s", "--status", default="Missing")
-    pa.add_argument("--folder", action="store_true", help="scaffold a folder + capabilities.md")
     pa.set_defaults(func=_add)
 
     pset = g.add_parser("set", help="update a capability's status/fields in place")
-    pset.add_argument("id")
+    pset.add_argument("id", metavar="path")
     pset.add_argument("--status", help="shorthand for --field Status=<S>")
     pset.add_argument("--field", action="append", metavar="K=V",
-                      help="set a metadata field (repeatable)")
+                      help="set a metadata field (repeatable; Subject accepts a,b,c)")
     pset.set_defaults(func=_set)
 
     pse = g.add_parser("search", help="search names + bodies")
     pse.add_argument("query")
     pse.set_defaults(func=_search)
 
-    pc = g.add_parser("check", help="validate identifiers, subject refs, metadata")
+    pe = g.add_parser("extends", help="federate another project's capabilities")
+    pe.add_argument("alias")
+    pe.add_argument("ref", nargs="?", help="path to the other repo (omit with --rm)")
+    pe.add_argument("--rm", action="store_true", help="remove the alias instead")
+    pe.set_defaults(func=_extends)
+
+    pc = g.add_parser("check", help="validate paths, subject/feature refs, federation, metadata")
     pc.set_defaults(func=_check)

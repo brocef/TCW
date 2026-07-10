@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import tempfile
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -22,9 +23,9 @@ import yaml
 
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, DEFAULT_DOD,
-    TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
+    TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, WORK_STATUSES, _UNSET,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
-    CapabilityDetail, CapabilityFile, Collision, MultipleMatch, RefError,
+    CapabilityDetail, MultipleMatch, RefError,
     SidecarResource, StaleRevision, TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_work_level,
 )
@@ -181,8 +182,16 @@ def descendant_nodes(root: Path) -> list[Path]:
 def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, str] | None":
     """Resolve a (possibly qualified) work ref against `anchor`.
 
-    Bare slug (no '/')  -> (anchor store, slug)             [unchanged]
-    'sub/proj/<slug>'   -> (descendant-node store, <slug>)  [cross-node addressing]
+    Bare slug (no '/')      -> (anchor store, slug)             [unchanged]
+    '<status>/…/<slug>'     -> (anchor store, <slug>)           [status-path locator]
+    'sub/proj/<slug>'       -> (descendant-node store, <slug>)  [cross-node addressing]
+
+    A leading segment in `WORK_STATUSES` marks a status-path locator (the path a
+    board/`work path` prints): the last segment is the bare slug, intermediate
+    segments are ignored, and the status segment must equal the item's real
+    status (else the ref doesn't resolve). This is addressing sugar — the slug
+    stays the identity. (A subproject literally named after a status is not
+    addressable via the bare status-prefix form; use its slug.)
 
     The qualifier is the descendant node's path relative to `anchor`. A slug never
     contains '/' (slugify -> [a-z0-9-]), so the final '/'-segment is always the
@@ -202,6 +211,15 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
         ref = ref[2:]
     if "/" not in ref:                             # bare slug -> anchor node (unchanged)
         return FsWorkStore.open(anchor), ref
+    if ref.split("/", 1)[0] in WORK_STATUSES:      # status-path locator (anchor node)
+        bare = ref.rpartition("/")[2]
+        if not bare:
+            return None
+        store = FsWorkStore.open(anchor)
+        item = store.get(bare)                     # MultipleMatch propagates
+        if item is None or item.status != ref.split("/", 1)[0]:
+            return None                            # unknown slug or wrong status segment
+        return store, bare
     qualifier, _, bare = ref.rpartition("/")
     if not qualifier or not bare:                  # '/', '/slug', 'slug/' -> malformed
         return None
@@ -445,6 +463,43 @@ class FsTreeStore:
     def _mv(self, src: Path, dst: Path) -> None:
         git_mv(self.node_root, src, dst)
 
+    # -- shared folder-node anatomy (meta.yaml + description.md + attachments) --
+    #
+    # A "node" is a folder holding a `meta.yaml` (named fields), a
+    # `description.md` (the body), and zero or more named attachment files. Both
+    # the taxonomy and capabilities adapters realize their items this way; the
+    # read/write mechanics live here so they are defined once. (Abstract spine:
+    # body + named fields + named attachments — bounded, never globbed open.)
+
+    def _node_reserved(self) -> set[str]:
+        """Filenames in a node folder that are not attachments."""
+        names = {"meta.yaml", "description.md"}
+        if self.CONFIG_NAME:
+            names.add(self.CONFIG_NAME)
+        return names
+
+    def _load_node(self, d: Path) -> tuple[dict, str, list[str]]:
+        """Read a folder node → (meta mapping, description text, attachment names).
+
+        Attachments are the folder's non-reserved, non-dot files (bounded set).
+        """
+        meta = load_yaml(d / "meta.yaml")
+        desc = d / "description.md"
+        description = desc.read_text(encoding="utf-8") if desc.exists() else ""
+        reserved = self._node_reserved()
+        attachments = sorted(
+            f.name for f in d.iterdir()
+            if f.is_file() and f.name not in reserved and not f.name.startswith("."))
+        return meta, description, attachments
+
+    def _write_node(self, d: Path, meta: dict, description: str) -> None:
+        """Create/overwrite a folder node's meta + description, atomically, staged."""
+        d.mkdir(parents=True, exist_ok=True)
+        _atomic_write(d / "meta.yaml",
+                      yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
+        _atomic_write(d / "description.md", description)
+        self._stage(d / "meta.yaml", d / "description.md")
+
 
 # ── FsTaxonomyStore ─────────────────────────────────────────────────────────
 
@@ -481,15 +536,11 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
     def _term(self, slug: str, origin: str = "local") -> Term:
         d = self.root / slug
-        meta = load_yaml(d / "meta.yaml")
-        desc = (d / "description.md")
-        attachments = sorted(
-            f.name for f in d.iterdir()
-            if f.is_file() and f.name not in _TAX_RESERVED and not f.name.startswith("."))
+        meta, description, attachments = self._load_node(d)
         return Term(
             slug=slug,
             name=meta.get("name") or slug.rsplit("/", 1)[-1].replace("-", " ").title(),
-            description=desc.read_text(encoding="utf-8") if desc.exists() else "",
+            description=description,
             kind=_normalize_taxonomy_kind(meta.get("kind")),
             relates_to=list(meta.get("relatesTo") or []),
             vocabulary=list(meta.get("vocabulary") or []),
@@ -557,13 +608,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         d = self.root / full
         if d.exists():
             raise ValueError(f"term already exists: {full}")
-        d.mkdir(parents=True)
         meta = {"name": name, "kind": kind, "relatesTo": []}
         if vocabulary:
             meta["vocabulary"] = list(vocabulary)
-        dump_yaml(d / "meta.yaml", meta)
-        (d / "description.md").write_text(description, encoding="utf-8")
-        self._stage(d / "meta.yaml", d / "description.md")
+        self._write_node(d, meta, description)
         return self._term(full)
 
     def remove(self, ref: str) -> None:
@@ -762,10 +810,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                         f"expected Vocabulary")
 
         # Write atomically
-        meta_text = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)
-        _atomic_write(d / "meta.yaml", meta_text)
-        _atomic_write(d / "description.md", desc_text)
-        self._stage(d / "meta.yaml", d / "description.md")
+        self._write_node(d, meta, desc_text)
 
         # Return fresh detail
         return self.get_term_detail(ref)
@@ -773,266 +818,414 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
 # ── FsCapabilitiesStore ──────────────────────────────────────────────────────
 
-_CAP_SIDECARS = {"errors.md", "states.md"}
-_FIELD_RE = re.compile(r"^\*\*([^:*]+):\*\*\s*(.*)$")
-_IDENT_RE = re.compile(r"^(?P<path>[^#\[\]]+?)(?:\[(?P<state>[^\]]+)\])?(?:#(?P<heading>[\w-]+))?$")
+# Meta keys that are structural (not part of the locked CAP_FIELDS vocabulary).
+_CAP_STRUCTURAL = {"id", "name", "overrides", "prependedDocs", "appendedDocs"}
 
 
 def heading_slug(text: str) -> str:
-    """GitHub-flavored heading anchor: lowercased, punctuation stripped, spaces→'-'."""
+    """GitHub-flavored heading anchor: lowercased, punctuation stripped, spaces→'-'.
+
+    Still used by the serve viewer for anchors; no longer part of capability
+    identity (capabilities are path-addressed folders).
+    """
     s = re.sub(r"[^\w\s-]", "", text.strip().lower())
     return re.sub(r"\s+", "-", s)
 
 
-def parse_capability_file(file_id: str, text: str) -> CapabilityFile:
-    """Parse `# Title` + one-or-more `## name` capabilities (inline `**Field:**` block + body)."""
-    title = next((ln[2:].strip() for ln in text.splitlines() if ln.startswith("# ")), file_id)
-    caps: list[Capability] = []
-    for block in re.split(r"(?m)^##\s+", text)[1:]:
-        lines = block.splitlines()
-        name = lines[0].strip()
-        fields: dict[str, str] = {}
-        idx = 1
-        while idx < len(lines):
-            m = _FIELD_RE.match(lines[idx].strip())
-            if not m:
-                break
-            fields[m.group(1).strip()] = m.group(2).strip()
-            idx += 1
-        body = "\n".join(lines[idx:]).strip()
-        caps.append(Capability(file_id, name, heading_slug(name), fields, body))
-    return CapabilityFile(file_id, title, caps)
+def _mint_cap_id() -> str:
+    """A fresh opaque, immutable capability id (`cap-` + 6 hex). Not path-derived."""
+    return "cap-" + uuid.uuid4().hex[:6]
 
 
-def _set_inline_fields(text: str, target_slug: str, fields: dict[str, str]) -> str:
-    """Update-or-insert `**K:** V` lines in the metadata run of the `## <name>`
-    block whose heading_slug == target_slug. The run is the consecutive
-    `_FIELD_RE` lines right after the heading; inserts land at its end (or right
-    after the heading when empty), never keyed off a blank line — so the body and
-    sibling blocks are untouched (Spec 3 §3.1)."""
-    lines = text.splitlines()
-    hi = next((i for i, ln in enumerate(lines)
-               if ln.startswith("## ") and heading_slug(ln[3:].strip()) == target_slug), None)
-    if hi is None:
-        raise RefError(f"heading '#{target_slug}' not found")
-    run_end, existing = hi + 1, {}
-    while run_end < len(lines):
-        fm = _FIELD_RE.match(lines[run_end].strip())
-        if not fm:
-            break
-        existing[fm.group(1).strip()] = run_end
-        run_end += 1
-    remaining = dict(fields)
-    for k in list(remaining):
-        if k in existing:
-            lines[existing[k]] = f"**{k}:** {remaining.pop(k)}"
-    lines[run_end:run_end] = [f"**{k}:** {v}" for k, v in remaining.items()]
-    out = "\n".join(lines)
-    return out + "\n" if text.endswith("\n") else out
+def _as_list(v) -> list[str]:
+    """Normalize a scalar / list / comma-string meta value to a list of strings."""
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [s.strip() for s in str(v).split(",") if s.strip()]
 
 
 class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
-    """`CapabilitiesStore` over the bounded `docs/capabilities/` tree (Phase 3 B.3)."""
+    """`CapabilitiesStore` over folder-per-capability nodes under
+    `docs/capabilities/`, optionally federated via `extends`.
+
+    A capability is a folder with `meta.yaml` (`id` + `name` + the locked
+    metadata vocabulary) and `description.md` (the body). A directory is a
+    capability iff it holds a `meta.yaml`; dirs without one are pure grouping
+    parents. Mirrors `FsTaxonomyStore` on the shared tree-store core.
+    """
     COMPONENT = "capabilities"
     CONFIG_NAME = ".config.yaml"
 
+    def __init__(self, root: Path, _seen: set[Path] | None = None):
+        super().__init__(root)
+        self.extends: dict[str, "FsCapabilitiesStore"] = {}
+        seen = (_seen or set()) | {root.resolve()}
+        for alias, repo_path in (self.config.get("extends") or {}).items():
+            ext = (self.node_root / repo_path / "docs" / "capabilities").resolve()
+            if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
+                self.extends[alias] = FsCapabilitiesStore(ext, _seen=seen)
+
     # -- resolution --
 
-    def _state_prefixes(self) -> tuple[str, str]:
-        sc = self.config.get("state-conventions") or {}
-        return sc.get("with", "with-"), sc.get("without", "without-")
+    def _is_capability(self, d: Path) -> bool:
+        return (d / "meta.yaml").is_file()
 
-    def _resolve_file(self, path: str, state: str | None) -> Path | None:
-        folder = self.root / path
-        flat = self.root / f"{path}.md"
-        entry = folder / "capabilities.md"
-        if state and state != "*":
-            with_p, without_p = self._state_prefixes()
-            neg = state.startswith("!")
-            prefix, base = (without_p, state[1:]) if neg else (with_p, state)
-            vf = folder / f"{prefix}{base}.md"
-            if not vf.is_file():
-                raise RefError(f"no state variant: {path}[{state}]")
-            return vf
-        if flat.is_file() and entry.is_file():
-            raise Collision(path)
-        if flat.is_file():
-            return flat
-        if entry.is_file():
-            return entry
-        return None
-
-    def _disk_id(self, path: Path) -> str:
-        rel = path.relative_to(self.root)
-        return str(rel.parent) if path.name == "capabilities.md" else str(rel)[:-3]
-
-    def _is_variant(self, p: Path) -> bool:
-        if not (p.parent / "capabilities.md").is_file():
-            return False
-        with_p, without_p = self._state_prefixes()
-        return p.name.startswith(with_p) or p.name.startswith(without_p)
-
-    def _cap_files(self, include_variants: bool = False) -> list[Path]:
+    def _all_meta_dirs(self) -> list[str]:
+        """Every folder holding a meta.yaml (capabilities + overrides), minus dot-dirs."""
         out = []
-        for p in sorted(self.root.rglob("*.md")):
-            if p.name in _CAP_SIDECARS:
+        for p in sorted(self.root.rglob("*")):
+            if not p.is_dir():
                 continue
-            if p.name != "capabilities.md" and self._is_variant(p) and not include_variants:
+            rel = p.relative_to(self.root)
+            if any(part.startswith(".") for part in rel.parts):
                 continue
-            out.append(p)
+            if self._is_capability(p):
+                out.append(str(rel))
         return out
 
-    # -- reads --
+    def _local_paths(self) -> list[str]:
+        """Standalone local capabilities — meta.yaml folders WITHOUT an `overrides`
+        pointer (those are deltas, not caps; see `_override_index`)."""
+        return [p for p in self._all_meta_dirs()
+                if not load_yaml(self.root / p / "meta.yaml").get("overrides")]
 
-    def get(self, identifier: str) -> CapabilityFile | None:
-        m = _IDENT_RE.match(identifier)
-        if not m:
-            raise RefError(f"malformed identifier: {identifier}")
-        fp = self._resolve_file(m.group("path"), m.group("state"))
-        if fp is None:
+    def _override_index(self) -> dict[str, tuple[Path, dict]]:
+        """`overrides` target string → (override folder, override meta)."""
+        idx: dict[str, tuple[Path, dict]] = {}
+        for p in self._all_meta_dirs():
+            meta = load_yaml(self.root / p / "meta.yaml")
+            target = meta.get("overrides")
+            if target:
+                idx[str(target)] = (self.root / p, meta)
+        return idx
+
+    def _compose_body(self, d: Path, meta: dict, raw_desc: str) -> str:
+        """Effective body = prependedDocs + description + appendedDocs (bounded lists)."""
+        parts = []
+        for fn in _as_list(meta.get("prependedDocs")):
+            f = d / fn
+            if f.is_file():
+                parts.append(f.read_text(encoding="utf-8").strip())
+        if raw_desc.strip():
+            parts.append(raw_desc.strip())
+        for fn in _as_list(meta.get("appendedDocs")):
+            f = d / fn
+            if f.is_file():
+                parts.append(f.read_text(encoding="utf-8").strip())
+        return "\n\n".join(parts)
+
+    def _capability(self, path: str, origin: str = "local") -> Capability:
+        d = self.root / path
+        meta, description, _attachments = self._load_node(d)
+        fields = {k: v for k, v in meta.items() if k not in _CAP_STRUCTURAL}
+        if "Subject" in fields:
+            fields["Subject"] = _as_list(fields["Subject"])
+        return Capability(
+            path=path,
+            name=meta.get("name") or path.rsplit("/", 1)[-1].replace("-", " ").title(),
+            id=str(meta.get("id") or ""),
+            fields=fields,
+            body=self._compose_body(d, meta, description),
+            origin=origin,
+        )
+
+    def _apply_override(self, base: Capability, alias: str,
+                        ov_index: dict[str, tuple[Path, dict]]) -> Capability:
+        """Merge a local override (if any) onto an inherited capability `base`.
+
+        Override matches by upstream id (bare `<id>` or `<alias>/<id>`). Fields
+        partial-merge (YAML null clears); body = child.prepend + (child
+        description.md if present else upstream raw description.md) + child.append.
+        """
+        ov = ov_index.get(base.id) or ov_index.get(f"{alias}/{base.id}")
+        if ov is None:
+            return base                                   # inherited verbatim
+        d, meta = ov
+        merged = dict(base.fields)
+        for k, v in meta.items():
+            if k in _CAP_STRUCTURAL:
+                continue
+            if v is None:
+                merged.pop(k, None)                       # null clears inherited field
+            else:
+                merged[k] = _as_list(v) if k == "Subject" else v
+        up_desc = self.extends[alias].root / base.path / "description.md"
+        upstream_raw = up_desc.read_text(encoding="utf-8") if up_desc.exists() else ""
+        child_desc = d / "description.md"
+        child_raw = child_desc.read_text(encoding="utf-8") if child_desc.exists() else ""
+        mid = child_raw if child_raw.strip() else upstream_raw
+        return Capability(
+            path=base.path,
+            name=meta.get("name") or base.name,
+            id=base.id,
+            fields=merged,
+            body=self._compose_body(d, meta, mid),
+            origin=alias,
+        )
+
+    def get_local(self, path: str) -> Capability | None:
+        return self._capability(path) if path and self._is_capability(self.root / path) \
+            and not load_yaml(self.root / path / "meta.yaml").get("overrides") else None
+
+    def get_by_id(self, cap_id: str) -> Capability | None:
+        """Resolve an opaque id to its local capability (keyed lookup)."""
+        for p in self._local_paths():
+            c = self._capability(p)
+            if c.id and c.id == cap_id:
+                return c
+        return None
+
+    def list_all(self, status=None, namespace=None, local_only=False) -> list[Capability]:
+        caps = [self._capability(p) for p in self._local_paths()]
+        if not local_only:
+            ov_index = self._override_index()
+            for alias, st in self.extends.items():
+                caps += [self._apply_override(st._capability(p, origin=alias), alias, ov_index)
+                         for p in st._local_paths()]
+        out = []
+        for c in caps:
+            if status and c.status != status:
+                continue
+            if namespace and c.path.split("/")[0] != namespace:
+                continue
+            out.append(c)
+        return out
+
+    def get(self, identifier: str) -> Capability | None:
+        head, _, rest = identifier.partition("/")
+        if head in self.extends:                         # prefixed
+            return self.get_inherited(head, rest)
+        local = self.get_local(identifier)               # bare-wins-local
+        if local is not None:
+            return local
+        matches = [(a, c) for a, st in self.extends.items()
+                   if (c := st.get_local(identifier)) is not None]
+        if len(matches) == 1:
+            a = matches[0][0]
+            return self._apply_override(self.extends[a]._capability(identifier, origin=a),
+                                        a, self._override_index())
+        if len(matches) > 1:
+            raise AmbiguousRef(identifier)
+        return None
+
+    def get_inherited(self, alias: str, path: str) -> Capability | None:
+        st = self.extends.get(alias)
+        if not (st and st.get_local(path)):
             return None
-        return parse_capability_file(self._disk_id(fp), fp.read_text(encoding="utf-8"))
-
-    def list_all(self, status: str | None = None, namespace: str | None = None) -> list[Capability]:
-        caps: list[Capability] = []
-        for p in self._cap_files():
-            for c in parse_capability_file(self._disk_id(p), p.read_text(encoding="utf-8")).capabilities:
-                if status and c.status != status:
-                    continue
-                if namespace and c.file_id.split("/")[0] != namespace:
-                    continue
-                caps.append(c)
-        return caps
+        return self._apply_override(st._capability(path, origin=alias),
+                                    alias, self._override_index())
 
     def search(self, query: str) -> list[Capability]:
         q = query.lower()
-        caps: list[Capability] = []
-        for p in self._cap_files(include_variants=True):
-            for c in parse_capability_file(self._disk_id(p), p.read_text(encoding="utf-8")).capabilities:
-                if q in c.name.lower() or q in c.body.lower():
-                    caps.append(c)
-        return caps
+        return [c for c in self.list_all()
+                if q in c.name.lower() or q in c.body.lower()]
 
     # -- writes --
 
-    def add(self, identifier: str, name: str | None = None, status: str = "Missing",
-            body: str = "", folder: bool = False) -> CapabilityFile:
-        path = _IDENT_RE.match(identifier).group("path")
-        folder_dir = self.root / path
-        flat = self.root / f"{path}.md"
-        entry = folder_dir / "capabilities.md"
-        if flat.is_file() or entry.is_file():
+    def add(self, identifier, name=None, status="Missing", body="") -> Capability:
+        path = _safe_store_id(identifier, "path")
+        if status not in CAP_STATUSES:
+            raise ValueError(f"invalid Status '{status}' "
+                             f"(choose: {', '.join(sorted(CAP_STATUSES))})")
+        d = self.root / path
+        if d.exists():
             raise ValueError(f"capability already exists: {path}")
-        if folder and flat.is_file():
-            raise ValueError(f"flat/folder collision: {path}.md exists")
-        if not folder and folder_dir.is_dir():
-            raise ValueError(f"flat/folder collision: folder {path}/ exists")
-        target = entry if folder else flat
-        target.parent.mkdir(parents=True, exist_ok=True)
-        subject = path.rsplit("/", 1)[-1].replace("-", " ").title()
-        target.write_text(
-            f"# {subject} — capabilities\n\n## {name or subject}\n"
-            f"**Status:** {status}\n\n{body}\n", encoding="utf-8")
-        self._stage(target)
-        return parse_capability_file(self._disk_id(target), target.read_text(encoding="utf-8"))
+        display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
+        meta = {"id": _mint_cap_id(), "name": display, "Status": status}
+        self._write_node(d, meta, body)
+        return self._capability(path)
 
     def remove(self, identifier: str) -> None:
-        fp = self._resolve_file(*_IDENT_RE.match(identifier).group("path", "state"))
-        if fp is None:
+        cap = self.get(identifier)
+        if cap is None:
             raise ValueError(f"no such capability: {identifier}")
-        self._rm(fp.parent if fp.name == "capabilities.md" else fp)
+        if cap.origin != "local":
+            raise ValueError(f"cannot remove inherited capability '{cap.qualified}' "
+                             f"(edit it at its source)")
+        self._rm(self.root / cap.path)
 
-    def set(self, identifier: str, fields: dict[str, str]) -> Capability:
+    def _validate_fields(self, fields: dict) -> dict:
+        out = {}
         for k, v in fields.items():
             if k not in CAP_FIELDS:
                 raise ValueError(f"unknown field '{k}' (not in the locked vocabulary)")
+            if v is None:
+                out[k] = None                            # clear sentinel
+                continue
             if k == "Status" and v not in CAP_STATUSES:
                 raise ValueError(f"invalid Status '{v}' "
                                  f"(choose: {', '.join(sorted(CAP_STATUSES))})")
-        m = _IDENT_RE.match(identifier)
-        if not m:
-            raise RefError(f"malformed identifier: {identifier}")
-        fp = self._resolve_file(m.group("path"), m.group("state"))
-        if fp is None:
+            out[k] = _as_list(v) if k == "Subject" else v
+        return out
+
+    def _write_meta(self, d: Path, meta: dict) -> None:
+        _atomic_write(d / "meta.yaml",
+                      yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
+        self._stage(d / "meta.yaml")
+
+    def set(self, identifier: str, fields: dict) -> Capability:
+        cap = self.get_local(identifier)
+        if cap is None:
             raise ValueError(f"no such capability: {identifier}")
-        text = fp.read_text(encoding="utf-8")
-        cf = parse_capability_file(self._disk_id(fp), text)
-        heading = m.group("heading")
-        if heading:
-            match = next((c for c in cf.capabilities if c.heading_slug == heading), None)
-            if match is None:
-                raise RefError(f"no heading '#{heading}' in {self._disk_id(fp)}")
-        elif len(cf.capabilities) != 1:
-            raise RefError(f"{identifier} resolves to {len(cf.capabilities)} "
-                           f"capabilities; specify #heading")
+        norm = self._validate_fields(fields)
+        d = self.root / cap.path
+        meta = load_yaml(d / "meta.yaml")
+        for k, v in norm.items():
+            if v is None:
+                meta.pop(k, None)
+            else:
+                meta[k] = v
+        self._write_meta(d, meta)
+        return self._capability(cap.path)
+
+    # -- federation config --
+
+    def extends_add(self, alias: str, ref: str) -> None:
+        extends = dict(self.config.get("extends") or {})
+        if alias in extends:
+            raise ValueError(f"extends alias already exists: {alias} (rm it first)")
+        target = (self.node_root / ref / "docs" / "capabilities").resolve()
+        if not target.is_dir():
+            raise ValueError(f"no docs/capabilities/ under {ref}")
+        if target == self.root.resolve():
+            raise ValueError("a capabilities store cannot extend itself")
+        extends[alias] = ref
+        self.config["extends"] = extends
+        cfg = self.root / self.CONFIG_NAME
+        dump_yaml(cfg, self.config)
+        self._stage(cfg)
+
+    def extends_remove(self, alias: str) -> None:
+        extends = dict(self.config.get("extends") or {})
+        if alias not in extends:
+            raise ValueError(f"no such extends alias: {alias}")
+        del extends[alias]
+        if extends:
+            self.config["extends"] = extends
         else:
-            match = cf.capabilities[0]
-        new_text = _set_inline_fields(text, match.heading_slug, fields)
-        fp.write_text(new_text, encoding="utf-8")
-        self._stage(fp)
-        updated = parse_capability_file(self._disk_id(fp), new_text)
-        return next(c for c in updated.capabilities if c.heading_slug == match.heading_slug)
+            self.config.pop("extends", None)
+        cfg = self.root / self.CONFIG_NAME
+        dump_yaml(cfg, self.config)
+        self._stage(cfg)
 
     # -- validation --
 
-    def _ref_error(self, identifier: str) -> str | None:
-        m = _IDENT_RE.match(identifier)
-        if not m:
-            return f"malformed identifier '{identifier}'"
-        try:
-            fp = self._resolve_file(m.group("path"), m.group("state"))
-        except Collision:
-            return f"flat/folder collision at '{identifier}'"
-        except RefError as e:
-            return str(e)
-        if fp is None:
-            return f"dangling identifier '{identifier}'"
-        heading = m.group("heading")
-        if heading:
-            cf = parse_capability_file(m.group("path"), fp.read_text(encoding="utf-8"))
-            if not any(c.heading_slug == heading for c in cf.capabilities):
-                return f"no heading '#{heading}' in '{m.group('path')}'"
-        return None
+    def _cycles(self, cap_root: Path, seen: set[Path]) -> bool:
+        if cap_root in seen:
+            return True
+        if not cap_root.is_dir():
+            return False
+        cfg = load_yaml(cap_root / self.CONFIG_NAME)
+        node_root = cap_root.parent.parent
+        for _alias, p in (cfg.get("extends") or {}).items():
+            nxt = (node_root / p / "docs" / "capabilities").resolve()
+            if self._cycles(nxt, seen | {cap_root}):
+                return True
+        return False
 
-    def check(self, taxonomy: TaxonomyStore | None = None) -> list[str]:
+    def check(self, taxonomy=None) -> list[str]:
         problems: list[str] = []
-        # flat/folder collisions
-        for entry in self.root.rglob("capabilities.md"):
-            if entry.parent.with_suffix(".md").is_file():
-                problems.append(f"flat/folder collision: {self._disk_id(entry)}")
+        cfg_path = self.root / self.CONFIG_NAME
+        try:
+            load_yaml(cfg_path, unique=True)
+        except yaml.YAMLError as e:
+            problems.append(f"{self.CONFIG_NAME}: {e}")
 
-        for p in self._cap_files(include_variants=True):
-            cf = parse_capability_file(self._disk_id(p), p.read_text(encoding="utf-8"))
-            for cap in cf.capabilities:
-                where = cap.ref
-                f = cap.fields
-                for key in f:
-                    if key not in CAP_FIELDS:
-                        problems.append(f"{where}: unknown field '{key}'")
-                status = f.get("Status")
-                if status is None:
-                    problems.append(f"{where}: missing Status")
-                elif status not in CAP_STATUSES:
-                    problems.append(f"{where}: invalid Status '{status}'")
-                if "Priority" in f and f["Priority"] not in CAP_PRIORITIES:
-                    problems.append(f"{where}: invalid Priority '{f['Priority']}'")
-                if "Lifecycle" in f and f["Lifecycle"] not in CAP_LIFECYCLES:
-                    problems.append(f"{where}: invalid Lifecycle '{f['Lifecycle']}'")
-                if status == "Partial" and "Gaps" not in f:
-                    problems.append(f"{where}: Partial requires Gaps")
-                if status == "Blocked" and "Blocked by" not in f:
-                    problems.append(f"{where}: Blocked requires Blocked by")
-                if "Superseded by" in f and (e := self._ref_error(f["Superseded by"])):
-                    problems.append(f"{where}: Superseded by → {e}")
-                problems += self._check_globals(where, f)
-                problems += self._check_subject(where, f, taxonomy)
-                problems += self._check_feature(where, f, taxonomy)
+        top_level = {s.split("/")[0] for s in self._local_paths()}
+        for alias, repo_path in (self.config.get("extends") or {}).items():
+            ext_repo = self.node_root / repo_path
+            ext_cap = ext_repo / "docs" / "capabilities"
+            if not ext_repo.exists():
+                problems.append(f"extends '{alias}': path does not exist: {repo_path}")
+            elif not ext_cap.is_dir():
+                problems.append(f"extends '{alias}': no docs/capabilities/ under {repo_path}")
+            elif self._cycles(ext_cap.resolve(), {self.root.resolve()}):
+                problems.append(f"extends '{alias}': cycle in capability federation")
+            if alias in top_level:
+                problems.append(f"alias '{alias}' collides with local top-level capability")
+
+        seen_ids: dict[str, str] = {}
+        for cap in self.list_all(local_only=True):
+            where = cap.path
+            f = cap.fields
+            if not cap.id:
+                problems.append(f"{where}: missing id")
+            elif cap.id in seen_ids:
+                problems.append(f"{where}: duplicate id '{cap.id}' (also {seen_ids[cap.id]})")
+            else:
+                seen_ids[cap.id] = where
+            for key in f:
+                if key not in CAP_FIELDS:
+                    problems.append(f"{where}: unknown field '{key}'")
+            status = f.get("Status")
+            if status is None:
+                problems.append(f"{where}: missing Status")
+            elif status not in CAP_STATUSES:
+                problems.append(f"{where}: invalid Status '{status}'")
+            if "Priority" in f and f["Priority"] not in CAP_PRIORITIES:
+                problems.append(f"{where}: invalid Priority '{f['Priority']}'")
+            if "Lifecycle" in f and f["Lifecycle"] not in CAP_LIFECYCLES:
+                problems.append(f"{where}: invalid Lifecycle '{f['Lifecycle']}'")
+            if status == "Partial" and "Gaps" not in f:
+                problems.append(f"{where}: Partial requires Gaps")
+            if status == "Blocked" and "Blocked by" not in f:
+                problems.append(f"{where}: Blocked requires Blocked by")
+            if "Superseded by" in f and (e := self._ref_error(str(f["Superseded by"]))):
+                problems.append(f"{where}: Superseded by → {e}")
+            problems += self._check_globals(where, f)
+            problems += self._check_subject(where, f, taxonomy)
+            problems += self._check_feature(where, f, taxonomy)
+
+        # Override + attachment validation (every meta dir, incl. override folders).
+        for p in self._all_meta_dirs():
+            d = self.root / p
+            meta = load_yaml(d / "meta.yaml")
+            listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
+            for fn in listed:
+                if not (d / fn).is_file():
+                    problems.append(f"{p}: missing attachment '{fn}'")
+            for f in d.iterdir():
+                if (f.is_file() and f.suffix == ".md" and f.name != "description.md"
+                        and f.name not in listed):
+                    problems.append(f"{p}: unlisted extra doc '{f.name}'")
+            target = meta.get("overrides")
+            if target and (e := self._override_problem(str(target))):
+                problems.append(f"{p}: {e}")
         return problems
 
-    def _check_globals(self, where: str, f: dict) -> list[str]:
+    def _override_problem(self, target: str) -> str | None:
+        """Validate an `overrides: <target>` pointer (dangling / ambiguous / local)."""
+        if "/" in target:                                 # alias-qualified <alias>/<id>
+            alias, _, cid = target.partition("/")
+            st = self.extends.get(alias)
+            if st is None:
+                return f"overrides → unknown alias '{alias}'"
+            return None if st.get_by_id(cid) else f"overrides → dangling id '{target}'"
+        if self.get_by_id(target):
+            return f"overrides → '{target}' targets a local capability (must be inherited)"
+        hits = [a for a, st in self.extends.items() if st.get_by_id(target)]
+        if not hits:
+            return f"overrides → dangling id '{target}'"
+        if len(hits) > 1:
+            return f"overrides → ambiguous id '{target}' (in {', '.join(hits)})"
+        return None
+
+    def _ref_error(self, identifier: str) -> str | None:
+        try:
+            if self.get(identifier) is None:
+                return f"dangling identifier '{identifier}'"
+        except AmbiguousRef:
+            return f"ambiguous identifier '{identifier}'"
+        return None
+
+    def _check_globals(self, where, f) -> list[str]:
         out = []
         for ns, field in (("roles", "Roles"), ("conditions", "When")):
-            for tok in (s.strip() for s in f.get(field, "").split(",") if s.strip()):
+            raw = f.get(field, "")
+            toks = raw if isinstance(raw, list) else str(raw).split(",")
+            for tok in (str(s).strip() for s in toks if str(s).strip()):
                 ref = tok.lstrip("!")
                 if not ref.startswith(f"{ns}/"):
                     out.append(f"{where}: {field} '{tok}' must be a {ns}/ slug")
@@ -1040,16 +1233,20 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                     out.append(f"{where}: {field} → {e}")
         return out
 
-    def _check_subject(self, where: str, f: dict, taxonomy: TaxonomyStore | None) -> list[str]:
-        subj = f.get("Subject")
-        if not subj or taxonomy is None:
+    def _check_subject(self, where, f, taxonomy) -> list[str]:
+        subjects = _as_list(f.get("Subject"))
+        if not subjects or taxonomy is None:
             return []
-        try:
-            return [] if taxonomy.get(subj) is not None else [f"{where}: Subject → dangling ref '{subj}'"]
-        except AmbiguousRef:
-            return [f"{where}: Subject → ambiguous ref '{subj}'"]
+        out = []
+        for subj in subjects:
+            try:
+                if taxonomy.get(subj) is None:
+                    out.append(f"{where}: Subject → dangling ref '{subj}'")
+            except AmbiguousRef:
+                out.append(f"{where}: Subject → ambiguous ref '{subj}'")
+        return out
 
-    def _check_feature(self, where: str, f: dict, taxonomy: TaxonomyStore | None) -> list[str]:
+    def _check_feature(self, where, f, taxonomy) -> list[str]:
         feature = f.get("Feature")
         if not feature or taxonomy is None:
             return []
@@ -1066,200 +1263,45 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     # -- revision-bearing detail + update --
 
-    def get_capability_detail(self, identifier: str,
-                              heading_slug: str | None = None) -> "CapabilityDetail" | None:
-        cf = self.get(identifier)
-        if cf is None:
+    def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:
+        cap = self.get(identifier)
+        if cap is None:
             return None
-        # Resolve the specific capability entry — use explicit heading_slug,
-        # or extract from the identifier's #heading, or auto-resolve if single.
-        m = _IDENT_RE.match(identifier)
-        hs = heading_slug or (m.group("heading") if m else None)
-        if hs:
-            cap = next((c for c in cf.capabilities if c.heading_slug == hs), None)
-            if cap is None:
-                return None
-        elif len(cf.capabilities) == 1:
-            cap = cf.capabilities[0]
-        else:
-            raise RefError(
-                f"{identifier} resolves to {len(cf.capabilities)} "
-                f"capabilities; specify #heading")
-        # The revision is the file-level hash — all entries share the file.
-        fp = self._resolve_file(m.group("path"), m.group("state")) if m else None
-        file_text = fp.read_text(encoding="utf-8") if fp else ""
-        return CapabilityDetail(capability=cap, core_revision=_revision(file_text))
+        owner = self if cap.origin == "local" else self.extends[cap.origin]
+        d = owner.root / cap.path
+        meta_text = (d / "meta.yaml").read_text(encoding="utf-8")
+        desc = d / "description.md"
+        desc_text = desc.read_text(encoding="utf-8") if desc.exists() else ""
+        return CapabilityDetail(capability=cap,
+                                core_revision=_revision_multi(meta_text, desc_text))
 
-    def _resolve_cap(self, identifier: str, heading_slug: str | None) -> tuple[Path, Capability]:
-        """Resolve identifier+heading to (file_path, capability_entry)."""
-        m = _IDENT_RE.match(identifier)
-        if not m:
-            raise RefError(f"malformed identifier: {identifier}")
-        fp = self._resolve_file(m.group("path"), m.group("state"))
-        if fp is None:
-            raise ValueError(f"no such capability: {identifier}")
-        cf = parse_capability_file(self._disk_id(fp), fp.read_text(encoding="utf-8"))
-        hs = heading_slug or m.group("heading")
-        if hs:
-            cap = next((c for c in cf.capabilities if c.heading_slug == hs), None)
-            if cap is None:
-                raise RefError(f"no heading '#{hs}' in {self._disk_id(fp)}")
-        elif len(cf.capabilities) == 1:
-            cap = cf.capabilities[0]
-        else:
-            raise RefError(
-                f"{identifier} resolves to {len(cf.capabilities)} "
-                f"capabilities; specify #heading")
-        return fp, cap
-
-    def update_capability(self, identifier: str,
-                          heading_slug: str | None = None, *,
-                          body=_UNSET, fields=_UNSET,
+    def update_capability(self, identifier, *, body=_UNSET, fields=_UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
-        fp, cap = self._resolve_cap(identifier, heading_slug)
+        cap = self.get_local(identifier)
+        if cap is None:
+            raise ValueError(f"no such capability: {identifier}")
+        d = self.root / cap.path
 
-        # Stale revision check
         if core_revision is not None:
-            file_text = fp.read_text(encoding="utf-8")
-            if _revision(file_text) != core_revision:
-                raise StaleRevision(
-                    f"stale revision for capability '{identifier}'")
+            detail = self.get_capability_detail(identifier)
+            if detail and detail.core_revision != core_revision:
+                raise StaleRevision(f"stale revision for capability '{identifier}'")
 
-        text = fp.read_text(encoding="utf-8")
+        meta = load_yaml(d / "meta.yaml")
+        desc = d / "description.md"
+        desc_text = desc.read_text(encoding="utf-8") if desc.exists() else ""
 
-        # Apply body update
         if body is not _UNSET:
-            new_body = body if body is not None else ""
-            text = self._set_cap_body(text, cap.heading_slug, new_body)
-
-        # Apply fields update (merge into existing)
+            desc_text = body if body is not None else ""
         if fields is not _UNSET and fields is not None:
-            for k, v in fields.items():
-                if k not in CAP_FIELDS:
-                    raise ValueError(
-                        f"unknown field '{k}' (not in the locked vocabulary)")
-                if k == "Status" and v not in CAP_STATUSES:
-                    raise ValueError(
-                        f"invalid Status '{v}' "
-                        f"(choose: {', '.join(sorted(CAP_STATUSES))})")
-            text = _set_inline_fields(text, cap.heading_slug, fields)
+            for k, v in self._validate_fields(fields).items():
+                if v is None:
+                    meta.pop(k, None)
+                else:
+                    meta[k] = v
 
-        # Write atomically
-        _atomic_write(fp, text)
-        self._stage(fp)
-
-        # Return fresh detail
-        return self.get_capability_detail(identifier, cap.heading_slug)
-
-    def _set_cap_body(self, text: str, target_slug: str, new_body: str) -> str:
-        """Replace the body of the ``## <name>`` block whose heading_slug matches."""
-        lines = text.splitlines()
-        hi = next((i for i, ln in enumerate(lines)
-                   if ln.startswith("## ") and
-                   heading_slug(ln[3:].strip()) == target_slug), None)
-        if hi is None:
-            raise RefError(f"heading '#{target_slug}' not found")
-        run_end = hi + 1
-        while run_end < len(lines):
-            fm = _FIELD_RE.match(lines[run_end].strip())
-            if not fm:
-                break
-            run_end += 1
-        # Body is everything from run_end to the next ## or end of file
-        body_end = run_end
-        for j in range(run_end + 1, len(lines)):
-            if lines[j].startswith("## "):
-                body_end = j
-                break
-        new_lines = lines[:run_end]
-        if new_body:
-            # Ensure blank line between metadata and body
-            if run_end > hi + 1:
-                new_lines.append("")
-            new_lines.extend(new_body.splitlines())
-        new_lines.extend(lines[body_end:])
-        out = "\n".join(new_lines)
-        return out + "\n" if text.endswith("\n") else out
-
-    def add_entry(self, collection: str, name: str, *,
-                  status: str = "Missing", body: str = "",
-                  fields: dict[str, str] | None = None) -> "CapabilityDetail":
-        """Create a capability entry inside a named collection.
-
-        If the collection file already exists, add the entry to it.
-        Otherwise, create the collection file (flat .md by default).
-        """
-        if status not in CAP_STATUSES:
-            raise ValueError(f"invalid Status '{status}' "
-                             f"(choose: {', '.join(sorted(CAP_STATUSES))})")
-        if fields:
-            for k, v in fields.items():
-                if k not in CAP_FIELDS:
-                    raise ValueError(
-                        f"unknown field '{k}' (not in the locked vocabulary)")
-
-        collection = _safe_store_id(collection, "collection")
-
-        # Check if the collection already exists
-        folder_dir = self.root / collection
-        flat = self.root / f"{collection}.md"
-        entry = folder_dir / "capabilities.md"
-
-        existing_fp = None
-        if flat.is_file():
-            existing_fp = flat
-        elif entry.is_file():
-            existing_fp = entry
-
-        if existing_fp is not None:
-            # Add to existing file
-            text = existing_fp.read_text(encoding="utf-8")
-            # Refuse a duplicate heading (spec: create fails on collision).
-            existing_slugs = {heading_slug(m.group(1).strip())
-                              for m in re.finditer(r"^##\s+(.+)$", text, re.M)}
-            if heading_slug(name) in existing_slugs:
-                raise ValueError(
-                    f"capability '{name}' already exists in collection '{collection}'")
-            # Build the new capability block
-            new_block_lines = [f"\n## {name}\n"]
-            if status:
-                new_block_lines.append(f"**Status:** {status}\n")
-            if fields:
-                for k, v in fields.items():
-                    new_block_lines.append(f"**{k}:** {v}\n")
-            if body:
-                new_block_lines.append("\n" + body + "\n")
-            new_block = "".join(new_block_lines)
-            # Append before trailing newline
-            if text.endswith("\n"):
-                text = text[:-1] + new_block + "\n"
-            else:
-                text = text + new_block
-            _atomic_write(existing_fp, text)
-        else:
-            # Create new file (flat by default)
-            target = flat
-            target.parent.mkdir(parents=True, exist_ok=True)
-            subject = collection.rsplit("/", 1)[-1].replace("-", " ").title()
-            lines = [f"# {subject} — capabilities\n\n## {name}\n"]
-            if status:
-                lines.append(f"**Status:** {status}\n")
-            if fields:
-                for k, v in fields.items():
-                    lines.append(f"**{k}:** {v}\n")
-            if body:
-                lines.append("\n" + body + "\n")
-            text = "".join(lines)
-            _atomic_write(target, text)
-
-        self._stage(existing_fp if existing_fp is not None else target)
-
-        # Resolve and return the detail
-        file_id = self._disk_id(existing_fp if existing_fp is not None else target)
-        detail = self.get_capability_detail(file_id, heading_slug(name))
-        if detail is None:
-            raise ValueError(f"failed to create capability entry: {name} in {collection}")
-        return detail
+        self._write_node(d, meta, desc_text)
+        return self.get_capability_detail(identifier)
 
 
 # ── FsWorkStore ──────────────────────────────────────────────────────────────
