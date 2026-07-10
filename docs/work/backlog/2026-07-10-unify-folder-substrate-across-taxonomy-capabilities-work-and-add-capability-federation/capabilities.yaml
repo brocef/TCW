@@ -1,0 +1,10 @@
+# Capability deltas this work item lands (work->capability back-pointers).
+new:
+  - capabilities/federate#federate-capabilities-from-another-project           # tcw capabilities extends <alias> <ref>
+  - capabilities/override-inherited#override-or-extend-an-inherited-capability # overrides: <id> + prepend/append/field-merge
+changed:
+  - capabilities#add-a-capability            # path-addressed folder create (drops --folder / #heading / [state])
+  - capabilities#browse-capabilities-by-status  # list gains origin flag + --local-only; Omitted shown
+  - capabilities#read-a-capability           # path addressing + composed body (prepend/description/append)
+  - capabilities#search-capabilities         # spans local + inherited composed bodies
+  - capabilities#validate-capabilities       # + override resolution, cycle, attachment, multi-valued Subject checks
