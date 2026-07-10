@@ -310,6 +310,18 @@ h1 {
   margin: 10px 0;
 }
 
+/* tcw:// links: resolvable are accent-colored; inert (unhosted/dangling) muted. */
+.body a[data-nav-key] {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.body a.tcw-inert {
+  color: var(--muted);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
 .artifacts {
   display: flex;
   flex-wrap: wrap;

@@ -190,6 +190,41 @@ async function fetchJson(path) {
 }
 
 /**
+ * Turn rendered tcw:// anchors in a just-rendered read body into SPA navigation.
+ * Resolvable links get data-nav (axis/key) and an in-app href; unresolvable ones
+ * (or a failed resolve call) become styled-inert. Called only from the read-render
+ * detail views — never the editor preview, so the dirty-guard is never in play.
+ */
+async function wireTcwLinks(container) {
+  const article = container.querySelector("article.body");
+  if (!article) return;
+  const anchors = Array.prototype.slice.call(article.querySelectorAll('a[href^="tcw://"]'));
+  if (!anchors.length) return;
+  const uris = anchors.map(function (a) { return a.getAttribute("href"); });
+  let results = null;
+  try {
+    const res = await fetch("/api/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uris: uris }),
+    });
+    if (res.ok) results = await res.json();
+  } catch (_e) { results = null; }               // network error -> all inert (fail safe)
+  anchors.forEach(function (a) {
+    const uri = a.getAttribute("href");
+    const r = results && results[uri];
+    if (r && r.ok) {
+      a.dataset.navAxis = r.axis;
+      a.dataset.navKey = r.key;
+      a.setAttribute("href", pathFor(r.axis, r.key));  // real SPA URL (click delegated)
+    } else {
+      a.classList.add("tcw-inert");
+      a.title = uri;
+    }
+  });
+}
+
+/**
  * Send a PATCH request with JSON body.
  * Returns { ok, status, data, error }.
  */
@@ -1572,6 +1607,7 @@ async function renderWork(item) {
         handleWorkAction(button.dataset.action, got.slug, got);
       });
     });
+    wireTcwLinks(detail);
   } catch (err) {
     detail.innerHTML = '<p class="empty">Failed to load work item: ' + esc(err.message) + "</p>";
   }
@@ -1663,6 +1699,7 @@ async function renderTaxonomy(item) {
     if (editBtn) {
       editBtn.addEventListener("click", function () { enterTaxonomyEdit(); });
     }
+    wireTcwLinks(detail);
   } catch (err) {
     detail.innerHTML = '<p class="empty">Failed to load term: ' + esc(err.message) + "</p>";
   }
@@ -1701,6 +1738,7 @@ async function renderCapability(item) {
     if (editBtn) {
       editBtn.addEventListener("click", function () { enterCapabilityEdit(); });
     }
+    wireTcwLinks(detail);
   } catch (err) {
     detail.innerHTML = '<p class="empty">Failed to load capability: ' + esc(err.message) + "</p>";
   }
@@ -2821,6 +2859,20 @@ window.addEventListener("popstate", function () {
   }
   exitEditor();
   applyRoute(parsePath(location.pathname), false); // URL already changed; don't re-sync
+});
+
+// Delegated tcw:// link navigation (anchors wired by wireTcwLinks live inside
+// #detail, which persists across renders). Resolvable -> navigate the SPA in-place
+// and push history; inert -> swallow the click.
+detail.addEventListener("click", function (ev) {
+  var a = ev.target.closest ? ev.target.closest("a") : null;
+  if (!a || !detail.contains(a)) return;
+  if (a.classList.contains("tcw-inert")) { ev.preventDefault(); return; }
+  if (a.dataset.navKey !== undefined) {
+    ev.preventDefault();
+    applyRoute({ axis: a.dataset.navAxis, key: a.dataset.navKey }, false);
+    pushRoute();
+  }
 });
 
 // Tab clicks - with dirty guard
