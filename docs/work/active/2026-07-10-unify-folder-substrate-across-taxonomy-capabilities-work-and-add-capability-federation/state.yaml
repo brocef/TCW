@@ -6,3 +6,5 @@ created: '2026-07-10'
 resolution: null
 effort: very-high
 complexity: very-high
+worktree: .worktrees/2026-07-10-unify-folder-substrate-across-taxonomy-capabilities-work-and-add-capability-federation
+branch: work/2026-07-10-unify-folder-substrate-across-taxonomy-capabilities-work-and-add-capability-federation
