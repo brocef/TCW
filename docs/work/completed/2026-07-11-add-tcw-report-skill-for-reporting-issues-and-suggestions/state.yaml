@@ -2,4 +2,10 @@ slug: 2026-07-11-add-tcw-report-skill-for-reporting-issues-and-suggestions
 title: Add tcw-report skill for reporting issues and suggestions
 phase: ''
 created: '2026-07-11'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
