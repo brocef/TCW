@@ -10,4 +10,4 @@ category, with commit hash ranges so entries trace back to source.
   skeletons for bug reports (environment, steps to reproduce, expected vs.
   actual, remediation) and suggestions/features (motivation, description,
   benefits). Added it to the `tcw-plugin` skill map and the README skills
-  section. (15974ed..HEAD)
+  section. (15974ed..ba203a6)
