@@ -571,7 +571,7 @@ work is never silently dropped.
 
 ## Skills — the judgment layer
 
-The CLI is the *mechanism*; four skills in [`skills/`](skills/) are the *judgment*
+The CLI is the *mechanism*; five skills in [`skills/`](skills/) are the *judgment*
 that drives it (the work↔capability lifecycle the tool only enforces structurally):
 
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — plan a request or existing work item
@@ -590,6 +590,10 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
 - **[`tcw-plugin`](skills/tcw-plugin/SKILL.md)** — install/repair the `tcw` CLI
   from the plugin's own clone (pipx); the single source of the `/tcw-init` and
   `/tcw-doctor` procedure, and the Codex shim for them.
+- **[`tcw-report`](skills/tcw-report/SKILL.md)** — how to report a `tcw` bug or
+  send a suggestion **upstream to the TCW project** as a GitHub issue, with a
+  ready-to-fill skeleton for each. Found a bug or have an idea? File it at
+  [github.com/brocef/TCW/issues](https://github.com/brocef/TCW/issues).
 
 They name `tcw …` commands (and, for `tcw-plugin`, `pipx`) and never reimplement
 tool logic — mechanism stays in the binary, judgment in the skills.

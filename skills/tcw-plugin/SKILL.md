@@ -23,7 +23,14 @@ TCW has three project axes plus this plugin-maintenance skill:
 3. **Work (`tcw-work`)** tracks planned and completed changes to vocabulary,
    features, capabilities, code, and docs through the SDLC artifacts.
 
-Use the skills in that order when the task changes product meaning:
+Plus a feedback skill, orthogonal to the three axes:
+
+- **Report (`tcw-report`)** teaches a user how to send feedback about TCW
+  *itself* — a `tcw` bug or a suggestion — upstream as a GitHub issue, with a
+  ready-to-fill skeleton. It is not for the user's own project work (that is
+  `tcw-work`).
+
+Use the axis skills in that order when the task changes product meaning:
 
 `Vocabulary -> Features -> Capabilities -> Work`
 
@@ -34,6 +41,8 @@ Practical routing:
   whether a registered taxonomy Feature should be linked.
 - If the user is planning, implementing, verifying, or closing a change, use
   `tcw-work`; it invokes the capability gate for product deltas.
+- If the user wants to report a `tcw` bug or send a suggestion upstream to the
+  TCW project, use `tcw-report`.
 - If `tcw` itself is unavailable or the plugin install is stale, stay in this
   skill and follow the install/repair procedures below.
 
