@@ -12,7 +12,7 @@
   "interface": {
     "displayName": "tcw",
     "shortDescription": "Skills that drive the tcw CLI: taxonomy, capabilities, and work tracking.",
-    "longDescription": "tcw (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes. This plugin ships the tcw-work, tcw-capabilities, and tcw-plugin skills that drive the tcw CLI from inside an AI coding agent.",
+    "longDescription": "tcw (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes. This plugin ships five skills — the three axis drivers tcw-taxonomy, tcw-capabilities, and tcw-work; tcw-plugin for installing and repairing the CLI; and tcw-report for filing bugs and suggestions upstream — driving the tcw CLI from inside an AI coding agent.",
     "developerName": "Brian Cefali",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write"],
