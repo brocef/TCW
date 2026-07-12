@@ -1,5 +1,5 @@
 id: cap-e3d385
 name: Manage the work inbox
-Status: Missing
+Status: Supported
 Feature: work-inbox
 Planning doc: 2026-07-12-formalize-the-work-inbox-cli-and-retire-the-inbox-work-status
