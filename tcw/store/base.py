@@ -303,13 +303,13 @@ class CapabilitiesStore(ABC):
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────
 
-WORK_STATUSES = ("inbox", "backlog", "active", "completed")
+WORK_STATUSES = ("backlog", "active", "completed")
 
 # The legal-transition graph lives in the *core* (phase-5-work B.1/B.3): the
 # adapter only effects a move the core has already deemed legal. `drop` is
-# handled separately (delete, inbox|backlog only).
+# handled separately (delete, backlog only).
 LEGAL_TRANSITIONS = {
-    ("inbox", "active"), ("backlog", "active"),     # start
+    ("backlog", "active"),                           # start
     ("active", "completed"),                        # complete (DoD gate)
 }
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
@@ -387,6 +387,31 @@ class Artifact:
     present: bool = False
 
 
+@dataclass(frozen=True)
+class InboxResource:
+    """Metadata for one named resource in a raw inbox entry."""
+    name: str
+    size: int
+    media_type: str
+    readable: bool
+
+
+@dataclass(frozen=True)
+class InboxEntry:
+    """Opaque raw-intake handle and store-provided presentation metadata."""
+    ref: str
+    title: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class InboxEntryDetail:
+    """An inbox entry plus its readable primary content and bounded resources."""
+    entry: InboxEntry
+    body: str | None
+    resources: tuple[InboxResource, ...]
+
+
 def topo_order(items: list[WorkItem]) -> list[WorkItem]:
     """Stable topological sort: a blocker precedes what it blocks.
 
@@ -432,7 +457,7 @@ def priority_order(items: list[WorkItem]) -> list[WorkItem]:
 
 
 class WorkStore(ABC):
-    """The work axis: items moving through a four-status state machine.
+    """The work axis: raw intake plus a three-status item state machine.
 
     The status vocabulary + legal-transition graph are core (above); adapters
     implement the abstract primitives and `_effect_transition`. The named
@@ -477,6 +502,18 @@ class WorkStore(ABC):
 
     @abstractmethod
     def dod_checklist(self) -> list[str]: ...
+
+    @abstractmethod
+    def inbox_list(self) -> list[InboxEntry]:
+        """List raw intake entries by opaque store-provided reference."""
+
+    @abstractmethod
+    def inbox_show(self, ref: str) -> InboxEntryDetail:
+        """Inspect one raw entry without emitting arbitrary binary content."""
+
+    @abstractmethod
+    def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
+        """Atomically consume raw intake into a new backlog work item."""
 
     # -- revision-bearing reads --
 
@@ -729,6 +766,6 @@ class WorkStore(ABC):
 
     def drop(self, slug: str) -> None:
         item = self._require(slug)
-        if item.status not in ("inbox", "backlog"):
-            raise IllegalTransition(f"cannot drop from {item.status} (only inbox/backlog)")
+        if item.status != "backlog":
+            raise IllegalTransition(f"cannot drop from {item.status} (only backlog)")
         self._delete(slug)

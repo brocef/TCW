@@ -34,11 +34,11 @@
 
 // Work status vocabulary (mirrors WORK_STATUSES in tcw/store/base.py), in
 // lifecycle order. Drives the status-filter toggle bar on the Work board.
-const WORK_STATUSES = ["inbox", "backlog", "active", "completed"];
+const WORK_STATUSES = ["backlog", "active", "completed"];
 
 // Top-to-bottom grouping order for the work list (distinct from the lifecycle
 // order above, which drives the status-filter toggles). Do not conflate the two.
-const WORK_STATUS_GROUP_ORDER = ["active", "backlog", "inbox", "completed"];
+const WORK_STATUS_GROUP_ORDER = ["active", "backlog", "completed"];
 
 const state = {
   view: "work",
@@ -1533,7 +1533,7 @@ async function renderWork(item) {
     // Lifecycle action buttons
     var actionsHtml = '<div class="action-buttons">';
     var status = got.status;
-    if (status === "inbox" || status === "backlog") {
+    if (status === "backlog") {
       actionsHtml += '<button class="action-btn start" type="button" data-action="start">Start</button>';
       actionsHtml += '<button class="action-btn drop" type="button" data-action="drop">Drop</button>';
     } else if (status === "active") {

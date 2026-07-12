@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from tcw.store.base import (
-    WORK_RESOLUTIONS, _UNSET, IllegalTransition, MultipleMatch, WorkItem,
+    WORK_RESOLUTIONS, WORK_STATUSES, _UNSET, IllegalTransition, MultipleMatch, WorkItem,
     normalize_work_level,
 )
 from tcw.store.fs import (
@@ -16,7 +16,7 @@ from tcw.store.fs import (
 from tcw.work.recursion import delegate, escalate, reconcile
 
 NAME = "work"
-SUBCOMMANDS = {"init", "new", "list", "show", "path", "start", "edit", "complete",
+SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "edit", "complete",
                "drop", "nodes", "reconcile", "delegate", "escalate"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
@@ -208,6 +208,49 @@ def _new(args: argparse.Namespace) -> int:
     if not args.epic:                         # epic's next step is delegate, not start
         print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
               file=sys.stderr)
+    return 0
+
+
+def _inbox_list(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    for entry in st.inbox_list():
+        print(f"{entry.ref} | {entry.kind} | {entry.title}")
+    return 0
+
+
+def _inbox_show(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        detail = st.inbox_show(args.entry)
+    except _ERRORS as e:
+        print(f"tcw work inbox show: {e}", file=sys.stderr)
+        return 1
+    print(f"{detail.entry.ref}  [{detail.entry.kind}]")
+    print(f"title: {detail.entry.title}")
+    print("resources:")
+    for resource in detail.resources:
+        readable = "text" if resource.readable else "binary"
+        print(f"  {resource.name} | {resource.size} bytes | {resource.media_type} | {readable}")
+    if detail.body is not None:
+        print("\nbody:\n")
+        print(detail.body, end="" if detail.body.endswith("\n") else "\n")
+    return 0
+
+
+def _inbox_accept(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        item = st.inbox_accept(args.entry, title=args.title)
+    except _ERRORS as e:
+        print(f"tcw work inbox accept: {e}", file=sys.stderr)
+        return 1
+    print(item.slug)
     return 0
 
 
@@ -434,8 +477,19 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the changes — work items through a state machine")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    g.add_parser("init", help="create docs/work/{inbox,backlog,active,completed}/") \
+    g.add_parser("init", help="create raw inbox plus backlog/active/completed work storage") \
         .set_defaults(func=_init)
+
+    pin = g.add_parser("inbox", help="inspect and accept raw work intake")
+    ing = pin.add_subparsers(dest="inbox_cmd", required=True)
+    ing.add_parser("list", help="list raw inbox entries").set_defaults(func=_inbox_list)
+    pins = ing.add_parser("show", help="show one raw inbox entry")
+    pins.add_argument("entry")
+    pins.set_defaults(func=_inbox_show)
+    pina = ing.add_parser("accept", help="accept one raw entry into backlog")
+    pina.add_argument("entry")
+    pina.add_argument("--title", help="override the derived work-item title")
+    pina.set_defaults(func=_inbox_accept)
 
     g.add_parser("nodes", help="list this node's parent + child nodes").set_defaults(func=_nodes)
 
@@ -469,7 +523,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn.set_defaults(func=_new)
 
     pl = g.add_parser("list", help="the board (hides completed unless --status/--all)")
-    pl.add_argument("--status")
+    pl.add_argument("--status", choices=WORK_STATUSES)
     pl.add_argument("--all", action="store_true", help="include completed items")
     pl.add_argument("--include-descendants", action="store_true",
                     help="also list every descendant work node's board, grouped by node")
@@ -483,7 +537,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pp.add_argument("slug")
     pp.set_defaults(func=_path)
 
-    pst = g.add_parser("start", help="inbox|backlog → active")
+    pst = g.add_parser("start", help="backlog → active")
     pst.add_argument("slug")
     pst.add_argument("--force", action="store_true", help="start despite unresolved blockers")
     pst.add_argument("--worktree", action="store_true",
@@ -510,6 +564,6 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pc.add_argument("--force", action="store_true", help="complete despite unresolved blockers")
     pc.set_defaults(func=_complete)
 
-    pd = g.add_parser("drop", help="inbox|backlog → deleted")
+    pd = g.add_parser("drop", help="backlog → deleted")
     pd.add_argument("slug")
     pd.set_defaults(func=_drop)

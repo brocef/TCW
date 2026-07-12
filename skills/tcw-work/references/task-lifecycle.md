@@ -13,7 +13,7 @@ Input can be either:
 - an existing TCW work item whose request is a blank scaffold awaiting population;
 - a transient `docs/work/inbox/` request created by TCW's `delegate` or `escalate` commands, or dropped there directly by a user.
 
-If the user provides the request only in chat, create a backlog item with `tcw work new "<title>"` and use its folder as the artifact home. If processing `docs/work/inbox/`, convert it into a backlog item, write the durable `initial-request.md`, then remove the source inbox doc during this stage. The inbox doc is only raw intake; it is not load-bearing after ingestion.
+If the user provides the request only in chat, create a backlog item with `tcw work new "<title>"` and use its folder as the artifact home. If processing `docs/work/inbox/`, inspect it with `tcw work inbox show <entry>` and accept it with `tcw work inbox accept <entry> [--title <title>]`; acceptance generates the durable `initial-request.md` and removes the raw source only after success.
 
 Discuss the request enough to remove ambiguity and capture the broad strokes. Only basic research should be needed here. Write `initial-request.md` with:
 

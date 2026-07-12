@@ -227,10 +227,10 @@ is deep-linkable and Back/Forward work. Any `tcw://` reference in an object's bo
 in-app link** that navigates to the target object; a link to something this viewer
 isn't hosting renders inert. The list/detail divider and the
 editor/preview split are **drag-resizable**. The Work board carries a row of
-**status-filter toggles** (`inbox` / `backlog` / `active` / `completed`) above the
+**status-filter toggles** (`backlog` / `active` / `completed`) above the
 list — toggle one on to show items of that status; `completed` is hidden by
 default and the toggles compose with the text filter. Work items are **grouped by
-status** (active → backlog → inbox → completed) and each row has a button to copy
+status** (active → backlog → completed) and each row has a button to copy
 its slug to the clipboard. Beyond browsing, you can **create and edit** any object
 directly from the browser:
 
@@ -389,13 +389,15 @@ present, else the upstream body) + `appendedDocs` — e.g. a mobile app appendin
 
 ### `tcw work` — the changes
 
-Work is a **single-node state machine** where status is the folder a work item
-lives in, and a transition is a move between folders:
+Raw requests enter through a permissive inbox, then accepted requests become
+formal work in a **single-node state machine** where status is the folder a work
+item lives in and a transition is a move between folders:
 
 ```
-inbox  →  backlog  →  active
-                         ↓
-                     completed        (drop: delete from inbox|backlog)
+raw inbox entry  --accept-->  backlog  --start-->  active
+                                                       |
+                                                   completed
+                         (drop deletes a backlog item)
 ```
 
 Blocked-ness is a **derived overlay**: an item is blocked when it has at least
@@ -404,6 +406,11 @@ folder or status.
 
 ```sh
 tcw work init                          # docs/work/{inbox,backlog,active,completed}/
+
+tcw work inbox list                    # list each raw file or folder entry
+tcw work inbox show request.md         # inspect metadata, text, and resource manifest
+tcw work inbox accept request.md       # consume it into a new backlog item; print the slug
+tcw work inbox accept request.md --title "Clear title"
 
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
@@ -423,7 +430,7 @@ tcw work consolidate-plans docs/plans --apply --delete
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
-tcw work start "$slug"                 # inbox|backlog → active (refused if blocked/gated)
+tcw work start "$slug"                 # backlog → active (refused if blocked/gated)
 tcw work start "$slug" --force         # override unresolved blockers or initiative gates
 
 tcw work edit "$slug" --blocked-by other-slug    # record a new blocker
@@ -434,7 +441,7 @@ tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers or initiative gates
-tcw work drop some-slug                # delete an inbox|backlog item
+tcw work drop some-slug                # delete a backlog item
 ```
 
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
@@ -442,6 +449,14 @@ run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") s
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
 `tcw work new` also prints an "→ edit: …/initial-request.md" line (stderr) pointing
 at the new item's body so you can open it for editing right away.
+Inbox entries are deliberately permissive. A direct child of `docs/work/inbox/`
+may be any standalone file, or a folder with exactly one `INDEX.md` or
+`INDEX.txt`; other folder files become bounded `attachments/` on acceptance.
+Hidden files and empty directories are ignored, symlinks are not followed, and
+binary contents are never printed. See the optional
+[`docs/work-inbox-template.md`](docs/work-inbox-template.md) for a useful request
+shape; the command does not require or parse that template.
+
 `initial-request.md` is always-present — it is the item body/overview surface and
 the canonical request lifecycle artifact, seeded with title, the three-axis scaffold
 (Product / Technical / Meta changes), and any piped stdin.
@@ -452,7 +467,7 @@ when unspecified). `stages` is a compact lifecycle artifact string: `R` for
 `initial-request.md`, `S` for `spec.md`, `P` for `plan.md`, `O` for
 `outcome.md`, and `F` for `refined-outcome.md`; missing or empty artifacts do
 not contribute letters, and `-` means no lifecycle artifacts are present. The
-board shows the live columns (inbox, backlog, active) and hides completed items
+board shows the live columns (backlog and active) and hides completed items
 by default — pass `--status completed` to list them or `--all` for everything.
 It sorts by priority first (higher integer above lower, unspecified-priority
 items keeping creation order), then topologically — blockers appear before the

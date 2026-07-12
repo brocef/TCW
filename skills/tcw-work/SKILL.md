@@ -10,7 +10,7 @@ license: Apache-2.0
 
 # Driving `tcw work`
 
-`tcw work` is the change-tracking state machine: items move `inbox → backlog → active → completed` by changing directory; blocked is a derived overlay, not a status. This skill is the *judgment* on top of the tool. Name `tcw …` commands; never hand-edit `docs/work/` when a command exists. The capability axis is **REQUIRED SUB-SKILL: Use tcw-capabilities** at the planning and completion gates.
+`tcw work` is the change-tracking state machine: raw inbox entries are accepted into `backlog → active → completed`; blocked is a derived overlay, not a status. This skill is the *judgment* on top of the tool. Name `tcw …` commands; never hand-edit `docs/work/` when a command exists. The capability axis is **REQUIRED SUB-SKILL: Use tcw-capabilities** at the planning and completion gates.
 
 > **Web editing:** Work items, lifecycle artifacts, and the `capabilities.yaml` sidecar can also be created and edited through the local `tcw serve` web app. The web-complete modal surfaces the DoD acknowledgments and the capabilities reconciliation reminder, matching the CLI gate.
 
@@ -74,7 +74,7 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 |---|---|
 | plan a request/item | `/tcw-plan-work` or read [`references/lifecycle.md`](references/lifecycle.md) |
 | drive remaining stages | `/tcw-drive-work-to-completion` or read [`references/lifecycle.md`](references/lifecycle.md) |
-| triage an inbox doc | read → `tcw work new "<title>" [--initiative <slug>]` → write `initial-request.md` → `git rm` the doc |
+| triage an inbox entry | `tcw work inbox list` → `tcw work inbox show <entry>` → `tcw work inbox accept <entry> [--title <title>]` |
 | split an item (same repo) | `tcw work new "<sub>" --parent <slug>` (child nests under it; shows indented in `list`) |
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |

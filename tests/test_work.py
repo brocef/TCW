@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import WORK_ARTIFACTS, IllegalTransition, MultipleMatch, topo_order
+from tcw.store.base import WORK_ARTIFACTS, WORK_STATUSES, IllegalTransition, MultipleMatch, topo_order
 from tcw.store.fs import FsWorkStore, init
 
 
@@ -35,6 +35,18 @@ def test_init_gitkeep_persistence(tmp_path):
     assert not (root / "docs" / "work" / "blocked").exists()
 
 
+def test_formal_work_statuses_exclude_raw_inbox():
+    assert WORK_STATUSES == ("backlog", "active", "completed")
+
+
+def test_raw_inbox_state_yaml_is_not_discovered_as_work(tmp_path):
+    root = node(tmp_path)
+    raw = root / "docs/work/inbox/request"
+    raw.mkdir()
+    (raw / "state.yaml").write_text("title: not formal\n")
+    assert FsWorkStore.open(root).query() == []
+
+
 def test_slug_generation_collision_and_immutability(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
     a = st.create("Fix the bug", created="2026-01-01")
@@ -53,6 +65,102 @@ def test_body_path_points_at_initial_request_md(tmp_path):
     assert body == st.path(item.slug) / "initial-request.md"
     assert body.exists()
     assert st.body_path("no-such-slug") is None
+
+
+# ── raw inbox intake ─────────────────────────────────────────────────────────
+
+def test_inbox_list_and_show_standalone_text(tmp_path):
+    root = node(tmp_path)
+    source = root / "docs/work/inbox/request.txt"
+    source.write_text("please fix it\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+    assert [(e.ref, e.title, e.kind) for e in st.inbox_list()] == [
+        ("request.txt", "request", "file")]
+    detail = st.inbox_show("request.txt")
+    assert detail.body == "please fix it\n"
+    assert detail.resources[0].name == "request.txt"
+    assert detail.resources[0].readable is True
+
+
+def test_inbox_accept_folder_generates_request_and_attachments(tmp_path):
+    root = node(tmp_path)
+    entry = root / "docs/work/inbox/big-request"
+    (entry / "nested").mkdir(parents=True)
+    (entry / "INDEX.md").write_text("Original request\n", encoding="utf-8")
+    (entry / "asset.bin").write_bytes(b"\0\1")
+    (entry / "nested/notes.txt").write_text("notes\n", encoding="utf-8")
+    (entry / ".ignored").write_text("nope", encoding="utf-8")
+    (entry / "link").symlink_to(entry / "asset.bin")
+    st = FsWorkStore.open(root)
+    item = st.inbox_accept("big-request", title="Accepted title")
+    assert item.status == "backlog"
+    assert item.title == "Accepted title"
+    assert not entry.exists()
+    created = st.path(item.slug)
+    assert (created / "attachments/asset.bin").read_bytes() == b"\0\1"
+    assert (created / "attachments/nested/notes.txt").read_text() == "notes\n"
+    assert not (created / "attachments/.ignored").exists()
+    body = (created / "initial-request.md").read_text()
+    assert "- `initial-request.md` — accepted from `INDEX.md`" in body
+    assert "- `attachments/asset.bin`" in body
+    assert "- `attachments/nested/notes.txt`" in body
+    assert body.endswith("Original request\n")
+
+
+def test_inbox_accept_binary_file_does_not_render_binary(tmp_path):
+    root = node(tmp_path)
+    source = root / "docs/work/inbox/sample.dat"
+    source.write_bytes(b"\0secret")
+    st = FsWorkStore.open(root)
+    assert st.inbox_show("sample.dat").body is None
+    item = st.inbox_accept("sample.dat")
+    created = st.path(item.slug)
+    assert (created / "attachments/sample.dat").read_bytes() == b"\0secret"
+    assert "secret" not in (created / "initial-request.md").read_text()
+
+
+@pytest.mark.parametrize("indexes", [("INDEX.md",), ("INDEX.txt",)])
+def test_inbox_accept_folder_requires_one_index(tmp_path, indexes):
+    root = node(tmp_path)
+    entry = root / "docs/work/inbox/request"
+    entry.mkdir()
+    for name in indexes:
+        (entry / name).write_text("body", encoding="utf-8")
+    st = FsWorkStore.open(root)
+    if len(indexes) == 1:
+        assert st.inbox_accept("request").status == "backlog"
+
+
+def test_inbox_accept_folder_rejects_missing_or_ambiguous_index_without_consuming(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    missing = root / "docs/work/inbox/missing"
+    missing.mkdir()
+    with pytest.raises(ValueError, match="requires"):
+        st.inbox_accept("missing")
+    assert missing.exists() and st.query() == []
+    ambiguous = root / "docs/work/inbox/ambiguous"
+    ambiguous.mkdir()
+    (ambiguous / "INDEX.md").write_text("one")
+    (ambiguous / "INDEX.txt").write_text("two")
+    with pytest.raises(ValueError, match="both"):
+        st.inbox_accept("ambiguous")
+    assert ambiguous.exists() and st.query() == []
+
+
+def test_cli_inbox_list_show_accept(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    (root / "docs/work/inbox/request.md").write_text("Do the thing\n")
+    monkeypatch.chdir(root)
+    assert main(["work", "inbox", "list"]) == 0
+    assert "request.md | file | request" in capsys.readouterr().out
+    assert main(["work", "inbox", "show", "request.md"]) == 0
+    shown = capsys.readouterr().out
+    assert "Do the thing" in shown and "request.md" in shown
+    assert main(["work", "inbox", "accept", "request.md", "--title", "Chosen"]) == 0
+    slug = capsys.readouterr().out.strip()
+    assert FsWorkStore.open(root).get(slug).title == "Chosen"
 
 
 def test_artifacts_report_bounded_presence_and_locator(tmp_path):
@@ -146,7 +254,7 @@ def test_illegal_transitions_refused(tmp_path):
         st.start(item.slug)                   # completed → active (sink)
 
 
-def test_drop_only_from_inbox_or_backlog(tmp_path):
+def test_drop_only_from_backlog(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
     item = st.create("Task", created="2026-01-01")
     st.start(item.slug)

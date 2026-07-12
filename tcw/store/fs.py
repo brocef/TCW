@@ -11,8 +11,10 @@ into a tree-store core in Phase 4 (don't pre-abstract — AGENTS.md).
 from __future__ import annotations
 
 import hashlib
+import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import uuid
@@ -26,14 +28,14 @@ from tcw.store.base import (
     TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, WORK_STATUSES, _UNSET,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError,
-    SidecarResource, StaleRevision, TaxonomyStore, Term, TermDetail,
+    InboxEntry, InboxEntryDetail, InboxResource, SidecarResource, StaleRevision,
+    TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_work_level,
 )
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
 COMPONENTS = ("taxonomy", "capabilities", "work")
-WORK_STATUSES = ("inbox", "backlog", "active", "completed")
 
 
 # ── git + node helpers (FS-adapter local details, not store-interface ops) ──
@@ -338,7 +340,7 @@ def init(components: list[str], root: Path) -> list[Path]:
     created: list[Path] = []
     for c in components:
         base = root / "docs" / c
-        leaves = [base / s for s in WORK_STATUSES] if c == "work" else [base]
+        leaves = [base / "inbox", *(base / s for s in WORK_STATUSES)] if c == "work" else [base]
         for leaf in leaves:
             leaf.mkdir(parents=True, exist_ok=True)
             (leaf / ".gitkeep").touch()
@@ -1321,7 +1323,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _item_dirs(self) -> list[Path]:
         """Every item folder (dir with a `state.yaml`), at any depth. Sorted by
         path so a parent precedes its children."""
-        return sorted(p.parent for p in self.root.rglob("state.yaml"))
+        return sorted(
+            p.parent
+            for status in WORK_STATUSES
+            for p in (self.root / status).rglob("state.yaml")
+        )
 
     def _status_of(self, d: Path) -> str:
         """Status = the first path component under the work root (`backlog/p/c`
@@ -1464,6 +1470,153 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if isinstance(data, dict) and isinstance(data.get("checklist"), list):
                 return [str(x) for x in data["checklist"]]
         return list(DEFAULT_DOD)
+
+    # -- raw inbox intake (separate from formal WorkItem status) --
+
+    @property
+    def inbox_root(self) -> Path:
+        return self.root / "inbox"
+
+    def _inbox_path(self, ref: str) -> Path:
+        if not ref or ref in {".", ".."} or "/" in ref or "\\" in ref or ref.startswith("."):
+            raise ValueError(f"no such inbox entry: {ref}")
+        path = self.inbox_root / ref
+        if not path.exists() or path.is_symlink() or path.parent != self.inbox_root:
+            raise ValueError(f"no such inbox entry: {ref}")
+        return path
+
+    @staticmethod
+    def _readable_text(path: Path) -> str | None:
+        try:
+            data = path.read_bytes()
+            if b"\0" in data:
+                return None
+            return data.decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    @staticmethod
+    def _resource(path: Path, name: str) -> InboxResource:
+        readable = FsWorkStore._readable_text(path) is not None
+        media_type = mimetypes.guess_type(path.name)[0] or (
+            "text/plain" if readable else "application/octet-stream")
+        return InboxResource(name=name, size=path.stat().st_size,
+                             media_type=media_type, readable=readable)
+
+    def _folder_files(self, folder: Path) -> list[tuple[str, Path]]:
+        files: list[tuple[str, Path]] = []
+        for path in folder.rglob("*"):
+            rel = path.relative_to(folder)
+            if any(part.startswith(".") for part in rel.parts) or path.is_symlink():
+                continue
+            if path.is_file():
+                files.append((rel.as_posix(), path))
+        return sorted(files)
+
+    def _inbox_detail(self, ref: str) -> tuple[InboxEntryDetail, str | None]:
+        path = self._inbox_path(ref)
+        entry = InboxEntry(ref=ref, title=path.stem if path.is_file() else path.name,
+                           kind="file" if path.is_file() else "folder")
+        if path.is_file():
+            body = self._readable_text(path)
+            resources = (self._resource(path, path.name),)
+            return InboxEntryDetail(entry, body, resources), path.name if body is not None else None
+        if not path.is_dir():
+            raise ValueError(f"unsupported inbox entry: {ref}")
+        files = self._folder_files(path)
+        indexes = [(name, p) for name, p in files if name in {"INDEX.md", "INDEX.txt"}]
+        if not indexes:
+            raise ValueError(f"folder inbox entry {ref} requires INDEX.md or INDEX.txt")
+        if len(indexes) > 1:
+            raise ValueError(f"folder inbox entry {ref} has both INDEX.md and INDEX.txt")
+        index_name, index_path = indexes[0]
+        body = self._readable_text(index_path)
+        if body is None:
+            raise ValueError(f"folder inbox entry {ref} index must be readable UTF-8 text")
+        resources = tuple(self._resource(p, name) for name, p in files)
+        return InboxEntryDetail(entry, body, resources), index_name
+
+    def inbox_list(self) -> list[InboxEntry]:
+        if not self.inbox_root.exists():
+            return []
+        out: list[InboxEntry] = []
+        for path in sorted(self.inbox_root.iterdir(), key=lambda p: p.name):
+            if path.name.startswith(".") or path.is_symlink():
+                continue
+            if path.is_file() or path.is_dir():
+                out.append(InboxEntry(path.name, path.stem if path.is_file() else path.name,
+                                      "file" if path.is_file() else "folder"))
+        return out
+
+    def inbox_show(self, ref: str) -> InboxEntryDetail:
+        detail, _primary = self._inbox_detail(ref)
+        return detail
+
+    def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
+        source = self._inbox_path(ref)
+        detail, primary = self._inbox_detail(ref)
+        accepted_title = (title or detail.entry.title).strip()
+        if not accepted_title:
+            raise ValueError("title is required and must be non-empty")
+        created = date.today().isoformat()
+        slug = self._unique_slug(created, accepted_title)
+        destination = self.root / "backlog" / slug
+        manifest: list[str] = []
+        attachments: list[tuple[str, Path]] = []
+        if source.is_file():
+            manifest.append(source.name if primary else f"attachments/{source.name}")
+            if primary is None:
+                attachments.append((source.name, source))
+        else:
+            for name, path in self._folder_files(source):
+                if name == primary:
+                    manifest.append("initial-request.md")
+                else:
+                    manifest.append(f"attachments/{name}")
+                    attachments.append((name, path))
+        manifest = sorted(manifest)
+        origin = primary or source.name
+        manifest_lines = []
+        for name in manifest:
+            suffix = f" — accepted from `{origin}`" if name == "initial-request.md" else ""
+            manifest_lines.append(f"- `{name}`{suffix}")
+        body = detail.body if detail.body is not None else "Binary intake preserved as an attachment."
+        request = (
+            f"# {accepted_title}\n\n## Product changes\n\nTBD\n\n"
+            "## Technical changes\n\nTBD\n\n## Meta changes\n\nTBD\n\n"
+            "## Inbox contents\n\n### Inbox manifest\n\n"
+            + "\n".join(manifest_lines) + "\n\n### Inbox body\n\n" + body
+        )
+        if not request.endswith("\n"):
+            request += "\n"
+        temp = Path(tempfile.mkdtemp(prefix=f".{slug}-", dir=self.root / "backlog"))
+        try:
+            state = {"slug": slug, "title": accepted_title, "phase": "",
+                     "created": created, "resolution": None}
+            dump_yaml(temp / "state.yaml", state)
+            (temp / "initial-request.md").write_text(request, encoding="utf-8")
+            for name, path in attachments:
+                target = temp / "attachments" / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, target, follow_symlinks=False)
+            os.replace(temp, destination)
+            self._stage(destination)
+            tracked = subprocess.run(
+                ["git", "-C", str(self.node_root), "ls-files", "--error-unmatch", "--", str(source)],
+                capture_output=True,
+            ).returncode == 0
+            if tracked:
+                self._rm(source)
+            elif source.is_dir():
+                shutil.rmtree(source)
+            else:
+                source.unlink()
+        except Exception:
+            shutil.rmtree(temp, ignore_errors=True)
+            if destination.exists() and source.exists():
+                shutil.rmtree(destination, ignore_errors=True)
+            raise
+        return self.get(slug)
 
     # -- writes --
 

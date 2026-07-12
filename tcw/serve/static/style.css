@@ -124,7 +124,6 @@ h1 {
 
 /* Per-status accent (--st) — shared by the list-item badges and the filter
    toggles so a status reads the same color in both places. */
-.st-inbox     { --st: #6d5bd0; }  /* violet */
 .st-backlog   { --st: #b45309; }  /* amber */
 .st-active    { --st: #1b6f68; }  /* teal */
 .st-completed { --st: #4b5563; }  /* slate */

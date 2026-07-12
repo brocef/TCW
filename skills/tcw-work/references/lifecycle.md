@@ -5,7 +5,7 @@ Use this file to choose the smallest lifecycle document needed for the current w
 ## Common rules
 
 - Do not hand-edit `docs/work/` when a `tcw work` command exists.
-- Preserve the work item as the source of truth. `docs/work/inbox/` is raw intake only; convert an inbox request into a backlog item, write `initial-request.md`, then remove the inbox source during ingestion.
+- Preserve the work item as the source of truth. `docs/work/inbox/` is raw intake only; inspect it with `tcw work inbox show` and convert it with `tcw work inbox accept`, which generates the durable request and consumes the source after success.
 - For product changes, run the tcw-capabilities planning gate before writing the technical plan, and reconcile capabilities before completion.
 - For small changes, offer to compress unnecessary planning detail, but keep enough artifact context for another agent to resume safely.
 - `tcw work start <slug>` is the implementation boundary. Run it before the first code edit and commit that status transition before implementation changes.
