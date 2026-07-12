@@ -1,0 +1,1 @@
+The intake surface through which users inspect and accept raw requests as formal work items.
