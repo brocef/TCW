@@ -14,13 +14,26 @@ For epics, the artifacts mean:
 - `outcome.md`: aggregate status from reconciled child tasks.
 - `refined-outcome.md`: aggregate verification, closeout decisions, and deferred follow-ups.
 
+Each new or materially updated artifact is a stage checkpoint: commit it and
+only its related TCW work-file changes before moving to the next stage. Do not
+batch several epic artifacts into one commit or create empty commits for stages
+that were already complete.
+
 ## Planning
 
 During request ingestion and request processing, identify the affected nodes and whether the work belongs in same-node child items (`tcw work new --parent`) or cross-node initiative children (`tcw work delegate <child> ... --initiative <epic-slug>`). For product work, coordinate product-layer capability wording through the tcw-capabilities process.
 
+After capturing the initiative request, commit `initial-request.md` and its
+related item metadata before writing the overview spec.
+
 Write `spec.md` as an overview spec. It should describe the initiative, affected nodes, expected child tasks, capability changes, dependencies, risks, and acceptance criteria for the overall initiative.
 
+Commit `spec.md` and its related TCW work-file changes before writing the
+coordination plan.
+
 Write `plan.md` as a coordination plan. It should list child tasks, delegation commands, dependency order, possible parallelism, rollup checkpoints, verification expectations, and documentation-sync expectations.
+
+Commit `plan.md` and its related TCW work-file changes before starting the epic.
 
 ## Coordination
 
@@ -29,6 +42,8 @@ Start the epic before child tasks begin implementation:
 ```
 tcw work start <epic-slug>
 ```
+
+Commit the start status move separately before child implementation begins.
 
 Then delegate or create children. Initiative child tasks cannot start until the related epic is active. Run:
 
@@ -47,8 +62,15 @@ Write `outcome.md` with aggregate progress:
 - capability or product-layer reconciliation performed;
 - natural-language follow-up notes.
 
+Commit `outcome.md` and any stage-related reconcile changes before aggregate
+verification/refinement. Keep unrelated child-node or working-tree changes out
+of this checkpoint.
+
 ## Verification and closeout
 
 Stop for user verification after child work is reconciled. Write `refined-outcome.md` with the user's aggregate verification decision, remaining deferred work, and closeout choices.
 
-An epic cannot complete while initiative child tasks are still open. Complete or explicitly defer child tasks first, then run a final reconcile. Before `tcw work complete`, reconcile capabilities for product-layer changes and evaluate Documentation Sync triggers.
+Commit `refined-outcome.md` and its related TCW work-file changes before the
+completion transition.
+
+An epic cannot complete while initiative child tasks are still open. Complete or explicitly defer child tasks first, then run a final reconcile. Before `tcw work complete`, reconcile capabilities for product-layer changes and evaluate Documentation Sync triggers. After completion succeeds, commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.

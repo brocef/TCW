@@ -24,6 +24,10 @@ Discuss the request enough to remove ambiguity and capture the broad strokes. On
 
 For an initiative child task, preserve the `initiative: <epic-slug>` relation. Do not mutate the parent epic directly from the child node; report useful status and outcomes so the epic can reconcile.
 
+Checkpoint the request stage before spec work: inspect and commit
+`initial-request.md` together with the new item's related TCW metadata. Stage
+only those work files.
+
 ## 2. Request processing -> `spec.md`
 
 Input: `initial-request.md`.
@@ -37,6 +41,9 @@ Write `spec.md` with:
 - current-state findings with file references where relevant;
 - proposed behavior and acceptance criteria;
 - risks, dependencies, and related work items.
+
+Checkpoint the spec stage before plan work: inspect and commit `spec.md` and
+only the related TCW work files changed while producing it.
 
 ## 3. Spec processing -> `plan.md`
 
@@ -52,7 +59,10 @@ Write `plan.md` with:
 - verification commands;
 - explicit documentation-sync tasks for triggers that are expected to fire.
 
-When planning is complete and implementation is about to begin, run `tcw work start <slug>` before the first code edit. Commit that status change before implementation changes. If the task has `initiative: <epic-slug>`, the epic must be active first. Use `--worktree` when isolation is useful; in that flow the primary checkout carries status transitions and the work branch carries implementation edits.
+Checkpoint the plan stage before implementation: inspect and commit `plan.md`
+and only the related TCW work files changed while producing it.
+
+When planning is complete and implementation is about to begin, run `tcw work start <slug>` before the first code edit. Commit that status change as a separate commit after the plan-stage checkpoint and before implementation changes. If the task has `initiative: <epic-slug>`, the epic must be active first. Use `--worktree` when isolation is useful; in that flow the primary checkout carries status transitions and the work branch carries implementation edits.
 
 ## 4. Implementation -> `outcome.md`
 
@@ -76,6 +86,11 @@ Then record:
 
 Follow-up notes are not automatically TCW items. Creating follow-up work items is a closeout decision for the user.
 
+After implementation and its evidence are recorded, checkpoint the outcome
+stage before verification/refinement: inspect and commit `outcome.md` with only
+the related TCW work files changed during this stage. Keep unrelated
+working-tree changes unstaged.
+
 ## 5. Verification and refinement -> `refined-outcome.md`
 
 Input: `outcome.md`.
@@ -90,6 +105,10 @@ Write `refined-outcome.md` with:
 - final verification evidence;
 - closeout choices selected by the user.
 
+After the user-approved refinements and final evidence are recorded, checkpoint
+the refinement stage: inspect and commit `refined-outcome.md` with only its
+related TCW work files before running the completion transition.
+
 ## Closeout decisions
 
 After verification/refinement, ask the user to decide:
@@ -99,4 +118,4 @@ After verification/refinement, ask the user to decide:
 - whether natural-language follow-ups should become new TCW backlog items;
 - version bump: major, minor, patch, or no version bump.
 
-Before `tcw work complete`, reconcile capabilities for product changes and evaluate Documentation Sync triggers. Then run `tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm` when the user has approved closeout.
+Before `tcw work complete`, reconcile capabilities for product changes and evaluate Documentation Sync triggers. Then run `tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm` when the user has approved closeout. After it succeeds, inspect and commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.

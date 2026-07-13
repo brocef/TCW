@@ -11,6 +11,13 @@ processing: `initial-request.md`, `spec.md`, and `plan.md`.
 For an epic, this means initiative intake, overview spec, and coordination /
 delegation plan using the same artifact names.
 
+Treat each produced artifact as a separate checkpoint. After writing or
+materially updating `initial-request.md`, commit it and its related TCW work
+files before creating `spec.md`; commit the spec stage before creating
+`plan.md`; then commit the plan stage. Inspect each diff and stage narrowly so
+unrelated changes are not included. Do not create empty commits for artifacts
+that already existed unchanged.
+
 Input may be an existing TCW work item slug/path or a request written directly in
 chat. If the user provides only chat text, create the initial backlog item with
 `tcw work new "<title>"` and write all artifacts inside that item's folder.

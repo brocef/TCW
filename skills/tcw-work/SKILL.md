@@ -31,6 +31,13 @@ The artifact spine is:
 
 `initial-request.md` → `spec.md` → `plan.md` → `outcome.md` → `refined-outcome.md`
 
+**Commit every stage as you go.** After writing or materially updating any
+lifecycle artifact, commit that artifact and the related TCW work files before
+starting the next stage. Use narrow staging so unrelated working-tree changes
+are never swept into a lifecycle checkpoint; do not create empty commits for
+unchanged stages. The `tcw work start` and `tcw work complete` status moves are
+separate commits at their respective transition boundaries.
+
 `initial-request.md` is always-present — it serves as the item body/overview
 surface, scratch space, and the managed rollup target for epics.
 
@@ -51,9 +58,9 @@ For small changes, ask whether to compress unnecessary planning detail, but keep
 Keep status in step *as you go*; don't batch the transitions at the end. The per-command detail:
 
 - **`tcw work new`** — declare the delta; for a product delta, record `Missing` capabilities (tcw-capabilities).
-- **`tcw work start <slug>`** — when planning concludes and implementation begins, move the item to active. **This transition is the first implementation commit** (AGENTS.md) — commit the `start` move (with the committed `spec.md`/`plan.md`) before the first code change. Add `--worktree` to isolate the item's code in its own git worktree + branch (transitions stay on the primary checkout; edits ride the work branch and merge back).
+- **`tcw work start <slug>`** — when planning concludes and implementation begins, move the item to active. **This transition is the first implementation commit** (AGENTS.md) — commit the `start` move after the separate `plan.md` checkpoint and before the first code change. Add `--worktree` to isolate the item's code in its own git worktree + branch (transitions stay on the primary checkout; edits ride the work branch and merge back).
 - **during `active`** — on any capability change, run contradiction-detection (tcw-capabilities).
-- **`tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm`** — the final step. Reconcile capabilities first (the tcw-capabilities ledger flip), since the DoD "capabilities reconciled" item is acknowledged here. `--force` overrides unresolved blockers. For a `--worktree` item, `complete` **merges the work branch back** into the primary checkout before tearing it down, and **fails closed** on a merge conflict (branch + worktree left intact, item stays `active`) — resolve the conflict and re-run rather than `--force`ing past it.
+- **`tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm`** — the final step. Reconcile capabilities first (the tcw-capabilities ledger flip), since the DoD "capabilities reconciled" item is acknowledged here. After success, commit the completion status move and its related TCW work-file changes. `--force` overrides unresolved blockers. For a `--worktree` item, `complete` **merges the work branch back** into the primary checkout before tearing it down, and **fails closed** on a merge conflict (branch + worktree left intact, item stays `active`) — resolve the conflict and re-run rather than `--force`ing past it.
 
 ## Resume (across sessions)
 

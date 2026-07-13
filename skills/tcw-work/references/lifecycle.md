@@ -8,7 +8,16 @@ Use this file to choose the smallest lifecycle document needed for the current w
 - Preserve the work item as the source of truth. `docs/work/inbox/` is raw intake only; inspect it with `tcw work inbox show` and convert it with `tcw work inbox accept`, which generates the durable request and consumes the source after success.
 - For product changes, run the tcw-capabilities planning gate before writing the technical plan, and reconcile capabilities before completion.
 - For small changes, offer to compress unnecessary planning detail, but keep enough artifact context for another agent to resume safely.
+- A lifecycle stage is not finished until its new or materially updated artifact
+  and related TCW work files are committed. Before moving to the next stage:
+  validate as appropriate, inspect the intended diff, narrowly stage only the
+  current item's related work files, and commit them. Do not sweep in unrelated
+  changes or create an empty commit when the stage was already complete and
+  unchanged. A command that runs several missing stages must create separate,
+  ordered commits for each stage.
 - `tcw work start <slug>` is the implementation boundary. Run it before the first code edit and commit that status transition before implementation changes.
+- `tcw work complete <slug> ...` is the closeout boundary. After it succeeds,
+  commit the completion status transition and its related work-file changes.
 - Do not silently complete after implementation. Stop for user verification/refinement before `tcw work complete`.
 
 ## Choose the lifecycle

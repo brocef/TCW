@@ -592,8 +592,9 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — plan a request or existing work item
   through `initial-request.md`, `spec.md`, and `plan.md`; drive implementation
   or epic coordination through `outcome.md` and user verification in
-  `refined-outcome.md`; triage `docs/work/inbox`; run the start/complete
-  lifecycle; resume active work; and decompose work into a cross-node epic.
+  `refined-outcome.md`; commit each lifecycle stage before beginning the next;
+  triage `docs/work/inbox`; run the start/complete lifecycle; resume active work;
+  and decompose work into a cross-node epic.
 - **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
   changes` planning gate, contradiction-detection, the `Missing → Supported`
   ledger flip at completion, product-layer wording coordination, and bootstrapping
