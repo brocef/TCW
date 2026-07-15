@@ -379,13 +379,21 @@ tcw capabilities extends --rm shared              # drop the alias
 ```
 
 Inherited capabilities surface flagged by origin (`shared/<path>`) and are
-read-only in structure — a project can't delete one, only **override** it. An
-override is a local folder whose `meta.yaml` has `overrides: <upstream-id>` plus
-the changes: metadata fields partial-merge (e.g. `Status: Missing`, or
-`Status: Omitted` for "we deliberately don't have this"; a YAML `null` clears a
-field), and the body composes as `prependedDocs` + (a local `description.md`, if
-present, else the upstream body) + `appendedDocs` — e.g. a mobile app appending
-"…or take a photo with the camera." Local sibling-repo paths only.
+read-only in structure — a project can't delete one, only **override** it. Set an
+inherited capability exactly like a local one, by any path `show` accepts:
+
+```sh
+tcw capabilities set shared/auth/login --status Omitted   # or the bare auth/login
+```
+
+The override is written for you. It is a local folder whose `meta.yaml` has
+`overrides: <upstream-id>` plus the changes: metadata fields partial-merge (e.g.
+`Status: Missing`, or `Status: Omitted` for "we deliberately don't have this"; a
+YAML `null` clears a field), and the body composes as `prependedDocs` + (a local
+`description.md`, if present, else the upstream body) + `appendedDocs` — e.g. a
+mobile app appending "…or take a photo with the camera." That file shape is
+worth knowing (you can hand-author one anywhere, and `set` will keep using it),
+but `set` is the front door. Local sibling-repo paths only.
 
 ### `tcw work` — the changes
 

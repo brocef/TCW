@@ -49,13 +49,13 @@ As the item's final pre-freeze step, apply each declared delta so the ledger des
 - `tcw capabilities set <path> --status Supported` (Missing → Supported)
 - scope/body edits; `tcw capabilities set <path> --status Omitted` (Supported → Omitted)
 
-Address the capability by its path. Flips are idempotent (setting the same status twice is a no-op). This satisfies the work DoD "capabilities reconciled" item by **convention** — the tool acknowledges it at `complete`, it does not verify it.
+Address the capability by its path — **any path `show` accepts, including an inherited one** (`set shared/auth/login --status Supported`, or the bare `auth/login`); the local override is written for you. Flips are idempotent (setting the same status twice is a no-op). This satisfies the work DoD "capabilities reconciled" item by **convention** — the tool acknowledges it at `complete`, it does not verify it.
 
 ## Federation (inherit another project's capabilities)
 
 A project can `extends` another's capabilities so shared user stories are declared once — e.g. a web frontend and a mobile app that both drive the same server. `tcw capabilities extends <alias> <path-to-other-repo>` (`--rm <alias>` to drop). Inherited capabilities surface in `list`/`show` flagged by origin (`<alias>/<path>`); they are read-only in structure (`remove` refuses an inherited one) — a child may only:
 
-- **override metadata** — create a local folder whose `meta.yaml` has `overrides: <upstream-id>` (or `<alias>/<id>` to disambiguate) plus the fields to change (e.g. `Status: Missing`, or `Status: Omitted` for "we deliberately don't have this"; a YAML `null` clears an inherited field);
+- **override metadata** — just `tcw capabilities set <path> --status <S>` / `--field K=V` on the inherited path; the override is materialized for you as a local folder whose `meta.yaml` has `overrides: <alias>/<id>` plus the fields you changed (e.g. `Status: Missing`, or `Status: Omitted` for "we deliberately don't have this"). Hand-authoring that file is **not** required — don't; a hand-authored override anywhere in the tree keeps working and `set` updates it in place. (A YAML `null` clears an inherited field, which the store/web `fields` API can write; the CLI's `--field K=` sets an empty string, not a clear.);
 - **compose the body** — a `description.md` in that override folder replaces the upstream body; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera").
 
 `tcw capabilities check` validates override targets (dangling / ambiguous / must-be-inherited), attachment lists, and federation cycles.
@@ -77,7 +77,8 @@ codebase → draft → refine with the user → write) → read [`references/ini
 |---|---|
 | declare a new capability | `tcw capabilities add <ns/path> "<Name>" --status Missing` |
 | record the planning back-pointer | `tcw capabilities set <ns/path> --field "Planning doc=<slug>"` |
-| flip status at completion | `tcw capabilities set <path> --status Supported` |
+| flip status at completion | `tcw capabilities set <path> --status Supported` (local or inherited) |
+| flip an inherited entry | `tcw capabilities set <alias>/<path> --status <S>` — writes the override for you |
 | associate a feature | `tcw capabilities set <path> --field "Feature=<feature-ref>"` |
 | link taxonomy (multi-valued) | `tcw capabilities set <path> --field "Subject=term-a,term-b"` |
 | federate another project | `tcw capabilities extends <alias> <path-to-repo>` (`--rm <alias>`) |
