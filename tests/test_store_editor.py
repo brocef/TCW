@@ -707,6 +707,33 @@ def test_update_capability_inherited_body(tmp_path):
     assert FsCapabilitiesStore.open(base).get("routes/login").body.strip() == "UPSTREAM."
 
 
+def test_update_capability_inherited_body_cleared_drops_the_delta(tmp_path):
+    """An override's description.md is a body *delta*; an empty one means "no
+    delta" (that is what makes append-only overrides work). So clearing it drops
+    the file and re-inherits, rather than leaving an empty file that silently
+    means the same thing."""
+    base, child = _federated(tmp_path)
+    st = FsCapabilitiesStore.open(child)
+    st.update_capability("routes/login", body="CHILD STORY.")
+    assert (child / "docs/capabilities/routes/login/description.md").exists()
+
+    detail = st.update_capability("routes/login", body=None)
+    assert detail.capability.body.strip() == "UPSTREAM."          # re-inherited
+    assert not (child / "docs/capabilities/routes/login/description.md").exists()
+    assert st.check() == []
+    # The rest of the delta survives.
+    st.update_capability("routes/login", fields={"Status": "Missing"})
+    assert st.update_capability("routes/login", body="").capability.status == "Missing"
+
+
+def test_update_capability_local_body_cleared_stays_empty(tmp_path):
+    """A local capability has no upstream to fall back to — None still clears."""
+    root = _cap_node(tmp_path)
+    st = FsCapabilitiesStore.open(root)
+    st.add("routes/login", name="Sign in", body="Local body.")
+    assert st.update_capability("routes/login", body=None).capability.body == ""
+
+
 def test_update_capability_inherited_stale_revision(tmp_path):
     """The revision must cover the override's files, or two edits to the same
     override hash identically and stale-write rejection never fires."""

@@ -15,8 +15,19 @@ category, with commit hash ranges so entries trace back to source.
   `_write_target()` / `_merge_meta()` pair: a local capability writes to its own
   folder; an inherited one writes to its existing override (wherever authored)
   or to a freshly materialized delta mirroring the upstream path, seeded
-  `overrides: <alias>/<id>`. Refuses to clobber a local capability already
-  occupying the mirrored path. (GitHub issue #3) (4958e5d..HEAD)
+  `overrides: <alias>/<id>`. When the mirrored path is already taken — by a local
+  capability, or by *another alias's* override of the same path — the override is
+  placed at `<alias>/<upstream-path>` instead; a local declaration is never
+  clobbered, and no path `show` accepts is refused. (GitHub issue #3)
+  (4958e5d..HEAD)
+- `update_capability(body=None)` on an inherited capability wrote an empty
+  `description.md`, which `_apply_override` reads as "no body delta" — so the
+  clear silently re-inherited the upstream body and left a stray file behind. It
+  now drops the delta file explicitly. The re-inherit is the intended semantics
+  (an empty override body is what makes append-only overrides work) and is now
+  documented in `skills/tcw-capabilities/SKILL.md`; `Status: Omitted`, not an
+  empty body, is how a node says "we deliberately don't have this".
+  (4958e5d..HEAD)
 - `FsCapabilitiesStore.get_capability_detail()` computed an inherited
   capability's revision from the upstream `meta.yaml`/`description.md` only, so
   two successive edits to the same override hashed identically and

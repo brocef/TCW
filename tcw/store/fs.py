@@ -1090,9 +1090,14 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return ov[0], ov[1], True                  # update in place
         d = self.root / cap.path                       # mirror the upstream path
         if self._is_capability(d):
+            # Taken — by a local capability, or by another alias's override of
+            # the same path. Qualify by origin rather than refusing: `show`
+            # accepts this ref, so `set` has to as well.
+            d = self.root / cap.origin / cap.path
+        if self._is_capability(d):
             raise ValueError(
-                f"cannot override '{cap.qualified}' at '{cap.path}': a local "
-                f"capability already occupies that path (set it directly)")
+                f"cannot override '{cap.qualified}': both '{cap.path}' and "
+                f"'{cap.origin}/{cap.path}' are already taken")
         return d, {"overrides": f"{cap.origin}/{cap.id}"}, True
 
     def _merge_meta(self, meta: dict, norm: dict, is_override: bool) -> dict:
@@ -1337,7 +1342,16 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         meta = self._merge_meta(meta, norm, is_override)
 
         d.mkdir(parents=True, exist_ok=True)
-        if body is _UNSET and not desc.exists():
+        if is_override and not desc_text.strip():
+            # An override's description.md is a *body delta*, and an empty one
+            # means "no delta" — `_apply_override` falls back to the upstream
+            # body (which is what makes append-only overrides work). So clearing
+            # an override's body drops the delta and re-inherits, rather than
+            # leaving an empty file that silently means the same thing.
+            desc.unlink(missing_ok=True)
+            self._write_meta(d, meta)
+            self._stage(d)                     # picks up the removal
+        elif body is _UNSET and not desc.exists():
             self._write_meta(d, meta)          # pure delta — no empty body file
         else:
             self._write_node(d, meta, desc_text)

@@ -288,17 +288,50 @@ def test_set_unknown_path_still_raises(tmp_path):
         store(child).set("nope/missing", {"Status": "Missing"})
 
 
-def test_set_inherited_collision_with_local_refuses(tmp_path):
-    """`alias/x/y` addressed explicitly while a local `x/y` also exists: the
-    mirrored path is taken, so refuse rather than clobber the local declaration."""
+def test_set_inherited_falls_back_when_local_occupies_path(tmp_path):
+    """`alias/x/y` addressed explicitly while a local `x/y` also exists: mirror
+    to `<alias>/x/y` instead — never clobber the local declaration, and never
+    refuse a path `show` accepts."""
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "auth/login", id="cap-loc001", Status="Missing")
     before = (child / "docs" / "capabilities" / "auth" / "login" / "meta.yaml").read_bytes()
-    with pytest.raises(ValueError, match="local capability"):
-        store(child).set("shared/auth/login", {"Status": "Partial"})
+
+    store(child).set("shared/auth/login", {"Status": "Partial", "Gaps": "wip"})
+
     assert (child / "docs" / "capabilities" / "auth" / "login"
-            / "meta.yaml").read_bytes() == before
+            / "meta.yaml").read_bytes() == before          # local untouched
+    assert ov_meta(child, "shared/auth/login") == {
+        "overrides": "shared/cap-aaa111", "Status": "Partial", "Gaps": "wip"}
+    assert store(child).get("shared/auth/login").status == "Partial"
+    assert store(child).get("auth/login").status == "Missing"   # bare wins local
+    assert store(child).check() == []
+
+
+def test_set_second_alias_same_path(tmp_path):
+    """Two aliases exporting the same path: the first override occupies the
+    mirrored path, so the second must qualify rather than become un-settable."""
+    base = repo(tmp_path, "base")
+    write_cap(base, "a/thing", id="cap-one", Status="Supported")
+    base2 = repo(tmp_path, "base2")
+    write_cap(base2, "a/thing", id="cap-two", Status="Supported")
+    child = repo(tmp_path, "child")
+    st = FsCapabilitiesStore.open(child)
+    st.extends_add("one", "../base")
+    st.extends_add("two", "../base2")
+
+    store(child).set("one/a/thing", {"Status": "Missing"})
+    store(child).set("two/a/thing", {"Status": "Omitted"})
+
+    assert store(child).get("one/a/thing").status == "Missing"
+    assert store(child).get("two/a/thing").status == "Omitted"
+    assert ov_meta(child, "a/thing")["overrides"] == "one/cap-one"
+    assert ov_meta(child, "two/a/thing")["overrides"] == "two/cap-two"
+    assert store(child).check() == []
+    # Re-entrant: each updates its own override in place.
+    store(child).set("two/a/thing", {"Status": "Partial", "Gaps": "x"})
+    assert store(child).get("two/a/thing").status == "Partial"
+    assert store(child).get("one/a/thing").status == "Missing"
 
 
 def test_set_ambiguous_bare_ref_raises(tmp_path):
