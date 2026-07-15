@@ -1,0 +1,5 @@
+# Capability deltas this work item lands (work->capability back-pointers).
+changed:
+  # `set` (and the web editor) now resolve inherited paths and materialize the
+  # override file themselves; hand-authoring meta.yaml stops being the only route.
+  - capabilities/override-inherited
