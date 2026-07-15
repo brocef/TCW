@@ -24,7 +24,15 @@ class RefError(Exception):
 
 
 class AmbiguousRef(RefError):
-    """A bare reference matches more than one namespace — author must qualify."""
+    """A bare reference matches more than one namespace — author must qualify.
+
+    Carries its own message: callers print `str(e)`, and the bare ref alone
+    ("x/thing") reads as noise rather than an explanation.
+    """
+
+    def __init__(self, ref: str):
+        self.ref = ref
+        super().__init__(f"ambiguous ref '{ref}' — qualify it with an alias prefix")
 
 
 class StaleRevision(Exception):

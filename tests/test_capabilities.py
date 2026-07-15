@@ -312,6 +312,42 @@ def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
     assert FsCapabilitiesStore.open(root).get("routes/login").status == "Supported"
 
 
+def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
+    """The reporter's transcript (issue #3): `set` must accept every path
+    `show` accepts, materializing the override itself."""
+    base = node(tmp_path, "base")
+    FsCapabilitiesStore.open(base).add("moderation/report-content",
+                                       name="Report content", status="Supported")
+    child = node(tmp_path, "child")
+    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    monkeypatch.chdir(child)
+    from tcw.cli import main
+
+    assert main(["capabilities", "set", "shared/moderation/report-content",
+                 "--status", "Missing"]) == 0
+    assert "Set" in capsys.readouterr().out
+    assert FsCapabilitiesStore.open(child).get(
+        "moderation/report-content").status == "Missing"
+    assert FsCapabilitiesStore.open(base).get(
+        "moderation/report-content").status == "Supported"
+
+
+def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
+    for name in ("one", "two"):
+        FsCapabilitiesStore.open(node(tmp_path, name)).add("x/thing", name="Thing")
+    child = node(tmp_path, "child")
+    st = FsCapabilitiesStore.open(child)
+    st.extends_add("one", "../one")
+    st.extends_add("two", "../two")
+    monkeypatch.chdir(child)
+    from tcw.cli import main
+
+    assert main(["capabilities", "set", "x/thing", "--status", "Missing"]) == 1
+    err = capsys.readouterr().err
+    assert "ambiguous" in err and "x/thing" in err     # not a bare, unexplained path
+    assert main(["capabilities", "set", "one/x/thing", "--status", "Missing"]) == 0
+
+
 def test_cli_capabilities_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = tmp_path / "fresh"

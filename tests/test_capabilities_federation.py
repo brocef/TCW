@@ -194,3 +194,148 @@ def test_get_by_id_local(tmp_path):
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x", Status="Supported")
     assert store(root).get_by_id("cap-x").path == "x"
+
+
+# ── set on an inherited path: materialize the override (issue #3) ────────────
+
+def ov_meta(child: Path, path: str) -> dict:
+    return yaml.safe_load((child / "docs" / "capabilities" / path / "meta.yaml")
+                          .read_text())
+
+
+def test_set_inherited_qualified(tmp_path):
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    cap = store(child).set("shared/moderation/report-content", {"Status": "Missing"})
+    assert cap.status == "Missing" and cap.origin == "shared"
+    assert store(child).get("moderation/report-content").status == "Missing"
+    assert store(base).get("moderation/report-content").status == "Supported"
+
+
+def test_set_inherited_bare(tmp_path):
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    store(child).set("moderation/report-content", {"Status": "Missing"})
+    assert store(child).get("moderation/report-content").status == "Missing"
+
+
+def test_set_inherited_materializes_mirrored_override(tmp_path):
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    store(child).set("moderation/report-content", {"Status": "Missing"})
+    assert ov_meta(child, "moderation/report-content") == {
+        "overrides": "shared/cap-aaa111", "Status": "Missing"}
+    # No stray description.md — an empty one would still fall through, but the
+    # override must stay a pure delta.
+    assert not (child / "docs" / "capabilities" / "moderation" / "report-content"
+                / "description.md").exists()
+    assert store(child).check() == []
+
+
+def test_set_inherited_twice_updates_in_place(tmp_path):
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    store(child).set("moderation/report-content", {"Status": "Missing"})
+    store(child).set("moderation/report-content", {"Status": "Partial",
+                                                   "Gaps": "half done"})
+    assert ov_meta(child, "moderation/report-content") == {
+        "overrides": "shared/cap-aaa111", "Status": "Partial", "Gaps": "half done"}
+    caps = [c for c in store(child).list_all() if c.path == "moderation/report-content"]
+    assert len(caps) == 1 and caps[0].status == "Partial"
+
+
+def test_set_inherited_is_idempotent(tmp_path):
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    store(child).set("auth/login", {"Status": "Missing"})
+    first = ov_meta(child, "auth/login")
+    store(child).set("auth/login", {"Status": "Missing"})
+    assert ov_meta(child, "auth/login") == first
+
+
+def test_set_inherited_reuses_hand_authored_override(tmp_path):
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    write_cap(child, "ov/login", overrides="cap-aaa111", Status="Missing")
+    store(child).set("auth/login", {"Status": "Partial", "Gaps": "wip"})
+    assert ov_meta(child, "ov/login")["Status"] == "Partial"     # in place
+    assert not (child / "docs" / "capabilities" / "auth" / "login").exists()
+    assert store(child).get("auth/login").status == "Partial"
+
+
+def test_set_local_unchanged_by_override_machinery(tmp_path):
+    root = repo(tmp_path, "solo")
+    write_cap(root, "x", id="cap-x", Status="Missing")
+    cap = store(root).set("x", {"Status": "Supported"})
+    assert cap.status == "Supported" and cap.origin == "local"
+    assert "overrides" not in ov_meta(root, "x")
+
+
+def test_set_inherited_validates_status(tmp_path):
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    with pytest.raises(ValueError, match="invalid Status"):
+        store(child).set("auth/login", {"Status": "Bogus"})
+    with pytest.raises(ValueError, match="unknown field"):
+        store(child).set("auth/login", {"Nonsense": "x"})
+    assert not (child / "docs" / "capabilities" / "auth" / "login").exists()
+
+
+def test_set_unknown_path_still_raises(tmp_path):
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    with pytest.raises(ValueError, match="no such capability"):
+        store(child).set("nope/missing", {"Status": "Missing"})
+
+
+def test_set_inherited_collision_with_local_refuses(tmp_path):
+    """`alias/x/y` addressed explicitly while a local `x/y` also exists: the
+    mirrored path is taken, so refuse rather than clobber the local declaration."""
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    write_cap(child, "auth/login", id="cap-loc001", Status="Missing")
+    before = (child / "docs" / "capabilities" / "auth" / "login" / "meta.yaml").read_bytes()
+    with pytest.raises(ValueError, match="local capability"):
+        store(child).set("shared/auth/login", {"Status": "Partial"})
+    assert (child / "docs" / "capabilities" / "auth" / "login"
+            / "meta.yaml").read_bytes() == before
+
+
+def test_set_ambiguous_bare_ref_raises(tmp_path):
+    base = repo(tmp_path, "base")
+    write_cap(base, "a/thing", id="cap-one", Status="Supported")
+    base2 = repo(tmp_path, "base2")
+    write_cap(base2, "a/thing", id="cap-two", Status="Supported")
+    child = repo(tmp_path, "child")
+    st = FsCapabilitiesStore.open(child)
+    st.extends_add("one", "../base")
+    st.extends_add("two", "../base2")
+    with pytest.raises(AmbiguousRef):
+        store(child).set("a/thing", {"Status": "Missing"})
+
+
+def test_set_inherited_null_clears_inherited_field(tmp_path):
+    """None on an override writes explicit YAML null (clear), not a pop —
+    popping would silently mean 're-inherit', a different intent."""
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported", "Priority": "P1"}})
+    store(child).set("auth/login", {"Priority": None})
+    assert ov_meta(child, "auth/login") == {"overrides": "shared/cap-aaa111",
+                                            "Priority": None}
+    assert "Priority" not in store(child).get("auth/login").fields
+    assert store(child).get("auth/login").status == "Supported"   # rest inherited
+
+
+def test_set_local_null_pops_field(tmp_path):
+    root = repo(tmp_path, "solo")
+    write_cap(root, "x", id="cap-x", Status="Supported", Priority="P1")
+    store(root).set("x", {"Priority": None})
+    assert "Priority" not in ov_meta(root, "x")
+
+
+def test_remove_inherited_still_refuses_after_override(tmp_path):
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    store(child).set("auth/login", {"Status": "Missing"})
+    with pytest.raises(ValueError, match="cannot remove inherited"):
+        store(child).remove("auth/login")

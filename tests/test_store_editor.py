@@ -649,6 +649,85 @@ def test_add_invalid_status(tmp_path):
         st.add("x", status="NotAStatus")
 
 
+# ── inherited capabilities are editable, not just viewable (issue #3) ────────
+
+
+def _federated(tmp_path) -> tuple[Path, Path]:
+    """(base, child) where child extends base under alias 'shared', base
+    declaring a single `routes/login` capability."""
+    base = _cap_node(tmp_path / "b")
+    FsCapabilitiesStore.open(base).add("routes/login", name="Sign in",
+                                       status="Supported", body="UPSTREAM.")
+    child = _cap_node(tmp_path / "c")
+    FsCapabilitiesStore.open(child).extends_add("shared", "../../b/repo")
+    return base, child
+
+
+def test_update_capability_inherited_fields(tmp_path):
+    base, child = _federated(tmp_path)
+    st = FsCapabilitiesStore.open(child)
+    detail = st.update_capability("routes/login", fields={"Status": "Missing"})
+    assert detail.capability.status == "Missing"
+    assert detail.capability.origin == "shared"
+    # Upstream untouched.
+    assert FsCapabilitiesStore.open(base).get("routes/login").status == "Supported"
+
+
+def test_update_capability_inherited_matches_set(tmp_path):
+    """The web path and the CLI path share the merge — same field, same file.
+    Each fixture mints its own upstream id, so compare against that id."""
+    def written(root: Path, write) -> dict:
+        st = FsCapabilitiesStore.open(root)
+        write(st)
+        meta = yaml.safe_load(
+            (root / "docs/capabilities/routes/login/meta.yaml").read_text())
+        upstream_id = st.get("routes/login").id
+        meta["overrides"] = meta["overrides"].replace(upstream_id, "<id>")
+        return meta
+
+    _, child = _federated(tmp_path)
+    via_update = written(child, lambda st: st.update_capability(
+        "routes/login", fields={"Status": "Missing"}))
+
+    _, child2 = _federated(tmp_path / "second")
+    via_set = written(child2, lambda st: st.set("routes/login",
+                                                {"Status": "Missing"}))
+
+    assert via_update == via_set == {"overrides": "shared/<id>", "Status": "Missing"}
+
+
+def test_update_capability_inherited_body(tmp_path):
+    base, child = _federated(tmp_path)
+    st = FsCapabilitiesStore.open(child)
+    detail = st.update_capability("routes/login", body="CHILD STORY.")
+    assert detail.capability.body.strip() == "CHILD STORY."
+    assert "UPSTREAM" not in detail.capability.body
+    assert (child / "docs/capabilities/routes/login/description.md").exists()
+    # Upstream body untouched.
+    assert FsCapabilitiesStore.open(base).get("routes/login").body.strip() == "UPSTREAM."
+
+
+def test_update_capability_inherited_stale_revision(tmp_path):
+    """The revision must cover the override's files, or two edits to the same
+    override hash identically and stale-write rejection never fires."""
+    base, child = _federated(tmp_path)
+    st = FsCapabilitiesStore.open(child)
+    old_rev = st.get_capability_detail("routes/login").core_revision
+    st.update_capability("routes/login", fields={"Status": "Missing"})
+    with pytest.raises(StaleRevision):
+        st.update_capability("routes/login", fields={"Status": "Partial"},
+                             core_revision=old_rev)
+
+
+def test_update_capability_inherited_revision_tracks_override_body(tmp_path):
+    base, child = _federated(tmp_path)
+    st = FsCapabilitiesStore.open(child)
+    st.update_capability("routes/login", fields={"Status": "Missing"})
+    rev = st.get_capability_detail("routes/login").core_revision
+    st.update_capability("routes/login", body="CHILD STORY.")
+    assert st.get_capability_detail("routes/login").core_revision != rev
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Validation atomicity — failed writes leave store byte-for-byte unchanged
 # ═══════════════════════════════════════════════════════════════════════════════

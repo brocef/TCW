@@ -1067,20 +1067,54 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                       yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
         self._stage(d / "meta.yaml")
 
-    def set(self, identifier: str, fields: dict) -> Capability:
-        cap = self.get_local(identifier)
+    def _write_target(self, identifier: str) -> tuple[Path, dict, bool]:
+        """Resolve a write to `(folder, meta, is_override)`.
+
+        A local capability writes to its own folder. An *inherited* one writes to
+        a local override — the existing one for its upstream id if there is any
+        (wherever the author put it), else a fresh delta mirroring the upstream
+        path. Materializing the override here is what lets `set` accept every path
+        `show` accepts; the placement is an FS detail (another store would record
+        the same delta keyed by the upstream id its own way).
+        """
+        local = self.get_local(identifier)
+        if local is not None:
+            d = self.root / local.path
+            return d, load_yaml(d / "meta.yaml"), False
+        cap = self.get(identifier)                     # federated; may raise AmbiguousRef
         if cap is None:
             raise ValueError(f"no such capability: {identifier}")
-        norm = self._validate_fields(fields)
-        d = self.root / cap.path
-        meta = load_yaml(d / "meta.yaml")
+        ov_index = self._override_index()
+        ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
+        if ov is not None:
+            return ov[0], ov[1], True                  # update in place
+        d = self.root / cap.path                       # mirror the upstream path
+        if self._is_capability(d):
+            raise ValueError(
+                f"cannot override '{cap.qualified}' at '{cap.path}': a local "
+                f"capability already occupies that path (set it directly)")
+        return d, {"overrides": f"{cap.origin}/{cap.id}"}, True
+
+    def _merge_meta(self, meta: dict, norm: dict, is_override: bool) -> dict:
+        """Merge validated fields into a node's meta.
+
+        On an override a None writes an explicit YAML null — `_apply_override`
+        reads that as *clear the inherited field*, where popping the key would
+        mean *re-inherit it*. On a local node None pops, as it always has.
+        """
         for k, v in norm.items():
-            if v is None:
+            if v is None and not is_override:
                 meta.pop(k, None)
             else:
                 meta[k] = v
-        self._write_meta(d, meta)
-        return self._capability(cap.path)
+        return meta
+
+    def set(self, identifier: str, fields: dict) -> Capability:
+        norm = self._validate_fields(fields)           # validate before touching disk
+        d, meta, is_override = self._write_target(identifier)
+        d.mkdir(parents=True, exist_ok=True)           # _write_meta does not mkdir
+        self._write_meta(d, self._merge_meta(meta, norm, is_override))
+        return self.get(identifier)                    # the composed (post-merge) entry
 
     # -- federation config --
 
@@ -1265,44 +1299,48 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     # -- revision-bearing detail + update --
 
+    def _node_texts(self, d: Path) -> list[str]:
+        """A folder node's [meta, description] texts; empty strings when absent."""
+        return [f.read_text(encoding="utf-8") if f.is_file() else ""
+                for f in (d / "meta.yaml", d / "description.md")]
+
     def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:
         cap = self.get(identifier)
         if cap is None:
             return None
         owner = self if cap.origin == "local" else self.extends[cap.origin]
-        d = owner.root / cap.path
-        meta_text = (d / "meta.yaml").read_text(encoding="utf-8")
-        desc = d / "description.md"
-        desc_text = desc.read_text(encoding="utf-8") if desc.exists() else ""
-        return CapabilityDetail(capability=cap,
-                                core_revision=_revision_multi(meta_text, desc_text))
+        texts = self._node_texts(owner.root / cap.path)
+        if cap.origin != "local":
+            # The local override's files are part of what the caller sees, so
+            # they are part of the revision — else two edits to the same
+            # override hash identically and a stale write sails through.
+            ov_index = self._override_index()
+            ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
+            texts += self._node_texts(ov[0]) if ov else ["", ""]
+        return CapabilityDetail(capability=cap, core_revision=_revision_multi(*texts))
 
     def update_capability(self, identifier, *, body=_UNSET, fields=_UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
-        cap = self.get_local(identifier)
-        if cap is None:
-            raise ValueError(f"no such capability: {identifier}")
-        d = self.root / cap.path
+        norm = self._validate_fields(fields) \
+            if fields is not _UNSET and fields is not None else {}
 
         if core_revision is not None:
             detail = self.get_capability_detail(identifier)
             if detail and detail.core_revision != core_revision:
                 raise StaleRevision(f"stale revision for capability '{identifier}'")
 
-        meta = load_yaml(d / "meta.yaml")
+        d, meta, is_override = self._write_target(identifier)
         desc = d / "description.md"
         desc_text = desc.read_text(encoding="utf-8") if desc.exists() else ""
-
         if body is not _UNSET:
             desc_text = body if body is not None else ""
-        if fields is not _UNSET and fields is not None:
-            for k, v in self._validate_fields(fields).items():
-                if v is None:
-                    meta.pop(k, None)
-                else:
-                    meta[k] = v
+        meta = self._merge_meta(meta, norm, is_override)
 
-        self._write_node(d, meta, desc_text)
+        d.mkdir(parents=True, exist_ok=True)
+        if body is _UNSET and not desc.exists():
+            self._write_meta(d, meta)          # pure delta — no empty body file
+        else:
+            self._write_node(d, meta, desc_text)
         return self.get_capability_detail(identifier)
 
 
