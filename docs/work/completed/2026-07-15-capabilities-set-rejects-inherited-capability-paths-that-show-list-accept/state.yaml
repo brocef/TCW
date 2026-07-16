@@ -2,7 +2,13 @@ slug: 2026-07-15-capabilities-set-rejects-inherited-capability-paths-that-show-l
 title: capabilities set rejects inherited capability paths that show/list accept
 phase: ''
 created: '2026-07-15'
-resolution: null
+resolution: done
 priority: 30
 effort: low
 complexity: low
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
