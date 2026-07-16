@@ -23,6 +23,17 @@ When a work item has a product delta, name each new / changed / removed capabili
 - **New capability:** `tcw capabilities add <namespace/path> "<Capability name>" --status Missing` (creates the folder, mints a stable `id`, seeds `Status: Missing`), then `tcw capabilities set <namespace/path> --field "Planning doc=<work-slug>"` — the capability→work forward pointer.
 - **Changed / removed existing capability:** record it in the work item's `capabilities.yaml` (the work→capability back-pointer).
 
+**Canonical `capabilities.yaml` schema** — the completion gate reads it, so keep it in this shape: a mapping with `new:` and/or `changed:`, each a list of **current path-addressed capability paths** (`namespace/path`, the form `show` resolves — no `#`):
+
+```yaml
+new:
+  - auth/login          # seeded Missing at planning; must be flipped by complete
+changed:
+  - billing/refund
+```
+
+(`added:` is read as `new:` for back-compat, but write `new:`.) The gate blocks `complete` if a `new:` path still reads `Missing` or any path doesn't resolve.
+
 ## Contradiction-detection (at the moment of change)
 
 Before recording or altering a capability, check it against the standing ledger: `tcw capabilities search <term>` / `tcw capabilities show <id>` for an existing capability the change would contradict (a new capability that conflicts with a `Supported` one; a status that disagrees with reality). Run `tcw capabilities check` (non-zero ⇒ structural problems to fix first). Whether two capabilities *semantically* contradict is judgment — surface candidates to the human; never silently overwrite.
@@ -49,7 +60,7 @@ As the item's final pre-freeze step, apply each declared delta so the ledger des
 - `tcw capabilities set <path> --status Supported` (Missing → Supported)
 - scope/body edits; `tcw capabilities set <path> --status Omitted` (Supported → Omitted)
 
-Address the capability by its path — **any path `show` accepts, including an inherited one** (`set shared/auth/login --status Supported`, or the bare `auth/login`); the local override is written for you. Flips are idempotent (setting the same status twice is a no-op). This satisfies the work DoD "capabilities reconciled" item by **convention** — the tool acknowledges it at `complete`, it does not verify it.
+Address the capability by its path — **any path `show` accepts, including an inherited one** (`set shared/auth/login --status Supported`, or the bare `auth/login`); the local override is written for you. Flips are idempotent (setting the same status twice is a no-op). This is now **enforced**, not by convention: `tcw work complete` fails closed if a capability the item declared `new:` in its `capabilities.yaml` still reads `Missing`, or if a declared path doesn't resolve. Flip it, mark it `Omitted` (deliberately not built), or `--force` with the reason in `outcome.md`. (`changed:` entries are checked only for resolution.)
 
 ## Federation (inherit another project's capabilities)
 
@@ -84,5 +95,6 @@ codebase → draft → refine with the user → write) → read [`references/ini
 | federate another project | `tcw capabilities extends <alias> <path-to-repo>` (`--rm <alias>`) |
 | list only local (not inherited) | `tcw capabilities list --local-only` |
 | check the ledger | `tcw capabilities check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
+| find drift | `tcw capabilities drift` — inherited-but-unreviewed + local-Missing whose Planning doc is a completed item (exit non-zero if any) |
 | find / read | `tcw capabilities search <term>` · `tcw capabilities show <path>` |
 | ask the orchestrator for wording | `tcw work escalate "capability wording: <name>"` |

@@ -355,6 +355,7 @@ tcw capabilities list --local-only         # hide inherited (federated) capabili
 tcw capabilities show billing/invoices     # read one capability by path
 tcw capabilities search pdf
 tcw capabilities check                     # paths, metadata vocab, Subject/Feature, federation
+tcw capabilities drift                     # inherited-but-unreviewed + shipped-but-Missing (CI-usable)
 
 tcw capabilities set billing/invoices --status Supported
 tcw capabilities set billing/invoices --field "Subject=invoice,billing"   # multi-valued
@@ -448,9 +449,15 @@ tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
 
 tcw work complete "$slug" --resolution done --confirm
-tcw work complete "$slug" --resolution done --confirm --force   # override blockers or initiative gates
+tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
 tcw work drop some-slug                # delete a backlog item
 ```
+
+`complete` **enforces capability reconciliation**: if the item's `capabilities.yaml`
+declares a `new:` capability that still reads `Missing`, or any declared path that
+no longer resolves, the completion is refused (flip it with `tcw capabilities set`,
+mark it `Omitted`, or `--force` past). For a `--worktree` item the check runs after
+the branch merges back, so a status flip made on the work branch counts.
 
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
