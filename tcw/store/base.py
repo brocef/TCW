@@ -43,6 +43,47 @@ class StaleRevision(Exception):
     """
 
 
+class SidecarError(ValueError):
+    """A work item's capabilities.yaml sidecar could not be read as declarations
+    (malformed YAML, or a non-list delta value)."""
+
+
+def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
+    """Canonical read of a work item's ``capabilities.yaml`` into
+    ``{"new": [...], "changed": [...]}`` — the work→capability back-pointers the
+    DoD gate enforces.
+
+    ``capabilities`` is the already-parsed sidecar object (``WorkItem.capabilities``):
+    a mapping with ``new:``/``changed:`` lists of canonical ``namespace/path``
+    strings. ``added:`` is accepted as a deprecated alias of ``new:``. A trailing
+    `` # comment`` on a value is stripped (YAML strips it already; belt and
+    suspenders). The reconcile list-form sidecar and any other shape declare
+    nothing here. The ``_tcw_parse_error`` sentinel the FS adapter produces on bad
+    YAML raises ``SidecarError`` so the gate fails closed rather than reading
+    "no deltas".
+    """
+    out: dict[str, list[str]] = {"new": [], "changed": []}
+    if not capabilities or not isinstance(capabilities, dict):
+        return out
+    if "_tcw_parse_error" in capabilities:
+        raise SidecarError(str(capabilities["_tcw_parse_error"]))
+    for key, bucket in (("new", "new"), ("added", "new"), ("changed", "changed")):
+        vals = capabilities.get(key)
+        if vals is None:
+            continue
+        if not isinstance(vals, list):
+            raise SidecarError(f"capabilities.yaml '{key}:' must be a list of paths")
+        for v in vals:
+            ref = str(v)
+            i = ref.find(" #")                       # strip a trailing " # comment"
+            if i != -1:
+                ref = ref[:i]
+            ref = ref.strip()
+            if ref:
+                out[bucket].append(ref)
+    return out
+
+
 # Sentinel to distinguish "field not provided" from "set to None" in
 # partial-update operations.  Omitted → unchanged; None → clear nullable.
 _UNSET = object()
@@ -270,6 +311,13 @@ class CapabilitiesStore(ABC):
     @abstractmethod
     def search(self, query: str) -> list[Capability]:
         ...
+
+    @abstractmethod
+    def unreviewed_inherited(self) -> list["Capability"]:
+        """Inherited capabilities whose Status is the master's default — never
+        locally ruled on (no local override that sets Status). The 'unreviewed'
+        half of drift: distinguishes an echoed master default from a local
+        decision. Empty when nothing is federated."""
 
     @abstractmethod
     def check(self, taxonomy: "TaxonomyStore | None" = None) -> list[str]:

@@ -1019,6 +1019,22 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return self._apply_override(st._capability(path, origin=alias),
                                     alias, self._override_index())
 
+    def _status_is_local(self, cap: Capability) -> bool:
+        """True iff `cap`'s Status is a local decision, not an inherited default.
+        A local capability always is; an inherited one only if a local override
+        matches its upstream id (exactly as `_apply_override` keys) AND that
+        override sets `Status` (an override editing only a body/field re-inherits
+        the master's Status — `tcw/store/fs.py` `_apply_override`)."""
+        if cap.origin == "local":
+            return True
+        ov = self._override_index()
+        hit = ov.get(cap.id) or ov.get(f"{cap.origin}/{cap.id}")
+        return hit is not None and "Status" in hit[1]
+
+    def unreviewed_inherited(self) -> list[Capability]:
+        return [c for c in self.list_all()
+                if c.origin != "local" and not self._status_is_local(c)]
+
     def search(self, query: str) -> list[Capability]:
         q = query.lower()
         return [c for c in self.list_all()

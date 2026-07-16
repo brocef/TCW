@@ -372,3 +372,35 @@ def test_remove_inherited_still_refuses_after_override(tmp_path):
     store(child).set("auth/login", {"Status": "Missing"})
     with pytest.raises(ValueError, match="cannot remove inherited"):
         store(child).remove("auth/login")
+
+
+# ── unreviewed vs decided (drift mechanism 2) ────────────────────────────────
+
+def test_unreviewed_bare_inherited(tmp_path):
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    unreviewed = {c.qualified for c in store(child).unreviewed_inherited()}
+    assert unreviewed == {"shared/auth/login"}
+
+
+def test_override_setting_status_is_reviewed(tmp_path):
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    store(child).set("auth/login", {"Status": "Missing"})   # sets Status
+    assert store(child).unreviewed_inherited() == []
+
+
+def test_override_without_status_still_unreviewed(tmp_path):
+    """An override editing only a body/field re-inherits the master Status, so
+    the status is still not a local decision."""
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    write_cap(child, "ov/login", overrides="cap-aaa111", Priority="P1")  # no Status
+    unreviewed = {c.qualified for c in store(child).unreviewed_inherited()}
+    assert unreviewed == {"shared/auth/login"}
+
+
+def test_local_capability_never_unreviewed(tmp_path):
+    root = repo(tmp_path, "solo")
+    write_cap(root, "x", id="cap-x", Status="Missing")
+    assert store(root).unreviewed_inherited() == []
