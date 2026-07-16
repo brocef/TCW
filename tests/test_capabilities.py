@@ -250,6 +250,83 @@ def test_cli_check_with_taxonomy(tmp_path, monkeypatch, capsys):
     assert "capabilities OK" in capsys.readouterr().out
 
 
+# ── drift (unreviewed inherited + shipped-but-Missing) ───────────────────────
+
+def test_cli_drift_flags_unreviewed_inherited(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    base = node(tmp_path, "base")
+    write_cap(base, "auth/login", Status="Supported")
+    child = node(tmp_path, "child")
+    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    monkeypatch.chdir(child)
+    assert main(["capabilities", "drift"]) == 1
+    out = capsys.readouterr().out
+    assert "unreviewed" in out and "shared/auth/login" in out
+
+
+def test_cli_drift_clean_after_override(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    base = node(tmp_path, "base")
+    write_cap(base, "auth/login", Status="Supported")
+    child = node(tmp_path, "child")
+    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    FsCapabilitiesStore.open(child).set("auth/login", {"Status": "Omitted"})
+    monkeypatch.chdir(child)
+    assert main(["capabilities", "drift"]) == 0
+    assert "no capability drift" in capsys.readouterr().out
+
+
+def test_cli_drift_flags_shipped_but_missing(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    from tcw.store.fs import FsWorkStore, init
+    root = node(tmp_path)
+    init(["work"], root)
+    write_cap(root, "auth/login", Status="Missing")
+    FsCapabilitiesStore.open(root).set("auth/login",
+                                       {"Planning doc": "2026-01-01-ship-login"})
+    st = FsWorkStore.open(root)
+    slug = st.create("Ship login", created="2026-01-01").slug
+    # Rename the item to the referenced slug is overkill; point Planning doc at it.
+    FsCapabilitiesStore.open(root).set("auth/login", {"Planning doc": slug})
+    st.start(slug)
+    st.complete(slug, "done", dod_ack=[], force=True)
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "drift"]) == 1
+    assert "shipped-missing" in capsys.readouterr().out
+
+
+def test_cli_drift_active_planning_doc_not_flagged(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    from tcw.store.fs import FsWorkStore, init
+    root = node(tmp_path)
+    init(["work"], root)
+    write_cap(root, "auth/login", Status="Missing")
+    st = FsWorkStore.open(root)
+    slug = st.create("Ship login", created="2026-01-01").slug
+    FsCapabilitiesStore.open(root).set("auth/login", {"Planning doc": slug})
+    st.start(slug)                                   # active, not completed
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "drift"]) == 0
+
+
+def test_cli_drift_no_work_node_no_error(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)                             # capabilities only, no work
+    write_cap(root, "auth/login", Status="Missing", **{"Planning doc": "whatever"})
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "drift"]) == 0       # degrades to silence
+
+
+def test_cli_drift_does_not_affect_check(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    base = node(tmp_path, "base")
+    write_cap(base, "auth/login", Status="Supported")
+    child = node(tmp_path, "child")
+    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    monkeypatch.chdir(child)
+    assert main(["capabilities", "check"]) == 0        # unreviewed ≠ structural fault
+
+
 # ── set (the ledger-flip affordance) ──────────────────────────────────────────
 
 def test_set_updates_status(tmp_path):

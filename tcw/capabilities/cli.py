@@ -8,7 +8,7 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
 
 NAME = "capabilities"
-SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set", "extends"}
+SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set", "extends", "drift"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <path>` == `tcw capabilities show <path>`
 
 
@@ -150,6 +150,58 @@ def _extends(args: argparse.Namespace) -> int:
     return 0
 
 
+def _drift(args: argparse.Namespace) -> int:
+    """Report capabilities that drifted from ground truth: inherited-but-unreviewed
+    (status is the master default, never locally ruled on) and local-Missing whose
+    Planning doc points to a completed work item (declared, shipped, never flipped).
+    Read-only; exits non-zero when any drift is found."""
+    node = find_node(NAME)
+    if node is None:
+        print("tcw capabilities: no tcw capabilities node here — run `tcw init` in the project folder.",
+              file=sys.stderr)
+        return 1
+    st = FsCapabilitiesStore.open(node)
+
+    unreviewed = st.unreviewed_inherited()
+    shipped_missing = _shipped_but_missing(node, st)
+
+    for c in unreviewed:
+        print(f"unreviewed\t{c.qualified}\t(inherited; status is the master default)")
+    for path, slug in shipped_missing:
+        print(f"shipped-missing\t{path}\t(Planning doc {slug} is completed, still Missing)")
+
+    n = len(unreviewed) + len(shipped_missing)
+    if n:
+        print(f"{n} capability(ies) drifted.", file=sys.stderr)
+        return 1
+    print("no capability drift")
+    return 0
+
+
+def _shipped_but_missing(node, st) -> list[tuple[str, str]]:
+    """Local Missing capabilities whose `Planning doc` names a completed work item.
+    Read-only follow of an existing capability→work forward pointer; degrades to
+    empty when no work node is present (no hard cross-axis dependency)."""
+    if not (node / "docs" / "work").is_dir():
+        return []
+    from tcw.store.fs import FsWorkStore
+    work = FsWorkStore.open(node)
+    out: list[tuple[str, str]] = []
+    for c in st.list_all(local_only=True):
+        if c.status != "Missing":
+            continue
+        slug = c.fields.get("Planning doc")
+        if not slug:
+            continue
+        try:
+            item = work.get(str(slug))
+        except Exception:
+            item = None
+        if item is not None and item.status == "completed":
+            out.append((c.path, str(slug)))
+    return out
+
+
 def _check(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:
@@ -209,3 +261,6 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pc = g.add_parser("check", help="validate paths, subject/feature refs, federation, metadata")
     pc.set_defaults(func=_check)
+
+    pd = g.add_parser("drift", help="report unreviewed inherited + shipped-but-Missing capabilities")
+    pd.set_defaults(func=_drift)
