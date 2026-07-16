@@ -3,7 +3,13 @@ title: 'Capability drift: enforce the DoD gate at complete, and distinguish unre
   from decided Missing'
 phase: ''
 created: '2026-07-15'
-resolution: null
+resolution: done
 priority: 20
 effort: high
 complexity: high
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
