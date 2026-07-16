@@ -1,6 +1,6 @@
 id: cap-c38e6d
 name: Detect capability drift
-Status: Missing
+Status: Supported
 Planning doc: 2026-07-15-capability-drift-enforce-the-dod-gate-at-complete-and-distinguish-unreviewed-from-decided-missing
 Subject:
 - capability
