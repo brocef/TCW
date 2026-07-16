@@ -404,6 +404,153 @@ def test_cli_complete_requires_confirm(tmp_path, monkeypatch, capsys):
     assert FsWorkStore.open(root).get(slug).status == "completed"
 
 
+# ── capabilities gate at complete (DoD teeth) ────────────────────────────────
+
+def _wc_node(tmp_path: Path) -> Path:
+    """A node with both work and capabilities trees."""
+    root = node(tmp_path)
+    init(["capabilities"], root)
+    return root
+
+
+def _item_with_delta(root: Path, sidecar: str) -> str:
+    """Create + start a work item carrying a capabilities.yaml sidecar."""
+    slug = FsWorkStore.open(root).create("Task", created="2026-01-01").slug
+    from tcw.cli import main
+    main(["work", "start", slug])
+    (root / "docs" / "work" / "active" / slug / "capabilities.yaml").write_text(sidecar)
+    return slug
+
+
+def test_complete_gate_blocks_unreconciled_new(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Missing")
+    slug = _item_with_delta(root, "new:\n- auth/login\n")
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert "auth/login" in err and "Missing" in err
+    assert FsWorkStore.open(root).get(slug).status == "active"
+
+
+def test_complete_gate_passes_when_reconciled(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Missing")
+    slug = _item_with_delta(root, "new:\n- auth/login\n")
+    FsCapabilitiesStore.open(root).set("auth/login", {"Status": "Supported"})
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_complete_gate_force_overrides(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Missing")
+    slug = _item_with_delta(root, "new:\n- auth/login\n")
+    assert main(["work", "complete", slug, "--resolution", "done",
+                 "--confirm", "--force"]) == 0
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_complete_gate_omitted_passes(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Missing")
+    slug = _item_with_delta(root, "new:\n- auth/login\n")
+    FsCapabilitiesStore.open(root).set("auth/login", {"Status": "Omitted"})
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+
+
+def test_complete_gate_changed_missing_passes(tmp_path, monkeypatch, capsys):
+    """A changed: entry only fails if it doesn't resolve — a still-Missing one
+    that resolves passes (routine body/wording edits leave status alone)."""
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Missing")
+    slug = _item_with_delta(root, "changed:\n- auth/login\n")
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+
+
+def test_complete_gate_unresolved_refuses(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    slug = _item_with_delta(root, "new:\n- ghost/nope\n")
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    assert "does not resolve" in capsys.readouterr().err
+
+
+def test_complete_gate_unparseable_sidecar_refuses(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    slug = _item_with_delta(root, "new: [unterminated\n")
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    assert "unreadable" in capsys.readouterr().err
+
+
+def test_complete_gate_no_sidecar_unaffected(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    slug = FsWorkStore.open(root).create("Task", created="2026-01-01").slug
+    main(["work", "start", slug])
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+
+
+def test_complete_gate_work_only_node_unaffected(tmp_path, monkeypatch, capsys):
+    """A node with no capabilities tree has nothing to reconcile."""
+    from tcw.cli import main
+    root = node(tmp_path)                      # work only, no capabilities
+    monkeypatch.chdir(root)
+    slug = _item_with_delta(root, "new:\n- auth/login\n")
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+
+
+def test_complete_gate_reads_after_worktree_mergeback(tmp_path, monkeypatch, capsys):
+    """The reconciling flip happens on the worktree branch; the primary tree still
+    reads Missing until merge-back. The gate must pass because it runs AFTER
+    merge_worktree — a pre-merge gate would false-fail here."""
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _git_subnode(tmp_path, "repo")
+    init(["capabilities"], root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Missing")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "seed cap"], check=True)
+    slug = FsWorkStore.open(root).create("Task", created="2026-01-01").slug
+    (root / "docs" / "work" / "backlog" / slug / "capabilities.yaml").write_text(
+        "new:\n- auth/login\n")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "declare"], check=True)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    # Flip on the worktree branch only, and commit there.
+    wt = root / ".worktrees" / slug
+    FsCapabilitiesStore.open(wt).set("auth/login", {"Status": "Supported"})
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-am", "flip on branch"],
+                   check=True)
+    # Primary tree still Missing until merge-back.
+    assert FsCapabilitiesStore.open(root).get("auth/login").status == "Missing"
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+    assert FsCapabilitiesStore.open(root).get("auth/login").status == "Supported"
+
+
 # ── topo_order / board ───────────────────────────────────────────────────────
 
 def test_topo_order_blocker_before_blocked(tmp_path):
