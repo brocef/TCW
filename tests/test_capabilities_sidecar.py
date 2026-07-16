@@ -53,3 +53,9 @@ def test_parse_error_sentinel_raises():
 def test_non_list_value_raises():
     with pytest.raises(SidecarError, match="must be a list"):
         declared_capabilities({"new": "a/one"})
+
+
+def test_new_and_added_dedup():
+    # A path in both new: and added: is not double-counted.
+    obj = {"new": ["a/one"], "added": ["a/one", "b/two"]}
+    assert declared_capabilities(obj)["new"] == ["a/one", "b/two"]

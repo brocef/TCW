@@ -491,7 +491,10 @@ def _complete(args: argparse.Namespace) -> int:
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
             return 1
-    # Capabilities gate — after merge-back so a worktree-branch flip is visible.
+        item = st.get(bare)                           # re-read: the sidecar's declared
+                                                      # list may have changed on the branch
+    # Capabilities gate — after merge-back so both the declared list and the
+    # capability statuses are read from the merged primary tree.
     if not args.force:
         problems = _capability_gate(st, item)
         if problems:

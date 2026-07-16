@@ -404,3 +404,12 @@ def test_local_capability_never_unreviewed(tmp_path):
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x", Status="Missing")
     assert store(root).unreviewed_inherited() == []
+
+
+def test_reviewed_via_alias_qualified_override_key(tmp_path):
+    """An override keyed by the alias-qualified id (shared/cap-...) counts as a
+    local status decision, same as the bare-id form."""
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    write_cap(child, "ov/login", overrides="shared/cap-aaa111", Status="Missing")
+    assert store(child).unreviewed_inherited() == []

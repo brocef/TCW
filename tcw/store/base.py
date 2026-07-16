@@ -79,7 +79,7 @@ def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
             if i != -1:
                 ref = ref[:i]
             ref = ref.strip()
-            if ref:
+            if ref and ref not in out[bucket]:        # dedup (new: + added: overlap)
                 out[bucket].append(ref)
     return out
 

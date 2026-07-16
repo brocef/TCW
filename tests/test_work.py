@@ -551,6 +551,37 @@ def test_complete_gate_reads_after_worktree_mergeback(tmp_path, monkeypatch, cap
     assert FsCapabilitiesStore.open(root).get("auth/login").status == "Supported"
 
 
+def test_complete_gate_catches_declaration_added_on_branch(tmp_path, monkeypatch, capsys):
+    """A `new:` declaration added ON the worktree branch and left Missing must be
+    caught — the gate must read the declared list from the merged tree, not the
+    pre-merge snapshot."""
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _git_subnode(tmp_path, "repo")
+    init(["capabilities"], root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Missing")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "seed"], check=True)
+    slug = FsWorkStore.open(root).create("Task", created="2026-01-01").slug
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "item"], check=True)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    # Declare the delta ON the branch (not present in the primary snapshot), leave Missing.
+    wt = root / ".worktrees" / slug
+    (wt / "docs" / "work" / "active" / slug / "capabilities.yaml").write_text(
+        "new:\n- auth/login\n")
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "declare on branch"],
+                   check=True)
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    assert "auth/login" in capsys.readouterr().err
+    assert FsWorkStore.open(root).get(slug).status == "active"
+
+
 # ── topo_order / board ───────────────────────────────────────────────────────
 
 def test_topo_order_blocker_before_blocked(tmp_path):
