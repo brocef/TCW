@@ -1,0 +1,7 @@
+# Capability deltas this work item lands (work->capability back-pointers).
+new:
+  # Read-only report: declared-but-unreconciled + inherited-but-unreviewed.
+  - capabilities/detect-capability-drift
+changed:
+  # `complete` gains a fail-closed capabilities-reconciliation gate (--force overrides).
+  - work/complete-a-work-item
