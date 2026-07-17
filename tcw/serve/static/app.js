@@ -1472,7 +1472,7 @@ function applyRovingTabindex() {
 // to the parent (nearest preceding item one level up). Enter/Space are native
 // button activation (select item / toggle folder).
 function treeKeydown(e) {
-  var target = e.target.closest ? e.target.closest('[role="treeitem"]') : null;
+  var target = e.target.closest('[role="treeitem"]');
   if (!target) return;
   var keys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"];
   if (keys.indexOf(e.key) === -1) return;
@@ -1507,15 +1507,21 @@ function treeKeydown(e) {
     }
   }
 
+  // While a text filter is active, rendered expansion comes from the
+  // force-expand merge, not state.expanded — toggling would be a visual no-op
+  // that silently mutates (and persists) state. Treat expansion as fixed and
+  // keep Left/Right as pure movement during a filter.
+  var canToggle = !state.filter;
+
   if (e.key === "ArrowDown") focusAt(idx + 1);
   else if (e.key === "ArrowUp") focusAt(idx - 1);
   else if (e.key === "Home") focusAt(0);
   else if (e.key === "End") focusAt(items.length - 1);
   else if (e.key === "ArrowRight") {
-    if (expanded === "false") togglePath(target.dataset.treePath);
+    if (expanded === "false" && canToggle) togglePath(target.dataset.treePath);
     else if (expanded === "true") focusAt(idx + 1);   // first child is next in document order
   } else if (e.key === "ArrowLeft") {
-    if (expanded === "true") togglePath(target.dataset.treePath);
+    if (expanded === "true" && canToggle) togglePath(target.dataset.treePath);
     else {
       // move to the parent: nearest preceding item one level up
       for (var i = idx - 1; i >= 0; i--) {
@@ -1595,6 +1601,9 @@ function renderList() {
   // no editor dirty-guard is needed.
   listEl.querySelectorAll(".tree-toggle, .tree-folder").forEach(function (btn) {
     btn.addEventListener("click", function () {
+      // During a text filter, expansion is forced by the match-ancestor merge;
+      // a toggle would be a visual no-op that silently persists state. Skip.
+      if (state.filter) return;
       var p = btn.dataset.path;
       if (state.expanded[state.view].has(p)) {
         state.expanded[state.view].delete(p);
