@@ -68,6 +68,10 @@ const state = {
   // Which work statuses are visible; completed hidden by default. Derived from
   // WORK_STATUSES so the map can't drift from the toggle-button set.
   statusFilter: Object.fromEntries(WORK_STATUSES.map(function (s) { return [s, s !== "completed"]; })),
+  // Multi-select facet filters (transient, like `filter`): taxonomy kind + work
+  // tag. Empty array = no filtering on that axis; multiple selected = OR/match-any.
+  kindFilter: [],
+  tagFilter: [],
   // Per-axis expand/collapse state for the tree list, persisted to
   // localStorage (best-effort, like the list-width split). A path present in
   // `expanded` renders its children. `seenPaths` tracks which parent paths
@@ -1350,7 +1354,7 @@ function render() {
     state.data.capabilities.length + " capabilities · " +
     state.data.work.length + " work items";
   summary.textContent = counts;
-  renderStatusFilters();
+  renderFilterControls();
   renderList();
   if (editor.mode) {
     renderEditor();
@@ -1385,24 +1389,60 @@ function renderEditor() {
 // is explicitly off; unknown statuses stay.
 function itemVisible(item) {
   if (state.view === "work" && state.statusFilter[item.status] === false) return false;
+  // Facet filters (AND across controls; OR within a multi-select).
+  if (state.view === "taxonomy" && state.kindFilter.length &&
+      state.kindFilter.indexOf(item.kind) === -1) return false;
+  if (state.view === "work" && state.tagFilter.length) {
+    var tags = item.tags || [];
+    if (!state.tagFilter.some(function (t) { return tags.indexOf(t) !== -1; })) return false;
+  }
   if (!state.filter) return true;
   return JSON.stringify(item).toLowerCase().includes(state.filter.toLowerCase());
 }
 
-// Toggle bar above the work list: one button per status, on = visible. Work view
-// only (statuses are a work concept); re-renders on toggle.
-function renderStatusFilters() {
-  if (state.view !== "work") {
+// A reusable multi-select facet dropdown: a native <details> disclosure whose
+// summary shows the label + a (N) count, opening a checkbox panel. `selected` is
+// the state array this facet drives (kindFilter / tagFilter). Native <details>
+// gives open/close + keyboard access with no custom dropdown JS.
+function renderFacetDropdown(id, label, options, selected) {
+  var count = selected.length;
+  var summary = esc(label) + (count ? " (" + count + ")" : "");
+  var panel;
+  if (!options.length) {
+    panel = '<div class="facet-empty">none available</div>';
+  } else {
+    panel = options.map(function (o) {
+      var checked = selected.indexOf(o) !== -1 ? " checked" : "";
+      return '<label class="facet-option"><input type="checkbox" class="facet-toggle" ' +
+        'value="' + esc(o) + '"' + checked + "> " + esc(o) + "</label>";
+    }).join("");
+  }
+  return '<details class="facet" id="' + esc(id) + '"><summary>' + summary +
+    '</summary><div class="facet-panel">' + panel + "</div></details>";
+}
+
+// Filter-controls row above the list: work status toggles + a Tags facet (work),
+// or a Kind facet (taxonomy); hidden for capabilities. Re-renders on change.
+function renderFilterControls() {
+  if (state.view === "capabilities") {
     statusFiltersEl.hidden = true;
     statusFiltersEl.innerHTML = "";
     return;
   }
   statusFiltersEl.hidden = false;
-  statusFiltersEl.innerHTML = WORK_STATUSES.map(function (s) {
-    var on = state.statusFilter[s] !== false;
-    return '<button type="button" class="status-toggle st-' + esc(s) + (on ? " on" : "") +
-      '" data-status="' + esc(s) + '" aria-pressed="' + on + '">' + esc(s) + "</button>";
-  }).join("");
+  var html = "";
+  if (state.view === "work") {
+    html += WORK_STATUSES.map(function (s) {
+      var on = state.statusFilter[s] !== false;
+      return '<button type="button" class="status-toggle st-' + esc(s) + (on ? " on" : "") +
+        '" data-status="' + esc(s) + '" aria-pressed="' + on + '">' + esc(s) + "</button>";
+    }).join("");
+    html += renderFacetDropdown("facet-tags", "Tags", state.registeredTags || [], state.tagFilter);
+  } else if (state.view === "taxonomy") {
+    html += renderFacetDropdown("facet-kind", "Kind", ["Feature", "Vocabulary"], state.kindFilter);
+  }
+  statusFiltersEl.innerHTML = html;
+
   statusFiltersEl.querySelectorAll(".status-toggle").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var s = btn.dataset.status;
@@ -1410,6 +1450,24 @@ function renderStatusFilters() {
       render();
     });
   });
+
+  // Facet checkboxes update the selected array + re-prune the tree via renderList
+  // only, so the open <details> stays open across multiple selections.
+  var facet = statusFiltersEl.querySelector(".facet");
+  if (facet) {
+    var target = facet.id === "facet-kind" ? state.kindFilter : state.tagFilter;
+    facet.querySelectorAll(".facet-toggle").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var i = target.indexOf(el.value);
+        if (el.checked && i === -1) target.push(el.value);
+        else if (!el.checked && i !== -1) target.splice(i, 1);
+        var sum = facet.querySelector("summary");
+        var label = facet.id === "facet-kind" ? "Kind" : "Tags";
+        sum.textContent = label + (target.length ? " (" + target.length + ")" : "");
+        renderList();
+      });
+    });
+  }
 }
 
 function itemTitle(item) {
@@ -1615,7 +1673,9 @@ function renderList() {
     // so a filtered-out parent of a visible child stays reachable (dimmed).
     var effectiveExpanded = state.expanded[view];
     var filtering = state.filter ||
-      (view === "work" && WORK_STATUSES.some(function (s) { return state.statusFilter[s] === false; }));
+      (view === "work" && WORK_STATUSES.some(function (s) { return state.statusFilter[s] === false; })) ||
+      (view === "taxonomy" && state.kindFilter.length > 0) ||
+      (view === "work" && state.tagFilter.length > 0);
     if (filtering) {
       var pruned = TCWTree.pruneTree(tree, itemVisible);
       tree = pruned.nodes;

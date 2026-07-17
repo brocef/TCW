@@ -138,8 +138,71 @@ h1 {
 .status-filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding: 12px 14px 0;
+}
+
+/* Reusable multi-select facet dropdown (Kind / Tags) — a native <details>. */
+.facet {
+  position: relative;
+}
+
+.facet > summary {
+  list-style: none;                 /* hide default disclosure triangle */
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.facet > summary::-webkit-details-marker { display: none; }
+.facet > summary::after { content: " \25BE"; }   /* ▾ */
+
+.facet[open] > summary {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.facet-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 160px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.facet-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.facet-empty {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  padding: 2px 4px;
 }
 
 .status-toggle {
