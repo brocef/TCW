@@ -1364,3 +1364,46 @@ class TestCapabilityCheckWarnings:
         })
         assert status == HTTPStatus.OK
         assert "warnings" not in body or isinstance(body.get("warnings"), list)
+
+
+# ── Tests: work tags (registry endpoint + create/update validation) ──────────
+
+
+class TestWorkTags:
+    """Registered-tag endpoint plus fail-closed create/update over HTTP."""
+
+    def test_get_registered_tags(self, seeded):
+        root, base, slug = seeded
+        FsWorkStore.open(root).register_tags(["bug", "urgent"])
+        _status, body = _req(base, "GET", "/api/work/tags")
+        assert body == {"tags": ["bug", "urgent"]}
+
+    def test_create_with_registered_tag(self, seeded):
+        root, base, slug = seeded
+        FsWorkStore.open(root).register_tags(["bug"])
+        status, body = _req(base, "POST", "/api/work",
+                            {"title": "Tagged", "tags": ["bug"]})
+        assert status == HTTPStatus.CREATED
+        assert body["item"]["tags"] == ["bug"]
+
+    def test_create_with_unregistered_tag_422(self, seeded):
+        root, base, slug = seeded
+        status, _body = _req(base, "POST", "/api/work",
+                             {"title": "Bad", "tags": ["ghost"]})
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def test_patch_tags(self, seeded):
+        root, base, slug = seeded
+        FsWorkStore.open(root).register_tags(["bug"])
+        rev = _get_json(base, f"/api/work/{slug}")["coreRevision"]
+        status, body = _req(base, "PATCH", f"/api/work/{slug}",
+                            {"revision": rev, "fields": {"tags": ["bug"]}})
+        assert status == HTTPStatus.OK
+        assert body["item"]["tags"] == ["bug"]
+
+    def test_patch_unregistered_tag_422(self, seeded):
+        root, base, slug = seeded
+        rev = _get_json(base, f"/api/work/{slug}")["coreRevision"]
+        status, _body = _req(base, "PATCH", f"/api/work/{slug}",
+                             {"revision": rev, "fields": {"tags": ["ghost"]}})
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY

@@ -77,6 +77,7 @@ const state = {
   cachedWorkDetail: null, // payload cached by renderWork for editor use
   cachedTaxonomyDetail: null,
   cachedCapabilityDetail: null,
+  registeredTags: [],     // node's registered work tags (GET /api/work/tags)
   // Post-write warnings to show after reload
   postWarnings: null,
 };
@@ -523,6 +524,10 @@ function enterEditMode() {
     return b.slug || b.external || "";
   }).filter(Boolean);
   editor.original.blockers = editor.draft.blockers.slice();
+  // Tags as a separate array (like blockers) — kept out of `fields` so the
+  // shallow copy above doesn't alias the array and defeat change detection.
+  editor.draft.tags = (item.tags || []).slice();
+  editor.original.tags = editor.draft.tags.slice();
   editor.dirty = false;
   editor.saving = false;
   editor.errors = [];
@@ -713,6 +718,12 @@ async function _saveWorkCore() {
   if (JSON.stringify(draftBlockers) !== JSON.stringify(origBlockers)) {
     // Send plain string refs; the store resolves each to {slug}/{external}.
     fields.blockers = draftBlockers.slice();
+  }
+  // Tags (registered-set membership enforced server-side; unregistered → 422)
+  var draftTags = editor.draft.tags || [];
+  var origTags = editor.original.tags || [];
+  if (JSON.stringify(draftTags) !== JSON.stringify(origTags)) {
+    fields.tags = draftTags.slice();
   }
 
   var bodyChanged = editor.draft.body !== editor.original.body;
@@ -997,6 +1008,7 @@ function enterCreate(axis) {
       effort: "",
       complexity: "",
       blockers: [],
+      tags: [],
       parent: "",
       initiative: "",
       body: "",
@@ -1049,6 +1061,8 @@ async function saveWorkCreate() {
   if (d.initiative && d.initiative.trim()) body.initiative = d.initiative.trim();
   var blockers = (d.blockers || []).filter(Boolean);
   if (blockers.length > 0) body.blockers = blockers;
+  var createTags = (d.tags || []).filter(Boolean);
+  if (createTags.length > 0) body.tags = createTags;
   if (d.body) body.body = d.body;
 
   try {
@@ -1240,6 +1254,8 @@ function wireConflictBanner() {
           };
           editor.draft.body = item ? (item.body || "") : "";
           editor.draft.blockers = (item && item.blocked_by ? item.blocked_by.map(function(b){return b.slug||b.external||"";}).filter(Boolean) : []);
+          editor.draft.tags = (item && item.tags ? item.tags.slice() : []);
+          editor.original.tags = editor.draft.tags.slice();
           editor.revision = s.coreRevision;
         } else if (editor.axis === "taxonomy") {
           editor.draft.fields = {
@@ -1388,7 +1404,8 @@ function itemKey(item) {
 function itemMeta(item) {
   if (state.view === "work") {
     var badge = '<span class="status-badge st-' + esc(item.status) + '">' + esc(item.status) + "</span>";
-    var extra = meta([item.effort && ("effort " + item.effort), item.complexity && ("complexity " + item.complexity)]);
+    var extra = meta([item.effort && ("effort " + item.effort), item.complexity && ("complexity " + item.complexity),
+                      (item.tags && item.tags.length) && ("tags " + item.tags.join(", "))]);
     return badge + (extra ? " " + extra : "");
   }
   if (state.view === "taxonomy") {
@@ -1783,6 +1800,7 @@ async function renderWork(item) {
         field("Priority", got.priority != null ? got.priority : "-") +
         field("Effort", got.effort || "-") +
         field("Complexity", got.complexity || "-") +
+        field("Tags", (got.tags && got.tags.length) ? got.tags.join(", ") : "-") +
         field("Resolution", got.resolution || "-") +
         blockersHtml + extraFields +
       "</div>" +
@@ -1989,6 +2007,21 @@ function renderWorkEditor() {
       '<button type="button" class="remove-blocker" data-index="' + i + '">&times;</button></span>';
   }).join("");
 
+  // Tags: checkbox group over the node's registered set (fail-closed vocabulary)
+  var draftTags = d.tags || [];
+  var registered = state.registeredTags || [];
+  var tagsSectionHtml;
+  if (registered.length === 0) {
+    tagsSectionHtml = '<p class="field-hint">No tags registered. Add some with ' +
+      '<code>tcw work tags add &lt;tag&gt;</code>.</p>';
+  } else {
+    tagsSectionHtml = '<div class="tag-checkboxes">' + registered.map(function (t) {
+      var checked = draftTags.indexOf(t) !== -1 ? " checked" : "";
+      return '<label class="tag-checkbox"><input type="checkbox" class="tag-toggle" ' +
+        'value="' + esc(t) + '"' + checked + "> " + esc(t) + "</label>";
+    }).join("") + "</div>";
+  }
+
   var validationHtml = "";
   if (editor.errors.length > 0) {
     var errorItems = editor.errors.map(function (e) { return "<li>" + esc(e) + "</li>"; }).join("");
@@ -2015,6 +2048,8 @@ function renderWorkEditor() {
       validationHtml + conflictHtml +
       '<div class="editor-section">Fields</div>' +
       '<div class="editor-fields">' + fieldRows + "</div>" +
+      '<div class="editor-section">Tags</div>' +
+      tagsSectionHtml +
       '<div class="editor-section">Blocked by</div>' +
       '<div class="field-group">' +
         '<label>Add blocker (slug or external ref, press Enter)</label>' +
@@ -2033,6 +2068,17 @@ function renderWorkEditor() {
   var mdPreview = detail.querySelector("#mdPreview");
   mdInput.value = d.body;
   updatePreview(d.body, mdPreview);
+
+  // Wire tag checkboxes
+  detail.querySelectorAll(".tag-toggle").forEach(function (el) {
+    el.addEventListener("change", function () {
+      if (!editor.draft.tags) editor.draft.tags = [];
+      var i = editor.draft.tags.indexOf(el.value);
+      if (el.checked && i === -1) editor.draft.tags.push(el.value);
+      else if (!el.checked && i !== -1) editor.draft.tags.splice(i, 1);
+      setDirty(true);
+    });
+  });
 
   // Wire save / cancel
   detail.querySelector(".save-btn").addEventListener("click", saveCore);
@@ -2478,6 +2524,21 @@ function renderWorkCreate() {
       '<button type="button" class="remove-blocker" data-index="' + i + '">&times;</button></span>';
   }).join("");
 
+  // Tags checkbox group over the registered set
+  var draftTags = d.tags || [];
+  var registered = state.registeredTags || [];
+  var tagsSectionHtml;
+  if (registered.length === 0) {
+    tagsSectionHtml = '<p class="field-hint">No tags registered. Add some with ' +
+      '<code>tcw work tags add &lt;tag&gt;</code>.</p>';
+  } else {
+    tagsSectionHtml = '<div class="tag-checkboxes">' + registered.map(function (t) {
+      var checked = draftTags.indexOf(t) !== -1 ? " checked" : "";
+      return '<label class="tag-checkbox"><input type="checkbox" class="tag-toggle" ' +
+        'value="' + esc(t) + '"' + checked + "> " + esc(t) + "</label>";
+    }).join("") + "</div>";
+  }
+
   var validationHtml = "";
   if (editor.errors.length > 0) {
     var errorItems = editor.errors.map(function (e) { return "<li>" + esc(e) + "</li>"; }).join("");
@@ -2498,6 +2559,8 @@ function renderWorkCreate() {
       validationHtml +
       '<div class="editor-section">Fields</div>' +
       '<div class="editor-fields">' + fieldRows + "</div>" +
+      '<div class="editor-section">Tags</div>' +
+      tagsSectionHtml +
       '<div class="editor-section">Blocked by</div>' +
       '<div class="field-group">' +
         '<label>Add blocker (slug or external ref, press Enter)</label>' +
@@ -2515,6 +2578,17 @@ function renderWorkCreate() {
   var mdPreview = detail.querySelector("#mdPreview");
   mdInput.value = d.body || "";
   updatePreview(d.body || "", mdPreview);
+
+  // Wire tag checkboxes
+  detail.querySelectorAll(".tag-toggle").forEach(function (el) {
+    el.addEventListener("change", function () {
+      if (!editor.createDraft.tags) editor.createDraft.tags = [];
+      var i = editor.createDraft.tags.indexOf(el.value);
+      if (el.checked && i === -1) editor.createDraft.tags.push(el.value);
+      else if (!el.checked && i !== -1) editor.createDraft.tags.splice(i, 1);
+      setDirty(true);
+    });
+  });
 
   detail.querySelector(".save-btn").addEventListener("click", saveWorkCreate);
   detail.querySelector(".cancel-btn").addEventListener("click", cancelEdit);
@@ -3043,8 +3117,10 @@ async function load() {
       fetchJson("/api/work"),
       fetchJson("/api/taxonomy"),
       fetchJson("/api/capabilities"),
+      fetchJson("/api/work/tags").catch(function () { return { tags: [] }; }),
     ]);
     state.data = { work: results[0], taxonomy: results[1], capabilities: results[2] };
+    state.registeredTags = (results[3] && results[3].tags) || [];
     state.selected = null;
     render();
     replaceRoute();                               // URL reflects the reset-to-list state

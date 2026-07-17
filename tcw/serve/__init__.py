@@ -541,6 +541,12 @@ class TcwHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, sidecars)
             return
 
+        # GET /api/work/tags — the node's registered tag set (read-only).
+        # Placed before the catch-all so "tags" isn't parsed as a slug.
+        if path == "/api/work/tags":
+            self._send_json(HTTPStatus.OK, {"tags": work.registered_tags()})
+            return
+
         # Catch-all work detail: /api/work/<slug>
         if path.startswith("/api/work/"):
             slug = _parse_ref_param(path, "/api/work/")
@@ -695,6 +701,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 parent = body.get("parent")
                 initiative = body.get("initiative", "")
                 type_val = body.get("type", "")
+                tags = body.get("tags") or None
                 detail = work.create_work(
                     title=title,
                     created=created,
@@ -706,6 +713,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     parent=parent,
                     initiative=initiative if initiative else "",
                     type=type_val if type_val else "",
+                    tags=tags,
                 )
                 self._send_json(HTTPStatus.CREATED, {
                     "item": _jsonable(detail.item),
@@ -899,7 +907,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             kw: dict[str, Any] = {}
             work_field_keys = {
                 "title", "priority", "effort", "complexity",
-                "blockers", "initiative", "parent",
+                "blockers", "initiative", "parent", "tags",
             }
             for k, v in fields.items():
                 if k not in work_field_keys:

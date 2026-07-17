@@ -1064,3 +1064,25 @@ h1 {
 .blocker-tag button:hover {
   color: #991b1b;
 }
+
+/* Registered-tag multi-select (work editor) */
+.tag-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 4px;
+}
+
+.tag-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
