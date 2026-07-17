@@ -5,15 +5,15 @@ import subprocess
 import sys
 
 from tcw.store.base import (
-    WORK_RESOLUTIONS, WORK_STATUSES, _UNSET, Capability, IllegalTransition, MultipleMatch,
-    RefError, SidecarError, WorkItem, declared_capabilities, normalize_tag, normalize_work_level,
+    WORK_RESOLUTIONS, WORK_STATUSES, _UNSET, IllegalTransition, MultipleMatch,
+    WorkItem, normalize_tag, normalize_work_level,
 )
 from tcw.store.fs import (
-    COMPONENTS, WORKTREES_DIR, FsCapabilitiesStore, FsWorkStore, add_worktree, child_nodes,
+    COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
     descendant_nodes, ensure_worktree_ignored, find_node, git_commit,
     merge_worktree, parent_node, remove_worktree, resolve_qualified_work_ref,
 )
-from tcw.work.recursion import delegate, escalate, reconcile
+from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "edit", "complete",
@@ -481,50 +481,6 @@ def _tags_rm(args: argparse.Namespace) -> int:
     return 0
 
 
-def _capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
-    """Check that the item's declared capability deltas were reconciled.
-
-    Returns a list of human-readable problems (empty = clean). A `new:` capability
-    still reading Missing, or any declared path that doesn't resolve, is a problem;
-    a `changed:` capability only fails if it no longer resolves (a rename touches
-    body/wording far more often than status). A work-only node (no capabilities
-    tree) has nothing to reconcile and passes silently.
-    """
-    caps_root = st.node_root / "docs" / "capabilities"
-    if not caps_root.is_dir():
-        return []
-    try:
-        deltas = declared_capabilities(item.capabilities)
-    except SidecarError as e:
-        return [f"capabilities.yaml is unreadable: {e}"]
-    if not deltas["new"] and not deltas["changed"]:
-        return []
-    caps = FsCapabilitiesStore.open(st.node_root)
-
-    def resolve(path: str) -> "Capability | None | str":
-        try:
-            return caps.get(path)
-        except RefError as e:                          # ambiguous bare ref, etc.
-            return f"!{e}"
-
-    problems: list[str] = []
-    for path in deltas["new"]:
-        cap = resolve(path)
-        if isinstance(cap, str):
-            problems.append(f"{path}: {cap[1:]}")
-        elif cap is None:
-            problems.append(f"{path}: declared (new) but does not resolve")
-        elif cap.status == "Missing":
-            problems.append(f"{path}: still Missing (declared new; flip it or mark Omitted)")
-    for path in deltas["changed"]:
-        cap = resolve(path)
-        if isinstance(cap, str):
-            problems.append(f"{path}: {cap[1:]}")
-        elif cap is None:
-            problems.append(f"{path}: declared (changed) but does not resolve")
-    return problems
-
-
 def _complete(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "complete")
     if resolved is None:
@@ -563,7 +519,7 @@ def _complete(args: argparse.Namespace) -> int:
     # Capabilities gate — after merge-back so both the declared list and the
     # capability statuses are read from the merged primary tree.
     if not args.force:
-        problems = _capability_gate(st, item)
+        problems = capability_gate(st, item)
         if problems:
             print("tcw work complete: declared capabilities not reconciled:",
                   file=sys.stderr)

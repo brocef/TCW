@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from tcw.store.base import IllegalTransition
-from tcw.store.fs import FsWorkStore, init
+from tcw.store.fs import FsCapabilitiesStore, FsWorkStore, init
 from tcw.work.recursion import reconcile
 
 
@@ -108,7 +108,10 @@ def test_reconcile_complete_when_ready(tmp_path):
     st = FsWorkStore.open(root)
     epic = make_epic(st, n_done=1, n_open=0)
     reconcile(root, epic, complete_when_ready=True)
-    assert FsWorkStore.open(root).get(epic).status == "completed"
+    st2 = FsWorkStore.open(root)
+    assert st2.get(epic).status == "completed"
+    # the persisted rollup must not keep a stale "Ready to close" instruction
+    assert "Ready to close" not in (st2.path(epic) / "initial-request.md").read_text()
 
 
 def test_reconcile_complete_when_ready_noop_if_open(tmp_path):
@@ -117,6 +120,32 @@ def test_reconcile_complete_when_ready_noop_if_open(tmp_path):
     epic = make_epic(st, n_done=1, n_open=1)
     reconcile(root, epic, complete_when_ready=True)
     assert FsWorkStore.open(root).get(epic).status == "backlog"   # unchanged
+
+
+# ── auto-complete honors the capability gate ─────────────────────────────────
+
+def test_reconcile_auto_complete_blocked_by_missing_capability(tmp_path):
+    """A ready epic that declares a still-Missing `new:` capability is NOT
+    auto-completed — the capability gate runs on this path too."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", "--initial-branch=main", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    init(["work", "capabilities"], root)
+    FsCapabilitiesStore.open(root).add("foo/bar", "Foo bar", status="Missing")
+
+    st = FsWorkStore.open(root)
+    epic = make_epic(st, n_done=1, n_open=0)
+    (st.path(epic) / "capabilities.yaml").write_text("new:\n  - foo/bar\n")
+
+    with pytest.raises(ValueError, match="capabilities not reconciled"):
+        reconcile(root, epic, complete_when_ready=True)
+    assert FsWorkStore.open(root).get(epic).status == "backlog"   # not completed
+
+    FsCapabilitiesStore.open(root).set("foo/bar", {"Status": "Supported"})
+    reconcile(root, epic, complete_when_ready=True)
+    assert FsWorkStore.open(root).get(epic).status == "completed"  # now allowed
 
 
 # ── cross-node ───────────────────────────────────────────────────────────────

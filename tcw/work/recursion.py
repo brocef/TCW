@@ -9,12 +9,58 @@ import re
 from datetime import date
 from pathlib import Path
 
-from tcw.store.base import WorkItem, topo_order
+from tcw.store.base import (
+    RefError, SidecarError, WorkItem, declared_capabilities, topo_order,
+)
 from tcw.store.fs import (
-    FsWorkStore, child_nodes, git_stage, parent_node, slugify,
+    FsCapabilitiesStore, FsWorkStore, child_nodes, git_stage, parent_node, slugify,
 )
 
 ROLLUP_RE = re.compile(r"<!-- tcw:rollup -->.*?<!-- /tcw:rollup -->", re.DOTALL)
+
+
+def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
+    """Check that `item`'s declared capability deltas were reconciled.
+
+    Returns human-readable problems (empty = clean). A `new:` capability still
+    reading Missing, or any declared path that doesn't resolve, is a problem; a
+    `changed:` capability only fails if it no longer resolves. A work-only node
+    (no capabilities tree) passes silently. Lives here (not in the abstract
+    `WorkStore`) because it reaches into `FsCapabilitiesStore`; shared by the CLI
+    `complete` path and `reconcile --complete-when-ready` so both enforce it."""
+    caps_root = st.node_root / "docs" / "capabilities"
+    if not caps_root.is_dir():
+        return []
+    try:
+        deltas = declared_capabilities(item.capabilities)
+    except SidecarError as e:
+        return [f"capabilities.yaml is unreadable: {e}"]
+    if not deltas["new"] and not deltas["changed"]:
+        return []
+    caps = FsCapabilitiesStore.open(st.node_root)
+
+    def resolve(path: str):
+        try:
+            return caps.get(path)
+        except RefError as e:                              # ambiguous bare ref, etc.
+            return f"!{e}"
+
+    problems: list[str] = []
+    for path in deltas["new"]:
+        cap = resolve(path)
+        if isinstance(cap, str):
+            problems.append(f"{path}: {cap[1:]}")
+        elif cap is None:
+            problems.append(f"{path}: declared (new) but does not resolve")
+        elif cap.status == "Missing":
+            problems.append(f"{path}: still Missing (declared new; flip it or mark Omitted)")
+    for path in deltas["changed"]:
+        cap = resolve(path)
+        if isinstance(cap, str):
+            problems.append(f"{path}: {cap[1:]}")
+        elif cap is None:
+            problems.append(f"{path}: declared (changed) but does not resolve")
+    return problems
 
 
 # ── reconcile ────────────────────────────────────────────────────────────────
@@ -102,27 +148,40 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
     When the epic's children are all resolved the rollup flags it "Ready to close";
     with `complete_when_ready` the epic is then auto-completed (the DoD/capability
     gates still run, so it can't skip a declared-Missing capability)."""
+    from tcw.store.fs import git_commit
     store = FsWorkStore.open(node_root)
     epic = store.get(epic_slug)
     if epic is None:
         raise ValueError(f"no such epic: {epic_slug}")
-    completable = store.epic_completable(epic)
+
+    # Decide (and effect) auto-completion first, gate-guarded, so the rollup we
+    # persist reflects the final state — a completed epic must not keep a stale
+    # "Ready to close" instruction in its initial-request.md.
+    auto_completed = False
+    if complete_when_ready and store.epic_completable(epic):
+        problems = capability_gate(store, epic)               # same gate as CLI complete
+        if problems:
+            raise ValueError("declared capabilities not reconciled: "
+                             + "; ".join(problems)
+                             + " (reconcile them, or complete manually with --force)")
+        store.complete(epic_slug, "done", store.dod_checklist())   # moves backlog→completed
+        auto_completed = True
+
+    completable = store.epic_completable(store.get(epic_slug))     # False once completed
     block = _render(epic_slug, _tasks_for(node_root, epic_slug), completable=completable)
-    content = store.path(epic_slug) / "initial-request.md"
+    content = store.path(epic_slug) / "initial-request.md"         # resolves to the moved folder
     original = content.read_text(encoding="utf-8") if content.exists() else ""
     text = ROLLUP_RE.sub(block, original) if ROLLUP_RE.search(original) \
         else f"{original.rstrip()}\n\n{block}\n"
-    from tcw.store.fs import git_commit
-    if text != original:                       # idempotent at the git level too:
-        content.write_text(text, encoding="utf-8")   # don't stage/commit an
-        git_stage(node_root, content)                # unchanged rollup (an empty
-        if commit:                                   # commit would fail)
-            git_commit(node_root, f"tcw work: reconcile {epic_slug}", "docs/work")
-    if complete_when_ready and completable:
-        store.complete(epic_slug, "done", store.dod_checklist())
+    changed = text != original
+    if changed:                                # idempotent: don't stage an unchanged
+        content.write_text(text, encoding="utf-8")   # rollup (an empty commit would fail)
+        git_stage(node_root, content)
+    if commit and (changed or auto_completed):
+        msg = f"auto-complete {epic_slug}" if auto_completed else f"reconcile {epic_slug}"
+        git_commit(node_root, f"tcw work: {msg}", "docs/work")
+    if auto_completed:
         block += f"\n\nAuto-completed {epic_slug} (all children resolved)."
-        if commit:
-            git_commit(node_root, f"tcw work: auto-complete {epic_slug}", "docs/work")
     return block
 
 
