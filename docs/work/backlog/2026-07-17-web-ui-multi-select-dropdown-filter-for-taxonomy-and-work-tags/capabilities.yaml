@@ -1,0 +1,2 @@
+changed:
+  - web   # browse list gains a kind (taxonomy) / tag (work) multi-select filter
