@@ -1,0 +1,4 @@
+new:
+  - work/tag-a-work-item
+changed:
+  - work/view-the-board   # list gains a tags column + --tag filter
