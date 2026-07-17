@@ -36,10 +36,6 @@
 // lifecycle order. Drives the status-filter toggle bar on the Work board.
 const WORK_STATUSES = ["backlog", "active", "completed"];
 
-// Top-to-bottom grouping order for the work list (distinct from the lifecycle
-// order above, which drives the status-filter toggles). Do not conflate the two.
-const WORK_STATUS_GROUP_ORDER = ["active", "backlog", "completed"];
-
 const state = {
   view: "work",
   data: { work: [], taxonomy: [], capabilities: [] },
@@ -48,6 +44,11 @@ const state = {
   // Which work statuses are visible; completed hidden by default. Derived from
   // WORK_STATUSES so the map can't drift from the toggle-button set.
   statusFilter: Object.fromEntries(WORK_STATUSES.map(function (s) { return [s, s !== "completed"]; })),
+  // Per-axis expand/collapse state for the tree list (session memory only).
+  // A path present in `expanded` renders its children. `seenPaths` tracks which
+  // parent paths have been seen so brand-new parents default to expanded.
+  expanded: { work: new Set(), taxonomy: new Set(), capabilities: new Set() },
+  seenPaths: { work: new Set(), taxonomy: new Set(), capabilities: new Set() },
   cachedWorkDetail: null, // payload cached by renderWork for editor use
   cachedTaxonomyDetail: null,
   cachedCapabilityDetail: null,
@@ -1315,15 +1316,13 @@ function renderEditor() {
 // RENDERING - LIST
 // ============================================================
 
-function currentItems() {
-  var items = state.data[state.view] || [];
-  if (state.view === "work") {
-    // Hide a status only when its toggle is explicitly off; unknown statuses stay.
-    items = items.filter(function (item) { return state.statusFilter[item.status] !== false; });
-  }
-  if (!state.filter) return items;
-  var q = state.filter.toLowerCase();
-  return items.filter(function (item) { return JSON.stringify(item).toLowerCase().includes(q); });
+// Predicate for the tree prune: does this item survive the text filter (all
+// axes) and the status toggles (work only)? Hide a status only when its toggle
+// is explicitly off; unknown statuses stay.
+function itemVisible(item) {
+  if (state.view === "work" && state.statusFilter[item.status] === false) return false;
+  if (!state.filter) return true;
+  return JSON.stringify(item).toLowerCase().includes(state.filter.toLowerCase());
 }
 
 // Toggle bar above the work list: one button per status, on = visible. Work view
@@ -1368,18 +1367,20 @@ function itemMeta(item) {
     return badge + (extra ? " " + extra : "");
   }
   if (state.view === "taxonomy") {
-    return meta([item.kind, item.origin, item.slug]);
+    return meta([item.kind, item.origin]);
   }
   var origin = (item.origin && item.origin !== "local") ? item.origin : null;
-  return meta([item.status, origin, item.path]);
+  return meta([item.status, origin]);
 }
 
-// One list row. Work rows are wrapped so a copy-slug button can sit beside the
-// (full-width) item button — a button can't nest inside another button.
-function itemRowHtml(item) {
+// One selectable row. Work rows are wrapped so a copy-slug button can sit beside
+// the (full-width) item button — a button can't nest inside another button.
+// `dim` marks a status-filtered-out ancestor kept only to reach a visible child.
+function itemRowHtml(item, dim) {
   var key = itemKey(item);
   var active = state.selected === key ? " active" : "";
-  var btn = '<button class="item' + active + '" type="button" data-key="' + esc(key) + '">' +
+  var dimClass = dim ? " ancestor-dim" : "";
+  var btn = '<button class="item' + active + dimClass + '" type="button" data-key="' + esc(key) + '">' +
     '<div class="item-title">' + esc(itemTitle(item)) + "</div>" +
     '<div class="item-meta">' + itemMeta(item) + "</div></button>";
   if (state.view !== "work") return btn;
@@ -1388,43 +1389,119 @@ function itemRowHtml(item) {
   return '<div class="item-row">' + btn + copyBtn + "</div>";
 }
 
-// Work list grouped under status headers in WORK_STATUS_GROUP_ORDER; empty groups
-// are skipped; unknown statuses (shouldn't occur) fall after the known ones.
-function groupedWorkHtml(items) {
-  var order = WORK_STATUS_GROUP_ORDER.slice();
-  var seen = {};
-  order.forEach(function (s) { seen[s] = true; });
-  items.forEach(function (it) {
-    if (!seen[it.status]) { order.push(it.status); seen[it.status] = true; }
-  });
-  return order.map(function (status) {
-    var group = items.filter(function (it) { return it.status === status; });
-    if (!group.length) return "";
-    return '<div class="status-group">' + esc(status) + "</div>" +
-      group.map(itemRowHtml).join("");
+// Recursive tree rendering. A node with children gets a disclosure toggle; a
+// content-less node renders as a non-selectable folder label; depth indents.
+function treeHtml(nodes, depth, expandedSet) {
+  return nodes.map(function (node) {
+    var hasChildren = node.children && node.children.length > 0;
+    var isExpanded = expandedSet.has(node.path);
+    // CSP (default-src 'self') blocks inline style attributes — repeat a
+    // fixed-width span per depth level instead.
+    var indent = new Array(depth + 1).join('<span class="tree-indent"></span>');
+    var toggle = hasChildren
+      ? '<button class="tree-toggle" type="button" data-path="' + esc(node.path) +
+        '" aria-expanded="' + isExpanded + '" aria-label="' + (isExpanded ? "Collapse" : "Expand") +
+        " " + esc(node.name) + '">' + (isExpanded ? "&#9662;" : "&#9656;") + "</button>"
+      : '<span class="tree-spacer"></span>';
+
+    var rowContent;
+    if (node.item) {
+      rowContent = itemRowHtml(node.item, !itemVisible(node.item));
+    } else {
+      // Content-less folder: label toggles expansion too
+      rowContent = '<button class="tree-folder" type="button" data-path="' + esc(node.path) +
+        '">' + esc(node.name) + "</button>";
+    }
+
+    var row = '<div class="tree-row">' + indent + toggle + rowContent + "</div>";
+    var childHtml = (hasChildren && isExpanded)
+      ? treeHtml(node.children, depth + 1, expandedSet)
+      : "";
+    return row + childHtml;
   }).join("");
 }
 
-function renderList() {
-  var items = currentItems();
-  var createHtml = '<button class="create-btn" type="button">+ Create ' + esc(labels[state.view]) + "</button>";
+// Collect every parent path in a tree (nodes that have children).
+function collectParentPaths(nodes, out) {
+  nodes.forEach(function (node) {
+    if (node.children && node.children.length > 0) {
+      out.push(node.path);
+      collectParentPaths(node.children, out);
+    }
+  });
+  return out;
+}
 
-  if (!items.length) {
+function renderList() {
+  var view = state.view;
+  var allItems = state.data[view] || [];
+  var createHtml = '<button class="create-btn" type="button">+ Create ' + esc(labels[view]) + "</button>";
+
+  if (!allItems.length) {
     listEl.innerHTML =
-      '<p class="empty">No ' + esc(labels[state.view].toLowerCase()) + ' entries.</p>' +
+      '<p class="empty">No ' + esc(labels[view].toLowerCase()) + ' entries.</p>' +
       createHtml;
   } else {
-    var listHtml = state.view === "work"
-      ? groupedWorkHtml(items)
-      : items.map(itemRowHtml).join("");
-    listEl.innerHTML = listHtml + createHtml;
+    // ponytail: full tree rebuild per render — item counts are in the tens;
+    // revisit only if an axis reaches thousands of nodes.
+    var tree = view === "work"
+      ? TCWTree.buildWorkTree(allItems, itemKey)
+      : TCWTree.buildPathTree(allItems, itemKey);
+
+    // Default-expand: any parent path not seen before starts expanded, so the
+    // first render matches today's flat list and new parents appear open.
+    var parentPaths = collectParentPaths(tree, []);
+    parentPaths.forEach(function (p) {
+      if (!state.seenPaths[view].has(p)) {
+        state.seenPaths[view].add(p);
+        state.expanded[view].add(p);
+      }
+    });
+
+    // Filter as a tree prune (matches + their ancestors), not a hard removal,
+    // so a filtered-out parent of a visible child stays reachable (dimmed).
+    var effectiveExpanded = state.expanded[view];
+    var filtering = state.filter ||
+      (view === "work" && WORK_STATUSES.some(function (s) { return state.statusFilter[s] === false; }));
+    if (filtering) {
+      var pruned = TCWTree.pruneTree(tree, itemVisible);
+      tree = pruned.nodes;
+      // Force-expand ancestors of matches only for the transient text search;
+      // the standing status toggles must not override a manual collapse.
+      if (state.filter) {
+        effectiveExpanded = TCWTree.mergeExpansion(state.expanded[view], pruned.forceExpand);
+      }
+    }
+
+    if (!tree.length) {
+      listEl.innerHTML =
+        '<p class="empty">No ' + esc(labels[view].toLowerCase()) + ' entries.</p>' +
+        createHtml;
+    } else {
+      listEl.innerHTML = treeHtml(tree, 0, effectiveExpanded) + createHtml;
+    }
   }
+
+  // Disclosure toggles + folder labels flip expansion; no selection change, so
+  // no editor dirty-guard is needed.
+  listEl.querySelectorAll(".tree-toggle, .tree-folder").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var p = btn.dataset.path;
+      if (state.expanded[state.view].has(p)) {
+        state.expanded[state.view].delete(p);
+      } else {
+        state.expanded[state.view].add(p);
+      }
+      renderList();
+    });
+  });
 
   listEl.querySelectorAll(".item").forEach(function (button) {
     button.addEventListener("click", function () {
       if (editor.mode && !canLeaveEditor()) return;
       exitEditor();
       state.selected = button.dataset.key;
+      expandAncestors(state.selected);
       pushRoute();
       render();
     });
@@ -1462,8 +1539,21 @@ function renderList() {
 function selectedItem() {
   // No auto-open fallback: a bare list URL (/work, /taxonomy) shows the list with
   // an empty detail pane until the user (or a deep link) selects an item.
+  // Search the unfiltered data: a status-filtered-out ancestor kept in the tree
+  // (dimmed) is still selectable.
   if (!state.selected) return null;
-  return currentItems().find(function (item) { return itemKey(item) === state.selected; }) || null;
+  var items = state.data[state.view] || [];
+  return items.find(function (item) { return itemKey(item) === state.selected; }) || null;
+}
+
+// Auto-expand the ancestors of a key so the selected/deep-linked node is visible.
+function expandAncestors(key) {
+  if (!key) return;
+  var view = state.view;
+  var ancestors = view === "work"
+    ? TCWTree.ancestorsOf(key, "work", state.data.work)
+    : TCWTree.ancestorsOf(key, "path");
+  ancestors.forEach(function (p) { state.expanded[view].add(p); });
 }
 
 function renderDetail() {
@@ -2822,6 +2912,7 @@ function applyRoute(route, sync) {
   var items = state.data[state.view] || [];
   var found = route.key && items.some(function (it) { return itemKey(it) === route.key; });
   state.selected = found ? route.key : null;
+  if (found) expandAncestors(route.key);   // deep link: make the node visible
   render();
   if (sync) replaceRoute();
 }

@@ -232,6 +232,16 @@ if (typeof window !== "undefined") {
   };
 }
 
-// ── ESM export (for Node.js testing) ──────────────────────────
+// ── Guarded CommonJS export (for node --test) ─────────────────
+// Must stay a static object literal: Node's cjs-module-lexer only exposes
+// named ESM imports (import { … } from) for a literal assignment.
 
-export { buildPathTree, buildWorkTree, pruneTree, ancestorsOf, mergeExpansion };
+if (typeof module !== "undefined") {
+  module.exports = {
+    buildPathTree: buildPathTree,
+    buildWorkTree: buildWorkTree,
+    pruneTree: pruneTree,
+    ancestorsOf: ancestorsOf,
+    mergeExpansion: mergeExpansion,
+  };
+}

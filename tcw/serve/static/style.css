@@ -231,18 +231,65 @@ h1 {
   border-color: var(--accent);
 }
 
-/* Status group header in the work list. */
-.status-group {
-  margin: 10px 4px 2px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+/* ── Tree view (hierarchical object list) ──────────────────────────── */
+
+.tree-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
 }
 
-.status-group:first-child {
-  margin-top: 0;
+/* One fixed-width indent unit per depth level (inline styles are CSP-blocked). */
+.tree-indent {
+  flex: none;
+  width: 16px;
+}
+
+.tree-toggle {
+  flex: none;
+  width: 22px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+
+.tree-toggle:hover {
+  color: var(--accent);
+}
+
+.tree-spacer {
+  flex: none;
+  width: 22px;
+}
+
+.tree-folder {
+  flex: 1;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.tree-folder:hover {
+  color: var(--ink);
+}
+
+.item.ancestor-dim {
+  opacity: 0.55;
+}
+
+/* Selectable rows inside a tree row must flex to fill the remaining width. */
+.tree-row .item,
+.tree-row .item-row {
+  flex: 1;
+  min-width: 0;
 }
 
 .detail-pane {
