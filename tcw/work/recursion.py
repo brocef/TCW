@@ -67,7 +67,8 @@ def _ready(tasks: list[tuple[str, WorkItem]]) -> list[str]:
     return ready
 
 
-def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]]) -> str:
+def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
+            completable: bool = False) -> str:
     lines = ["<!-- tcw:rollup -->", f"### Rollup: {epic_slug}", ""]
     if not tasks:
         lines.append("_No tasks reference this initiative yet._")
@@ -83,29 +84,45 @@ def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]]) -> str:
         deltas = _capability_deltas(tasks)
         if deltas:
             lines += ["", "**Capability deltas:**", *deltas]
-        ready = _ready(tasks)
-        lines += ["", "**Next:** " + (", ".join(ready) if ready else "all blocked or complete")]
+        if completable:
+            lines += ["", f"**Ready to close:** all {len(tasks)} children resolved — "
+                      f"run `tcw work complete {epic_slug} --resolution done --confirm`"]
+        else:
+            ready = _ready(tasks)
+            lines += ["", "**Next:** " + (", ".join(ready) if ready else "all blocked or complete")]
     lines.append("<!-- /tcw:rollup -->")
     return "\n".join(lines)
 
 
-def reconcile(node_root: Path, epic_slug: str, commit: bool = False) -> str:
+def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
+              complete_when_ready: bool = False) -> str:
     """Scan children for `initiative == epic_slug`; write a consolidated rollup
-    into the epic's initial-request.md managed block. Read-only on capabilities."""
+    into the epic's initial-request.md managed block. Read-only on capabilities.
+
+    When the epic's children are all resolved the rollup flags it "Ready to close";
+    with `complete_when_ready` the epic is then auto-completed (the DoD/capability
+    gates still run, so it can't skip a declared-Missing capability)."""
     store = FsWorkStore.open(node_root)
-    if store.get(epic_slug) is None:
+    epic = store.get(epic_slug)
+    if epic is None:
         raise ValueError(f"no such epic: {epic_slug}")
-    block = _render(epic_slug, _tasks_for(node_root, epic_slug))
+    completable = store.epic_completable(epic)
+    block = _render(epic_slug, _tasks_for(node_root, epic_slug), completable=completable)
     content = store.path(epic_slug) / "initial-request.md"
     original = content.read_text(encoding="utf-8") if content.exists() else ""
     text = ROLLUP_RE.sub(block, original) if ROLLUP_RE.search(original) \
         else f"{original.rstrip()}\n\n{block}\n"
+    from tcw.store.fs import git_commit
     if text != original:                       # idempotent at the git level too:
         content.write_text(text, encoding="utf-8")   # don't stage/commit an
         git_stage(node_root, content)                # unchanged rollup (an empty
         if commit:                                   # commit would fail)
-            from tcw.store.fs import git_commit
             git_commit(node_root, f"tcw work: reconcile {epic_slug}", "docs/work")
+    if complete_when_ready and completable:
+        store.complete(epic_slug, "done", store.dod_checklist())
+        block += f"\n\nAuto-completed {epic_slug} (all children resolved)."
+        if commit:
+            git_commit(node_root, f"tcw work: auto-complete {epic_slug}", "docs/work")
     return block
 
 

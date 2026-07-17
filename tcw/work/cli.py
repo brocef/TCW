@@ -141,7 +141,8 @@ def _reconcile(args: argparse.Namespace) -> int:
         print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
-        block = reconcile(node, args.slug, commit=args.commit)
+        block = reconcile(node, args.slug, commit=args.commit,
+                          complete_when_ready=args.complete_when_ready)
     except _ERRORS as e:
         print(f"tcw work reconcile: {e}", file=sys.stderr)
         return 1
@@ -295,10 +296,11 @@ def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
     def emit(it: WorkItem, depth: int) -> None:
         blockers = st.unresolved_blockers(it)
         suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
+        ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""
         tag_seg = f" | [{', '.join(it.tags)}]" if it.tags else ""
         pri = it.priority if it.priority is not None else "-"
         print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages(it)} | "
-              f"{pri} | {it.title}{tag_seg}{suffix}")
+              f"{pri} | {it.title}{tag_seg}{ready}{suffix}")
         for ch in by_parent.get(it.slug, []):
             emit(ch, depth + 1)
 
@@ -619,6 +621,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pr = g.add_parser("reconcile", help="scan child nodes → write the epic rollup")
     pr.add_argument("slug")
     pr.add_argument("--commit", action="store_true", help="also commit the rollup")
+    pr.add_argument("--complete-when-ready", action="store_true",
+                    help="auto-complete the epic if all its children are resolved")
     pr.set_defaults(func=_reconcile)
 
     pdg = g.add_parser("delegate", help="write a request into a child node's inbox/")

@@ -799,6 +799,17 @@ class WorkStore(ABC):
         topologically sorted (a blocker still precedes what it blocks)."""
         return topo_order(priority_order(self.query(status)))
 
+    def epic_completable(self, item: WorkItem) -> bool:
+        """True iff `item` is an epic that is ready to close: it is `type: epic`,
+        not already completed, has at least one initiative child, and every child
+        is completed. Built on `initiative_children` (cross-node in adapters that
+        override it), so the "all resolved" signal and the `complete` gate share
+        one source of truth. An empty epic is not completable (nothing resolved)."""
+        if item.type != "epic" or item.status == "completed":
+            return False
+        children = self.initiative_children(item.slug)
+        return bool(children) and all(c.status == "completed" for c in children)
+
     def transition(self, slug: str, to_status: str) -> WorkItem:
         item = self._require(slug)
         if (item.status, to_status) not in self.LEGAL_TRANSITIONS:
@@ -845,7 +856,11 @@ class WorkStore(ABC):
             raise ValueError(f"invalid resolution '{resolution}' "
                              f"(choose: {', '.join(sorted(WORK_RESOLUTIONS))})")
         item = self._require(slug)
-        if (item.status, "completed") not in self.LEGAL_TRANSITIONS:
+        # A completable epic (all children resolved) may close straight from
+        # `backlog` — coordinator epics never needed their own start/active. This
+        # is a scoped exception, not a global `(backlog, completed)` transition.
+        from_backlog_epic = item.status == "backlog" and self.epic_completable(item)
+        if (item.status, "completed") not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
             raise IllegalTransition(f"cannot complete from {item.status} (only active)")
         if not force:
             if item.type == "epic":
@@ -862,6 +877,9 @@ class WorkStore(ABC):
                                  + " (use --force to override)")
         self.set_field(slug, "resolution", resolution)
         self.set_field(slug, "dod", dod_ack)
+        if from_backlog_epic:                            # bypass transition()'s own
+            self._effect_transition(slug, "completed")   # LEGAL_TRANSITIONS check
+            return self._require(slug)
         return self.transition(slug, "completed")
 
     def drop(self, slug: str) -> None:
