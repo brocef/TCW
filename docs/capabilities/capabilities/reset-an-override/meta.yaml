@@ -1,0 +1,6 @@
+id: cap-a57a07
+name: Reset an override
+Status: Missing
+Planning doc: 2026-07-16-drop-or-reset-a-local-capability-override-to-re-inherit-upstream
+Subject:
+- capability

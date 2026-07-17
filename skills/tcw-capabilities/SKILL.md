@@ -69,6 +69,8 @@ A project can `extends` another's capabilities so shared user stories are declar
 - **override metadata** — just `tcw capabilities set <path> --status <S>` / `--field K=V` on the inherited path; the override is materialized for you as a local folder whose `meta.yaml` has `overrides: <alias>/<id>` plus the fields you changed (e.g. `Status: Missing`, or `Status: Omitted` for "we deliberately don't have this"). Hand-authoring that file is **not** required — don't; a hand-authored override anywhere in the tree keeps working and `set` updates it in place. (A YAML `null` clears an inherited field, which the store/web `fields` API can write; the CLI's `--field K=` sets an empty string, not a clear.);
 - **compose the body** — a `description.md` in that override folder replaces the upstream body; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera"). The override body is a *delta*: an empty one means "no delta", so **clearing an override's body re-inherits the upstream body** rather than blanking it (that fallback is what makes append-only overrides work). To say "we deliberately don't have this", use `Status: Omitted`, not an empty body.
 
+To **drop an override** and re-inherit the upstream entry verbatim, `tcw capabilities reset <path>` — it removes only the local override folder (never the upstream node), and refuses clearly when there is no override (a standalone local capability → use `remove`; a path that already inherits verbatim → nothing to drop). Whole-override only; to revert a single inherited field, `set <path> --field K=<value>` instead.
+
 `tcw capabilities check` validates override targets (dangling / ambiguous / must-be-inherited), attachment lists, and federation cycles.
 
 ## Product-layer coordination (orchestrator-relay)
@@ -90,6 +92,7 @@ codebase → draft → refine with the user → write) → read [`references/ini
 | record the planning back-pointer | `tcw capabilities set <ns/path> --field "Planning doc=<slug>"` |
 | flip status at completion | `tcw capabilities set <path> --status Supported` (local or inherited) |
 | flip an inherited entry | `tcw capabilities set <alias>/<path> --status <S>` — writes the override for you |
+| drop an override | `tcw capabilities reset <path>` — remove the local override, re-inherit upstream (refuses if none) |
 | associate a feature | `tcw capabilities set <path> --field "Feature=<feature-ref>"` |
 | link taxonomy (multi-valued) | `tcw capabilities set <path> --field "Subject=term-a,term-b"` |
 | federate another project | `tcw capabilities extends <alias> <path-to-repo>` (`--rm <alias>`) |

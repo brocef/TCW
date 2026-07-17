@@ -404,6 +404,16 @@ mobile app appending "…or take a photo with the camera." That file shape is
 worth knowing (you can hand-author one anywhere, and `set` will keep using it),
 but `set` is the front door. Local sibling-repo paths only.
 
+To undo an override and go back to the upstream value, `reset` it:
+
+```sh
+tcw capabilities reset shared/auth/login   # drop the local override, re-inherit upstream
+```
+
+`reset` removes only your local override folder (never the upstream node). It
+refuses with a clear message when there's nothing to drop — a standalone local
+capability (use `remove`) or a path that already inherits verbatim.
+
 ### `tcw work` — the changes
 
 Raw requests enter through a permissive inbox, then accepted requests become
