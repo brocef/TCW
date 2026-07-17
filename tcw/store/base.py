@@ -307,7 +307,8 @@ class CapabilitiesStore(ABC):
         """Drop the local override at `identifier`, re-inheriting the upstream
         capability verbatim. Raise `ValueError` when there is no override (a
         standalone local capability is not an override — use `remove`; a bare
-        inherited path has nothing to drop). Never mutates an extended store."""
+        inherited path has nothing to drop), or `AmbiguousRef` when a bare ref
+        matches multiple extended stores. Never mutates an extended store."""
 
     @abstractmethod
     def set(self, identifier: str, fields: dict[str, Any]) -> Capability:

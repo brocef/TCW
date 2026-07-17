@@ -111,3 +111,18 @@ def test_reset_unknown_path(tmp_path):
     base, child = federated(tmp_path)
     with pytest.raises(ValueError, match="no such capability"):
         store(child).reset("does/not/exist")
+
+
+def test_reset_ambiguous_ref(tmp_path):
+    """A bare ref matching two extended stores raises AmbiguousRef (not a silent
+    wrong-store reset)."""
+    base_a = repo(tmp_path, "base_a")
+    write_cap(base_a, "auth/login", id="cap-a11111", Status="Supported")
+    base_b = repo(tmp_path, "base_b")
+    write_cap(base_b, "auth/login", id="cap-b22222", Status="Missing")
+    child = repo(tmp_path, "child")
+    st = FsCapabilitiesStore.open(child)
+    st.extends_add("a", "../base_a")
+    st.extends_add("b", "../base_b")
+    with pytest.raises(AmbiguousRef):
+        store(child).reset("auth/login")           # bare ref matches both
