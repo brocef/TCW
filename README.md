@@ -226,12 +226,16 @@ is deep-linkable and Back/Forward work. Any `tcw://` reference in an object's bo
 (see [`tcw://` links](#tcw-links--reference-a-tcw-object)) renders as a **clickable
 in-app link** that navigates to the target object; a link to something this viewer
 isn't hosting renders inert. The list/detail divider and the
-editor/preview split are **drag-resizable**. The Work board carries a row of
+editor/preview split are **drag-resizable**. The object list is a **collapsible
+tree** that mirrors each axis's hierarchy — nested paths for taxonomy terms and
+capabilities (a path segment with no item of its own is a plain folder label),
+parent/child relations for work items. Selecting or deep-linking a nested item
+expands its ancestors automatically, and the text filter prunes the tree to
+matches plus the ancestors needed to reach them. The Work board carries a row of
 **status-filter toggles** (`backlog` / `active` / `completed`) above the
 list — toggle one on to show items of that status; `completed` is hidden by
-default and the toggles compose with the text filter. Work items are **grouped by
-status** (active → backlog → completed) and each row has a button to copy
-its slug to the clipboard. Beyond browsing, you can **create and edit** any object
+default and the toggles compose with the text filter. Each work row has a button
+to copy its slug to the clipboard. Beyond browsing, you can **create and edit** any object
 directly from the browser:
 
 - **Work items** — create new items with all fields (title, priority, effort,
