@@ -19,7 +19,7 @@ from pathlib import Path
 import yaml
 
 from tcw.refs import resolve_tcw_ref
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, load_yaml
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, load_yaml
 
 _COMPONENTS = ("taxonomy", "capabilities", "work")
 _LINK_RE = re.compile(r"\]\((tcw://[^)\s]+)\)")
@@ -64,10 +64,10 @@ def _components_to_check(node_root: Path, path) -> list[str]:
     the one whose tree the path falls under (a path under docs/work — or spanning
     several trees — runs none)."""
     if path is None:
-        return [c for c in ("taxonomy", "capabilities")
+        return [c for c in ("taxonomy", "capabilities", "work")
                 if (node_root / "docs" / c).is_dir()]
     p = Path(path).resolve()
-    for c in ("taxonomy", "capabilities"):
+    for c in ("taxonomy", "capabilities", "work"):
         if _under(p, (node_root / "docs" / c).resolve()):
             return [c]
     return []
@@ -76,6 +76,8 @@ def _components_to_check(node_root: Path, path) -> list[str]:
 def _run_check(node_root: Path, comp: str) -> list[str]:
     if comp == "taxonomy":
         return [f"taxonomy check: {p}" for p in FsTaxonomyStore.open(node_root).check()]
+    if comp == "work":
+        return [f"work check: {p}" for p in FsWorkStore.open(node_root).check()]
     tax = (FsTaxonomyStore.open(node_root)
            if (node_root / "docs" / "taxonomy").is_dir() else None)
     return [f"capabilities check: {p}"
