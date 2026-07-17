@@ -27,3 +27,11 @@ category, with commit hash ranges so entries trace back to source.
   (`.ancestor-dim`). The Work board no longer shows status group headers —
   status toggles and per-row badges remain; `groupedWorkHtml`,
   `WORK_STATUS_GROUP_ORDER`, and `currentItems` retired. (1aa7712..HEAD)
+- The tree is keyboard-accessible: ARIA `tree`/`treeitem` roles with
+  `aria-level`/`aria-expanded`/`aria-selected`, roving tabindex, and arrow-key
+  navigation (Up/Down between visible rows, Right expands/enters, Left
+  collapses/moves to parent, Home/End). Expand/collapse state persists across
+  sessions via localStorage (`tcw.treeExpanded`/`tcw.treeSeen`, best-effort
+  like the list-width split). The `node --test` tree suite now runs under
+  pytest via `tests/test_tree_js.py` (skipped when node is absent).
+  (1aa7712..HEAD)

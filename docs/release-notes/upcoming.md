@@ -14,3 +14,7 @@ internal module names.
   reachable. The work list no longer separates items under status headings —
   the status filter buttons and the colored status label on each row still
   work as before.
+- The tree remembers which folders you collapsed, even after closing the
+  browser, and is fully keyboard-navigable: arrow keys move through the list,
+  right/left expand and collapse folders, and screen readers announce it as a
+  proper tree.

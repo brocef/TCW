@@ -36,6 +36,30 @@
 // lifecycle order. Drives the status-filter toggle bar on the Work board.
 const WORK_STATUSES = ["backlog", "active", "completed"];
 
+// Load / save the per-axis tree path sets from localStorage (best-effort —
+// private-mode SecurityError or corrupt JSON falls back to empty sets).
+function loadExpandState(storageKey) {
+  var sets = { work: new Set(), taxonomy: new Set(), capabilities: new Set() };
+  try {
+    var raw = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    Object.keys(sets).forEach(function (axis) {
+      if (Array.isArray(raw[axis])) sets[axis] = new Set(raw[axis]);
+    });
+  } catch (_e) { /* fresh state */ }
+  return sets;
+}
+
+function saveExpandState() {
+  try {
+    ["tcw.treeExpanded", "tcw.treeSeen"].forEach(function (storageKey, i) {
+      var sets = i === 0 ? state.expanded : state.seenPaths;
+      var raw = {};
+      Object.keys(sets).forEach(function (axis) { raw[axis] = Array.from(sets[axis]); });
+      localStorage.setItem(storageKey, JSON.stringify(raw));
+    });
+  } catch (_e) { /* no persist */ }
+}
+
 const state = {
   view: "work",
   data: { work: [], taxonomy: [], capabilities: [] },
@@ -44,11 +68,12 @@ const state = {
   // Which work statuses are visible; completed hidden by default. Derived from
   // WORK_STATUSES so the map can't drift from the toggle-button set.
   statusFilter: Object.fromEntries(WORK_STATUSES.map(function (s) { return [s, s !== "completed"]; })),
-  // Per-axis expand/collapse state for the tree list (session memory only).
-  // A path present in `expanded` renders its children. `seenPaths` tracks which
-  // parent paths have been seen so brand-new parents default to expanded.
-  expanded: { work: new Set(), taxonomy: new Set(), capabilities: new Set() },
-  seenPaths: { work: new Set(), taxonomy: new Set(), capabilities: new Set() },
+  // Per-axis expand/collapse state for the tree list, persisted to
+  // localStorage (best-effort, like the list-width split). A path present in
+  // `expanded` renders its children. `seenPaths` tracks which parent paths
+  // have been seen so brand-new parents default to expanded.
+  expanded: loadExpandState("tcw.treeExpanded"),
+  seenPaths: loadExpandState("tcw.treeSeen"),
   cachedWorkDetail: null, // payload cached by renderWork for editor use
   cachedTaxonomyDetail: null,
   cachedCapabilityDetail: null,
@@ -1376,21 +1401,25 @@ function itemMeta(item) {
 // One selectable row. Work rows are wrapped so a copy-slug button can sit beside
 // the (full-width) item button — a button can't nest inside another button.
 // `dim` marks a status-filtered-out ancestor kept only to reach a visible child.
-function itemRowHtml(item, dim) {
+// `aria` carries the treeitem attributes computed by treeHtml.
+function itemRowHtml(item, dim, aria) {
   var key = itemKey(item);
   var active = state.selected === key ? " active" : "";
   var dimClass = dim ? " ancestor-dim" : "";
-  var btn = '<button class="item' + active + dimClass + '" type="button" data-key="' + esc(key) + '">' +
+  var btn = '<button class="item' + active + dimClass + '" type="button" data-key="' + esc(key) + '"' +
+    (aria || "") + ' aria-selected="' + (state.selected === key) + '">' +
     '<div class="item-title">' + esc(itemTitle(item)) + "</div>" +
     '<div class="item-meta">' + itemMeta(item) + "</div></button>";
   if (state.view !== "work") return btn;
   var copyBtn = '<button class="copy-slug" type="button" data-slug="' + esc(key) +
-    '" title="Copy slug" aria-label="Copy slug to clipboard">&#9112;</button>';
+    '" title="Copy slug" aria-label="Copy slug to clipboard" tabindex="-1">&#9112;</button>';
   return '<div class="item-row">' + btn + copyBtn + "</div>";
 }
 
 // Recursive tree rendering. A node with children gets a disclosure toggle; a
 // content-less node renders as a non-selectable folder label; depth indents.
+// The primary control of every row is a role="treeitem" carrying aria-level /
+// aria-expanded / data-tree-path, driven by the roving-tabindex keyboard nav.
 function treeHtml(nodes, depth, expandedSet) {
   return nodes.map(function (node) {
     var hasChildren = node.children && node.children.length > 0;
@@ -1398,27 +1427,94 @@ function treeHtml(nodes, depth, expandedSet) {
     // CSP (default-src 'self') blocks inline style attributes — repeat a
     // fixed-width span per depth level instead.
     var indent = new Array(depth + 1).join('<span class="tree-indent"></span>');
+    // The mouse disclosure toggle; keyboard users expand via arrow keys on the
+    // treeitem itself, so keep the toggle out of the tab order.
     var toggle = hasChildren
-      ? '<button class="tree-toggle" type="button" data-path="' + esc(node.path) +
-        '" aria-expanded="' + isExpanded + '" aria-label="' + (isExpanded ? "Collapse" : "Expand") +
-        " " + esc(node.name) + '">' + (isExpanded ? "&#9662;" : "&#9656;") + "</button>"
+      ? '<button class="tree-toggle" type="button" tabindex="-1" data-path="' + esc(node.path) +
+        '" aria-hidden="true">' + (isExpanded ? "&#9662;" : "&#9656;") + "</button>"
       : '<span class="tree-spacer"></span>';
+
+    var aria = ' role="treeitem" aria-level="' + (depth + 1) +
+      '" data-tree-path="' + esc(node.path) + '"' +
+      (hasChildren ? ' aria-expanded="' + isExpanded + '"' : "");
 
     var rowContent;
     if (node.item) {
-      rowContent = itemRowHtml(node.item, !itemVisible(node.item));
+      rowContent = itemRowHtml(node.item, !itemVisible(node.item), aria);
     } else {
       // Content-less folder: label toggles expansion too
       rowContent = '<button class="tree-folder" type="button" data-path="' + esc(node.path) +
-        '">' + esc(node.name) + "</button>";
+        '"' + aria + ">" + esc(node.name) + "</button>";
     }
 
-    var row = '<div class="tree-row">' + indent + toggle + rowContent + "</div>";
+    var row = '<div class="tree-row" role="none">' + indent + toggle + rowContent + "</div>";
     var childHtml = (hasChildren && isExpanded)
       ? treeHtml(node.children, depth + 1, expandedSet)
       : "";
     return row + childHtml;
   }).join("");
+}
+
+// Roving tabindex: exactly one treeitem is tabbable — the selected one, else
+// the first. Called after each renderList.
+function applyRovingTabindex() {
+  var items = listEl.querySelectorAll('[role="treeitem"]');
+  var focusIdx = 0;
+  items.forEach(function (el, i) {
+    el.tabIndex = -1;
+    if (el.dataset.key && el.dataset.key === state.selected) focusIdx = i;
+  });
+  if (items.length) items[focusIdx].tabIndex = 0;
+}
+
+// ARIA tree keyboard navigation (roving tabindex): Up/Down move between
+// visible treeitems; Right expands / enters children; Left collapses / moves
+// to the parent (nearest preceding item one level up). Enter/Space are native
+// button activation (select item / toggle folder).
+function treeKeydown(e) {
+  var target = e.target.closest ? e.target.closest('[role="treeitem"]') : null;
+  if (!target) return;
+  var keys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"];
+  if (keys.indexOf(e.key) === -1) return;
+  e.preventDefault();
+
+  var items = Array.prototype.slice.call(listEl.querySelectorAll('[role="treeitem"]'));
+  var idx = items.indexOf(target);
+  var level = parseInt(target.getAttribute("aria-level"), 10);
+  var expanded = target.getAttribute("aria-expanded");
+
+  function focusAt(i) {
+    if (i < 0 || i >= items.length) return;
+    target.tabIndex = -1;
+    items[i].tabIndex = 0;
+    items[i].focus();
+  }
+  function togglePath(path) {
+    if (state.expanded[state.view].has(path)) state.expanded[state.view].delete(path);
+    else state.expanded[state.view].add(path);
+    saveExpandState();
+    renderList();
+    // restore focus onto the same node in the re-rendered tree
+    var again = listEl.querySelector('[data-tree-path="' + CSS.escape(path) + '"]');
+    if (again) { again.tabIndex = 0; again.focus(); }
+  }
+
+  if (e.key === "ArrowDown") focusAt(idx + 1);
+  else if (e.key === "ArrowUp") focusAt(idx - 1);
+  else if (e.key === "Home") focusAt(0);
+  else if (e.key === "End") focusAt(items.length - 1);
+  else if (e.key === "ArrowRight") {
+    if (expanded === "false") togglePath(target.dataset.treePath);
+    else if (expanded === "true") focusAt(idx + 1);   // first child is next in document order
+  } else if (e.key === "ArrowLeft") {
+    if (expanded === "true") togglePath(target.dataset.treePath);
+    else {
+      // move to the parent: nearest preceding item one level up
+      for (var i = idx - 1; i >= 0; i--) {
+        if (parseInt(items[i].getAttribute("aria-level"), 10) === level - 1) { focusAt(i); break; }
+      }
+    }
+  }
 }
 
 // Collect every parent path in a tree (nodes that have children).
@@ -1451,12 +1547,15 @@ function renderList() {
     // Default-expand: any parent path not seen before starts expanded, so the
     // first render matches today's flat list and new parents appear open.
     var parentPaths = collectParentPaths(tree, []);
+    var newPaths = false;
     parentPaths.forEach(function (p) {
       if (!state.seenPaths[view].has(p)) {
         state.seenPaths[view].add(p);
         state.expanded[view].add(p);
+        newPaths = true;
       }
     });
+    if (newPaths) saveExpandState();
 
     // Filter as a tree prune (matches + their ancestors), not a hard removal,
     // so a filtered-out parent of a visible child stays reachable (dimmed).
@@ -1482,6 +1581,8 @@ function renderList() {
     }
   }
 
+  applyRovingTabindex();
+
   // Disclosure toggles + folder labels flip expansion; no selection change, so
   // no editor dirty-guard is needed.
   listEl.querySelectorAll(".tree-toggle, .tree-folder").forEach(function (btn) {
@@ -1492,6 +1593,7 @@ function renderList() {
       } else {
         state.expanded[state.view].add(p);
       }
+      saveExpandState();
       renderList();
     });
   });
@@ -1554,6 +1656,7 @@ function expandAncestors(key) {
     ? TCWTree.ancestorsOf(key, "work", state.data.work)
     : TCWTree.ancestorsOf(key, "path");
   ancestors.forEach(function (p) { state.expanded[view].add(p); });
+  saveExpandState();
 }
 
 function renderDetail() {
@@ -3004,5 +3107,8 @@ filterEl.addEventListener("input", function () {
   makeResizable(shell, handle, "--list-width",
     { min: 0.12, max: 0.6, persistKey: "tcw.listWidth" });
 })();
+
+// Tree keyboard navigation (delegated; #list persists across renders).
+listEl.addEventListener("keydown", treeKeydown);
 
 routedInit();
