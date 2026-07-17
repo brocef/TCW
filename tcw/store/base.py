@@ -14,6 +14,7 @@ extracted in Phase 4 — not pre-abstracted here.
 # time. Python 3.14 defers natively (PEP 649); this keeps <3.14 working too.
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -389,6 +390,18 @@ def normalize_work_level(value: str) -> str:
         f"invalid level '{value}'; choose from {', '.join(WORK_LEVELS)} "
         "(or shorthand L/M/H/VH)"
     )
+
+
+def normalize_tag(value: str) -> str:
+    """Canonicalize a work tag: lowercase-hyphenated slug (mirrors
+    ``fs.slugify``), with a non-empty guard. Registration and application both
+    run inputs through this so ``Bug`` and ``bug`` never diverge."""
+    tag = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    if not tag:
+        raise ValueError(f"invalid tag {value!r}: empty after normalization")
+    return tag
+
+
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
                "reviewed", "version offered")
 WORK_ARTIFACTS = ("initial-request", "spec", "plan", "outcome", "refined-outcome")
@@ -426,6 +439,7 @@ class WorkItem:
     priority: int | None = None     # higher int = higher priority; None = unspecified
     effort: str = ""                # WORK_LEVELS or "" (unset); triage signal only
     complexity: str = ""            # WORK_LEVELS or "" (unset); triage signal only
+    tags: list[str] = field(default_factory=list)  # node-registered filter labels
     body: str = ""
     blocked_by: list[dict] = field(default_factory=list)
     capabilities: object = None     # opaque blob in Spec 1 (B.4)
@@ -559,6 +573,26 @@ class WorkStore(ABC):
     @abstractmethod
     def dod_checklist(self) -> list[str]: ...
 
+    # -- tag registry (a node-scoped controlled vocabulary; any backend can
+    #    realize a registered set + membership check) --
+
+    @abstractmethod
+    def registered_tags(self) -> list[str]:
+        """The node's registered tag set (sorted; empty when none registered)."""
+
+    @abstractmethod
+    def register_tags(self, tags: list[str]) -> list[str]:
+        """Add `tags` (normalized, deduped) to the registry; return the full set."""
+
+    @abstractmethod
+    def unregister_tags(self, tags: list[str]) -> list[str]:
+        """Remove `tags` from the registry; return the full set."""
+
+    @abstractmethod
+    def check(self) -> list[str]:
+        """Validate the work node; return problems (empty = clean). Reports items
+        carrying a tag no longer in the registered set."""
+
     @abstractmethod
     def inbox_list(self) -> list[InboxEntry]:
         """List raw intake entries by opaque store-provided reference."""
@@ -594,7 +628,8 @@ class WorkStore(ABC):
                     blockers: list[str] | None = None,
                     parent: str | None = None,
                     initiative: str = "",
-                    type: str = "") -> "WorkDetail":
+                    type: str = "",
+                    tags: list[str] | None = None) -> "WorkDetail":
         """Create a work item with all fields in one atomic operation.
 
         * ``title`` — required, non-empty display name.
@@ -618,6 +653,7 @@ class WorkStore(ABC):
                     blockers: Any = _UNSET,
                     initiative: Any = _UNSET,
                     parent: Any = _UNSET,
+                    tags: Any = _UNSET,
                     core_revision: str | None = None) -> "WorkDetail":
         """Partial-merge update for an existing work item.
 

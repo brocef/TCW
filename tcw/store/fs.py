@@ -30,7 +30,7 @@ from tcw.store.base import (
     CapabilityDetail, MultipleMatch, RefError,
     InboxEntry, InboxEntryDetail, InboxResource, SidecarResource, StaleRevision,
     TaxonomyStore, Term, TermDetail,
-    WorkDetail, WorkItem, WorkStore, normalize_work_level,
+    WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
@@ -1490,6 +1490,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             priority=state.get("priority"),
             effort=state.get("effort") or "",        # `or ""`: bare YAML `effort:` (null) → ""
             complexity=state.get("complexity") or "",
+            tags=list(state.get("tags") or []),
             body=request.read_text(encoding="utf-8") if request.exists() else "",
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=capabilities,
@@ -1538,6 +1539,72 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if isinstance(data, dict) and isinstance(data.get("checklist"), list):
                 return [str(x) for x in data["checklist"]]
         return list(DEFAULT_DOD)
+
+    # -- tag registry (node-root `tcw-config.yaml` → `work.tags`) --
+
+    def _config_path(self) -> Path:
+        return self.node_root / SENTINEL
+
+    def _config(self) -> dict:
+        """Read the node sentinel config, tolerant of absence/emptiness. A
+        malformed file raises a clear error naming the path rather than a raw
+        YAML traceback. Plain board listing never calls this, so a broken config
+        only fails operations that actually need the tag registry."""
+        try:
+            return load_yaml(self._config_path())
+        except yaml.YAMLError as e:
+            raise ValueError(f"malformed {self._config_path()}: {e}") from e
+
+    def registered_tags(self) -> list[str]:
+        work = self._config().get("work") or {}
+        return sorted(str(t) for t in (work.get("tags") or []))
+
+    def _write_tags(self, tags: set[str]) -> list[str]:
+        """Read-modify-write `work.tags` (preserving other config keys), stage
+        the file. `dump_yaml` rewrites the sentinel wholesale, dropping its stub
+        comments — accepted per plan."""
+        config = self._config()
+        work = config.get("work")
+        if not isinstance(work, dict):
+            work = {}
+        result = sorted(tags)
+        work["tags"] = result
+        config["work"] = work
+        dump_yaml(self._config_path(), config)
+        self._stage(self._config_path())
+        return result
+
+    def register_tags(self, tags: list[str]) -> list[str]:
+        return self._write_tags(set(self.registered_tags())
+                                | {normalize_tag(t) for t in tags})
+
+    def unregister_tags(self, tags: list[str]) -> list[str]:
+        return self._write_tags(set(self.registered_tags())
+                                - {normalize_tag(t) for t in tags})
+
+    def _validate_tags(self, tags: list[str]) -> list[str]:
+        """Normalize each tag and reject any not in the registered set (fail
+        closed). Dedupes, preserving first-seen order."""
+        registered = set(self.registered_tags())
+        out: list[str] = []
+        for t in tags:
+            norm = normalize_tag(t)
+            if norm not in registered:
+                raise ValueError(
+                    f"unregistered tag '{norm}'; register it with "
+                    f"`tcw work tags add {norm}`")
+            if norm not in out:
+                out.append(norm)
+        return out
+
+    def check(self) -> list[str]:
+        registered = set(self.registered_tags())
+        problems: list[str] = []
+        for item in self.query():
+            for tag in item.tags:
+                if tag not in registered:
+                    problems.append(f"{item.slug}: unregistered tag '{tag}'")
+        return problems
 
     # -- raw inbox intake (separate from formal WorkItem status) --
 
@@ -1770,7 +1837,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     blockers: list[str] | None = None,
                     parent: str | None = None,
                     initiative: str = "",
-                    type: str = "") -> "WorkDetail":
+                    type: str = "",
+                    tags: list[str] | None = None) -> "WorkDetail":
         """Composite create: all fields validated before any write."""
         if not title:
             raise ValueError("title is required and must be non-empty")
@@ -1780,6 +1848,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
             effort = normalize_work_level(effort)
         if complexity and complexity != "":
             complexity = normalize_work_level(complexity)
+
+        # Validate tags against the registered set (fail closed before any write)
+        tag_list = self._validate_tags(tags) if tags else []
 
         # Validate type
         if type and type != "epic":
@@ -1825,6 +1896,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             state["effort"] = effort
         if complexity:
             state["complexity"] = complexity
+        if tag_list:
+            state["tags"] = tag_list
         if blocked_by:
             state["blocked_by"] = blocked_by
         if initiative:
@@ -1851,7 +1924,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def update_work(self, slug: str, *,
                     title=_UNSET, body=_UNSET, priority=_UNSET,
                     effort=_UNSET, complexity=_UNSET, blockers=_UNSET,
-                    initiative=_UNSET, parent=_UNSET,
+                    initiative=_UNSET, parent=_UNSET, tags=_UNSET,
                     core_revision: str | None = None) -> "WorkDetail":
         """Partial-merge update with revision guard."""
         d = self._find(slug)
@@ -1883,6 +1956,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 complexity = normalize_work_level(complexity)
             except ValueError:
                 raise
+
+        # Validate tags before applying (fail closed on unregistered)
+        new_tags = None
+        if tags is not _UNSET:
+            if tags is None:
+                new_tags = []
+            elif isinstance(tags, list):
+                new_tags = self._validate_tags(tags)
+            else:
+                raise ValueError("tags must be a list or None")
 
         # Resolve blockers before applying
         new_blocked_by = None
@@ -1931,6 +2014,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             changed = True
         if complexity is not _UNSET:
             state["complexity"] = complexity if complexity is not None else ""
+            changed = True
+        if new_tags is not None:
+            if new_tags:
+                state["tags"] = new_tags
+            else:
+                state.pop("tags", None)          # omit when empty (like effort)
             changed = True
         if new_blocked_by is not None:
             state["blocked_by"] = new_blocked_by
