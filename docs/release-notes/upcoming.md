@@ -13,3 +13,13 @@ internal module names.
   tags can be applied; `tcw validate` flags any item still carrying a tag that
   was later removed from the registry. The web viewer shows an item's tags and
   lets you edit them against the registered set.
+
+## Web viewer improvements
+
+- **Filter the list by category.** The web viewer gains a multi-select dropdown
+  above the object list: on the Work board, filter by **tag** (pick several to
+  match any); in the Taxonomy view, filter by **kind** (Feature / Vocabulary).
+  It works alongside the existing text filter and work status toggles.
+- **The list column scrolls on its own.** A long object tree now scrolls inside
+  the left column instead of growing the whole page, so the header and the detail
+  pane stay put while you scroll the list.
