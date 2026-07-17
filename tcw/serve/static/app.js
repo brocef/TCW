@@ -143,6 +143,29 @@ const WORK_FIELD_DESCRIPTORS = [
   { key: "parent", label: "Parent", type: "text" },
 ];
 
+// Render the work-editor tag multi-select from the registered set. Any selected
+// tag not in the registered set (stale, after a `tcw work tags rm`) is appended
+// flagged + checked so it stays visible and removable rather than silently
+// re-sent and rejected. Shared by the create and edit editors.
+function renderTagCheckboxes(selected, registered) {
+  selected = selected || [];
+  registered = registered || [];
+  var stale = selected.filter(function (t) { return registered.indexOf(t) === -1; });
+  var all = registered.concat(stale);
+  if (all.length === 0) {
+    return '<p class="field-hint">No tags registered. Add some with ' +
+      '<code>tcw work tags add &lt;tag&gt;</code>.</p>';
+  }
+  return '<div class="tag-checkboxes">' + all.map(function (t) {
+    var checked = selected.indexOf(t) !== -1 ? " checked" : "";
+    var isStale = registered.indexOf(t) === -1;
+    var cls = isStale ? "tag-checkbox tag-stale" : "tag-checkbox";
+    var label = isStale ? esc(t) + " (unregistered)" : esc(t);
+    return '<label class="' + cls + '"><input type="checkbox" class="tag-toggle" ' +
+      'value="' + esc(t) + '"' + checked + "> " + label + "</label>";
+  }).join("") + "</div>";
+}
+
 const TAXONOMY_FIELD_DESCRIPTORS = [
   { key: "name", label: "Name", type: "text" },
   { key: "kind", label: "Kind", type: "select",
@@ -2007,20 +2030,13 @@ function renderWorkEditor() {
       '<button type="button" class="remove-blocker" data-index="' + i + '">&times;</button></span>';
   }).join("");
 
-  // Tags: checkbox group over the node's registered set (fail-closed vocabulary)
+  // Tags: checkbox group over the node's registered set (fail-closed vocabulary).
+  // Also surface any tag already on the item that is no longer registered (stale),
+  // rendered checked + flagged, so it's visible and can be unchecked to remove —
+  // otherwise the store would reject any tag edit re-sending the invisible stale tag.
   var draftTags = d.tags || [];
   var registered = state.registeredTags || [];
-  var tagsSectionHtml;
-  if (registered.length === 0) {
-    tagsSectionHtml = '<p class="field-hint">No tags registered. Add some with ' +
-      '<code>tcw work tags add &lt;tag&gt;</code>.</p>';
-  } else {
-    tagsSectionHtml = '<div class="tag-checkboxes">' + registered.map(function (t) {
-      var checked = draftTags.indexOf(t) !== -1 ? " checked" : "";
-      return '<label class="tag-checkbox"><input type="checkbox" class="tag-toggle" ' +
-        'value="' + esc(t) + '"' + checked + "> " + esc(t) + "</label>";
-    }).join("") + "</div>";
-  }
+  var tagsSectionHtml = renderTagCheckboxes(draftTags, registered);
 
   var validationHtml = "";
   if (editor.errors.length > 0) {
@@ -2525,19 +2541,7 @@ function renderWorkCreate() {
   }).join("");
 
   // Tags checkbox group over the registered set
-  var draftTags = d.tags || [];
-  var registered = state.registeredTags || [];
-  var tagsSectionHtml;
-  if (registered.length === 0) {
-    tagsSectionHtml = '<p class="field-hint">No tags registered. Add some with ' +
-      '<code>tcw work tags add &lt;tag&gt;</code>.</p>';
-  } else {
-    tagsSectionHtml = '<div class="tag-checkboxes">' + registered.map(function (t) {
-      var checked = draftTags.indexOf(t) !== -1 ? " checked" : "";
-      return '<label class="tag-checkbox"><input type="checkbox" class="tag-toggle" ' +
-        'value="' + esc(t) + '"' + checked + "> " + esc(t) + "</label>";
-    }).join("") + "</div>";
-  }
+  var tagsSectionHtml = renderTagCheckboxes(d.tags || [], state.registeredTags || []);
 
   var validationHtml = "";
   if (editor.errors.length > 0) {

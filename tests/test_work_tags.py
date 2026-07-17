@@ -51,6 +51,19 @@ def test_register_normalizes_dedups_sorts_and_persists(tmp_path):
     assert st.register_tags(["bug"]) == ["bug", "tech-debt"]
 
 
+def test_registered_tags_tolerates_non_dict_work_config(tmp_path):
+    root = node(tmp_path)
+    (root / "tcw-config.yaml").write_text("work: enabled\n")   # hand-edited to a scalar
+    assert FsWorkStore.open(root).registered_tags() == []      # no crash
+
+
+def test_malformed_config_raises_clear_error(tmp_path):
+    root = node(tmp_path)
+    (root / "tcw-config.yaml").write_text("- just\n- a\n- list\n")  # valid YAML, wrong shape
+    with pytest.raises(ValueError, match="malformed"):
+        FsWorkStore.open(root).registered_tags()
+
+
 def test_unregister(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
     st.register_tags(["bug", "tech-debt"])
@@ -111,6 +124,13 @@ def test_check_flags_stale_tag(tmp_path):
     assert any(slug in p and "bug" in p for p in problems)
     # surfaced through the aggregate validate() pass too
     assert any("work check" in p and slug in p for p in validate(root))
+
+
+def test_validate_reports_malformed_config_without_crashing(tmp_path):
+    root = node(tmp_path)
+    (root / "tcw-config.yaml").write_text("- not\n- a\n- mapping\n")
+    problems = validate(root)                          # must not raise
+    assert any("work check" in p and "malformed" in p for p in problems)
 
 
 # ── CLI end-to-end ───────────────────────────────────────────────────────────

@@ -77,7 +77,11 @@ def _run_check(node_root: Path, comp: str) -> list[str]:
     if comp == "taxonomy":
         return [f"taxonomy check: {p}" for p in FsTaxonomyStore.open(node_root).check()]
     if comp == "work":
-        return [f"work check: {p}" for p in FsWorkStore.open(node_root).check()]
+        try:                                          # a malformed node-root tcw-config.yaml
+            problems = FsWorkStore.open(node_root).check()   # (the tag registry) isn't in the
+        except ValueError as e:                       # YAML-scan roots, so report it, don't crash
+            return [f"work check: {e}"]
+        return [f"work check: {p}" for p in problems]
     tax = (FsTaxonomyStore.open(node_root)
            if (node_root / "docs" / "taxonomy").is_dir() else None)
     return [f"capabilities check: {p}"

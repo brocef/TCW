@@ -1551,12 +1551,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         YAML traceback. Plain board listing never calls this, so a broken config
         only fails operations that actually need the tag registry."""
         try:
-            return load_yaml(self._config_path())
+            data = load_yaml(self._config_path())
         except yaml.YAMLError as e:
             raise ValueError(f"malformed {self._config_path()}: {e}") from e
+        if not isinstance(data, dict):                 # valid YAML, wrong shape
+            raise ValueError(f"malformed {self._config_path()}: expected a mapping")
+        return data
 
     def registered_tags(self) -> list[str]:
-        work = self._config().get("work") or {}
+        work = self._config().get("work")
+        if not isinstance(work, dict):                 # absent or hand-edited to a scalar/list
+            return []
         return sorted(str(t) for t in (work.get("tags") or []))
 
     def _write_tags(self, tags: set[str]) -> list[str]:
@@ -1850,7 +1855,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             complexity = normalize_work_level(complexity)
 
         # Validate tags against the registered set (fail closed before any write)
-        tag_list = self._validate_tags(tags) if tags else []
+        if tags is None:
+            tag_list = []
+        elif isinstance(tags, list):
+            tag_list = self._validate_tags(tags)
+        else:
+            raise ValueError("tags must be a list or None")
 
         # Validate type
         if type and type != "epic":

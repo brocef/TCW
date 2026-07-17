@@ -1081,6 +1081,11 @@ h1 {
   cursor: pointer;
 }
 
+.tag-checkbox.tag-stale {
+  color: #991b1b;
+  font-style: italic;
+}
+
 .field-hint {
   color: var(--muted);
   font-size: 12px;
