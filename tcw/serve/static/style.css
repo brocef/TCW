@@ -77,7 +77,10 @@ h1 {
 .shell {
   display: grid;
   grid-template-columns: var(--list-width, minmax(260px, 34vw)) 6px 1fr;
-  min-height: calc(100vh - 78px);
+  /* Bound the shell to the viewport so each pane scrolls internally instead of
+     growing the page (a long tree used to scroll the whole page). */
+  height: calc(100vh - 78px);
+  overflow: hidden;
 }
 
 /* Drag handles for the two resizable splits (list↔detail, editor↔preview). */
@@ -97,6 +100,10 @@ h1 {
   border-right: 1px solid var(--line);
   background: #fbfbfa;
   min-width: 0;
+  /* Fixed head (title/filter/status) above an internally-scrolling tree. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .list-head {
@@ -176,6 +183,9 @@ h1 {
   display: grid;
   gap: 8px;
   padding: 12px;
+  flex: 1;                 /* fill the pane below the fixed head… */
+  overflow-y: auto;        /* …and scroll the tree within it */
+  align-content: start;    /* grid rows pack at the top, not stretched */
 }
 
 .item {
@@ -296,6 +306,7 @@ h1 {
   padding: 18px 22px 40px;
   min-width: 0;
   overflow-wrap: anywhere;
+  overflow-y: auto;        /* long detail scrolls in its own column, not the page */
 }
 
 .detail-head {
@@ -409,11 +420,23 @@ h1 {
 
   .shell {
     grid-template-columns: 1fr;
+    /* Single column stacks the panes — revert to natural page scroll. */
+    height: auto;
+    overflow: visible;
   }
 
   .list-pane {
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    overflow: visible;
+  }
+
+  .list {
+    overflow-y: visible;
+  }
+
+  .detail-pane {
+    overflow-y: visible;
   }
 
   .md-editor {
