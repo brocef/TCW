@@ -2,7 +2,13 @@ slug: 2026-07-15-flag-or-auto-advance-an-epic-as-completable-when-all-child-slic
 title: Flag or auto-advance an epic as completable when all child slices are resolved
 phase: ''
 created: '2026-07-15'
-resolution: null
+resolution: done
 priority: 10
 effort: medium
 complexity: medium
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
