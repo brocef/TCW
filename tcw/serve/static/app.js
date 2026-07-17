@@ -1494,9 +1494,17 @@ function treeKeydown(e) {
     else state.expanded[state.view].add(path);
     saveExpandState();
     renderList();
-    // restore focus onto the same node in the re-rendered tree
+    // Restore focus onto the same node in the re-rendered tree. renderList's
+    // applyRovingTabindex made the *selected* item tabbable — hand the roving
+    // tabindex to the toggled node instead, so exactly one row stays tabbable.
     var again = listEl.querySelector('[data-tree-path="' + CSS.escape(path) + '"]');
-    if (again) { again.tabIndex = 0; again.focus(); }
+    if (again) {
+      listEl.querySelectorAll('[role="treeitem"][tabindex="0"]').forEach(function (el) {
+        el.tabIndex = -1;
+      });
+      again.tabIndex = 0;
+      again.focus();
+    }
   }
 
   if (e.key === "ArrowDown") focusAt(idx + 1);
