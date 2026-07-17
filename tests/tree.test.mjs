@@ -124,6 +124,30 @@ describe("buildWorkTree", () => {
     strictEqual(tree[0].children[0].path, "sub/proj/child");
   });
 
+  it("parent cycle does not hang and every item stays reachable", () => {
+    var items = [
+      { slug: "a", title: "A", parent: "b", status: "active" },
+      { slug: "b", title: "B", parent: "a", status: "active" },
+      { slug: "solo", title: "Solo", parent: "", status: "backlog" },
+    ];
+    var tree = Tree.buildWorkTree(items, function (i) { return i.slug; });
+
+    // Collect all reachable paths
+    var seen = [];
+    function walk(nodes) {
+      nodes.forEach(function (n) { seen.push(n.path); walk(n.children); });
+    }
+    walk(tree);
+    deepStrictEqual(seen.sort(), ["a", "b", "solo"], "no item vanishes in a cycle");
+  });
+
+  it("self-parent stays root", () => {
+    var items = [{ slug: "x", title: "X", parent: "x", status: "active" }];
+    var tree = Tree.buildWorkTree(items, function (i) { return i.slug; });
+    strictEqual(tree.length, 1);
+    strictEqual(tree[0].path, "x");
+  });
+
   it("substring-but-not-namespace parent stays root", () => {
     var items = [
       { slug: "foo", title: "Foo", parent: "", status: "active" },
@@ -198,6 +222,19 @@ describe("ancestorsOf", () => {
   it("unknown key returns empty array without throwing", () => {
     var result = Tree.ancestorsOf("unknown-axis/unknown-key", "path");
     deepStrictEqual(result, ["unknown-axis"]);
+  });
+
+  it("work mode with a parent cycle terminates", () => {
+    var items = [
+      { slug: "a", title: "A", parent: "b" },
+      { slug: "b", title: "B", parent: "a" },
+    ];
+    var result = Tree.ancestorsOf("a", "work", items);
+    deepStrictEqual(result, ["b"], "stops at the cycle, no hang");
+  });
+
+  it("work mode unknown key returns empty without throwing", () => {
+    deepStrictEqual(Tree.ancestorsOf("nope", "work", []), []);
   });
 });
 

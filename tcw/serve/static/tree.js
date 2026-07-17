@@ -24,6 +24,12 @@ function buildPathTree(items, keyOf) {
     keys.push(k);
   });
 
+  var itemByKey = {};
+  items.forEach(function (it) {
+    var k = keyOf(it);
+    if (!(k in itemByKey)) itemByKey[k] = it;
+  });
+
   var map = {}; // path -> node
 
   keys.forEach(function (key) {
@@ -36,7 +42,7 @@ function buildPathTree(items, keyOf) {
       }
     });
     // Mark the leaf node as selectable
-    map[key].item = items.find(function (it) { return keyOf(it) === key; });
+    map[key].item = itemByKey[key];
   });
 
   // Wire parent -> children for ALL nodes in the map (including intermediate
@@ -67,6 +73,24 @@ function buildPathTree(items, keyOf) {
 // ── Work-axis tree (parent relation) ─────────────────────────
 
 /**
+ * Resolve a work item's bare `parent` ref against its child's key: prefer the
+ * parent inside the child's namespace prefix (qualified "sub/proj/<slug>"
+ * keys), fall back to the bare ref. `has(key)` reports key existence.
+ * @param {string} childKey
+ * @param {string} parentRef
+ * @param {(key: string) => boolean} has
+ * @returns {string}
+ */
+function resolveParentKey(childKey, parentRef, has) {
+  var slashIdx = childKey.lastIndexOf("/");
+  if (slashIdx !== -1) {
+    var namespaced = childKey.substring(0, slashIdx + 1) + parentRef;
+    if (has(namespaced)) return namespaced;
+  }
+  return parentRef;
+}
+
+/**
  * Build a nested tree from work items using the `parent` field.
  * Resolves parent within the child's own namespace prefix.
  * @param {any[]} items - work items with `slug` and `parent`
@@ -85,42 +109,45 @@ function buildWorkTree(items, keyOf) {
   });
 
   var roots = [];
-  var attached = {};
+  var parentOf = {};   // child key -> parent key it was attached under
 
   keys.forEach(function (key) {
     var node = index[key];
     var item = node.item;
     if (!item.parent || !item.parent.trim()) {
       roots.push(node);
-      attached[key] = true;
       return;
     }
 
-    var parentRef = item.parent.trim();
-    var parentKey;
-
-    // Resolve parent within the child's namespace prefix: for a qualified key
-    // "sub/proj/<slug>" the namespace is everything before the last "/".
-    var slashIdx = key.lastIndexOf("/");
-    if (slashIdx !== -1) {
-      var prefix = key.substring(0, slashIdx + 1);
-      parentKey = prefix + parentRef;
-      if (!index[parentKey]) {
-        parentKey = parentRef;
-      }
-    } else {
-      parentKey = parentRef;
-    }
+    var parentKey = resolveParentKey(key, item.parent.trim(), function (k) {
+      return !!index[k];
+    });
 
     if (index[parentKey] && parentKey !== key) {
       index[parentKey].children.push(node);
-      attached[key] = true;
+      parentOf[key] = parentKey;
     } else {
-      if (!attached[key]) {
-        roots.push(node);
-        attached[key] = true;
-      }
+      // Parent not in set (or self) -> promote to root, key unchanged
+      roots.push(node);
     }
+  });
+
+  // Cycle guard: members of a malformed parent cycle each attach under the
+  // other and end up unreachable from every root — they would silently vanish
+  // from the render. Promote the first member of each cycle to root.
+  var reach = {};
+  function markReach(node) {
+    reach[node.path] = true;
+    node.children.forEach(markReach);
+  }
+  roots.forEach(markReach);
+  keys.forEach(function (key) {
+    if (reach[key]) return;
+    var node = index[key];
+    var siblings = index[parentOf[key]].children;
+    siblings.splice(siblings.indexOf(node), 1);
+    roots.push(node);
+    markReach(node);
   });
 
   return roots;
@@ -169,28 +196,21 @@ function pruneTree(nodes, predicate) {
  */
 function ancestorsOf(key, mode, items) {
   if (mode === "work" && items) {
-    var found = items.find(function (it) { return it.slug === key; });
-    if (!found || !found.parent) return [];
+    var bySlug = {};
+    items.forEach(function (it) {
+      if (!(it.slug in bySlug)) bySlug[it.slug] = it;
+    });
     var chain = [];
     var visited = {};
     var cursor = key;
     while (cursor) {
       visited[cursor] = true;
-      var item = items.find(function (it) { return it.slug === cursor; });
-      if (!item || !item.parent) break;
-      var parentRef = item.parent.trim();
-      var parentKey;
-      var slashIdx = cursor.lastIndexOf("/");
-      if (slashIdx !== -1) {
-        var prefix = cursor.substring(0, slashIdx + 1);
-        parentKey = prefix + parentRef;
-        if (!items.some(function (it) { return it.slug === parentKey; })) {
-          parentKey = parentRef;
-        }
-      } else {
-        parentKey = parentRef;
-      }
-      if (visited[parentKey]) break;
+      var item = bySlug[cursor];
+      if (!item || !item.parent || !item.parent.trim()) break;
+      var parentKey = resolveParentKey(cursor, item.parent.trim(), function (k) {
+        return k in bySlug;
+      });
+      if (visited[parentKey]) break;   // cycle guard
       chain.unshift(parentKey);
       cursor = parentKey;
     }
