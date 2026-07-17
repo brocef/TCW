@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tcw.cli import main
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsWorkStore, init
 from tcw.validate import validate
@@ -110,3 +111,52 @@ def test_check_flags_stale_tag(tmp_path):
     assert any(slug in p and "bug" in p for p in problems)
     # surfaced through the aggregate validate() pass too
     assert any("work check" in p and slug in p for p in validate(root))
+
+
+# ── CLI end-to-end ───────────────────────────────────────────────────────────
+
+def test_cli_register_apply_list_filter(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "add", "bug"]) == 0
+    capsys.readouterr()
+    assert main(["work", "new", "Boom", "--tag", "bug"]) == 0
+    slug = capsys.readouterr().out.strip().splitlines()[0]
+    state = (FsWorkStore.open(root).path(slug) / "state.yaml").read_text()
+    assert "tags:" in state and "bug" in state
+
+    assert main(["work", "list", "--tag", "bug"]) == 0
+    assert slug in capsys.readouterr().out
+    assert main(["work", "list", "--tag", "other"]) == 0
+    assert slug not in capsys.readouterr().out
+
+
+def test_cli_new_unregistered_tag_fails(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "Nope", "--tag", "ghost"]) == 1
+    assert "unregistered tag" in capsys.readouterr().err
+    assert FsWorkStore.open(root).query() == []
+
+
+def test_cli_edit_tag_and_untag(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    st.register_tags(["bug", "urgent"])
+    slug = st.create_work("E", created="2026-01-01", tags=["bug"]).item.slug
+    monkeypatch.chdir(root)
+    assert main(["work", "edit", slug, "--tag", "urgent", "--untag", "bug"]) == 0
+    assert FsWorkStore.open(root).get(slug).tags == ["urgent"]
+    capsys.readouterr()
+    assert main(["work", "show", slug]) == 0
+    assert "tags: urgent" in capsys.readouterr().out
+
+
+def test_cli_tags_rm_warns_about_stale_items(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    st.register_tags(["bug"])
+    slug = st.create_work("S", created="2026-01-01", tags=["bug"]).item.slug
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "rm", "bug"]) == 0
+    assert slug in capsys.readouterr().err

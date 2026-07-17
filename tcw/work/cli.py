@@ -6,7 +6,7 @@ import sys
 
 from tcw.store.base import (
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET, Capability, IllegalTransition, MultipleMatch,
-    RefError, SidecarError, WorkItem, declared_capabilities, normalize_work_level,
+    RefError, SidecarError, WorkItem, declared_capabilities, normalize_tag, normalize_work_level,
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsCapabilitiesStore, FsWorkStore, add_worktree, child_nodes,
@@ -17,7 +17,7 @@ from tcw.work.recursion import delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "edit", "complete",
-               "drop", "nodes", "reconcile", "delegate", "escalate"}
+               "drop", "nodes", "reconcile", "delegate", "escalate", "tags"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 _ERRORS = (ValueError, IllegalTransition, MultipleMatch)
@@ -28,6 +28,14 @@ def _work_level(value: str) -> str:
     re-raising as ArgumentTypeError so the message reaches the user cleanly."""
     try:
         return normalize_work_level(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+
+def _tag(value: str) -> str:
+    """argparse ``type=`` for --tag/--untag: normalize to a canonical slug."""
+    try:
+        return normalize_tag(value)
     except ValueError as e:
         raise argparse.ArgumentTypeError(str(e))
 
@@ -90,6 +98,8 @@ def _print_item(item: WorkItem) -> None:
         print(f"effort: {item.effort}")
     if item.complexity:
         print(f"complexity: {item.complexity}")
+    if item.tags:
+        print(f"tags: {', '.join(item.tags)}")
     if item.resolution:
         print(f"resolution: {item.resolution}")
     if item.blocked_by:
@@ -196,6 +206,7 @@ def _new(args: argparse.Namespace) -> int:
             parent=args.parent,
             initiative=args.initiative or "",
             type="epic" if args.epic else "",
+            tags=args.tag or None,
         )
         item = detail.item
     except _ERRORS as e:
@@ -255,10 +266,13 @@ def _inbox_accept(args: argparse.Namespace) -> int:
 
 
 def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
-                  prefix: str = "") -> None:
+                  prefix: str = "", tags: list[str] | None = None) -> None:
     items = st.board(status=status)
     if status is None and not show_all:
         items = [i for i in items if i.status != "completed"]
+    if tags:                                       # --tag filter: match-any (OR)
+        wanted = set(tags)
+        items = [i for i in items if wanted & set(i.tags)]
     present = {i.slug for i in items}
     by_parent: dict[str, list[WorkItem]] = {}
     for it in items:                              # board order preserved per sibling group
@@ -281,9 +295,10 @@ def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
     def emit(it: WorkItem, depth: int) -> None:
         blockers = st.unresolved_blockers(it)
         suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
+        tag_seg = f" | [{', '.join(it.tags)}]" if it.tags else ""
         pri = it.priority if it.priority is not None else "-"
         print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages(it)} | "
-              f"{pri} | {it.title}{suffix}")
+              f"{pri} | {it.title}{tag_seg}{suffix}")
         for ch in by_parent.get(it.slug, []):
             emit(ch, depth + 1)
 
@@ -298,7 +313,7 @@ def _list(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     if not args.include_descendants:
-        _render_board(st, args.status, args.all)
+        _render_board(st, args.status, args.all, tags=args.tag)
         return 0
     node = st.node_root.resolve()                 # descendant_nodes returns resolved
     for i, root in enumerate([node, *descendant_nodes(node)]):   # paths → relative_to
@@ -307,7 +322,7 @@ def _list(args: argparse.Namespace) -> int:
         rel = "." if root == node else f"./{root.relative_to(node)}"
         print(f"# {rel}")
         prefix = "" if root == node else f"{root.relative_to(node)}/"  # qualified slugs
-        _render_board(FsWorkStore.open(root), args.status, args.all, prefix)
+        _render_board(FsWorkStore.open(root), args.status, args.all, prefix, tags=args.tag)
     return 0
 
 
@@ -385,9 +400,19 @@ def _edit(args: argparse.Namespace) -> int:
         return 1
     st, bare = resolved                           # blocker refs are node-local to `st`
     try:
-        if st.get(bare) is None:
+        current = st.get(bare)
+        if current is None:
             print(f"tcw work edit: no such work item: {args.slug}", file=sys.stderr)
             return 1
+        # Recompute the tag set only when --tag/--untag were given (else _UNSET).
+        tags_kw = _UNSET
+        if args.tag or args.untag:
+            untag = set(args.untag or [])
+            final = [t for t in current.tags if t not in untag]
+            for t in (args.tag or []):
+                if t not in final:
+                    final.append(t)
+            tags_kw = final
         blocks = _split(args.blocks)
         for ref in blocks:
             if st.get(ref) is None:
@@ -406,11 +431,51 @@ def _edit(args: argparse.Namespace) -> int:
             priority=_provided(args.priority),
             effort=_provided(args.effort),
             complexity=_provided(args.complexity),
+            tags=tags_kw,
         )
     except _ERRORS as e:
         print(f"tcw work edit: {e}", file=sys.stderr)
         return 1
     print(f"edited {args.slug}")
+    return 0
+
+
+def _tags_list(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    for tag in st.registered_tags():
+        print(tag)
+    return 0
+
+
+def _tags_add(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        result = st.register_tags(args.tag)
+    except _ERRORS as e:
+        print(f"tcw work tags add: {e}", file=sys.stderr)
+        return 1
+    for tag in result:
+        print(tag)
+    return 0
+
+
+def _tags_rm(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        result = st.unregister_tags(args.tag)
+    except _ERRORS as e:
+        print(f"tcw work tags rm: {e}", file=sys.stderr)
+        return 1
+    for problem in st.check():                     # warn about now-stale item tags
+        print(f"warning: {problem}", file=sys.stderr)
+    for tag in result:
+        print(tag)
     return 0
 
 
@@ -567,6 +632,16 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pes.add_argument("--initiative", help="stamp the request with an initiative slug")
     pes.set_defaults(func=_escalate)
 
+    ptg = g.add_parser("tags", help="manage this node's registered tag set")
+    ptgs = ptg.add_subparsers(dest="tags_cmd", required=True)
+    ptgs.add_parser("list", help="print the registered tags").set_defaults(func=_tags_list)
+    ptga = ptgs.add_parser("add", help="register one or more tags")
+    ptga.add_argument("tag", nargs="+", help="tag(s) to register")
+    ptga.set_defaults(func=_tags_add)
+    ptgr = ptgs.add_parser("rm", help="unregister one or more tags")
+    ptgr.add_argument("tag", nargs="+", help="tag(s) to unregister")
+    ptgr.set_defaults(func=_tags_rm)
+
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")
     pn.add_argument("--priority", type=int, help="integer priority (higher = higher)")
@@ -575,6 +650,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn.add_argument("--complexity", type=_work_level,
                     help="estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pn.add_argument("--blocked-by", help="comma-separated slugs/externals that block it")
+    pn.add_argument("--tag", action="append", type=_tag,
+                    help="apply a registered tag (repeatable)")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
     pn.add_argument("--parent", help="create as a child nested under this item's slug")
     pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
@@ -582,6 +659,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pl = g.add_parser("list", help="the board (hides completed unless --status/--all)")
     pl.add_argument("--status", choices=WORK_STATUSES)
+    pl.add_argument("--tag", action="append", type=_tag,
+                    help="only items carrying this tag (repeatable = match any)")
     pl.add_argument("--all", action="store_true", help="include completed items")
     pl.add_argument("--include-descendants", action="store_true",
                     help="also list every descendant work node's board, grouped by node")
@@ -613,6 +692,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--complexity", type=_work_level,
                     help="set estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
+    pe.add_argument("--tag", action="append", type=_tag, help="apply a registered tag (repeatable)")
+    pe.add_argument("--untag", action="append", type=_tag, help="remove a tag (repeatable)")
     pe.set_defaults(func=_edit)
 
     pc = g.add_parser("complete", help="active → completed (DoD gate)")
