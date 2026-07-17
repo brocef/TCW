@@ -68,6 +68,32 @@ describe("buildPathTree", () => {
     ok(d.item);
   });
 
+  it("keys named after Object.prototype properties are safe", () => {
+    // "constructor" is a producible slug (a term named "Constructor");
+    // "__proto__" is accepted as an explicit slug. Neither may crash the
+    // build, drop an item, or pollute Object.prototype.
+    var items = [
+      { name: "C", path: "constructor" },
+      { name: "CC", path: "constructor/child" },
+      { name: "P", path: "__proto__" },
+    ];
+    var tree = Tree.buildPathTree(items, function (i) { return i.path; });
+    var paths = tree.map(function (n) { return n.path; }).sort();
+    deepStrictEqual(paths, ["__proto__", "constructor"]);
+    var ctor = tree.find(function (n) { return n.path === "constructor"; });
+    ok(ctor.item, "constructor node selectable");
+    strictEqual(ctor.children.length, 1);
+    strictEqual(({}).item, undefined, "Object.prototype not polluted");
+
+    var work = Tree.buildWorkTree(
+      [{ slug: "toString", title: "T", parent: "" },
+       { slug: "valueOf", title: "V", parent: "toString" }],
+      function (i) { return i.slug; }
+    );
+    strictEqual(work.length, 1);
+    strictEqual(work[0].children[0].path, "valueOf");
+  });
+
   it("federated items nest under non-selectable origin folder", () => {
     var items = [
       { name: "Term", qualified: "shared/term" },
@@ -219,7 +245,7 @@ describe("ancestorsOf", () => {
     deepStrictEqual(result, ["root", "mid"]);
   });
 
-  it("unknown key returns empty array without throwing", () => {
+  it("path mode returns prefixes even for a key not in any item set", () => {
     var result = Tree.ancestorsOf("unknown-axis/unknown-key", "path");
     deepStrictEqual(result, ["unknown-axis"]);
   });
@@ -235,6 +261,15 @@ describe("ancestorsOf", () => {
 
   it("work mode unknown key returns empty without throwing", () => {
     deepStrictEqual(Tree.ancestorsOf("nope", "work", []), []);
+  });
+
+  it("work mode resolves qualified keys in-namespace", () => {
+    var items = [
+      { slug: "sub/proj/parent", title: "P", parent: "" },
+      { slug: "sub/proj/child", title: "C", parent: "parent" },
+    ];
+    deepStrictEqual(Tree.ancestorsOf("sub/proj/child", "work", items),
+      ["sub/proj/parent"]);
   });
 });
 

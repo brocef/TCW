@@ -15,7 +15,7 @@
  * @returns {Array} tree nodes with { name, path, item, children }
  */
 function buildPathTree(items, keyOf) {
-  var keySet = {};
+  var keySet = Object.create(null);
   var keys = [];
   items.forEach(function (it) {
     var k = keyOf(it);
@@ -24,13 +24,13 @@ function buildPathTree(items, keyOf) {
     keys.push(k);
   });
 
-  var itemByKey = {};
+  var itemByKey = Object.create(null);
   items.forEach(function (it) {
     var k = keyOf(it);
     if (!(k in itemByKey)) itemByKey[k] = it;
   });
 
-  var map = {}; // path -> node
+  var map = Object.create(null); // path -> node
 
   keys.forEach(function (key) {
     var segments = key.split("/");
@@ -48,7 +48,7 @@ function buildPathTree(items, keyOf) {
   // Wire parent -> children for ALL nodes in the map (including intermediate
   // folders created during path splitting), then collect unattached roots.
   var roots = [];
-  var seen = {};
+  var seen = Object.create(null);
 
   // Attach every node to its parent if the parent exists in the map
   Object.keys(map).forEach(function (path) {
@@ -98,7 +98,7 @@ function resolveParentKey(childKey, parentRef, has) {
  * @returns {Array} tree nodes
  */
 function buildWorkTree(items, keyOf) {
-  var index = {};
+  var index = Object.create(null);
   var keys = [];
   items.forEach(function (it) {
     var k = keyOf(it);
@@ -109,7 +109,7 @@ function buildWorkTree(items, keyOf) {
   });
 
   var roots = [];
-  var parentOf = {};   // child key -> parent key it was attached under
+  var parentOf = Object.create(null);   // child key -> parent key it was attached under
 
   keys.forEach(function (key) {
     var node = index[key];
@@ -135,7 +135,7 @@ function buildWorkTree(items, keyOf) {
   // Cycle guard: members of a malformed parent cycle each attach under the
   // other and end up unreachable from every root — they would silently vanish
   // from the render. Promote the first member of each cycle to root.
-  var reach = {};
+  var reach = Object.create(null);
   function markReach(node) {
     reach[node.path] = true;
     node.children.forEach(markReach);
@@ -157,6 +157,8 @@ function buildWorkTree(items, keyOf) {
 
 /**
  * Prune a tree to nodes whose item matches `predicate`, keeping ancestors.
+ * Consumes its input (children arrays are replaced in place) — build a fresh
+ * tree per call; never prune a cached one.
  * @param {Array} nodes - root-level tree nodes
  * @param {(item: any|null) => boolean} predicate - true = keep the item
  * @returns {{ nodes: Array, forceExpand: Set }}
@@ -196,12 +198,12 @@ function pruneTree(nodes, predicate) {
  */
 function ancestorsOf(key, mode, items) {
   if (mode === "work" && items) {
-    var bySlug = {};
+    var bySlug = Object.create(null);
     items.forEach(function (it) {
       if (!(it.slug in bySlug)) bySlug[it.slug] = it;
     });
     var chain = [];
-    var visited = {};
+    var visited = Object.create(null);
     var cursor = key;
     while (cursor) {
       visited[cursor] = true;
