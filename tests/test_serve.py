@@ -113,6 +113,15 @@ def test_static_assets_still_serve_own_bytes(server):
         assert b".shell" in res.read()
 
 
+def test_tree_js_serves_own_bytes(server):
+    # /tree.js must be in the static allowlist; otherwise the SPA fallback
+    # returns index.html and the browser executes HTML as JS.
+    base, _ = server
+    with urlopen(f"{base}/tree.js") as res:
+        assert res.headers.get("Content-Type", "").startswith("application/javascript")
+        assert b"buildPathTree" in res.read()
+
+
 def test_unknown_api_route_still_404s(server):
     base, _ = server
     with pytest.raises(HTTPError) as exc:

@@ -420,7 +420,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             body, ctype = _static_bytes("index.html")
             self._send(HTTPStatus.OK, body, ctype)
             return
-        if path in ("/app.js", "/style.css", "/marked.min.js"):
+        if path in ("/app.js", "/style.css", "/marked.min.js", "/tree.js"):
             body, ctype = _static_bytes(path.lstrip("/"))
             self._send(HTTPStatus.OK, body, ctype)
             return
