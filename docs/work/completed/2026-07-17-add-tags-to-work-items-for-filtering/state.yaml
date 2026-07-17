@@ -2,4 +2,10 @@ slug: 2026-07-17-add-tags-to-work-items-for-filtering
 title: Add tags to work items for filtering
 phase: ''
 created: '2026-07-17'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
