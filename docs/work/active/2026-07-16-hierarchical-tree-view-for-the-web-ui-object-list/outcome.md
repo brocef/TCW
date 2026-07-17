@@ -107,10 +107,36 @@ Dismissed (with reasons):
 - `ancestorsOf(key, mode, items)` takes an explicit mode/items instead of
   auto-detecting, keeping tree.js DOM- and state-free.
 
-## Follow-up notes (not auto-created as items)
+## Follow-ups (user requested these be done now — implemented in refinement)
 
-- Full ARIA `tree`/`treeitem` roles + roving tabindex — deferred by spec.
-- localStorage persistence of expand state — deferred by spec.
-- `node --test` in CI — optional follow-up flagged in the plan.
-- `web` capability lacks a `Feature=local-web-app` link (pre-existing gap,
-  out of scope).
+All four deferred items were implemented during verification/refinement
+(commit `c3f2ade`):
+
+- **ARIA tree navigation**: `#list` is `role="tree"`; each row's primary
+  control is a `treeitem` with `aria-level`/`aria-expanded`/`aria-selected`;
+  roving tabindex (exactly one tabbable row); arrow-key navigation
+  (Up/Down/Right/Left/Home/End) with focus restore across the re-render on
+  keyboard expand/collapse. Disclosure toggles left the tab order
+  (`tabindex="-1" aria-hidden` — mouse-only affordance).
+- **localStorage persistence** of expand/collapse state
+  (`tcw.treeExpanded`/`tcw.treeSeen`), best-effort like the list-width split.
+- **`node --test` under pytest**: `tests/test_tree_js.py` shells out to node
+  (skipped when absent) — 606 tests total.
+- **`web` capability** gains its missing `Feature=local-web-app` link.
+
+Verified in-browser: arrow navigation including keyboard collapse/expand with
+focus restore, single tabbable treeitem, collapse persisting across a reload,
+mouse selection + `aria-selected` intact, zero console errors.
+
+A second dual review of the follow-up diff (subagent + bllm-review-many)
+produced two applied fixes — `70e667d` (keyboard toggle left two tabbable
+treeitems when the toggled node wasn't the selected one) and `1f9a0f9`
+(toggles during an active text filter silently mutated and persisted expand
+state; now frozen while filtering, both keyboard and mouse) — plus dismissed
+items: the esc()/CSS.escape selector-mismatch claim (verified false — HTML
+parsing decodes entities), aria-hidden on the mouse-only toggle (deliberate,
+the treeitem carries aria-expanded), unbounded `tcw.treeSeen` growth
+(accepted — tens of bytes per path, local tool), cross-tab last-writer-wins
+(accepted — single-user localhost), and localStorage error-handling/test
+suggestions (best-effort persistence is the established pattern; browser
+interaction testing is the existing 2026-07-03 backlog item).
