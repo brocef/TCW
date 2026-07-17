@@ -10,3 +10,8 @@ internal module names.
   `tcw capabilities reset <path>` — no more hand-deleting files. It only removes
   your local override (never the other project's copy) and tells you clearly when
   there's nothing to undo.
+- **Epics close when their work is done.** When every child of an epic is
+  resolved, the board and its rollup flag it `ready-to-close`, and you can
+  complete it **straight from the backlog** — no more starting a coordinator epic
+  into "active" just to close it. `tcw work reconcile <epic> --complete-when-ready`
+  will even close it for you.

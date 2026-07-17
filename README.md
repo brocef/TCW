@@ -600,6 +600,7 @@ tcw work edit "$slug" --initiative "$epic"  # …or link an existing one
 
 tcw work reconcile "$epic"                  # scan child nodes → rollup into the epic
 tcw work reconcile "$epic" --commit         # …and commit it
+tcw work reconcile "$epic" --complete-when-ready  # …and auto-close it if every child is resolved
 
 echo "needs an API change" | tcw work delegate child-repo "Expose X"  # request DOWN to a child inbox/
 echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # request UP to the parent inbox/
@@ -615,7 +616,11 @@ Initiative transitions are relation-gated: a task with `initiative: <epic>` is
 refused at `start` until the epic is active, and an epic is refused at
 `complete` while related child tasks are still open. `--force` overrides these
 gates when the relationship cannot be resolved or the user intentionally
-deviates.
+deviates. Once **every** child is resolved, the epic is flagged `ready-to-close`
+in `tcw work list` and in its rollup, and it may be completed **directly from
+`backlog`** — a coordinator epic that never had its own spec/plan doesn't need a
+throwaway `start` just to close it (the Definition-of-Done and capability gates
+still apply).
 
 Run an item in an isolated checkout with `--worktree`:
 

@@ -17,3 +17,26 @@ category, with commit hash ranges so entries trace back to source.
 - New capability `capabilities/reset-an-override`.
 
 </changes>
+
+<changes starting-hash="9fb3cba" ending-hash="9fb3cba">
+
+### Added
+
+- `WorkStore.epic_completable(item)` (`tcw/store/base.py`): an epic is completable
+  when it is `type: epic`, not completed, and has ≥1 initiative child all
+  completed — built on `initiative_children` (cross-node), so the signal and the
+  `complete` gate share one source of truth.
+- `tcw work reconcile --complete-when-ready` (`recursion.py` + `cli.py`):
+  auto-completes a ready epic after writing the rollup; the rollup gains a
+  "Ready to close" line when completable.
+- `tcw work list` annotates a completable epic row with `ready-to-close`.
+
+### Changed
+
+- `WorkStore.complete` (`tcw/store/base.py`): a completable epic may complete
+  **directly from `backlog`** (scoped exception — not added to the global
+  `LEGAL_TRANSITIONS`; effected via `_effect_transition`). Non-epics and
+  non-completable epics are still refused from `backlog`; the open-children and
+  blocker gates still run.
+
+</changes>

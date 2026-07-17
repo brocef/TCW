@@ -1,2 +1,2 @@
 As a user, I run `tcw work complete <slug> --resolution <r>`; the tool checks for unresolved blockers (refused unless I pass `--force`), then prints the Definition-of-Done checklist and refuses until I re-run with `--confirm`.
-For epics, the tool refuses completion while related initiative child tasks are still open.
+For epics, the tool refuses completion while related initiative child tasks are still open. Once every child is resolved, an epic is **completable directly from `backlog`** — I don't have to `start` a coordinator epic into `active` just to close it. I can also let `tcw work reconcile <epic> --complete-when-ready` auto-complete a ready epic after refreshing its rollup; the Definition-of-Done and capability-reconciliation gates still run either way.

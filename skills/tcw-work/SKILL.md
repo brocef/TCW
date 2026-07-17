@@ -99,5 +99,6 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | tag an item | `tcw work new "<t>" --tag <tag>` · `tcw work edit <slug> --tag <tag> --untag <tag>` (repeatable; each `--tag` must be registered or it's rejected) |
 | filter by tag | `tcw work list --tag <tag>` (repeatable = match any); a tag later unregistered while still on an item is flagged by `tcw validate` |
 | topology | `tcw work nodes` |
-| epic rollup | `tcw work reconcile <epic-slug>` |
+| epic rollup | `tcw work reconcile <epic-slug>` (`--complete-when-ready` auto-closes a fully-resolved epic) |
+| close a done epic | when all children are resolved the epic shows `ready-to-close` in `list`/rollup and may `complete` **directly from backlog** — no throwaway `start` |
 | hand work down / up | `tcw work delegate <child> "<t>"` · `tcw work escalate "<t>"` |
