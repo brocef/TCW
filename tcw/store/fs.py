@@ -1064,6 +1064,23 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                              f"(edit it at its source)")
         self._rm(self.root / cap.path)
 
+    def reset(self, identifier: str) -> None:
+        # A standalone local capability is not an override — `remove` deletes it.
+        if self.get_local(identifier) is not None:
+            raise ValueError(f"'{identifier}' is a local capability, not an override "
+                             f"(use `remove` to delete it)")
+        cap = self.get(identifier)                     # federated; may raise AmbiguousRef
+        if cap is None:
+            raise ValueError(f"no such capability: {identifier}")
+        # Find the override by the same upstream-id keys `_write_target` writes,
+        # so we drop whatever folder `set` materialized (bare or alias-qualified).
+        ov_index = self._override_index()
+        ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
+        if ov is None:
+            raise ValueError(f"no local override at '{identifier}' to reset "
+                             f"(it inherits '{cap.qualified}' verbatim)")
+        self._rm(ov[0])                                # remove only the local override folder
+
     def _validate_fields(self, fields: dict) -> dict:
         out = {}
         for k, v in fields.items():

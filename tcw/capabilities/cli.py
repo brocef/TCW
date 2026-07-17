@@ -8,7 +8,7 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
 
 NAME = "capabilities"
-SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set", "extends", "drift"}
+SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set", "reset", "extends", "drift"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <path>` == `tcw capabilities show <path>`
 
 
@@ -118,6 +118,19 @@ def _set(args: argparse.Namespace) -> int:
         print(f"tcw capabilities set: {e}", file=sys.stderr)
         return 1
     print(f"Set {cap.path}")
+    return 0
+
+
+def _reset(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        st.reset(args.id)
+    except (ValueError, RefError) as e:
+        print(f"tcw capabilities reset: {e}", file=sys.stderr)
+        return 1
+    print(f"reset {args.id}")
     return 0
 
 
@@ -248,6 +261,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pset.add_argument("--field", action="append", metavar="K=V",
                       help="set a metadata field (repeatable; Subject accepts a,b,c)")
     pset.set_defaults(func=_set)
+
+    prst = g.add_parser("reset", help="drop a local override, re-inheriting upstream")
+    prst.add_argument("id", metavar="path")
+    prst.set_defaults(func=_reset)
 
     pse = g.add_parser("search", help="search names + bodies")
     pse.add_argument("query")

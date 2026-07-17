@@ -303,6 +303,13 @@ class CapabilitiesStore(ABC):
         ...
 
     @abstractmethod
+    def reset(self, identifier: str) -> None:
+        """Drop the local override at `identifier`, re-inheriting the upstream
+        capability verbatim. Raise `ValueError` when there is no override (a
+        standalone local capability is not an override — use `remove`; a bare
+        inherited path has nothing to drop). Never mutates an extended store."""
+
+    @abstractmethod
     def set(self, identifier: str, fields: dict[str, Any]) -> Capability:
         """Update/insert metadata fields on the capability at `identifier`;
         return it. Keys must be in CAP_FIELDS; a Status value must be in
