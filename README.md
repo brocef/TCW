@@ -239,7 +239,7 @@ to copy its slug to the clipboard. Beyond browsing, you can **create and edit** 
 directly from the browser:
 
 - **Work items** — create new items with all fields (title, priority, effort,
-  complexity, blockers, parent, initiative); edit body and metadata; edit
+  complexity, tags, blockers, parent, initiative); edit body and metadata; edit
   lifecycle artifacts and the `capabilities.yaml` sidecar using a Markdown
   editor with live preview; and run lifecycle actions (start, complete, drop).
   The complete action requires resolving blockers and acknowledging every
@@ -432,15 +432,22 @@ tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); def
 tcw work new "Big rework" --effort high --complexity very-high
                                        # optional estimates (low|medium|high|very-high; L/M/H/VH shorthand ok)
 tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the parent's folder
+
+tcw work tags add bug tech-debt        # register a project's valid tags (in tcw-config.yaml)
+tcw work tags list                     # print the registered tags
+tcw work tags rm tech-debt             # unregister (warns about items still carrying it)
+tcw work new "Login crash" --tag bug   # apply a registered tag (repeatable; unregistered → error)
+
 tcw work list                          # the board: priority first, then topologically ordered (hides completed)
 tcw work list --status active          # filter to one column
+tcw work list --tag bug                # only items carrying a tag (repeatable = match any)
 tcw work list --all                    # include completed items too
 tcw work list --include-descendants    # also list every descendant work node's board, grouped by node
 tcw work audit-work-backlog            # report stale, duplicate, blocked, or misplaced backlog items
 tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
 tcw work consolidate-plans docs/plans --apply --delete
                                        # create backlog items, then delete migrated sources
-tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity if set)
+tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 
 tcw work start "$slug"                 # backlog → active (refused if blocked/gated)
@@ -451,6 +458,7 @@ tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
 tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
+tcw work edit "$slug" --tag bug --untag stale    # apply/remove tags (repeatable)
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
@@ -462,6 +470,12 @@ declares a `new:` capability that still reads `Missing`, or any declared path th
 no longer resolves, the completion is refused (flip it with `tcw capabilities set`,
 mark it `Omitted`, or `--force` past). For a `--worktree` item the check runs after
 the branch merges back, so a status flip made on the work branch counts.
+
+**Tags** classify items for filtering. Each project registers its valid tag set
+centrally in `tcw-config.yaml` (`tcw work tags add|rm|list`); an item then carries
+zero or more of those tags via `--tag` on `new`/`edit` (and `--untag` to remove).
+Applying an unregistered tag is refused, and `tcw validate` flags any item still
+carrying a tag that was later unregistered. Tags don't affect board ordering.
 
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the

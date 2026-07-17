@@ -95,6 +95,9 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | address by status path | any work command also accepts a `<status>/…/<slug>` locator (e.g. `active/my-item`); the status segment must match the item's real status, intermediate segments are ignored, and the slug stays the identity |
 | set priority | `tcw work new "<t>" --priority N` · `tcw work edit <slug> --priority N` (higher int = higher; default unspecified) |
 | set estimates | `tcw work new "<t>" --effort <l> --complexity <l>` · `tcw work edit <slug> --effort <l> --complexity <l>` (`<l>` = low\|medium\|high\|very-high, or L/M/H/VH shorthand; optional; shown in `show`, not `list`) |
+| manage tags | `tcw work tags add\|rm\|list <tag>...` — the node's registered tag set, stored in `tcw-config.yaml` (`work.tags`); fail-closed vocabulary |
+| tag an item | `tcw work new "<t>" --tag <tag>` · `tcw work edit <slug> --tag <tag> --untag <tag>` (repeatable; each `--tag` must be registered or it's rejected) |
+| filter by tag | `tcw work list --tag <tag>` (repeatable = match any); a tag later unregistered while still on an item is flagged by `tcw validate` |
 | topology | `tcw work nodes` |
 | epic rollup | `tcw work reconcile <epic-slug>` |
 | hand work down / up | `tcw work delegate <child> "<t>"` · `tcw work escalate "<t>"` |
