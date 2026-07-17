@@ -2,7 +2,13 @@ slug: 2026-07-16-drop-or-reset-a-local-capability-override-to-re-inherit-upstrea
 title: Drop or reset a local capability override to re-inherit upstream
 phase: ''
 created: '2026-07-16'
-resolution: null
+resolution: done
 priority: 15
 effort: low
 complexity: low
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
