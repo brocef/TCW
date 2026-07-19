@@ -156,6 +156,22 @@ def parent_node(root: Path) -> Path | None:
     return None
 
 
+def _ignored_dirs(root: Path) -> set[Path]:
+    """Absolute paths of directories git ignores under `root`'s repo, collapsed (a
+    fully-ignored dir is returned once, not per-file). Empty if `root` isn't in a
+    git work-tree. One `git ls-files` beats stat-walking gigabytes of build output —
+    an ignored dir is untracked, so it can never hold a committed work node."""
+    try:
+        out = subprocess.run(                          # bytes: filenames aren't
+            ["git", "-C", str(root), "ls-files", "-oi", "--directory",
+             "--exclude-standard", "-z"],               # guaranteed UTF-8
+            capture_output=True, check=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return set()
+    return {(root / os.fsdecode(p)).resolve() for p in out.split(b"\0") if p}
+
+
 def descendant_nodes(root: Path) -> list[Path]:
     """All descendant work nodes (tcw-config.yaml + docs/work/) at any depth below
     `root`. Sentinel-based (matches find_node_root), so it finds plain subdirs of
@@ -163,21 +179,26 @@ def descendant_nodes(root: Path) -> list[Path]:
     children. Transitive: descends past found nodes so nested nodes are returned
     too. Skips symlinked dirs (cycle-safe; we don't chase symlinked trees). Returned
     depth-first, path-sorted (deterministic). FS-adapter-local.
-    ponytail: walks the whole tree pruning NODE_SCAN_SKIP by name — VCS/worktree
-    noise plus node_modules (this is on the `tcw serve` descendant path). Prune
-    more (or handle a real dir literally named .worktrees) only if it ever bites.
+    ponytail: prunes NODE_SCAN_SKIP by name plus each repo's own gitignored subtrees
+    (one `git ls-files` per repo boundary) — build output / Pods / .venv that can't
+    hold a node. Pruning is PER-REPO because the orchestrator pattern gitignores its
+    child *repos* from the parent: a nested repo boundary is therefore never pruned
+    (we cross it and switch to its own ignores), only the junk each repo declares.
     """
     root = root.resolve()
     found: list[Path] = []
 
-    def walk(d: Path) -> None:
-        for child in sorted(p for p in d.iterdir()
-                            if p.is_dir() and not p.is_symlink()
-                            and p.name not in NODE_SCAN_SKIP):
+    def walk(d: Path, ignored: set[Path]) -> None:
+        for child in sorted(p for p in d.iterdir()    # p is canonical already:
+                            if p.is_dir() and not p.is_symlink()   # root resolved,
+                            and p.name not in NODE_SCAN_SKIP):      # no symlink links
+            is_repo = (child / ".git").exists()        # boundary → own ignore rules
+            if child in ignored and not is_repo:        # gitignored junk in this repo
+                continue                                # (a child repo is never junk)
             if (child / SENTINEL).is_file() and (child / "docs" / "work").is_dir():
                 found.append(child)
-            walk(child)                    # transitive — nested nodes count too
-    walk(root)
+            walk(child, _ignored_dirs(child) if is_repo else ignored)
+    walk(root, _ignored_dirs(root))
     return found
 
 

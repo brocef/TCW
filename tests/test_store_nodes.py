@@ -89,6 +89,39 @@ def test_descendant_nodes_prunes_node_modules(tmp_path):
     assert descendant_nodes(tmp_path) == [a]
 
 
+def test_descendant_nodes_prunes_gitignored_tree(tmp_path):
+    # An ignored dir is untracked, so it can't hold a committed node — the scan
+    # must skip it wholesale rather than stat-walk build output / .venv / target.
+    import subprocess
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+    (tmp_path / ".gitignore").write_text("build/\n")
+    _work_node(tmp_path)
+    a = _work_node(tmp_path / "Project-A")
+    buried = _work_node(tmp_path / "build" / "pkg")   # sentinel inside ignored tree
+    assert descendant_nodes(tmp_path) == [a]
+    assert buried not in descendant_nodes(tmp_path)
+
+
+def test_descendant_nodes_finds_gitignored_child_repo(tmp_path):
+    # Orchestrator pattern: the parent gitignores its child *repos* (separate git
+    # roots) so it doesn't track their files. Gitignore pruning must NOT drop them
+    # — a nested repo boundary is never junk — while still pruning each repo's own
+    # ignored bloat.
+    import subprocess
+    def _repo(d):
+        d.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "-C", str(d), "init", "-q"], check=True)
+        return d
+    _repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("child-proj/\n")   # parent ignores the repo
+    _work_node(tmp_path)
+    child = _repo(tmp_path / "child-proj")
+    _work_node(child)
+    (child / ".gitignore").write_text("build/\n")           # child's own bloat
+    _work_node(child / "build" / "pkg")                     # ignored-by-child → skip
+    assert descendant_nodes(tmp_path) == [child.resolve()]
+
+
 def test_descendant_nodes_skips_symlink_cycle(tmp_path):
     _work_node(tmp_path)
     a = _work_node(tmp_path / "Project-A")
