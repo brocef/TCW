@@ -16,4 +16,4 @@ Existing markers must be backfilled, direct parent/child connections registered
 on both sides, and taxonomy/capability `extends` maps converted to project-ID
 lists. TCW fails closed instead of inferring IDs, scanning nearby folders, or
 accepting legacy path qualifiers. See
-[`docs/migration-guide-0.12.X-to-1.0.0.md`](../migration-guide-0.12.X-to-1.0.0.md).
+[`docs/migration-guide-0.12.X-to-0.13.0.md`](../migration-guide-0.12.X-to-0.13.0.md).

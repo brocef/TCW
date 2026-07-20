@@ -1,6 +1,6 @@
-# Migrating from 0.12.x to 1.0.0
+# Migrating from 0.12.x to 0.13.0
 
-Version 1.0 replaces filesystem project discovery and component path aliases
+Version 0.13.0 replaces filesystem project discovery and component path aliases
 with a registered project graph. This is intentionally breaking and has no
 compatibility aliases or scan fallback.
 
