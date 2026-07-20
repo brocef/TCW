@@ -1,0 +1,9 @@
+changed:
+  - cli/host-multiple-projects-in-one-repo
+  - cli/scaffold-the-doc-trees
+  - cli/validate-a-node
+  - cli/reference-a-tcw-object
+  - taxonomy/federate-shared-vocabulary
+  - capabilities/federate
+  - work/view-the-board
+  - web
