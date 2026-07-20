@@ -210,8 +210,9 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
     if child_ref not in children:
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
+    origin = registered_project_id(node_root, node_root)
     return _inbox_write(children[child_ref] / "docs" / "work" / "inbox",
-                        title, body, origin=".", initiative=initiative)
+                        title, body, origin=origin, initiative=initiative)
 
 
 def escalate(node_root: Path, title: str, body: str = "",

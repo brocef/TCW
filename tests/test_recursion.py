@@ -274,7 +274,9 @@ def test_delegate_writes_child_inbox_only(tmp_path):
     doc = delegate(parent, "child", "Do a thing", body="details", initiative="2026-01-01-epic")
     assert doc.parent == (child / "docs" / "work" / "inbox")
     text = doc.read_text()
-    assert "from: ." in text and "initiative: 2026-01-01-epic" in text and "details" in text
+    assert "from: parent" in text
+    assert "initiative: 2026-01-01-epic" in text
+    assert "details" in text
     assert _no_items(child)                                # boundary: never touches backlog/active/completed
 
 

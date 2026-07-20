@@ -503,7 +503,7 @@ class TestSiblingNodes:
         parent, left, _ = sibling_nodes(tmp_path)
         doc = delegate(parent, "left", "Build this", body="details")
         assert doc.parent == left / "docs" / "work" / "inbox"
-        assert "from: ." in doc.read_text()
+        assert "from: parent" in doc.read_text()
 
     def test_reconcile_scans_sibling_children(self, tmp_path):
         # reconcile rolls up tasks from discovered child repos.
