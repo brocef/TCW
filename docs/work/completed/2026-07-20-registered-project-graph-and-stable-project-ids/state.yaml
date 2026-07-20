@@ -2,7 +2,13 @@ slug: 2026-07-20-registered-project-graph-and-stable-project-ids
 title: Registered project graph and stable project IDs
 phase: ''
 created: '2026-07-20'
-resolution: null
+resolution: done
 priority: 40
 effort: very-high
 complexity: very-high
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
