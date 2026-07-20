@@ -2,7 +2,13 @@ slug: 2026-07-20-improve-descendant-epic-display-and-tag-workflows
 title: Improve descendant epic display and tag workflows
 phase: ''
 created: '2026-07-20'
-resolution: null
+resolution: done
 tags:
 - cli
 - docs
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
