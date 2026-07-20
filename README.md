@@ -457,7 +457,7 @@ tcw work list                          # the board: priority first, then topolog
 tcw work list --status active          # filter to one column
 tcw work list --tag bug                # only items carrying a tag (repeatable = match any)
 tcw work list --all                    # include completed items too
-tcw work list --include-descendants    # also list every descendant work node's board, grouped by node
+tcw work list -i                       # descendant boards; --incl-desc and --include-descendants are aliases
 tcw work audit-work-backlog            # report stale, duplicate, blocked, or misplaced backlog items
 tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
 tcw work consolidate-plans docs/plans --apply --delete
@@ -522,9 +522,12 @@ items keeping creation order), then topologically — blockers appear before the
 items they block, since a priority preference can't jump a hard dependency —
 and annotates blocked items with their unresolved blockers.
 
-Pass `--include-descendants` to list every **registered descendant work node**.
-The output is grouped by project ID (`# .` for the current node), and the same
-`--status` / `--all` filters apply to every group.
+Pass `-i`, `--incl-desc`, or `--include-descendants` to list every **registered
+descendant work node**. The output is grouped by project ID (`# .` for the
+current node), and the same `--status` / `--all` filters apply to every group.
+Initiative tasks are indented beneath their visible owning epic, including tasks
+from descendant nodes; each descendant row keeps its project-qualified slug and
+is printed only once.
 
 Descendant items are printed with a **project-qualified slug** —
 `<project-id>/<slug>` — so each printed slug is a usable address. You can pass that

@@ -22,6 +22,14 @@ Input may be an existing TCW work item slug/path or a request written directly i
 chat. If the user provides only chat text, create the initial backlog item with
 `tcw work new "<title>"` and write all artifacts inside that item's folder.
 
+Classify the item as part of intake. Run `tcw work tags list`, choose every
+registered tag that materially helps people filter or audit this work, and apply
+it with repeatable `--tag <tag>` options on `tcw work new`. For an existing item,
+use `tcw work edit <slug> --tag <tag>` instead. If an important reusable category
+is missing from the project vocabulary, register it first with
+`tcw work tags add <tag>`; do not create one-off tags that merely restate the
+title. Record the chosen tags in the request-stage checkpoint.
+
 For small changes, offer to compress unnecessary planning detail, but keep enough
 artifact context for another agent to resume safely. Stop before implementation;
 do not run `tcw work start` unless the user explicitly pivots from planning into

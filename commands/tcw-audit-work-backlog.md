@@ -33,6 +33,12 @@ Review for:
   external but do not name an owner, wait condition, or follow-up.
 - **Capability drift:** `capabilities.yaml` references missing capability files,
   has stale status assumptions, or no longer matches the capability ledger.
+- **Tag hygiene:** the item has no tags despite matching a useful registered
+  category, carries an irrelevant tag, or reveals a broadly useful category
+  missing from the project registry. Inspect `tcw work tags list`; recommend
+  `tcw work tags add <tag>` only for reusable categories, apply tags with
+  `tcw work edit <slug> --tag <tag>`, and remove irrelevant tags with
+  `tcw work edit <slug> --untag <tag>`.
 
 For each item, produce a concise report:
 
@@ -43,6 +49,7 @@ For each item, produce a concise report:
 ```
 
 Do not silently mutate, drop, complete, or move items. Ask for approval before
-performing cleanup actions. When the user approves changes, use TCW commands for
-state transitions whenever a command exists, and preserve useful context in the
-remaining or replacement work item.
+performing cleanup actions, including tag registration or item tag changes. When
+the user approves changes, use TCW commands for state transitions and tag edits
+whenever a command exists, and preserve useful context in the remaining or
+replacement work item.

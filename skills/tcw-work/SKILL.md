@@ -54,6 +54,26 @@ state by globbing item folders outside the filesystem adapter.
 
 For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, check whether taxonomy Vocabulary or Feature entries need to be added/updated, then run the tcw-capabilities planning gate before writing the technical plan.
 
+## Tags
+
+Tags are a project-scoped classification vocabulary for grouping and filtering
+work across lifecycle statuses. They are descriptive facets such as `cli`,
+`docs`, `bug`, or `tech-debt`; they do not change priority, status, ownership, or
+transition rules. Prefer a small reusable vocabulary over one-off tags that
+repeat an item's title.
+
+Each node registers its allowed tags in `tcw-config.yaml`. Manage that registry
+through the CLI: `tcw work tags list`, `tcw work tags add <tag>...`, and
+`tcw work tags rm <tag>...`. Removing a registered tag warns when items still
+carry it, and `tcw validate` rejects that stale state until the affected items
+are retagged or the tag is restored.
+
+During request intake, inspect the registry, choose all materially applicable
+tags, and create the item with repeatable `--tag <tag>` options. Register a
+missing tag first only when it will be useful beyond this one item. For existing
+items use `tcw work edit <slug> --tag <tag> --untag <tag>`; list filtering uses
+repeatable `tcw work list --tag <tag>` with match-any semantics.
+
 ## The lifecycle handshake
 
 **You drive the transitions — the tool never moves an item for you, so its status is only as accurate as you keep it.** Two transitions are mandatory and the easy ones to forget:
@@ -92,7 +112,7 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | add an independently scheduled task to an epic | `tcw work new "<task>" --initiative <epic-slug>` (same-node or cross-node; included by `reconcile`) |
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
-| see the board | `tcw work list [--status active]` (hides completed; `--all` to include; `--include-descendants` lists registered descendant boards grouped by project ID; descendant items print `<project-id>/<slug>`; shows lifecycle stages and sorts by priority/topology) |
+| see the board | `tcw work list [--status active]` (hides completed; `--all` to include; `-i` / `--incl-desc` / `--include-descendants` lists registered descendant boards grouped by project ID, with initiative children indented beneath visible epics; descendant items print `<project-id>/<slug>`; shows lifecycle stages and sorts by priority/topology) |
 | address a descendant item | pass `<descendant-project-id>/<slug>` to any work command; only registered descendants resolve, while a bare slug remains local (`tcw serve` uses the same IDs) |
 | audit backlog relevance | `tcw work audit-work-backlog` (read-only cleanup recommendations for stale, duplicate, broken, blocked, vague, or misplaced backlog items) |
 | migrate external plans | `tcw work consolidate-plans [PATH ...] [--apply] [--delete]` (dry-run first; converts external planning docs into backlog items) |
