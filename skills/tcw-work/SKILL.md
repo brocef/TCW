@@ -78,8 +78,8 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 
 - **Planning, implementation, verification, and closeout across the SDLC** → [`references/lifecycle.md`](references/lifecycle.md)
 - **Triaging a `docs/work/inbox/` doc** (raw request / `delegate`/`escalate` drop) → [`references/process-inbox.md`](references/process-inbox.md)
-- **Splitting a too-large item into child items** in the same repo (`--parent`) → [`references/decompose.md`](references/decompose.md)
-- **Coordinating work across separate sub-project repos** (a cross-node `--epic`, `delegate`/`--initiative`/`reconcile`) → [`references/cross-node-epic.md`](references/cross-node-epic.md)
+- **Splitting one item into nested pieces that transition together** (`--parent`) → [`references/decompose.md`](references/decompose.md)
+- **Coordinating independently scheduled epic tasks** (`--initiative`, valid in the same node or across nodes) → [`references/epic-lifecycle.md`](references/epic-lifecycle.md); for delegation across separate sub-project repos, also read [`references/cross-node-epic.md`](references/cross-node-epic.md)
 
 ## Quick reference
 
@@ -88,7 +88,8 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | plan a request/item | `/tcw-plan-work` or read [`references/lifecycle.md`](references/lifecycle.md) |
 | drive remaining stages | `/tcw-drive-work-to-completion` or read [`references/lifecycle.md`](references/lifecycle.md) |
 | triage an inbox entry | `tcw work inbox list` → `tcw work inbox show <entry>` → `tcw work inbox accept <entry> [--title <title>]` |
-| split an item (same repo) | `tcw work new "<sub>" --parent <slug>` (child nests under it; shows indented in `list`) |
+| split an item into coupled nested pieces | `tcw work new "<sub>" --parent <slug>` (child nests under it; parent transitions carry it; starting/completing it alone de-nests it) |
+| add an independently scheduled task to an epic | `tcw work new "<task>" --initiative <epic-slug>` (same-node or cross-node; included by `reconcile`) |
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
 | see the board | `tcw work list [--status active]` (hides completed; `--all` to include; `--include-descendants` lists registered descendant boards grouped by project ID; descendant items print `<project-id>/<slug>`; shows lifecycle stages and sorts by priority/topology) |

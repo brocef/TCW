@@ -1,11 +1,9 @@
 # Keep items small: decompose into child items
 
-**No single work item should be too large.** When planning reveals an item is
-big — it would touch many subsystems, span several sessions, or bundle loosely
-related concerns — break it into **child items nested under it**, and whenever
-the user asks you to split an item, do so the same way. This is the *intra-node*
-decomposition path: one item, one repo, broken into smaller pieces that travel
-with the parent.
+**No single work item should be too large.** When planning reveals that one item
+has several pieces which will be worked and transitioned together, break it into
+**child items nested under it**. This is the coupled decomposition path: one
+item, one repo, broken into smaller pieces that travel with the parent.
 
 ```
 tcw work new "<sub-item title>" --parent <parent-slug>
@@ -21,9 +19,17 @@ tcw work new "<sub-item title>" --parent <parent-slug>
   `initial-request.md`/`spec.md`/`plan.md` as it's planned — the parent stays a thin
   umbrella.
 
-Reach for this **before** an item grows unwieldy. A parent with three focused
-children beats one item whose `plan.md` has fifteen tasks.
+Reach for this **before** a coupled item grows unwieldy. A parent with three
+focused nested pieces beats one item whose `plan.md` has fifteen tasks.
 
-**Which path?** Same repo, one big item → `--parent` children (this doc).
-Multiple sub-project repos → an `--epic` + `delegate`/`--initiative`/`reconcile`
-(see [`cross-node-epic.md`](cross-node-epic.md)).
+**Which path?** Choose by scheduling behavior:
+
+- Pieces worked together and transitioned as a unit → `--parent` children (this
+  doc). This relation is local because its filesystem adapter realizes nesting,
+  but locality alone is not a reason to choose it.
+- Epic tasks worked independently over time → `--initiative`, even when every
+  task is in the same repo. `reconcile` follows these initiative children; see
+  [`epic-lifecycle.md`](epic-lifecycle.md).
+- Independently scheduled tasks in multiple sub-project repos → the same
+  `--initiative` relation plus `delegate`/`reconcile`; see
+  [`cross-node-epic.md`](cross-node-epic.md).

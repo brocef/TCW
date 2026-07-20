@@ -21,7 +21,22 @@ that were already complete.
 
 ## Planning
 
-During request ingestion and request processing, identify the affected nodes and whether the work belongs in same-node child items (`tcw work new --parent`) or cross-node initiative children (`tcw work delegate <child> ... --initiative <epic-slug>`). For product work, coordinate product-layer capability wording through the tcw-capabilities process.
+During request ingestion and request processing, identify the affected nodes and
+choose the child relation by scheduling semantics, not node locality:
+
+- Use `tcw work new "<piece>" --parent <item-slug>` when decomposing one item
+  into nested pieces that are worked together and transition with the parent.
+  Starting or completing one nested child independently promotes it to a
+  top-level item, so this relation is not the right shape for independently
+  scheduled epic tasks.
+- Use `tcw work new "<task>" --initiative <epic-slug>` for epic tasks that start
+  and complete independently over time. This is valid in the same node or across
+  registered nodes, and `tcw work reconcile` follows the `initiative` relation.
+  For a task in another node, delegate it with
+  `tcw work delegate <child> "<task>" --initiative <epic-slug>`.
+
+For product work, coordinate product-layer capability wording through the
+tcw-capabilities process.
 
 After capturing the initiative request, commit `initial-request.md` and its
 related item metadata before writing the overview spec.
@@ -45,7 +60,8 @@ tcw work start <epic-slug>
 
 Commit the start status move separately before child implementation begins.
 
-Then delegate or create children. Initiative child tasks cannot start until the related epic is active. Run:
+Then delegate or create initiative children, locally or across registered nodes.
+Initiative child tasks cannot start until the related epic is active. Run:
 
 ```
 tcw work reconcile <epic-slug>
