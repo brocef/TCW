@@ -2,4 +2,10 @@ slug: 2026-07-20-fix-delegate-inbox-origin-project-id
 title: Fix delegate inbox origin project ID
 phase: ''
 created: '2026-07-20'
-resolution: null
+resolution: done
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
