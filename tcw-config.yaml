@@ -1,1 +1,5 @@
 id: tcw
+work:
+  tags:
+  - cli
+  - docs
