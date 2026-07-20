@@ -1096,6 +1096,53 @@ def test_list_include_descendants_groups_by_node(tmp_path, monkeypatch, capsys):
     assert "2026-01-01-root-thing" in out.split("# project-a", 1)[0]
 
 
+def test_list_include_descendants_indents_same_node_initiative_child(
+        tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create_work("Epic", created="2026-01-01", type="epic").item
+    child = st.create_work("Child", created="2026-01-02",
+                           initiative=epic.slug).item
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
+    out = capsys.readouterr().out
+    assert f"\n{epic.slug} |" in out
+    assert f"\n  {child.slug} |" in out
+    assert out.count(child.slug) == 1
+
+
+def test_list_include_descendants_indents_qualified_cross_node_initiative_child(
+        tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    child_root = subnode(root, "project-a")
+    epic = FsWorkStore.open(root).create_work(
+        "Epic", created="2026-01-01", type="epic").item
+    child = FsWorkStore.open(child_root).create_work(
+        "Child", created="2026-01-02", initiative=epic.slug).item
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
+    out = capsys.readouterr().out
+    assert f"\n{epic.slug} |" in out
+    assert f"\n  project-a/{child.slug} |" in out
+    assert out.count(child.slug) == 1
+
+
+@pytest.mark.parametrize("flag", ["-i", "--incl-desc", "--include-descendants"])
+def test_list_include_descendants_flag_aliases(flag, tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(subnode(root, "project-a")).create(
+        "A feature", created="2026-01-01")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list", flag]) == 0
+    assert "# project-a" in capsys.readouterr().out
+
+
 def test_list_include_descendants_skips_own_worktree(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)

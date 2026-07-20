@@ -3,6 +3,7 @@
 import argparse
 import subprocess
 import sys
+from pathlib import Path
 
 from tcw.store.base import (
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET, IllegalTransition, MultipleMatch,
@@ -267,41 +268,48 @@ def _inbox_accept(args: argparse.Namespace) -> int:
     return 0
 
 
-def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
-                  prefix: str = "", tags: list[str] | None = None) -> None:
+def _visible_board_items(st: FsWorkStore, status: str | None, show_all: bool,
+                         tags: list[str] | None = None) -> list[WorkItem]:
     items = st.board(status=status)
     if status is None and not show_all:
         items = [i for i in items if i.status != "completed"]
     if tags:                                       # --tag filter: match-any (OR)
         wanted = set(tags)
         items = [i for i in items if wanted & set(i.tags)]
+    return items
+
+
+def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -> None:
+    labels = {
+        "initial-request": "R",
+        "spec": "S",
+        "plan": "P",
+        "outcome": "O",
+        "refined-outcome": "F",
+    }
+    stages = ""
+    for artifact in st.artifacts(it.slug):
+        if artifact.present:
+            stages += labels[artifact.name]
+    blockers = st.unresolved_blockers(it)
+    suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
+    ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""
+    tag_seg = f" | [{', '.join(it.tags)}]" if it.tags else ""
+    pri = it.priority if it.priority is not None else "-"
+    print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages or '-'} | "
+          f"{pri} | {it.title}{tag_seg}{ready}{suffix}")
+
+
+def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
+                  prefix: str = "", tags: list[str] | None = None) -> None:
+    items = _visible_board_items(st, status, show_all, tags)
     present = {i.slug for i in items}
     by_parent: dict[str, list[WorkItem]] = {}
     for it in items:                              # board order preserved per sibling group
         by_parent.setdefault(it.parent, []).append(it)
 
-    def stages(it: WorkItem) -> str:
-        labels = {
-            "initial-request": "R",
-            "spec": "S",
-            "plan": "P",
-            "outcome": "O",
-            "refined-outcome": "F",
-        }
-        out = ""
-        for artifact in st.artifacts(it.slug):
-            if artifact.present:
-                out += labels[artifact.name]
-        return out or "-"
-
     def emit(it: WorkItem, depth: int) -> None:
-        blockers = st.unresolved_blockers(it)
-        suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
-        ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""
-        tag_seg = f" | [{', '.join(it.tags)}]" if it.tags else ""
-        pri = it.priority if it.priority is not None else "-"
-        print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages(it)} | "
-              f"{pri} | {it.title}{tag_seg}{ready}{suffix}")
+        _render_board_item(st, it, prefix, depth)
         for ch in by_parent.get(it.slug, []):
             emit(ch, depth + 1)
 
@@ -311,6 +319,77 @@ def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
         emit(it, 0)
 
 
+def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
+                              show_all: bool, tags: list[str] | None) -> None:
+    """Render the anchor plus registered descendants as one ownership forest.
+
+    Node headers remain in registered order, while visible local-parent and
+    initiative relationships decide row indentation across those node bounds.
+    The filesystem adapter's registered parent relation resolves an initiative
+    child only toward its local node or ancestors; nearby/unregistered stores
+    never participate.
+    """
+    anchor_root = anchor.node_root.resolve()
+    roots = [anchor_root, *descendant_nodes(anchor_root)]
+    stores = {root: FsWorkStore.open(root) for root in roots}
+    prefixes = {
+        root: "" if root == anchor_root else f"{registered_project_id(anchor_root, root)}/"
+        for root in roots
+    }
+    entries: list[tuple[Path, FsWorkStore, WorkItem]] = []
+    for root in roots:
+        st = stores[root]
+        entries.extend((root, st, item)
+                       for item in _visible_board_items(st, status, show_all, tags))
+
+    by_key = {(root, item.slug): (root, st, item) for root, st, item in entries}
+    children: dict[tuple[Path, str], list[tuple[Path, FsWorkStore, WorkItem]]] = {}
+    owned: set[tuple[Path, str]] = set()
+    for entry in entries:
+        root, _, item = entry
+        key = (root, item.slug)
+        owner: tuple[Path, str] | None = None
+        if item.parent and (root, item.parent) in by_key:
+            owner = (root, item.parent)
+        elif item.initiative:
+            candidate_root: Path | None = root
+            while candidate_root is not None:
+                candidate_key = (candidate_root, item.initiative)
+                candidate = by_key.get(candidate_key)
+                if candidate is not None and candidate[2].type == "epic":
+                    owner = candidate_key
+                    break
+                candidate_root = parent_node(candidate_root)
+        if owner is not None and owner != key:
+            children.setdefault(owner, []).append(entry)
+            owned.add(key)
+
+    emitted: set[tuple[Path, str]] = set()
+
+    def emit(entry: tuple[Path, FsWorkStore, WorkItem], depth: int) -> None:
+        root, st, item = entry
+        key = (root, item.slug)
+        if key in emitted:                         # defensive against malformed cycles
+            return
+        emitted.add(key)
+        _render_board_item(st, item, prefixes[root], depth)
+        for child in children.get(key, []):
+            emit(child, depth + 1)
+
+    for index, root in enumerate(roots):
+        if index:
+            print()
+        label = "." if root == anchor_root else registered_project_id(anchor_root, root)
+        print(f"# {label}")
+        node_entries = [entry for entry in entries if entry[0] == root]
+        for entry in node_entries:
+            key = (root, entry[2].slug)
+            if key not in owned:
+                emit(entry, 0)
+        for entry in node_entries:                 # malformed ownership cycle fallback
+            emit(entry, 0)
+
+
 def _list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -318,14 +397,7 @@ def _list(args: argparse.Namespace) -> int:
     if not args.include_descendants:
         _render_board(st, args.status, args.all, tags=args.tag)
         return 0
-    node = st.node_root.resolve()                 # descendant_nodes returns resolved
-    for i, root in enumerate([node, *descendant_nodes(node)]):   # paths → relative_to
-        if i:
-            print()                               # blank line between node groups
-        rel = "." if root == node else registered_project_id(node, root)
-        print(f"# {rel}")
-        prefix = "" if root == node else f"{registered_project_id(node, root)}/"
-        _render_board(FsWorkStore.open(root), args.status, args.all, prefix, tags=args.tag)
+    _render_descendant_boards(st, args.status, args.all, args.tag)
     return 0
 
 
@@ -624,7 +696,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.add_argument("--tag", action="append", type=_tag,
                     help="only items carrying this tag (repeatable = match any)")
     pl.add_argument("--all", action="store_true", help="include completed items")
-    pl.add_argument("--include-descendants", action="store_true",
+    pl.add_argument("-i", "--incl-desc", "--include-descendants",
+                    dest="include_descendants", action="store_true",
                     help="also list every descendant work node's board, grouped by node")
     pl.set_defaults(func=_list)
 
