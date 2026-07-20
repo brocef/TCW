@@ -1,29 +1,48 @@
+import yaml
+
 from tcw.store.fs import (
-    SENTINEL, child_nodes, descendant_nodes, find_node, find_node_root, init,
+    SENTINEL,
+    child_nodes,
+    descendant_nodes,
+    find_node,
+    find_node_root,
+    init,
+    parent_node,
     write_sentinel,
 )
 
 
-def _work_node(d):
-    """Mark `d` a work node (sentinel + docs/work) with no git init."""
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "docs" / "work").mkdir(parents=True, exist_ok=True)
-    write_sentinel(d)
-    return d.resolve()
+def work_node(path, project_id):
+    path.mkdir(parents=True, exist_ok=True)
+    init(["work"], path, project_id)
+    return path.resolve()
+
+
+def connect(parent, child, parent_id, child_id, locator=None):
+    parent_cfg = yaml.safe_load((parent / SENTINEL).read_text()) or {}
+    parent_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+        child_id
+    ] = locator or str(child)
+    (parent / SENTINEL).write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
+    child_cfg = yaml.safe_load((child / SENTINEL).read_text()) or {}
+    child_cfg["connected-projects"] = {
+        "parent": {parent_id: str(parent)}
+    }
+    (child / SENTINEL).write_text(yaml.safe_dump(child_cfg, sort_keys=False))
 
 
 def test_find_node_root_nearest(tmp_path):
-    write_sentinel(tmp_path)
+    write_sentinel(tmp_path, "root-project")
     sub = tmp_path / "a" / "b"
     sub.mkdir(parents=True)
     assert find_node_root(sub) == tmp_path.resolve()
 
 
 def test_find_node_root_nested_resolves_innermost(tmp_path):
-    write_sentinel(tmp_path)
+    write_sentinel(tmp_path, "root-project")
     inner = tmp_path / "proj"
     inner.mkdir()
-    write_sentinel(inner)
+    write_sentinel(inner, "inner-project")
     deep = inner / "x"
     deep.mkdir()
     assert find_node_root(deep) == inner.resolve()
@@ -33,97 +52,39 @@ def test_find_node_root_none_when_absent(tmp_path):
     assert find_node_root(tmp_path) is None
 
 
-def test_find_node_root_requires_a_file_not_a_dir(tmp_path):
-    (tmp_path / SENTINEL).mkdir()       # a *directory* named tcw-config.yaml
+def test_find_node_root_requires_file(tmp_path):
+    (tmp_path / SENTINEL).mkdir()
     assert find_node_root(tmp_path) is None
 
 
-def test_find_node_gates_on_component(tmp_path):
-    write_sentinel(tmp_path)
-    (tmp_path / "docs" / "work").mkdir(parents=True)
+def test_find_node_gates_on_component_and_valid_id(tmp_path):
+    init(["work"], tmp_path, "root-project")
     assert find_node("work", tmp_path) == tmp_path.resolve()
     assert find_node("taxonomy", tmp_path) is None
 
 
-def test_write_sentinel_idempotent(tmp_path):
-    assert write_sentinel(tmp_path) is True
-    assert write_sentinel(tmp_path) is False
-    assert (tmp_path / SENTINEL).is_file()
+def test_write_sentinel_idempotent_and_conflict(tmp_path):
+    assert write_sentinel(tmp_path, "root-project") is True
+    assert write_sentinel(tmp_path, "root-project") is False
 
 
-def test_init_writes_sentinel(tmp_path):
-    init(["work"], tmp_path)
-    assert (tmp_path / SENTINEL).is_file()
+def test_registered_topology_is_transitive_and_layout_independent(tmp_path):
+    root = work_node(tmp_path / "root", "root-project")
+    child = work_node(tmp_path / "elsewhere" / "child", "child-project")
+    deep = work_node(tmp_path / "another" / "deep", "deep-project")
+    connect(root, child, "root-project", "child-project")
+    connect(child, deep, "child-project", "deep-project")
+    assert child_nodes(root) == [child]
+    assert descendant_nodes(root) == [child, deep]
+    assert parent_node(deep) == child
 
 
-# ── descendant_nodes (sentinel-based, transitive) ────────────────────────────
-
-def test_descendant_nodes_sentinel_based(tmp_path):
-    _work_node(tmp_path)
-    a = _work_node(tmp_path / "Project-A")          # plain subdir, no git repo
-    assert descendant_nodes(tmp_path) == [a]
-    assert child_nodes(tmp_path) == []              # git-root-based → misses same-repo subdirs
-
-
-def test_descendant_nodes_transitive_and_sorted(tmp_path):
-    _work_node(tmp_path)
-    a = _work_node(tmp_path / "Project-A")
-    nested = _work_node(tmp_path / "Project-A" / "Nested")
-    b = _work_node(tmp_path / "Project-B")
-    assert descendant_nodes(tmp_path) == [a, nested, b]   # depth-first, path-sorted
-
-
-def test_descendant_nodes_skips_worktrees_and_git(tmp_path):
-    _work_node(tmp_path)
-    _work_node(tmp_path / ".worktrees" / "item")    # a --worktree checkout copies the sentinel
-    (tmp_path / ".git").mkdir()
-    assert descendant_nodes(tmp_path) == []
-
-
-def test_descendant_nodes_prunes_node_modules(tmp_path):
-    # descendant_nodes is on the `tcw serve` hot path; it must not chew through a
-    # dependency dir (which can't hold a genuine node anyway).
-    _work_node(tmp_path)
-    a = _work_node(tmp_path / "Project-A")
-    _work_node(tmp_path / "node_modules" / "pkg")   # sentinel buried in deps
-    assert descendant_nodes(tmp_path) == [a]
-
-
-def test_descendant_nodes_prunes_gitignored_tree(tmp_path):
-    # An ignored dir is untracked, so it can't hold a committed node — the scan
-    # must skip it wholesale rather than stat-walk build output / .venv / target.
-    import subprocess
-    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
-    (tmp_path / ".gitignore").write_text("build/\n")
-    _work_node(tmp_path)
-    a = _work_node(tmp_path / "Project-A")
-    buried = _work_node(tmp_path / "build" / "pkg")   # sentinel inside ignored tree
-    assert descendant_nodes(tmp_path) == [a]
-    assert buried not in descendant_nodes(tmp_path)
-
-
-def test_descendant_nodes_finds_gitignored_child_repo(tmp_path):
-    # Orchestrator pattern: the parent gitignores its child *repos* (separate git
-    # roots) so it doesn't track their files. Gitignore pruning must NOT drop them
-    # — a nested repo boundary is never junk — while still pruning each repo's own
-    # ignored bloat.
-    import subprocess
-    def _repo(d):
-        d.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "-C", str(d), "init", "-q"], check=True)
-        return d
-    _repo(tmp_path)
-    (tmp_path / ".gitignore").write_text("child-proj/\n")   # parent ignores the repo
-    _work_node(tmp_path)
-    child = _repo(tmp_path / "child-proj")
-    _work_node(child)
-    (child / ".gitignore").write_text("build/\n")           # child's own bloat
-    _work_node(child / "build" / "pkg")                     # ignored-by-child → skip
-    assert descendant_nodes(tmp_path) == [child.resolve()]
-
-
-def test_descendant_nodes_skips_symlink_cycle(tmp_path):
-    _work_node(tmp_path)
-    a = _work_node(tmp_path / "Project-A")
-    (a / "loop").symlink_to(tmp_path)               # naive walk would recurse forever
-    assert descendant_nodes(tmp_path) == [a]        # terminates; symlink not followed
+def test_valid_unregistered_nodes_and_decoy_trees_are_ignored(tmp_path):
+    root = work_node(tmp_path / "root", "root-project")
+    child = work_node(tmp_path / "child", "child-project")
+    decoy = work_node(tmp_path / "root" / "node_modules" / "decoy", "decoy-project")
+    worktree = work_node(tmp_path / "root" / ".worktrees" / "copy", "copy-project")
+    connect(root, child, "root-project", "child-project")
+    assert descendant_nodes(root) == [child]
+    assert decoy not in descendant_nodes(root)
+    assert worktree not in descendant_nodes(root)

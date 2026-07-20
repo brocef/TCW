@@ -12,6 +12,8 @@ from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import COMPONENTS, SENTINEL, find_node_root, git_root, init
+from tcw.store.project import FsProjectRegistry
+import yaml
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
 
@@ -21,7 +23,7 @@ _BUILT = [taxonomy_cli, capabilities_cli, work_cli]
 _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 
-def run_init(components: list[str]) -> int:
+def run_init(components: list[str], project_id: str | None = None) -> int:
     """Scaffold `docs/<component>/` trees under the current directory, mark it a
     node, and report. Shared by `tcw init` and each `tcw <component> init`."""
     root = Path.cwd()
@@ -33,7 +35,25 @@ def run_init(components: list[str]) -> int:
         print(f"tcw init: unknown component(s): {', '.join(unknown)}. "
               f"Choose from: {', '.join(COMPONENTS)}.", file=sys.stderr)
         return 2
-    created = init(components, root)
+    sentinel = root / SENTINEL
+    if project_id is None:
+        try:
+            configured = yaml.safe_load(sentinel.read_text(encoding="utf-8")) if sentinel.exists() else {}
+        except yaml.YAMLError as error:
+            print(f"tcw init: invalid {SENTINEL}: {error}", file=sys.stderr)
+            return 1
+        if not isinstance(configured, dict) or not configured.get("id"):
+            print(
+                "tcw init: new or legacy TCW nodes require `--id <project-id>`; "
+                "IDs are not inferred",
+                file=sys.stderr,
+            )
+            return 1
+    try:
+        created = init(components, root, project_id)
+    except (ValueError, OSError) as error:
+        print(f"tcw init: {error}", file=sys.stderr)
+        return 1
     print(f"Scaffolded {len(created)} dir(s) under {root / 'docs'}:")
     for p in created:
         print(f"  {p.relative_to(root)}")
@@ -42,7 +62,7 @@ def run_init(components: list[str]) -> int:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
-    return run_init(args.components or list(COMPONENTS))
+    return run_init(args.components or list(COMPONENTS), args.id)
 
 
 def _not_yet(name: str):
@@ -58,6 +78,12 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         print("tcw validate: no tcw node here — run `tcw init` in the project folder.",
               file=sys.stderr)
         return 1
+    registry_problems = FsProjectRegistry.open(node_root).check()
+    if registry_problems:
+        for problem in registry_problems:
+            print(problem, file=sys.stderr)
+        print(f"{len(registry_problems)} project graph problem(s).", file=sys.stderr)
+        return 1
     from tcw.validate import validate
     problems = validate(node_root, args.path)
     for p in problems:
@@ -72,6 +98,12 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 def _cmd_serve(args: argparse.Namespace) -> int:
     # Descendant node boards are aggregated by default (like
     # `tcw work list --include-descendants`).
+    node_root = find_node_root()
+    if node_root is None:
+        print("tcw serve: no tcw node here — run `tcw init --id <project-id>`.",
+              file=sys.stderr)
+        return 1
+    FsProjectRegistry.open(node_root).require_valid()
     return serve(port=args.port, open_browser=not args.no_open,
                  include_descendants=True)
 
@@ -84,6 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_init = sub.add_parser("init", help="scaffold component doc trees in this git repo")
     p_init.add_argument("components", nargs="*",
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")
+    p_init.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
     p_init.set_defaults(func=_cmd_init)
 
     p_validate = sub.add_parser(
@@ -121,7 +154,11 @@ def _normalize(argv: list[str]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(_normalize(argv))
-    return args.func(args)
+    try:
+        return args.func(args)
+    except ValueError as error:
+        print(f"tcw: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

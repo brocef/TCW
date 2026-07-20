@@ -13,7 +13,8 @@ from tcw.store.base import (
     RefError, SidecarError, WorkItem, declared_capabilities, topo_order,
 )
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsWorkStore, child_nodes, git_stage, parent_node, slugify,
+    FsCapabilitiesStore, FsWorkStore, child_nodes, git_stage, parent_node,
+    registered_project_id, slugify,
 )
 
 ROLLUP_RE = re.compile(r"<!-- tcw:rollup -->.*?<!-- /tcw:rollup -->", re.DOTALL)
@@ -72,7 +73,7 @@ def _tasks_for(node_root: Path, epic_slug: str) -> list[tuple[str, WorkItem]]:
     node_root = node_root.resolve()
     out: list[tuple[str, WorkItem]] = []
     for r in [node_root, *child_nodes(node_root)]:
-        rel = "." if r.resolve() == node_root else str(r.resolve().relative_to(node_root))
+        rel = "." if r.resolve() == node_root else registered_project_id(node_root, r)
         for item in FsWorkStore.open(r).query():
             if item.initiative == epic_slug:
                 out.append((rel, item))
@@ -205,7 +206,7 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
              initiative: str | None = None) -> Path:
     """Write a request DOWN into a child node's inbox/ (boundary: inbox only)."""
     node_root = node_root.resolve()
-    children = {str(c.resolve().relative_to(node_root)): c for c in child_nodes(node_root)}
+    children = {registered_project_id(node_root, c): c for c in child_nodes(node_root)}
     if child_ref not in children:
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
@@ -219,5 +220,5 @@ def escalate(node_root: Path, title: str, body: str = "",
     parent = parent_node(node_root)
     if parent is None:
         raise ValueError("no parent node to escalate to (this is the root)")
-    origin = str(node_root.resolve().relative_to(parent.resolve()))
+    origin = registered_project_id(node_root, node_root)
     return _inbox_write(parent / "docs" / "work" / "inbox", title, body, origin, initiative)

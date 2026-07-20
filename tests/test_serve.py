@@ -19,7 +19,7 @@ def node(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["taxonomy", "capabilities", "work"], root)
+    init(["taxonomy", "capabilities", "work"], root, "repo")
     return root
 
 
@@ -137,18 +137,24 @@ def test_inherited_taxonomy_term_detail_is_200_not_500(tmp_path):
     cons = tmp_path / "consumer"
     cons.mkdir()
     subprocess.run(["git", "init", "-q", str(cons)], check=True)
-    init(["taxonomy", "capabilities", "work"], cons)
+    init(["taxonomy", "capabilities", "work"], cons, "consumer")
+    (cons / "tcw-config.yaml").write_text(
+        "id: consumer\nconnected-projects:\n  children:\n    repo: ../repo\n"
+    )
+    (shared / "tcw-config.yaml").write_text(
+        "id: repo\nconnected-projects:\n  parent:\n    consumer: ../consumer\n"
+    )
     (cons / "docs" / "taxonomy" / "config.yaml").write_text(
-        "extends:\n  shared: ../repo\n", encoding="utf-8")
+        "extends:\n  - repo\n", encoding="utf-8")
 
     httpd = TcwServer((HOST, 0), cons)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
         base = f"http://{HOST}:{httpd.server_port}"
-        detail = get_json(base, "/api/taxonomy/shared%2Fargument")
+        detail = get_json(base, "/api/taxonomy/repo%2Fargument")
         assert detail["term"]["name"] == "Argument"
-        assert detail["term"]["origin"] == "shared"
+        assert detail["term"]["origin"] == "repo"
     finally:
         httpd.shutdown()
         httpd.server_close()

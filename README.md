@@ -137,65 +137,67 @@ symlink. Requires Python ≥ 3.11; the only runtime dependency is PyYAML.
 
 ```sh
 cd your-git-repo
-tcw init                    # scaffold docs/{taxonomy,capabilities,work}/
-tcw init taxonomy work      # …or just the components you name
-tcw work init               # …or per-component: same as `tcw init work`
+tcw init --id my-project                    # scaffold all three components
+tcw init --id my-project taxonomy work      # …or just named components
+tcw work init --id my-project               # …or use a component mirror
 tcw serve --no-open          # browse Work, Taxonomy, and Capabilities locally
 tcw validate                # check YAML soundness, tcw:// links, and tree integrity
 tcw --help                  # top-level groups: init | serve | validate | taxonomy | capabilities | work
 ```
 
-`tcw init` marks the **current directory** as a TCW node by writing a
-`tcw-config.yaml` sentinel there, then scaffolds `docs/<component>/` skeletons.
+`tcw init --id <project-id>` marks the **current directory** as a TCW node by
+writing a `tcw-config.yaml` sentinel with its canonical ID, then scaffolds
+`docs/<component>/` skeletons.
 It refuses outside a git repo (write transitions need git), but the node folder
 can be anywhere inside the repo — not just the root. Each component is a tree of
 docs under `docs/<component>/`. Each component group also has its own `init`
 mirror — `tcw taxonomy init`, `tcw capabilities init`, `tcw work init` —
-identical to `tcw init <component>`.
+identical to `tcw init --id <project-id> <component>`. Existing configured nodes
+may omit `--id`; legacy ID-less markers use it once to backfill their identity.
 
-### Multiple projects in one repo
+### Connected projects
 
-A single git repo can hold several TCW projects as subfolders. Run `tcw init`
-once inside each project folder to mark it as its own node:
-
-```
-/                               # one git repo (documentation root)
-  /.git
-  /project-a/
-    tcw-config.yaml             # marks project-a as a TCW node
-    docs/{taxonomy,capabilities,work}/
-  /project-b/
-    tcw-config.yaml             # marks project-b as a TCW node
-    docs/{taxonomy,capabilities,work}/
-```
+Projects may be nested, siblings, or anywhere else on the filesystem. Their
+canonical IDs are identity; filesystem paths are adapter locators only.
 
 ```sh
-cd project-a && tcw init        # scaffold + write sentinel in project-a/
-cd ../project-b && tcw init     # scaffold + write sentinel in project-b/
+cd orchestrator && tcw init --id orchestrator
+cd ../project-a && tcw init --id project-a
 ```
 
-Each `tcw` invocation operates on the nearest `tcw-config.yaml` ancestor — so
-`cd project-b && tcw work list` shows project-b's board, not project-a's. To see
-them together, run `tcw work list --include-descendants` from the enclosing
-folder — it lists the current node's board plus every descendant node's, grouped
-by node. Descendant items there carry a **subproject-qualified slug**
-(`sub/proj/<slug>`) that any work command accepts from the enclosing node
-(e.g. `tcw work show sub/proj/<slug>`) — resolving to that descendant item just as
-`cd sub/proj && tcw work show <slug>` would.
-
-Taxonomy `extends` works across sibling subfolder projects. Add an `extends`
-block in `project-b/docs/taxonomy/config.yaml` pointing at the sibling:
+Each invocation still selects the nearest enclosing sentinel. Cross-project
+operations use only reciprocal registrations:
 
 ```yaml
-extends:
-  base: ../project-a
+id: orchestrator
+connected-projects:
+  children:
+    project-a: ../project-a
 ```
 
-project-b's taxonomy commands then inherit project-a's terms automatically.
+```yaml
+id: project-a
+connected-projects:
+  parent:
+    orchestrator: ../orchestrator
+```
 
-> **Note:** Cross-node operations (`tcw work nodes` / epics / delegate /
-> escalate) currently discover nodes by git-repo root. Subfolder nodes within
-> the same repo will not appear as cross-node peers until a later update.
+Relative locators resolve from the declaring config; absolute locators are also
+allowed. `children` contains direct children only and `parent` has at most one
+entry. TCW derives deeper descendants and ancestors transitively, never by
+scanning directories or git metadata. `tcw work list --include-descendants`
+groups registered boards by project ID, and any work command accepts
+`<descendant-project-id>/<slug>`.
+
+Connections do not imply component inheritance. Each axis opts in explicitly:
+
+```yaml
+# docs/taxonomy/config.yaml
+extends:
+  - orchestrator
+```
+
+The source project ID is also the inherited namespace.
 
 ---
 
@@ -217,8 +219,8 @@ tcw serve --port 9000         # choose a different loopback port
 When the served node has **descendant TCW nodes** (the orchestrator/subproject
 pattern), `tcw serve` aggregates every descendant node's board alongside the
 current one automatically — the same items as `tcw work list --include-descendants`.
-Descendant items carry `sub/proj/<slug>` slugs, resolvable across the web app, and
-their URLs are namespaced (e.g. `/sub/proj/work/<slug>`).
+Descendant items carry `<project-id>/<slug>` addresses, resolvable across the web
+app, and their URLs use the same project-ID namespace.
 
 The app has tabs for the Taxonomy tree, Capabilities ledger, and Work board, and
 its **URL reflects the current view** (`/taxonomy`, `/work/<slug>`, …) so any state
@@ -270,12 +272,12 @@ overwrite each other.
 Any object's body prose can point at another TCW object with a `tcw://` link:
 
 ```
-tcw://[<namespace>/]<axis>/<ref>
+tcw://[<project-id>/]<axis>/<ref>
 ```
 
 - `<axis>` is `T` (Taxonomy), `C` (Capabilities), or `W` (Work).
-- `<namespace>` (optional) locates the object in another project — an `extends`
-  alias for `T`/`C`, a descendant node path for `W`. Absent = the local node.
+- `<project-id>` (optional) is a registered descendant for `W`, or a project
+  explicitly listed by that axis's `extends` for `T`/`C`. Absent = local.
 - `<ref>` is the identifier within that axis (taxonomy slug/path, capability
   path, work slug).
 
@@ -323,23 +325,22 @@ tcw taxonomy list                  # the forest, indented, flagged by origin
 tcw taxonomy list --local          # local terms only (hide imported)
 tcw taxonomy show admin/permission # read one term (or: tcw taxonomy admin/permission)
 tcw taxonomy search invoice        # match names + descriptions
-tcw taxonomy check                 # validate aliases + references
+tcw taxonomy check                 # validate inheritance + references
 
-tcw taxonomy extends add acme ../acme-shared   # import another repo's terms
-tcw taxonomy extends rm acme                   # drop the import
+tcw taxonomy extends add acme-shared   # inherit a registered project
+tcw taxonomy extends rm acme-shared    # drop the import
 ```
 
 A taxonomy entry's body comes from the argument or from **stdin** (`echo "..." | tcw
 taxonomy add Foo`). Feature entries can carry repeatable `--vocab <ref>` links
 to the vocabulary they involve; `tcw taxonomy check` validates those refs.
-Taxonomies can **federate**: `tcw taxonomy extends add
-<alias> <repo-path>` maps a consumer-chosen alias to a source taxonomy (writing
-the `extends` map in `config.yaml`), each alias is its own namespace, and there
+Taxonomies can **federate**: `tcw taxonomy extends add <project-id>` writes the
+registered source ID to the `extends` list in `config.yaml`. Each project ID is
+its own namespace, and there
 is **no silent merge** — a local `permission` and an imported `acme/permission`
 stay distinct. Capabilities federate the same way, and additionally let a
 consumer **override** an inherited entry per-project (see `tcw capabilities`
-above). Local sibling-repo paths only; remote git/URL sources are not yet
-supported.
+above).
 
 To **bootstrap** a taxonomy or capabilities ledger on a project newly adopting
 TCW, run `/tcw-taxonomy-init` or `/tcw-capabilities-init`: the assistant studies
@@ -383,16 +384,16 @@ and a mobile app that drive the same server declare their shared user stories
 once:
 
 ```sh
-tcw capabilities extends shared ../web-frontend   # inherit its capabilities
-tcw capabilities extends --rm shared              # drop the alias
+tcw capabilities extends web-frontend       # inherit a registered project
+tcw capabilities extends web-frontend --rm  # drop it
 ```
 
-Inherited capabilities surface flagged by origin (`shared/<path>`) and are
+Inherited capabilities surface flagged by origin (`web-frontend/<path>`) and are
 read-only in structure — a project can't delete one, only **override** it. Set an
 inherited capability exactly like a local one, by any path `show` accepts:
 
 ```sh
-tcw capabilities set shared/auth/login --status Omitted   # or the bare auth/login
+tcw capabilities set web-frontend/auth/login --status Omitted
 ```
 
 The override is written for you. It is a local folder whose `meta.yaml` has
@@ -521,19 +522,15 @@ items keeping creation order), then topologically — blockers appear before the
 items they block, since a priority preference can't jump a hard dependency —
 and annotates blocked items with their unresolved blockers.
 
-Pass `--include-descendants` to also list every **descendant work node** — any
-subfolder marked as its own TCW node (see [Multiple projects in one
-repo](#multiple-projects-in-one-repo)). The output is grouped by node, each
-board preceded by a `# <path>` header (`# .` for the current node, `# ./sub/proj`
-for a descendant, relative to the current node root), and the same `--status` /
-`--all` filters apply to every group.
+Pass `--include-descendants` to list every **registered descendant work node**.
+The output is grouped by project ID (`# .` for the current node), and the same
+`--status` / `--all` filters apply to every group.
 
-Descendant items are printed with a **subproject-qualified slug** —
-`sub/proj/<slug>` — so each printed slug is a usable address. You can pass that
+Descendant items are printed with a **project-qualified slug** —
+`<project-id>/<slug>` — so each printed slug is a usable address. You can pass that
 qualified slug to any work command from the enclosing node
-(`tcw work show sub/proj/<slug>`, `start`, `edit`, `complete`, `drop`, …); it
-resolves to the descendant item exactly as if you had `cd`-ed into `sub/proj/`
-first. A **bare** slug still resolves against the current node only. (`blocked-by:`
+(`tcw work show project-a/<slug>`, `start`, `edit`, `complete`, `drop`, …).
+A **bare** slug still resolves against the current node only. (`blocked-by:`
 refs shown on a qualified row stay node-local — they are bare slugs within that
 descendant.)
 
@@ -598,7 +595,7 @@ epic=$(tcw work new "Redesign checkout" --epic)
 tcw work new "Slice 1" --initiative "$epic" # in a child node: link a new task to the epic
 tcw work edit "$slug" --initiative "$epic"  # …or link an existing one
 
-tcw work reconcile "$epic"                  # scan child nodes → rollup into the epic
+tcw work reconcile "$epic"                  # follow registered descendants → rollup
 tcw work reconcile "$epic" --commit         # …and commit it
 tcw work reconcile "$epic" --complete-when-ready  # …and auto-close it if every child is resolved
 

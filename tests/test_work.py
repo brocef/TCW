@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tcw.store.base import WORK_ARTIFACTS, WORK_STATUSES, IllegalTransition, MultipleMatch, topo_order
 from tcw.store.fs import FsWorkStore, init
@@ -13,16 +14,28 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["work"], root)
+    init(["work"], root, name.lower())
     return root
 
 
 def subnode(parent: Path, rel: str) -> Path:
-    """A same-repo subdir node: sentinel + docs/work, NO separate git init — the
-    layout descendant_nodes (unlike git-root-based child_nodes) is meant to find."""
+    """Create and reciprocally register a same-repo child node."""
     d = parent / rel
     d.mkdir(parents=True)
-    init(["work"], d)
+    direct_parent = d.parent
+    while not (direct_parent / "tcw-config.yaml").is_file():
+        direct_parent = direct_parent.parent
+    project_id = d.name.lower()
+    init(["work"], d, project_id)
+    parent_cfg_path = direct_parent / "tcw-config.yaml"
+    parent_cfg = yaml.safe_load(parent_cfg_path.read_text()) or {}
+    connected = parent_cfg.setdefault("connected-projects", {})
+    connected.setdefault("children", {})[project_id] = str(d.relative_to(direct_parent))
+    parent_cfg_path.write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
+    child_cfg = yaml.safe_load((d / "tcw-config.yaml").read_text()) or {}
+    parent_id = parent_cfg["id"]
+    child_cfg["connected-projects"] = {"parent": {parent_id: str(direct_parent)}}
+    (d / "tcw-config.yaml").write_text(yaml.safe_dump(child_cfg, sort_keys=False))
     return d
 
 
@@ -903,7 +916,7 @@ def test_cli_work_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     monkeypatch.chdir(root)
-    assert main(["work", "init"]) == 0
+    assert main(["work", "init", "--id", "fresh"]) == 0
     comp_out = capsys.readouterr().out
     for s in ("inbox", "backlog", "active", "completed"):
         assert (root / "docs" / "work" / s / ".gitkeep").is_file()
@@ -1066,8 +1079,8 @@ def test_list_include_descendants_groups_by_node(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
     FsWorkStore.open(root).create("root thing", created="2026-01-01")
-    FsWorkStore.open(subnode(root, "Project-A")).create("A feature", created="2026-01-01")
-    FsWorkStore.open(subnode(root, "Project-B")).create("B feature", created="2026-01-01")
+    FsWorkStore.open(subnode(root, "project-a")).create("A feature", created="2026-01-01")
+    FsWorkStore.open(subnode(root, "project-b")).create("B feature", created="2026-01-01")
     (root / "plain-subdir").mkdir()                          # no sentinel → not a node
 
     monkeypatch.chdir(root)
@@ -1075,19 +1088,21 @@ def test_list_include_descendants_groups_by_node(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
 
     # root-first, then path-sorted; a non-node subdir is never a group
-    assert out.index("# .\n") < out.index("# ./Project-A") < out.index("# ./Project-B")
+    assert out.index("# .\n") < out.index("# project-a") < out.index("# project-b")
     assert "plain-subdir" not in out
     # each node's item shows under its own header (node-bounded boards)
-    assert out.index("2026-01-01-a-feature") < out.index("# ./Project-B")
-    assert "2026-01-01-b-feature" in out.split("# ./Project-B", 1)[1]
-    assert "2026-01-01-root-thing" in out.split("# ./Project-A", 1)[0]
+    assert out.index("2026-01-01-a-feature") < out.index("# project-b")
+    assert "2026-01-01-b-feature" in out.split("# project-b", 1)[1]
+    assert "2026-01-01-root-thing" in out.split("# project-a", 1)[0]
 
 
 def test_list_include_descendants_skips_own_worktree(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
     FsWorkStore.open(root).create("root thing", created="2026-01-01")
-    subnode(root, ".worktrees/some-item")                   # a --worktree checkout copies the sentinel
+    decoy = root / ".worktrees/some-item"
+    decoy.mkdir(parents=True)
+    init(["work"], decoy, "copied-worktree")                # valid but unregistered decoy
 
     monkeypatch.chdir(root)
     assert main(["work", "list", "--include-descendants"]) == 0
@@ -1097,12 +1112,13 @@ def test_list_include_descendants_skips_own_worktree(tmp_path, monkeypatch, caps
 def test_list_include_descendants_nested(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
-    FsWorkStore.open(subnode(root, "Project-A/Nested")).create("deep", created="2026-01-01")
+    mid = subnode(root, "project-a")
+    FsWorkStore.open(subnode(mid, "nested")).create("deep", created="2026-01-01")
 
     monkeypatch.chdir(root)
     assert main(["work", "list", "--include-descendants"]) == 0
     out = capsys.readouterr().out
-    assert "# ./Project-A/Nested" in out                    # transitive: nested node is its own group
+    assert "# nested" in out
     assert "2026-01-01-deep" in out
 
 
@@ -1110,12 +1126,12 @@ def test_list_without_flag_has_no_node_headers(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
     FsWorkStore.open(root).create("root thing", created="2026-01-01")
-    subnode(root, "Project-A")
+    subnode(root, "project-a")
 
     monkeypatch.chdir(root)
     assert main(["work", "list"]) == 0
     out = capsys.readouterr().out
-    assert "# ." not in out and "Project-A" not in out      # descendants untouched without the flag
+    assert "# ." not in out and "project-a" not in out      # descendants untouched without the flag
 
 
 # ── effort/complexity level normalization ────────────────────────────────────
@@ -1181,7 +1197,20 @@ def _git_subnode(parent: Path, rel: str) -> Path:
     subprocess.run(["git", "init", "-q", "--initial-branch=main", str(d)], check=True)
     subprocess.run(["git", "-C", str(d), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(d), "config", "user.name", "t"], check=True)
-    init(["work"], d)
+    project_id = d.name.lower()
+    init(["work"], d, project_id)
+    parent_cfg_path = parent / "tcw-config.yaml"
+    if parent_cfg_path.is_file():
+        parent_cfg = yaml.safe_load(parent_cfg_path.read_text()) or {}
+        parent_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+            project_id
+        ] = rel
+        parent_cfg_path.write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
+        child_cfg = yaml.safe_load((d / "tcw-config.yaml").read_text()) or {}
+        child_cfg["connected-projects"] = {
+            "parent": {parent_cfg["id"]: str(parent.resolve())}
+        }
+        (d / "tcw-config.yaml").write_text(yaml.safe_dump(child_cfg, sort_keys=False))
     subprocess.run(["git", "-C", str(d), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(d), "commit", "-q", "-m", "init"], check=True)
     return d
@@ -1191,11 +1220,11 @@ def test_list_include_descendants_qualifies_slugs(tmp_path, monkeypatch, capsys)
     from tcw.cli import main
     root = node(tmp_path)
     FsWorkStore.open(root).create("root thing", created="2026-01-01")
-    FsWorkStore.open(subnode(root, "Project-A")).create("a feature", created="2026-01-01")
+    FsWorkStore.open(subnode(root, "project-a")).create("a feature", created="2026-01-01")
     monkeypatch.chdir(root)
     assert main(["work", "list", "--include-descendants"]) == 0
     out = capsys.readouterr().out
-    assert "Project-A/2026-01-01-a-feature |" in out          # descendant slug qualified
+    assert "project-a/2026-01-01-a-feature |" in out          # descendant slug qualified
     anchor_line = next(l for l in out.splitlines() if "root-thing" in l)
     assert anchor_line.lstrip().startswith("2026-01-01-root-thing |")  # anchor stays bare
 
@@ -1203,12 +1232,12 @@ def test_list_include_descendants_qualifies_slugs(tmp_path, monkeypatch, capsys)
 def test_show_and_path_resolve_qualified_slug(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
-    sub = subnode(root, "Project-A")
+    sub = subnode(root, "project-a")
     slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
     monkeypatch.chdir(root)
-    assert main(["work", "show", f"Project-A/{slug}"]) == 0
+    assert main(["work", "show", f"project-a/{slug}"]) == 0
     assert slug in capsys.readouterr().out
-    assert main(["work", "path", f"Project-A/{slug}"]) == 0
+    assert main(["work", "path", f"project-a/{slug}"]) == 0
     out = capsys.readouterr().out.strip()
     assert out == str(sub / "docs" / "work" / "backlog" / slug)
 
@@ -1218,26 +1247,26 @@ def test_qualified_resolution_from_mid_tree_node(tmp_path, monkeypatch, capsys):
     itself, not the repo root."""
     from tcw.cli import main
     root = node(tmp_path)
-    mid = subnode(root, "Project-A")
-    grand = subnode(root, "Project-A/Nested")
+    mid = subnode(root, "project-a")
+    grand = subnode(mid, "nested")
     slug = FsWorkStore.open(grand).create("deep", created="2026-01-01").slug
     monkeypatch.chdir(mid)
-    assert main(["work", "show", f"Nested/{slug}"]) == 0
+    assert main(["work", "show", f"nested/{slug}"]) == 0
     assert slug in capsys.readouterr().out
 
 
 def test_start_complete_via_qualified_slug(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
-    sub = subnode(root, "Project-A")
+    sub = subnode(root, "project-a")
     slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
     monkeypatch.chdir(root)
-    assert main(["work", "start", f"Project-A/{slug}"]) == 0
+    assert main(["work", "start", f"project-a/{slug}"]) == 0
     out = capsys.readouterr()
-    assert f"started Project-A/{slug}" in out.out
-    assert f"complete Project-A/{slug}" in out.err            # hint echoes QUALIFIED slug
+    assert f"started project-a/{slug}" in out.out
+    assert f"complete project-a/{slug}" in out.err            # hint echoes QUALIFIED slug
     assert FsWorkStore.open(sub).get(slug).status == "active"
-    assert main(["work", "complete", f"Project-A/{slug}",
+    assert main(["work", "complete", f"project-a/{slug}",
                  "--resolution", "done", "--confirm"]) == 0
     assert FsWorkStore.open(sub).get(slug).status == "completed"
 
@@ -1248,13 +1277,13 @@ def test_worktree_roundtrip_via_qualified_slug(tmp_path, monkeypatch, capsys):
     complete (guards remove_worktree using bare, not the qualified slug)."""
     from tcw.cli import main
     root = node(tmp_path)
-    sub = _git_subnode(root, "Project-A")
+    sub = _git_subnode(root, "project-a")
     slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
     monkeypatch.chdir(root)
-    assert main(["work", "start", f"Project-A/{slug}", "--worktree"]) == 0
+    assert main(["work", "start", f"project-a/{slug}", "--worktree"]) == 0
     capsys.readouterr()
     assert (sub / ".worktrees" / slug / "docs" / "work" / "active" / slug).is_dir()
-    assert main(["work", "complete", f"Project-A/{slug}",
+    assert main(["work", "complete", f"project-a/{slug}",
                  "--resolution", "done", "--confirm"]) == 0
     assert not (sub / ".worktrees" / slug).exists()          # torn down via bare path
     assert FsWorkStore.open(sub).get(slug).status == "completed"
@@ -1263,10 +1292,10 @@ def test_worktree_roundtrip_via_qualified_slug(tmp_path, monkeypatch, capsys):
 def test_drop_via_qualified_slug(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
-    sub = subnode(root, "Project-A")
+    sub = subnode(root, "project-a")
     slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
     monkeypatch.chdir(root)
-    assert main(["work", "drop", f"Project-A/{slug}"]) == 0
+    assert main(["work", "drop", f"project-a/{slug}"]) == 0
     assert FsWorkStore.open(sub).get(slug) is None
 
 
@@ -1275,26 +1304,26 @@ def test_edit_blocks_reverse_stores_bare_ref(tmp_path, monkeypatch, capsys):
     node-local blocked_by (never the qualified form)."""
     from tcw.cli import main
     root = node(tmp_path)
-    sub = subnode(root, "Project-A")
+    sub = subnode(root, "project-a")
     s = FsWorkStore.open(sub)
     a = s.create("item a", created="2026-01-01").slug
     b = s.create("item b", created="2026-01-02").slug
     monkeypatch.chdir(root)
-    assert main(["work", "edit", f"Project-A/{a}", "--blocks", b]) == 0
+    assert main(["work", "edit", f"project-a/{a}", "--blocks", b]) == 0
     blockers = [x.get("slug") for x in FsWorkStore.open(sub).get(b).blocked_by]
-    assert a in blockers and f"Project-A/{a}" not in blockers
+    assert a in blockers and f"project-a/{a}" not in blockers
 
 
 def test_bare_slug_not_found_across_nodes(tmp_path, monkeypatch, capsys):
     """Backward compat: a descendant-only slug is NOT resolvable bare from the anchor."""
     from tcw.cli import main
     root = node(tmp_path)
-    sub = subnode(root, "Project-A")
+    sub = subnode(root, "project-a")
     slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
     monkeypatch.chdir(root)
     assert main(["work", "show", slug]) == 1                  # bare -> anchor only
     assert f"no such work item: {slug}" in capsys.readouterr().err
-    assert main(["work", "show", f"Project-A/{slug}"]) == 0   # qualified resolves
+    assert main(["work", "show", f"project-a/{slug}"]) == 0   # qualified resolves
 
 
 def test_unresolvable_qualifier_errors_with_qualified_slug(tmp_path, monkeypatch, capsys):
@@ -1309,11 +1338,11 @@ def test_qualified_ambiguous_bare_surfaces_multiple_match(tmp_path, monkeypatch,
     """A qualified ref whose bare part collides inside the descendant still errors."""
     from tcw.cli import main
     root = node(tmp_path)
-    sub = subnode(root, "Project-A")
+    sub = subnode(root, "project-a")
     for status in ("active", "backlog"):                      # two items named 'dup'
         d = sub / "docs/work" / status / "dup"
         d.mkdir(parents=True)
         (d / "state.yaml").write_text("slug: dup\n")
     monkeypatch.chdir(root)
-    assert main(["work", "show", "Project-A/dup"]) == 1
+    assert main(["work", "show", "project-a/dup"]) == 1
     assert "resolves to 2 items" in capsys.readouterr().err

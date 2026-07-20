@@ -1,1 +1,6 @@
-As a user, I run `tcw init [taxonomy|capabilities|work]` to scaffold the `docs/<component>/` trees (all three by default) in the **current directory** and mark it a TCW node by writing a `tcw-config.yaml` marker, or the per-component mirror `tcw <component> init` (e.g. `tcw work init`) to scaffold just one. So `cd project-b && tcw init` makes `project-b/` its own node. Either form refuses outside a git repo and reports each directory it created.
+As a user, I run `tcw init --id <project-id> [taxonomy|capabilities|work]` to
+scaffold component trees in the current git work tree and create a
+`tcw-config.yaml` marker with a canonical project ID. The per-component mirrors
+accept the same `--id`. On an already configured node I may omit `--id` or repeat
+the same value; a conflicting value is rejected. I can backfill a legacy marker
+with `tcw init --id <project-id>` without losing tags or other configuration.

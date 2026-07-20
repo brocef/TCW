@@ -130,7 +130,7 @@ def test_validate_reports_malformed_config_without_crashing(tmp_path):
     root = node(tmp_path)
     (root / "tcw-config.yaml").write_text("- not\n- a\n- mapping\n")
     problems = validate(root)                          # must not raise
-    assert any("work check" in p and "malformed" in p for p in problems)
+    assert any("project graph" in p and "config must be a mapping" in p for p in problems)
 
 
 # ── CLI end-to-end ───────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ DEFAULT_SUBCOMMAND = "show"  # `tcw taxonomy <path>` == `tcw taxonomy show <path
 
 def _init(args: argparse.Namespace) -> int:
     from tcw.cli import run_init      # function-local: top-level cli imports this module
-    return run_init([NAME])
+    return run_init([NAME], args.id)
 
 
 def _store() -> FsTaxonomyStore | None:
@@ -145,12 +145,12 @@ def _extends_add(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     try:
-        st.extends_add(args.alias, args.path)
+        st.extends_add(args.project_id)
     except ValueError as e:
         print(f"tcw taxonomy extends add: {e}", file=sys.stderr)
         return 1
-    print(f"Extends '{args.alias}' -> {args.path}  (docs/taxonomy/config.yaml). "
-          f"Run `tcw taxonomy check`.")
+    print(f"Extends project '{args.project_id}' (docs/taxonomy/config.yaml). "
+          "Run `tcw taxonomy check`.")
     return 0
 
 
@@ -159,11 +159,11 @@ def _extends_rm(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     try:
-        st.extends_remove(args.alias)
+        st.extends_remove(args.project_id)
     except ValueError as e:
         print(f"tcw taxonomy extends rm: {e}", file=sys.stderr)
         return 1
-    print(f"Removed extends '{args.alias}'")
+    print(f"Removed extends project '{args.project_id}'")
     return 0
 
 
@@ -171,8 +171,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="vocabulary and feature entries")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    g.add_parser("init", help="scaffold docs/taxonomy/ (mirror of `tcw init taxonomy`)") \
-        .set_defaults(func=_init)
+    pi = g.add_parser("init", help="scaffold docs/taxonomy/ (mirror of `tcw init taxonomy`)")
+    pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
+    pi.set_defaults(func=_init)
 
     pl = g.add_parser("list", help="list entries as a tree, flagged by kind and origin")
     pl.add_argument("--local", action="store_true", help="local entries only")
@@ -206,10 +207,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pe = g.add_parser("extends", help="declare taxonomy inheritance (federation)")
     eg = pe.add_subparsers(dest="ecmd", required=True)
-    pea = eg.add_parser("add", help="add an extends alias -> sibling repo path")
-    pea.add_argument("alias")
-    pea.add_argument("path", help="path to a sibling repo containing docs/taxonomy/")
+    pea = eg.add_parser("add", help="inherit a registered project's taxonomy")
+    pea.add_argument("project_id")
     pea.set_defaults(func=_extends_add)
-    per = eg.add_parser("rm", help="remove an extends alias")
-    per.add_argument("alias")
+    per = eg.add_parser("rm", help="remove an inherited project")
+    per.add_argument("project_id")
     per.set_defaults(func=_extends_rm)

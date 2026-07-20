@@ -1,1 +1,6 @@
-As a user, I browse Work, Taxonomy, and Capabilities in a local loopback web app (`tcw serve`) with deep-linkable URLs and browser history. The object list is a collapsible tree mirroring each axis's hierarchy — nested paths for taxonomy and capabilities, parent/child relations for work items — with selection and deep links auto-expanding a nested item's ancestors. The list column scrolls on its own, so a long tree stays navigable without moving the header or detail pane. Above the list I narrow it with a free-text filter plus a multi-select category dropdown: work items by **tag** (checkbox per registered tag, matching any selected), taxonomy terms by **kind** (Feature / Vocabulary); the work board also has status toggles, and all of these compose. Rendered `tcw://` references in an object's body become clickable in-app navigation to the target object; a reference to content this viewer isn't hosting (a foreign project, or a dangling link) renders inert.
+As a user, I browse Work, Taxonomy, and Capabilities in the local `tcw serve`
+web app with deep links, browser history, filtering, and editable object
+details. Hosted descendant work boards, routes, rollups, and cross-project
+navigation use canonical project IDs and are sourced only from the registered
+graph. Taxonomy and capability links follow their explicit per-axis inheritance
+lists; unknown, unregistered, or dangling foreign targets remain inert.

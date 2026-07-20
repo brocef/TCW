@@ -49,6 +49,51 @@ class SidecarError(ValueError):
     (malformed YAML, or a non-list delta value)."""
 
 
+@dataclass(frozen=True)
+class Project:
+    """A registered TCW project.
+
+    ``locator`` is deliberately opaque: filesystem adapters use a path while a
+    remote adapter may use a tracker key, URL, or database handle.
+    """
+
+    id: str
+    locator: Any
+
+
+class ProjectRegistry(ABC):
+    """Storage-neutral connected-project graph."""
+
+    @property
+    @abstractmethod
+    def current(self) -> Project:
+        """The project from which this registry was opened."""
+
+    @abstractmethod
+    def get(self, project_id: str) -> Project | None:
+        """Return a connected project by canonical ID."""
+
+    @abstractmethod
+    def parent(self, project_id: str | None = None) -> Project | None:
+        """Return the direct parent of a project, if any."""
+
+    @abstractmethod
+    def children(self, project_id: str | None = None) -> list[Project]:
+        """Return the direct children of a project."""
+
+    @abstractmethod
+    def ancestors(self, project_id: str | None = None) -> list[Project]:
+        """Return direct parent first, then the remaining ancestors."""
+
+    @abstractmethod
+    def descendants(self, project_id: str | None = None) -> list[Project]:
+        """Return every descendant in deterministic depth-first order."""
+
+    @abstractmethod
+    def check(self) -> list[str]:
+        """Return graph/configuration problems; empty means valid."""
+
+
 def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
     """Canonical read of a work item's ``capabilities.yaml`` into
     ``{"new": [...], "changed": [...]}`` — the work→capability back-pointers the
@@ -145,16 +190,12 @@ class TaxonomyStore(ABC):
         """Validate the taxonomy; return a list of problems (empty == clean)."""
 
     @abstractmethod
-    def extends_add(self, alias: str, ref: str) -> None:
-        """Declare federation: this taxonomy extends another store under `alias`.
-
-        `ref` is opaque to the interface (a sibling-repo path for the FS adapter,
-        a URL/id for a remote one). Refuse a duplicate alias or an unresolvable ref.
-        """
+    def extends_add(self, project_id: str) -> None:
+        """Explicitly inherit the taxonomy of a connected project."""
 
     @abstractmethod
-    def extends_remove(self, alias: str) -> None:
-        """Drop a federation alias. Refuse if it isn't present."""
+    def extends_remove(self, project_id: str) -> None:
+        """Drop an inherited project ID. Refuse if it isn't present."""
 
     @abstractmethod
     def get_term_detail(self, ref: str) -> "TermDetail" | None:
@@ -354,16 +395,12 @@ class CapabilitiesStore(ABC):
         """
 
     @abstractmethod
-    def extends_add(self, alias: str, ref: str) -> None:
-        """Declare federation: this store extends another under `alias`.
-
-        `ref` is opaque to the interface (a sibling-repo path for the FS adapter,
-        a URL/id for a remote one). Refuse a duplicate alias or an unresolvable ref.
-        """
+    def extends_add(self, project_id: str) -> None:
+        """Explicitly inherit capabilities from a connected project."""
 
     @abstractmethod
-    def extends_remove(self, alias: str) -> None:
-        """Drop a federation alias. Refuse if it isn't present."""
+    def extends_remove(self, project_id: str) -> None:
+        """Drop an inherited project ID. Refuse if it isn't present."""
 
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────

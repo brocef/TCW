@@ -16,7 +16,7 @@ def repo(tmp_path: Path, name: str) -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    write_sentinel(root)
+    write_sentinel(root, name)
     return root
 
 
@@ -35,17 +35,35 @@ def write_cap(root: Path, path: str, *, id=None, body="", docs=None, **meta) -> 
 
 
 def child_of(tmp_path, base_caps: dict) -> tuple[Path, Path]:
-    """Return (base, child) where child extends base under alias 'shared'."""
+    """Return (base, child) where child explicitly extends registered base."""
     base = repo(tmp_path, "base")
     for path, kw in base_caps.items():
         write_cap(base, path, **kw)
     child = repo(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    (base / "tcw-config.yaml").write_text(
+        "id: base\nconnected-projects:\n  children:\n    child: ../child\n"
+    )
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    FsCapabilitiesStore.open(child).extends_add("base")
     return base, child
 
 
 def store(root: Path) -> FsCapabilitiesStore:
     return FsCapabilitiesStore.open(root)         # reopen so extends resolves
+
+
+def connect_many(anchor: Path, *sources: Path) -> None:
+    children = "".join(f"    {p.name}: ../{p.name}\n" for p in sources)
+    (anchor / "tcw-config.yaml").write_text(
+        f"id: {anchor.name}\nconnected-projects:\n  children:\n{children}"
+    )
+    for source in sources:
+        (source / "tcw-config.yaml").write_text(
+            f"id: {source.name}\nconnected-projects:\n  parent:\n"
+            f"    {anchor.name}: ../{anchor.name}\n"
+        )
 
 
 # ── inheritance (read-through) ───────────────────────────────────────────────
@@ -54,9 +72,9 @@ def test_inherited_listed_with_origin(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported", "body": "Log in."}})
     caps = {c.qualified: c for c in store(child).list_all()}
-    assert "shared/auth/login" in caps
-    assert caps["shared/auth/login"].origin == "shared"
-    assert caps["shared/auth/login"].status == "Supported"
+    assert "base/auth/login" in caps
+    assert caps["base/auth/login"].origin == "base"
+    assert caps["base/auth/login"].status == "Supported"
 
 
 def test_local_only_excludes_inherited(tmp_path):
@@ -71,8 +89,8 @@ def test_get_inherited_by_prefixed_and_bare(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     st = store(child)
-    assert st.get("shared/auth/login").origin == "shared"
-    assert st.get("auth/login").origin == "shared"          # bare-wins resolution
+    assert st.get("base/auth/login").origin == "base"
+    assert st.get("auth/login").origin == "base"          # bare-wins resolution
 
 
 # ── override: metadata + body ────────────────────────────────────────────────
@@ -110,7 +128,7 @@ def test_override_omitted_still_listed(tmp_path):
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/login", overrides="cap-aaa111", Status="Omitted")
     caps = {c.qualified: c.status for c in store(child).list_all()}
-    assert caps.get("shared/auth/login") == "Omitted"
+    assert caps.get("base/auth/login") == "Omitted"
 
 
 def test_override_null_clears_field(tmp_path):
@@ -152,9 +170,10 @@ def test_check_ambiguous_override(tmp_path):
     base2 = repo(tmp_path, "base2")
     write_cap(base2, "b", id="cap-dup", Status="Supported")
     child = repo(tmp_path, "child")
+    connect_many(child, base, base2)
     st = FsCapabilitiesStore.open(child)
-    st.extends_add("one", "../base")
-    st.extends_add("two", "../base2")
+    st.extends_add("base")
+    st.extends_add("base2")
     write_cap(child, "ov/x", overrides="cap-dup", Status="Missing")
     assert any("ambiguous id" in p for p in store(child).check())
 
@@ -175,8 +194,9 @@ def test_check_unlisted_extra_doc(tmp_path):
 def test_check_federation_cycle(tmp_path):
     a = repo(tmp_path, "a")
     b = repo(tmp_path, "b")
-    FsCapabilitiesStore.open(a).extends_add("b", "../b")
-    FsCapabilitiesStore.open(b).extends_add("a", "../a")     # a→b→a
+    connect_many(a, b)
+    FsCapabilitiesStore.open(a).extends_add("b")
+    FsCapabilitiesStore.open(b).extends_add("a")     # a→b→a
     assert any("cycle in capability federation" in p for p in store(a).check())
 
 
@@ -185,7 +205,7 @@ def test_check_federation_cycle(tmp_path):
 def test_qualified_override_target(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
-    write_cap(child, "ov/login", overrides="shared/cap-aaa111", Status="Missing")
+    write_cap(child, "ov/login", overrides="base/cap-aaa111", Status="Missing")
     assert store(child).get("auth/login").status == "Missing"
     assert store(child).check() == []
 
@@ -206,8 +226,8 @@ def ov_meta(child: Path, path: str) -> dict:
 def test_set_inherited_qualified(tmp_path):
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
-    cap = store(child).set("shared/moderation/report-content", {"Status": "Missing"})
-    assert cap.status == "Missing" and cap.origin == "shared"
+    cap = store(child).set("base/moderation/report-content", {"Status": "Missing"})
+    assert cap.status == "Missing" and cap.origin == "base"
     assert store(child).get("moderation/report-content").status == "Missing"
     assert store(base).get("moderation/report-content").status == "Supported"
 
@@ -224,7 +244,7 @@ def test_set_inherited_materializes_mirrored_override(tmp_path):
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     store(child).set("moderation/report-content", {"Status": "Missing"})
     assert ov_meta(child, "moderation/report-content") == {
-        "overrides": "shared/cap-aaa111", "Status": "Missing"}
+        "overrides": "base/cap-aaa111", "Status": "Missing"}
     # No stray description.md — an empty one would still fall through, but the
     # override must stay a pure delta.
     assert not (child / "docs" / "capabilities" / "moderation" / "report-content"
@@ -239,7 +259,7 @@ def test_set_inherited_twice_updates_in_place(tmp_path):
     store(child).set("moderation/report-content", {"Status": "Partial",
                                                    "Gaps": "half done"})
     assert ov_meta(child, "moderation/report-content") == {
-        "overrides": "shared/cap-aaa111", "Status": "Partial", "Gaps": "half done"}
+        "overrides": "base/cap-aaa111", "Status": "Partial", "Gaps": "half done"}
     caps = [c for c in store(child).list_all() if c.path == "moderation/report-content"]
     assert len(caps) == 1 and caps[0].status == "Partial"
 
@@ -297,13 +317,13 @@ def test_set_inherited_falls_back_when_local_occupies_path(tmp_path):
     write_cap(child, "auth/login", id="cap-loc001", Status="Missing")
     before = (child / "docs" / "capabilities" / "auth" / "login" / "meta.yaml").read_bytes()
 
-    store(child).set("shared/auth/login", {"Status": "Partial", "Gaps": "wip"})
+    store(child).set("base/auth/login", {"Status": "Partial", "Gaps": "wip"})
 
     assert (child / "docs" / "capabilities" / "auth" / "login"
             / "meta.yaml").read_bytes() == before          # local untouched
-    assert ov_meta(child, "shared/auth/login") == {
-        "overrides": "shared/cap-aaa111", "Status": "Partial", "Gaps": "wip"}
-    assert store(child).get("shared/auth/login").status == "Partial"
+    assert ov_meta(child, "base/auth/login") == {
+        "overrides": "base/cap-aaa111", "Status": "Partial", "Gaps": "wip"}
+    assert store(child).get("base/auth/login").status == "Partial"
     assert store(child).get("auth/login").status == "Missing"   # bare wins local
     assert store(child).check() == []
 
@@ -316,22 +336,23 @@ def test_set_second_alias_same_path(tmp_path):
     base2 = repo(tmp_path, "base2")
     write_cap(base2, "a/thing", id="cap-two", Status="Supported")
     child = repo(tmp_path, "child")
+    connect_many(child, base, base2)
     st = FsCapabilitiesStore.open(child)
-    st.extends_add("one", "../base")
-    st.extends_add("two", "../base2")
+    st.extends_add("base")
+    st.extends_add("base2")
 
-    store(child).set("one/a/thing", {"Status": "Missing"})
-    store(child).set("two/a/thing", {"Status": "Omitted"})
+    store(child).set("base/a/thing", {"Status": "Missing"})
+    store(child).set("base2/a/thing", {"Status": "Omitted"})
 
-    assert store(child).get("one/a/thing").status == "Missing"
-    assert store(child).get("two/a/thing").status == "Omitted"
-    assert ov_meta(child, "a/thing")["overrides"] == "one/cap-one"
-    assert ov_meta(child, "two/a/thing")["overrides"] == "two/cap-two"
+    assert store(child).get("base/a/thing").status == "Missing"
+    assert store(child).get("base2/a/thing").status == "Omitted"
+    assert ov_meta(child, "a/thing")["overrides"] == "base/cap-one"
+    assert ov_meta(child, "base2/a/thing")["overrides"] == "base2/cap-two"
     assert store(child).check() == []
     # Re-entrant: each updates its own override in place.
-    store(child).set("two/a/thing", {"Status": "Partial", "Gaps": "x"})
-    assert store(child).get("two/a/thing").status == "Partial"
-    assert store(child).get("one/a/thing").status == "Missing"
+    store(child).set("base2/a/thing", {"Status": "Partial", "Gaps": "x"})
+    assert store(child).get("base2/a/thing").status == "Partial"
+    assert store(child).get("base/a/thing").status == "Missing"
 
 
 def test_set_ambiguous_bare_ref_raises(tmp_path):
@@ -340,9 +361,10 @@ def test_set_ambiguous_bare_ref_raises(tmp_path):
     base2 = repo(tmp_path, "base2")
     write_cap(base2, "a/thing", id="cap-two", Status="Supported")
     child = repo(tmp_path, "child")
+    connect_many(child, base, base2)
     st = FsCapabilitiesStore.open(child)
-    st.extends_add("one", "../base")
-    st.extends_add("two", "../base2")
+    st.extends_add("base")
+    st.extends_add("base2")
     with pytest.raises(AmbiguousRef):
         store(child).set("a/thing", {"Status": "Missing"})
 
@@ -353,7 +375,7 @@ def test_set_inherited_null_clears_inherited_field(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported", "Priority": "P1"}})
     store(child).set("auth/login", {"Priority": None})
-    assert ov_meta(child, "auth/login") == {"overrides": "shared/cap-aaa111",
+    assert ov_meta(child, "auth/login") == {"overrides": "base/cap-aaa111",
                                             "Priority": None}
     assert "Priority" not in store(child).get("auth/login").fields
     assert store(child).get("auth/login").status == "Supported"   # rest inherited
@@ -380,7 +402,7 @@ def test_unreviewed_bare_inherited(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     unreviewed = {c.qualified for c in store(child).unreviewed_inherited()}
-    assert unreviewed == {"shared/auth/login"}
+    assert unreviewed == {"base/auth/login"}
 
 
 def test_override_setting_status_is_reviewed(tmp_path):
@@ -397,7 +419,7 @@ def test_override_without_status_still_unreviewed(tmp_path):
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/login", overrides="cap-aaa111", Priority="P1")  # no Status
     unreviewed = {c.qualified for c in store(child).unreviewed_inherited()}
-    assert unreviewed == {"shared/auth/login"}
+    assert unreviewed == {"base/auth/login"}
 
 
 def test_local_capability_never_unreviewed(tmp_path):
@@ -407,9 +429,9 @@ def test_local_capability_never_unreviewed(tmp_path):
 
 
 def test_reviewed_via_alias_qualified_override_key(tmp_path):
-    """An override keyed by the alias-qualified id (shared/cap-...) counts as a
+    """An override keyed by the alias-qualified id (base/cap-...) counts as a
     local status decision, same as the bare-id form."""
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
-    write_cap(child, "ov/login", overrides="shared/cap-aaa111", Status="Missing")
+    write_cap(child, "ov/login", overrides="base/cap-aaa111", Status="Missing")
     assert store(child).unreviewed_inherited() == []

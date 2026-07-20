@@ -47,22 +47,21 @@ local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-cap
 - **Nest specializations** under a parent: `tcw taxonomy add <Name> --parent <path>`
   (`-s` to override the leaf slug; description inline or piped on stdin).
 - **Keep descriptions short** — one or two sentences of what the noun means here.
-- **Run `tcw taxonomy check` after edits** — it validates extends aliases,
+- **Run `tcw taxonomy check` after edits** — it validates inherited project IDs,
   taxonomy kinds, feature vocabulary refs, and every relatesTo / subject
-  reference (cycles, dup aliases, dangling/ambiguous refs).
+  reference (cycles, duplicate IDs, dangling/ambiguous refs).
 - **Cross-reference in prose with `tcw://` links** — a term description may link
   to another object with `[text](tcw://T/<slug>)` (or `C`/`W`, and an
-  `<alias>/`-prefixed namespace for federated terms). `tcw validate` resolves
+  `<project-id>/`-prefixed namespace for inherited terms). `tcw validate` resolves
   those links node-wide and the `tcw serve` viewer makes them clickable.
 
 ## Inheritance (federation)
 
-Import another node's taxonomy so shared nouns mean the same thing everywhere:
-`tcw taxonomy extends add <alias> <path>` (writes the `extends:` map; `rm <alias>`
-drops it). The path is local and relative to this node — a sibling repo, or a
-sibling project subfolder in the same repo (e.g. `../project-a`). Inherited terms
-show in `list` flagged by origin and qualify as `<alias>/<slug>`; they can't be
-removed locally. Remote git/URL sources are not yet supported (local paths only).
+Import another registered project's taxonomy explicitly:
+`tcw taxonomy extends add <project-id>` (`rm <project-id>` drops it). The ID must
+be reachable through the validated project graph; a connection alone does not
+imply inheritance. `extends` is a list and the source project ID is the inherited
+namespace (`<project-id>/<slug>`). Legacy alias/path maps fail closed.
 
 ## Bootstrap (read on demand)
 
@@ -78,6 +77,6 @@ refine with the user → write) → read [`references/init.md`](references/init.
 | nest under a parent | `tcw taxonomy add "<Name>" --parent <path>` |
 | link related terms | edit `relatesTo` in the term's `meta.yaml`, then `check` |
 | browse / read / find | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>` |
-| inherit another node's terms | `tcw taxonomy extends add <alias> <path>` · `… extends rm <alias>` (sibling repo or subfolder) |
+| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>` |
 | validate | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
 | remove a local term | `tcw taxonomy rm <path>` |

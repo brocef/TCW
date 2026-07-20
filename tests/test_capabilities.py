@@ -15,8 +15,19 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    write_sentinel(root)                # mark it a node for CLI (find_node) tests
+    write_sentinel(root, name)          # mark it a node for CLI (find_node) tests
     return root
+
+
+def connect(parent: Path, child: Path) -> None:
+    (parent / "tcw-config.yaml").write_text(
+        f"id: {parent.name}\nconnected-projects:\n  children:\n"
+        f"    {child.name}: ../{child.name}\n"
+    )
+    (child / "tcw-config.yaml").write_text(
+        f"id: {child.name}\nconnected-projects:\n  parent:\n"
+        f"    {parent.name}: ../{parent.name}\n"
+    )
 
 
 def write_cap(root: Path, path: str, body: str = "", **meta) -> None:
@@ -257,11 +268,12 @@ def test_cli_drift_flags_unreviewed_inherited(tmp_path, monkeypatch, capsys):
     base = node(tmp_path, "base")
     write_cap(base, "auth/login", Status="Supported")
     child = node(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    connect(base, child)
+    FsCapabilitiesStore.open(child).extends_add("base")
     monkeypatch.chdir(child)
     assert main(["capabilities", "drift"]) == 1
     out = capsys.readouterr().out
-    assert "unreviewed" in out and "shared/auth/login" in out
+    assert "unreviewed" in out and "base/auth/login" in out
 
 
 def test_cli_drift_clean_after_override(tmp_path, monkeypatch, capsys):
@@ -269,7 +281,8 @@ def test_cli_drift_clean_after_override(tmp_path, monkeypatch, capsys):
     base = node(tmp_path, "base")
     write_cap(base, "auth/login", Status="Supported")
     child = node(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    connect(base, child)
+    FsCapabilitiesStore.open(child).extends_add("base")
     FsCapabilitiesStore.open(child).set("auth/login", {"Status": "Omitted"})
     monkeypatch.chdir(child)
     assert main(["capabilities", "drift"]) == 0
@@ -322,7 +335,8 @@ def test_cli_drift_does_not_affect_check(tmp_path, monkeypatch, capsys):
     base = node(tmp_path, "base")
     write_cap(base, "auth/login", Status="Supported")
     child = node(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    connect(base, child)
+    FsCapabilitiesStore.open(child).extends_add("base")
     monkeypatch.chdir(child)
     assert main(["capabilities", "check"]) == 0        # unreviewed ≠ structural fault
 
@@ -396,11 +410,12 @@ def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
     FsCapabilitiesStore.open(base).add("moderation/report-content",
                                        name="Report content", status="Supported")
     child = node(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    connect(base, child)
+    FsCapabilitiesStore.open(child).extends_add("base")
     monkeypatch.chdir(child)
     from tcw.cli import main
 
-    assert main(["capabilities", "set", "shared/moderation/report-content",
+    assert main(["capabilities", "set", "base/moderation/report-content",
                  "--status", "Missing"]) == 0
     assert "Set" in capsys.readouterr().out
     assert FsCapabilitiesStore.open(child).get(
@@ -414,8 +429,17 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
         FsCapabilitiesStore.open(node(tmp_path, name)).add("x/thing", name="Thing")
     child = node(tmp_path, "child")
     st = FsCapabilitiesStore.open(child)
-    st.extends_add("one", "../one")
-    st.extends_add("two", "../two")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  children:\n"
+        "    one: ../one\n    two: ../two\n"
+    )
+    for name in ("one", "two"):
+        (tmp_path / name / "tcw-config.yaml").write_text(
+            f"id: {name}\nconnected-projects:\n  parent:\n    child: ../child\n"
+        )
+    st = FsCapabilitiesStore.open(child)
+    st.extends_add("one")
+    st.extends_add("two")
     monkeypatch.chdir(child)
     from tcw.cli import main
 
@@ -431,7 +455,7 @@ def test_cli_capabilities_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     monkeypatch.chdir(root)
-    assert main(["capabilities", "init"]) == 0
+    assert main(["capabilities", "init", "--id", "fresh"]) == 0
     comp_out = capsys.readouterr().out
     assert (root / "docs" / "capabilities" / ".gitkeep").is_file()
     assert main(["init", "capabilities"]) == 0

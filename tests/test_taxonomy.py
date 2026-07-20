@@ -14,7 +14,7 @@ def node(tmp_path: Path, name: str) -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    write_sentinel(root)                # mark it a node for CLI (find_node) tests
+    write_sentinel(root, name)          # mark it a node for CLI (find_node) tests
     return root
 
 
@@ -34,6 +34,18 @@ def write_term(root: Path, slug: str, name=None, relates_to=None, description=""
 
 def write_config(root: Path, text: str):
     (root / "docs" / "taxonomy" / "config.yaml").write_text(text)
+
+
+def connect_sources(consumer: Path, *sources: Path) -> None:
+    children = "".join(f"    {source.name}: ../{source.name}\n" for source in sources)
+    (consumer / "tcw-config.yaml").write_text(
+        f"id: {consumer.name}\nconnected-projects:\n  children:\n{children}"
+    )
+    for source in sources:
+        (source / "tcw-config.yaml").write_text(
+            f"id: {source.name}\nconnected-projects:\n  parent:\n"
+            f"    {consumer.name}: ../{consumer.name}\n"
+        )
 
 
 # ── add / identity ──────────────────────────────────────────────────────────
@@ -83,7 +95,8 @@ def consumer_with_shared(tmp_path, alias="shared", local_dup=False):
     shared = node(tmp_path, "shared")
     write_term(shared, "Argument", name="Argument")
     cons = node(tmp_path, "consumer")
-    write_config(cons, f"extends:\n  {alias}: ../shared\n")
+    connect_sources(cons, shared)
+    write_config(cons, "extends:\n  - shared\n")
     if local_dup:
         write_term(cons, "Argument", name="Local Argument")
     return cons, shared
@@ -114,7 +127,8 @@ def test_resolution_ambiguous_errors(tmp_path):
     a = node(tmp_path, "a"); write_term(a, "Term", name="A")
     b = node(tmp_path, "b"); write_term(b, "Term", name="B")
     cons = node(tmp_path, "consumer")
-    write_config(cons, "extends:\n  a: ../a\n  b: ../b\n")
+    connect_sources(cons, a, b)
+    write_config(cons, "extends:\n  - a\n  - b\n")
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(AmbiguousRef):
         st.get("Term")
@@ -193,18 +207,20 @@ def test_check_ambiguous_relatesto(tmp_path):
     a = node(tmp_path, "a"); write_term(a, "Term")
     b = node(tmp_path, "b"); write_term(b, "Term")
     cons = node(tmp_path, "consumer")
-    write_config(cons, "extends:\n  a: ../a\n  b: ../b\n")
+    connect_sources(cons, a, b)
+    write_config(cons, "extends:\n  - a\n  - b\n")
     write_term(cons, "host", relates_to=["Term"])
     problems = FsTaxonomyStore.open(cons).check()
     assert any("ambiguous" in p for p in problems)
 
 
-def test_check_duplicate_alias(tmp_path):
+def test_check_duplicate_project_id(tmp_path):
     cons = node(tmp_path, "consumer")
     other = node(tmp_path, "other")
-    write_config(cons, "extends:\n  shared: ../other\n  shared: ../other\n")
-    problems = FsTaxonomyStore.open(cons).check()
-    assert any("config.yaml" in p for p in problems)
+    connect_sources(cons, other)
+    write_config(cons, "extends:\n  - other\n  - other\n")
+    with pytest.raises(ValueError, match="duplicate project IDs"):
+        FsTaxonomyStore.open(cons)
 
 
 def test_check_alias_collides_with_local_top_level(tmp_path):
@@ -217,17 +233,18 @@ def test_check_alias_collides_with_local_top_level(tmp_path):
 def test_check_cycle(tmp_path):
     a = node(tmp_path, "a")
     b = node(tmp_path, "b")
-    write_config(a, "extends:\n  b: ../b\n")
-    write_config(b, "extends:\n  a: ../a\n")
+    connect_sources(a, b)
+    write_config(a, "extends:\n  - b\n")
+    write_config(b, "extends:\n  - a\n")
     problems = FsTaxonomyStore.open(a).check()
     assert any("cycle" in p for p in problems)
 
 
-def test_check_missing_extends_path(tmp_path):
+def test_check_unknown_extends_project(tmp_path):
     cons = node(tmp_path, "consumer")
-    write_config(cons, "extends:\n  ghost: ../does-not-exist\n")
-    problems = FsTaxonomyStore.open(cons).check()
-    assert any("does not exist" in p for p in problems)
+    write_config(cons, "extends:\n  - ghost\n")
+    with pytest.raises(ValueError, match="not reachable"):
+        FsTaxonomyStore.open(cons)
 
 
 # ── CLI smoke (bare-path sugar) ─────────────────────────────────────────────
@@ -277,7 +294,7 @@ def test_cli_taxonomy_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     monkeypatch.chdir(root)
-    assert main(["taxonomy", "init"]) == 0
+    assert main(["taxonomy", "init", "--id", "fresh"]) == 0
     comp_out = capsys.readouterr().out
     assert (root / "docs" / "taxonomy" / ".gitkeep").is_file()
     assert main(["init", "taxonomy"]) == 0          # idempotent; same report
@@ -290,47 +307,51 @@ def test_extends_add_writes_map_and_resolves(tmp_path):
     base = node(tmp_path, "base")
     write_term(base, "widget", name="Widget")
     consumer = node(tmp_path, "consumer")
-    FsTaxonomyStore.open(consumer).extends_add("shared", "../base")
+    connect_sources(consumer, base)
+    FsTaxonomyStore.open(consumer).extends_add("base")
     st = FsTaxonomyStore.open(consumer)            # reopen to load the new federation
-    assert "shared/widget" in {t.qualified for t in st.list_all()}
-    assert st.get("shared/widget").name == "Widget"
+    assert "base/widget" in {t.qualified for t in st.list_all()}
+    assert st.get("base/widget").name == "Widget"
 
 
 def test_extends_add_refuses(tmp_path):
-    node(tmp_path, "base")
+    base = node(tmp_path, "base")
     consumer = node(tmp_path, "consumer")
-    FsTaxonomyStore.open(consumer).extends_add("shared", "../base")
+    connect_sources(consumer, base)
+    FsTaxonomyStore.open(consumer).extends_add("base")
     st = FsTaxonomyStore.open(consumer)
     with pytest.raises(ValueError):               # duplicate alias
-        st.extends_add("shared", "../base")
+        st.extends_add("base")
     with pytest.raises(ValueError):               # missing target repo
-        st.extends_add("nope", "../does-not-exist")
+        st.extends_add("nope")
     with pytest.raises(ValueError):               # self-reference
-        st.extends_add("self", ".")
+        st.extends_add("consumer")
 
 
 def test_extends_remove(tmp_path):
-    node(tmp_path, "base")
+    base = node(tmp_path, "base")
     consumer = node(tmp_path, "consumer")
-    FsTaxonomyStore.open(consumer).extends_add("shared", "../base")
+    connect_sources(consumer, base)
+    FsTaxonomyStore.open(consumer).extends_add("base")
     st = FsTaxonomyStore.open(consumer)
-    st.extends_remove("shared")
-    assert "shared" not in (FsTaxonomyStore.open(consumer).config.get("extends") or {})
+    st.extends_remove("base")
+    assert "base" not in (FsTaxonomyStore.open(consumer).config.get("extends") or [])
     with pytest.raises(ValueError):               # absent alias
-        FsTaxonomyStore.open(consumer).extends_remove("shared")
+        FsTaxonomyStore.open(consumer).extends_remove("base")
 
 
 def test_cli_extends_add_and_rm(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
-    node(tmp_path, "base")
+    base = node(tmp_path, "base")
     consumer = node(tmp_path, "consumer")
+    connect_sources(consumer, base)
     monkeypatch.chdir(consumer)
-    assert main(["taxonomy", "extends", "add", "shared", "../base"]) == 0
+    assert main(["taxonomy", "extends", "add", "base"]) == 0
     capsys.readouterr()
     assert (consumer / "docs/taxonomy/config.yaml").exists()
-    assert main(["taxonomy", "extends", "add", "shared", "../base"]) == 1   # duplicate → error exit
+    assert main(["taxonomy", "extends", "add", "base"]) == 1
     assert "already exists" in capsys.readouterr().err
-    assert main(["taxonomy", "extends", "rm", "shared"]) == 0
+    assert main(["taxonomy", "extends", "rm", "base"]) == 0
 
 
 def test_cli_extends_is_not_treated_as_a_term_path(tmp_path, monkeypatch, capsys):

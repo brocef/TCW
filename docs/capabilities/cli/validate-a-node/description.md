@@ -1,1 +1,6 @@
-As a user, I run `tcw validate [path]` to check a whole node (or a single file/dir) in one pass — YAML well-formedness, `tcw://` link resolution, and each component's own `check` — and get `validate OK` (exit 0) or a grouped list of problems (exit 1). Scheme examples inside Markdown code spans are ignored so docs that teach `tcw://` don't fail their own validator.
+As a user, I run `tcw validate [path]` to validate the current registered project
+graph plus YAML, `tcw://` links, and bounded component stores. Graph validation
+always runs even when `path` narrows component checks. Missing or invalid IDs,
+malformed registrations, missing targets, mismatched keys, nonreciprocal edges,
+cycles, legacy inheritance maps, and unreachable inheritance targets fail
+closed with migration guidance.

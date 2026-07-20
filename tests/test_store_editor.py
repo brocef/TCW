@@ -530,7 +530,7 @@ def test_update_term_refuses_inherited(tmp_path):
                    check=True)
     subprocess.run(["git", "-C", str(shared), "config", "user.name", "t"],
                    check=True)
-    write_sentinel(shared)
+    write_sentinel(shared, "shared")
     FsTaxonomyStore.open(shared).add("Widget")
 
     cons = tmp_path / "consumer"
@@ -540,8 +540,14 @@ def test_update_term_refuses_inherited(tmp_path):
                    check=True)
     subprocess.run(["git", "-C", str(cons), "config", "user.name", "t"],
                    check=True)
-    write_sentinel(cons)
-    FsTaxonomyStore.open(cons).extends_add("shared", "../shared")
+    write_sentinel(cons, "consumer")
+    (cons / "tcw-config.yaml").write_text(
+        "id: consumer\nconnected-projects:\n  children:\n    shared: ../shared\n"
+    )
+    (shared / "tcw-config.yaml").write_text(
+        "id: shared\nconnected-projects:\n  parent:\n    consumer: ../consumer\n"
+    )
+    FsTaxonomyStore.open(cons).extends_add("shared")
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(ValueError, match="cannot update inherited"):
         st.update_term("shared/widget", name="X")
@@ -653,13 +659,21 @@ def test_add_invalid_status(tmp_path):
 
 
 def _federated(tmp_path) -> tuple[Path, Path]:
-    """(base, child) where child extends base under alias 'shared', base
+    """(base, child) where child extends registered base, base
     declaring a single `routes/login` capability."""
     base = _cap_node(tmp_path / "b")
     FsCapabilitiesStore.open(base).add("routes/login", name="Sign in",
                                        status="Supported", body="UPSTREAM.")
     child = _cap_node(tmp_path / "c")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../../b/repo")
+    (child / "tcw-config.yaml").write_text(
+        f"id: child-project\nconnected-projects:\n  children:\n"
+        f"    base-project: {base}\n"
+    )
+    (base / "tcw-config.yaml").write_text(
+        f"id: base-project\nconnected-projects:\n  parent:\n"
+        f"    child-project: {child}\n"
+    )
+    FsCapabilitiesStore.open(child).extends_add("base-project")
     return base, child
 
 
@@ -668,7 +682,7 @@ def test_update_capability_inherited_fields(tmp_path):
     st = FsCapabilitiesStore.open(child)
     detail = st.update_capability("routes/login", fields={"Status": "Missing"})
     assert detail.capability.status == "Missing"
-    assert detail.capability.origin == "shared"
+    assert detail.capability.origin == "base-project"
     # Upstream untouched.
     assert FsCapabilitiesStore.open(base).get("routes/login").status == "Supported"
 
@@ -693,7 +707,7 @@ def test_update_capability_inherited_matches_set(tmp_path):
     via_set = written(child2, lambda st: st.set("routes/login",
                                                 {"Status": "Missing"}))
 
-    assert via_update == via_set == {"overrides": "shared/<id>", "Status": "Missing"}
+    assert via_update == via_set == {"overrides": "base-project/<id>", "Status": "Missing"}
 
 
 def test_update_capability_inherited_body(tmp_path):

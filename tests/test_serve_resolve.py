@@ -9,6 +9,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
+import yaml
 
 from tcw.serve import HOST, RESOLVE_MAX_URIS, TcwServer
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, init
@@ -20,8 +21,22 @@ def _node(tmp_path: Path, name: str = "repo") -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["taxonomy", "capabilities", "work"], root)
+    init(["taxonomy", "capabilities", "work"], root, name)
     return root
+
+
+def _connect(anchor: Path, child: Path) -> None:
+    anchor_cfg = yaml.safe_load((anchor / "tcw-config.yaml").read_text()) or {}
+    child_cfg = yaml.safe_load((child / "tcw-config.yaml").read_text()) or {}
+    child_id = child_cfg["id"]
+    anchor_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+        child_id
+    ] = str(child.resolve())
+    child_cfg["connected-projects"] = {
+        "parent": {anchor_cfg["id"]: str(anchor.resolve())}
+    }
+    (anchor / "tcw-config.yaml").write_text(yaml.safe_dump(anchor_cfg, sort_keys=False))
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_cfg, sort_keys=False))
 
 
 def _start(root: Path, include_descendants: bool = False):
@@ -66,12 +81,13 @@ def test_resolve_federated_capability(tmp_path):
     base_repo = _node(tmp_path, "base")
     FsCapabilitiesStore.open(base_repo).add("auth/login", name="Sign in")
     child = _node(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    _connect(child, base_repo)
+    FsCapabilitiesStore.open(child).extends_add("base")
     httpd, base = _start(child)
     try:
-        _, body = _resolve(base, ["tcw://shared/C/auth/login"])
-        assert body["tcw://shared/C/auth/login"] == {
-            "ok": True, "axis": "capabilities", "key": "shared/auth/login"}
+        _, body = _resolve(base, ["tcw://base/C/auth/login"])
+        assert body["tcw://base/C/auth/login"] == {
+            "ok": True, "axis": "capabilities", "key": "base/auth/login"}
     finally:
         httpd.shutdown()
 
@@ -80,9 +96,10 @@ def test_resolve_descendant_work_gated(tmp_path):
     root = _node(tmp_path)
     sub = root / "sub" / "proj"
     sub.mkdir(parents=True)
-    init(["work"], sub)
+    init(["work"], sub, "proj")
+    _connect(root, sub)
     item = FsWorkStore.open(sub).create("Child", created="2026-01-01")
-    uri = f"tcw://sub/proj/W/{item.slug}"
+    uri = f"tcw://proj/W/{item.slug}"
 
     # Not aggregating descendants -> unhosted.
     httpd, base = _start(root, include_descendants=False)
@@ -97,7 +114,7 @@ def test_resolve_descendant_work_gated(tmp_path):
     try:
         _, body = _resolve(base, [uri])
         assert body[uri] == {
-            "ok": True, "axis": "work", "key": f"sub/proj/{item.slug}"}
+            "ok": True, "axis": "work", "key": f"proj/{item.slug}"}
     finally:
         httpd.shutdown()
 

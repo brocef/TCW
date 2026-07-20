@@ -32,6 +32,7 @@ from tcw.store.base import (
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
+from tcw.store.project import FsProjectRegistry, validate_project_id
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
@@ -58,19 +59,27 @@ def git_root(start: Path | None = None) -> Path | None:
 
 
 SENTINEL = "tcw-config.yaml"
-_SENTINEL_STUB = (
-    "# tcw node marker — declares this folder a TCW project (node).\n"
-    "# Future config (inheritance, etc.) goes here.\n"
-)
-
-
-def write_sentinel(root: Path) -> bool:
-    """Create the node sentinel at `root` if absent; return True iff it wrote one.
-    Create-don't-stage (mirrors how `init` scaffolds dirs) — never touches the index."""
+def write_sentinel(root: Path, project_id: str | None = None) -> bool:
+    """Create or backfill the node sentinel without discarding configuration."""
     p = root / SENTINEL
-    if p.exists():
+    existing = load_yaml(p, unique=True) if p.exists() else {}
+    if not isinstance(existing, dict):
+        raise ValueError(f"{p}: config must be a mapping")
+    configured = existing.get("id")
+    if configured is not None:
+        if not isinstance(configured, str):
+            raise ValueError(f"{p}: project ID must be a string")
+        configured = validate_project_id(configured)
+        if project_id is not None and validate_project_id(project_id) != configured:
+            raise ValueError(
+                f"project already has id '{configured}'; refusing conflicting id '{project_id}'"
+            )
         return False
-    p.write_text(_SENTINEL_STUB, encoding="utf-8")
+    # Direct adapter callers (principally isolated store tests) receive a stable
+    # fixture identity. The public CLI enforces explicit --id before calling us.
+    project_id = project_id or "test-project"
+    existing = {"id": validate_project_id(project_id), **existing}
+    dump_yaml(p, existing)
     return True
 
 
@@ -92,114 +101,51 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     ancestor marked by a `tcw-config.yaml` sentinel (FS-adapter-local). Returns
     the node iff it has that component, preserving the prior contract."""
     nr = find_node_root(start)
-    return nr if nr is not None and (nr / "docs" / component).is_dir() else None
-
-
-def _git_common_dir(path: Path) -> Path | None:
-    """Absolute shared `.git` dir for the repo containing `path` (None if outside
-    a work-tree). A linked worktree resolves to its MAIN repo's `.git`; a
-    standalone repo resolves to its own — the basis for excluding own worktrees.
-    --path-format=absolute is required: the default is cwd-relative and would
-    mis-compare (Spec 2 §3.1)."""
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(path), "rev-parse", "--path-format=absolute",
-             "--git-common-dir"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    if nr is None:
         return None
-    return Path(out).resolve()
+    FsProjectRegistry.open(nr).require_valid()
+    return nr if (nr / "docs" / component).is_dir() else None
 
 
 def child_nodes(root: Path) -> list[Path]:
-    """Nearest descendant nodes (git work-tree + docs/work/) under `root`.
-
-    Descent stops at each found node (its children are its own — A.2). Excludes
-    `root`'s own linked worktrees: a candidate whose git-common-dir equals
-    `root`'s is the same logical node, not a child. FS-adapter-local.
-    Shells `git_root` per dir, so it prunes NODE_SCAN_SKIP and all dot-dirs (a
-    child node lives in a plainly-named dir) — else a `node_modules/` would mean a
-    git spawn per package dir, which hung epic-complete/nodes/reconcile.
-    """
-    root = root.resolve()
-    own_common = _git_common_dir(root)
-    found: list[Path] = []
-
-    def walk(d: Path) -> None:
-        for child in sorted(p for p in d.iterdir()
-                            if p.is_dir() and p.name not in NODE_SCAN_SKIP
-                            and not p.name.startswith(".")):
-            top = git_root(child)
-            is_node = (top is not None and top.resolve() == child.resolve()
-                       and (child / "docs" / "work").is_dir())
-            if is_node and _git_common_dir(child) != own_common:
-                found.append(child)        # genuine child node — don't descend
-            else:
-                walk(child)                # plain subdir or our own worktree
-    walk(root)
-    return found
+    """Direct registered children that contain a work store."""
+    registry = FsProjectRegistry.open(root).require_valid()
+    return [
+        Path(project.locator)
+        for project in registry.children()
+        if (Path(project.locator) / "docs" / "work").is_dir()
+    ]
 
 
 def parent_node(root: Path) -> Path | None:
-    """Nearest ancestor node above `root`, or None. FS-adapter-local."""
-    root = root.resolve()
-    search = git_root(root.parent)
-    while search is not None:
-        search = search.resolve()
-        if search != root and (search / "docs" / "work").is_dir():
-            return search
-        nxt = git_root(search.parent)      # climb above this enclosing repo
-        if nxt is None or nxt.resolve() == search:
-            return None
-        search = nxt
-    return None
-
-
-def _ignored_dirs(root: Path) -> set[Path]:
-    """Absolute paths of directories git ignores under `root`'s repo, collapsed (a
-    fully-ignored dir is returned once, not per-file). Empty if `root` isn't in a
-    git work-tree. One `git ls-files` beats stat-walking gigabytes of build output —
-    an ignored dir is untracked, so it can never hold a committed work node."""
-    try:
-        out = subprocess.run(                          # bytes: filenames aren't
-            ["git", "-C", str(root), "ls-files", "-oi", "--directory",
-             "--exclude-standard", "-z"],               # guaranteed UTF-8
-            capture_output=True, check=True,
-        ).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return set()
-    return {(root / os.fsdecode(p)).resolve() for p in out.split(b"\0") if p}
+    """Direct registered parent that contains a work store."""
+    registry = FsProjectRegistry.open(root).require_valid()
+    parent = registry.parent()
+    if parent is None:
+        return None
+    path = Path(parent.locator)
+    return path if (path / "docs" / "work").is_dir() else None
 
 
 def descendant_nodes(root: Path) -> list[Path]:
-    """All descendant work nodes (tcw-config.yaml + docs/work/) at any depth below
-    `root`. Sentinel-based (matches find_node_root), so it finds plain subdirs of
-    one repo — unlike git-root-based child_nodes(), which returns only nearest-repo
-    children. Transitive: descends past found nodes so nested nodes are returned
-    too. Skips symlinked dirs (cycle-safe; we don't chase symlinked trees). Returned
-    depth-first, path-sorted (deterministic). FS-adapter-local.
-    ponytail: prunes NODE_SCAN_SKIP by name plus each repo's own gitignored subtrees
-    (one `git ls-files` per repo boundary) — build output / Pods / .venv that can't
-    hold a node. Pruning is PER-REPO because the orchestrator pattern gitignores its
-    child *repos* from the parent: a nested repo boundary is therefore never pruned
-    (we cross it and switch to its own ignores), only the junk each repo declares.
-    """
-    root = root.resolve()
-    found: list[Path] = []
+    """All registered descendants that contain a work store."""
+    registry = FsProjectRegistry.open(root).require_valid()
+    return [
+        Path(project.locator)
+        for project in registry.descendants()
+        if (Path(project.locator) / "docs" / "work").is_dir()
+    ]
 
-    def walk(d: Path, ignored: set[Path]) -> None:
-        for child in sorted(p for p in d.iterdir()    # p is canonical already:
-                            if p.is_dir() and not p.is_symlink()   # root resolved,
-                            and p.name not in NODE_SCAN_SKIP):      # no symlink links
-            is_repo = (child / ".git").exists()        # boundary → own ignore rules
-            if child in ignored and not is_repo:        # gitignored junk in this repo
-                continue                                # (a child repo is never junk)
-            if (child / SENTINEL).is_file() and (child / "docs" / "work").is_dir():
-                found.append(child)
-            walk(child, _ignored_dirs(child) if is_repo else ignored)
-    walk(root, _ignored_dirs(root))
-    return found
+
+def registered_project_id(anchor: Path, target: Path) -> str:
+    """Return the canonical ID for a project reachable from ``anchor``."""
+    target = target.resolve()
+    registry = FsProjectRegistry.open(anchor).require_valid()
+    projects = [registry.current, *registry.ancestors(), *registry.descendants()]
+    for project in projects:
+        if Path(project.locator).resolve() == target:
+            return project.id
+    raise ValueError(f"{target} is not registered from project '{registry.current.id}'")
 
 
 def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, str] | None":
@@ -228,7 +174,7 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
     `cd`-ing into the node, so it belongs in the FS adapter, not the abstract
     store — cross-node addressing realized over the filesystem tree.
     """
-    anchor = anchor.resolve()                      # lexical guards below need a real path
+    anchor = anchor.resolve()
     ref = ref.strip()
     if ref.startswith("./"):
         ref = ref[2:]
@@ -243,18 +189,17 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
         if item is None or item.status != ref.split("/", 1)[0]:
             return None                            # unknown slug or wrong status segment
         return store, bare
-    qualifier, _, bare = ref.rpartition("/")
-    if not qualifier or not bare:                  # '/', '/slug', 'slug/' -> malformed
+    qualifier, _, bare = ref.partition("/")
+    if not qualifier or not bare or "/" in bare:
         return None
-    target = (anchor / qualifier).resolve()
-    if not target.is_relative_to(anchor):          # '..' / absolute / symlink escape
+    registry = FsProjectRegistry.open(anchor).require_valid()
+    descendants = {project.id: project for project in registry.descendants()}
+    target_project = descendants.get(qualifier)
+    if target_project is None:
         return None
-    if set(target.relative_to(anchor).parts) & {".git", WORKTREES_DIR}:
-        return None                                # inside .git/.worktrees (resolved segs)
-    if target != anchor and not (                  # anchor itself is always a valid node
-        (target / SENTINEL).is_file() and (target / "docs" / "work").is_dir()
-    ):
-        return None                                # qualifier is not a real node
+    target = Path(target_project.locator)
+    if not (target / "docs" / "work").is_dir():
+        return None
     return FsWorkStore.open(target), bare
 
 
@@ -275,13 +220,6 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
 
 
 WORKTREES_DIR = ".worktrees"
-
-# Directory names never descended when scanning a workspace for TCW nodes: VCS
-# internals, the worktree store, and heavy dependency dirs that can't hold a node.
-# ponytail: name-based prune; make it .gitignore-aware only if some other build
-# dir (dist/, target/, vendor/) ever causes a slow scan.
-NODE_SCAN_SKIP = {".git", WORKTREES_DIR, "node_modules"}
-
 
 def git_commit(node_root: Path, message: str, *paths: str) -> None:
     """Commit staged changes. With paths, a scoped (partial) commit so unrelated
@@ -353,11 +291,11 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
     return warns
 
 
-def init(components: list[str], root: Path) -> list[Path]:
+def init(components: list[str], root: Path, project_id: str | None = None) -> list[Path]:
     """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
     Returns leaf dirs made. A `.gitkeep` lands in each leaf so the empty skeleton
     survives a commit (git doesn't track empty directories)."""
-    write_sentinel(root)
+    write_sentinel(root, project_id)
     created: list[Path] = []
     for c in components:
         base = root / "docs" / c
@@ -405,6 +343,42 @@ def dump_yaml(path: Path, data: dict) -> None:
 
 def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+
+
+def _extends_ids(config: dict, config_path: Path) -> list[str]:
+    value = config.get("extends") or []
+    if isinstance(value, dict):
+        raise ValueError(
+            f"{config_path}: legacy extends map is unsupported; replace it with "
+            "a list of registered project IDs"
+        )
+    if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
+        raise ValueError(f"{config_path}: extends must be a list of project IDs")
+    ids = [validate_project_id(v) for v in value]
+    if len(ids) != len(set(ids)):
+        raise ValueError(f"{config_path}: extends contains duplicate project IDs")
+    return ids
+
+
+def _extended_component_roots(
+    node_root: Path, config: dict, config_path: Path, component: str
+) -> dict[str, Path]:
+    registry = FsProjectRegistry.open(node_root).require_valid()
+    roots: dict[str, Path] = {}
+    for project_id in _extends_ids(config, config_path):
+        project = registry.get(project_id)
+        if project is None:
+            raise ValueError(
+                f"{config_path}: extends project '{project_id}' is not reachable "
+                "through connected-projects"
+            )
+        target = Path(project.locator) / "docs" / component
+        if not target.is_dir():
+            raise ValueError(f"project '{project_id}' has no docs/{component}/")
+        if Path(project.locator).resolve() == node_root.resolve():
+            raise ValueError(f"a {component} store cannot extend itself")
+        roots[project_id] = target.resolve()
+    return roots
 
 
 # ── Revision tokens & atomic writes (FS-adapter private details) ─────────────
@@ -550,10 +524,11 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         super().__init__(root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
-        for alias, repo_path in (self.config.get("extends") or {}).items():
-            ext = (self.node_root / repo_path / "docs" / "taxonomy").resolve()
+        for project_id, ext in _extended_component_roots(
+            self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy"
+        ).items():
             if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
-                self.extends[alias] = FsTaxonomyStore(ext, _seen=seen)
+                self.extends[project_id] = FsTaxonomyStore(ext, _seen=seen)
 
     # -- reads --
 
@@ -646,16 +621,20 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                              f"(edit it at its source)")
         self._rm(self.root / term.slug)
 
-    def extends_add(self, alias: str, ref: str) -> None:
-        extends = dict(self.config.get("extends") or {})
-        if alias in extends:
-            raise ValueError(f"extends alias already exists: {alias} (rm it first)")
-        target = (self.node_root / ref / "docs" / "taxonomy").resolve()
-        if not target.is_dir():
-            raise ValueError(f"no docs/taxonomy/ under {ref}")
-        if target == self.root.resolve():
+    def extends_add(self, project_id: str) -> None:
+        project_id = validate_project_id(project_id)
+        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        if project_id in extends:
+            raise ValueError(f"extends project already exists: {project_id}")
+        registry = FsProjectRegistry.open(self.node_root).require_valid()
+        project = registry.get(project_id)
+        if project is None:
+            raise ValueError(f"project '{project_id}' is not registered")
+        if project_id == registry.current.id:
             raise ValueError("a taxonomy cannot extend itself")
-        extends[alias] = ref
+        if not (Path(project.locator) / "docs" / "taxonomy").is_dir():
+            raise ValueError(f"project '{project_id}' has no docs/taxonomy/")
+        extends.append(project_id)
         # Update in-memory config so a later add/rm in the same process sees this
         # write; term *resolution* (self.extends) is load-time only — reopen to use.
         self.config["extends"] = extends
@@ -663,11 +642,11 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         dump_yaml(cfg, self.config)
         self._stage(cfg)
 
-    def extends_remove(self, alias: str) -> None:
-        extends = dict(self.config.get("extends") or {})
-        if alias not in extends:
-            raise ValueError(f"no such extends alias: {alias}")
-        del extends[alias]
+    def extends_remove(self, project_id: str) -> None:
+        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        if project_id not in extends:
+            raise ValueError(f"no such extends project: {project_id}")
+        extends.remove(project_id)
         if extends:
             self.config["extends"] = extends
         else:
@@ -692,17 +671,13 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             problems.append(f"config.yaml: {e}")
 
         top_level = {s.split("/")[0] for s in self._local_slugs()}
-        for alias, repo_path in (self.config.get("extends") or {}).items():
-            ext_repo = self.node_root / repo_path
-            ext_tax = ext_repo / "docs" / "taxonomy"
-            if not ext_repo.exists():
-                problems.append(f"extends '{alias}': path does not exist: {repo_path}")
-            elif not ext_tax.is_dir():
-                problems.append(f"extends '{alias}': no docs/taxonomy/ under {repo_path}")
-            elif self._cycles(ext_tax.resolve(), {self.root.resolve()}):
-                problems.append(f"extends '{alias}': cycle in taxonomy federation")
-            if alias in top_level:
-                problems.append(f"alias '{alias}' collides with local top-level term")
+        for project_id, store in self.extends.items():
+            if self._cycles(store.root.resolve(), {self.root.resolve()}):
+                problems.append(f"extends '{project_id}': cycle in taxonomy federation")
+            if project_id in top_level:
+                problems.append(
+                    f"project ID '{project_id}' collides with local top-level term"
+                )
 
         for term in self.list_all(local_only=True):
             if term.kind not in TAXONOMY_KINDS:
@@ -736,8 +711,13 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             return False
         cfg = load_yaml(taxonomy_root / "config.yaml")
         node_root = taxonomy_root.parent.parent
-        for _alias, p in (cfg.get("extends") or {}).items():
-            nxt = (node_root / p / "docs" / "taxonomy").resolve()
+        try:
+            roots = _extended_component_roots(
+                node_root, cfg, taxonomy_root / self.CONFIG_NAME, "taxonomy"
+            )
+        except ValueError:
+            return False
+        for nxt in roots.values():
             if self._cycles(nxt, seen | {taxonomy_root}):
                 return True
         return False
@@ -885,10 +865,11 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         super().__init__(root)
         self.extends: dict[str, "FsCapabilitiesStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
-        for alias, repo_path in (self.config.get("extends") or {}).items():
-            ext = (self.node_root / repo_path / "docs" / "capabilities").resolve()
+        for project_id, ext in _extended_component_roots(
+            self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities"
+        ).items():
             if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
-                self.extends[alias] = FsCapabilitiesStore(ext, _seen=seen)
+                self.extends[project_id] = FsCapabilitiesStore(ext, _seen=seen)
 
     # -- resolution --
 
@@ -1177,26 +1158,30 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     # -- federation config --
 
-    def extends_add(self, alias: str, ref: str) -> None:
-        extends = dict(self.config.get("extends") or {})
-        if alias in extends:
-            raise ValueError(f"extends alias already exists: {alias} (rm it first)")
-        target = (self.node_root / ref / "docs" / "capabilities").resolve()
-        if not target.is_dir():
-            raise ValueError(f"no docs/capabilities/ under {ref}")
-        if target == self.root.resolve():
+    def extends_add(self, project_id: str) -> None:
+        project_id = validate_project_id(project_id)
+        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        if project_id in extends:
+            raise ValueError(f"extends project already exists: {project_id}")
+        registry = FsProjectRegistry.open(self.node_root).require_valid()
+        project = registry.get(project_id)
+        if project is None:
+            raise ValueError(f"project '{project_id}' is not registered")
+        if project_id == registry.current.id:
             raise ValueError("a capabilities store cannot extend itself")
-        extends[alias] = ref
+        if not (Path(project.locator) / "docs" / "capabilities").is_dir():
+            raise ValueError(f"project '{project_id}' has no docs/capabilities/")
+        extends.append(project_id)
         self.config["extends"] = extends
         cfg = self.root / self.CONFIG_NAME
         dump_yaml(cfg, self.config)
         self._stage(cfg)
 
-    def extends_remove(self, alias: str) -> None:
-        extends = dict(self.config.get("extends") or {})
-        if alias not in extends:
-            raise ValueError(f"no such extends alias: {alias}")
-        del extends[alias]
+    def extends_remove(self, project_id: str) -> None:
+        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        if project_id not in extends:
+            raise ValueError(f"no such extends project: {project_id}")
+        extends.remove(project_id)
         if extends:
             self.config["extends"] = extends
         else:
@@ -1214,8 +1199,13 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return False
         cfg = load_yaml(cap_root / self.CONFIG_NAME)
         node_root = cap_root.parent.parent
-        for _alias, p in (cfg.get("extends") or {}).items():
-            nxt = (node_root / p / "docs" / "capabilities").resolve()
+        try:
+            roots = _extended_component_roots(
+                node_root, cfg, cap_root / self.CONFIG_NAME, "capabilities"
+            )
+        except ValueError:
+            return False
+        for nxt in roots.values():
             if self._cycles(nxt, seen | {cap_root}):
                 return True
         return False
@@ -1229,17 +1219,13 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             problems.append(f"{self.CONFIG_NAME}: {e}")
 
         top_level = {s.split("/")[0] for s in self._local_paths()}
-        for alias, repo_path in (self.config.get("extends") or {}).items():
-            ext_repo = self.node_root / repo_path
-            ext_cap = ext_repo / "docs" / "capabilities"
-            if not ext_repo.exists():
-                problems.append(f"extends '{alias}': path does not exist: {repo_path}")
-            elif not ext_cap.is_dir():
-                problems.append(f"extends '{alias}': no docs/capabilities/ under {repo_path}")
-            elif self._cycles(ext_cap.resolve(), {self.root.resolve()}):
-                problems.append(f"extends '{alias}': cycle in capability federation")
-            if alias in top_level:
-                problems.append(f"alias '{alias}' collides with local top-level capability")
+        for project_id, store in self.extends.items():
+            if self._cycles(store.root.resolve(), {self.root.resolve()}):
+                problems.append(f"extends '{project_id}': cycle in capability federation")
+            if project_id in top_level:
+                problems.append(
+                    f"project ID '{project_id}' collides with local top-level capability"
+                )
 
         seen_ids: dict[str, str] = {}
         for cap in self.list_all(local_only=True):

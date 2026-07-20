@@ -48,7 +48,7 @@ capability. Use `tcw-taxonomy` to add or clarify the Feature first, then link it
 from the capability.
 
 A capability's `description.md` body may also cross-reference other objects in
-prose with `[text](tcw://C/<path>)` links (or `T`/`W`, and an `<alias>/`-prefixed
+prose with `[text](tcw://C/<path>)` links (or `T`/`W`, and a `<project-id>/`-prefixed
 namespace for federated objects) — additive to the structured `Subject`/`Feature`
 pointers, not a replacement. `tcw validate` resolves these node-wide and the
 `tcw serve` viewer makes them clickable.
@@ -60,13 +60,20 @@ As the item's final pre-freeze step, apply each declared delta so the ledger des
 - `tcw capabilities set <path> --status Supported` (Missing → Supported)
 - scope/body edits; `tcw capabilities set <path> --status Omitted` (Supported → Omitted)
 
-Address the capability by its path — **any path `show` accepts, including an inherited one** (`set shared/auth/login --status Supported`, or the bare `auth/login`); the local override is written for you. Flips are idempotent (setting the same status twice is a no-op). This is now **enforced**, not by convention: `tcw work complete` fails closed if a capability the item declared `new:` in its `capabilities.yaml` still reads `Missing`, or if a declared path doesn't resolve. Flip it, mark it `Omitted` (deliberately not built), or `--force` with the reason in `outcome.md`. (`changed:` entries are checked only for resolution.)
+Address the capability by any path `show` accepts, including
+`set <project-id>/auth/login --status Supported`; the local override is written
+for you. The project ID must be explicitly listed in this axis's `extends`.
 
 ## Federation (inherit another project's capabilities)
 
-A project can `extends` another's capabilities so shared user stories are declared once — e.g. a web frontend and a mobile app that both drive the same server. `tcw capabilities extends <alias> <path-to-other-repo>` (`--rm <alias>` to drop). Inherited capabilities surface in `list`/`show` flagged by origin (`<alias>/<path>`); they are read-only in structure (`remove` refuses an inherited one) — a child may only:
+A project can explicitly inherit another registered project's capabilities with
+`tcw capabilities extends <project-id>` (`--rm` to drop). The source must be
+reachable in the registered graph, but a connection alone does not imply
+inheritance. `extends` is a list; legacy alias/path maps fail closed. Inherited
+capabilities use `<project-id>/<path>` and remain read-only in structure.
 
-- **override metadata** — just `tcw capabilities set <path> --status <S>` / `--field K=V` on the inherited path; the override is materialized for you as a local folder whose `meta.yaml` has `overrides: <alias>/<id>` plus the fields you changed (e.g. `Status: Missing`, or `Status: Omitted` for "we deliberately don't have this"). Hand-authoring that file is **not** required — don't; a hand-authored override anywhere in the tree keeps working and `set` updates it in place. (A YAML `null` clears an inherited field, which the store/web `fields` API can write; the CLI's `--field K=` sets an empty string, not a clear.);
+- **override metadata** — `set` materializes a local delta whose `overrides`
+  pointer uses `<project-id>/<id>`; a YAML null clears an inherited field;
 - **compose the body** — a `description.md` in that override folder replaces the upstream body; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera"). The override body is a *delta*: an empty one means "no delta", so **clearing an override's body re-inherits the upstream body** rather than blanking it (that fallback is what makes append-only overrides work). To say "we deliberately don't have this", use `Status: Omitted`, not an empty body.
 
 To **drop an override** and re-inherit the upstream entry verbatim, `tcw capabilities reset <path>` — it removes only the local override folder (never the upstream node), and refuses clearly when there is no override (a standalone local capability → use `remove`; a path that already inherits verbatim → nothing to drop). Whole-override only; to revert a single inherited field, `set <path> --field K=<value>` instead.
@@ -91,11 +98,11 @@ codebase → draft → refine with the user → write) → read [`references/ini
 | declare a new capability | `tcw capabilities add <ns/path> "<Name>" --status Missing` |
 | record the planning back-pointer | `tcw capabilities set <ns/path> --field "Planning doc=<slug>"` |
 | flip status at completion | `tcw capabilities set <path> --status Supported` (local or inherited) |
-| flip an inherited entry | `tcw capabilities set <alias>/<path> --status <S>` — writes the override for you |
+| flip an inherited entry | `tcw capabilities set <project-id>/<path> --status <S>` |
 | drop an override | `tcw capabilities reset <path>` — remove the local override, re-inherit upstream (refuses if none) |
 | associate a feature | `tcw capabilities set <path> --field "Feature=<feature-ref>"` |
 | link taxonomy (multi-valued) | `tcw capabilities set <path> --field "Subject=term-a,term-b"` |
-| federate another project | `tcw capabilities extends <alias> <path-to-repo>` (`--rm <alias>`) |
+| federate another project | `tcw capabilities extends <project-id>` (`--rm`) |
 | list only local (not inherited) | `tcw capabilities list --local-only` |
 | check the ledger | `tcw capabilities check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
 | find drift | `tcw capabilities drift` — inherited-but-unreviewed + local-Missing whose Planning doc is a completed item (exit non-zero if any) |

@@ -1,1 +1,6 @@
-As a user, I write an inline `[text](tcw://[<namespace>/]<axis>/<ref>)` link in an object's body to reference a Taxonomy term, Capability, or Work item — locally, or in a federated (`extends` alias) or descendant-node project via the optional namespace. The link is additive to the structured pointers (never a replacement); `tcw validate` checks it resolves and `tcw serve` renders it as clickable in-app navigation.
+As a user, I write `[text](tcw://[<project-id>/]<axis>/<ref>)` to reference a
+Taxonomy term, Capability, or Work item. Bare references remain local.
+Namespaced work references resolve only to registered descendants; taxonomy and
+capability namespaces resolve only to project IDs explicitly listed by that
+axis's `extends`. A connection alone never grants inheritance. `tcw validate`
+checks resolution and `tcw serve` turns hosted targets into in-app navigation.

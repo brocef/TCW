@@ -6,3 +6,4 @@ Gaps: remote git/URL sources, version-pinning, and transitive (multi-level) exte
   are deferred to Phase 6; only local sibling-repo paths resolve today.
 Subject:
 - namespace
+Feature: connected-project-registry

@@ -3,3 +3,4 @@ name: Scaffold the doc trees
 Status: Supported
 Subject:
 - node
+Feature: connected-project-registry

@@ -14,7 +14,7 @@ DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <path>` == `tcw capabilities sh
 
 def _init(args: argparse.Namespace) -> int:
     from tcw.cli import run_init      # function-local: top-level cli imports this module
-    return run_init([NAME])
+    return run_init([NAME], args.id)
 
 
 def _store() -> FsCapabilitiesStore | None:
@@ -149,14 +149,11 @@ def _extends(args: argparse.Namespace) -> int:
         return 1
     try:
         if args.rm:
-            st.extends_remove(args.alias)
-            print(f"Removed extends alias {args.alias}")
+            st.extends_remove(args.project_id)
+            print(f"Removed extends project {args.project_id}")
         else:
-            if not args.ref:
-                print("tcw capabilities extends: need <ref> (or --rm)", file=sys.stderr)
-                return 1
-            st.extends_add(args.alias, args.ref)
-            print(f"Added extends alias {args.alias} → {args.ref}")
+            st.extends_add(args.project_id)
+            print(f"Added extends project {args.project_id}")
     except (ValueError, RefError) as e:
         print(f"tcw capabilities extends: {e}", file=sys.stderr)
         return 1
@@ -235,8 +232,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the user stories — what a user can do")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    g.add_parser("init", help="scaffold docs/capabilities/ (mirror of `tcw init capabilities`)") \
-        .set_defaults(func=_init)
+    pi = g.add_parser("init", help="scaffold docs/capabilities/ (mirror of `tcw init capabilities`)")
+    pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
+    pi.set_defaults(func=_init)
 
     pl = g.add_parser("list", help="list capabilities, flagged by status + origin")
     pl.add_argument("--status")
@@ -271,9 +269,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pse.set_defaults(func=_search)
 
     pe = g.add_parser("extends", help="federate another project's capabilities")
-    pe.add_argument("alias")
-    pe.add_argument("ref", nargs="?", help="path to the other repo (omit with --rm)")
-    pe.add_argument("--rm", action="store_true", help="remove the alias instead")
+    pe.add_argument("project_id")
+    pe.add_argument("--rm", action="store_true", help="remove the project instead")
     pe.set_defaults(func=_extends)
 
     pc = g.add_parser("check", help="validate paths, subject/feature refs, federation, metadata")

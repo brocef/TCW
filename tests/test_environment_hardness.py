@@ -30,6 +30,7 @@ from tcw.store.fs import (
     FsTaxonomyStore,
     FsWorkStore,
     child_nodes,
+    descendant_nodes,
     init,
     parent_node,
     write_sentinel,
@@ -68,7 +69,7 @@ def lone_project(tmp_path: Path) -> Path:
     root = tmp_path / "lone"
     root.mkdir()
     _git_init(root)
-    init(["taxonomy", "capabilities", "work"], root)
+    init(["taxonomy", "capabilities", "work"], root, "lone")
     return root
 
 
@@ -87,21 +88,33 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     root = tmp_path / "mono"
     root.mkdir()
     _git_init(root)
-    init(["taxonomy", "capabilities", "work"], root)   # root is a node + extends target
+    init(["taxonomy", "capabilities", "work"], root, "root")
     _commit_all(root)
 
     child_a = root / "a"
     child_b = root / "b"
     child_a.mkdir()
     child_b.mkdir()
-    init(["taxonomy", "capabilities", "work"], child_a)
-    init(["taxonomy", "capabilities", "work"], child_b)
+    init(["taxonomy", "capabilities", "work"], child_a, "child-a")
+    init(["taxonomy", "capabilities", "work"], child_b, "child-b")
+
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "root",
+        "connected-projects": {
+            "children": {"child-a": "a", "child-b": "b"}
+        },
+    }, sort_keys=False))
+    for child, child_id in ((child_a, "child-a"), (child_b, "child-b")):
+        (child / "tcw-config.yaml").write_text(yaml.safe_dump({
+            "id": child_id,
+            "connected-projects": {"parent": {"root": ".."}},
+        }, sort_keys=False))
 
     # Both children extend the root via relative paths
     (child_a / "docs" / "taxonomy" / "config.yaml").write_text(
-        yaml.safe_dump({"extends": {"root": ".."}}))
+        yaml.safe_dump({"extends": ["root"]}))
     (child_b / "docs" / "taxonomy" / "config.yaml").write_text(
-        yaml.safe_dump({"extends": {"root": ".."}}))
+        yaml.safe_dump({"extends": ["root"]}))
 
     return root, child_a, child_b
 
@@ -118,25 +131,37 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
     parent.mkdir()
     _git_init(parent)
     # parent needs taxonomy (children extend it) and work (node-relation ops)
-    init(["taxonomy", "work"], parent)
+    init(["taxonomy", "work"], parent, "parent")
     # NB: don't _commit_all(parent) — untracked nested git repos (left/right)
     # would block the commit. child_nodes only walks the filesystem.
 
     left = parent / "left"
     left.mkdir()
     _git_init(left)
-    init(["taxonomy", "capabilities", "work"], left)
+    init(["taxonomy", "capabilities", "work"], left, "left")
 
     right = parent / "right"
     right.mkdir()
     _git_init(right)
-    init(["taxonomy", "capabilities", "work"], right)
+    init(["taxonomy", "capabilities", "work"], right, "right")
+
+    (parent / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "parent",
+        "connected-projects": {
+            "children": {"left": str(left.resolve()), "right": str(right.resolve())}
+        },
+    }, sort_keys=False))
+    for child, child_id in ((left, "left"), (right, "right")):
+        (child / "tcw-config.yaml").write_text(yaml.safe_dump({
+            "id": child_id,
+            "connected-projects": {"parent": {"parent": str(parent.resolve())}},
+        }, sort_keys=False))
 
     # Both siblings extend parent using *absolute* paths
     (left / "docs" / "taxonomy" / "config.yaml").write_text(
-        yaml.safe_dump({"extends": {"parent": str(parent.resolve())}}))
+        yaml.safe_dump({"extends": ["parent"]}))
     (right / "docs" / "taxonomy" / "config.yaml").write_text(
-        yaml.safe_dump({"extends": {"parent": str(parent.resolve())}}))
+        yaml.safe_dump({"extends": ["parent"]}))
 
     return parent, left, right
 
@@ -316,15 +341,11 @@ class TestNestedMonorepo:
         root, child_a, _ = nested_monorepo(tmp_path)
         assert parent_node(child_a).resolve() == root.resolve()
 
-    def test_subfolder_children_not_discovered_sp2_boundary(self, tmp_path):
-        # SP1 boundary: cross-node child discovery is git-repo-scoped, so plain
-        # subfolders of one repo are valid single nodes but are NOT enumerated as
-        # child nodes. SP2 will span subfolders; this pins the current contract.
-        # (A genuinely separate nested repo IS found — see test_nested_deep_children_found.)
+    def test_registered_subfolder_children_are_discovered(self, tmp_path):
         root, child_a, child_b = nested_monorepo(tmp_path)
         found = {p.resolve() for p in child_nodes(root)}
-        assert child_a.resolve() not in found
-        assert child_b.resolve() not in found
+        assert child_a.resolve() in found
+        assert child_b.resolve() in found
 
     def test_escalate_from_child_to_parent(self, tmp_path):
         # Escalation UP works in a monorepo: parent_node climbs the git ancestry
@@ -332,7 +353,7 @@ class TestNestedMonorepo:
         root, child_a, _ = nested_monorepo(tmp_path)
         doc = escalate(child_a, "Need help")
         assert doc.parent == root / "docs" / "work" / "inbox"
-        assert "from: a" in doc.read_text()
+        assert "from: child-a" in doc.read_text()
 
     def test_delegate_to_subfolder_child_unsupported_sp2_boundary(self, tmp_path):
         # SP1 boundary: delegate targets a *discovered* child node; plain
@@ -342,17 +363,15 @@ class TestNestedMonorepo:
         with pytest.raises(ValueError):
             delegate(root, "a", "Build this", body="details")
 
-    def test_reconcile_excludes_subfolder_tasks_sp2_boundary(self, tmp_path):
-        # SP1 boundary: reconcile scans this node + its *discovered* child nodes.
-        # Subfolder tasks live in undiscovered nodes, so they don't roll up yet.
+    def test_reconcile_includes_registered_subfolder_tasks(self, tmp_path):
         root, child_a, child_b = nested_monorepo(tmp_path)
         epic = FsWorkStore.open(root).create("Epic", created="2026-01-01")
         for child in (child_a, child_b):
             task = FsWorkStore.open(child).create("Slice", created="2026-01-01")
             FsWorkStore.open(child).set_field(task.slug, "initiative", epic.slug)
         block = reconcile(root, epic.slug)
-        assert "2026-01-01-slice" not in block
-        assert "No tasks reference this initiative" in block
+        assert "2026-01-01-slice" in block
+        assert "child-a" in block and "child-b" in block
 
     def test_capabilities_standalone_in_child(self, tmp_path):
         _, child_a, _ = nested_monorepo(tmp_path)
@@ -382,9 +401,20 @@ class TestNestedMonorepo:
         deep = root / "a" / "deep"
         deep.mkdir(parents=True)
         _git_init(deep)
-        init(["work"], deep)
+        init(["work"], deep, "deep")
+        child_a = root / "a"
+        child_cfg = yaml.safe_load((child_a / "tcw-config.yaml").read_text()) or {}
+        child_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+            "deep"
+        ] = "deep"
+        (child_a / "tcw-config.yaml").write_text(
+            yaml.safe_dump(child_cfg, sort_keys=False)
+        )
+        (deep / "tcw-config.yaml").write_text(
+            "id: deep\nconnected-projects:\n  parent:\n    child-a: ..\n"
+        )
         _commit_all(deep)
-        found = child_nodes(root)
+        found = descendant_nodes(root)
         deep_path = deep.resolve()
         assert any(f.resolve() == deep_path for f in found)
 
@@ -546,9 +576,7 @@ class TestCLISmoke:
         monkeypatch.chdir(root)
         assert main(["work", "nodes"]) == 0
         out = capsys.readouterr().out
-        # SP1 boundary: subfolder children aren't discovered, so the monorepo
-        # root reports no children yet (SP2 will list them).
-        assert "leaf" in out
+        assert "child-a" in out and "child-b" in out
 
     def test_lone_cli_nodes_leaf(self, tmp_path, monkeypatch, capsys):
         from tcw.cli import main

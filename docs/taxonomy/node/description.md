@@ -1,1 +1,4 @@
-A folder marked by a `tcw-config.yaml` sentinel that owns the docs/{taxonomy,capabilities,work}/ trees — the unit `tcw` operates on, resolved as the nearest enclosing sentinel (so one git repo can hold several as subfolders). Cross-node recursion still treats a git work-tree with docs/work/ as the peer unit.
+A project with a canonical ID and a `tcw-config.yaml` sentinel that owns bounded
+`docs/{taxonomy,capabilities,work}/` stores. The nearest enclosing sentinel
+selects the current node; cross-project relations come only from reciprocal
+registered locators, independent of filesystem nesting or git layout.

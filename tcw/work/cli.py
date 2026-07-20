@@ -11,7 +11,8 @@ from tcw.store.base import (
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
     descendant_nodes, ensure_worktree_ignored, find_node, git_commit,
-    merge_worktree, parent_node, remove_worktree, resolve_qualified_work_ref,
+    merge_worktree, parent_node, registered_project_id, remove_worktree,
+    resolve_qualified_work_ref,
 )
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
@@ -123,13 +124,13 @@ def _nodes(args: argparse.Namespace) -> int:
         print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     parent = parent_node(node)
-    print(f"node:   {node}")
-    print(f"parent: {parent if parent else '(none — root)'}")
+    print(f"node:   {registered_project_id(node, node)}")
+    print(f"parent: {registered_project_id(node, parent) if parent else '(none — root)'}")
     children = child_nodes(node)
     if children:
         print("children:")
         for c in children:
-            print(f"  {c.relative_to(node)}")
+            print(f"  {registered_project_id(node, c)}")
     else:
         print("children: (none — leaf)")
     return 0
@@ -183,7 +184,7 @@ def _escalate(args: argparse.Namespace) -> int:
 
 def _init(args: argparse.Namespace) -> int:
     from tcw.cli import run_init      # function-local: top-level cli imports this module
-    return run_init([NAME])
+    return run_init([NAME], args.id)
 
 
 def _provided(value):
@@ -321,9 +322,9 @@ def _list(args: argparse.Namespace) -> int:
     for i, root in enumerate([node, *descendant_nodes(node)]):   # paths → relative_to
         if i:
             print()                               # blank line between node groups
-        rel = "." if root == node else f"./{root.relative_to(node)}"
+        rel = "." if root == node else registered_project_id(node, root)
         print(f"# {rel}")
-        prefix = "" if root == node else f"{root.relative_to(node)}/"  # qualified slugs
+        prefix = "" if root == node else f"{registered_project_id(node, root)}/"
         _render_board(FsWorkStore.open(root), args.status, args.all, prefix, tags=args.tag)
     return 0
 
@@ -558,8 +559,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the changes — work items through a state machine")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    g.add_parser("init", help="create raw inbox plus backlog/active/completed work storage") \
-        .set_defaults(func=_init)
+    pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed work storage")
+    pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
+    pi.set_defaults(func=_init)
 
     pin = g.add_parser("inbox", help="inspect and accept raw work intake")
     ing = pin.add_subparsers(dest="inbox_cmd", required=True)

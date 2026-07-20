@@ -23,7 +23,7 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
-    find_node_root, heading_slug, resolve_qualified_work_ref,
+    find_node_root, heading_slug, registered_project_id, resolve_qualified_work_ref,
 )
 from tcw.refs import resolve_tcw_ref
 
@@ -372,7 +372,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             return FsWorkStore.open(anchor).board()
         items = []
         for root in [anchor, *descendant_nodes(anchor)]:
-            prefix = "" if root == anchor else f"{root.relative_to(anchor)}/"
+            prefix = "" if root == anchor else f"{registered_project_id(anchor, root)}/"
             for it in FsWorkStore.open(root).board():
                 it.slug = f"{prefix}{it.slug}"        # fresh WorkItems — safe to mutate
                 items.append(it)

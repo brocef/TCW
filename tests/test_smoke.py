@@ -14,7 +14,7 @@ def _git_init(path: Path) -> None:
 def test_init_scaffolds_all_components(tmp_path, monkeypatch):
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
-    assert main(["init"]) == 0
+    assert main(["init", "--id", "test-project"]) == 0
     for c in COMPONENTS:
         assert (tmp_path / "docs" / c).is_dir()
     for s in WORK_STATUSES:
@@ -24,7 +24,7 @@ def test_init_scaffolds_all_components(tmp_path, monkeypatch):
 def test_init_named_subset_only(tmp_path, monkeypatch):
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
-    assert main(["init", "taxonomy"]) == 0
+    assert main(["init", "--id", "test-project", "taxonomy"]) == 0
     assert (tmp_path / "docs" / "taxonomy").is_dir()
     assert not (tmp_path / "docs" / "work").exists()
 
@@ -45,7 +45,7 @@ def test_init_scaffolds_in_current_subfolder(tmp_path, monkeypatch):
     proj = tmp_path / "project-b"
     proj.mkdir()
     monkeypatch.chdir(proj)                   # cwd is a subfolder, not the git root
-    assert main(["init", "work"]) == 0
+    assert main(["init", "--id", "project-b", "work"]) == 0
     assert (proj / "tcw-config.yaml").is_file()
     assert (proj / "docs" / "work").is_dir()
     assert not (tmp_path / "docs").exists()   # scaffolded at cwd, not the git root

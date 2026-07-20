@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 # Imports grow per task — start with Task 1's, add each task's symbols when you
 # write that task's test (Task 3: reconcile; Task 4: delegate, escalate;
@@ -23,7 +24,27 @@ def mk_node(base: Path, name: str) -> Path:
     subprocess.run(["git", "init", "-q", "--initial-branch=main", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["work"], root)
+    init(["work"], root, name.lower())
+    search = root.parent
+    while search != search.parent and not (search / "tcw-config.yaml").is_file():
+        search = search.parent
+    if (search / "tcw-config.yaml").is_file():
+        parent_cfg = yaml.safe_load((search / "tcw-config.yaml").read_text()) or {}
+        parent_id = parent_cfg["id"]
+        child_id = name.lower()
+        parent_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+            child_id
+        ] = str(root.resolve())
+        (search / "tcw-config.yaml").write_text(
+            yaml.safe_dump(parent_cfg, sort_keys=False)
+        )
+        child_cfg = yaml.safe_load((root / "tcw-config.yaml").read_text()) or {}
+        child_cfg["connected-projects"] = {
+            "parent": {parent_id: str(search.resolve())}
+        }
+        (root / "tcw-config.yaml").write_text(
+            yaml.safe_dump(child_cfg, sort_keys=False)
+        )
     return root
 
 
@@ -63,8 +84,12 @@ def test_child_nodes_prunes_node_modules_and_dotdirs(tmp_path, monkeypatch):
     subprocess.run(["git", "-C", str(parent), "add", "docs"], check=True)
     subprocess.run(["git", "-C", str(parent), "commit", "-qm", "init"], check=True)
     real = mk_node(parent, "child")                        # genuine child node
-    mk_node(parent / "node_modules" / "pkg", "buried")     # decoy node in deps
-    mk_node(parent / ".cache", "hidden")                   # decoy node in a dot-dir
+    buried = parent / "node_modules" / "pkg" / "buried"
+    hidden = parent / ".cache" / "hidden"
+    for path, project_id in ((buried, "buried"), (hidden, "hidden")):
+        path.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        init(["work"], path, project_id)                   # valid but unregistered
 
     seen = []
     orig = fs.git_root

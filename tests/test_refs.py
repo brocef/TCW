@@ -6,6 +6,7 @@ exception to a link-scanning caller.
 """
 
 import subprocess
+import yaml
 from pathlib import Path
 
 from tcw.refs import TcwRef, parse_tcw_uri, resolve_tcw_ref
@@ -99,15 +100,36 @@ def node(tmp_path: Path, name: str = "repo", components=("taxonomy", "capabiliti
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(list(components), root)
+    init(list(components), root, name)
     return root
 
 
 def subnode(parent: Path, rel: str) -> Path:
     d = parent / rel
     d.mkdir(parents=True)
-    init(["work"], d)
+    project_id = d.name
+    init(["work"], d, project_id)
+    connect(parent, d)
     return d
+
+
+def connect(anchor: Path, *others: Path) -> None:
+    anchor_cfg = yaml.safe_load((anchor / "tcw-config.yaml").read_text()) or {}
+    for other in others:
+        other_id = (yaml.safe_load((other / "tcw-config.yaml").read_text()) or {})["id"]
+        anchor_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+            other_id
+        ] = str(other.resolve())
+        other_cfg = yaml.safe_load((other / "tcw-config.yaml").read_text()) or {}
+        other_cfg["connected-projects"] = {
+            "parent": {anchor_cfg["id"]: str(anchor.resolve())}
+        }
+        (other / "tcw-config.yaml").write_text(
+            yaml.safe_dump(other_cfg, sort_keys=False)
+        )
+    (anchor / "tcw-config.yaml").write_text(
+        yaml.safe_dump(anchor_cfg, sort_keys=False)
+    )
 
 
 # ── resolve: local ────────────────────────────────────────────────────────────
@@ -139,9 +161,10 @@ def test_resolve_federated_capability(tmp_path):
     base = node(tmp_path, "base")
     FsCapabilitiesStore.open(base).add("auth/login", name="Sign in")
     child = node(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
-    r = resolve_tcw_ref(child, "tcw://shared/C/auth/login")
-    assert r.ok and r.key == "shared/auth/login"
+    connect(child, base)
+    FsCapabilitiesStore.open(child).extends_add("base")
+    r = resolve_tcw_ref(child, "tcw://base/C/auth/login")
+    assert r.ok and r.key == "base/auth/login"
 
 
 # ── resolve: descendant work (gated on include_descendants) ───────────────────
@@ -150,10 +173,10 @@ def test_resolve_descendant_work_needs_include(tmp_path):
     root = node(tmp_path)
     sub = subnode(root, "sub/proj")
     item = FsWorkStore.open(sub).create("Child task", created="2026-01-01")
-    uri = f"tcw://sub/proj/W/{item.slug}"
+    uri = f"tcw://proj/W/{item.slug}"
     assert resolve_tcw_ref(root, uri, include_descendants=False).ok is False
     r = resolve_tcw_ref(root, uri, include_descendants=True)
-    assert r.ok and r.key == f"sub/proj/{item.slug}"
+    assert r.ok and r.key == f"proj/{item.slug}"
 
 
 # ── resolve: failure modes (never raises) ─────────────────────────────────────
@@ -183,8 +206,9 @@ def test_resolve_ambiguous_does_not_raise(tmp_path):
     base_b = node(tmp_path, "b")
     FsCapabilitiesStore.open(base_b).add("dup", name="B dup")
     child = node(tmp_path, "child")
+    connect(child, base_a, base_b)
     st = FsCapabilitiesStore.open(child)
-    st.extends_add("a", "../a")
-    st.extends_add("b", "../b")
+    st.extends_add("a")
+    st.extends_add("b")
     r = resolve_tcw_ref(child, "tcw://C/dup")   # bare, matches both aliases
     assert r.ok is False and r.reason

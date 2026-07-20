@@ -90,6 +90,14 @@ def _run_check(node_root: Path, comp: str) -> list[str]:
 
 def validate(node_root: Path, path=None) -> list[str]:
     """Return a flat list of problem strings ([] = clean node)."""
+    from tcw.store.project import FsProjectRegistry
+
+    graph_problems = [
+        f"project graph: {problem}"
+        for problem in FsProjectRegistry.open(node_root).check()
+    ]
+    if graph_problems:
+        return graph_problems
     roots = [r for r in _scan_roots(node_root, path) if r.exists()]
     problems: list[str] = []
     yaml_syntax_error = False

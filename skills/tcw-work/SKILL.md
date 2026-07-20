@@ -21,7 +21,13 @@ or the project process itself. For product changes, check the earlier layers in
 order before settling the plan: vocabulary terms first, then taxonomy Features,
 then capabilities. See `tcw-plugin` for the cross-skill map.
 
-**Node identity:** `tcw init` marks the **current directory** a TCW node by writing a `tcw-config.yaml` sentinel there. All `tcw` commands resolve to the nearest `tcw-config.yaml` ancestor — so in a multi-project repo, `cd project-b && tcw work list` shows project-b's board. If a command fails with "no tcw … node here", run `tcw init` in the project folder first. Cross-node discovery (`tcw work nodes` / epics / delegate / escalate) still locates peers by git-repo root (see `references/cross-node-epic.md`).
+**Project identity:** `tcw init --id <project-id>` marks the current directory
+with a canonical ID in `tcw-config.yaml`; existing configured nodes may omit the
+flag. Commands still select the nearest enclosing sentinel, but all
+cross-project operations follow only reciprocal `connected-projects`
+registrations. Project locators may be relative, absolute, nested, or elsewhere;
+TCW never scans for peers. Every command fails closed on an ID-less or invalid
+graph. See `references/cross-node-epic.md`.
 
 ## Primary lifecycle
 
@@ -85,13 +91,13 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | split an item (same repo) | `tcw work new "<sub>" --parent <slug>` (child nests under it; shows indented in `list`) |
 | start work | `tcw work start <slug> [--worktree]` |
 | finish work | `tcw work complete <slug> --resolution done --confirm` |
-| see the board | `tcw work list [--status active]` (hides completed; `--all` to include; `--include-descendants` to also list every descendant node's board grouped by node — descendant items print a **subproject-qualified slug** `sub/proj/<slug>`; shows lifecycle artifact letters in the stages column; sorts by priority, then topologically) |
-| address a descendant item | pass a qualified `sub/proj/<slug>` to any work command (`show`/`path`/`start`/`edit`/`complete`/`drop`) from an enclosing node — resolves as if you `cd`-ed into `sub/proj/` first; a bare slug still resolves against the current node only (`tcw serve` does the same over the web app — it aggregates descendant boards by default) |
+| see the board | `tcw work list [--status active]` (hides completed; `--all` to include; `--include-descendants` lists registered descendant boards grouped by project ID; descendant items print `<project-id>/<slug>`; shows lifecycle stages and sorts by priority/topology) |
+| address a descendant item | pass `<descendant-project-id>/<slug>` to any work command; only registered descendants resolve, while a bare slug remains local (`tcw serve` uses the same IDs) |
 | audit backlog relevance | `tcw work audit-work-backlog` (read-only cleanup recommendations for stale, duplicate, broken, blocked, vague, or misplaced backlog items) |
 | migrate external plans | `tcw work consolidate-plans [PATH ...] [--apply] [--delete]` (dry-run first; converts external planning docs into backlog items) |
 | find item files | `tcw work path <slug>` |
-| validate the node | `tcw validate [path]` (whole node or one file/dir: YAML soundness + `tcw://` link resolution + taxonomy/capabilities checks) |
-| reference another object in prose | `[text](tcw://W/<slug>)` in a body/artifact (or `T`/`C`, `<alias>/…` namespace) — an inline link `tcw validate` resolves and `tcw serve` makes clickable |
+| validate the node | `tcw validate [path]` (always validates the whole registered graph; `path` narrows YAML/link/component checks only) |
+| reference another object in prose | `[text](tcw://W/<slug>)` locally; use `<project-id>/` only for a registered descendant (`W`) or explicit axis inheritance (`T`/`C`) |
 | address by status path | any work command also accepts a `<status>/…/<slug>` locator (e.g. `active/my-item`); the status segment must match the item's real status, intermediate segments are ignored, and the slug stays the identity |
 | set priority | `tcw work new "<t>" --priority N` · `tcw work edit <slug> --priority N` (higher int = higher; default unspecified) |
 | set estimates | `tcw work new "<t>" --effort <l> --complexity <l>` · `tcw work edit <slug> --effort <l> --complexity <l>` (`<l>` = low\|medium\|high\|very-high, or L/M/H/VH shorthand; optional; shown in `show`, not `list`) |

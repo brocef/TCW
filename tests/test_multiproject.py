@@ -15,13 +15,21 @@ def _monorepo(tmp_path: Path) -> Path:
     for name in ("project-a", "project-b"):
         root = tmp_path / name
         root.mkdir()
-        init(["taxonomy", "capabilities"], root)     # writes sentinel + docs/
+        init(["taxonomy", "capabilities"], root, name)
+    (tmp_path / "project-b" / "tcw-config.yaml").write_text(
+        "id: project-b\nconnected-projects:\n  children:\n"
+        "    project-a: ../project-a\n"
+    )
+    (tmp_path / "project-a" / "tcw-config.yaml").write_text(
+        "id: project-a\nconnected-projects:\n  parent:\n"
+        "    project-b: ../project-b\n"
+    )
     return tmp_path
 
 
 def _extend_b_onto_a(repo: Path) -> None:
     (repo / "project-b" / "docs" / "taxonomy" / "config.yaml").write_text(
-        yaml.safe_dump({"extends": {"base": "../project-a"}}))
+        yaml.safe_dump({"extends": ["project-a"]}))
 
 
 def test_extends_resolves_across_sibling_subfolders(tmp_path):
@@ -30,7 +38,7 @@ def test_extends_resolves_across_sibling_subfolders(tmp_path):
     _extend_b_onto_a(repo)
     node = find_node("taxonomy", repo / "project-b")     # detection finds project-b
     assert node == (repo / "project-b").resolve()
-    term = FsTaxonomyStore.open(node).get("base/account")
+    term = FsTaxonomyStore.open(node).get("project-a/account")
     assert term is not None and term.name == "Account"
 
 
@@ -40,7 +48,7 @@ def test_capabilities_check_resolves_sibling_taxonomy(tmp_path):
     _extend_b_onto_a(repo)
     caps = FsCapabilitiesStore.open(repo / "project-b")
     caps.add("orders", "Place an order")
-    caps.set("orders", {"Subject": "base/account"})
+    caps.set("orders", {"Subject": "project-a/account"})
     node = find_node("capabilities", repo / "project-b")
     tax = FsTaxonomyStore.open(node)
     assert FsCapabilitiesStore.open(node).check(taxonomy=tax) == []

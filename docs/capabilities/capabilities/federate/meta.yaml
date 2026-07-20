@@ -2,3 +2,4 @@ id: cap-7b8d42
 name: Federate capabilities from another project
 Status: Supported
 Planning doc: 2026-07-10-unify-folder-substrate-across-taxonomy-capabilities-work-and-add-capability-federation
+Feature: connected-project-registry

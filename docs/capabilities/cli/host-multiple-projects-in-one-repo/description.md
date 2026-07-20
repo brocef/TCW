@@ -1,3 +1,8 @@
-As a user, I keep several TCW projects as subfolders of one git repo — each with its own `docs/{taxonomy,capabilities,work}/` — by marking each project folder with a `tcw-config.yaml` sentinel. `tcw` resolves the nearest enclosing sentinel as the active node, so running it inside `project-b/` operates on `project-b`, not the whole repo. Sibling projects can inherit each other's vocabulary through taxonomy `extends` (e.g. `project-b` extends `project-a`). `tcw init` marks the current folder as a node.
-
-From an enclosing node I can also address a descendant project's work item directly by a **subproject-qualified slug** — `sub/proj/<slug>` — with any work command (`tcw work show sub/proj/<slug>`, `start`, `edit`, `complete`, `drop`). It resolves to that descendant item exactly as if I had `cd`-ed into `sub/proj/` first; a bare slug still refers to the current node only. `tcw work list --include-descendants` prints those qualified slugs, and `tcw serve --include-descendants` does the same across the local web app.
+As a user, I assign every TCW project a canonical ID and explicitly register
+its direct parent and children in `tcw-config.yaml`. Registered projects may be
+nested, siblings, or anywhere else on the filesystem: locators describe where
+the filesystem adapter can open them, while IDs remain their stable identity.
+Connections are reciprocal and fail closed when either side is missing or
+inconsistent. From an enclosing project I address descendant work as
+`<project-id>/<slug>` and TCW derives deeper ancestry from the registered graph
+without scanning directories or git metadata.

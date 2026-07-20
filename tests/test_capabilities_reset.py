@@ -18,7 +18,7 @@ def repo(tmp_path: Path, name: str) -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    write_sentinel(root)
+    write_sentinel(root, name.replace("_", "-"))
     return root
 
 
@@ -38,8 +38,26 @@ def federated(tmp_path):
     base = repo(tmp_path, "base")
     write_cap(base, "auth/login", id="cap-aaa111", Status="Supported", body="Log in.")
     child = repo(tmp_path, "child")
-    FsCapabilitiesStore.open(child).extends_add("shared", "../base")
+    connect(child, base)
+    FsCapabilitiesStore.open(child).extends_add("base")
     return base, child
+
+
+def connect(anchor, *sources):
+    anchor_id = anchor.name.replace("_", "-")
+    children = "".join(
+        f"    {source.name.replace('_', '-')}: ../{source.name}\n"
+        for source in sources
+    )
+    (anchor / "tcw-config.yaml").write_text(
+        f"id: {anchor_id}\nconnected-projects:\n  children:\n{children}"
+    )
+    for source in sources:
+        source_id = source.name.replace("_", "-")
+        (source / "tcw-config.yaml").write_text(
+            f"id: {source_id}\nconnected-projects:\n  parent:\n"
+            f"    {anchor_id}: ../{anchor.name}\n"
+        )
 
 
 def store(root: Path) -> FsCapabilitiesStore:
@@ -67,7 +85,7 @@ def test_reset_drops_override_and_reinherits(tmp_path):
     store(child).reset("auth/login")
     cap = store(child).get("auth/login")
     assert cap.status == "Supported"                               # re-inherited
-    assert cap.origin == "shared"
+    assert cap.origin == "base"
     assert not (child / "docs/capabilities/auth/login").exists()   # override folder gone
 
 
@@ -83,11 +101,11 @@ def test_reset_qualified_placement_variant(tmp_path):
     """An override can live at the alias-qualified folder; reset finds it by id."""
     base, child = federated(tmp_path)
     write_cap(child, "auth/login", id="cap-loc999", Status="Missing")   # local shadow at bare path
-    store(child).set("shared/auth/login", {"Status": "Partial"})        # override → qualified folder
-    assert (child / "docs/capabilities/shared/auth/login").is_dir()
-    store(child).reset("shared/auth/login")
-    assert not (child / "docs/capabilities/shared/auth/login").exists()
-    assert store(child).get("shared/auth/login").status == "Supported"  # re-inherited
+    store(child).set("base/auth/login", {"Status": "Partial"})
+    assert (child / "docs/capabilities/base/auth/login").is_dir()
+    store(child).reset("base/auth/login")
+    assert not (child / "docs/capabilities/base/auth/login").exists()
+    assert store(child).get("base/auth/login").status == "Supported"
     assert (child / "docs/capabilities/auth/login").is_dir()            # local shadow untouched
 
 
@@ -121,8 +139,9 @@ def test_reset_ambiguous_ref(tmp_path):
     base_b = repo(tmp_path, "base_b")
     write_cap(base_b, "auth/login", id="cap-b22222", Status="Missing")
     child = repo(tmp_path, "child")
+    connect(child, base_a, base_b)
     st = FsCapabilitiesStore.open(child)
-    st.extends_add("a", "../base_a")
-    st.extends_add("b", "../base_b")
+    st.extends_add("base-a")
+    st.extends_add("base-b")
     with pytest.raises(AmbiguousRef):
         store(child).reset("auth/login")           # bare ref matches both
