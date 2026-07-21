@@ -2,7 +2,7 @@ slug: 2026-07-21-multi-file-tcw-implementation-plans
 title: Multi-file TCW implementation plans
 phase: ''
 created: '2026-07-21'
-resolution: null
+resolution: done
 effort: very-high
 complexity: very-high
 tags:
@@ -11,3 +11,9 @@ tags:
 - docs
 blocked_by:
 - slug: 2026-07-21-upgrade-tcw-serve-to-fastify-and-react
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
