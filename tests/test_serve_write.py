@@ -456,6 +456,69 @@ class TestArtifactReadWrite:
         assert status == HTTPStatus.BAD_REQUEST
 
 
+# ── Tests: Declared plan-stage read/write/delete ───────────────────────────
+
+
+class TestPlanStageReadWrite:
+    def _declare(self, root: Path, slug: str) -> None:
+        FsWorkStore.open(root).write_artifact(slug, "plan", """---
+stages:
+  - id: api
+    title: Add API
+    depends_on: []
+---
+
+## Overview
+
+Add the API.
+
+## Stage ordering
+
+The API stage is independent.
+""")
+
+    def test_detail_and_stage_crud(self, seeded):
+        root, base, slug = seeded
+        self._declare(root, slug)
+        detail = _get_json(base, f"/api/work/{slug}")
+        assert detail["planStages"][0]["id"] == "api"
+        assert detail["planStages"][0]["present"] is False
+        content = """## Objective
+
+Expose it.
+
+## Pre-stage checks
+
+Check routes.
+
+## Implementation
+
+Add routes.
+
+## Post-stage checks
+
+Test routes.
+"""
+        status, written = _req(base, "PUT", f"/api/work/{slug}/plan-stages/api",
+                               {"content": content, "revision": ""})
+        assert status == HTTPStatus.OK
+        read = _get_json(base, f"/api/work/{slug}/plan-stages/api")
+        assert read["content"] == content
+        status, _ = _req(base, "PUT", f"/api/work/{slug}/plan-stages/api",
+                         {"content": "changed", "revision": "stale"})
+        assert status == HTTPStatus.CONFLICT
+        status, _ = _req(base, "DELETE", f"/api/work/{slug}/plan-stages/api",
+                         headers={"X-TCW-Revision": written["revision"]})
+        assert status == HTTPStatus.NO_CONTENT
+
+    def test_undeclared_stage_is_rejected(self, seeded):
+        root, base, slug = seeded
+        self._declare(root, slug)
+        status, _ = _req(base, "PUT", f"/api/work/{slug}/plan-stages/other",
+                         {"content": "no", "revision": ""})
+        assert status == HTTPStatus.BAD_REQUEST
+
+
 # ── Tests: Sidecar read/write ───────────────────────────────────────────────
 
 

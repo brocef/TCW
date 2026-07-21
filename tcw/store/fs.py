@@ -28,7 +28,8 @@ from tcw.store.base import (
     TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, WORK_STATUSES, _UNSET,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError,
-    InboxEntry, InboxEntryDetail, InboxResource, SidecarResource, StaleRevision,
+    InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
+    SidecarResource, StaleRevision,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -1546,6 +1547,143 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return None
         return str(d / self._artifact_filename(name))
 
+    @staticmethod
+    def _plan_manifest(content: str) -> list[dict] | None:
+        if not content.startswith("---\n"):
+            return None
+        end = content.find("\n---\n", 4)
+        if end < 0:
+            raise ValueError("plan.md: malformed YAML frontmatter")
+        try:
+            metadata = yaml.safe_load(content[4:end])
+        except yaml.YAMLError as exc:
+            raise ValueError(f"plan.md: malformed YAML frontmatter: {exc}") from exc
+        if metadata is None:
+            return None
+        if not isinstance(metadata, dict):
+            raise ValueError("plan.md: frontmatter must be a mapping")
+        if "stages" not in metadata:
+            return None
+        stages = metadata["stages"]
+        if not isinstance(stages, list):
+            raise ValueError("plan.md: stages must be a list")
+        return stages
+
+    def _declared_plan_stages(self, slug: str) -> list[PlanStage]:
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        plan = d / "plan.md"
+        if not plan.is_file():
+            return []
+        declarations = self._plan_manifest(plan.read_text(encoding="utf-8"))
+        if declarations is None:
+            return []
+        registered = set(self.registered_tags())
+        seen: set[str] = set()
+        raw: list[tuple[str, str, tuple[str, ...], str, str, int | None, tuple[str, ...]]] = []
+        for index, value in enumerate(declarations, 1):
+            prefix = f"plan.md: stage {index}"
+            if not isinstance(value, dict):
+                raise ValueError(f"{prefix} must be a mapping")
+            stage_id, title, dependencies = value.get("id"), value.get("title"), value.get("depends_on")
+            if not isinstance(stage_id, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", stage_id):
+                raise ValueError(f"{prefix} has unsafe id")
+            if stage_id in seen:
+                raise ValueError(f"plan.md: duplicate stage id '{stage_id}'")
+            if not isinstance(title, str) or not title.strip():
+                raise ValueError(f"{prefix} title must be non-empty")
+            if not isinstance(dependencies, list) or not all(isinstance(dep, str) for dep in dependencies):
+                raise ValueError(f"{prefix} depends_on must be a list of stage ids")
+            if stage_id in dependencies:
+                raise ValueError(f"plan.md: stage '{stage_id}' depends on itself")
+            effort = value.get("effort", "")
+            complexity = value.get("complexity", "")
+            if effort and (not isinstance(effort, str) or normalize_work_level(effort) not in {"low", "medium", "high", "very-high"}):
+                raise ValueError(f"{prefix} has invalid effort")
+            if complexity and (not isinstance(complexity, str) or normalize_work_level(complexity) not in {"low", "medium", "high", "very-high"}):
+                raise ValueError(f"{prefix} has invalid complexity")
+            priority = value.get("priority")
+            if priority is not None and (not isinstance(priority, int) or isinstance(priority, bool)):
+                raise ValueError(f"{prefix} priority must be an integer")
+            tags = value.get("tags", [])
+            if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+                raise ValueError(f"{prefix} tags must be a list")
+            stale = [tag for tag in tags if tag not in registered]
+            if stale:
+                raise ValueError(f"{prefix} has unregistered tag '{stale[0]}'")
+            seen.add(stage_id)
+            raw.append((stage_id, title.strip(), tuple(dependencies), normalize_work_level(effort) if effort else "", normalize_work_level(complexity) if complexity else "", priority, tuple(tags)))
+        for stage_id, _title, dependencies, *_rest in raw:
+            unknown = [dep for dep in dependencies if dep not in seen]
+            if unknown:
+                raise ValueError(f"plan.md: stage '{stage_id}' has unknown dependency '{unknown[0]}'")
+        visiting: set[str] = set()
+        visited: set[str] = set()
+        graph = {stage_id: dependencies for stage_id, _title, dependencies, *_rest in raw}
+        def visit(stage_id: str) -> None:
+            if stage_id in visiting:
+                raise ValueError("plan.md: stage dependencies contain a cycle")
+            if stage_id in visited:
+                return
+            visiting.add(stage_id)
+            for dependency in graph[stage_id]:
+                visit(dependency)
+            visiting.remove(stage_id)
+            visited.add(stage_id)
+        for stage_id in graph:
+            visit(stage_id)
+        folder = d / "plan"
+        return [PlanStage(stage_id, title, dependencies, effort, complexity, priority, tags,
+                          (folder / f"{stage_id}.md").is_file(),
+                          _revision((folder / f"{stage_id}.md").read_text(encoding="utf-8")) if (folder / f"{stage_id}.md").is_file() else "")
+                for stage_id, title, dependencies, effort, complexity, priority, tags in raw]
+
+    def plan_stages(self, slug: str) -> list[PlanStage]:
+        return self._declared_plan_stages(slug)
+
+    def _plan_stage_path(self, slug: str, stage_id: str) -> Path:
+        stages = {stage.id for stage in self._declared_plan_stages(slug)}
+        if stage_id not in stages:
+            raise ValueError(f"undeclared plan stage '{stage_id}'")
+        return self._find(slug) / "plan" / f"{stage_id}.md"
+
+    def read_plan_stage(self, slug: str, stage_id: str) -> PlanStageResource | None:
+        path = self._plan_stage_path(slug, stage_id)
+        if not path.is_file():
+            return None
+        content = path.read_text(encoding="utf-8")
+        return PlanStageResource(stage_id, content, revision=_revision(content))
+
+    def write_plan_stage(self, slug: str, stage_id: str, content: str,
+                         revision: str | None = None) -> PlanStageResource:
+        if not isinstance(content, str):
+            raise ValueError("stage content must be text")
+        path = self._plan_stage_path(slug, stage_id)
+        if revision is not None:
+            current = _revision(path.read_text(encoding="utf-8")) if path.is_file() else ""
+            if current != revision:
+                raise StaleRevision(f"stale revision for plan stage '{stage_id}' of '{slug}'")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(path, content)
+        self._stage(path)
+        return PlanStageResource(stage_id, content, revision=_revision(content))
+
+    def delete_plan_stage(self, slug: str, stage_id: str,
+                          revision: str | None = None) -> None:
+        path = self._plan_stage_path(slug, stage_id)
+        if not path.is_file():
+            raise ValueError(f"plan stage '{stage_id}' is not present")
+        if revision is not None and _revision(path.read_text(encoding="utf-8")) != revision:
+            raise StaleRevision(f"stale revision for plan stage '{stage_id}' of '{slug}'")
+        self._rm(path)
+
+    def plan_stage_locator(self, slug: str, stage_id: str) -> str | None:
+        try:
+            return str(self._plan_stage_path(slug, stage_id))
+        except ValueError:
+            return None
+
     def _unique_slug(self, created: str, title: str) -> str:
         base = f"{created}-{slugify(title)}"
         slug, n = base, 2
@@ -1710,7 +1848,41 @@ class FsWorkStore(FsTreeStore, WorkStore):
             for tag in item.tags:
                 if tag not in registered:
                     problems.append(f"{item.slug}: unregistered tag '{tag}'")
+            try:
+                stages = self._declared_plan_stages(item.slug)
+                if stages:
+                    folder = self._find(item.slug)
+                    plan_content = (folder / "plan.md").read_text(encoding="utf-8")
+                    for heading in ("Overview", "Stage ordering"):
+                        if not self._nonempty_markdown_section(plan_content, heading):
+                            problems.append(f"{item.slug}: plan.md requires non-empty '{heading}' section")
+                    declared = {stage.id for stage in stages}
+                    stage_folder = folder / "plan"
+                    if stage_folder.is_dir():
+                        for path in sorted(stage_folder.glob("*.md")):
+                            if path.stem not in declared:
+                                problems.append(f"{item.slug}: undeclared plan stage resource '{path.name}'")
+                    for stage in stages:
+                        if not stage.present:
+                            problems.append(f"{item.slug}: plan stage '{stage.id}' document is missing")
+                            continue
+                        content = (stage_folder / f"{stage.id}.md").read_text(encoding="utf-8")
+                        for heading in ("Objective", "Pre-stage checks", "Implementation", "Post-stage checks"):
+                            if not self._nonempty_markdown_section(content, heading):
+                                problems.append(f"{item.slug}: plan stage '{stage.id}' requires non-empty '{heading}' section")
+            except ValueError as exc:
+                problems.append(f"{item.slug}: {exc}")
         return problems
+
+    @staticmethod
+    def _nonempty_markdown_section(content: str, heading: str) -> bool:
+        match = re.search(rf"(?m)^##\s+{re.escape(heading)}\s*$", content)
+        if match is None:
+            return False
+        following = content[match.end():]
+        next_heading = re.search(r"(?m)^##\s+", following)
+        body = following[:next_heading.start()] if next_heading else following
+        return bool(body.strip())
 
     def _validation_resources(self, identifier: str) -> list[Path]:
         """Filesystem resources bounded to one work object."""
@@ -1719,7 +1891,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return []
         names = ["state.yaml", *[f"{name}.md" for name in WORK_ARTIFACTS],
                  *WORK_SIDECARS]
-        return [folder / name for name in names if (folder / name).is_file()]
+        resources = [folder / name for name in names if (folder / name).is_file()]
+        plan_folder = folder / "plan"
+        if plan_folder.is_dir():
+            resources.extend(sorted(plan_folder.glob("*.md")))
+        return resources
 
     # -- raw inbox intake (separate from formal WorkItem status) --
 

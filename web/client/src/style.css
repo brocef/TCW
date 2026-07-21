@@ -589,6 +589,10 @@ h1 {
   color: var(--accent);
 }
 
+.plan-stages { margin: 1rem 0; }
+.plan-stage { border: 1px solid var(--border); border-radius: .4rem; margin: .5rem 0; padding: .7rem; }
+.plan-stage .artifact-group { margin-top: .5rem; }
+
 /* ── Editor container ───────────────────────────────────────────────── */
 
 .editor-container {

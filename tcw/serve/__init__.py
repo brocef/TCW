@@ -483,6 +483,30 @@ class TcwHandler(BaseHTTPRequestHandler):
             })
             return
 
+        # GET /api/work/<slug>/plan-stages/<id>
+        m = re.match(r"^/api/work/([^/]+)/plan-stages/([^/]+)$", path)
+        if m:
+            slug = _decode_path_param(m.group(1))
+            stage_id = _decode_path_param(m.group(2))
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
+            try:
+                resource = work.read_plan_stage(slug, stage_id)
+            except ValueError as e:
+                self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
+                return
+            if resource is None:
+                self._send(HTTPStatus.NOT_FOUND, b"plan stage not present")
+                return
+            self._send_json(HTTPStatus.OK, {
+                "name": resource.id, "content": resource.content,
+                "mediaType": resource.media_type, "revision": resource.revision,
+            })
+            return
+
         # GET /api/work/<slug>/sidecars/<name>
         m = re.match(r"^/api/work/([^/]+)/sidecars/([^/]+)$", path)
         if m:
@@ -602,6 +626,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, {
                 "item": item_data,
                 "artifacts": artifacts_list,
+                "planStages": [_jsonable(stage) for stage in work.plan_stages(slug)],
                 "sidecars": sidecars,
                 "coreRevision": detail.core_revision,
                 "dodChecklist": work.dod_checklist(),
@@ -682,6 +707,11 @@ class TcwHandler(BaseHTTPRequestHandler):
         if (path.startswith(prefix) and path.endswith(suffix)
                 and marker in path):
             self._handle_open(path)
+            return
+
+        marker = "/plan-stages/"
+        if path.startswith(prefix) and path.endswith(suffix) and marker in path:
+            self._handle_plan_stage_open(path)
             return
 
         body, err = _read_json_body(self)
@@ -1080,6 +1110,31 @@ class TcwHandler(BaseHTTPRequestHandler):
                            f"server error: {e}".encode("utf-8"))
             return
 
+        # ── PUT /api/work/<slug>/plan-stages/<id> ──
+        m = re.match(r"^/api/work/([^/]+)/plan-stages/([^/]+)$", path)
+        if m:
+            slug = _decode_path_param(m.group(1))
+            stage_id = _decode_path_param(m.group(2))
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
+            content = body.get("content")
+            if not isinstance(content, str):
+                self._send_err(HTTPStatus.BAD_REQUEST, "content is required")
+                return
+            try:
+                resource = work.write_plan_stage(slug, stage_id, content, body.get("revision"))
+                response = {"name": resource.id, "content": resource.content,
+                            "mediaType": resource.media_type, "revision": resource.revision}
+                self._send_json(HTTPStatus.OK, _with_warnings(
+                    response, work.node_root, "work", slug))
+            except (ValueError, StaleRevision) as e:
+                sc, bb = _map_store_error(e)
+                self._send(sc, bb, "application/json; charset=utf-8")
+            return
+
         # ── PUT /api/work/<slug>/sidecars/<name> ──
         m = re.match(r"^/api/work/([^/]+)/sidecars/([^/]+)$", path)
         if m:
@@ -1138,6 +1193,24 @@ class TcwHandler(BaseHTTPRequestHandler):
 
         work, taxonomy, capabilities = self._stores()
 
+        # ── DELETE /api/work/<slug>/plan-stages/<id> ──
+        m = re.match(r"^/api/work/([^/]+)/plan-stages/([^/]+)$", path)
+        if m:
+            slug = _decode_path_param(m.group(1))
+            stage_id = _decode_path_param(m.group(2))
+            resolved = self._resolve_work(slug)
+            if resolved is None:
+                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+                return
+            work, slug = resolved
+            try:
+                work.delete_plan_stage(slug, stage_id, self.headers.get("X-TCW-Revision"))
+                self._send(HTTPStatus.NO_CONTENT)
+            except (ValueError, StaleRevision) as e:
+                sc, bb = _map_store_error(e)
+                self._send(sc, bb, "application/json; charset=utf-8")
+            return
+
         # ── DELETE /api/work/<slug> ──
         m = re.match(r"^/api/work/([^/]+)$", path)
         if m:
@@ -1195,6 +1268,31 @@ class TcwHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.NOT_FOUND, b"artifact is not available")
             return
         opened = _open_locator(locator)
+        if opened:
+            self._send_json(HTTPStatus.OK, opened)
+            return
+        self._send(HTTPStatus.NO_CONTENT)
+
+    def _handle_plan_stage_open(self, path: str) -> None:
+        middle = path[len("/api/work/"):-len("/open")]
+        slug_q, _, stage_q = middle.partition("/plan-stages/")
+        slug = _decode_path_param(slug_q)
+        stage_id = _decode_path_param(stage_q)
+        resolved = self._resolve_work(slug)
+        if resolved is None:
+            self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+            return
+        work, slug = resolved
+        try:
+            resource = work.read_plan_stage(slug, stage_id)
+        except ValueError as e:
+            self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
+            return
+        if resource is None:
+            self._send(HTTPStatus.NOT_FOUND, b"plan stage not present")
+            return
+        locator = work.plan_stage_locator(slug, stage_id)
+        opened = _open_locator(locator) if locator else None
         if opened:
             self._send_json(HTTPStatus.OK, opened)
             return

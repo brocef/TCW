@@ -53,10 +53,21 @@ export interface ResourceSummary {
   mediaType?: string;
 }
 
+export interface TPlanStage extends ResourceSummary {
+  id: string;
+  title: string;
+  depends_on: string[];
+  effort?: string;
+  complexity?: string;
+  priority?: number | null;
+  tags: string[];
+}
+
 export interface WorkDetail {
   item: WorkItem;
   coreRevision: string;
   artifacts: ResourceSummary[];
+  planStages: TPlanStage[];
   sidecars: ResourceSummary[];
   dodChecklist?: string[];
 }

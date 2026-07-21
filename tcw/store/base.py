@@ -247,6 +247,29 @@ class SidecarResource:
     revision: str = ""
 
 
+@dataclass(frozen=True)
+class PlanStage:
+    """Storage-neutral metadata for one document declared by ``plan.md``."""
+    id: str
+    title: str
+    depends_on: tuple[str, ...]
+    effort: str = ""
+    complexity: str = ""
+    priority: int | None = None
+    tags: tuple[str, ...] = ()
+    present: bool = False
+    revision: str = ""
+
+
+@dataclass
+class PlanStageResource:
+    """A declared plan-stage document and its optimistic-lock token."""
+    id: str
+    content: str
+    media_type: str = "text/markdown"
+    revision: str = ""
+
+
 @dataclass
 class WorkDetail:
     """A work item with revision tokens for every editable resource."""
@@ -606,6 +629,28 @@ class WorkStore(ABC):
     @abstractmethod
     def artifact_locator(self, slug: str, name: str) -> str | None:
         """Resolve an artifact to an openable handle, or None if unavailable."""
+
+    @abstractmethod
+    def plan_stages(self, slug: str) -> list[PlanStage]:
+        """Return the ordered, bounded stages declared by the item's plan."""
+
+    @abstractmethod
+    def read_plan_stage(self, slug: str, stage_id: str) -> PlanStageResource | None:
+        """Read a declared stage document, or ``None`` when it is absent."""
+
+    @abstractmethod
+    def write_plan_stage(self, slug: str, stage_id: str, content: str,
+                         revision: str | None = None) -> PlanStageResource:
+        """Replace a declared stage document with optional stale-write protection."""
+
+    @abstractmethod
+    def delete_plan_stage(self, slug: str, stage_id: str,
+                          revision: str | None = None) -> None:
+        """Delete a declared stage document with optional stale-write protection."""
+
+    @abstractmethod
+    def plan_stage_locator(self, slug: str, stage_id: str) -> str | None:
+        """Resolve a declared stage to an openable handle, if supported."""
 
     @abstractmethod
     def set_field(self, slug: str, key: str, value) -> None: ...

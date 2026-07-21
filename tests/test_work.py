@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tcw.store.base import WORK_ARTIFACTS, WORK_STATUSES, IllegalTransition, MultipleMatch, topo_order
+from tcw.store.base import WORK_ARTIFACTS, WORK_STATUSES, IllegalTransition, MultipleMatch, StaleRevision, topo_order
 from tcw.store.fs import FsWorkStore, init
 
 
@@ -197,6 +197,82 @@ def test_artifacts_report_bounded_presence_and_locator(tmp_path):
     assert st.artifact_locator(item.slug, "plan") == str(d / "plan.md")
     assert st.artifact_locator(item.slug, "../plan") is None
     assert st.artifact_locator("no-such-slug", "plan") is None
+
+
+def test_legacy_plan_has_no_declared_stages(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Legacy", created="2026-01-01")
+    st.write_artifact(item.slug, "plan", "# Plan\n\nDo the work.\n")
+    assert st.plan_stages(item.slug) == []
+
+
+def test_staged_plan_dag_and_revision_safe_crud(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Staged", created="2026-01-01")
+    st.write_artifact(item.slug, "plan", """---
+stages:
+  - id: model
+    title: Build model
+    depends_on: []
+  - id: api
+    title: Add API
+    depends_on: [model]
+  - id: web
+    title: Add web
+    depends_on: [model]
+---
+
+## Overview
+
+Split implementation by surface.
+
+## Stage ordering
+
+Model first, then API and web in parallel.
+""")
+    stages = st.plan_stages(item.slug)
+    assert [stage.id for stage in stages] == ["model", "api", "web"]
+    assert stages[1].depends_on == ("model",)
+    assert not stages[0].present
+    content = """## Objective
+
+Build it.
+
+## Pre-stage checks
+
+Run tests.
+
+## Implementation
+
+Change code.
+
+## Post-stage checks
+
+Run tests again.
+"""
+    resource = st.write_plan_stage(item.slug, "model", content, revision="")
+    assert st.read_plan_stage(item.slug, "model").content == content
+    assert st.plan_stage_locator(item.slug, "model").endswith("plan/model.md")
+    with pytest.raises(StaleRevision):
+        st.write_plan_stage(item.slug, "model", "changed", revision="stale")
+    with pytest.raises(StaleRevision):
+        st.delete_plan_stage(item.slug, "model", revision="stale")
+    st.delete_plan_stage(item.slug, "model", revision=resource.revision)
+    assert st.read_plan_stage(item.slug, "model") is None
+
+
+@pytest.mark.parametrize("manifest, message", [
+    ("[{id: bad/id, title: Bad, depends_on: []}]", "unsafe id"),
+    ("[{id: a, title: A, depends_on: [missing]}]", "unknown dependency"),
+    ("[{id: a, title: A, depends_on: [b]}, {id: b, title: B, depends_on: [a]}]", "cycle"),
+    ("[{id: a, title: A, depends_on: []}, {id: a, title: Again, depends_on: []}]", "duplicate"),
+])
+def test_staged_plan_rejects_invalid_manifests(tmp_path, manifest, message):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Invalid", created="2026-01-01")
+    st.write_artifact(item.slug, "plan", f"---\nstages: {manifest}\n---\n")
+    with pytest.raises(ValueError, match=message):
+        st.plan_stages(item.slug)
 
 
 def test_multiple_match_resolution_error(tmp_path):

@@ -48,7 +48,7 @@ type Draft = Record<string, unknown> & { body?: string };
 type Editor =
   | { mode: "create"; axis: Axis; draft: Draft }
   | { mode: "core"; axis: Axis; ref: string; revision: string; draft: Draft; original: Draft }
-  | { mode: "resource"; axis: "work"; kind: "artifacts" | "sidecars"; slug: string; name: string;
+  | { mode: "resource"; axis: "work"; kind: "artifacts" | "sidecars" | "plan-stages"; slug: string; name: string;
       revision: string; mediaType: string; draft: string; original: string };
 
 function itemKey(axis: Axis, item: AxisItem): string {
@@ -400,14 +400,22 @@ export function App() {
     setDirty(false); setErrors([]); setConflict(null);
   };
 
-  const enterResource = async (kind: "artifacts" | "sidecars", slug: string, name: string) => {
+  const enterResource = async (kind: "artifacts" | "sidecars" | "plan-stages", slug: string, name: string) => {
     try {
       const resource = await fetchJson<ResourceDetail>(`/api/work/${encodeRef(slug)}/${kind}/${encodeRef(name)}`);
       setEditor({ mode: "resource", axis: "work", kind, slug, name, revision: resource.revision,
         mediaType: resource.mediaType ?? (kind === "artifacts" ? "text/markdown" : "application/yaml"),
         draft: resource.content, original: resource.content });
       setDirty(false); setErrors([]); setConflict(null);
-    } catch (error) { showToast(`Failed to load ${kind === "artifacts" ? "artifact" : "sidecar"}: ${String(error)}`); }
+    } catch (error) {
+      if (kind === "plan-stages") {
+        const draft = "## Objective\n\n\n\n## Pre-stage checks\n\n\n\n## Implementation\n\n\n\n## Post-stage checks\n\n";
+        setEditor({ mode: "resource", axis: "work", kind, slug, name, revision: "",
+          mediaType: "text/markdown", draft, original: "" });
+        setDirty(false); setErrors([]); setConflict(null); return;
+      }
+      showToast(`Failed to load ${kind === "artifacts" ? "artifact" : "sidecar"}: ${String(error)}`);
+    }
   };
 
   const cancelEditor = () => {
@@ -492,6 +500,16 @@ export function App() {
     return true;
   };
 
+  const deletePlanStage = async (slug: string, name: string, revision?: string) => {
+    if (!window.confirm(`Delete plan stage ${name}?`)) return;
+    const response = await fetch(`/api/work/${encodeRef(slug)}/plan-stages/${encodeRef(name)}`, {
+      method: "DELETE", headers: revision ? { "X-TCW-Revision": revision } : undefined,
+    });
+    if (response.status === 409) { showToast("Plan stage changed; refresh before deleting"); return; }
+    if (!response.ok) { showToast(`Could not delete plan stage: ${response.statusText}`); return; }
+    showToast("Plan stage deleted"); await load();
+  };
+
   return <>
     <header className="topbar"><div><h1>TCW</h1><p>{data.taxonomy.length} taxonomy · {data.capabilities.length} capabilities · {data.work.length} work items</p></div>
       <nav className="tabs" aria-label="TCW views">{AXES.map((candidate) => <button type="button" key={candidate}
@@ -528,7 +546,8 @@ export function App() {
             registeredTags={registeredTags} data={data} onSave={() => void save()} onCancel={cancelEditor} onRefreshConflict={() => void refreshConflict()} /> :
           loadingDetail ? <p className="empty">Loading...</p> : detail ? <DetailView axis={axis} detail={detail}
             onEdit={enterCore} onResource={(kind, slug, name) => void enterResource(kind, slug, name)}
-            onOpen={(slug, name) => void openArtifact(slug, name, showToast)}
+            onOpen={(slug, name, kind = "artifacts") => void openWorkResource(slug, name, kind, showToast)}
+            onDeletePlanStage={(slug, name, revision) => void deletePlanStage(slug, name, revision)}
             onAction={(action) => setModal(action)} /> : <p className="empty">Select an entry.</p>}
       </section>
     </main>
@@ -576,9 +595,9 @@ function handleTreeKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
   }
 }
 
-async function openArtifact(slug: string, name: string, toast: (message: string) => void) {
+async function openWorkResource(slug: string, name: string, kind: "artifacts" | "plan-stages", toast: (message: string) => void) {
   try {
-    const response = await fetch(`/api/work/${encodeRef(slug)}/artifacts/${encodeRef(name)}/open`, {
+    const response = await fetch(`/api/work/${encodeRef(slug)}/${kind}/${encodeRef(name)}/open`, {
       method: "POST", headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -610,9 +629,11 @@ function FilterControls({ axis, registeredTags, statusFilter, setStatusFilter, k
   </div>;
 }
 
-function DetailView({ axis, detail, onEdit, onResource, onOpen, onAction }:
-  { axis: Axis; detail: Detail; onEdit: () => void; onResource: (kind: "artifacts" | "sidecars", slug: string, name: string) => void;
-    onOpen: (slug: string, name: string) => void; onAction: (action: "start" | "complete" | "drop") => void }) {
+function DetailView({ axis, detail, onEdit, onResource, onOpen, onDeletePlanStage, onAction }:
+  { axis: Axis; detail: Detail; onEdit: () => void; onResource: (kind: "artifacts" | "sidecars" | "plan-stages", slug: string, name: string) => void;
+    onOpen: (slug: string, name: string, kind?: "artifacts" | "plan-stages") => void;
+    onDeletePlanStage: (slug: string, name: string, revision?: string) => void;
+    onAction: (action: "start" | "complete" | "drop") => void }) {
   if (axis === "work") {
     const payload = detail as WorkDetail; const item = payload.item;
     return <><div className="detail-head"><div><h2>{item.title ?? item.slug}</h2><p className="item-meta">{item.slug}</p></div>
@@ -627,6 +648,17 @@ function DetailView({ axis, detail, onEdit, onResource, onOpen, onAction }:
       <div className="artifacts">{payload.artifacts.filter((resource) => resource.present && resource.name !== "initial-request").map((resource) =>
         <div className="artifact-group" key={resource.name}><button className="artifact" type="button" onClick={() => onOpen(item.slug, resource.name)}>{resource.name}</button>
           <button className="artifact-edit" type="button" aria-label={`Edit ${resource.name}`} onClick={() => onResource("artifacts", item.slug, resource.name)}>✎</button></div>)}</div>
+      {payload.planStages?.length > 0 && <div className="plan-stages"><h3>Plan stages</h3>
+        {payload.planStages.map((stage) => <div className="plan-stage" key={stage.id}>
+          <div><strong>{stage.title}</strong><span className="item-meta"> {stage.id}</span></div>
+          <div className="item-meta">Depends on: {stage.depends_on.length ? stage.depends_on.join(", ") : "none"}
+            {stage.effort && ` · effort ${stage.effort}`}{stage.complexity && ` · complexity ${stage.complexity}`}
+            {stage.priority != null && ` · priority ${stage.priority}`}{stage.tags.length > 0 && ` · ${stage.tags.join(", ")}`}</div>
+          <div className="artifact-group"><span>{stage.present ? "Document present" : "Document missing"}</span>
+            {stage.present && <button type="button" onClick={() => onOpen(item.slug, stage.id, "plan-stages")}>Open</button>}
+            <button type="button" onClick={() => onResource("plan-stages", item.slug, stage.id)}>{stage.present ? "Edit" : "Create"}</button>
+            {stage.present && <button type="button" onClick={() => onDeletePlanStage(item.slug, stage.id, stage.revision)}>Delete</button>}</div>
+        </div>)}</div>}
       {payload.sidecars?.some((resource) => resource.present) && <div className="sidecars-section"><h3>Sidecars</h3>
         {payload.sidecars.filter((resource) => resource.present).map((resource) => <div className="sidecar-item" key={resource.name}><span className="sidecar-name">{resource.name}</span>
           <button className="sidecar-edit-btn" type="button" onClick={() => onResource("sidecars", item.slug, resource.name)}>Edit</button></div>)}</div>}
@@ -651,7 +683,7 @@ function EditorView({ editor, setDraft, saving, errors, conflict, registeredTags
   { editor: Editor; setDraft: (key: string, value: unknown) => void; saving: boolean; errors: string[]; conflict: unknown;
     registeredTags: string[]; data: Data; onSave: () => void; onCancel: () => void; onRefreshConflict: () => void }) {
   if (editor.mode === "resource") return <div className={`editor-container${saving ? " saving" : ""}`}>
-    <EditorHeader title={`Edit ${editor.kind === "artifacts" ? "Artifact" : "Sidecar"}: ${editor.name}`} saving={saving} onSave={onSave} onCancel={onCancel} />
+    <EditorHeader title={`Edit ${editor.kind === "artifacts" ? "Artifact" : editor.kind === "sidecars" ? "Sidecar" : "Plan stage"}: ${editor.name}`} saving={saving} onSave={onSave} onCancel={onCancel} />
     <Errors errors={errors} />{Boolean(conflict) && <Conflict onRefresh={onRefreshConflict} onDiscard={onCancel} />}
     <MarkdownEditor value={editor.draft} onChange={(value) => setDraft("draft", value)} /></div>;
   const draft = editor.draft;
