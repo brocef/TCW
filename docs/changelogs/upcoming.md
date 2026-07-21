@@ -5,7 +5,7 @@ category, with commit hash ranges so entries trace back to source.
 
 ## Added
 
-<changes starting-hash="73f50c8" ending-hash="d961c6e">
+<changes starting-hash="73f50c8" ending-hash="82efecf">
 - Added storage-neutral plan-stage metadata and bounded revision-aware store
   operations, with a filesystem realization under `plan/<id>.md`.
 - Added staged-plan manifest and document validation for safe IDs, metadata,
