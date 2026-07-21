@@ -1,10 +1,10 @@
 # Outcome — Upgrade `tcw serve` to Fastify and React
 
-The runtime migration is implemented and verified as a parity-first compatibility
-release candidate. Fastify is now the only browser-facing listener, Python domain
-behavior remains in an authenticated private sidecar, and a Vite-built React Router
-shell hosts the established three-pane editor. The public command surface is
-unchanged; `tcw serve` alone now requires Node.js 22.12 or newer.
+The runtime and client migration is fully implemented. Fastify is now the only
+browser-facing listener, Python domain behavior remains in an authenticated private
+sidecar, and the three-pane editor is implemented in TypeScript with React and React
+Router Data Mode. The public command surface is unchanged; `tcw serve` alone now
+requires Node.js 22.12 or newer.
 
 ## What changed
 
@@ -20,9 +20,14 @@ unchanged; `tcw serve` alone now requires Node.js 22.12 or newer.
 - Added a loopback-only Fastify server with strict CSP, Host/Origin validation, a
   1 MiB request limit, authenticated `/api/*` proxying, static assets, and SPA
   fallback.
-- Added a React Router Data Mode application shell and bundled the established
-  editor implementation, styling, tree helper, and Markdown behavior as offline
-  compatibility assets beneath it.
+- Ported the complete editor to native React components: deep-link/history routing,
+  hierarchical trees and keyboard navigation, persisted expansion and pane sizes,
+  text/status/tag/kind filters, Markdown rendering and live preview, every axis's
+  create/edit flows, artifacts and sidecars, Work lifecycle actions, validation,
+  dirty-navigation protection, and stale-write recovery.
+- Replaced the global tree helper with a typed model and imported Markdown through
+  the locked frontend graph. Removed all legacy `tcw/serve/static` browser assets,
+  the Python static-file handler, the vendored renderer shim, and legacy JS tests.
 - Added deterministic committed server/client bundles to Python package data. An
   installed wheel runs without pnpm, `node_modules`, or frontend source files.
 - Updated the README, web capability description, release notes, changelog, and
@@ -31,12 +36,15 @@ unchanged; `tcw serve` alone now requires Node.js 22.12 or newer.
 
 ## Verification performed
 
-- `python -m pytest -q` — **664 passed**.
+- `python -m pytest -q` — **659 passed**. The total is lower only because the
+  obsolete Python wrapper/static-serving tests were removed with the legacy client.
 - `corepack pnpm install --frozen-lockfile`, `typecheck`, `lint`, `test`, `build`,
-  and `check:build` — clean; Vitest/React Testing Library **4 passed**.
-- `node --test tests/tree.test.mjs` — **23 passed**.
-- Playwright against a throwaway TCW node — **3 passed**, covering all three axes,
-  navigation, filtering, API/SPA route separation, and deep-link fallback.
+  and `check:build` — clean; Vitest/React Testing Library **10 passed**.
+- Playwright against a throwaway TCW node — **10 passed**, covering all three axes,
+  deep links, API/SPA separation, text and facet filters, Back/Forward, Work,
+  Taxonomy and Capability creation/editing, Markdown preview, validation and dirty
+  navigation, artifact and sidecar editing, stale-write recovery, start/complete,
+  and drop.
 - Live `tcw serve` smokes proved browser/API service and coordinated SIGTERM
   shutdown without orphaning either listener.
 - An isolated wheel install proved that the packaged Node entry point, hashed Vite
@@ -46,30 +54,12 @@ unchanged; `tcw serve` alone now requires Node.js 22.12 or newer.
 
 ## Deviations from the implementation plan
 
-- The client is not yet a full component-by-component TypeScript rewrite. React and
-  React Router own the entry point and route synchronization, but the established
-  parity-tested editor remains packaged JavaScript loaded by the React shell. This
-  avoided a high-risk simultaneous rewrite of every editing and lifecycle workflow,
-  but leaves a deliberate compatibility bridge instead of completing phases 5–6 as
-  originally specified.
-- The new Playwright suite is a browser-facing parity smoke, not the exhaustive
-  workflow matrix specified for Work, Taxonomy, Capabilities, Markdown, validation,
-  dirty-state, and cross-process stale-write behavior. Those behaviors retain their
-  existing implementation and Python/API coverage, but do not each have a new
-  Playwright scenario.
-- Legacy browser assets and their tree tests remain in the distribution because the
-  compatibility bridge still uses them. They were not removed or replaced with
-  equivalent TypeScript modules.
-
-These deviations are material scope decisions and require explicit user acceptance
-before closeout. If exact conformance to the original React-port and browser-test
-requirements is required, the item should remain active for that additional work.
+None. The temporary compatibility bridge used during migration was removed before
+verification and is not present in source, package data, or built output.
 
 ## Closeout decisions still pending
 
-- Decide whether to accept the compatibility bridge or require the full TypeScript
-  React port and exhaustive Playwright matrix before completion.
-- If accepted, resolve
+- After user verification, resolve
   `2026-07-03-live-browser-test-pass-for-the-interactive-web-editor` as superseded
   by this item's automated and live-browser evidence.
 - Keep the rich Markdown editor backlog item separate.

@@ -8,6 +8,9 @@ internal module names.
 - `tcw serve` now uses a packaged Fastify server and React client while keeping
   the same command options and local editing experience. It requires Node.js
   22.12 or newer; all other TCW commands remain Python-only.
+- The three-pane browser editor is now implemented entirely in TypeScript and
+  React, including navigation, filters, Markdown previews, editing, lifecycle
+  actions, validation, dirty-draft protection, and stale-write recovery.
 - The local web app still works offline after installation. Users do not need
   pnpm, `node_modules`, or a frontend build because the web assets ship with TCW.
 - Startup and shutdown now supervise a private authenticated Python API and the
