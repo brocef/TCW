@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from contextlib import ExitStack
 from importlib.resources import as_file, files
@@ -100,6 +101,21 @@ def _stop_process(process: subprocess.Popen[str]) -> None:
         process.wait(timeout=5)
 
 
+def _supervise(
+    process: subprocess.Popen[str],
+    sidecar_thread: threading.Thread,
+    poll_interval: float = 0.1,
+) -> None:
+    """Block while both runtimes are healthy; fail if either exits on its own."""
+    while True:
+        return_code = process.poll()
+        if return_code is not None:
+            raise RuntimeError(f"Node child exited unexpectedly with status {return_code}")
+        if not sidecar_thread.is_alive():
+            raise RuntimeError("private API sidecar exited unexpectedly")
+        time.sleep(poll_interval)
+
+
 def run_server(*, port: int, open_browser: bool, node_root: Path | None,
                include_descendants: bool) -> int:
     """Run the authenticated sidecar and packaged Fastify server together."""
@@ -159,11 +175,7 @@ def run_server(*, port: int, open_browser: bool, node_root: Path | None,
             print(f"Serving TCW at {url}")
             if open_browser:
                 threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
-            return_code = process.wait()
-            if return_code != 0:
-                print(f"tcw serve: Node child exited with status {return_code}", file=sys.stderr)
-                return 1
-            return 0
+            _supervise(process, sidecar_thread)
     except KeyboardInterrupt:
         print("\ntcw serve: stopped", file=sys.stderr)
         return 0

@@ -2,7 +2,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from tcw.serve.runtime import MINIMUM_NODE, find_compatible_node, parse_node_version
+from tcw.serve.runtime import (
+    MINIMUM_NODE, _supervise, find_compatible_node, parse_node_version,
+)
 
 
 @pytest.mark.parametrize(
@@ -48,3 +50,21 @@ def test_sidecar_token_validation():
     assert _valid_sidecar_token("secret", "secret") is True
     assert _valid_sidecar_token("wrong", "secret") is False
     assert _valid_sidecar_token("", None) is True
+
+
+def test_supervisor_rejects_node_exit():
+    process = Mock()
+    process.poll.return_value = 7
+    sidecar_thread = Mock()
+    sidecar_thread.is_alive.return_value = True
+    with pytest.raises(RuntimeError, match="status 7"):
+        _supervise(process, sidecar_thread, poll_interval=0)
+
+
+def test_supervisor_rejects_sidecar_exit():
+    process = Mock()
+    process.poll.return_value = None
+    sidecar_thread = Mock()
+    sidecar_thread.is_alive.return_value = False
+    with pytest.raises(RuntimeError, match="sidecar exited"):
+        _supervise(process, sidecar_thread, poll_interval=0)
