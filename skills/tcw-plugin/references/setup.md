@@ -17,7 +17,10 @@ so there is one source of truth — **don't also `pip install tcw` separately.**
      install); or `python3 -m pip install --user "<clone-root>"`; or a dedicated
      venv. **Never** `pip install` into a managed base interpreter.
 
-3. **Verify:** `tcw --version` resolves and prints a version.
+3. **Verify:** `tcw --version` resolves and prints a version. If the user plans
+   to use `tcw serve`, also run `node --version` and require 22.12 or newer.
+   Do not install pnpm or run a web build: released/plugin package data already
+   contains the Fastify server and React client.
 
 4. **Warn:** if a separate `pip install tcw` also exists, the two can drift —
    recommend keeping only the pipx install, then run `/tcw-doctor`.

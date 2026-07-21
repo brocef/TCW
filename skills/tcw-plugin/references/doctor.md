@@ -22,5 +22,12 @@ copy). "No drift" is what this procedure enforces — it is not automatic.
    `--force` failure (permissions, conflicts, no network) report and stop with
    manual-fix guidance — do not silently retry.
 
-5. **Report:** PATH status, install kind (pipx / editable / plain pip / missing),
-   installed vs active version, and the action taken.
+5. **For `tcw serve` failures only:** run `node --version` and require 22.12 or
+   newer. A missing/old-Node message is a runtime prerequisite failure; a
+   "packaged web assets are missing" message means the TCW installation is
+   incomplete and should be reinstalled. pnpm and `node_modules` are not part of
+   installed-runtime diagnosis.
+
+6. **Report:** PATH status, install kind (pipx / editable / plain pip / missing),
+   installed vs active version, the action taken, and (only for serve diagnosis)
+   the Node prerequisite result.

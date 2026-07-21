@@ -5,7 +5,7 @@ when_to_use: Use for TCW orientation across the plugin's skills, or when the `tc
 allowed-tools: Bash(tcw *), Bash(command -v *), Bash(pipx list *), Read
 metadata:
   author: Brian Cefali
-compatibility: Requires Python 3.11+; installs the tcw CLI via pipx from the plugin clone.
+compatibility: Requires Python 3.11+; `tcw serve` additionally requires Node.js 22.12+; installs the tcw CLI via pipx from the plugin clone.
 license: Apache-2.0
 ---
 
@@ -66,3 +66,8 @@ If `tcw` is **missing or broken**, read the matching procedure in this skill's
 - **Install** `tcw` from the plugin clone → read [`references/setup.md`](references/setup.md)
 - **Diagnose / repair** a stale, wrong, or shadowed install →
   read [`references/doctor.md`](references/doctor.md)
+
+Node.js is not a general TCW prerequisite. Check for Node 22.12 or newer only
+when the user intends to run or diagnose `tcw serve`. Installed TCW already
+contains the prebuilt Fastify/React assets; pnpm and `node_modules` are
+contributor-only requirements and must not be added to setup or repair steps.

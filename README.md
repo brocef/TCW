@@ -131,7 +131,11 @@ pip install -e .            # development install from a clone
 ```
 
 `tcw` is a real Python package (entry point `tcw = tcw.cli:main`), not a
-symlink. Requires Python ≥ 3.11; the only runtime dependency is PyYAML.
+symlink. Requires Python ≥ 3.11; the Python runtime dependency is PyYAML.
+`tcw serve` additionally requires Node.js ≥ 22.12. Other commands remain
+Python-only and work without Node installed. Released wheels contain the locked,
+prebuilt web server and client, so installed users do not need pnpm,
+`node_modules`, a network connection, or a frontend build step.
 
 ## Quickstart
 
@@ -216,6 +220,13 @@ tcw serve --no-open           # start the server without opening a browser
 tcw serve --port 9000         # choose a different loopback port
 ```
 
+This command requires Node.js 22.12 or newer. TCW checks the version before
+starting and reports an actionable error when Node is missing or too old. The
+Python CLI launches a private authenticated API sidecar and a packaged Fastify
+server; Fastify is the only browser-facing listener. The React client and server
+bundle are included in the Python package and work fully offline. pnpm is needed
+only by contributors rebuilding the committed web assets.
+
 When the served node has **descendant TCW nodes** (the orchestrator/subproject
 pattern), `tcw serve` aggregates every descendant node's board alongside the
 current one automatically — the same items as `tcw work list --include-descendants`.
@@ -258,7 +269,8 @@ directly from the browser:
   Check failures are surfaced in the UI.
 
 All Markdown editing uses a raw-Markdown textarea paired with a live-rendered
-preview pane — no build step or external dependency is required.
+preview pane. Its renderer is included in the locked, prebuilt package assets;
+no runtime download or user-side build is required.
 
 **Local-first safety:** the server binds only to `127.0.0.1` (loopback). Mutating
 requests (create, edit, lifecycle actions) additionally require
@@ -266,6 +278,10 @@ requests (create, edit, lifecycle actions) additionally require
 cross-origin or DNS-rebinding attacks. Request bodies are capped at 1 MiB.
 Concurrent stale edits are rejected (HTTP 409) so two editors never silently
 overwrite each other.
+
+If `tcw serve` fails before printing its URL, run `node --version` and confirm it
+is at least `v22.12.0`. Reinstall TCW if the error reports missing packaged web
+assets. Port-collision errors can be resolved with `--port <available-port>`.
 
 ### `tcw://` links — reference a TCW object
 
