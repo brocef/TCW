@@ -3,6 +3,12 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "web/e2e",
   timeout: 30_000,
-  use: { baseURL: "http://127.0.0.1:8765", trace: "retain-on-failure" },
+  workers: 1,
+  use: {
+    trace: "retain-on-failure",
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+      : undefined
+  },
   reporter: "list"
 });
