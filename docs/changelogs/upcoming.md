@@ -5,7 +5,7 @@ category, with commit hash ranges so entries trace back to source.
 
 ## Changed
 
-<changes starting-hash="93f6688" ending-hash="40c9aba">
+<changes starting-hash="93f6688" ending-hash="94c171e">
 - Added a pinned pnpm/Vite/TypeScript workspace for Fastify 5, React 19, React
   Router Data Mode, Vitest, React Testing Library, ESLint, and Playwright.
 - Refactored `tcw.serve` so an API-only `TcwServer` can require a per-process
@@ -28,4 +28,6 @@ category, with commit hash ranges so entries trace back to source.
 - Added launcher version/authentication tests, Fastify tests for proxying and
   browser security, TypeScript component/model tests, and ten Playwright
   scenarios covering all axes and editing/lifecycle parity.
+- Fixed Taxonomy and Capability tree-item wrappers so their selectable buttons
+  flex across the available list-column width, with browser width assertions.
 </changes>
