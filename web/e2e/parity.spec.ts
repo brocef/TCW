@@ -123,6 +123,10 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
   await page.getByLabel("Markdown", { exact: true }).fill("Taxonomy from React.");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("React Vocabulary", { exact: true })).toBeVisible();
+  const taxonomyWidths = await page.locator(".list, .tree-row .item").evaluateAll((elements) =>
+    elements.slice(0, 2).map((element) => element.getBoundingClientRect().width)
+  );
+  expect(taxonomyWidths[1]).toBeGreaterThan(taxonomyWidths[0] * 0.8);
   await page.getByText("React Vocabulary", { exact: true }).click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByLabel("Name").fill("React Vocabulary Edited");
@@ -137,6 +141,10 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
   await page.getByLabel("Markdown", { exact: true }).fill("Capability from React.");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Native client", { exact: true })).toBeVisible();
+  const capabilityWidths = await page.locator(".list, .tree-row .item").evaluateAll((elements) =>
+    elements.slice(0, 2).map((element) => element.getBoundingClientRect().width)
+  );
+  expect(capabilityWidths[1]).toBeGreaterThan(capabilityWidths[0] * 0.8);
   await page.getByText("Native client", { exact: true }).click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByLabel("Priority").selectOption("P1");

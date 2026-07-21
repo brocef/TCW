@@ -143,7 +143,7 @@ function Tree<T extends AxisItem>({ nodes, axis, selected, expanded, onToggle, o
               onClick={() => onToggle(node.path)}>{isExpanded ? "▾" : "▸"}</button>
           : <span className="tree-spacer" />}
         {node.item
-          ? <div className={axis === "work" ? "item-row" : undefined}>
+          ? <div className={axis === "work" ? "item-row" : "tree-item-content"}>
               <button type="button" role="treeitem" aria-level={depth + 1} data-tree-path={node.path}
                 aria-expanded={hasChildren ? isExpanded : undefined} aria-selected={selected === key}
                 className={`item${selected === key ? " active" : ""}${visible(node.item) ? "" : " ancestor-dim"}`}

@@ -360,7 +360,8 @@ h1 {
 
 /* Selectable rows inside a tree row must flex to fill the remaining width. */
 .tree-row .item,
-.tree-row .item-row {
+.tree-row .item-row,
+.tree-row .tree-item-content {
   flex: 1;
   min-width: 0;
 }
