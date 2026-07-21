@@ -14,6 +14,8 @@ internal module names.
 - Taxonomy and Capability entries now fill the list-column width consistently
   with Work entries and use the same vertical spacing instead of rendering as
   awkward narrow or crowded buttons.
+- The create control now appears above the object list in the Taxonomy,
+  Capabilities, and Work views, so it stays in a consistent, easy-to-find place.
 - The local web app still works offline after installation. Users do not need
   pnpm, `node_modules`, or a frontend build because the web assets ship with TCW.
 - Startup and shutdown now supervise a private authenticated Python API and the

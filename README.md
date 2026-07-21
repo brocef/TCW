@@ -246,7 +246,8 @@ parent/child relations for work items. Selecting or deep-linking a nested item
 expands its ancestors automatically, and the text filter prunes the tree to
 matches plus the ancestors needed to reach them. The list column scrolls
 independently, so a long tree stays navigable without moving the header or the
-detail pane. Above the list is a **multi-select category filter**: on the Work
+detail pane. Each axis keeps its create control immediately above the object
+tree. Above that is a **multi-select category filter**: on the Work
 board a `Tags` dropdown (checkbox per registered tag; select several to match
 **any**), and in the Taxonomy view a `Kind` dropdown (`Feature` / `Vocabulary`).
 The Work board also carries a row of **status-filter toggles** (`backlog` /

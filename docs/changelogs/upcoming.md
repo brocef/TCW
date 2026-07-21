@@ -5,7 +5,7 @@ category, with commit hash ranges so entries trace back to source.
 
 ## Changed
 
-<changes starting-hash="93f6688" ending-hash="3c95733">
+<changes starting-hash="93f6688" ending-hash="17fbd5a">
 - Added a pinned pnpm/Vite/TypeScript workspace for Fastify 5, React 19, React
   Router Data Mode, Vitest, React Testing Library, ESLint, and Playwright.
 - Refactored `tcw.serve` so an API-only `TcwServer` can require a per-process
@@ -31,4 +31,6 @@ category, with commit hash ranges so entries trace back to source.
 - Fixed Taxonomy and Capability tree-item wrappers so their selectable buttons
   flex across the available list-column width and nested rows use the same 8px
   vertical spacing as Work items, with browser geometry assertions.
+- Moved the shared React create control above the ARIA object tree for all three
+  axes and added component coverage that locks down the DOM order.
 </changes>
