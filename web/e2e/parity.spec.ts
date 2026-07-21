@@ -145,6 +145,12 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
     elements.slice(0, 2).map((element) => element.getBoundingClientRect().width)
   );
   expect(capabilityWidths[1]).toBeGreaterThan(capabilityWidths[0] * 0.8);
+  const capabilityGap = await page.locator(".tree-row").evaluateAll((rows) => {
+    const parent = rows[0].getBoundingClientRect();
+    const child = rows[1].getBoundingClientRect();
+    return child.top - parent.bottom;
+  });
+  expect(capabilityGap).toBe(8);
   await page.getByText("Native client", { exact: true }).click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByLabel("Priority").selectOption("P1");

@@ -244,7 +244,8 @@ h1 {
 
 .list {
   display: grid;
-  gap: 8px;
+  --tree-row-gap: 8px;
+  gap: var(--tree-row-gap);
   padding: 12px;
   flex: 1;                 /* fill the pane below the fixed head… */
   overflow-y: auto;        /* …and scroll the tree within it */
@@ -305,6 +306,12 @@ h1 {
 }
 
 /* ── Tree view (hierarchical object list) ──────────────────────────── */
+
+/* Nested path nodes use the same vertical rhythm as root-level Work rows. */
+.tree-node {
+  display: grid;
+  gap: var(--tree-row-gap);
+}
 
 .tree-row {
   display: flex;

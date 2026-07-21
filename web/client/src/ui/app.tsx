@@ -135,7 +135,7 @@ function Tree<T extends AxisItem>({ nodes, axis, selected, expanded, onToggle, o
     const hasChildren = node.children.length > 0;
     const isExpanded = expanded.has(node.path);
     const key = node.item ? itemKey(axis, node.item) : node.path;
-    return <div key={node.path} role="none">
+    return <div className="tree-node" key={node.path} role="none">
       <div className="tree-row" role="none">
         {Array.from({ length: depth }, (_, index) => <span className="tree-indent" key={index} />)}
         {hasChildren
