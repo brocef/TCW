@@ -158,6 +158,31 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
   await expect(page.locator(".fields")).toContainText("P1");
 });
 
+test("searches references and surfaces targeted validation warnings", async ({ page, request }) => {
+  const feature = await request.post(`${baseUrl}/api/taxonomy`, {
+    data: { name: "Useful feature", slug: "use-feature", kind: "Feature", vocabulary: ["react-vocabulary"] }
+  });
+  expect(feature.ok()).toBeTruthy();
+  await page.goto(`${baseUrl}/capabilities/react/native-client`);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const featureInput = page.getByRole("combobox", { name: "Feature" });
+  await featureInput.fill("use");
+  await expect(page.locator(".reference-results strong").first()).toHaveText(/use/i);
+  await featureInput.press("Enter");
+  await expect(featureInput).toHaveValue("use-feature");
+  await page.getByRole("combobox", { name: "Superseded by" }).fill("missing-capability");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("alert")).toContainText("Saved with validation issues");
+  await expect(page.getByRole("alert")).toContainText("missing-capability");
+  const saved = await (await request.get(`${baseUrl}/api/capabilities/react%2Fnative-client`)).json();
+  expect(saved.capability.fields.Feature).toBe("use-feature");
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("combobox", { name: "Superseded by" }).fill("");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".toast")).toHaveText("Saved");
+});
+
 test("applies axis-specific facets and browser history navigation", async ({ page }) => {
   await page.goto(`${baseUrl}/work`);
   await page.locator("details.facet summary").click();

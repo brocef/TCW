@@ -13,6 +13,8 @@ import { marked } from "marked";
 import { useBeforeUnload, useLocation, useNavigate } from "react-router";
 import { encodeRef, fetchJson, requestJson } from "../model/api";
 import { buildPathTree, buildWorkTree, pathAncestors, pruneTree, workAncestors } from "../model/tree";
+import { referenceOptions, type TReferenceField } from "../model/reference-search";
+import { ReferenceInput } from "./reference-input";
 import type {
   Axis,
   AxisItem,
@@ -22,6 +24,7 @@ import type {
   ResourceDetail,
   TaxonomyDetail,
   TaxonomyItem,
+  TMutationResponse,
   TreeNode,
   WorkDetail,
   WorkItem,
@@ -233,21 +236,6 @@ function SelectInput({ label, value, options, onChange }:
   </select></div>;
 }
 
-function TagList({ label, values, onChange, placeholder }:
-  { label: string; values: string[]; onChange: (values: string[]) => void; placeholder?: string }) {
-  const [input, setInput] = useState("");
-  return <div className="field-group"><label>{label}</label><div className="tag-list">
-    {values.map((value, index) => <span className="tag" key={`${value}-${index}`}>{value}
-      <button type="button" aria-label={`Remove ${value}`} onClick={() => onChange(values.filter((_v, i) => i !== index))}>×</button>
-    </span>)}
-  </div><input className="tag-input" aria-label={`Add ${label}`} value={input} placeholder={placeholder}
-    onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => {
-      if (event.key === "Enter" && input.trim()) {
-        event.preventDefault(); onChange([...values, input.trim()]); setInput("");
-      }
-    }} /></div>;
-}
-
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -281,6 +269,11 @@ export function App() {
   const showToast = useCallback((message: string) => {
     setToast(message); window.setTimeout(() => setToast(""), 2800);
   }, []);
+  const showSaveResult = useCallback((message: string, response: JsonRecord | null) => {
+    const findings = asWarnings(response);
+    setWarnings(findings);
+    showToast(findings.length ? `${message} with ${findings.length} validation issue${findings.length === 1 ? "" : "s"}` : message);
+  }, [showToast]);
   const confirmLeave = useCallback(() => !dirty || window.confirm("You have unsaved changes. Leave without saving?"), [dirty]);
   useBeforeUnload(useCallback((event) => { if (dirty) event.preventDefault(); }, [dirty]));
 
@@ -447,7 +440,7 @@ export function App() {
         }
         const result = await requestJson<JsonRecord>(path, "POST", body);
         if (!result.ok) { setErrors([result.error || `Create failed (${result.status})`]); return; }
-        setWarnings(asWarnings(result.data)); showToast(`${LABELS[editor.axis]} created`);
+        showSaveResult(`${LABELS[editor.axis]} created`, result.data);
       } else if (editor.mode === "core") {
         const fields: JsonRecord = {};
         for (const [key, value] of Object.entries(editor.draft)) {
@@ -456,6 +449,11 @@ export function App() {
         if (editor.axis === "work" && "priority" in fields) {
           fields.priority = fields.priority === "" ? null : Number(fields.priority);
         }
+        if (editor.axis === "capabilities") {
+          for (const key of ["Feature", "Blocked by", "Planning doc", "Superseded by"]) {
+            if (fields[key] === "") fields[key] = null;
+          }
+        }
         const body: JsonRecord = { revision: editor.revision, fields };
         if (editor.draft.body !== editor.original.body) body.body = editor.draft.body;
         const path = editor.axis === "work" ? `/api/work/${encodeRef(editor.ref)}` :
@@ -463,14 +461,14 @@ export function App() {
         const result = await requestJson<JsonRecord>(path, "PATCH", body);
         if (result.status === 409) { setConflict({ local: structuredClone(editor.draft) }); return; }
         if (!result.ok) { setErrors([result.error || `Save failed (${result.status})`]); return; }
-        setWarnings(asWarnings(result.data)); showToast("Saved");
+        showSaveResult("Saved", result.data);
       } else {
-        const result = await requestJson<ResourceDetail>(
+        const result = await requestJson<ResourceDetail & TMutationResponse>(
           `/api/work/${encodeRef(editor.slug)}/${editor.kind}/${encodeRef(editor.name)}`, "PUT",
           { name: editor.name, content: editor.draft, mediaType: editor.mediaType, revision: editor.revision });
         if (result.status === 409) { setConflict({ local: editor.draft }); return; }
         if (!result.ok) { setErrors([result.error || `Save failed (${result.status})`]); return; }
-        showToast(editor.kind === "artifacts" ? "Artifact saved" : "Sidecar saved");
+        showSaveResult(editor.kind === "artifacts" ? "Artifact saved" : "Sidecar saved", result.data);
       }
       setEditor(null); setDirty(false); await load();
     } catch (error) { setErrors([error instanceof Error ? error.message : String(error)]); }
@@ -524,10 +522,10 @@ export function App() {
         const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-nav-key]");
         if (anchor) { event.preventDefault(); navigateTo(anchor.dataset.navAxis as Axis, anchor.dataset.navKey!); }
       }}>
-        {warnings.length > 0 && <div className="warnings-banner"><strong>Warnings</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
+        {warnings.length > 0 && <div className="warnings-banner" role="alert"><strong>Saved with validation issues</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
         {loadError ? <><p className="empty">Failed to load: {loadError}</p><button type="button" onClick={() => void load()}>Retry</button></> :
           editor ? <EditorView editor={editor} setDraft={setDraft} saving={saving} errors={errors} conflict={conflict}
-            registeredTags={registeredTags} onSave={() => void save()} onCancel={cancelEditor} onRefreshConflict={() => void refreshConflict()} /> :
+            registeredTags={registeredTags} data={data} onSave={() => void save()} onCancel={cancelEditor} onRefreshConflict={() => void refreshConflict()} /> :
           loadingDetail ? <p className="empty">Loading...</p> : detail ? <DetailView axis={axis} detail={detail}
             onEdit={enterCore} onResource={(kind, slug, name) => void enterResource(kind, slug, name)}
             onOpen={(slug, name) => void openArtifact(slug, name, showToast)}
@@ -649,9 +647,9 @@ function DetailView({ axis, detail, onEdit, onResource, onOpen, onAction }:
     <Markdown source={capability.body ?? ""} resolveLinks /></>;
 }
 
-function EditorView({ editor, setDraft, saving, errors, conflict, registeredTags, onSave, onCancel, onRefreshConflict }:
+function EditorView({ editor, setDraft, saving, errors, conflict, registeredTags, data, onSave, onCancel, onRefreshConflict }:
   { editor: Editor; setDraft: (key: string, value: unknown) => void; saving: boolean; errors: string[]; conflict: unknown;
-    registeredTags: string[]; onSave: () => void; onCancel: () => void; onRefreshConflict: () => void }) {
+    registeredTags: string[]; data: Data; onSave: () => void; onCancel: () => void; onRefreshConflict: () => void }) {
   if (editor.mode === "resource") return <div className={`editor-container${saving ? " saving" : ""}`}>
     <EditorHeader title={`Edit ${editor.kind === "artifacts" ? "Artifact" : "Sidecar"}: ${editor.name}`} saving={saving} onSave={onSave} onCancel={onCancel} />
     <Errors errors={errors} />{Boolean(conflict) && <Conflict onRefresh={onRefreshConflict} onDiscard={onCancel} />}
@@ -661,9 +659,9 @@ function EditorView({ editor, setDraft, saving, errors, conflict, registeredTags
     <EditorHeader title={`${editor.mode === "create" ? "Create" : "Edit"} ${LABELS[editor.axis]}`} saving={saving} onSave={onSave} onCancel={onCancel} />
     <Errors errors={errors} />{Boolean(conflict) && <Conflict onRefresh={onRefreshConflict} onDiscard={onCancel} />}
     <div className="editor-section">Fields</div><div className="editor-fields">
-      {editor.axis === "work" && <WorkFields draft={draft} setDraft={setDraft} registeredTags={registeredTags} />}
-      {editor.axis === "taxonomy" && <TaxonomyFields draft={draft} setDraft={setDraft} creating={editor.mode === "create"} />}
-      {editor.axis === "capabilities" && <CapabilityFields draft={draft} setDraft={setDraft} creating={editor.mode === "create"} />}
+      {editor.axis === "work" && <WorkFields draft={draft} setDraft={setDraft} registeredTags={registeredTags} data={data} current={editor.mode === "core" ? editor.ref : undefined} />}
+      {editor.axis === "taxonomy" && <TaxonomyFields draft={draft} setDraft={setDraft} creating={editor.mode === "create"} data={data} current={editor.mode === "core" ? editor.ref : undefined} />}
+      {editor.axis === "capabilities" && <CapabilityFields draft={draft} setDraft={setDraft} creating={editor.mode === "create"} data={data} current={editor.mode === "core" ? editor.ref : undefined} />}
     </div><div className="editor-section">Body</div>
     <MarkdownEditor value={String(draft.body ?? "")} onChange={(value) => setDraft("body", value)} />
   </div>;
@@ -681,39 +679,53 @@ function Conflict({ onRefresh, onDiscard }: { onRefresh: () => void; onDiscard: 
     <button type="button" onClick={onRefresh}>Refresh from server</button><button type="button" onClick={onDiscard}>Discard draft</button></div>;
 }
 
-function WorkFields({ draft, setDraft, registeredTags }:
-  { draft: Draft; setDraft: (key: string, value: unknown) => void; registeredTags: string[] }) {
+function optionsFor(field: TReferenceField, data: Data, current?: string, selected?: string[]) {
+  return referenceOptions(field, { ...data, currentIdentifier: current, selected });
+}
+
+function WorkFields({ draft, setDraft, registeredTags, data, current }:
+  { draft: Draft; setDraft: (key: string, value: unknown) => void; registeredTags: string[]; data: Data; current?: string }) {
   const tags = (draft.tags as string[] | undefined) ?? [];
   return <><TextInput label="Title" value={String(draft.title ?? "")} onChange={(value) => setDraft("title", value)} />
     <TextInput label="Priority" type="number" value={String(draft.priority ?? "")} onChange={(value) => setDraft("priority", value)} />
     <SelectInput label="Effort" value={String(draft.effort ?? "")} options={["", "low", "medium", "high", "very-high"]} onChange={(value) => setDraft("effort", value)} />
     <SelectInput label="Complexity" value={String(draft.complexity ?? "")} options={["", "low", "medium", "high", "very-high"]} onChange={(value) => setDraft("complexity", value)} />
-    <TextInput label="Parent" value={String(draft.parent ?? "")} onChange={(value) => setDraft("parent", value)} />
-    <TextInput label="Initiative" value={String(draft.initiative ?? "")} onChange={(value) => setDraft("initiative", value)} />
-    <TagList label="Blockers" values={(draft.blockers as string[] | undefined) ?? []} onChange={(value) => setDraft("blockers", value)} placeholder="Type a blocker and press Enter" />
+    <ReferenceInput label="Parent" value={String(draft.parent ?? "")} options={optionsFor("work-parent", data, current)} onChange={(value) => setDraft("parent", value)} />
+    <ReferenceInput label="Initiative" value={String(draft.initiative ?? "")} options={optionsFor("work-initiative", data, current)} onChange={(value) => setDraft("initiative", value)} />
+    <ReferenceInput label="Blockers" multiple value={(draft.blockers as string[] | undefined) ?? []} options={optionsFor("work-blockers", data, current, (draft.blockers as string[] | undefined) ?? [])} onChange={(value) => setDraft("blockers", value)} />
     <div className="field-group"><label>Tags</label><div className="tag-checkboxes">{[...new Set([...registeredTags, ...tags])].map((tag) => <label className={`tag-checkbox${registeredTags.includes(tag) ? "" : " tag-stale"}`} key={tag}>
       <input type="checkbox" checked={tags.includes(tag)} onChange={(event) => setDraft("tags", event.target.checked ? [...tags, tag] : tags.filter((item) => item !== tag))} /> {tag}{registeredTags.includes(tag) ? "" : " (unregistered)"}</label>)}</div></div></>;
 }
 
-function TaxonomyFields({ draft, setDraft, creating }:
-  { draft: Draft; setDraft: (key: string, value: unknown) => void; creating: boolean }) {
+function TaxonomyFields({ draft, setDraft, creating, data, current }:
+  { draft: Draft; setDraft: (key: string, value: unknown) => void; creating: boolean; data: Data; current?: string }) {
   return <><TextInput label="Name" value={String(draft.name ?? "")} onChange={(value) => setDraft("name", value)} />
     <SelectInput label="Kind" value={String(draft.kind ?? "Vocabulary")} options={["Vocabulary", "Feature"]} onChange={(value) => setDraft("kind", value)} />
     {creating && <><TextInput label="Slug" value={String(draft.slug ?? "")} onChange={(value) => setDraft("slug", value)} />
-      <TextInput label="Parent" value={String(draft.parent ?? "")} onChange={(value) => setDraft("parent", value)} /></>}
-    {!creating && <TagList label="Relates to" values={(draft.relates_to as string[] | undefined) ?? []} onChange={(value) => setDraft("relates_to", value)} />}
-    <TagList label="Vocabulary" values={(draft.vocabulary as string[] | undefined) ?? []} onChange={(value) => setDraft("vocabulary", value)} /></>;
+      <ReferenceInput label="Parent" value={String(draft.parent ?? "")} options={optionsFor("taxonomy-parent", data, current)} onChange={(value) => setDraft("parent", value)} /></>}
+    {!creating && <ReferenceInput label="Relates to" multiple value={(draft.relates_to as string[] | undefined) ?? []} options={optionsFor("taxonomy-relates", data, current, (draft.relates_to as string[] | undefined) ?? [])} onChange={(value) => setDraft("relates_to", value)} />}
+    <ReferenceInput label="Vocabulary" multiple value={(draft.vocabulary as string[] | undefined) ?? []} options={optionsFor("taxonomy-vocabulary", data, current, (draft.vocabulary as string[] | undefined) ?? [])} onChange={(value) => setDraft("vocabulary", value)} /></>;
 }
 
-function CapabilityFields({ draft, setDraft, creating }:
-  { draft: Draft; setDraft: (key: string, value: unknown) => void; creating: boolean }) {
+function CapabilityFields({ draft, setDraft, creating, data, current }:
+  { draft: Draft; setDraft: (key: string, value: unknown) => void; creating: boolean; data: Data; current?: string }) {
   if (creating) return <><TextInput label="Path" value={String(draft.path ?? "")} placeholder="e.g. web/editing" onChange={(value) => setDraft("path", value)} />
     <TextInput label="Name" value={String(draft.name ?? "")} onChange={(value) => setDraft("name", value)} />
     <SelectInput label="Status" value={String(draft.status ?? "Missing")} options={["Supported", "Partial", "Missing", "Blocked", "Omitted"]} onChange={(value) => setDraft("status", value)} /></>;
-  return <>{CAPABILITY_FIELDS.map(([label, options]) => options
-    ? <SelectInput label={label} value={String(draft[label] ?? "")} options={options} onChange={(value) => setDraft(label, value)} key={label} />
-    : <TextInput label={label} value={Array.isArray(draft[label]) ? (draft[label] as string[]).join(", ") : String(draft[label] ?? "")}
-        onChange={(value) => setDraft(label, label === "Roles" ? value.split(",").map((item) => item.trim()).filter(Boolean) : value)} key={label} />)}</>;
+  const fields: Partial<Record<string, { field: TReferenceField; multiple?: boolean; negated?: boolean }>> = {
+    Feature: { field: "capability-feature" }, Subject: { field: "capability-subject", multiple: true },
+    Roles: { field: "capability-roles", multiple: true }, When: { field: "capability-when", multiple: true, negated: true },
+    "Blocked by": { field: "capability-blocked-by" }, "Planning doc": { field: "capability-planning-doc" },
+    "Superseded by": { field: "capability-superseded-by" },
+  };
+  return <>{CAPABILITY_FIELDS.map(([label, selectOptions]) => {
+    if (selectOptions) return <SelectInput label={label} value={String(draft[label] ?? "")} options={selectOptions} onChange={(value) => setDraft(label, value)} key={label} />;
+    const config = fields[label];
+    if (!config) return <TextInput label={label} value={String(draft[label] ?? "")} onChange={(value) => setDraft(label, value)} key={label} />;
+    const fieldValue = config.multiple ? (Array.isArray(draft[label]) ? draft[label] as string[] : String(draft[label] ?? "").split(",").map((item) => item.trim()).filter(Boolean)) : String(draft[label] ?? "");
+    return <ReferenceInput key={label} label={label} value={fieldValue} multiple={config.multiple} negated={config.negated}
+      options={optionsFor(config.field, data, current, Array.isArray(fieldValue) ? fieldValue.map((item) => item.replace(/^!/, "")) : undefined)} onChange={(value) => setDraft(label, value)} />;
+  })}</>;
 }
 
 function StartModal({ onClose, onStart, errors }:

@@ -12,9 +12,14 @@ export interface WorkItem extends JsonRecord {
   tags?: string[];
   parent?: string;
   initiative?: string;
+  type?: string;
   resolution?: string;
   blocked_by?: Array<{ slug?: string; external?: string }>;
   body?: string;
+}
+
+export interface TMutationResponse extends JsonRecord {
+  warnings?: string[];
 }
 
 export interface TaxonomyItem extends JsonRecord {

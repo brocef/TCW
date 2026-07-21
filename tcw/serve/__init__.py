@@ -26,6 +26,7 @@ from tcw.store.fs import (
     find_node_root, heading_slug, registered_project_id, resolve_qualified_work_ref,
 )
 from tcw.refs import resolve_tcw_ref
+from tcw.validate import ValidationTarget, validate
 
 # tcw:// axis letter -> SPA axis word (the client does no TCW parsing itself).
 _AXIS_WORD = {"T": "taxonomy", "C": "capabilities", "W": "work"}
@@ -138,6 +139,21 @@ def _err(status: int, message: str, **extra: Any) -> tuple[int, bytes]:
 
 def _ok_json(value) -> tuple[int, bytes]:
     return HTTPStatus.OK, _json_bytes(value)
+
+
+def _validation_warnings(node_root: Path, axis: str, ref: str) -> list[str]:
+    """Run post-commit validation without turning a successful write into failure."""
+    try:
+        return validate(node_root, target=ValidationTarget(axis=axis, ref=ref))
+    except Exception as error:
+        return [f"validation could not complete: {error}"]
+
+
+def _with_warnings(response: dict, node_root: Path, axis: str, ref: str) -> dict:
+    warnings = _validation_warnings(node_root, axis, ref)
+    if warnings:
+        response["warnings"] = warnings
+    return response
 
 
 # ── Exception mapping ─────────────────────────────────────────────────────────
@@ -705,12 +721,14 @@ class TcwHandler(BaseHTTPRequestHandler):
                     type=type_val if type_val else "",
                     tags=tags,
                 )
-                self._send_json(HTTPStatus.CREATED, {
+                response = {
                     "item": _jsonable(detail.item),
                     "coreRevision": detail.core_revision,
                     "artifactRevisions": detail.artifact_revisions,
                     "sidecarRevisions": detail.sidecar_revisions,
-                })
+                }
+                self._send_json(HTTPStatus.CREATED, _with_warnings(
+                    response, work.node_root, "work", detail.item.slug))
             except (ValueError, StaleRevision, RefError, IllegalTransition) as e:
                 status_code, body_bytes = _map_store_error(e)
                 self._send(status_code, body_bytes, "application/json; charset=utf-8")
@@ -795,11 +813,8 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "term": _jsonable(term),
                     "coreRevision": detail.core_revision if detail else "",
                 }
-                # Run post-write check and include warnings
-                warnings = taxonomy.check()
-                if warnings:
-                    response["warnings"] = warnings
-                self._send_json(HTTPStatus.CREATED, response)
+                self._send_json(HTTPStatus.CREATED, _with_warnings(
+                    response, taxonomy.node_root, "taxonomy", ref))
             except (ValueError, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -827,11 +842,8 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "capability": _jsonable(detail.capability),
                     "coreRevision": detail.core_revision,
                 }
-                # Run post-write check and include warnings
-                warnings = capabilities.check(taxonomy=taxonomy)
-                if warnings:
-                    response["warnings"] = warnings
-                self._send_json(HTTPStatus.CREATED, response)
+                self._send_json(HTTPStatus.CREATED, _with_warnings(
+                    response, capabilities.node_root, "capabilities", cap_path))
             except (ValueError, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -915,12 +927,14 @@ class TcwHandler(BaseHTTPRequestHandler):
                 detail = work.update_work(slug, **kw)
                 item_data = _jsonable(detail.item)
                 item_data["slug"] = qslug         # echo the qualified slug to the UI
-                self._send_json(HTTPStatus.OK, {
+                response = {
                     "item": item_data,
                     "coreRevision": detail.core_revision,
                     "artifactRevisions": detail.artifact_revisions,
                     "sidecarRevisions": detail.sidecar_revisions,
-                })
+                }
+                self._send_json(HTTPStatus.OK, _with_warnings(
+                    response, work.node_root, "work", slug))
             except (ValueError, StaleRevision, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -962,11 +976,8 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "term": _jsonable(detail.term),
                     "coreRevision": detail.core_revision,
                 }
-                # Run post-write check and include warnings
-                warnings = taxonomy.check()
-                if warnings:
-                    response["warnings"] = warnings
-                self._send_json(HTTPStatus.OK, response)
+                self._send_json(HTTPStatus.OK, _with_warnings(
+                    response, taxonomy.node_root, "taxonomy", detail.term.slug))
             except (ValueError, StaleRevision, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -997,11 +1008,9 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "capability": _jsonable(detail.capability),
                     "coreRevision": detail.core_revision,
                 }
-                # Run post-write check and include warnings
-                warnings = capabilities.check(taxonomy=taxonomy)
-                if warnings:
-                    response["warnings"] = warnings
-                self._send_json(HTTPStatus.OK, response)
+                self._send_json(HTTPStatus.OK, _with_warnings(
+                    response, capabilities.node_root, "capabilities",
+                    detail.capability.path))
             except (ValueError, StaleRevision, RefError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -1055,12 +1064,14 @@ class TcwHandler(BaseHTTPRequestHandler):
             try:
                 resource = work.write_artifact(slug, name, content,
                                                revision=revision)
-                self._send_json(HTTPStatus.OK, {
+                response = {
                     "name": resource.name,
                     "content": resource.content,
                     "mediaType": resource.media_type,
                     "revision": resource.revision,
-                })
+                }
+                self._send_json(HTTPStatus.OK, _with_warnings(
+                    response, work.node_root, "work", slug))
             except (ValueError, StaleRevision) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -1096,12 +1107,14 @@ class TcwHandler(BaseHTTPRequestHandler):
                 resource = work.write_sidecar(slug, name, content,
                                               media_type=media_type,
                                               revision=revision)
-                self._send_json(HTTPStatus.OK, {
+                response = {
                     "name": resource.name,
                     "content": resource.content,
                     "mediaType": resource.media_type,
                     "revision": resource.revision,
-                })
+                }
+                self._send_json(HTTPStatus.OK, _with_warnings(
+                    response, work.node_root, "work", slug))
             except (ValueError, StaleRevision) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")

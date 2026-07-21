@@ -662,7 +662,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
     # -- validation --
 
-    def check(self) -> list[str]:
+    def check(self, identifier: str | None = None) -> list[str]:
         problems: list[str] = []
         cfg_path = self.root / "config.yaml"
         try:
@@ -679,7 +679,14 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                     f"project ID '{project_id}' collides with local top-level term"
                 )
 
-        for term in self.list_all(local_only=True):
+        if identifier is not None:
+            selected = self.get(identifier)
+            if selected is None:
+                return [f"no such term: {identifier}"]
+            terms = [selected]
+        else:
+            terms = self.list_all(local_only=True)
+        for term in terms:
             if term.kind not in TAXONOMY_KINDS:
                 problems.append(f"{term.slug}: unknown kind '{term.kind}'")
             for ref in term.relates_to:
@@ -703,6 +710,24 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                         problems.append(f"{term.slug}: vocabulary ref '{ref}' "
                                         f"points to {target.kind}, expected Vocabulary")
         return problems
+
+    def _validation_resources(self, identifier: str) -> list[Path]:
+        """Filesystem resources bounded to one taxonomy object."""
+        try:
+            identifier = _safe_store_id(identifier, "taxonomy target")
+        except ValueError:
+            return []
+        local_folder = self.root / identifier
+        if local_folder.is_dir():
+            folder = local_folder
+        else:
+            term = self.get(identifier)
+            if term is None:
+                return []
+            owner = self if term.origin == "local" else self.extends[term.origin]
+            folder = owner.root / term.slug
+        return [path for path in (folder / "meta.yaml", folder / "description.md")
+                if path.is_file()]
 
     def _cycles(self, taxonomy_root: Path, seen: set[Path]) -> bool:
         if taxonomy_root in seen:
@@ -1210,7 +1235,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 return True
         return False
 
-    def check(self, taxonomy=None) -> list[str]:
+    def check(self, taxonomy=None, identifier: str | None = None) -> list[str]:
         problems: list[str] = []
         cfg_path = self.root / self.CONFIG_NAME
         try:
@@ -1227,8 +1252,25 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                     f"project ID '{project_id}' collides with local top-level capability"
                 )
 
-        seen_ids: dict[str, str] = {}
-        for cap in self.list_all(local_only=True):
+        selected = self.get(identifier) if identifier is not None else None
+        if identifier is not None and selected is None:
+            return [f"no such capability: {identifier}"]
+        if selected is not None:
+            seen_ids: dict[str, str] = {}
+            for path in self._local_paths():
+                if path == selected.path:
+                    continue
+                try:
+                    candidate_id = str(load_yaml(self.root / path / "meta.yaml").get("id") or "")
+                except yaml.YAMLError:
+                    continue
+                if candidate_id:
+                    seen_ids[candidate_id] = path
+            caps = [selected]
+        else:
+            seen_ids = {}
+            caps = self.list_all(local_only=True)
+        for cap in caps:
             where = cap.path
             f = cap.fields
             if not cap.id:
@@ -1255,12 +1297,17 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 problems.append(f"{where}: Blocked requires Blocked by")
             if "Superseded by" in f and (e := self._ref_error(str(f["Superseded by"]))):
                 problems.append(f"{where}: Superseded by → {e}")
+            if "Blocked by" in f and (e := self._ref_error(str(f["Blocked by"]))):
+                problems.append(f"{where}: Blocked by → {e}")
             problems += self._check_globals(where, f)
             problems += self._check_subject(where, f, taxonomy)
             problems += self._check_feature(where, f, taxonomy)
 
         # Override + attachment validation (every meta dir, incl. override folders).
-        for p in self._all_meta_dirs():
+        meta_dirs = self._all_meta_dirs()
+        if selected is not None:
+            meta_dirs = [selected.path]
+        for p in meta_dirs:
             d = self.root / p
             meta = load_yaml(d / "meta.yaml")
             listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
@@ -1275,6 +1322,29 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             if target and (e := self._override_problem(str(target))):
                 problems.append(f"{p}: {e}")
         return problems
+
+    def _validation_resources(self, identifier: str) -> list[Path]:
+        """Filesystem resources bounded to one capability object."""
+        try:
+            identifier = _safe_store_id(identifier, "capability target")
+        except ValueError:
+            return []
+        local_folder = self.root / identifier
+        if (local_folder / "meta.yaml").is_file():
+            folder = local_folder
+        else:
+            cap = self.get(identifier)
+            if cap is None:
+                return []
+            owner = self if cap.origin == "local" else self.extends[cap.origin]
+            folder = owner.root / cap.path
+        try:
+            meta = load_yaml(folder / "meta.yaml")
+        except yaml.YAMLError:
+            meta = {}
+        names = ["meta.yaml", "description.md", *_as_list(meta.get("prependedDocs")),
+                 *_as_list(meta.get("appendedDocs"))]
+        return [folder / name for name in names if (folder / name).is_file()]
 
     def _override_problem(self, target: str) -> str | None:
         """Validate an `overrides: <target>` pointer (dangling / ambiguous / local)."""
@@ -1626,14 +1696,30 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 out.append(norm)
         return out
 
-    def check(self) -> list[str]:
+    def check(self, identifier: str | None = None) -> list[str]:
         registered = set(self.registered_tags())
         problems: list[str] = []
-        for item in self.query():
+        if identifier is not None:
+            item = self.get(identifier)
+            if item is None:
+                return [f"no such work item: {identifier}"]
+            items = [item]
+        else:
+            items = self.query()
+        for item in items:
             for tag in item.tags:
                 if tag not in registered:
                     problems.append(f"{item.slug}: unregistered tag '{tag}'")
         return problems
+
+    def _validation_resources(self, identifier: str) -> list[Path]:
+        """Filesystem resources bounded to one work object."""
+        folder = self._find(identifier)
+        if folder is None:
+            return []
+        names = ["state.yaml", *[f"{name}.md" for name in WORK_ARTIFACTS],
+                 *WORK_SIDECARS]
+        return [folder / name for name in names if (folder / name).is_file()]
 
     # -- raw inbox intake (separate from formal WorkItem status) --
 

@@ -1354,6 +1354,50 @@ class TestCapabilityCheckWarnings:
         assert status == HTTPStatus.CREATED
         assert "warnings" not in body or isinstance(body.get("warnings"), list)
 
+
+class TestTargetedPostWriteWarnings:
+    def test_clean_save_ignores_unrelated_broken_object(self, seeded):
+        root, base, slug = seeded
+        FsCapabilitiesStore.open(root).add("unrelated", status="Partial")
+        status, body = _req(base, "POST", "/api/taxonomy", {
+            "name": "Clean term", "slug": "clean-term",
+        })
+        assert status == HTTPStatus.CREATED
+        assert "warnings" not in body
+
+    def test_saved_object_problem_is_a_warning(self, seeded):
+        root, base, slug = seeded
+        status, body = _req(base, "POST", "/api/taxonomy", {
+            "name": "Broken feature", "slug": "broken-feature", "kind": "Feature",
+        })
+        assert status == HTTPStatus.CREATED
+        assert any("Feature requires" in warning for warning in body["warnings"])
+
+    def test_work_and_resource_saves_receive_targeted_warnings(self, seeded):
+        root, base, slug = seeded
+        detail = _get_json(base, f"/api/work/{slug}")
+        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
+            "revision": detail["coreRevision"], "body": "[bad](tcw://C/missing)",
+        })
+        assert status == HTTPStatus.OK
+        assert any("tcw://" in warning for warning in body["warnings"])
+        artifact = _get_json(base, f"/api/work/{slug}/artifacts/spec")
+        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/spec", {
+            "revision": artifact["revision"], "content": "[bad](tcw://T/missing)",
+        })
+        assert status == HTTPStatus.OK
+        assert any("tcw://" in warning for warning in body["warnings"])
+
+    def test_validation_exception_does_not_falsely_fail_save(self, seeded, monkeypatch):
+        import tcw.serve as serve_module
+
+        monkeypatch.setattr(serve_module, "validate", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+        root, base, slug = seeded
+        status, body = _req(base, "POST", "/api/work", {"title": "Committed"})
+        assert status == HTTPStatus.CREATED
+        assert body["item"]["title"] == "Committed"
+        assert body["warnings"] == ["validation could not complete: boom"]
+
     def test_update_capability_includes_warnings(self, seeded):
         root, base, slug = seeded
         detail = _get_json(base, "/api/capabilities/web")

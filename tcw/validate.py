@@ -14,7 +14,9 @@ work}` trees, or a single `[path]`):
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
@@ -29,6 +31,14 @@ _FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$",
 # Inline code span: a backtick run not adjacent to more backticks, closed by an
 # equal-length run (CommonMark-ish — handles adjacent runs in scheme-teaching docs).
 _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class ValidationTarget:
+    """Storage-neutral identity of one object to validate."""
+
+    axis: Literal["taxonomy", "capabilities", "work"]
+    ref: str
 
 
 def _strip_code(md: str) -> str:
@@ -73,24 +83,41 @@ def _components_to_check(node_root: Path, path) -> list[str]:
     return []
 
 
-def _run_check(node_root: Path, comp: str) -> list[str]:
+def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> list[str]:
     if comp == "taxonomy":
-        return [f"taxonomy check: {p}" for p in FsTaxonomyStore.open(node_root).check()]
+        return [f"taxonomy check: {p}"
+                for p in FsTaxonomyStore.open(node_root).check(identifier)]
     if comp == "work":
         try:                                          # a malformed node-root tcw-config.yaml
-            problems = FsWorkStore.open(node_root).check()   # (the tag registry) isn't in the
+            problems = FsWorkStore.open(node_root).check(identifier)  # (the tag registry) isn't in the
         except ValueError as e:                       # YAML-scan roots, so report it, don't crash
             return [f"work check: {e}"]
         return [f"work check: {p}" for p in problems]
     tax = (FsTaxonomyStore.open(node_root)
            if (node_root / "docs" / "taxonomy").is_dir() else None)
     return [f"capabilities check: {p}"
-            for p in FsCapabilitiesStore.open(node_root).check(taxonomy=tax)]
+            for p in FsCapabilitiesStore.open(node_root).check(
+                taxonomy=tax, identifier=identifier)]
 
 
-def validate(node_root: Path, path=None) -> list[str]:
+def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
+    """Resolve an abstract target through the filesystem adapter's private view."""
+    if target.axis == "taxonomy":
+        store = FsTaxonomyStore.open(node_root)
+    elif target.axis == "capabilities":
+        store = FsCapabilitiesStore.open(node_root)
+    else:
+        store = FsWorkStore.open(node_root)
+    return store._validation_resources(target.ref)
+
+
+def validate(node_root: Path, path: Path | None = None, *,
+             target: ValidationTarget | None = None) -> list[str]:
     """Return a flat list of problem strings ([] = clean node)."""
     from tcw.store.project import FsProjectRegistry
+
+    if path is not None and target is not None:
+        raise ValueError("path and target are mutually exclusive validation selectors")
 
     graph_problems = [
         f"project graph: {problem}"
@@ -98,7 +125,12 @@ def validate(node_root: Path, path=None) -> list[str]:
     ]
     if graph_problems:
         return graph_problems
-    roots = [r for r in _scan_roots(node_root, path) if r.exists()]
+    if target is not None:
+        roots = _target_roots(node_root, target)
+        if not roots:
+            return [f"{target.axis} target: no such object '{target.ref}'"]
+    else:
+        roots = [r for r in _scan_roots(node_root, path) if r.exists()]
     problems: list[str] = []
     yaml_syntax_error = False
 
@@ -126,7 +158,8 @@ def validate(node_root: Path, path=None) -> list[str]:
     if yaml_syntax_error:
         problems.append("(component checks skipped: YAML syntax error above)")
     else:
-        for comp in _components_to_check(node_root, path):
-            problems += _run_check(node_root, comp)
+        components = [target.axis] if target is not None else _components_to_check(node_root, path)
+        for comp in components:
+            problems += _run_check(node_root, comp, target.ref if target else None)
 
     return problems

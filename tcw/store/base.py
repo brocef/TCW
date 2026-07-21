@@ -186,8 +186,8 @@ class TaxonomyStore(ABC):
         """Substring search over names + descriptions, local + inherited."""
 
     @abstractmethod
-    def check(self) -> list[str]:
-        """Validate the taxonomy; return a list of problems (empty == clean)."""
+    def check(self, identifier: str | None = None) -> list[str]:
+        """Validate the taxonomy, optionally limited to one object."""
 
     @abstractmethod
     def extends_add(self, project_id: str) -> None:
@@ -370,7 +370,8 @@ class CapabilitiesStore(ABC):
         decision. Empty when nothing is federated."""
 
     @abstractmethod
-    def check(self, taxonomy: "TaxonomyStore | None" = None) -> list[str]:
+    def check(self, taxonomy: "TaxonomyStore | None" = None,
+              identifier: str | None = None) -> list[str]:
         """Validate identifiers, metadata vocabulary, federation, and
         (cross-component) Subject/Feature refs."""
 
@@ -634,8 +635,8 @@ class WorkStore(ABC):
         """Remove `tags` from the registry; return the full set."""
 
     @abstractmethod
-    def check(self) -> list[str]:
-        """Validate the work node; return problems (empty = clean). Reports items
+    def check(self, identifier: str | None = None) -> list[str]:
+        """Validate the work node, optionally limited to one object. Reports items
         carrying a tag no longer in the registered set."""
 
     @abstractmethod
