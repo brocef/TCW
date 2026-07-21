@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from tcw.cli import build_parser, main
-from tcw.serve import HOST, TcwServer, _static_bytes
+from tcw.serve import HOST, TcwServer
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, init
 
 
@@ -77,12 +77,6 @@ def test_serve_outside_node_reports_helpfully(tmp_path, monkeypatch, capsys):
     assert "tcw init" in capsys.readouterr().err
 
 
-def test_static_assets_resolve_from_package():
-    body, ctype = _static_bytes("index.html")
-    assert b'<script src="/app.js"' in body
-    assert ctype.startswith("text/html")
-
-
 def test_api_lists_all_three_axes(server):
     base, slug = server
     work = get_json(base, "/api/work")
@@ -92,34 +86,6 @@ def test_api_lists_all_three_axes(server):
     assert work[0]["slug"] == slug
     assert taxonomy[0]["slug"] == "work-item"
     assert capabilities[0]["path"] == "web"
-
-
-def test_spa_fallback_serves_app_shell_for_app_routes(server):
-    # History-API deep links / reloads: a non-API, non-asset GET returns index.html.
-    base, slug = server
-    shell, _ = _static_bytes("index.html")
-    for route in ("/work/some-slug", "/taxonomy", "/sub/proj/work/foo"):
-        with urlopen(f"{base}{route}") as res:
-            assert res.status == 200
-            assert res.read() == shell
-
-
-def test_static_assets_still_serve_own_bytes(server):
-    # The SPA fallback must not shadow the real static files.
-    base, _ = server
-    with urlopen(f"{base}/app.js") as res:
-        assert b"routedInit" in res.read()
-    with urlopen(f"{base}/style.css") as res:
-        assert b".shell" in res.read()
-
-
-def test_tree_js_serves_own_bytes(server):
-    # /tree.js must be in the static allowlist; otherwise the SPA fallback
-    # returns index.html and the browser executes HTML as JS.
-    base, _ = server
-    with urlopen(f"{base}/tree.js") as res:
-        assert res.headers.get("Content-Type", "").startswith("application/javascript")
-        assert b"buildPathTree" in res.read()
 
 
 def test_unknown_api_route_still_404s(server):

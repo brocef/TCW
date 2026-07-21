@@ -58,7 +58,7 @@ def parse_tcw_uri(uri: str) -> TcwRef | None:
 
     Split the remainder on ``/`` FIRST, then percent-decode each segment (so a
     ``%2F`` inside a segment can't inject a spurious separator/axis — matches
-    ``app.js`` ``parsePath``). The axis is the first segment whose ``.upper()``
+    the React client's ``parsePath``). The axis is the first segment whose ``.upper()``
     is one of T/C/W; the first-bare-axis-wins collision (``tcw://T/C/ref``) is a
     documented limitation. Empty segments (multiple slashes) are dropped.
     """

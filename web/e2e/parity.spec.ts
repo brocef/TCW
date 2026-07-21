@@ -8,6 +8,8 @@ const PUBLIC_PORT = 8891;
 const baseUrl = `http://127.0.0.1:${PUBLIC_PORT}`;
 let server: ChildProcess;
 
+test.describe.configure({ mode: "serial" });
+
 test.beforeAll(async () => {
   const nodeRoot = await mkdtemp(join(tmpdir(), "tcw-playwright-"));
   spawnSync("git", ["init", "-q"], { cwd: nodeRoot, stdio: "inherit" });
@@ -16,9 +18,14 @@ test.beforeAll(async () => {
     encoding: "utf8"
   });
   if (initialized.status !== 0) throw new Error(initialized.stderr);
+  const registeredTag = spawnSync("tcw", ["work", "tags", "add", "browser"], {
+    cwd: nodeRoot,
+    encoding: "utf8"
+  });
+  if (registeredTag.status !== 0) throw new Error(registeredTag.stderr);
   const created = spawnSync(
     "tcw",
-    ["work", "new", "Browser parity fixture", "--effort", "low", "--complexity", "low"],
+    ["work", "new", "Browser parity fixture", "--effort", "low", "--complexity", "low", "--tag", "browser"],
     { cwd: nodeRoot, encoding: "utf8" }
   );
   if (created.status !== 0) throw new Error(created.stderr);
@@ -75,4 +82,153 @@ test("keeps API and SPA routing separate", async ({ request }) => {
   const deepLink = await request.get(`${baseUrl}/work/browser-parity-fixture`);
   expect(deepLink.status()).toBe(200);
   expect(await deepLink.text()).toContain("<div id=\"root\"></div>");
+});
+
+test("creates and edits Work with live Markdown and dirty navigation protection", async ({ page }) => {
+  await page.goto(`${baseUrl}/work`);
+  await page.getByRole("button", { name: "+ Create Work" }).click();
+  await page.getByLabel("Title").fill("React-created work");
+  await page.getByLabel("Markdown", { exact: true }).fill("# Native preview\n\nReact owns this draft.");
+  await expect(page.locator(".md-preview").getByRole("heading", { name: "Native preview" })).toBeVisible();
+
+  page.once("dialog", async (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Taxonomy" }).click();
+  await expect(page).toHaveURL(`${baseUrl}/work`);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("React-created work", { exact: true })).toBeVisible();
+
+  await page.getByText("React-created work", { exact: true }).click();
+  await page.locator(".edit-btn").click();
+  await page.getByLabel("Title").fill("React-edited work");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("heading", { name: "React-edited work" })).toBeVisible();
+});
+
+test("shows validation errors without dropping a Work draft", async ({ page }) => {
+  await page.goto(`${baseUrl}/work`);
+  await page.getByRole("button", { name: "+ Create Work" }).click();
+  await page.getByLabel("Markdown", { exact: true }).fill("draft stays here");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Title is required")).toBeVisible();
+  await expect(page.getByLabel("Markdown", { exact: true })).toHaveValue("draft stays here");
+  page.once("dialog", async (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Cancel" }).click();
+});
+
+test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
+  await page.goto(`${baseUrl}/taxonomy`);
+  await page.getByRole("button", { name: "+ Create Taxonomy" }).click();
+  await page.getByLabel("Name").fill("React Vocabulary");
+  await page.getByLabel("Slug").fill("react-vocabulary");
+  await page.getByLabel("Markdown", { exact: true }).fill("Taxonomy from React.");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("React Vocabulary", { exact: true })).toBeVisible();
+  await page.getByText("React Vocabulary", { exact: true }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByLabel("Name").fill("React Vocabulary Edited");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("heading", { name: "React Vocabulary Edited" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Capabilities" }).click();
+  await page.getByRole("button", { name: "+ Create Capabilities" }).click();
+  await page.getByLabel("Path").fill("react/native-client");
+  await page.getByLabel("Name").fill("Native client");
+  await page.getByLabel("Status").selectOption("Supported");
+  await page.getByLabel("Markdown", { exact: true }).fill("Capability from React.");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Native client", { exact: true })).toBeVisible();
+  await page.getByText("Native client", { exact: true }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByLabel("Priority").selectOption("P1");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator(".fields")).toContainText("P1");
+});
+
+test("applies axis-specific facets and browser history navigation", async ({ page }) => {
+  await page.goto(`${baseUrl}/work`);
+  await page.locator("details.facet summary").click();
+  await page.getByLabel("browser").check();
+  await expect(page.getByText("Browser parity fixture", { exact: true })).toBeVisible();
+  await expect(page.getByText("React-edited work", { exact: true })).toBeHidden();
+
+  await page.getByRole("button", { name: "Taxonomy" }).click();
+  await page.locator("details.facet summary").click();
+  await page.getByLabel("Vocabulary").check();
+  await expect(page.getByText("React Vocabulary Edited", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Capabilities" }).click();
+  await page.goBack();
+  await expect(page).toHaveURL(`${baseUrl}/taxonomy`);
+  await page.goForward();
+  await expect(page).toHaveURL(`${baseUrl}/capabilities`);
+});
+
+test("edits lifecycle artifacts and preserves a draft across a stale write", async ({ page, request }) => {
+  const work = await request.get(`${baseUrl}/api/work`);
+  const fixture = (await work.json() as Array<{ slug: string; title: string }>).find((item) => item.title === "Browser parity fixture")!;
+  for (const name of ["spec", "plan"]) {
+    const response = await request.put(`${baseUrl}/api/work/${fixture.slug}/artifacts/${name}`, {
+      data: { name, content: `# ${name}\n`, mediaType: "text/markdown" }
+    });
+    expect(response.ok()).toBeTruthy();
+  }
+  const sidecar = await request.put(`${baseUrl}/api/work/${fixture.slug}/sidecars/capabilities.yaml`, {
+    data: { name: "capabilities.yaml", content: "changed: []\n", mediaType: "application/yaml" }
+  });
+  expect(sidecar.ok()).toBeTruthy();
+
+  await page.goto(`${baseUrl}/work/${fixture.slug}`);
+  await expect(page.getByRole("heading", { name: "Browser parity fixture", level: 2 })).toBeVisible();
+  await page.getByRole("button", { name: "Edit spec" }).click();
+  await page.getByLabel("Markdown", { exact: true }).fill("# Updated specification\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  const savedSpec = await request.get(`${baseUrl}/api/work/${fixture.slug}/artifacts/spec`);
+  expect((await savedSpec.json()).content).toContain("Updated specification");
+
+  await page.locator(".sidecar-edit-btn").click();
+  await page.getByLabel("Markdown", { exact: true }).fill("changed:\n- web\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  const savedSidecar = await request.get(`${baseUrl}/api/work/${fixture.slug}/sidecars/capabilities.yaml`);
+  expect((await savedSidecar.json()).content).toContain("- web");
+
+  await page.locator(".edit-btn").click();
+  await page.getByLabel("Title").fill("Local stale draft");
+  const detail = await (await request.get(`${baseUrl}/api/work/${fixture.slug}`)).json();
+  const external = await request.patch(`${baseUrl}/api/work/${fixture.slug}`, {
+    data: { revision: detail.coreRevision, fields: { priority: 77 } }
+  });
+  expect(external.ok()).toBeTruthy();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Stale write detected")).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue("Local stale draft");
+  page.once("dialog", async (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Refresh from server" }).click();
+  await expect(page.locator(".fields")).toContainText("77");
+});
+
+test("runs Work start and complete lifecycle controls", async ({ page, request }) => {
+  const work = await request.get(`${baseUrl}/api/work`);
+  const fixture = (await work.json() as Array<{ slug: string; title: string }>).find((item) => item.title === "Browser parity fixture")!;
+  await page.goto(`${baseUrl}/work/${fixture.slug}`);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await page.locator(".modal-box").getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Complete" })).toBeVisible();
+
+  const outcome = await request.put(`${baseUrl}/api/work/${fixture.slug}/artifacts/outcome`, {
+    data: { name: "outcome", content: "# Outcome\n\nVerified.\n", mediaType: "text/markdown" }
+  });
+  expect(outcome.ok()).toBeTruthy();
+  await page.locator(".action-btn.complete").click();
+  await expect(page.locator(".modal-box").getByRole("heading", { name: "Complete Work Item" })).toBeVisible();
+  await page.getByLabel("Resolution").selectOption("done");
+  for (const checkbox of await page.locator(".dod-checkbox, .dod-item input").all()) await checkbox.check();
+  await page.locator(".modal-box").getByRole("button", { name: "Complete", exact: true }).click();
+  await expect(page.getByText("completed", { exact: true }).first()).toBeVisible();
+});
+
+test("drops a backlog Work item through the confirmation modal", async ({ page }) => {
+  await page.goto(`${baseUrl}/work`);
+  await page.getByText("React-edited work", { exact: true }).click();
+  await page.getByRole("button", { name: "Drop" }).click();
+  await page.locator(".modal-box").getByRole("button", { name: "Drop" }).click();
+  await expect(page.getByText("React-edited work", { exact: true })).toHaveCount(0);
 });

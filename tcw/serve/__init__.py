@@ -13,7 +13,6 @@ import webbrowser
 from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -45,13 +44,6 @@ _LOOPBACK_ADDRS = frozenset({
     "127.0.0.1", "localhost", "::1",
 })
 
-STATIC_TYPES = {
-    ".html": "text/html; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".js": "application/javascript; charset=utf-8",
-}
-
-
 # ── JSON serialization helpers ────────────────────────────────────────────────
 
 
@@ -76,17 +68,6 @@ def _json_bytes(value) -> bytes:
 def _valid_sidecar_token(supplied: str, expected: str | None) -> bool:
     """Validate the private sidecar credential without timing-sensitive equality."""
     return expected is None or hmac.compare_digest(supplied, expected)
-
-
-# ── Static file helpers ───────────────────────────────────────────────────────
-
-
-def _static_bytes(name: str) -> tuple[bytes, str]:
-    static = files("tcw.serve").joinpath("static")
-    target = static.joinpath(name)
-    data = target.read_bytes()
-    ctype = STATIC_TYPES.get(Path(name).suffix, "application/octet-stream")
-    return data, ctype
 
 
 def _open_locator(locator: str) -> dict | None:
@@ -441,24 +422,6 @@ class TcwHandler(BaseHTTPRequestHandler):
 
     def _get(self) -> None:
         path = urlparse(self.path).path
-
-        # Static files
-        if not self.server.api_only and path == "/":
-            body, ctype = _static_bytes("index.html")
-            self._send(HTTPStatus.OK, body, ctype)
-            return
-        if not self.server.api_only and path in ("/app.js", "/style.css", "/marked.min.js", "/tree.js"):
-            body, ctype = _static_bytes(path.lstrip("/"))
-            self._send(HTTPStatus.OK, body, ctype)
-            return
-
-        # SPA fallback: any non-API GET that isn't a known static asset serves the
-        # app shell, so History-API deep links / reloads work (/work/<slug>,
-        # /taxonomy, /sub/proj/work/<slug>, …). API paths keep their own 404s.
-        if not self.server.api_only and not path.startswith("/api/"):
-            body, ctype = _static_bytes("index.html")
-            self._send(HTTPStatus.OK, body, ctype)
-            return
 
         work, taxonomy, capabilities = self._stores()
 
