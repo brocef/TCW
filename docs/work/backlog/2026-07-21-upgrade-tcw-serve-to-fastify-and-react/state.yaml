@@ -1,0 +1,9 @@
+slug: 2026-07-21-upgrade-tcw-serve-to-fastify-and-react
+title: Upgrade tcw serve to Fastify and React
+phase: ''
+created: '2026-07-21'
+resolution: null
+effort: high
+complexity: very-high
+tags:
+- web
