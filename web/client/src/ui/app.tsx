@@ -507,13 +507,15 @@ export function App() {
         <FilterControls axis={axis} registeredTags={registeredTags} statusFilter={statusFilter}
           setStatusFilter={setStatusFilter} kindFilter={kindFilter} setKindFilter={setKindFilter}
           tagFilter={tagFilter} setTagFilter={setTagFilter} />
+        <div className="create-row">
+          <button className="create-btn" type="button" onClick={enterCreate}>+ Create {LABELS[axis]}</button>
+        </div>
         <div className="list" role="tree" aria-label="Objects" onKeyDown={handleTreeKeyboard}>
           {tree.nodes.length ? <Tree nodes={tree.nodes} axis={axis} selected={selected} expanded={effectiveExpanded}
             visible={visible} onSelect={(key) => navigateTo(axis, key)} onToggle={(path) => {
               if (filter) return; setExpanded((old) => { const next = new Set(old[axis]);
                 if (next.has(path)) next.delete(path); else next.add(path); return { ...old, [axis]: next }; });
             }} /> : <p className="empty">No {LABELS[axis].toLowerCase()} entries.</p>}
-          <button className="create-btn" type="button" onClick={enterCreate}>+ Create {LABELS[axis]}</button>
         </div>
       </section>
       <div className="col-resizer" role="separator" aria-orientation="vertical" aria-label="Resize list column"
