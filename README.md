@@ -269,6 +269,15 @@ directly from the browser:
   and the Markdown body. Inherited (federated) capabilities show their origin.
   Check failures are surfaced in the UI.
 
+Structured reference fields search the Work, Taxonomy, and Capability objects
+already loaded in the browser. Results show and highlight both the display name
+and canonical identifier; use Up/Down and Enter or point at a result to select
+it. Multi-value fields keep free-form entry for external or not-yet-registered
+references. After any object, lifecycle artifact, or sidecar is saved, TCW runs
+its standard validation rules against that saved object. Findings appear as a
+persistent **Saved with validation issues** notice and do not undo the save;
+fixing the object and saving again clears the notice.
+
 All Markdown editing uses a raw-Markdown textarea paired with a live-rendered
 preview pane. Its renderer is included in the locked, prebuilt package assets;
 no runtime download or user-side build is required.

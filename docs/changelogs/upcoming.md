@@ -5,6 +5,21 @@ category, with commit hash ranges so entries trace back to source.
 
 ## Changed
 
+<changes starting-hash="1538701" ending-hash="1538701">
+- Added reusable typed client-side reference ranking, highlighting, candidate
+  scoping, and accessible single/multi combobox controls across Work, Taxonomy,
+  and Capability edit fields.
+- Added storage-neutral `ValidationTarget` selection to `tcw.validate.validate`
+  and optional object identifiers to each store's `check()` contract, with
+  filesystem-private bounded-resource resolution.
+- Replaced component-wide post-write checks with safe object-scoped validation
+  after web creates, structured edits, lifecycle artifact saves, and sidecar
+  saves; committed mutations return warnings even if validation raises.
+- Added Python, Vitest, React component, and Playwright coverage for scoped
+  findings, unrelated-object isolation, ranking, highlighting, accessibility,
+  canonical selection, warning display, and warning clearing.
+</changes>
+
 <changes starting-hash="93f6688" ending-hash="17fbd5a">
 - Added a pinned pnpm/Vite/TypeScript workspace for Fastify 5, React 19, React
   Router Data Mode, Vitest, React Testing Library, ESLint, and Playwright.

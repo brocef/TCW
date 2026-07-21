@@ -5,6 +5,13 @@ internal module names.
 
 ## Changed
 
+- Structured reference fields in the local web editor now search Work,
+  Taxonomy, and Capability objects as you type. Results show names and canonical
+  identifiers, support keyboard and pointer selection, and retain free-form
+  entry where it was already allowed.
+- Every object, lifecycle artifact, and sidecar saved in the web editor is now
+  checked immediately. Validation issues are shown without pretending the save
+  failed, and the notice clears after a later clean save.
 - `tcw serve` now uses a packaged Fastify server and React client while keeping
   the same command options and local editing experience. It requires Node.js
   22.12 or newer; all other TCW commands remain Python-only.
