@@ -18,6 +18,13 @@ files before creating `spec.md`; commit the spec stage before creating
 unrelated changes are not included. Do not create empty commits for artifacts
 that already existed unchanged.
 
+Use a staged plan only when splitting the implementation materially reduces the
+context that later agents must load. In that case keep `plan.md` as the concise
+manifest/overview, write each declared `plan/<id>.md` document with Objective,
+Pre-stage checks, Implementation, and Post-stage checks, and commit all of them
+together as the plan-stage checkpoint. Dependencies describe guidance and
+parallelism; they are not execution state.
+
 Input may be an existing TCW work item slug/path or a request written directly in
 chat. If the user provides only chat text, create the initial backlog item with
 `tcw work new "<title>"` and write all artifacts inside that item's folder.

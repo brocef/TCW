@@ -59,6 +59,15 @@ Write `plan.md` with:
 - verification commands;
 - explicit documentation-sync tasks for triggers that are expected to fire.
 
+For a plan large enough that selective loading materially reduces context,
+`plan.md` may instead be a concise entry point with canonical `stages`
+frontmatter and Overview / Stage ordering sections. Each declared stage maps to
+`plan/<id>.md` and contains non-empty Objective, Pre-stage checks,
+Implementation, and Post-stage checks sections. Commit `plan.md` and every
+declared stage document together as the single plan checkpoint. Do not use
+stages for independent ownership or lifecycle state; use nested work items or
+initiative tasks for those needs.
+
 Checkpoint the plan stage before implementation: inspect and commit `plan.md`
 and only the related TCW work files changed while producing it.
 
@@ -67,6 +76,11 @@ When planning is complete and implementation is about to begin, run `tcw work st
 ## 4. Implementation -> `outcome.md`
 
 Input: `plan.md`.
+
+When the plan declares stages, read `plan.md` first and then only the relevant
+stage document. Run its pre-stage checks before changing code and its post-stage
+checks afterward. Treat dependencies as ordering guidance, not transition gates.
+Record informal progress in plan or outcome prose without deriving stage status.
 
 Before implementation, ask whether the user wants sequential execution or subagent parallelization when the plan has genuinely parallel phases. Implement the plan, keeping status and capability changes in step. During and after implementation, write `outcome.md`.
 

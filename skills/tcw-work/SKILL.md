@@ -37,6 +37,13 @@ The artifact spine is:
 
 `initial-request.md` → `spec.md` → `plan.md` → `outcome.md` → `refined-outcome.md`
 
+`plan.md` may optionally declare a bounded DAG of stage documents when selective
+loading materially reduces context. Always read `plan.md` first, then read only
+the stage document relevant to the current implementation slice. Run that
+document's pre-stage checks before its implementation and its post-stage checks
+afterward. Dependency order is guidance, not a lifecycle gate; prose annotations
+in `plan.md` or `outcome.md` are informal progress, never formal stage state.
+
 **Commit every stage as you go.** After writing or materially updating any
 lifecycle artifact, commit that artifact and the related TCW work files before
 starting the next stage. Use narrow staging so unrelated working-tree changes

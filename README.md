@@ -535,6 +535,15 @@ shape; the command does not require or parse that template.
 the canonical request lifecycle artifact, seeded with title, the three-axis scaffold
 (Product / Technical / Meta changes), and any piped stdin.
 
+For large implementations, `plan.md` may optionally declare a bounded DAG of
+stage documents in YAML frontmatter. Each declaration has a lowercase kebab-case
+`id`, a title, and `depends_on`; optional effort, complexity, priority, and tags
+reuse the work item's controlled vocabularies. The corresponding document is
+stored as `plan/<id>.md`. This keeps `plan.md` concise so agents can read it
+first, then load only the relevant stage. Dependencies communicate ordering and
+parallelism but do not create stage statuses or block lifecycle transitions.
+Legacy single-file plans remain valid.
+
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
 `slug | status | stages | priority | title` (priority is the integer, or `-`
 when unspecified). `stages` is a compact lifecycle artifact string: `R` for
@@ -673,6 +682,8 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
   `refined-outcome.md`; commit each lifecycle stage before beginning the next;
   triage `docs/work/inbox`; run the start/complete lifecycle; resume active work;
   and decompose work into a cross-node epic.
+  For unusually large plans it can declare staged plan documents, load only the
+  stage being executed, and use that stage's pre- and post-checks.
 - **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
   changes` planning gate, contradiction-detection, the `Missing → Supported`
   ledger flip at completion, product-layer wording coordination, and bootstrapping

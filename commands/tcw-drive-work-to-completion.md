@@ -19,6 +19,12 @@ artifacts:
 - missing `outcome.md` -> start/continue task implementation or epic coordination;
 - missing or stale `refined-outcome.md` -> stop for verification and refinement.
 
+When `plan.md` declares stages, read it first and then load only the stage
+document relevant to the current slice. Run its pre-stage checks before
+implementation and post-stage checks afterward. Dependency ordering is guidance,
+not a transition gate; record informal progress in `plan.md` or `outcome.md`
+without treating it as formal stage state.
+
 After writing or materially updating any lifecycle artifact, commit that stage's
 artifact and related TCW work files before continuing to the next missing stage.
 If this command runs several stages, produce separate ordered commits rather

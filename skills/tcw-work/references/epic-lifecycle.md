@@ -48,6 +48,12 @@ coordination plan.
 
 Write `plan.md` as a coordination plan. It should list child tasks, delegation commands, dependency order, possible parallelism, rollup checkpoints, verification expectations, and documentation-sync expectations.
 
+If that coordination plan becomes large enough that selective loading materially
+reduces context, it may declare bounded stage documents using the same staged
+plan format as a task. Read the manifest first and only the relevant stage next;
+run its pre/post checks, and keep ordering advisory. Stages do not replace child
+tasks for independently scheduled or owned work.
+
 Commit `plan.md` and its related TCW work-file changes before starting the epic.
 
 ## Coordination
