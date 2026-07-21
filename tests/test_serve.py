@@ -255,3 +255,26 @@ def test_partial_node_empty_taxonomy_endpoint(tmp_path):
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=2)
+
+
+def test_private_sidecar_rejects_direct_requests(seeded_node):
+    root, _slug = seeded_node
+    httpd = TcwServer((HOST, 0), root, token="secret", api_only=True)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://{HOST}:{httpd.server_port}"
+    try:
+        with pytest.raises(HTTPError) as missing:
+            urlopen(f"{base}/api/work")
+        assert missing.value.code == 403
+        request = Request(f"{base}/api/work", headers={"X-TCW-Sidecar-Token": "secret"})
+        with urlopen(request) as response:
+            assert response.status == 200
+        static_request = Request(f"{base}/", headers={"X-TCW-Sidecar-Token": "secret"})
+        with pytest.raises(HTTPError) as no_static:
+            urlopen(static_request)
+        assert no_static.value.code == 404
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=2)

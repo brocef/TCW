@@ -4,7 +4,17 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+!tcw/serve/dist/
+!tcw/serve/dist/**
 .pytest_cache/
+
+# Node development artifacts (built tcw/serve/dist assets are committed)
+node_modules/
+coverage/
+playwright-report/
+test-results/
+.vite/
+web-dist/
 
 # Virtualenvs
 .venv/

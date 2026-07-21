@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hmac
 import os
 import re
 import subprocess
@@ -70,6 +71,11 @@ def _jsonable(value):
 
 def _json_bytes(value) -> bytes:
     return json.dumps(_jsonable(value), default=str).encode("utf-8")
+
+
+def _valid_sidecar_token(supplied: str, expected: str | None) -> bool:
+    """Validate the private sidecar credential without timing-sensitive equality."""
+    return expected is None or hmac.compare_digest(supplied, expected)
 
 
 # ── Static file helpers ───────────────────────────────────────────────────────
@@ -314,10 +320,13 @@ class TcwServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, server_address: tuple[str, int], node_root: Path,
-                 include_descendants: bool = False):
+                 include_descendants: bool = False, *, token: str | None = None,
+                 api_only: bool = False):
         super().__init__(server_address, TcwHandler)
         self.node_root = node_root
         self.include_descendants = include_descendants
+        self.token = token
+        self.api_only = api_only
 
 
 class TcwHandler(BaseHTTPRequestHandler):
@@ -344,6 +353,14 @@ class TcwHandler(BaseHTTPRequestHandler):
     def _send_err(self, status: int, message: str, **extra: Any) -> None:
         _, body = _err(status, message, **extra)
         self._send(status, body, "application/json; charset=utf-8")
+
+    def _authorized(self) -> bool:
+        expected = self.server.token
+        supplied = self.headers.get("X-TCW-Sidecar-Token", "")
+        if _valid_sidecar_token(supplied, expected):
+            return True
+        self._send_err(HTTPStatus.FORBIDDEN, "sidecar authentication required")
+        return False
 
     def _stores(self) -> tuple[FsWorkStore, FsTaxonomyStore, FsCapabilitiesStore]:
         root = self.server.node_root
@@ -381,30 +398,40 @@ class TcwHandler(BaseHTTPRequestHandler):
     # ── HTTP method dispatchers ───────────────────────────────────────────
 
     def do_GET(self) -> None:
+        if not self._authorized():
+            return
         try:
             self._get()
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
     def do_POST(self) -> None:
+        if not self._authorized():
+            return
         try:
             self._post()
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
     def do_PATCH(self) -> None:
+        if not self._authorized():
+            return
         try:
             self._patch()
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
     def do_PUT(self) -> None:
+        if not self._authorized():
+            return
         try:
             self._put()
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
     def do_DELETE(self) -> None:
+        if not self._authorized():
+            return
         try:
             self._delete()
         except Exception as e:
@@ -416,11 +443,11 @@ class TcwHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
 
         # Static files
-        if path == "/":
+        if not self.server.api_only and path == "/":
             body, ctype = _static_bytes("index.html")
             self._send(HTTPStatus.OK, body, ctype)
             return
-        if path in ("/app.js", "/style.css", "/marked.min.js", "/tree.js"):
+        if not self.server.api_only and path in ("/app.js", "/style.css", "/marked.min.js", "/tree.js"):
             body, ctype = _static_bytes(path.lstrip("/"))
             self._send(HTTPStatus.OK, body, ctype)
             return
@@ -428,7 +455,7 @@ class TcwHandler(BaseHTTPRequestHandler):
         # SPA fallback: any non-API GET that isn't a known static asset serves the
         # app shell, so History-API deep links / reloads work (/work/<slug>,
         # /taxonomy, /sub/proj/work/<slug>, …). API paths keep their own 404s.
-        if not path.startswith("/api/"):
+        if not self.server.api_only and not path.startswith("/api/"):
             body, ctype = _static_bytes("index.html")
             self._send(HTTPStatus.OK, body, ctype)
             return
@@ -1204,24 +1231,6 @@ from tcw.store.base import AmbiguousRef  # noqa: E402, isort:skip
 
 def serve(port: int = DEFAULT_PORT, open_browser: bool = True,
           node_root: Path | None = None, include_descendants: bool = False) -> int:
-    root = node_root or find_node_root()
-    if root is None:
-        print("tcw serve: no tcw node here — run `tcw init` in the project folder.",
-              file=sys.stderr)
-        return 1
-    try:
-        httpd = TcwServer((HOST, port), root, include_descendants)
-    except OSError as e:
-        print(f"tcw serve: cannot bind {HOST}:{port}: {e}", file=sys.stderr)
-        return 1
-    url = f"http://{HOST}:{httpd.server_port}/"
-    print(f"Serving TCW at {url}")
-    if open_browser:
-        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("\ntcw serve: stopped", file=sys.stderr)
-    finally:
-        httpd.server_close()
-    return 0
+    from tcw.serve.runtime import run_server
+    return run_server(port=port, open_browser=open_browser, node_root=node_root,
+                      include_descendants=include_descendants)
