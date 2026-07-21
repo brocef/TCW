@@ -5,7 +5,7 @@ category, with commit hash ranges so entries trace back to source.
 
 ## Changed
 
-<changes starting-hash="93f6688" ending-hash="a9d52e8">
+<changes starting-hash="93f6688" ending-hash="8e525be">
 - Added a pinned pnpm/Vite/TypeScript workspace for Fastify 5, React 19, React
   Router Data Mode, Vitest, React Testing Library, ESLint, and Playwright.
 - Refactored `tcw.serve` so an API-only `TcwServer` can require a per-process
