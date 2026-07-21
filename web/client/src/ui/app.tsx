@@ -654,6 +654,10 @@ function DetailView({ axis, detail, onEdit, onResource, onOpen, onDeletePlanStag
           <div className="item-meta">Depends on: {stage.depends_on.length ? stage.depends_on.join(", ") : "none"}
             {stage.effort && ` · effort ${stage.effort}`}{stage.complexity && ` · complexity ${stage.complexity}`}
             {stage.priority != null && ` · priority ${stage.priority}`}{stage.tags.length > 0 && ` · ${stage.tags.join(", ")}`}</div>
+          {payload.planStages.filter((candidate) => candidate.id !== stage.id
+            && JSON.stringify(candidate.depends_on) === JSON.stringify(stage.depends_on)).length > 0
+            && <div className="item-meta">Parallel with: {payload.planStages.filter((candidate) => candidate.id !== stage.id
+              && JSON.stringify(candidate.depends_on) === JSON.stringify(stage.depends_on)).map((candidate) => candidate.id).join(", ")}</div>}
           <div className="artifact-group"><span>{stage.present ? "Document present" : "Document missing"}</span>
             {stage.present && <button type="button" onClick={() => onOpen(item.slug, stage.id, "plan-stages")}>Open</button>}
             <button type="button" onClick={() => onResource("plan-stages", item.slug, stage.id)}>{stage.present ? "Edit" : "Create"}</button>
