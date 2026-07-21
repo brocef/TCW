@@ -12,7 +12,8 @@ internal module names.
   React, including navigation, filters, Markdown previews, editing, lifecycle
   actions, validation, dirty-draft protection, and stale-write recovery.
 - Taxonomy and Capability entries now fill the list-column width consistently
-  with Work entries instead of rendering as awkward narrow buttons.
+  with Work entries and use the same vertical spacing instead of rendering as
+  awkward narrow or crowded buttons.
 - The local web app still works offline after installation. Users do not need
   pnpm, `node_modules`, or a frontend build because the web assets ship with TCW.
 - Startup and shutdown now supervise a private authenticated Python API and the
