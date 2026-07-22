@@ -368,6 +368,16 @@ test("applies axis-specific facets and browser history navigation", async ({
     page,
 }) => {
     await page.goto(`${baseUrl}/work`)
+    await page.getByRole("button", { name: "Status (2)" }).click()
+    await expect(page.getByRole("checkbox", { name: "Backlog" })).toBeChecked()
+    await expect(page.getByRole("checkbox", { name: "Active" })).toBeChecked()
+    await expect(
+        page.getByRole("checkbox", { name: "Completed" })
+    ).not.toBeChecked()
+    await expect(page).toHaveScreenshot("status-filter-popover.png", {
+        animations: "disabled",
+    })
+    await page.keyboard.press("Escape")
     await page.getByRole("button", { name: "Tags" }).click()
     await page.getByRole("checkbox", { name: "browser" }).click()
     await expect(page).toHaveScreenshot("filters-popover.png", {

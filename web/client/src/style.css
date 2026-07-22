@@ -78,9 +78,6 @@ p {
 .status-filters {
     padding: var(--space-3) var(--space-3) 0;
 }
-.status-toggle {
-    text-transform: capitalize;
-}
 .st-backlog {
     --st: var(--amber-9);
 }

@@ -79,20 +79,9 @@ export function FilterControls({
     setTagFilter: (value: string[]) => void
 }) {
     if (axis === "capabilities") return null
-    const facet =
-        axis === "taxonomy"
-            ? {
-                  label: "Kind",
-                  options: ["Feature", "Vocabulary"],
-                  value: kindFilter,
-                  set: setKindFilter,
-              }
-            : {
-                  label: "Tags",
-                  options: registeredTags,
-                  value: tagFilter,
-                  set: setTagFilter,
-              }
+    const selectedStatuses = WORK_STATUSES.filter(
+        (status) => statusFilter[status]
+    )
     return (
         <Flex
             className="status-filters"
@@ -102,79 +91,103 @@ export function FilterControls({
             gap="2"
             wrap="wrap"
         >
-            {axis === "work" &&
-                WORK_STATUSES.map((status) => (
-                    <Button
-                        type="button"
-                        key={status}
-                        size="1"
-                        className={`status-toggle st-${status}${statusFilter[status] ? " on" : ""}`}
-                        aria-pressed={statusFilter[status]}
-                        variant={statusFilter[status] ? "solid" : "soft"}
-                        onClick={() =>
-                            setStatusFilter((old) => ({
-                                ...old,
-                                [status]: !old[status],
-                            }))
-                        }
-                    >
-                        {status}
-                    </Button>
-                ))}
-            <Popover.Root key={axis}>
-                <Popover.Trigger>
-                    <Button size="1" variant="soft">
-                        {facet.label}
-                        {facet.value.length ? ` (${facet.value.length})` : ""}
-                    </Button>
-                </Popover.Trigger>
-                <Popover.Content
-                    align="start"
-                    className="facet-panel"
-                    width="180px"
-                >
-                    <Flex direction="column" gap="2">
-                        {facet.options.length ? (
-                            facet.options.map((option) => (
-                                <Text
-                                    as="label"
-                                    className="facet-option"
-                                    key={option}
-                                    size="2"
-                                >
-                                    <Flex align="center" gap="2">
-                                        <Checkbox
-                                            checked={facet.value.includes(
-                                                option
-                                            )}
-                                            onCheckedChange={(checked) =>
-                                                facet.set(
-                                                    checked
-                                                        ? [
-                                                              ...facet.value,
-                                                              option,
-                                                          ]
-                                                        : facet.value.filter(
-                                                              (value) =>
-                                                                  value !==
-                                                                  option
-                                                          )
-                                                )
-                                            }
-                                        />{" "}
-                                        {option}
-                                    </Flex>
-                                </Text>
-                            ))
-                        ) : (
-                            <Text className="facet-empty" color="gray" size="1">
-                                none available
-                            </Text>
-                        )}
-                    </Flex>
-                </Popover.Content>
-            </Popover.Root>
+            {axis === "work" && (
+                <FacetPopover
+                    label="Status"
+                    options={WORK_STATUSES}
+                    value={selectedStatuses}
+                    capitalize
+                    onChange={(statuses) =>
+                        setStatusFilter(
+                            Object.fromEntries(
+                                WORK_STATUSES.map((status) => [
+                                    status,
+                                    statuses.includes(status),
+                                ])
+                            )
+                        )
+                    }
+                />
+            )}
+            <FacetPopover
+                label={axis === "taxonomy" ? "Kind" : "Tags"}
+                options={
+                    axis === "taxonomy"
+                        ? ["Feature", "Vocabulary"]
+                        : registeredTags
+                }
+                value={axis === "taxonomy" ? kindFilter : tagFilter}
+                onChange={axis === "taxonomy" ? setKindFilter : setTagFilter}
+            />
         </Flex>
+    )
+}
+
+function FacetPopover({
+    label,
+    options,
+    value,
+    onChange,
+    capitalize = false,
+}: {
+    label: string
+    options: readonly string[]
+    value: string[]
+    onChange: (value: string[]) => void
+    capitalize?: boolean
+}) {
+    return (
+        <Popover.Root>
+            <Popover.Trigger>
+                <Button size="1" variant="soft">
+                    {label}
+                    {value.length ? ` (${value.length})` : ""}
+                </Button>
+            </Popover.Trigger>
+            <Popover.Content
+                align="start"
+                className="facet-panel"
+                width="180px"
+            >
+                <Flex direction="column" gap="2">
+                    {options.length ? (
+                        options.map((option) => (
+                            <Text
+                                as="label"
+                                className="facet-option"
+                                key={option}
+                                size="2"
+                            >
+                                <Flex align="center" gap="2">
+                                    <Checkbox
+                                        checked={value.includes(option)}
+                                        onCheckedChange={(checked) =>
+                                            onChange(
+                                                checked
+                                                    ? [...value, option]
+                                                    : value.filter(
+                                                          (selected) =>
+                                                              selected !==
+                                                              option
+                                                      )
+                                            )
+                                        }
+                                    />{" "}
+                                    {capitalize
+                                        ? option[0].toUpperCase() +
+                                          option.slice(1)
+                                        : option}
+                                </Flex>
+                            </Text>
+                        ))
+                    ) : (
+                        <Text className="facet-empty" color="gray" size="1">
+                            none available
+                        </Text>
+                    )}
+                </Flex>
+            </Popover.Content>
+        </Popover.Root>
     )
 }
 
