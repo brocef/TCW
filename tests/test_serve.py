@@ -84,6 +84,7 @@ def test_api_lists_all_three_axes(server):
     capabilities = get_json(base, "/api/capabilities")
 
     assert work[0]["slug"] == slug
+    assert work[0]["modified"].endswith("Z")
     assert taxonomy[0]["slug"] == "work-item"
     assert capabilities[0]["path"] == "web"
 

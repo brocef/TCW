@@ -9,8 +9,10 @@ import {
     Heading,
     IconButton,
     Popover,
+    Select,
     Text,
 } from "@radix-ui/themes"
+import type { TSortDirection, TWorkSortKey } from "../model/tree"
 import {
     referenceOptions,
     type TReferenceField,
@@ -66,6 +68,10 @@ export function FilterControls({
     setKindFilter,
     tagFilter,
     setTagFilter,
+    workSortKey,
+    setWorkSortKey,
+    workSortDirection,
+    setWorkSortDirection,
 }: {
     axis: Axis
     registeredTags: string[]
@@ -77,6 +83,10 @@ export function FilterControls({
     setKindFilter: (value: string[]) => void
     tagFilter: string[]
     setTagFilter: (value: string[]) => void
+    workSortKey: TWorkSortKey
+    setWorkSortKey: (value: TWorkSortKey) => void
+    workSortDirection: TSortDirection
+    setWorkSortDirection: (value: TSortDirection) => void
 }) {
     if (axis === "capabilities") return null
     const selectedStatuses = WORK_STATUSES.filter(
@@ -92,22 +102,30 @@ export function FilterControls({
             wrap="wrap"
         >
             {axis === "work" && (
-                <FacetPopover
-                    label="Status"
-                    options={WORK_STATUSES}
-                    value={selectedStatuses}
-                    capitalize
-                    onChange={(statuses) =>
-                        setStatusFilter(
-                            Object.fromEntries(
-                                WORK_STATUSES.map((status) => [
-                                    status,
-                                    statuses.includes(status),
-                                ])
+                <>
+                    <FacetPopover
+                        label="Status"
+                        options={WORK_STATUSES}
+                        value={selectedStatuses}
+                        capitalize
+                        onChange={(statuses) =>
+                            setStatusFilter(
+                                Object.fromEntries(
+                                    WORK_STATUSES.map((status) => [
+                                        status,
+                                        statuses.includes(status),
+                                    ])
+                                )
                             )
-                        )
-                    }
-                />
+                        }
+                    />
+                    <SortControl
+                        sortKey={workSortKey}
+                        direction={workSortDirection}
+                        onSortKeyChange={setWorkSortKey}
+                        onDirectionChange={setWorkSortDirection}
+                    />
+                </>
             )}
             <FacetPopover
                 label={axis === "taxonomy" ? "Kind" : "Tags"}
@@ -119,6 +137,47 @@ export function FilterControls({
                 value={axis === "taxonomy" ? kindFilter : tagFilter}
                 onChange={axis === "taxonomy" ? setKindFilter : setTagFilter}
             />
+        </Flex>
+    )
+}
+
+function SortControl({
+    sortKey,
+    direction,
+    onSortKeyChange,
+    onDirectionChange,
+}: {
+    sortKey: TWorkSortKey
+    direction: TSortDirection
+    onSortKeyChange: (value: TWorkSortKey) => void
+    onDirectionChange: (value: TSortDirection) => void
+}) {
+    const nextDirection = direction === "ascending" ? "descending" : "ascending"
+    return (
+        <Flex className="sort-control" align="center" gap="1">
+            <Select.Root
+                value={sortKey}
+                onValueChange={(value) => {
+                    if (value === "name" || value === "modified")
+                        onSortKeyChange(value)
+                }}
+            >
+                <Select.Trigger aria-label="Sort work items" />
+                <Select.Content>
+                    <Select.Item value="name">Name</Select.Item>
+                    <Select.Item value="modified">Modified</Select.Item>
+                </Select.Content>
+            </Select.Root>
+            <IconButton
+                type="button"
+                size="1"
+                variant="soft"
+                aria-label={`Sort ${nextDirection}`}
+                title={`Sort ${nextDirection}`}
+                onClick={() => onDirectionChange(nextDirection)}
+            >
+                {direction === "ascending" ? "↑" : "↓"}
+            </IconButton>
         </Flex>
     )
 }

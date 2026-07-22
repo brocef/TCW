@@ -6,6 +6,7 @@ export interface WorkItem extends JsonRecord {
     slug: string
     title?: string
     status?: string
+    modified?: string
     priority?: number | null
     effort?: string
     complexity?: string

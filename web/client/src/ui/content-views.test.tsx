@@ -1,7 +1,10 @@
 import { useState } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
+import { vi } from "vitest"
 import { ThemeProvider } from "../theme"
 import { FilterControls } from "./content-views"
+
+window.HTMLElement.prototype.scrollIntoView = vi.fn()
 
 function WorkFilters() {
     const [statuses, setStatuses] = useState<Record<string, boolean>>({
@@ -10,6 +13,10 @@ function WorkFilters() {
         completed: false,
     })
     const [tags, setTags] = useState<string[]>([])
+    const [sortKey, setSortKey] = useState<"name" | "modified">("name")
+    const [sortDirection, setSortDirection] = useState<
+        "ascending" | "descending"
+    >("ascending")
     return (
         <FilterControls
             axis="work"
@@ -20,6 +27,10 @@ function WorkFilters() {
             setKindFilter={() => undefined}
             tagFilter={tags}
             setTagFilter={setTags}
+            workSortKey={sortKey}
+            setWorkSortKey={setSortKey}
+            workSortDirection={sortDirection}
+            setWorkSortDirection={setSortDirection}
         />
     )
 }
@@ -43,4 +54,22 @@ test("groups work statuses in one checkbox facet", async () => {
     expect(completed).not.toBeChecked()
     fireEvent.click(completed)
     expect(screen.getByRole("button", { name: "Status (3)" })).toBeVisible()
+})
+
+test("selects one work sort key and toggles its direction", async () => {
+    render(
+        <ThemeProvider>
+            <WorkFilters />
+        </ThemeProvider>
+    )
+
+    const sort = screen.getByRole("combobox", { name: "Sort work items" })
+    expect(sort).toHaveTextContent("Name")
+    fireEvent.click(screen.getByRole("button", { name: "Sort descending" }))
+    expect(screen.getByRole("button", { name: "Sort ascending" })).toBeVisible()
+
+    fireEvent.click(sort)
+    fireEvent.click(await screen.findByRole("option", { name: "Modified" }))
+    expect(sort).toHaveTextContent("Modified")
+    expect(screen.queryByText("Name ascending")).toBeNull()
 })

@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -1718,6 +1718,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             status=self._status_of(d),
             phase=state.get("phase", ""),
             created=state.get("created", ""),
+            modified=self._modified_timestamp(d),
             resolution=state.get("resolution"),
             priority=state.get("priority"),
             effort=state.get("effort") or "",        # `or ""`: bare YAML `effort:` (null) → ""
@@ -1731,6 +1732,26 @@ class FsWorkStore(FsTreeStore, WorkStore):
             worktree=state.get("worktree", ""),
             branch=state.get("branch", ""),
             parent=self._parent_slug(d),
+        )
+
+    @staticmethod
+    def _modified_timestamp(folder: Path) -> str:
+        names = [
+            "state.yaml",
+            *[f"{name}.md" for name in WORK_ARTIFACTS],
+            *WORK_SIDECARS,
+        ]
+        resources = [
+            folder / name for name in names if (folder / name).is_file()
+        ]
+        plan_folder = folder / "plan"
+        if plan_folder.is_dir():
+            resources.extend(sorted(plan_folder.glob("*.md")))
+        if not resources:
+            return ""
+        modified = max(path.stat().st_mtime for path in resources)
+        return datetime.fromtimestamp(modified, timezone.utc).isoformat().replace(
+            "+00:00", "Z"
         )
 
     def get(self, slug: str) -> WorkItem | None:

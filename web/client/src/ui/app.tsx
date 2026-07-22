@@ -15,7 +15,6 @@ import {
     Flex,
     Heading,
     IconButton,
-    ScrollArea,
     Text,
     TextField,
 } from "@radix-ui/themes"
@@ -26,7 +25,10 @@ import {
     buildWorkTree,
     pathAncestors,
     pruneTree,
+    sortWorkTree,
     workAncestors,
+    type TSortDirection,
+    type TWorkSortKey,
 } from "../model/tree"
 import {
     CompleteModal,
@@ -82,6 +84,9 @@ export function App() {
     })
     const [kindFilter, setKindFilter] = useState<string[]>([])
     const [tagFilter, setTagFilter] = useState<string[]>([])
+    const [workSortKey, setWorkSortKey] = useState<TWorkSortKey>("name")
+    const [workSortDirection, setWorkSortDirection] =
+        useState<TSortDirection>("ascending")
     const [expanded, setExpanded] =
         useState<Record<Axis, Set<string>>>(loadExpanded)
     const [seenPaths, setSeenPaths] = useState<Record<Axis, Set<string>>>(
@@ -282,7 +287,11 @@ export function App() {
     const tree = useMemo(() => {
         const built =
             axis === "work"
-                ? buildWorkTree(data.work)
+                ? sortWorkTree(
+                      buildWorkTree(data.work),
+                      workSortKey,
+                      workSortDirection
+                  )
                 : buildPathTree(currentItems, (item) => itemKey(axis, item))
         const filtering = Boolean(
             filter ||
@@ -310,6 +319,8 @@ export function App() {
         statusFilter,
         tagFilter,
         visible,
+        workSortDirection,
+        workSortKey,
     ])
     const effectiveExpanded = useMemo(
         () => new Set([...expanded[axis], ...tree.forced]),
@@ -798,6 +809,10 @@ export function App() {
                         setKindFilter={setKindFilter}
                         tagFilter={tagFilter}
                         setTagFilter={setTagFilter}
+                        workSortKey={workSortKey}
+                        setWorkSortKey={setWorkSortKey}
+                        workSortDirection={workSortDirection}
+                        setWorkSortDirection={setWorkSortDirection}
                     />
                     <div className="create-row">
                         <Button
@@ -809,9 +824,8 @@ export function App() {
                             + Create {LABELS[axis]}
                         </Button>
                     </div>
-                    <ScrollArea
+                    <div
                         className="list"
-                        type="auto"
                         role="tree"
                         aria-label="Objects"
                         onKeyDown={handleTreeKeyboard}
@@ -839,7 +853,7 @@ export function App() {
                                 No {LABELS[axis].toLowerCase()} entries.
                             </Text>
                         )}
-                    </ScrollArea>
+                    </div>
                 </section>
                 <div
                     className="col-resizer"

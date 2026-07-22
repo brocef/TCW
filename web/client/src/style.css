@@ -113,7 +113,9 @@ p {
     gap: var(--tree-row-gap);
     padding: var(--space-3);
     flex: 1;
+    min-height: 0;
     align-content: start;
+    overflow-y: auto;
 }
 
 .tree-node {

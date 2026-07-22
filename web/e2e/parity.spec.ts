@@ -7,6 +7,7 @@ import { join } from "node:path"
 const PUBLIC_PORT = 8891
 const baseUrl = `http://127.0.0.1:${PUBLIC_PORT}`
 let server: ChildProcess
+let serverError = ""
 
 test.describe.configure({ mode: "serial" })
 
@@ -47,10 +48,15 @@ test.beforeAll(async () => {
             stdio: ["ignore", "pipe", "pipe"],
         }
     )
+    server.stderr?.on("data", (chunk: Buffer) => {
+        serverError += chunk.toString()
+    })
     const deadline = Date.now() + 15_000
     while (Date.now() < deadline) {
         if (server.exitCode !== null)
-            throw new Error("tcw serve exited before readiness")
+            throw new Error(
+                `tcw serve exited before readiness: ${serverError.trim()}`
+            )
         try {
             const response = await fetch(`${baseUrl}/api/work`)
             if (response.ok) return
@@ -72,6 +78,12 @@ test("loads the React shell and navigates every axis", async ({ page }) => {
     await page.goto(baseUrl)
     await expect(page).toHaveTitle("TCW")
     await expect(page.getByRole("tree", { name: "Objects" })).toBeVisible()
+    await expect(page.locator(".list .rt-ScrollAreaViewport")).toHaveCount(0)
+    expect(
+        await page
+            .getByRole("tree", { name: "Objects" })
+            .evaluate((element) => getComputedStyle(element).overflowY)
+    ).toBe("auto")
     await expect(
         page.getByText("Browser parity fixture", { exact: true })
     ).toBeVisible()
@@ -378,6 +390,15 @@ test("applies axis-specific facets and browser history navigation", async ({
         animations: "disabled",
     })
     await page.keyboard.press("Escape")
+    const sort = page.getByRole("combobox", { name: "Sort work items" })
+    await expect(sort).toContainText("Name")
+    await page.getByRole("button", { name: "Sort descending" }).click()
+    await expect(
+        page.getByRole("button", { name: "Sort ascending" })
+    ).toBeVisible()
+    await sort.click()
+    await page.getByRole("option", { name: "Modified" }).click()
+    await expect(sort).toContainText("Modified")
     await page.getByRole("button", { name: "Tags" }).click()
     await page.getByRole("checkbox", { name: "browser" }).click()
     await expect(page).toHaveScreenshot("filters-popover.png", {

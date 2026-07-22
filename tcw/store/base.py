@@ -504,6 +504,7 @@ class WorkItem:
     status: str
     phase: str = ""
     created: str = ""
+    modified: str = ""               # adapter-provided last-modified timestamp
     resolution: str | None = None
     priority: int | None = None     # higher int = higher priority; None = unspecified
     effort: str = ""                # WORK_LEVELS or "" (unset); triage signal only

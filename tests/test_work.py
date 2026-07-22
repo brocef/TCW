@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -78,6 +79,31 @@ def test_body_path_points_at_initial_request_md(tmp_path):
     assert body == st.path(item.slug) / "initial-request.md"
     assert body.exists()
     assert st.body_path("no-such-slug") is None
+
+
+def test_modified_timestamp_tracks_only_bounded_work_resources(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    folder = st.path(item.slug)
+    assert folder is not None
+    request = folder / "initial-request.md"
+    state = folder / "state.yaml"
+    os.utime(request, (100, 100))
+    os.utime(state, (200, 200))
+
+    assert st.get(item.slug).modified == "1970-01-01T00:03:20Z"
+
+    attachment = folder / "attachments" / "ignored.txt"
+    attachment.parent.mkdir()
+    attachment.write_text("not part of the bounded work resource set\n")
+    os.utime(attachment, (400, 400))
+    assert st.get(item.slug).modified == "1970-01-01T00:03:20Z"
+
+    plan = folder / "plan" / "build.md"
+    plan.parent.mkdir()
+    plan.write_text("# Build\n")
+    os.utime(plan, (300, 300))
+    assert st.get(item.slug).modified == "1970-01-01T00:05:00Z"
 
 
 # ── raw inbox intake ─────────────────────────────────────────────────────────

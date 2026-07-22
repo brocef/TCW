@@ -1,5 +1,14 @@
 import type { TreeNode, WorkItem } from "./types"
 
+export type TWorkSortKey = "name" | "modified"
+export type TSortDirection = "ascending" | "descending"
+
+const WORK_STATUS_ORDER = new Map([
+    ["active", 0],
+    ["backlog", 1],
+    ["completed", 2],
+])
+
 export function buildPathTree<T>(
     items: T[],
     keyOf: (item: T) => string
@@ -86,6 +95,45 @@ export function buildWorkTree(items: WorkItem[]): Array<TreeNode<WorkItem>> {
         mark(node)
     }
     return roots
+}
+
+export function sortWorkTree(
+    nodes: Array<TreeNode<WorkItem>>,
+    key: TWorkSortKey,
+    direction: TSortDirection
+): Array<TreeNode<WorkItem>> {
+    const compareValue = (left: WorkItem, right: WorkItem) => {
+        const leftValue =
+            key === "name" ? (left.title ?? left.slug) : (left.modified ?? "")
+        const rightValue =
+            key === "name"
+                ? (right.title ?? right.slug)
+                : (right.modified ?? "")
+        if (key === "modified" && (!leftValue || !rightValue)) {
+            if (!leftValue && !rightValue) return 0
+            return leftValue ? -1 : 1
+        }
+        const result = leftValue.localeCompare(rightValue, undefined, {
+            numeric: true,
+            sensitivity: "base",
+        })
+        return direction === "ascending" ? result : -result
+    }
+    const compareNodes = (
+        left: TreeNode<WorkItem>,
+        right: TreeNode<WorkItem>
+    ) => {
+        const leftStatus = WORK_STATUS_ORDER.get(left.item?.status ?? "") ?? 3
+        const rightStatus = WORK_STATUS_ORDER.get(right.item?.status ?? "") ?? 3
+        if (leftStatus !== rightStatus) return leftStatus - rightStatus
+        if (!left.item || !right.item)
+            return left.name.localeCompare(right.name)
+        return compareValue(left.item, right.item)
+    }
+    return [...nodes].sort(compareNodes).map((node) => ({
+        ...node,
+        children: sortWorkTree(node.children, key, direction),
+    }))
 }
 
 export function pruneTree<T>(
