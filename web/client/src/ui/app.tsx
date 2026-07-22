@@ -9,12 +9,16 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { Button, Flex, Heading, IconButton, Popover, RadioGroup, Text, TextField, Tooltip } from "@radix-ui/themes";
+import { GearIcon } from "@radix-ui/react-icons";
 import { marked } from "marked";
 import { useBeforeUnload, useLocation, useNavigate } from "react-router";
 import { encodeRef, fetchJson, requestJson } from "../model/api";
 import { buildPathTree, buildWorkTree, pathAncestors, pruneTree, workAncestors } from "../model/tree";
 import { referenceOptions, type TReferenceField } from "../model/reference-search";
 import { ReferenceInput } from "./reference-input";
+import { useThemePreference } from "../theme-context";
+import { parseThemePreference } from "../theme-preference";
 import type {
   Axis,
   AxisItem,
@@ -234,6 +238,31 @@ function SelectInput({ label, value, options, onChange }:
     value={value} onChange={(event) => onChange(event.target.value)}>
     {options.map((option) => <option value={option} key={option}>{option || "(unset)"}</option>)}
   </select></div>;
+}
+
+function SettingsControl() {
+  const { preference, setPreference } = useThemePreference();
+  return <Popover.Root>
+    <Tooltip content="Settings">
+      <Popover.Trigger>
+        <IconButton aria-label="Settings" variant="soft"><GearIcon /></IconButton>
+      </Popover.Trigger>
+    </Tooltip>
+    <Popover.Content align="end" width="220px">
+      <Flex direction="column" gap="3">
+        <Heading as="h2" size="3">Appearance</Heading>
+        <RadioGroup.Root value={preference} onValueChange={(value) => setPreference(parseThemePreference(value))}>
+          <Flex direction="column" gap="2">
+            {(["light", "dark", "system"] as const).map((value) =>
+              <Text as="label" key={value} size="2">
+                <Flex align="center" gap="2"><RadioGroup.Item value={value} />
+                  {value[0].toUpperCase() + value.slice(1)}</Flex>
+              </Text>)}
+          </Flex>
+        </RadioGroup.Root>
+      </Flex>
+    </Popover.Content>
+  </Popover.Root>;
 }
 
 export function App() {
@@ -511,13 +540,14 @@ export function App() {
   };
 
   return <>
-    <header className="topbar"><div><h1>TCW</h1><p>{data.taxonomy.length} taxonomy · {data.capabilities.length} capabilities · {data.work.length} work items</p></div>
-      <nav className="tabs" aria-label="TCW views">{AXES.map((candidate) => <button type="button" key={candidate}
-        className={`tab${axis === candidate ? " active" : ""}`} onClick={() => navigateTo(candidate, null)}>{LABELS[candidate]}</button>)}</nav>
+    <header className="topbar"><div><Heading as="h1" size="6">TCW</Heading><Text as="p" color="gray" size="2">{data.taxonomy.length} taxonomy · {data.capabilities.length} capabilities · {data.work.length} work items</Text></div>
+      <nav className="tabs" aria-label="TCW views">{AXES.map((candidate) => <Button type="button" key={candidate}
+        className={`tab${axis === candidate ? " active" : ""}`} variant={axis === candidate ? "solid" : "soft"}
+        onClick={() => navigateTo(candidate, null)}>{LABELS[candidate]}</Button>)}<SettingsControl /></nav>
     </header>
     <main className="shell" style={{ "--list-width": `${listWidth * 100}%` } as CSSProperties}>
       <section className="list-pane"><div className="list-head"><h2>{LABELS[axis]}</h2>
-        <input type="search" placeholder="Filter" value={filter} onChange={(event) => {
+        <TextField.Root type="search" placeholder="Filter" value={filter} onChange={(event) => {
           if (editor && !confirmLeave()) return; setEditor(null); setDirty(false); setFilter(event.target.value); navigateTo(axis, null);
         }} /></div>
         <FilterControls axis={axis} registeredTags={registeredTags} statusFilter={statusFilter}
