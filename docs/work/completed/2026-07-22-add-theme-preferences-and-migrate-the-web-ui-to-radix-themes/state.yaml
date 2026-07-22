@@ -2,10 +2,16 @@ slug: 2026-07-22-add-theme-preferences-and-migrate-the-web-ui-to-radix-themes
 title: Add theme preferences and migrate the web UI to Radix Themes
 phase: ''
 created: '2026-07-22'
-resolution: null
+resolution: done
 effort: high
 complexity: high
 tags:
 - web
 blocked_by:
 - slug: 2026-07-21-upgrade-tcw-serve-to-fastify-and-react
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
