@@ -271,9 +271,11 @@ tree. Above that are **multi-select category filters**: on the Work board,
 `Status` and `Tags` dropdowns use a checkbox per value (select several to match
 **any**), and in the Taxonomy view a `Kind` dropdown covers `Feature` and
 `Vocabulary`. Backlog and active statuses are selected by default; completed is
-not. All of these compose with the text filter. Each work row has a button to
-copy its slug to the clipboard. Beyond browsing, you can **create and edit** any
-object directly from the browser:
+not. Work items can be sorted by name or last-modified time in either direction;
+the selected sort applies within the fixed active, backlog, then completed
+status groups. All of these compose with the text filter. Each work row has a
+button to copy its slug to the clipboard. Beyond browsing, you can **create and
+edit** any object directly from the browser:
 
 - **Work items** — create new items with all fields (title, priority, effort,
   complexity, tags, blockers, parent, initiative); edit body and metadata; edit

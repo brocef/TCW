@@ -27,21 +27,30 @@
 - Consolidated the Work backlog, active, and completed filters into a single
   `Status` checkbox facet that shares the `Tags` interaction and selected-count
   treatment.
+- Added a single Work tree sort selection for name or bounded-resource modified
+  time with an ascending/descending toggle, while retaining active, backlog,
+  completed grouping ahead of the selected sort.
+- Removed the nested tree scroll-area root/viewport pair so the list has one
+  independently scrolling surface instead of two synchronized scrollbars.
+- Updated the `tcw-work` driving skill for the read-only adapter-provided
+  `WorkItem.modified` presentation field; it remains non-editable metadata.
 
 ## Verification evidence
 
-- Prettier check: passed for all eligible files. The shell's `pnpm` launcher
-  attempted an unavailable signed-registry version switch, so the pinned local
-  binaries were invoked directly for Prettier, TypeScript, ESLint, Vitest,
-  Playwright, and build checks.
+- Prettier check: passed for every file changed by this implementation. The
+  repository-wide check separately reports formatting in the independently
+  created eval-harness backlog item and `tcw-config.yaml`; those files remain
+  untouched here. The pinned local binaries were invoked directly for
+  Prettier, TypeScript, ESLint, Vitest, Playwright, and build checks.
 - TypeScript and ESLint: passed with zero errors/warnings.
-- Vitest: 10 files, 38 tests passed.
+- Vitest: 10 files, 40 tests passed.
 - Playwright: 12 scenarios passed using the already-installed compatible local
-  Chromium executable, including the long opaque scrolling reference list and
-  a visible, horizontally sized copy-slug tooltip.
+  Chromium executable, including sort-key/direction controls, a single Work
+  tree scroll container, the long opaque scrolling reference list, and a
+  visible, horizontally sized copy-slug tooltip.
 - Production build and deterministic `check_web_build`: passed. Vite retains
   its existing advisory that the single client chunk exceeds 500 kB.
-- Pytest: 680 tests passed. The first sandboxed run could not bind loopback
+- Pytest: 681 tests passed. The first sandboxed run could not bind loopback
   sockets; the approved unsandboxed rerun passed completely.
 - `tcw capabilities check`, `tcw taxonomy check`, `tcw validate`, and
   `git diff --check`: passed.

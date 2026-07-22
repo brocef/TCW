@@ -26,6 +26,20 @@ category, with commit hash ranges so entries trace back to source.
   consolidated popover, refreshed screenshots, and rebuilt packaged assets.
 </changes>
 
+<changes starting-hash="84d55c1" ending-hash="84d55c1">
+- Added a mutually exclusive Work tree sort selector for name or bounded
+  resource modification time, plus a single ascending/descending toggle while
+  preserving active, backlog, completed status grouping.
+- Added the adapter-provided `WorkItem.modified` presentation field and
+  filesystem derivation from state, lifecycle, sidecar, and plan-stage
+  resources; arbitrary attachments remain excluded.
+- Replaced the nested Radix tree scroll area with one native scroll container,
+  added unit/API/Playwright regressions, refreshed UI snapshots, and rebuilt the
+  packaged client assets.
+- Marked hashed generated client assets as non-text diffs so dependency-emitted
+  whitespace does not break repository whitespace validation.
+</changes>
+
 ## Fixed
 
 <changes starting-hash="eb2e019" ending-hash="9f97140">
