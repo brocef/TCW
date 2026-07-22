@@ -10,6 +10,7 @@ dist/
 
 # Node development artifacts (built tcw/serve/dist assets are committed)
 node_modules/
+.pnpm-store/
 coverage/
 playwright-report/
 test-results/
