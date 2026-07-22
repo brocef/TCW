@@ -9,7 +9,24 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { Button, Flex, Heading, IconButton, Popover, RadioGroup, Text, TextField, Tooltip } from "@radix-ui/themes";
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  Checkbox,
+  Flex,
+  Heading,
+  IconButton,
+  Popover,
+  RadioGroup,
+  ScrollArea,
+  Select,
+  Text,
+  TextArea,
+  TextField,
+  Tooltip,
+} from "@radix-ui/themes";
 import { GearIcon } from "@radix-ui/react-icons";
 import { marked } from "marked";
 import { useBeforeUnload, useLocation, useNavigate } from "react-router";
@@ -119,11 +136,12 @@ function Markdown({ source, resolveLinks = false }: { source: string; resolveLin
 
 function Fields({ children }: { children: ReactNode }) { return <div className="fields">{children}</div>; }
 function Field({ name, value }: { name: string; value: unknown }) {
-  return <div className="field"><span>{name}</span>{String(value ?? "-")}</div>;
+  return <Card className="field" size="1"><Text as="div" color="gray" size="1">{name}</Text>
+    <Text as="div" size="2">{String(value ?? "-")}</Text></Card>;
 }
 function Errors({ errors }: { errors: string[] }) {
-  return errors.length ? <div className="validation-errors"><strong>Validation errors</strong>
-    <ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul></div> : null;
+  return errors.length ? <Callout.Root color="red" role="alert"><Callout.Text><strong>Validation errors</strong>
+    <ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul></Callout.Text></Callout.Root> : null;
 }
 
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
@@ -146,23 +164,23 @@ function Tree<T extends AxisItem>({ nodes, axis, selected, expanded, onToggle, o
       <div className="tree-row" role="none">
         {Array.from({ length: depth }, (_, index) => <span className="tree-indent" key={index} />)}
         {hasChildren
-          ? <button className="tree-toggle" type="button" tabIndex={-1} aria-hidden="true"
-              onClick={() => onToggle(node.path)}>{isExpanded ? "▾" : "▸"}</button>
+          ? <IconButton className="tree-toggle" variant="ghost" type="button" tabIndex={-1} aria-hidden="true"
+              onClick={() => onToggle(node.path)}>{isExpanded ? "▾" : "▸"}</IconButton>
           : <span className="tree-spacer" />}
         {node.item
           ? <div className={axis === "work" ? "item-row" : "tree-item-content"}>
-              <button type="button" role="treeitem" aria-level={depth + 1} data-tree-path={node.path}
+              <Button type="button" variant="soft" role="treeitem" aria-level={depth + 1} data-tree-path={node.path}
                 aria-expanded={hasChildren ? isExpanded : undefined} aria-selected={selected === key}
                 className={`item${selected === key ? " active" : ""}${visible(node.item) ? "" : " ancestor-dim"}`}
                 onClick={() => onSelect(key)}>
                 <div className="item-title">{itemTitle(axis, node.item)}</div>
                 <div className="item-meta"><ItemMeta axis={axis} item={node.item} /></div>
-              </button>
-              {axis === "work" && <button className="copy-slug" type="button" title="Copy slug"
-                aria-label="Copy slug to clipboard" onClick={() => void navigator.clipboard.writeText(key)}>⎘</button>}
+              </Button>
+              {axis === "work" && <Tooltip content="Copy slug"><IconButton className="copy-slug" variant="ghost" type="button"
+                aria-label="Copy slug to clipboard" onClick={() => void navigator.clipboard.writeText(key)}>⎘</IconButton></Tooltip>}
             </div>
-          : <button className="tree-folder" type="button" role="treeitem" aria-level={depth + 1} data-tree-path={node.path}
-              aria-expanded={isExpanded} onClick={() => onToggle(node.path)}>{node.name}</button>}
+          : <Button className="tree-folder" variant="ghost" type="button" role="treeitem" aria-level={depth + 1} data-tree-path={node.path}
+              aria-expanded={isExpanded} onClick={() => onToggle(node.path)}>{node.name}</Button>}
       </div>
       {hasChildren && isExpanded ? renderNodes(node.children, depth + 1) : null}
     </div>;
@@ -173,7 +191,7 @@ function Tree<T extends AxisItem>({ nodes, axis, selected, expanded, onToggle, o
 function ItemMeta({ axis, item }: { axis: Axis; item: AxisItem }) {
   if (axis === "work") {
     const work = item as WorkItem;
-    return <><span className={`status-badge st-${work.status}`}>{work.status}</span>{" "}
+    return <><Badge className={`status-badge st-${work.status}`} variant="soft">{work.status}</Badge>{" "}
       {[work.effort && `effort ${work.effort}`, work.complexity && `complexity ${work.complexity}`,
         work.tags?.length && `tags ${work.tags.join(", ")}`].filter(Boolean).join(" · ")}</>;
   }
@@ -189,7 +207,7 @@ function MarkdownEditor({ value, onChange, placeholder = "Write Markdown..." }:
   { value: string; onChange: (value: string) => void; placeholder?: string }) {
   const [fraction, setFraction] = useState(0.5);
   return <div className="md-editor" style={{ "--md-split": `${fraction * 100}%` } as CSSProperties}>
-    <textarea className="md-input" aria-label="Markdown" value={value} placeholder={placeholder}
+    <TextArea className="md-input" aria-label="Markdown" value={value} placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)} />
     <div className="md-resizer" role="separator" aria-orientation="vertical" aria-label="Resize Markdown editor"
       onPointerDown={(event) => beginResize(event, event.currentTarget.parentElement!, 0.2, 0.8, setFraction)} />
@@ -226,18 +244,19 @@ function loadExpanded(): Record<Axis, Set<string>> {
 }
 
 function TextInput({ label, value, onChange, type = "text", placeholder }:
-  { label: string; value: string | number; onChange: (value: string) => void; type?: string; placeholder?: string }) {
-  return <div className="field-group"><label>{label}</label>
-    <input className="field-input" aria-label={label} type={type} value={value} placeholder={placeholder}
-      onChange={(event) => onChange(event.target.value)} /></div>;
+  { label: string; value: string | number; onChange: (value: string) => void; type?: "text" | "number"; placeholder?: string }) {
+  return <label className="field-group"><Text color="gray" size="1" weight="bold">{label}</Text>
+    <TextField.Root className="field-input" aria-label={label} type={type} value={value} placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function SelectInput({ label, value, options, onChange }:
   { label: string; value: string; options: readonly string[]; onChange: (value: string) => void }) {
-  return <div className="field-group"><label>{label}</label><select className="field-select" aria-label={label}
-    value={value} onChange={(event) => onChange(event.target.value)}>
-    {options.map((option) => <option value={option} key={option}>{option || "(unset)"}</option>)}
-  </select></div>;
+  return <label className="field-group"><Text color="gray" size="1" weight="bold">{label}</Text>
+    <Select.Root value={value || "__unset__"} onValueChange={(next) => onChange(next === "__unset__" ? "" : next)}>
+      <Select.Trigger aria-label={label} className="field-select" />
+      <Select.Content>{options.map((option) => <Select.Item value={option || "__unset__"} key={option || "__unset__"}>{option || "(unset)"}</Select.Item>)}</Select.Content>
+    </Select.Root></label>;
 }
 
 function SettingsControl() {
@@ -546,7 +565,7 @@ export function App() {
         onClick={() => navigateTo(candidate, null)}>{LABELS[candidate]}</Button>)}<SettingsControl /></nav>
     </header>
     <main className="shell" style={{ "--list-width": `${listWidth * 100}%` } as CSSProperties}>
-      <section className="list-pane"><div className="list-head"><h2>{LABELS[axis]}</h2>
+      <section className="list-pane"><div className="list-head"><Heading as="h2" size="3">{LABELS[axis]}</Heading>
         <TextField.Root type="search" placeholder="Filter" value={filter} onChange={(event) => {
           if (editor && !confirmLeave()) return; setEditor(null); setDirty(false); setFilter(event.target.value); navigateTo(axis, null);
         }} /></div>
@@ -554,15 +573,15 @@ export function App() {
           setStatusFilter={setStatusFilter} kindFilter={kindFilter} setKindFilter={setKindFilter}
           tagFilter={tagFilter} setTagFilter={setTagFilter} />
         <div className="create-row">
-          <button className="create-btn" type="button" onClick={enterCreate}>+ Create {LABELS[axis]}</button>
+          <Button className="create-btn" variant="outline" type="button" onClick={enterCreate}>+ Create {LABELS[axis]}</Button>
         </div>
-        <div className="list" role="tree" aria-label="Objects" onKeyDown={handleTreeKeyboard}>
+        <ScrollArea className="list" type="auto" role="tree" aria-label="Objects" onKeyDown={handleTreeKeyboard}>
           {tree.nodes.length ? <Tree nodes={tree.nodes} axis={axis} selected={selected} expanded={effectiveExpanded}
             visible={visible} onSelect={(key) => navigateTo(axis, key)} onToggle={(path) => {
               if (filter) return; setExpanded((old) => { const next = new Set(old[axis]);
                 if (next.has(path)) next.delete(path); else next.add(path); return { ...old, [axis]: next }; });
-            }} /> : <p className="empty">No {LABELS[axis].toLowerCase()} entries.</p>}
-        </div>
+            }} /> : <Text className="empty" color="gray">No {LABELS[axis].toLowerCase()} entries.</Text>}
+        </ScrollArea>
       </section>
       <div className="col-resizer" role="separator" aria-orientation="vertical" aria-label="Resize list column"
         onPointerDown={(event) => beginResize(event, event.currentTarget.parentElement!, 0.12, 0.6, setListWidth)} />
@@ -570,18 +589,18 @@ export function App() {
         const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-nav-key]");
         if (anchor) { event.preventDefault(); navigateTo(anchor.dataset.navAxis as Axis, anchor.dataset.navKey!); }
       }}>
-        {warnings.length > 0 && <div className="warnings-banner" role="alert"><strong>Saved with validation issues</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
-        {loadError ? <><p className="empty">Failed to load: {loadError}</p><button type="button" onClick={() => void load()}>Retry</button></> :
+        {warnings.length > 0 && <Callout.Root color="amber" role="alert"><Callout.Text><strong>Saved with validation issues</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></Callout.Text></Callout.Root>}
+        {loadError ? <><Text className="empty" color="gray">Failed to load: {loadError}</Text><Button variant="soft" type="button" onClick={() => void load()}>Retry</Button></> :
           editor ? <EditorView editor={editor} setDraft={setDraft} saving={saving} errors={errors} conflict={conflict}
             registeredTags={registeredTags} data={data} onSave={() => void save()} onCancel={cancelEditor} onRefreshConflict={() => void refreshConflict()} /> :
-          loadingDetail ? <p className="empty">Loading...</p> : detail ? <DetailView axis={axis} detail={detail}
+          loadingDetail ? <Text className="empty" color="gray">Loading...</Text> : detail ? <DetailView axis={axis} detail={detail}
             onEdit={enterCore} onResource={(kind, slug, name) => void enterResource(kind, slug, name)}
             onOpen={(slug, name, kind = "artifacts") => void openWorkResource(slug, name, kind, showToast)}
             onDeletePlanStage={(slug, name, revision) => void deletePlanStage(slug, name, revision)}
-            onAction={(action) => setModal(action)} /> : <p className="empty">Select an entry.</p>}
+            onAction={(action) => setModal(action)} /> : <Text className="empty" color="gray">Select an entry.</Text>}
       </section>
     </main>
-    {toast && <div className="toast">{toast}</div>}
+    {toast && <Card className="toast"><Text size="2">{toast}</Text></Card>}
     {modal === "drop" && selected && <Modal title="Drop Work Item" onClose={() => setModal(null)}>
       <p>This permanently drops <strong>{selected}</strong>.</p><div className="modal-actions"><button type="button" onClick={() => setModal(null)}>Cancel</button>
         <button className="action-btn drop" type="button" onClick={() => void doAction("drop")}>Drop</button></div></Modal>}
@@ -647,16 +666,21 @@ function FilterControls({ axis, registeredTags, statusFilter, setStatusFilter, k
   if (axis === "capabilities") return null;
   const facet = axis === "taxonomy" ? { label: "Kind", options: ["Feature", "Vocabulary"], value: kindFilter, set: setKindFilter }
     : { label: "Tags", options: registeredTags, value: tagFilter, set: setTagFilter };
-  return <div className="status-filters" role="group" aria-label="Filters">
-    {axis === "work" && WORK_STATUSES.map((status) => <button type="button" key={status}
+  return <Flex className="status-filters" role="group" aria-label="Filters" align="center" gap="2" wrap="wrap">
+    {axis === "work" && WORK_STATUSES.map((status) => <Button type="button" key={status} size="1"
       className={`status-toggle st-${status}${statusFilter[status] ? " on" : ""}`} aria-pressed={statusFilter[status]}
-      onClick={() => setStatusFilter((old) => ({ ...old, [status]: !old[status] }))}>{status}</button>)}
-    <details className="facet" key={axis}><summary>{facet.label}{facet.value.length ? ` (${facet.value.length})` : ""}</summary>
-      <div className="facet-panel">{facet.options.length ? facet.options.map((option) => <label className="facet-option" key={option}>
-        <input type="checkbox" checked={facet.value.includes(option)} onChange={(event) => facet.set(event.target.checked
-          ? [...facet.value, option] : facet.value.filter((value) => value !== option))} /> {option}</label>) : <div className="facet-empty">none available</div>}</div>
-    </details>
-  </div>;
+      variant={statusFilter[status] ? "solid" : "soft"}
+      onClick={() => setStatusFilter((old) => ({ ...old, [status]: !old[status] }))}>{status}</Button>)}
+    <Popover.Root key={axis}>
+      <Popover.Trigger><Button size="1" variant="soft">{facet.label}{facet.value.length ? ` (${facet.value.length})` : ""}</Button></Popover.Trigger>
+      <Popover.Content align="start" className="facet-panel" width="180px">
+        <Flex direction="column" gap="2">{facet.options.length ? facet.options.map((option) => <Text as="label" className="facet-option" key={option} size="2">
+          <Flex align="center" gap="2"><Checkbox checked={facet.value.includes(option)} onCheckedChange={(checked) => facet.set(checked
+            ? [...facet.value, option] : facet.value.filter((value) => value !== option))} /> {option}</Flex></Text>)
+          : <Text className="facet-empty" color="gray" size="1">none available</Text>}</Flex>
+      </Popover.Content>
+    </Popover.Root>
+  </Flex>;
 }
 
 function DetailView({ axis, detail, onEdit, onResource, onOpen, onDeletePlanStage, onAction }:
@@ -666,20 +690,20 @@ function DetailView({ axis, detail, onEdit, onResource, onOpen, onDeletePlanStag
     onAction: (action: "start" | "complete" | "drop") => void }) {
   if (axis === "work") {
     const payload = detail as WorkDetail; const item = payload.item;
-    return <><div className="detail-head"><div><h2>{item.title ?? item.slug}</h2><p className="item-meta">{item.slug}</p></div>
-      <div className="detail-actions"><span className="badge">{item.status}</span><button className="edit-btn" type="button" onClick={onEdit}>Edit</button></div></div>
-      <div className="action-buttons">{item.status === "backlog" && <><button className="action-btn start" type="button" onClick={() => onAction("start")}>Start</button>
-        <button className="action-btn drop" type="button" onClick={() => onAction("drop")}>Drop</button></>}
-        {item.status === "active" && <button className="action-btn complete" type="button" onClick={() => onAction("complete")}>Complete</button>}</div>
+    return <><div className="detail-head"><div><Heading as="h2" size="5">{item.title ?? item.slug}</Heading><Text className="item-meta" color="gray" size="2">{item.slug}</Text></div>
+      <Flex className="detail-actions" align="center" gap="2"><Badge>{item.status}</Badge><Button variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
+      <Flex className="action-buttons" gap="2" wrap="wrap">{item.status === "backlog" && <><Button color="green" variant="soft" type="button" onClick={() => onAction("start")}>Start</Button>
+        <Button color="red" variant="soft" type="button" onClick={() => onAction("drop")}>Drop</Button></>}
+        {item.status === "active" && <Button color="green" variant="soft" type="button" onClick={() => onAction("complete")}>Complete</Button>}</Flex>
       <Fields><Field name="Priority" value={item.priority} /><Field name="Effort" value={item.effort} />
         <Field name="Complexity" value={item.complexity} /><Field name="Tags" value={item.tags?.join(", ") || "-"} />
         <Field name="Resolution" value={item.resolution} /><Field name="Blocked by" value={item.blocked_by?.map((b) => b.slug ?? b.external).join(", ") || "-"} />
         {item.parent && <Field name="Parent" value={item.parent} />}{item.initiative && <Field name="Initiative" value={item.initiative} />}</Fields>
       <div className="artifacts">{payload.artifacts.filter((resource) => resource.present && resource.name !== "initial-request").map((resource) =>
-        <div className="artifact-group" key={resource.name}><button className="artifact" type="button" onClick={() => onOpen(item.slug, resource.name)}>{resource.name}</button>
-          <button className="artifact-edit" type="button" aria-label={`Edit ${resource.name}`} onClick={() => onResource("artifacts", item.slug, resource.name)}>✎</button></div>)}</div>
-      {payload.planStages?.length > 0 && <div className="plan-stages"><h3>Plan stages</h3>
-        {payload.planStages.map((stage) => <div className="plan-stage" key={stage.id}>
+        <Flex className="artifact-group" key={resource.name}><Button className="artifact" variant="soft" type="button" onClick={() => onOpen(item.slug, resource.name)}>{resource.name}</Button>
+          <IconButton className="artifact-edit" variant="ghost" type="button" aria-label={`Edit ${resource.name}`} onClick={() => onResource("artifacts", item.slug, resource.name)}>✎</IconButton></Flex>)}</div>
+      {payload.planStages?.length > 0 && <div className="plan-stages"><Heading as="h3" size="3">Plan stages</Heading>
+        {payload.planStages.map((stage) => <Card className="plan-stage" key={stage.id}>
           <div><strong>{stage.title}</strong><span className="item-meta"> {stage.id}</span></div>
           <div className="item-meta">Depends on: {stage.depends_on.length ? stage.depends_on.join(", ") : "none"}
             {stage.effort && ` · effort ${stage.effort}`}{stage.complexity && ` · complexity ${stage.complexity}`}
@@ -688,27 +712,27 @@ function DetailView({ axis, detail, onEdit, onResource, onOpen, onDeletePlanStag
             && JSON.stringify(candidate.depends_on) === JSON.stringify(stage.depends_on)).length > 0
             && <div className="item-meta">Parallel with: {payload.planStages.filter((candidate) => candidate.id !== stage.id
               && JSON.stringify(candidate.depends_on) === JSON.stringify(stage.depends_on)).map((candidate) => candidate.id).join(", ")}</div>}
-          <div className="artifact-group"><span>{stage.present ? "Document present" : "Document missing"}</span>
-            {stage.present && <button type="button" onClick={() => onOpen(item.slug, stage.id, "plan-stages")}>Open</button>}
-            <button type="button" onClick={() => onResource("plan-stages", item.slug, stage.id)}>{stage.present ? "Edit" : "Create"}</button>
-            {stage.present && <button type="button" onClick={() => onDeletePlanStage(item.slug, stage.id, stage.revision)}>Delete</button>}</div>
-        </div>)}</div>}
-      {payload.sidecars?.some((resource) => resource.present) && <div className="sidecars-section"><h3>Sidecars</h3>
-        {payload.sidecars.filter((resource) => resource.present).map((resource) => <div className="sidecar-item" key={resource.name}><span className="sidecar-name">{resource.name}</span>
-          <button className="sidecar-edit-btn" type="button" onClick={() => onResource("sidecars", item.slug, resource.name)}>Edit</button></div>)}</div>}
+          <Flex className="artifact-group" align="center" gap="2"><Text size="2">{stage.present ? "Document present" : "Document missing"}</Text>
+            {stage.present && <Button size="1" variant="soft" type="button" onClick={() => onOpen(item.slug, stage.id, "plan-stages")}>Open</Button>}
+            <Button size="1" variant="soft" type="button" onClick={() => onResource("plan-stages", item.slug, stage.id)}>{stage.present ? "Edit" : "Create"}</Button>
+            {stage.present && <Button size="1" color="red" variant="soft" type="button" onClick={() => onDeletePlanStage(item.slug, stage.id, stage.revision)}>Delete</Button>}</Flex>
+        </Card>)}</div>}
+      {payload.sidecars?.some((resource) => resource.present) && <div className="sidecars-section"><Heading as="h3" size="3">Sidecars</Heading>
+        {payload.sidecars.filter((resource) => resource.present).map((resource) => <Flex className="sidecar-item" key={resource.name} align="center" gap="2"><Text className="sidecar-name" color="gray" size="2">{resource.name}</Text>
+          <Button size="1" variant="soft" type="button" onClick={() => onResource("sidecars", item.slug, resource.name)}>Edit</Button></Flex>)}</div>}
       <Markdown source={item.body ?? ""} resolveLinks /></>;
   }
   if (axis === "taxonomy") {
     const term = (detail as TaxonomyDetail).term;
-    return <><div className="detail-head"><div><h2>{term.name ?? term.slug}</h2><p className="item-meta">{term.qualified ?? term.slug}</p></div>
-      <div className="detail-actions"><span className="badge">{term.kind}</span><button className="edit-btn" type="button" onClick={onEdit}>Edit</button></div></div>
+    return <><div className="detail-head"><div><Heading as="h2" size="5">{term.name ?? term.slug}</Heading><Text className="item-meta" color="gray" size="2">{term.qualified ?? term.slug}</Text></div>
+      <Flex className="detail-actions" align="center" gap="2"><Badge>{term.kind}</Badge><Button variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
       <Fields><Field name="Kind" value={term.kind} /><Field name="Origin" value={term.origin} /><Field name="Parent" value={term.parent} />
         <Field name="Relates to" value={term.relates_to?.join(", ") || "-"} /><Field name="Vocabulary" value={term.vocabulary?.join(", ") || "-"} /></Fields>
       <Markdown source={term.description ?? ""} resolveLinks /></>;
   }
   const capability = (detail as CapabilityDetail).capability;
-  return <><div className="detail-head"><div><h2>{capability.name ?? capability.path}</h2><p className="item-meta">{capability.path}</p></div>
-    <div className="detail-actions"><span className="badge">{capability.status}</span><button className="edit-btn" type="button" onClick={onEdit}>Edit</button></div></div>
+  return <><div className="detail-head"><div><Heading as="h2" size="5">{capability.name ?? capability.path}</Heading><Text className="item-meta" color="gray" size="2">{capability.path}</Text></div>
+    <Flex className="detail-actions" align="center" gap="2"><Badge>{capability.status}</Badge><Button variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
     <Fields>{Object.entries(capability.fields ?? {}).map(([name, value]) => <Field name={name} value={Array.isArray(value) ? value.join(", ") : value} key={name} />)}</Fields>
     <Markdown source={capability.body ?? ""} resolveLinks /></>;
 }

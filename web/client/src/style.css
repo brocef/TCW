@@ -1,16 +1,3 @@
-:root {
-  color-scheme: light;
-  --ink: #202124;
-  --muted: #61646b;
-  --line: #d8d9dd;
-  --bg: #f7f7f5;
-  --panel: #ffffff;
-  --accent: #1b6f68;
-  --accent-ink: #ffffff;
-  --warn: #9a5a16;
-  --ok: #3e6b2e;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -18,9 +5,13 @@
 body {
   margin: 0;
   min-height: 100vh;
-  color: var(--ink);
-  background: var(--bg);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--gray-12);
+  background: var(--gray-2);
+  font-family: var(--default-font-family);
+}
+
+.radix-themes {
+  min-height: 100vh;
 }
 
 .topbar {
@@ -29,8 +20,8 @@ body {
   justify-content: space-between;
   gap: 24px;
   padding: 18px 22px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  border-bottom: 1px solid var(--gray-a6);
+  background: var(--color-panel-solid);
 }
 
 h1, h2, h3, p {
@@ -44,7 +35,7 @@ h1 {
 
 #summary {
   margin-top: 4px;
-  color: var(--muted);
+  color: var(--gray-11);
   font-size: 13px;
 }
 
@@ -55,10 +46,10 @@ h1 {
 }
 
 .tab, .item, .artifact, .retry {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
   cursor: pointer;
 }
 
@@ -69,9 +60,9 @@ h1 {
 }
 
 .tab.active {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
+  background: var(--accent-9);
+  color: var(--accent-contrast);
+  border-color: var(--accent-9);
 }
 
 .shell {
@@ -93,12 +84,12 @@ h1 {
 
 .col-resizer:hover,
 .md-resizer:hover {
-  background: var(--accent);
+  background: var(--accent-9);
 }
 
 .list-pane {
-  border-right: 1px solid var(--line);
-  background: #fbfbfa;
+  border-right: 1px solid var(--gray-a6);
+  background: var(--gray-2);
   min-width: 0;
   /* Fixed head (title/filter/status) above an internally-scrolling tree. */
   display: flex;
@@ -112,7 +103,7 @@ h1 {
   align-items: center;
   gap: 12px;
   padding: 14px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--gray-a6);
 }
 
 .list-head h2 {
@@ -122,18 +113,18 @@ h1 {
 #filter {
   width: 100%;
   min-height: 32px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   padding: 0 9px;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
 }
 
 /* Per-status accent (--st) — shared by the list-item badges and the filter
    toggles so a status reads the same color in both places. */
-.st-backlog   { --st: #b45309; }  /* amber */
-.st-active    { --st: #1b6f68; }  /* teal */
-.st-completed { --st: #4b5563; }  /* slate */
+.st-backlog   { --st: var(--amber-9); }  /* amber */
+.st-active    { --st: var(--accent-9); }  /* teal */
+.st-completed { --st: var(--gray-9); }  /* slate */
 
 .status-filters {
   display: flex;
@@ -154,10 +145,10 @@ h1 {
   display: inline-flex;
   align-items: center;
   padding: 0 11px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 999px;
-  background: var(--panel);
-  color: var(--muted);
+  background: var(--color-panel-solid);
+  color: var(--gray-11);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -167,8 +158,8 @@ h1 {
 .facet > summary::after { content: " \25BE"; }   /* ▾ */
 
 .facet[open] > summary {
-  border-color: var(--accent);
-  color: var(--ink);
+  border-color: var(--accent-9);
+  color: var(--gray-12);
 }
 
 .facet-panel {
@@ -180,10 +171,10 @@ h1 {
   max-height: 240px;
   overflow-y: auto;
   padding: 6px;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--color-panel-solid);
+  border: 1px solid var(--gray-a6);
   border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 6px 18px var(--black-a5);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -199,7 +190,7 @@ h1 {
 }
 
 .facet-empty {
-  color: var(--muted);
+  color: var(--gray-11);
   font-size: 12px;
   font-style: italic;
   padding: 2px 4px;
@@ -208,10 +199,10 @@ h1 {
 .status-toggle {
   min-height: 28px;
   padding: 0 11px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 999px;
-  background: var(--panel);
-  color: var(--st, var(--muted));   /* status hue even when off */
+  background: var(--color-panel-solid);
+  color: var(--st, var(--gray-11));   /* status hue even when off */
   font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
@@ -228,19 +219,19 @@ h1 {
   right: 0;
   max-height: 280px;
   overflow-y: auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
-  background: var(--panel);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  background: var(--color-panel-solid);
+  box-shadow: 0 8px 24px var(--black-a6);
 }
 .reference-option { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; cursor: pointer; }
-.reference-option.active, .reference-option:hover { background: #f1f3f5; }
-.reference-option small { color: var(--muted); }
+.reference-option.active, .reference-option:hover { background: var(--gray-3); }
+.reference-option small { color: var(--gray-11); }
 
 .status-toggle.on {
-  background: var(--st, var(--accent));
-  color: #fff;
-  border-color: var(--st, var(--accent));
+  background: var(--st, var(--accent-9));
+  color: var(--color-background);
+  border-color: var(--st, var(--accent-9));
   opacity: 1;
 }
 
@@ -256,8 +247,8 @@ h1 {
   font-size: 11px;
   font-weight: 700;
   text-transform: capitalize;
-  color: var(--st, var(--muted));
-  background: color-mix(in srgb, var(--st, var(--muted)) 14%, transparent);
+  color: var(--st, var(--gray-11));
+  background: color-mix(in srgb, var(--st, var(--gray-11)) 14%, transparent);
 }
 
 .list {
@@ -277,8 +268,8 @@ h1 {
 }
 
 .item.active {
-  border-color: var(--accent);
-  box-shadow: inset 3px 0 0 var(--accent);
+  border-color: var(--accent-9);
+  box-shadow: inset 3px 0 0 var(--accent-9);
 }
 
 .item-title {
@@ -288,7 +279,7 @@ h1 {
 
 .item-meta {
   margin-top: 5px;
-  color: var(--muted);
+  color: var(--gray-11);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -305,7 +296,7 @@ h1 {
   padding: 2px 6px;
   font-size: 13px;
   line-height: 1;
-  color: var(--muted);
+  color: var(--gray-11);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -319,8 +310,8 @@ h1 {
 }
 
 .copy-slug:hover {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent-9);
+  border-color: var(--accent-9);
 }
 
 /* ── Tree view (hierarchical object list) ──────────────────────────── */
@@ -348,14 +339,14 @@ h1 {
   width: 22px;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--gray-11);
   cursor: pointer;
   font-size: 10px;
   padding: 0;
 }
 
 .tree-toggle:hover {
-  color: var(--accent);
+  color: var(--accent-9);
 }
 
 .tree-spacer {
@@ -368,7 +359,7 @@ h1 {
   text-align: left;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--gray-11);
   cursor: pointer;
   font-weight: 600;
   font-size: 13px;
@@ -376,7 +367,7 @@ h1 {
 }
 
 .tree-folder:hover {
-  color: var(--ink);
+  color: var(--gray-12);
 }
 
 .item.ancestor-dim {
@@ -404,7 +395,7 @@ h1 {
   gap: 16px;
   align-items: start;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--gray-a6);
 }
 
 .detail-head h2 {
@@ -416,8 +407,8 @@ h1 {
   display: inline-block;
   border-radius: 999px;
   padding: 3px 8px;
-  background: #ece7db;
-  color: #493714;
+  background: var(--amber-3);
+  color: var(--amber-11);
   font-size: 12px;
   font-weight: 700;
 }
@@ -430,15 +421,15 @@ h1 {
 }
 
 .field {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   padding: 9px;
-  background: var(--panel);
+  background: var(--color-panel-solid);
 }
 
 .field span {
   display: block;
-  color: var(--muted);
+  color: var(--gray-11);
   font-size: 12px;
   margin-bottom: 4px;
 }
@@ -458,12 +449,12 @@ h1 {
 
 /* tcw:// links: resolvable are accent-colored; inert (unhosted/dangling) muted. */
 .body a[data-nav-key] {
-  color: var(--accent);
+  color: var(--accent-9);
   cursor: pointer;
 }
 
 .body a.tcw-inert {
-  color: var(--muted);
+  color: var(--gray-11);
   text-decoration: line-through;
   cursor: not-allowed;
 }
@@ -481,11 +472,11 @@ h1 {
 }
 
 .artifact:hover, .retry:hover, .item:hover, .tab:hover {
-  border-color: var(--accent);
+  border-color: var(--accent-9);
 }
 
 .empty {
-  color: var(--muted);
+  color: var(--gray-11);
   padding: 16px;
 }
 
@@ -495,8 +486,8 @@ h1 {
   bottom: 18px;
   max-width: min(360px, calc(100vw - 36px));
   padding: 10px 12px;
-  background: #2e2f32;
-  color: #ffffff;
+  background: var(--gray-12);
+  color: var(--color-background);
   border-radius: 6px;
   font-size: 13px;
 }
@@ -516,7 +507,7 @@ h1 {
 
   .list-pane {
     border-right: 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--gray-a6);
     overflow: visible;
   }
 
@@ -548,10 +539,10 @@ h1 {
 }
 
 .edit-btn {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-9);
   border-radius: 6px;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-9);
   cursor: pointer;
   padding: 4px 10px;
   font-size: 13px;
@@ -560,8 +551,8 @@ h1 {
 }
 
 .edit-btn:hover {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--accent-9);
+  color: var(--accent-contrast);
 }
 
 /* ── Artifact group (artifact + edit button) ────────────────────────── */
@@ -573,10 +564,10 @@ h1 {
 }
 
 .artifact-edit {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 4px;
-  background: var(--panel);
-  color: var(--muted);
+  background: var(--color-panel-solid);
+  color: var(--gray-11);
   cursor: pointer;
   padding: 0 5px;
   min-height: 24px;
@@ -585,12 +576,12 @@ h1 {
 }
 
 .artifact-edit:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-9);
+  color: var(--accent-9);
 }
 
 .plan-stages { margin: 1rem 0; }
-.plan-stage { border: 1px solid var(--border); border-radius: .4rem; margin: .5rem 0; padding: .7rem; }
+.plan-stage { border: 1px solid var(--gray-a6); border-radius: .4rem; margin: .5rem 0; padding: .7rem; }
 .plan-stage .artifact-group { margin-top: .5rem; }
 
 /* ── Editor container ───────────────────────────────────────────────── */
@@ -615,7 +606,7 @@ h1 {
   justify-content: space-between;
   align-items: center;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--gray-a6);
 }
 
 .editor-title {
@@ -628,7 +619,7 @@ h1 {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--warn);
+  background: var(--amber-9);
   margin-left: 6px;
   vertical-align: middle;
 }
@@ -640,21 +631,21 @@ h1 {
 
 .save-btn,
 .cancel-btn {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   cursor: pointer;
   padding: 4px 12px;
   font-size: 13px;
   font-weight: 600;
   min-height: 32px;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
 }
 
 .save-btn {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
+  background: var(--accent-9);
+  color: var(--accent-contrast);
+  border-color: var(--accent-9);
 }
 
 .save-btn:hover {
@@ -662,7 +653,7 @@ h1 {
 }
 
 .cancel-btn:hover {
-  border-color: var(--accent);
+  border-color: var(--accent-9);
 }
 
 .editor-section {
@@ -670,7 +661,7 @@ h1 {
   font-weight: 600;
   margin-top: 4px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--gray-a6);
 }
 
 /* ── Structured field inputs ────────────────────────────────────────── */
@@ -689,18 +680,18 @@ h1 {
 
 .field-group label {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--gray-11);
   font-weight: 600;
 }
 
 .field-input,
 .field-select {
   min-height: 32px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   padding: 0 9px;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
   font-size: 14px;
   font-family: inherit;
 }
@@ -708,7 +699,7 @@ h1 {
 .field-input:focus,
 .field-select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-9);
 }
 
 /* ── Markdown editor ────────────────────────────────────────────────── */
@@ -724,27 +715,27 @@ h1 {
   width: 100%;
   height: 100%;
   min-height: 300px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   padding: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
   line-height: 1.5;
   resize: vertical;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
 }
 
 .md-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-9);
 }
 
 .md-preview {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   padding: 10px;
-  background: var(--panel);
+  background: var(--color-panel-solid);
   overflow-y: auto;
   max-height: 600px;
   line-height: 1.55;
@@ -763,7 +754,7 @@ h1 {
 }
 
 .md-preview pre {
-  background: #f5f5f3;
+  background: var(--gray-3);
   border-radius: 4px;
   padding: 8px;
   overflow-x: auto;
@@ -772,11 +763,11 @@ h1 {
 /* ── Validation errors ──────────────────────────────────────────────── */
 
 .validation-errors {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--red-3);
+  border: 1px solid var(--red-6);
   border-radius: 6px;
   padding: 10px 12px;
-  color: #991b1b;
+  color: var(--red-11);
   font-size: 13px;
 }
 
@@ -793,11 +784,11 @@ h1 {
 /* ── Conflict banner (409 recovery) ─────────────────────────────────── */
 
 .conflict-banner {
-  background: #fef9ee;
-  border: 1px solid #fde68a;
+  background: var(--amber-3);
+  border: 1px solid var(--amber-6);
   border-radius: 6px;
   padding: 12px;
-  color: #78350f;
+  color: var(--amber-11);
   font-size: 13px;
 }
 
@@ -813,8 +804,8 @@ h1 {
 .conflict-server {
   margin-top: 6px;
   padding: 8px;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--color-panel-solid);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   font-family: ui-monospace, monospace;
   font-size: 12px;
@@ -834,26 +825,26 @@ h1 {
 .conflict-refresh,
 .conflict-copy,
 .conflict-discard {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   cursor: pointer;
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
   min-height: 28px;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
 }
 
 .conflict-refresh:hover,
 .conflict-copy:hover {
-  border-color: var(--accent);
+  border-color: var(--accent-9);
 }
 
 .conflict-discard {
-  background: #fef2f2;
-  color: #991b1b;
-  border-color: #fecaca;
+  background: var(--red-3);
+  color: var(--red-11);
+  border-color: var(--red-6);
 }
 
 /* ── Create button (in list header) ──────────────────────────────────── */
@@ -863,10 +854,10 @@ h1 {
 }
 
 .create-btn {
-  border: 1px dashed var(--accent);
+  border: 1px dashed var(--accent-9);
   border-radius: 6px;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-9);
   cursor: pointer;
   padding: 4px 12px;
   font-size: 13px;
@@ -876,8 +867,8 @@ h1 {
 }
 
 .create-btn:hover {
-  background: var(--accent);
-  color: var(--accent-head);
+  background: var(--accent-9);
+  color: var(--accent-contrast);
 }
 
 /* ── Lifecycle action buttons ───────────────────────────────────────── */
@@ -890,50 +881,50 @@ h1 {
 }
 
 .action-btn {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   cursor: pointer;
   padding: 5px 14px;
   font-size: 13px;
   font-weight: 600;
   min-height: 32px;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
 }
 
 .action-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-9);
+  color: var(--accent-9);
 }
 
 .action-btn.start {
-  border-color: var(--ok);
-  color: var(--ok);
+  border-color: var(--green-9);
+  color: var(--green-9);
 }
 
 .action-btn.start:hover {
-  background: var(--ok);
-  color: var(--accent-ink);
+  background: var(--green-9);
+  color: var(--accent-contrast);
 }
 
 .action-btn.complete {
-  border-color: var(--ok);
-  color: var(--ok);
+  border-color: var(--green-9);
+  color: var(--green-9);
 }
 
 .action-btn.complete:hover {
-  background: var(--ok);
-  color: var(--accent-ink);
+  background: var(--green-9);
+  color: var(--accent-contrast);
 }
 
 .action-btn.drop {
-  border-color: #991b1b;
-  color: #991b1b;
+  border-color: var(--red-11);
+  color: var(--red-11);
 }
 
 .action-btn.drop:hover {
-  background: #991b1b;
-  color: var(--accent-ink);
+  background: var(--red-11);
+  color: var(--accent-contrast);
 }
 
 /* ── Sidecars section ───────────────────────────────────────────────── */
@@ -947,7 +938,7 @@ h1 {
   font-weight: 600;
   margin-bottom: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--gray-a6);
 }
 
 .sidecar-item {
@@ -960,14 +951,14 @@ h1 {
 .sidecar-name {
   font-family: ui-monospace, monospace;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--gray-11);
 }
 
 .sidecar-edit-btn {
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 4px;
-  background: var(--panel);
-  color: var(--muted);
+  background: var(--color-panel-solid);
+  color: var(--gray-11);
   cursor: pointer;
   padding: 2px 6px;
   min-height: 24px;
@@ -975,18 +966,18 @@ h1 {
 }
 
 .sidecar-edit-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-9);
+  color: var(--accent-9);
 }
 
 /* ── Warnings banner (non-blocking, post-write) ─────────────────────── */
 
 .warnings-banner {
-  background: #fef9ee;
-  border: 1px solid #fde68a;
+  background: var(--amber-3);
+  border: 1px solid var(--amber-6);
   border-radius: 6px;
   padding: 10px 12px;
-  color: #78350f;
+  color: var(--amber-11);
   font-size: 13px;
   margin-bottom: 10px;
 }
@@ -1006,7 +997,7 @@ h1 {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--black-a9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1014,14 +1005,14 @@ h1 {
 }
 
 .modal-box {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--color-panel-solid);
+  border: 1px solid var(--gray-a6);
   border-radius: 8px;
   padding: 20px 24px;
   max-width: min(560px, 90vw);
   max-height: 80vh;
   overflow-y: auto;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 30px var(--black-a6);
 }
 
 .modal-box h2 {
@@ -1058,13 +1049,13 @@ h1 {
   background: none;
   font-size: 18px;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--gray-11);
   min-height: auto;
   padding: 4px 8px;
 }
 
 .modal-dismiss:hover {
-  color: var(--ink);
+  color: var(--gray-12);
 }
 
 /* ── DoD checklist in modal ─────────────────────────────────────────── */
@@ -1086,7 +1077,7 @@ h1 {
 .dod-item input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: var(--accent);
+  accent-color: var(--accent-9);
 }
 
 .dod-item label {
@@ -1094,29 +1085,29 @@ h1 {
 }
 
 .reconciliation-reminder {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  background: var(--blue-3);
+  border: 1px solid var(--blue-6);
   border-radius: 6px;
   padding: 10px 12px;
-  color: #1e40af;
+  color: var(--blue-11);
   font-size: 13px;
   margin: 12px 0;
   line-height: 1.5;
 }
 
 .modal-error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--red-3);
+  border: 1px solid var(--red-6);
   border-radius: 6px;
   padding: 8px 10px;
-  color: #991b1b;
+  color: var(--red-11);
   font-size: 13px;
   margin: 8px 0;
 }
 
 .force-override {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--gray-11);
   margin-top: 4px;
 }
 
@@ -1134,20 +1125,20 @@ h1 {
   width: 100%;
   height: 100%;
   min-height: 300px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--gray-a6);
   border-radius: 6px;
   padding: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
   line-height: 1.5;
   resize: vertical;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--color-panel-solid);
+  color: var(--gray-12);
 }
 
 .raw-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-9);
 }
 
 /* ── Blocker tag input ──────────────────────────────────────────────── */
@@ -1163,8 +1154,8 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #f0f0ed;
-  border: 1px solid var(--line);
+  background: var(--gray-3);
+  border: 1px solid var(--gray-a6);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 12px;
@@ -1174,14 +1165,14 @@ h1 {
   border: none;
   background: none;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--gray-11);
   font-size: 14px;
   padding: 0 2px;
   min-height: auto;
 }
 
 .blocker-tag button:hover {
-  color: #991b1b;
+  color: var(--red-11);
 }
 
 /* Registered-tag multi-select (work editor) */
@@ -1201,12 +1192,12 @@ h1 {
 }
 
 .tag-checkbox.tag-stale {
-  color: #991b1b;
+  color: var(--red-11);
   font-style: italic;
 }
 
 .field-hint {
-  color: var(--muted);
+  color: var(--gray-11);
   font-size: 12px;
   margin-top: 4px;
 }
