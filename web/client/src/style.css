@@ -71,6 +71,9 @@ p {
     padding: var(--space-3);
     border-bottom: 1px solid var(--gray-a6);
 }
+.list-head .rt-TextFieldRoot {
+    min-width: 0;
+}
 
 .status-filters {
     padding: var(--space-3) var(--space-3) 0;
@@ -120,6 +123,10 @@ p {
     display: grid;
     gap: var(--tree-row-gap);
 }
+.tree-children {
+    display: grid;
+    gap: var(--tree-row-gap);
+}
 .tree-row {
     display: flex;
     align-items: stretch;
@@ -132,10 +139,14 @@ p {
 .tree-spacer,
 .tree-toggle {
     flex: none;
-    width: 22px;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
 }
 .tree-toggle {
     padding: 0;
+    font-size: 18px;
 }
 .tree-folder {
     flex: 1;
@@ -171,7 +182,7 @@ p {
     font-size: var(--font-size-1);
     line-height: 1.35;
 }
-.item-row {
+.tree-item-content {
     position: relative;
 }
 .copy-slug {
@@ -180,7 +191,7 @@ p {
     right: var(--space-1);
     opacity: 0;
 }
-.item-row:hover .copy-slug,
+.tree-item-content:hover .copy-slug,
 .copy-slug:focus {
     opacity: 1;
 }
@@ -358,7 +369,24 @@ p {
     right: 0;
     max-height: 280px;
     overflow-y: auto;
+    border: 1px solid var(--gray-a7);
+    border-radius: var(--radius-2);
+    background: var(--color-panel-solid);
     box-shadow: var(--shadow-4);
+}
+.item-work {
+    background: color-mix(in srgb, var(--st) 12%, var(--color-panel-solid));
+}
+.item-work:hover {
+    background: color-mix(in srgb, var(--st) 18%, var(--color-panel-solid));
+}
+.item-work.active {
+    background: color-mix(in srgb, var(--st) 22%, var(--color-panel-solid));
+    box-shadow: inset 3px 0 0 var(--st);
+}
+.work-status {
+    color: var(--st, var(--gray-11));
+    text-transform: capitalize;
 }
 .reference-option {
     padding: var(--space-2) var(--space-3);

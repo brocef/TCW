@@ -76,3 +76,21 @@ test("supports pointer selection, duplicate-free raw text, and negated condition
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" })
     expect(value).toEqual(["!conditions/online", "custom"])
 })
+
+test("renders results as a real dropdown surface", () => {
+    render(
+        <ReferenceInput
+            label="Feature"
+            options={options}
+            value=""
+            onChange={() => undefined}
+        />
+    )
+    fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: "use" },
+    })
+    const listbox = screen.getByRole("listbox")
+    expect(listbox).toHaveClass("reference-results")
+    expect(listbox.tagName).toBe("DIV")
+    expect(listbox).not.toHaveClass("rt-Card")
+})

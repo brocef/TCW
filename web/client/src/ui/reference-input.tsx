@@ -1,12 +1,5 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
-import {
-    Badge,
-    Card,
-    Flex,
-    IconButton,
-    Text,
-    TextField,
-} from "@radix-ui/themes"
+import { Badge, Flex, IconButton, Text, TextField } from "@radix-ui/themes"
 import {
     highlightMatches,
     rankReferenceOptions,
@@ -171,7 +164,7 @@ export function ReferenceInput({
                 onKeyDown={onKeyDown}
             />
             {open && results.length > 0 && (
-                <Card
+                <div
                     id={`${id}-listbox`}
                     className="reference-results"
                     role="listbox"
@@ -203,7 +196,7 @@ export function ReferenceInput({
                             </Text>
                         </Flex>
                     ))}
-                </Card>
+                </div>
             )}
         </div>
     )

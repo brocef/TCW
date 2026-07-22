@@ -147,6 +147,14 @@ test("filters work without losing the established tree interaction", async ({
     await expect(
         page.getByText("Browser parity fixture", { exact: true })
     ).toBeHidden()
+    await expect(
+        page.getByRole("button", { name: "Clear filter" })
+    ).toBeVisible()
+    await page.getByRole("button", { name: "Clear filter" }).click()
+    await expect(filter).toHaveValue("")
+    await expect(
+        page.getByRole("button", { name: "Clear filter" })
+    ).toHaveCount(0)
 })
 
 test("keeps API and SPA routing separate", async ({ request }) => {
@@ -275,6 +283,16 @@ test("searches references and surfaces targeted validation warnings", async ({
     page,
     request,
 }) => {
+    for (let index = 0; index < 24; index += 1) {
+        const result = await request.post(`${baseUrl}/api/taxonomy`, {
+            data: {
+                name: `Useful scrolling feature ${index}`,
+                slug: `use-scrolling-feature-${index}`,
+                kind: "Feature",
+            },
+        })
+        expect(result.ok()).toBeTruthy()
+    }
     const feature = await request.post(`${baseUrl}/api/taxonomy`, {
         data: {
             name: "Useful feature",
@@ -291,6 +309,29 @@ test("searches references and surfaces targeted validation warnings", async ({
     await expect(page.locator(".reference-results strong").first()).toHaveText(
         /use/i
     )
+    const dropdown = page.locator(".reference-results")
+    await expect(dropdown).toBeVisible()
+    const dropdownStyle = await dropdown.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+            background: style.backgroundColor,
+            position: style.position,
+            zIndex: Number(style.zIndex),
+            scrolls: element.scrollHeight > element.clientHeight,
+        }
+    })
+    expect(dropdownStyle.background).not.toBe("rgba(0, 0, 0, 0)")
+    expect(dropdownStyle.position).toBe("absolute")
+    expect(dropdownStyle.zIndex).toBeGreaterThan(0)
+    expect(dropdownStyle.scrolls).toBeTruthy()
+    await dropdown.evaluate((element) =>
+        element.scrollTo(0, element.scrollHeight)
+    )
+    expect(
+        await dropdown.evaluate(
+            (element) => getComputedStyle(element).backgroundColor
+        )
+    ).toBe(dropdownStyle.background)
     await featureInput.press("Enter")
     await expect(featureInput).toHaveValue("use-feature")
     await page

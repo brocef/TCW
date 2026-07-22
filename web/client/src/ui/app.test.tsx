@@ -70,3 +70,21 @@ test("applies and persists an appearance choice without leaving the shell", asyn
     expect(document.documentElement).toHaveClass("dark")
     expect(screen.getByRole("tree", { name: "Objects" })).toBeInTheDocument()
 })
+
+test("shows and applies the accessible filter clear action", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (input) => ({
+        ok: true,
+        json: async () =>
+            String(input).endsWith("/api/work/tags") ? { tags: [] } : [],
+    }))
+    renderApp()
+    const filter = screen.getByPlaceholderText("Filter")
+    expect(
+        screen.queryByRole("button", { name: "Clear filter" })
+    ).not.toBeInTheDocument()
+    fireEvent.change(filter, { target: { value: "needle" } })
+    const clear = screen.getByRole("button", { name: "Clear filter" })
+    fireEvent.click(clear)
+    expect(filter).toHaveValue("")
+    expect(clear).not.toBeInTheDocument()
+})
