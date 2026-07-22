@@ -38,6 +38,7 @@ import {
 import { SettingsControl, Tree } from "./shared-components"
 import { beginResize, loadExpanded } from "./ui-state"
 import { AXES, LABELS, itemKey, parsePath, pathFor } from "./route-utils"
+import { openWorkResource } from "./work-resource"
 import type {
     TClientData as Data,
     TDetail as Detail,
@@ -1065,35 +1066,6 @@ function handleTreeKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
                 }
             }
         }
-    }
-}
-
-async function openWorkResource(
-    slug: string,
-    name: string,
-    kind: "artifacts" | "plan-stages",
-    toast: (message: string) => void
-) {
-    try {
-        const response = await fetch(
-            `/api/work/${encodeRef(slug)}/${kind}/${encodeRef(name)}/open`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-            }
-        )
-        if (!response.ok)
-            throw new Error(`${response.status} ${response.statusText}`)
-        if (response.status === 204) {
-            toast("Opened artifact")
-            return
-        }
-        const payload = (await response.json()) as { url?: string }
-        if (payload.url) window.open(payload.url, "_blank", "noopener")
-    } catch (error) {
-        toast(
-            `Could not open artifact: ${error instanceof Error ? error.message : String(error)}`
-        )
     }
 }
 
