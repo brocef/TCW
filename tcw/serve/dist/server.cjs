@@ -35071,12 +35071,19 @@ function buildServer(options) {
     return payload;
   });
   app.all("/api/*", async (request, reply) => {
-    if (!isAllowedRequest(request)) return reply.code(403).send({ error: "forbidden origin" });
-    const target = new URL(request.raw.url ?? request.url, options.sidecarOrigin);
+    if (!isAllowedRequest(request))
+      return reply.code(403).send({ error: "forbidden origin" });
+    const target = new URL(
+      request.raw.url ?? request.url,
+      options.sidecarOrigin
+    );
     const headers = new Headers();
     for (const [name, value] of Object.entries(request.headers)) {
       if (value !== void 0 && !["connection", "content-length", "host"].includes(name)) {
-        headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+        headers.set(
+          name,
+          Array.isArray(value) ? value.join(", ") : value
+        );
       }
     }
     headers.set("x-tcw-sidecar-token", options.sidecarToken);
@@ -35111,8 +35118,10 @@ async function startFromEnvironment() {
   await app.listen({ host: "127.0.0.1", port });
   const address = app.server.address();
   const publicPort = typeof address === "object" && address ? address.port : port;
-  process.stdout.write(`${JSON.stringify({ type: "ready", port: publicPort })}
-`);
+  process.stdout.write(
+    `${JSON.stringify({ type: "ready", port: publicPort })}
+`
+  );
   const close = async () => {
     await app.close();
     process.exit(0);
@@ -35122,8 +35131,10 @@ async function startFromEnvironment() {
 }
 if (process.env.TCW_SERVE_ASSET_DIR) {
   startFromEnvironment().catch((error) => {
-    process.stderr.write(`tcw serve: ${error instanceof Error ? error.message : String(error)}
-`);
+    process.stderr.write(
+      `tcw serve: ${error instanceof Error ? error.message : String(error)}
+`
+    );
     process.exit(1);
   });
 }

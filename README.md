@@ -227,6 +227,18 @@ server; Fastify is the only browser-facing listener. The React client and server
 bundle are included in the Python package and work fully offline. pnpm is needed
 only by contributors rebuilding the committed web assets.
 
+Contributor formatting is repository-wide and deterministic:
+
+```sh
+pnpm prettify          # format maintained source and documentation
+pnpm prettify:check    # verify formatting without rewriting files
+```
+
+Dependencies, generated bundles and caches, completed work items, and versioned
+release archives are excluded; current source, configuration, taxonomy,
+capabilities, active/backlog work, this README, and upcoming notes remain in the
+formatting surface. `pnpm typecheck` also runs the formatting check.
+
 The Settings gear immediately after the Work tab controls appearance. Choose
 **Light**, **Dark**, or **System**; System is the default and follows operating-
 system appearance changes as they happen. The choice is stored only in the
@@ -251,7 +263,10 @@ parent/child relations for work items. Selecting or deep-linking a nested item
 expands its ancestors automatically, and the text filter prunes the tree to
 matches plus the ancestors needed to reach them. The list column scrolls
 independently, so a long tree stays navigable without moving the header or the
-detail pane. Each axis keeps its create control immediately above the object
+detail pane. A clear control appears inside a non-empty filter, tree controls
+provide larger keyboard-accessible targets, and Work rows tint their full
+surface by backlog, active, or completed status. Each axis keeps its create
+control immediately above the object
 tree. Above that is a **multi-select category filter**: on the Work
 board a `Tags` dropdown (checkbox per registered tag; select several to match
 **any**), and in the Taxonomy view a `Kind` dropdown (`Feature` / `Vocabulary`).

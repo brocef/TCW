@@ -134,7 +134,7 @@ p {
 }
 .tree-indent {
     flex: none;
-    width: 16px;
+    width: var(--space-2);
 }
 .tree-spacer,
 .tree-toggle {
