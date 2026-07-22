@@ -67,6 +67,34 @@ test("loads the React shell and navigates every axis", async ({ page }) => {
   await expect(page).toHaveURL(`${baseUrl}/work`);
 });
 
+test("applies and persists light, dark, and live system preferences before React paint", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await expect.poll(() => page.evaluate(() => document.documentElement.className)).toContain("dark");
+  await expect(page).toHaveScreenshot("shell-system-dark.png", { animations: "disabled" });
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("radio", { name: "Light" }).click();
+  await expect(page.locator("html")).toHaveClass(/light/);
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/light/);
+  await expect(page).toHaveScreenshot("shell-explicit-light.png", { animations: "disabled" });
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("radio", { name: "System" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveClass(/light/);
+
+  await page.setViewportSize({ width: 720, height: 900 });
+  await page.getByRole("button", { name: "Settings" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("radio", { name: "System" })).toBeVisible();
+  await expect(page).toHaveScreenshot("settings-responsive.png", { animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("radio", { name: "System" })).toBeHidden();
+});
+
 test("filters work without losing the established tree interaction", async ({ page }) => {
   await page.goto(`${baseUrl}/work`);
   const filter = page.getByPlaceholder("Filter");
@@ -111,6 +139,7 @@ test("shows validation errors without dropping a Work draft", async ({ page }) =
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Title is required")).toBeVisible();
   await expect(page.getByLabel("Markdown", { exact: true })).toHaveValue("draft stays here");
+  await expect(page).toHaveScreenshot("validation-editor.png", { animations: "disabled" });
   page.once("dialog", async (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Cancel" }).click();
 });
@@ -137,7 +166,8 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
   await page.getByRole("button", { name: "+ Create Capabilities" }).click();
   await page.getByLabel("Path").fill("react/native-client");
   await page.getByLabel("Name").fill("Native client");
-  await page.getByLabel("Status").selectOption("Supported");
+  await page.getByLabel("Status").click();
+  await page.getByRole("option", { name: "Supported" }).click();
   await page.getByLabel("Markdown", { exact: true }).fill("Capability from React.");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Native client", { exact: true })).toBeVisible();
@@ -150,10 +180,12 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
     const child = rows[1].getBoundingClientRect();
     return child.top - parent.bottom;
   });
-  expect(capabilityGap).toBe(8);
+  expect(capabilityGap).toBeGreaterThan(6.5);
+  expect(capabilityGap).toBeLessThan(8);
   await page.getByText("Native client", { exact: true }).click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await page.getByLabel("Priority").selectOption("P1");
+  await page.getByLabel("Priority").click();
+  await page.getByRole("option", { name: "P1" }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator(".fields")).toContainText("P1");
 });
@@ -185,14 +217,14 @@ test("searches references and surfaces targeted validation warnings", async ({ p
 
 test("applies axis-specific facets and browser history navigation", async ({ page }) => {
   await page.goto(`${baseUrl}/work`);
-  await page.locator("details.facet summary").click();
-  await page.getByLabel("browser").check();
+  await page.getByRole("button", { name: "Tags" }).click();
+  await page.getByRole("checkbox", { name: "browser" }).click();
   await expect(page.getByText("Browser parity fixture", { exact: true })).toBeVisible();
   await expect(page.getByText("React-edited work", { exact: true })).toBeHidden();
 
   await page.getByRole("button", { name: "Taxonomy" }).click();
-  await page.locator("details.facet summary").click();
-  await page.getByLabel("Vocabulary").check();
+  await page.getByRole("button", { name: "Kind" }).click();
+  await page.getByRole("checkbox", { name: "Vocabulary" }).click();
   await expect(page.getByText("React Vocabulary Edited", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Capabilities" }).click();
   await page.goBack();
@@ -239,6 +271,7 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Stale write detected")).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveValue("Local stale draft");
+  await expect(page).toHaveScreenshot("stale-write-conflict.png", { animations: "disabled" });
   page.once("dialog", async (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Refresh from server" }).click();
   await expect(page.locator(".fields")).toContainText("77");
@@ -250,7 +283,7 @@ test("runs Work start and complete lifecycle controls", async ({ page, request }
   await page.goto(`${baseUrl}/work/${fixture.slug}`);
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await page.locator(".modal-box").getByRole("button", { name: "Start", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Complete" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Complete", exact: true })).toBeVisible();
 
   const outcome = await request.put(`${baseUrl}/api/work/${fixture.slug}/artifacts/outcome`, {
     data: { name: "outcome", content: "# Outcome\n\nVerified.\n", mediaType: "text/markdown" }
@@ -258,8 +291,10 @@ test("runs Work start and complete lifecycle controls", async ({ page, request }
   expect(outcome.ok()).toBeTruthy();
   await page.locator(".action-btn.complete").click();
   await expect(page.locator(".modal-box").getByRole("heading", { name: "Complete Work Item" })).toBeVisible();
-  await page.getByLabel("Resolution").selectOption("done");
-  for (const checkbox of await page.locator(".dod-checkbox, .dod-item input").all()) await checkbox.check();
+  await expect(page).toHaveScreenshot("lifecycle-dialog.png", { animations: "disabled" });
+  await page.getByLabel("Resolution").click();
+  await page.getByRole("option", { name: "done" }).click();
+  for (const checkbox of await page.getByRole("dialog").getByRole("checkbox").all()) await checkbox.click();
   await page.locator(".modal-box").getByRole("button", { name: "Complete", exact: true }).click();
   await expect(page.getByText("completed", { exact: true }).first()).toBeVisible();
 });

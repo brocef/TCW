@@ -605,7 +605,7 @@ export function App() {
     </main>
     {toast && <Card className="toast"><Text size="2">{toast}</Text></Card>}
     {modal === "drop" && selected && <AlertDialog.Root open onOpenChange={(open) => { if (!open) setModal(null); }}>
-      <AlertDialog.Content maxWidth="480px"><AlertDialog.Title>Drop Work Item</AlertDialog.Title>
+      <AlertDialog.Content className="modal-box" maxWidth="480px"><AlertDialog.Title>Drop Work Item</AlertDialog.Title>
         <AlertDialog.Description size="2">This permanently drops <strong>{selected}</strong>.</AlertDialog.Description>
         <Flex className="modal-actions" gap="3" mt="4" justify="end"><AlertDialog.Cancel><Button variant="soft" color="gray">Cancel</Button></AlertDialog.Cancel>
           <AlertDialog.Action><Button color="red" onClick={() => void doAction("drop")}>Drop</Button></AlertDialog.Action></Flex>
@@ -698,10 +698,10 @@ function DetailView({ axis, detail, onEdit, onResource, onOpen, onDeletePlanStag
   if (axis === "work") {
     const payload = detail as WorkDetail; const item = payload.item;
     return <><div className="detail-head"><div><Heading as="h2" size="5">{item.title ?? item.slug}</Heading><Text className="item-meta" color="gray" size="2">{item.slug}</Text></div>
-      <Flex className="detail-actions" align="center" gap="2"><Badge>{item.status}</Badge><Button variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
-      <Flex className="action-buttons" gap="2" wrap="wrap">{item.status === "backlog" && <><Button color="green" variant="soft" type="button" onClick={() => onAction("start")}>Start</Button>
-        <Button color="red" variant="soft" type="button" onClick={() => onAction("drop")}>Drop</Button></>}
-        {item.status === "active" && <Button color="green" variant="soft" type="button" onClick={() => onAction("complete")}>Complete</Button>}</Flex>
+      <Flex className="detail-actions" align="center" gap="2"><Badge>{item.status}</Badge><Button className="edit-btn" variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
+      <Flex className="action-buttons" gap="2" wrap="wrap">{item.status === "backlog" && <><Button className="action-btn start" color="green" variant="soft" type="button" onClick={() => onAction("start")}>Start</Button>
+        <Button className="action-btn drop" color="red" variant="soft" type="button" onClick={() => onAction("drop")}>Drop</Button></>}
+        {item.status === "active" && <Button className="action-btn complete" color="green" variant="soft" type="button" onClick={() => onAction("complete")}>Complete</Button>}</Flex>
       <Fields><Field name="Priority" value={item.priority} /><Field name="Effort" value={item.effort} />
         <Field name="Complexity" value={item.complexity} /><Field name="Tags" value={item.tags?.join(", ") || "-"} />
         <Field name="Resolution" value={item.resolution} /><Field name="Blocked by" value={item.blocked_by?.map((b) => b.slug ?? b.external).join(", ") || "-"} />
@@ -726,20 +726,20 @@ function DetailView({ axis, detail, onEdit, onResource, onOpen, onDeletePlanStag
         </Card>)}</div>}
       {payload.sidecars?.some((resource) => resource.present) && <div className="sidecars-section"><Heading as="h3" size="3">Sidecars</Heading>
         {payload.sidecars.filter((resource) => resource.present).map((resource) => <Flex className="sidecar-item" key={resource.name} align="center" gap="2"><Text className="sidecar-name" color="gray" size="2">{resource.name}</Text>
-          <Button size="1" variant="soft" type="button" onClick={() => onResource("sidecars", item.slug, resource.name)}>Edit</Button></Flex>)}</div>}
+          <Button className="sidecar-edit-btn" size="1" variant="soft" type="button" onClick={() => onResource("sidecars", item.slug, resource.name)}>Edit</Button></Flex>)}</div>}
       <Markdown source={item.body ?? ""} resolveLinks /></>;
   }
   if (axis === "taxonomy") {
     const term = (detail as TaxonomyDetail).term;
     return <><div className="detail-head"><div><Heading as="h2" size="5">{term.name ?? term.slug}</Heading><Text className="item-meta" color="gray" size="2">{term.qualified ?? term.slug}</Text></div>
-      <Flex className="detail-actions" align="center" gap="2"><Badge>{term.kind}</Badge><Button variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
+      <Flex className="detail-actions" align="center" gap="2"><Badge>{term.kind}</Badge><Button className="edit-btn" variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
       <Fields><Field name="Kind" value={term.kind} /><Field name="Origin" value={term.origin} /><Field name="Parent" value={term.parent} />
         <Field name="Relates to" value={term.relates_to?.join(", ") || "-"} /><Field name="Vocabulary" value={term.vocabulary?.join(", ") || "-"} /></Fields>
       <Markdown source={term.description ?? ""} resolveLinks /></>;
   }
   const capability = (detail as CapabilityDetail).capability;
   return <><div className="detail-head"><div><Heading as="h2" size="5">{capability.name ?? capability.path}</Heading><Text className="item-meta" color="gray" size="2">{capability.path}</Text></div>
-    <Flex className="detail-actions" align="center" gap="2"><Badge>{capability.status}</Badge><Button variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
+    <Flex className="detail-actions" align="center" gap="2"><Badge>{capability.status}</Badge><Button className="edit-btn" variant="soft" type="button" onClick={onEdit}>Edit</Button></Flex></div>
     <Fields>{Object.entries(capability.fields ?? {}).map(([name, value]) => <Field name={name} value={Array.isArray(value) ? value.join(", ") : value} key={name} />)}</Fields>
     <Markdown source={capability.body ?? ""} resolveLinks /></>;
 }
