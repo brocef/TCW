@@ -10,7 +10,7 @@ body {
     font-family: var(--default-font-family);
 }
 
-.radix-themes {
+#root > .radix-themes {
     min-height: 100vh;
 }
 h1,
@@ -194,6 +194,10 @@ p {
 .tree-item-content:hover .copy-slug,
 .copy-slug:focus {
     opacity: 1;
+}
+.copy-slug-tooltip {
+    display: block;
+    white-space: nowrap;
 }
 
 .detail-pane {

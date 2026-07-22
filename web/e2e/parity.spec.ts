@@ -76,6 +76,17 @@ test("loads the React shell and navigates every axis", async ({ page }) => {
         page.getByText("Browser parity fixture", { exact: true })
     ).toBeVisible()
 
+    const workItem = page.getByRole("treeitem", {
+        name: /Browser parity fixture/,
+    })
+    await workItem.hover()
+    await page.getByRole("button", { name: "Copy slug to clipboard" }).hover()
+    await expect(page.getByRole("tooltip")).toHaveText("Copy slug")
+    const tooltipSize = await page
+        .getByRole("tooltip")
+        .evaluate((element) => element.getBoundingClientRect())
+    expect(tooltipSize.width).toBeGreaterThan(tooltipSize.height)
+
     await page.getByRole("button", { name: "Taxonomy" }).click()
     await expect(page).toHaveURL(`${baseUrl}/taxonomy`)
     await page.getByRole("button", { name: "Capabilities" }).click()

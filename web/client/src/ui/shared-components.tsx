@@ -225,7 +225,13 @@ export function Tree<T extends AxisItem>({
                                         </div>
                                     </Button>
                                     {axis === "work" && (
-                                        <Tooltip content="Copy slug">
+                                        <Tooltip
+                                            content={
+                                                <span className="copy-slug-tooltip">
+                                                    Copy slug
+                                                </span>
+                                            }
+                                        >
                                             <IconButton
                                                 className="copy-slug"
                                                 variant="ghost"
