@@ -12,3 +12,9 @@ internal module names.
   navigation safeguards as typing.
 - Reference search results remain on an opaque, bordered surface above the
   editor and preview, including while long result lists scroll.
+
+## Fixed
+
+- Opening a plan-stage document no longer fails with an empty-JSON-body error.
+- Work-item copy controls and other popup content no longer expand to the full
+  height of the browser; copy tooltips now display their label normally.

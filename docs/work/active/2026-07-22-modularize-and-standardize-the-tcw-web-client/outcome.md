@@ -21,6 +21,9 @@
 - Rebuilt deterministic packaged client/server assets and synchronized README,
   release notes, and the developer changelog. Driving skills remain unchanged
   because no CLI, lifecycle, storage, or agent-workflow contract changed.
+- Corrected the plan-stage/artifact Open POST contract to send a valid empty JSON
+  object through Fastify, and scoped the root Theme height rule so portaled copy
+  tooltips and Settings/filter popovers keep their intrinsic dimensions.
 
 ## Verification evidence
 
@@ -29,9 +32,10 @@
   binaries were invoked directly for Prettier, TypeScript, ESLint, Vitest,
   Playwright, and build checks.
 - TypeScript and ESLint: passed with zero errors/warnings.
-- Vitest: 8 files, 36 tests passed.
+- Vitest: 9 files, 37 tests passed.
 - Playwright: 12 scenarios passed using the already-installed compatible local
-  Chromium executable, including the long opaque scrolling reference list.
+  Chromium executable, including the long opaque scrolling reference list and
+  a visible, horizontally sized copy-slug tooltip.
 - Production build and deterministic `check_web_build`: passed. Vite retains
   its existing advisory that the single client chunk exceeds 500 kB.
 - Pytest: 680 tests passed. The first sandboxed run could not bind loopback

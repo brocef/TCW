@@ -18,3 +18,14 @@ category, with commit hash ranges so entries trace back to source.
   regressions, refreshed intentional UI screenshots, and rebuilt the committed
   browser/server assets.
 </changes>
+
+## Fixed
+
+<changes starting-hash="eb2e019" ending-hash="9f97140">
+- Moved work-resource opening into a tested client module and send `{}` with
+  JSON POST requests so Fastify accepts plan-stage and artifact Open actions.
+- Scoped the application `min-height` rule to the root Radix Theme wrapper so
+  portaled tooltips and popovers retain their intrinsic size; added a browser
+  assertion for visible, horizontally sized copy-slug tooltip content.
+- Rebuilt the packaged client assets and refreshed affected portal screenshots.
+</changes>
