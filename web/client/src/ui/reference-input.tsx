@@ -1,4 +1,5 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Badge, Card, Flex, IconButton, Text, TextField } from "@radix-ui/themes";
 import { highlightMatches, rankReferenceOptions, type TReferenceOption } from "../model/reference-search";
 
 interface TReferenceInputProps {
@@ -48,10 +49,10 @@ export function ReferenceInput({ label, options, value, multiple = false, negate
       }
     }
   };
-  return <div className="field-group reference-field"><label htmlFor={id}>{label}</label>
-    {multiple && <div className="tag-list">{values.map((item) => <span className="tag" key={item}>{item}
-      <button type="button" aria-label={`Remove ${item}`} onClick={() => onChange(values.filter((candidate) => candidate !== item))}>×</button></span>)}</div>}
-    <input ref={input} id={id} className="field-input" role="combobox" aria-autocomplete="list"
+  return <div className="field-group reference-field"><Text as="label" htmlFor={id} color="gray" size="1" weight="bold">{label}</Text>
+    {multiple && <Flex className="tag-list" gap="1" wrap="wrap">{values.map((item) => <Badge className="tag" key={item}>{item}
+      <IconButton size="1" variant="ghost" type="button" aria-label={`Remove ${item}`} onClick={() => onChange(values.filter((candidate) => candidate !== item))}>×</IconButton></Badge>)}</Flex>}
+    <TextField.Root ref={input} id={id} className="field-input" role="combobox" aria-autocomplete="list"
       aria-expanded={open && results.length > 0} aria-controls={`${id}-listbox`}
       aria-activedescendant={active >= 0 ? `${id}-option-${active}` : undefined}
       value={query} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
@@ -59,13 +60,13 @@ export function ReferenceInput({ label, options, value, multiple = false, negate
         setQuery(next); setOpen(true); setActive(rankReferenceOptions(options.filter((candidate) => !values.includes(candidate.identifier)), search).length ? 0 : -1);
         if (!multiple) onChange(next); }}
       onKeyDown={onKeyDown} />
-    {open && results.length > 0 && <div id={`${id}-listbox`} className="reference-results" role="listbox">
-      {results.map((result, index) => <div id={`${id}-option-${index}`} role="option" aria-selected={active === index}
+    {open && results.length > 0 && <Card id={`${id}-listbox`} className="reference-results" role="listbox">
+      {results.map((result, index) => <Flex direction="column" id={`${id}-option-${index}`} role="option" aria-selected={active === index}
         className={`reference-option${active === index ? " active" : ""}`} key={result.identifier}
         onPointerDown={(event) => { event.preventDefault(); choose(result.identifier); }}>
-        <span><Highlight value={result.displayName} query={searchQuery} /></span>
-        <small><Highlight value={result.identifier} query={searchQuery} /></small>
-      </div>)}
-    </div>}
+        <Text size="2"><Highlight value={result.displayName} query={searchQuery} /></Text>
+        <Text color="gray" size="1"><Highlight value={result.identifier} query={searchQuery} /></Text>
+      </Flex>)}
+    </Card>}
   </div>;
 }

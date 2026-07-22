@@ -10,11 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import {
+  AlertDialog,
   Badge,
   Button,
   Callout,
   Card,
   Checkbox,
+  Dialog,
   Flex,
   Heading,
   IconButton,
@@ -145,12 +147,13 @@ function Errors({ errors }: { errors: string[] }) {
 }
 
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  return <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="modal-box">
-      <button className="modal-dismiss" type="button" aria-label="Close" onClick={onClose}>×</button>
-      <h2>{title}</h2>{children}
-    </div>
-  </div>;
+  return <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog.Content className="modal-box" maxWidth="560px">
+      <Flex justify="between" align="center" mb="3"><Dialog.Title>{title}</Dialog.Title>
+        <Dialog.Close><IconButton className="modal-dismiss" variant="ghost" type="button" aria-label="Close">×</IconButton></Dialog.Close>
+      </Flex>{children}
+    </Dialog.Content>
+  </Dialog.Root>;
 }
 
 function Tree<T extends AxisItem>({ nodes, axis, selected, expanded, onToggle, onSelect, visible }:
@@ -601,9 +604,13 @@ export function App() {
       </section>
     </main>
     {toast && <Card className="toast"><Text size="2">{toast}</Text></Card>}
-    {modal === "drop" && selected && <Modal title="Drop Work Item" onClose={() => setModal(null)}>
-      <p>This permanently drops <strong>{selected}</strong>.</p><div className="modal-actions"><button type="button" onClick={() => setModal(null)}>Cancel</button>
-        <button className="action-btn drop" type="button" onClick={() => void doAction("drop")}>Drop</button></div></Modal>}
+    {modal === "drop" && selected && <AlertDialog.Root open onOpenChange={(open) => { if (!open) setModal(null); }}>
+      <AlertDialog.Content maxWidth="480px"><AlertDialog.Title>Drop Work Item</AlertDialog.Title>
+        <AlertDialog.Description size="2">This permanently drops <strong>{selected}</strong>.</AlertDialog.Description>
+        <Flex className="modal-actions" gap="3" mt="4" justify="end"><AlertDialog.Cancel><Button variant="soft" color="gray">Cancel</Button></AlertDialog.Cancel>
+          <AlertDialog.Action><Button color="red" onClick={() => void doAction("drop")}>Drop</Button></AlertDialog.Action></Flex>
+      </AlertDialog.Content>
+    </AlertDialog.Root>}
     {modal === "start" && <StartModal onClose={() => setModal(null)} onStart={(force) => doAction("start", force ? { force: true } : {})} errors={errors} />}
     {modal === "complete" && detail && <CompleteModal detail={detail as WorkDetail} onClose={() => setModal(null)}
       onComplete={(options) => doAction("complete", options)} errors={errors} />}
@@ -759,14 +766,16 @@ function EditorView({ editor, setDraft, saving, errors, conflict, registeredTags
 
 function EditorHeader({ title, saving, onSave, onCancel }:
   { title: string; saving: boolean; onSave: () => void; onCancel: () => void }) {
-  return <div className="editor-header"><div className="editor-title">{title}</div><div className="editor-actions">
-    <button className="cancel-btn" type="button" onClick={onCancel}>Cancel</button><button className="save-btn" type="button" disabled={saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</button>
-  </div></div>;
+  return <Flex className="editor-header" justify="between" align="center"><Heading as="h2" className="editor-title" size="3">{title}</Heading><Flex className="editor-actions" gap="2">
+    <Button variant="soft" color="gray" type="button" onClick={onCancel}>Cancel</Button><Button type="button" disabled={saving} onClick={onSave}>{saving ? "Saving..." : "Save"}</Button>
+  </Flex></Flex>;
 }
 
 function Conflict({ onRefresh, onDiscard }: { onRefresh: () => void; onDiscard: () => void }) {
-  return <div className="conflict-banner"><strong>Stale write detected</strong><p>The server version changed. Your draft is preserved.</p>
-    <button type="button" onClick={onRefresh}>Refresh from server</button><button type="button" onClick={onDiscard}>Discard draft</button></div>;
+  return <Callout.Root className="conflict-banner" color="amber" role="alert"><Callout.Text><strong>Stale write detected</strong>
+    <Text as="p" size="2">The server version changed. Your draft is preserved.</Text>
+    <Flex gap="2" mt="2"><Button size="1" variant="soft" onClick={onRefresh}>Refresh from server</Button>
+      <Button size="1" color="red" variant="soft" onClick={onDiscard}>Discard draft</Button></Flex></Callout.Text></Callout.Root>;
 }
 
 function optionsFor(field: TReferenceField, data: Data, current?: string, selected?: string[]) {
@@ -783,8 +792,8 @@ function WorkFields({ draft, setDraft, registeredTags, data, current }:
     <ReferenceInput label="Parent" value={String(draft.parent ?? "")} options={optionsFor("work-parent", data, current)} onChange={(value) => setDraft("parent", value)} />
     <ReferenceInput label="Initiative" value={String(draft.initiative ?? "")} options={optionsFor("work-initiative", data, current)} onChange={(value) => setDraft("initiative", value)} />
     <ReferenceInput label="Blockers" multiple value={(draft.blockers as string[] | undefined) ?? []} options={optionsFor("work-blockers", data, current, (draft.blockers as string[] | undefined) ?? [])} onChange={(value) => setDraft("blockers", value)} />
-    <div className="field-group"><label>Tags</label><div className="tag-checkboxes">{[...new Set([...registeredTags, ...tags])].map((tag) => <label className={`tag-checkbox${registeredTags.includes(tag) ? "" : " tag-stale"}`} key={tag}>
-      <input type="checkbox" checked={tags.includes(tag)} onChange={(event) => setDraft("tags", event.target.checked ? [...tags, tag] : tags.filter((item) => item !== tag))} /> {tag}{registeredTags.includes(tag) ? "" : " (unregistered)"}</label>)}</div></div></>;
+    <div className="field-group"><Text color="gray" size="1" weight="bold">Tags</Text><Flex className="tag-checkboxes" gap="3" wrap="wrap">{[...new Set([...registeredTags, ...tags])].map((tag) => <Text as="label" className={`tag-checkbox${registeredTags.includes(tag) ? "" : " tag-stale"}`} key={tag} size="2">
+      <Flex align="center" gap="1"><Checkbox checked={tags.includes(tag)} onCheckedChange={(checked) => setDraft("tags", checked ? [...tags, tag] : tags.filter((item) => item !== tag))} /> {tag}{registeredTags.includes(tag) ? "" : " (unregistered)"}</Flex></Text>)}</Flex></div></>;
 }
 
 function TaxonomyFields({ draft, setDraft, creating, data, current }:
@@ -822,9 +831,9 @@ function StartModal({ onClose, onStart, errors }:
   { onClose: () => void; onStart: (force: boolean) => Promise<boolean>; errors: string[] }) {
   const [failed, setFailed] = useState(false);
   return <Modal title="Start Work Item" onClose={onClose}><Errors errors={errors} />
-    {failed && <p>This item may have unresolved blockers. You can force-start it.</p>}
-    <div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button>
-      <button className="save-btn" type="button" onClick={() => void onStart(failed).then((ok) => { if (!ok) setFailed(true); })}>{failed ? "Start (force)" : "Start"}</button></div></Modal>;
+    {failed && <Callout.Root color="amber"><Callout.Text>This item may have unresolved blockers. You can force-start it.</Callout.Text></Callout.Root>}
+    <Flex className="modal-actions" gap="2" justify="end"><Button variant="soft" color="gray" type="button" onClick={onClose}>Cancel</Button>
+      <Button type="button" onClick={() => void onStart(failed).then((ok) => { if (!ok) setFailed(true); })}>{failed ? "Start (force)" : "Start"}</Button></Flex></Modal>;
 }
 
 function CompleteModal({ detail, onClose, onComplete, errors }:
@@ -832,12 +841,12 @@ function CompleteModal({ detail, onClose, onComplete, errors }:
   const checklist = detail.dodChecklist?.length ? detail.dodChecklist : ["tests pass", "docs synced", "capabilities reconciled", "reviewed", "version offered"];
   const [checked, setChecked] = useState<string[]>([]); const [resolution, setResolution] = useState(""); const [force, setForce] = useState(false);
   return <Modal title="Complete Work Item" onClose={onClose}><Errors errors={errors} />
-    <div className="reconciliation-reminder"><strong>Reconciliation reminder</strong><br />Reconcile the capabilities ledger before completing.</div>
+    <Callout.Root className="reconciliation-reminder" color="blue"><Callout.Text><strong>Reconciliation reminder</strong><br />Reconcile the capabilities ledger before completing.</Callout.Text></Callout.Root>
     <SelectInput label="Resolution" value={resolution} options={["", "done", "wontfix", "duplicate", "superseded"]} onChange={setResolution} />
-    <h3>Definition of Done</h3><div className="dod-list">{checklist.map((item) => <label className="dod-item" key={item}>
-      <input type="checkbox" checked={checked.includes(item)} onChange={(event) => setChecked(event.target.checked ? [...checked, item] : checked.filter((value) => value !== item))} /> {item}</label>)}</div>
-    {force && <p className="modal-error">Completion was blocked. You can retry while ignoring blockers.</p>}
-    <div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button><button className="save-btn" type="button"
-      disabled={!resolution || checked.length !== checklist.length} onClick={() => void onComplete({ resolution, dod_ack: checked, force }).then((ok) => { if (!ok) setForce(true); })}>{force ? "Complete (ignore blockers)" : "Complete"}</button></div>
+    <Heading as="h3" size="3">Definition of Done</Heading><Flex className="dod-list" direction="column">{checklist.map((item) => <Text as="label" className="dod-item" key={item} size="2">
+      <Flex align="center" gap="2"><Checkbox checked={checked.includes(item)} onCheckedChange={(next) => setChecked(next ? [...checked, item] : checked.filter((value) => value !== item))} /> {item}</Flex></Text>)}</Flex>
+    {force && <Callout.Root className="modal-error" color="red"><Callout.Text>Completion was blocked. You can retry while ignoring blockers.</Callout.Text></Callout.Root>}
+    <Flex className="modal-actions" gap="2" justify="end"><Button variant="soft" color="gray" type="button" onClick={onClose}>Cancel</Button><Button type="button"
+      disabled={!resolution || checked.length !== checklist.length} onClick={() => void onComplete({ resolution, dod_ack: checked, force }).then((ok) => { if (!ok) setForce(true); })}>{force ? "Complete (ignore blockers)" : "Complete"}</Button></Flex>
   </Modal>;
 }
