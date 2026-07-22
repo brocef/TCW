@@ -267,14 +267,13 @@ detail pane. A clear control appears inside a non-empty filter, tree controls
 provide larger keyboard-accessible targets, and Work rows tint their full
 surface by backlog, active, or completed status. Each axis keeps its create
 control immediately above the object
-tree. Above that is a **multi-select category filter**: on the Work
-board a `Tags` dropdown (checkbox per registered tag; select several to match
-**any**), and in the Taxonomy view a `Kind` dropdown (`Feature` / `Vocabulary`).
-The Work board also carries a row of **status-filter toggles** (`backlog` /
-`active` / `completed`) — toggle one on to show items of that status; `completed`
-is hidden by default. All of these compose with the text filter. Each work row
-has a button to copy its slug to the clipboard. Beyond browsing, you can **create and edit** any object
-directly from the browser:
+tree. Above that are **multi-select category filters**: on the Work board,
+`Status` and `Tags` dropdowns use a checkbox per value (select several to match
+**any**), and in the Taxonomy view a `Kind` dropdown covers `Feature` and
+`Vocabulary`. Backlog and active statuses are selected by default; completed is
+not. All of these compose with the text filter. Each work row has a button to
+copy its slug to the clipboard. Beyond browsing, you can **create and edit** any
+object directly from the browser:
 
 - **Work items** — create new items with all fields (title, priority, effort,
   complexity, tags, blockers, parent, initiative); edit body and metadata; edit

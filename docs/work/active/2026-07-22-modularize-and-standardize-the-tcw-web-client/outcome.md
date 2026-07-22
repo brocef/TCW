@@ -24,6 +24,9 @@
 - Corrected the plan-stage/artifact Open POST contract to send a valid empty JSON
   object through Fastify, and scoped the root Theme height rule so portaled copy
   tooltips and Settings/filter popovers keep their intrinsic dimensions.
+- Consolidated the Work backlog, active, and completed filters into a single
+  `Status` checkbox facet that shares the `Tags` interaction and selected-count
+  treatment.
 
 ## Verification evidence
 
@@ -32,7 +35,7 @@
   binaries were invoked directly for Prettier, TypeScript, ESLint, Vitest,
   Playwright, and build checks.
 - TypeScript and ESLint: passed with zero errors/warnings.
-- Vitest: 9 files, 37 tests passed.
+- Vitest: 10 files, 38 tests passed.
 - Playwright: 12 scenarios passed using the already-installed compatible local
   Chromium executable, including the long opaque scrolling reference list and
   a visible, horizontally sized copy-slug tooltip.

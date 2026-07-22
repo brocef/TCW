@@ -19,6 +19,13 @@ category, with commit hash ranges so entries trace back to source.
   browser/server assets.
 </changes>
 
+<changes starting-hash="facb747" ending-hash="facb747">
+- Replaced the three independent Work status toggle buttons with a reusable
+  `Status` facet popover using the same checkbox/count interaction as `Tags`.
+- Added component and Playwright coverage for default status selections and the
+  consolidated popover, refreshed screenshots, and rebuilt packaged assets.
+</changes>
+
 ## Fixed
 
 <changes starting-hash="eb2e019" ending-hash="9f97140">

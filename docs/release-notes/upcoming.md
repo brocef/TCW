@@ -12,6 +12,8 @@ internal module names.
   navigation safeguards as typing.
 - Reference search results remain on an opaque, bordered surface above the
   editor and preview, including while long result lists scroll.
+- Work status filters now live in one `Status` dropdown and use the same compact
+  checkbox pattern as the `Tags` filter.
 
 ## Fixed
 
