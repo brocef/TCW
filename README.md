@@ -227,6 +227,11 @@ server; Fastify is the only browser-facing listener. The React client and server
 bundle are included in the Python package and work fully offline. pnpm is needed
 only by contributors rebuilding the committed web assets.
 
+The Settings gear immediately after the Work tab controls appearance. Choose
+**Light**, **Dark**, or **System**; System is the default and follows operating-
+system appearance changes as they happen. The choice is stored only in the
+current browser, not in the TCW project or an API.
+
 When the served node has **descendant TCW nodes** (the orchestrator/subproject
 pattern), `tcw serve` aggregates every descendant node's board alongside the
 current one automatically — the same items as `tcw work list --include-descendants`.

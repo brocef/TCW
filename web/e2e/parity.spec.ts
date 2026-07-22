@@ -67,7 +67,7 @@ test("loads the React shell and navigates every axis", async ({ page }) => {
   await expect(page).toHaveURL(`${baseUrl}/work`);
 });
 
-test("applies and persists light, dark, and live system preferences before React paint", async ({ page }) => {
+test("applies and persists light, dark, and live system preferences before React paint", async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await expect.poll(() => page.evaluate(() => document.documentElement.className)).toContain("dark");
@@ -86,13 +86,24 @@ test("applies and persists light, dark, and live system preferences before React
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveClass(/light/);
 
+  const sibling = await context.newPage();
+  await sibling.goto(baseUrl);
+  await sibling.evaluate(() => localStorage.setItem("tcw.theme", "dark"));
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await sibling.close();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("radio", { name: "System" }).click({ force: true });
+  await page.keyboard.press("Escape");
+
   await page.setViewportSize({ width: 720, height: 900 });
   await page.getByRole("button", { name: "Settings" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("radio", { name: "System" })).toBeVisible();
-  await expect(page).toHaveScreenshot("settings-responsive.png", { animations: "disabled" });
   await page.keyboard.press("Escape");
   await expect(page.getByRole("radio", { name: "System" })).toBeHidden();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page).toHaveScreenshot("settings-responsive.png", { animations: "disabled" });
+  await page.keyboard.press("Escape");
 });
 
 test("filters work without losing the established tree interaction", async ({ page }) => {
@@ -219,6 +230,7 @@ test("applies axis-specific facets and browser history navigation", async ({ pag
   await page.goto(`${baseUrl}/work`);
   await page.getByRole("button", { name: "Tags" }).click();
   await page.getByRole("checkbox", { name: "browser" }).click();
+  await expect(page).toHaveScreenshot("filters-popover.png", { animations: "disabled" });
   await expect(page.getByText("Browser parity fixture", { exact: true })).toBeVisible();
   await expect(page.getByText("React-edited work", { exact: true })).toBeHidden();
 
