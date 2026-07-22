@@ -33,6 +33,7 @@ export interface TaxonomyItem extends JsonRecord {
     relates_to?: string[]
     vocabulary?: string[]
     description?: string
+    modified?: string
 }
 
 export interface CapabilityItem extends JsonRecord {
@@ -43,6 +44,7 @@ export interface CapabilityItem extends JsonRecord {
     origin?: string
     fields?: Record<string, string | string[]>
     body?: string
+    modified?: string
 }
 
 export type AxisItem = WorkItem | TaxonomyItem | CapabilityItem

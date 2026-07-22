@@ -181,6 +181,14 @@ p {
     font-size: var(--font-size-1);
     line-height: 1.35;
 }
+.modified-at {
+    display: block;
+    margin-top: var(--space-1);
+    color: var(--gray-11);
+    font-size: var(--font-size-1);
+    font-weight: 400;
+    line-height: 1.35;
+}
 .tree-item-content {
     position: relative;
 }

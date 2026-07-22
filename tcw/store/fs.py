@@ -40,6 +40,26 @@ from tcw.store.project import FsProjectRegistry, validate_project_id
 COMPONENTS = ("taxonomy", "capabilities", "work")
 
 
+def _modified_timestamp(resources: list[Path]) -> str:
+    existing = [path for path in resources if path.is_file()]
+    if not existing:
+        return ""
+    modified = max(path.stat().st_mtime for path in existing)
+    return datetime.fromtimestamp(modified, timezone.utc).isoformat().replace(
+        "+00:00", "Z"
+    )
+
+
+def _capability_resources(folder: Path, meta: dict) -> list[Path]:
+    names = [
+        "meta.yaml",
+        "description.md",
+        *_as_list(meta.get("prependedDocs")),
+        *_as_list(meta.get("appendedDocs")),
+    ]
+    return [folder / name for name in names]
+
+
 # ── git + node helpers (FS-adapter local details, not store-interface ops) ──
 
 def git_root(start: Path | None = None) -> Path | None:
@@ -545,6 +565,9 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             vocabulary=list(meta.get("vocabulary") or []),
             attachments=attachments,
             origin=origin,
+            modified=_modified_timestamp(
+                [d / "meta.yaml", d / "description.md"]
+            ),
         )
 
     def get_local(self, slug: str) -> Term | None:
@@ -959,6 +982,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             fields=fields,
             body=self._compose_body(d, meta, description),
             origin=origin,
+            modified=_modified_timestamp(_capability_resources(d, meta)),
         )
 
     def _apply_override(self, base: Capability, alias: str,
@@ -993,6 +1017,16 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             fields=merged,
             body=self._compose_body(d, meta, mid),
             origin=alias,
+            modified=max(
+                filter(
+                    None,
+                    [
+                        base.modified,
+                        _modified_timestamp(_capability_resources(d, meta)),
+                    ],
+                ),
+                default="",
+            ),
         )
 
     def get_local(self, path: str) -> Capability | None:
@@ -1741,18 +1775,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             *[f"{name}.md" for name in WORK_ARTIFACTS],
             *WORK_SIDECARS,
         ]
-        resources = [
-            folder / name for name in names if (folder / name).is_file()
-        ]
+        resources = [folder / name for name in names]
         plan_folder = folder / "plan"
         if plan_folder.is_dir():
             resources.extend(sorted(plan_folder.glob("*.md")))
-        if not resources:
-            return ""
-        modified = max(path.stat().st_mtime for path in resources)
-        return datetime.fromtimestamp(modified, timezone.utc).isoformat().replace(
-            "+00:00", "Z"
-        )
+        return _modified_timestamp(resources)
 
     def get(self, slug: str) -> WorkItem | None:
         d = self._find(slug)

@@ -33,6 +33,7 @@ import type {
     TreeNode,
     WorkItem,
 } from "../model/types"
+import { ModifiedAt } from "./modified-at"
 import { useThemePreference } from "../theme-context"
 import { parseThemePreference } from "../theme-preference"
 import { itemKey, itemTitle, pathFor } from "./route-utils"
@@ -278,7 +279,7 @@ export function ItemMeta({ axis, item }: { axis: Axis; item: AxisItem }) {
     if (axis === "work") {
         const work = item as WorkItem
         return (
-            <>
+            <div>
                 <span className="work-status">{work.status}</span>
                 {" · "}
                 {[
@@ -288,23 +289,32 @@ export function ItemMeta({ axis, item }: { axis: Axis; item: AxisItem }) {
                 ]
                     .filter(Boolean)
                     .join(" · ")}
-            </>
+                <ModifiedAt value={work.modified} />
+            </div>
         )
     }
     if (axis === "taxonomy") {
         const term = item as TaxonomyItem
-        return <>{[term.kind, term.origin].filter(Boolean).join(" · ")}</>
+        return (
+            <div>
+                <div>
+                    {[term.kind, term.origin].filter(Boolean).join(" · ")}
+                </div>
+                <ModifiedAt value={term.modified} />
+            </div>
+        )
     }
     const capability = item as CapabilityItem
     return (
-        <>
+        <div>
             {[
                 capability.status,
                 capability.origin !== "local" && capability.origin,
             ]
                 .filter(Boolean)
                 .join(" · ")}
-        </>
+            <ModifiedAt value={capability.modified} />
+        </div>
     )
 }
 

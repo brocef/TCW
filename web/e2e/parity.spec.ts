@@ -91,6 +91,11 @@ test("loads the React shell and navigates every axis", async ({ page }) => {
     const workItem = page.getByRole("treeitem", {
         name: /Browser parity fixture/,
     })
+    await expect(workItem.locator(".modified-at")).toContainText("Modified at")
+    await workItem.click()
+    await expect(page.locator(".detail-head .modified-at")).toContainText(
+        "Modified at"
+    )
     await workItem.hover()
     await page.getByRole("button", { name: "Copy slug to clipboard" }).hover()
     await expect(page.getByRole("tooltip")).toHaveText("Copy slug")
@@ -259,6 +264,12 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
         )
     expect(taxonomyWidths[1]).toBeGreaterThan(taxonomyWidths[0] * 0.8)
     await page.getByText("React Vocabulary", { exact: true }).click()
+    await expect(
+        page.locator(".item-taxonomy .modified-at").first()
+    ).toContainText("Modified at")
+    await expect(page.locator(".detail-head .modified-at")).toContainText(
+        "Modified at"
+    )
     await page.getByRole("button", { name: "Edit", exact: true }).click()
     await page.getByLabel("Name").fill("React Vocabulary Edited")
     await page.getByRole("button", { name: "Save" }).click()
@@ -295,6 +306,12 @@ test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
     expect(capabilityGap).toBeGreaterThan(6.5)
     expect(capabilityGap).toBeLessThan(8)
     await page.getByText("Native client", { exact: true }).click()
+    await expect(
+        page.locator(".item-capabilities .modified-at").first()
+    ).toContainText("Modified at")
+    await expect(page.locator(".detail-head .modified-at")).toContainText(
+        "Modified at"
+    )
     await page.getByRole("button", { name: "Edit", exact: true }).click()
     await page.getByLabel("Priority").click()
     await page.getByRole("option", { name: "P1" }).click()

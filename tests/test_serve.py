@@ -86,7 +86,9 @@ def test_api_lists_all_three_axes(server):
     assert work[0]["slug"] == slug
     assert work[0]["modified"].endswith("Z")
     assert taxonomy[0]["slug"] == "work-item"
+    assert taxonomy[0]["modified"].endswith("Z")
     assert capabilities[0]["path"] == "web"
+    assert capabilities[0]["modified"].endswith("Z")
 
 
 def test_unknown_api_route_still_404s(server):

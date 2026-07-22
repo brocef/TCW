@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -62,6 +63,20 @@ def test_add_nesting_and_slug_is_path(tmp_path):
     st.add("Object")
     st.add("Permission", parent="object")
     assert st.get("object/permission").slug == "object/permission"
+
+
+def test_modified_timestamp_uses_bounded_taxonomy_resources(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("User")
+    folder = root / "docs/taxonomy/user"
+    os.utime(folder / "meta.yaml", (100, 100))
+    os.utime(folder / "description.md", (200, 200))
+    attachment = folder / "notes.txt"
+    attachment.write_text("not a core taxonomy resource\n")
+    os.utime(attachment, (300, 300))
+
+    assert st.get("user").modified == "1970-01-01T00:03:20Z"
 
 
 def test_add_feature_with_vocabulary_refs(tmp_path):

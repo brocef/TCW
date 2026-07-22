@@ -2,9 +2,11 @@ import { useState } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { vi } from "vitest"
 import { ThemeProvider } from "../theme"
-import { FilterControls } from "./content-views"
+import { DetailView, FilterControls } from "./content-views"
+import type { TDetail } from "./ui-types"
 
 window.HTMLElement.prototype.scrollIntoView = vi.fn()
+const modified = "2026-07-22T18:30:00Z"
 
 function WorkFilters() {
     const [statuses, setStatuses] = useState<Record<string, boolean>>({
@@ -72,4 +74,56 @@ test("selects one work sort key and toggles its direction", async () => {
     fireEvent.click(await screen.findByRole("option", { name: "Modified" }))
     expect(sort).toHaveTextContent("Modified")
     expect(screen.queryByText("Name ascending")).toBeNull()
+})
+
+test("renders modified subtext in every detail view", () => {
+    const details: Array<{
+        axis: "work" | "taxonomy" | "capabilities"
+        detail: TDetail
+    }> = [
+        {
+            axis: "work",
+            detail: {
+                item: {
+                    slug: "work",
+                    title: "Work",
+                    status: "active",
+                    modified,
+                },
+                coreRevision: "",
+                artifacts: [],
+                planStages: [],
+                sidecars: [],
+            },
+        },
+        {
+            axis: "taxonomy",
+            detail: {
+                term: { slug: "term", name: "Term", modified },
+                coreRevision: "",
+            },
+        },
+        {
+            axis: "capabilities",
+            detail: {
+                capability: { path: "web", name: "Web", modified },
+                coreRevision: "",
+            },
+        },
+    ]
+    const views = details.map(({ axis, detail }) => (
+        <DetailView
+            key={axis}
+            axis={axis}
+            detail={detail}
+            onEdit={() => undefined}
+            onResource={() => undefined}
+            onOpen={() => undefined}
+            onDeletePlanStage={() => undefined}
+            onAction={() => undefined}
+        />
+    ))
+    render(<ThemeProvider>{views}</ThemeProvider>)
+
+    expect(screen.getAllByText(/^Modified at /)).toHaveLength(3)
 })

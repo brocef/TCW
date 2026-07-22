@@ -150,6 +150,7 @@ class Term:
     vocabulary: list[str] = field(default_factory=list)
     attachments: list[str] = field(default_factory=list)
     origin: str = "local"
+    modified: str = ""
 
     @property
     def qualified(self) -> str:
@@ -328,6 +329,7 @@ class Capability:
     fields: dict[str, Any] = field(default_factory=dict)
     body: str = ""
     origin: str = "local"
+    modified: str = ""
 
     @property
     def status(self) -> str | None:

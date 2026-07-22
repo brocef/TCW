@@ -1,4 +1,5 @@
 import hashlib
+import os
 import subprocess
 from pathlib import Path
 
@@ -80,6 +81,24 @@ def test_add_creates_folder_with_id(tmp_path):
     assert (root / "docs/capabilities/routes/login/meta.yaml").is_file()
     assert (root / "docs/capabilities/routes/login/description.md").is_file()
     assert st.get("routes/login").status == "Missing"        # default status
+
+
+def test_modified_timestamp_includes_declared_capability_docs(tmp_path):
+    root = node(tmp_path)
+    st = FsCapabilitiesStore.open(root)
+    st.add("routes/login", name="Sign in")
+    folder = root / "docs/capabilities/routes/login"
+    meta_path = folder / "meta.yaml"
+    meta = yaml.safe_load(meta_path.read_text())
+    meta["appendedDocs"] = ["guide.md"]
+    meta_path.write_text(yaml.safe_dump(meta, sort_keys=False))
+    guide = folder / "guide.md"
+    guide.write_text("Extra context\n")
+    os.utime(meta_path, (100, 100))
+    os.utime(folder / "description.md", (200, 200))
+    os.utime(guide, (300, 300))
+
+    assert st.get("routes/login").modified == "1970-01-01T00:05:00Z"
 
 
 def test_add_mints_unique_ids(tmp_path):

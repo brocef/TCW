@@ -13,6 +13,7 @@ import {
     Text,
 } from "@radix-ui/themes"
 import type { TSortDirection, TWorkSortKey } from "../model/tree"
+import { ModifiedAt } from "./modified-at"
 import {
     referenceOptions,
     type TReferenceField,
@@ -288,6 +289,7 @@ export function DetailView({
                         <Text className="item-meta" color="gray" size="2">
                             {item.slug}
                         </Text>
+                        <ModifiedAt value={item.modified} />
                     </div>
                     <Flex className="detail-actions" align="center" gap="2">
                         <Badge>{item.status}</Badge>
@@ -564,6 +566,7 @@ export function DetailView({
                         <Text className="item-meta" color="gray" size="2">
                             {term.qualified ?? term.slug}
                         </Text>
+                        <ModifiedAt value={term.modified} />
                     </div>
                     <Flex className="detail-actions" align="center" gap="2">
                         <Badge>{term.kind}</Badge>
@@ -605,6 +608,7 @@ export function DetailView({
                     <Text className="item-meta" color="gray" size="2">
                         {capability.path}
                     </Text>
+                    <ModifiedAt value={capability.modified} />
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
                     <Badge>{capability.status}</Badge>
