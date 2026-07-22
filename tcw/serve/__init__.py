@@ -1130,9 +1130,11 @@ class TcwHandler(BaseHTTPRequestHandler):
                             "mediaType": resource.media_type, "revision": resource.revision}
                 self._send_json(HTTPStatus.OK, _with_warnings(
                     response, work.node_root, "work", slug))
-            except (ValueError, StaleRevision) as e:
+            except StaleRevision as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
+            except ValueError as e:
+                self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
             return
 
         # ── PUT /api/work/<slug>/sidecars/<name> ──
