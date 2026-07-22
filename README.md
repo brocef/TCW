@@ -266,8 +266,9 @@ independently, so a long tree stays navigable without moving the header or the
 detail pane. A clear control appears inside a non-empty filter, tree controls
 provide larger keyboard-accessible targets, and Work rows tint their full
 surface by backlog, active, or completed status. Each axis keeps its create
-control immediately above the object
-tree. Above that are **multi-select category filters**: on the Work board,
+control immediately above the object tree. Every Taxonomy, Capability, and Work
+entry shows its last-modified timestamp in both the tree row and detail header.
+Above that are **multi-select category filters**: on the Work board,
 `Status` and `Tags` dropdowns use a checkbox per value (select several to match
 **any**), and in the Taxonomy view a `Kind` dropdown covers `Feature` and
 `Vocabulary`. Backlog and active statuses are selected by default; completed is

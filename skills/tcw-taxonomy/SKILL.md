@@ -28,6 +28,9 @@ Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Rea
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
 local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-capabilities**.
 
+`Term.modified` is read-only, adapter-provided presentation metadata for
+viewers; it is not an editable taxonomy field.
+
 > **Web editing:** Taxonomy entries can also be created and edited through the
 > local `tcw serve` web app; check failures are surfaced in the UI.
 

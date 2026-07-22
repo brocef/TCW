@@ -59,7 +59,8 @@ The work store exposes the bounded lifecycle artifact set through
 Use those store methods for board or viewer behavior; do not reconstruct artifact
 state by globbing item folders outside the filesystem adapter.
 `WorkItem.modified` is a read-only, adapter-provided presentation timestamp for
-viewer sorting; it is not an editable field or persisted work-item metadata.
+viewer sorting/display; it is not an editable field or persisted work-item
+metadata.
 
 For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, check whether taxonomy Vocabulary or Feature entries need to be added/updated, then run the tcw-capabilities planning gate before writing the technical plan.
 

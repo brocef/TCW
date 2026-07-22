@@ -40,6 +40,15 @@ category, with commit hash ranges so entries trace back to source.
   whitespace does not break repository whitespace validation.
 </changes>
 
+<changes starting-hash="9b9c6e7" ending-hash="9b9c6e7">
+- Added read-only `modified` presentation timestamps to Taxonomy terms and
+  Capabilities, deriving them from bounded core and declared composition
+  resources and combining upstream/override times for inherited capabilities.
+- Added a shared `ModifiedAt` component to every axis tree row and detail header,
+  with store, API, component, and Playwright coverage.
+- Refreshed intentional screenshots and rebuilt the packaged client assets.
+</changes>
+
 ## Fixed
 
 <changes starting-hash="eb2e019" ending-hash="9f97140">

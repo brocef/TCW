@@ -16,6 +16,8 @@ internal module names.
   checkbox pattern as the `Tags` filter.
 - Work trees can now be sorted by name or last-modified time in either direction
   while keeping active, backlog, and completed items grouped in that order.
+- Every Taxonomy, Capability, and Work entry now shows when it was last modified
+  in both the tree and its main detail view.
 
 ## Fixed
 

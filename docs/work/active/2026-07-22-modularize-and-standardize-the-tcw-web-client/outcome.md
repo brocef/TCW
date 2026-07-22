@@ -34,6 +34,12 @@
   independently scrolling surface instead of two synchronized scrollbars.
 - Updated the `tcw-work` driving skill for the read-only adapter-provided
   `WorkItem.modified` presentation field; it remains non-editable metadata.
+- Added consistent `Modified at` subtext to every Taxonomy, Capability, and Work
+  tree row and detail header. Taxonomy and Capability timestamps use bounded
+  object resources, including declared composed documents and effective
+  inherited-capability overrides.
+- Updated all three driving skills to identify their axis's `modified` value as
+  read-only, adapter-provided presentation metadata.
 
 ## Verification evidence
 
@@ -43,14 +49,15 @@
   untouched here. The pinned local binaries were invoked directly for
   Prettier, TypeScript, ESLint, Vitest, Playwright, and build checks.
 - TypeScript and ESLint: passed with zero errors/warnings.
-- Vitest: 10 files, 40 tests passed.
+- Vitest: 10 files, 42 tests passed.
 - Playwright: 12 scenarios passed using the already-installed compatible local
-  Chromium executable, including sort-key/direction controls, a single Work
-  tree scroll container, the long opaque scrolling reference list, and a
-  visible, horizontally sized copy-slug tooltip.
+  Chromium executable, including timestamps in all axis trees/details,
+  sort-key/direction controls, a single Work tree scroll container, the long
+  opaque scrolling reference list, and a visible, horizontally sized copy-slug
+  tooltip.
 - Production build and deterministic `check_web_build`: passed. Vite retains
   its existing advisory that the single client chunk exceeds 500 kB.
-- Pytest: 681 tests passed. The first sandboxed run could not bind loopback
+- Pytest: 683 tests passed. The first sandboxed run could not bind loopback
   sockets; the approved unsandboxed rerun passed completely.
 - `tcw capabilities check`, `tcw taxonomy check`, `tcw validate`, and
   `git diff --check`: passed.
