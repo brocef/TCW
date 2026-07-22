@@ -6,21 +6,21 @@
 
 ## Problem
 
-Today "blocked" is a *status* (the `docs/work/blocked/` folder) reached via
+Today "blocked" is a _status_ (the `docs/work/blocked/` folder) reached via
 `tcw work block` and left via `tcw work unblock`. This conflates two things:
 
 - the **relation** "item A is blocked by item B" (data between items), and
 - the **state** "this item is parked" (a board column).
 
 Because `active` and `blocked` are mutually-exclusive folders, the model cannot
-represent the common reality of *"I started this, then hit a wall"* — an item
+represent the common reality of _"I started this, then hit a wall"_ — an item
 is either in-progress or parked, never both. The relation is also weak: you can
 only block from `active`, and only via the single `block --on` call.
 
 ## Decision
 
 Decouple the blocked-by **relation** (data) from any blocked **status**.
-"Blocked" becomes a *derived overlay* — an item with ≥1 non-completed blocker —
+"Blocked" becomes a _derived overlay_ — an item with ≥1 non-completed blocker —
 that sits on top of `inbox`/`backlog`/`active`. Remove the `blocked` status, the
 `blocked/` folder, and the `block`/`unblock` commands. Manage the relation
 directly with `edit`/`new` flags.
@@ -38,8 +38,8 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 
 - `WORK_STATUSES = ("inbox", "backlog", "active", "completed")`.
 - `LEGAL_TRANSITIONS` drops the two `blocked` edges; keeps:
-  - `("inbox", "active")`, `("backlog", "active")` — start
-  - `("active", "completed")` — complete
+    - `("inbox", "active")`, `("backlog", "active")` — start
+    - `("active", "completed")` — complete
 - `WorkItem.blocked_on` → **`blocked_by: list[dict]`**, each entry
   `{"slug": …}` or `{"external": …}`, sourced from `state.yaml`.
 - Drop the `link()` abstract primitive and the entire `links.yaml` concept;
@@ -52,10 +52,10 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
   `blocked_by`, append, `set_field(slug, "blocked_by", new_list)`. Resolve `ref`:
   if it resolves to a work item, store `{"slug": ref}`, else `{"external": ref}`
   (keeps external/off-tracker waits). Refuse:
-  - **self-block** (`ref == slug`);
-  - any edge that would close a **cycle** — `_reaches(ref, slug)` walks `ref`'s
-    blocker chain via `get`; if `slug` is reachable, refuse.
-  - Idempotent: adding an entry already present is a no-op.
+    - **self-block** (`ref == slug`);
+    - any edge that would close a **cycle** — `_reaches(ref, slug)` walks `ref`'s
+      blocker chain via `get`; if `slug` is reachable, refuse.
+    - Idempotent: adding an entry already present is a no-op.
 - **`remove_blocker(slug, ref)`** — read-modify-write dropping entries that match
   `ref` against their **stored** representation (no re-resolution):
   `entry.get("slug") == ref or entry.get("external") == ref`. Removing something
@@ -63,14 +63,14 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 - **Entry identity** (for dedup on add and matching on remove): two entries are
   the same iff they share the same `slug` value or the same `external` text. A
   `slug` entry and an `external` entry never collide, even on equal text.
-- **`unresolved_blockers(item) -> list[str]`** — an entry is *unresolved* if
+- **`unresolved_blockers(item) -> list[str]`** — an entry is _unresolved_ if
   it is `external`, or a slug whose item is not `completed`. A slug that no
   longer resolves counts as **resolved** (silently — the old vanished-blocker
   warning is dropped; rationale: a dropped blocker is gone, and re-`get`-ing it
   is the only way to know, so the warning added noise for a non-actionable
   state). An external wait is "resolved" by `--unblocked-by`-ing its text once
   it clears — there is no separate resolve step (matches keeping it lazy).
-  Unlike `topo_order`, this uses `get`, so it *does* see cross-status blockers:
+  Unlike `topo_order`, this uses `get`, so it _does_ see cross-status blockers:
   a `--status active` board can annotate "blocked-by: <backlog-slug>" even though
   that edge didn't reorder the active items.
 - **`board(status=None) -> list[WorkItem]`** — `query(status)` then
@@ -79,7 +79,7 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 - **`topo_order(items)`** (module-level pure function) — stable Kahn
   topological sort. An edge counts **only when both endpoints are in `items`**:
   a slug blocker outside the set (e.g. filtered out by `--status`, or external)
-  is *not* a node and does not constrain ordering. Within that graph a blocker
+  is _not_ a node and does not constrain ordering. Within that graph a blocker
   always precedes what it blocks; ties keep the input order (the status-grouped
   order `query` returns). Any residual cycle (only possible via hand-edited YAML,
   since writes refuse them) degrades gracefully: leftover nodes are appended in
@@ -94,9 +94,9 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 - **`complete(slug, resolution, dod_ack, force=False)`** — refuse when
   unresolved blockers remain, unless `force`. This is **in addition to** the
   existing DoD `--confirm` gate; the two are independent — `--force` bypasses
-  *only* the blocker gate and never the DoD `--confirm`. CLI precedence: the CLI
+  _only_ the blocker gate and never the DoD `--confirm`. CLI precedence: the CLI
   calls `unresolved_blockers` first, so a blocked complete fails fast on the
-  blocker *before* the DoD checklist prints; `complete()` re-checks in the core
+  blocker _before_ the DoD checklist prints; `complete()` re-checks in the core
   as defense (and for non-CLI callers).
 
 ## Adapter (`tcw/store/fs.py`)
@@ -117,23 +117,23 @@ stays a dumb effector. A `JiraWorkStore` would map `blocked_by` onto Jira's
 - Remove `block` and `unblock` (and from `SUBCOMMANDS` / help / the `init` help
   string).
 - **`tcw work edit <slug> [--blocked-by a,b] [--blocks c] [--unblocked-by d]`**:
-  - Each flag value is comma-split with the existing repo idiom
-    `(s.strip() for s in val.split(",") if s.strip())` — empty/whitespace tokens
-    and a trailing comma are dropped; duplicates collapse via add idempotency.
-  - `--blocked-by` → `add_blocker(<slug>, t)` per token; `--unblocked-by` →
-    `remove_blocker(<slug>, t)`; `--blocks c` → `add_blocker(c, <slug>)` (reverse
-    direction — here `c` is the item being mutated and **must resolve**, so an
-    unknown `c` errors `no such work item: c`, it is *not* taken as external).
-  - **Validation:** `<slug>` and every `--blocks` target are checked to exist up
-    front (no writes if any is missing). Edges then apply left-to-right via
-    `add_blocker`/`remove_blocker`, which re-check self-block and cycles against
-    live state — so a cycle is **always refused and never persisted**. Full
-    transactional rollback is *not* attempted: if a later token in the same
-    command fails, earlier valid edges stay applied (the store is plain files
-    with no transactions, and the only way to trip this is contradictory
-    single-command input, e.g. `--blocked-by B --blocks B`). The integrity
-    guarantee that matters — no cycles, ever — holds regardless.
-  - `edit` only handles blocking flags for now.
+    - Each flag value is comma-split with the existing repo idiom
+      `(s.strip() for s in val.split(",") if s.strip())` — empty/whitespace tokens
+      and a trailing comma are dropped; duplicates collapse via add idempotency.
+    - `--blocked-by` → `add_blocker(<slug>, t)` per token; `--unblocked-by` →
+      `remove_blocker(<slug>, t)`; `--blocks c` → `add_blocker(c, <slug>)` (reverse
+      direction — here `c` is the item being mutated and **must resolve**, so an
+      unknown `c` errors `no such work item: c`, it is _not_ taken as external).
+    - **Validation:** `<slug>` and every `--blocks` target are checked to exist up
+      front (no writes if any is missing). Edges then apply left-to-right via
+      `add_blocker`/`remove_blocker`, which re-check self-block and cycles against
+      live state — so a cycle is **always refused and never persisted**. Full
+      transactional rollback is _not_ attempted: if a later token in the same
+      command fails, earlier valid edges stay applied (the store is plain files
+      with no transactions, and the only way to trip this is contradictory
+      single-command input, e.g. `--blocked-by B --blocks B`). The integrity
+      guarantee that matters — no cycles, ever — holds regardless.
+    - `edit` only handles blocking flags for now.
 - **`tcw work new "<title>" [--blocked-by a,b]`** — create, then `add_blocker`
   per token (same comma rules). A brand-new item can't cycle, but an unknown
   token still becomes an `external` entry, consistent with `--blocked-by`.
@@ -180,7 +180,7 @@ and the `blocked` status are gone:**
 - `docs/plan/phase-5-work.md` — rewrite the block/unblock spec sections, the
   `links.yaml` description, the CLI table, and the transition diagram.
 - `README.md` — CLI surface (`edit`, `new --blocked-by`, `start/complete
-  --force`; no `block`/`unblock`).
+--force`; no `block`/`unblock`).
 - `docs/release-notes/upcoming.md` — user-facing summary.
 - `docs/changelogs/upcoming.md` — Added/Changed/Removed with commit range.
 - `docs/capabilities/work/` — reconcile the work user stories.

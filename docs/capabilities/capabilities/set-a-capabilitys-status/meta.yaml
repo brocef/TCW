@@ -3,4 +3,4 @@ name: Set a capability's status or fields
 Status: Supported
 Planning doc: 2026-07-15-capabilities-set-rejects-inherited-capability-paths-that-show-list-accept
 Subject:
-- capability
+    - capability

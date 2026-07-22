@@ -3,11 +3,11 @@
 A storage-abstracted framework for **describing and evolving a software project
 along three axes**, exposed through one CLI (`tcw`) with three subcommand groups.
 
-| Component | Is | Holds |
-|---|---|---|
-| **Taxonomy** | the nouns | the *things* an app deals with — domain entities, with a real glossary and ontology |
-| **Capabilities** | the user stories | what a user can *do* with those things — each a miniature user story |
-| **Work** | the changes | edits to capabilities (product), machinery (technical), or the project itself (meta) |
+| Component        | Is               | Holds                                                                                |
+| ---------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| **Taxonomy**     | the nouns        | the _things_ an app deals with — domain entities, with a real glossary and ontology  |
+| **Capabilities** | the user stories | what a user can _do_ with those things — each a miniature user story                 |
+| **Work**         | the changes      | edits to capabilities (product), machinery (technical), or the project itself (meta) |
 
 The three link by **loose, one-directional pointers** (capability → term,
 work → capability/term) and never duplicate each other. Taxonomy is the
@@ -21,25 +21,25 @@ layer that moves capabilities and machinery forward over time.
 Most projects scatter their "what" and "why" across a dozen unsynchronized
 places: a tracker for tickets, a wiki for glossaries, a `FOLLOWUPS.md` that
 grows without bound, design docs that drift from code, and a planning flow where
-documents *jump* between unrelated trees with no "where is this right now?"
+documents _jump_ between unrelated trees with no "where is this right now?"
 spine. State lives everywhere and nowhere; reconstructing the current picture
 means reading all of it and trusting none of it.
 
 TCW started as an effort to fix exactly that for an agent-driven SDLC, and the
 unlocking insight was that several separate-looking problems —
 
-- no single, durable source of truth for *where a piece of work is*,
+- no single, durable source of truth for _where a piece of work is_,
 - a glossary nobody could point at,
 - capability docs that drifted from the code,
 - a follow-up log that rotted,
 - cross-repo coordination that lived only in prose —
 
-were all facets of **one** missing thing: a *durable, legible, per-node source
-of truth* for a project's nouns, user stories, and changes. TCW is that source
+were all facets of **one** missing thing: a _durable, legible, per-node source
+of truth_ for a project's nouns, user stories, and changes. TCW is that source
 of truth, built on a deliberate stance:
 
-- **State is the status, not a log.** A work item's status *is which directory
-  it lives in*; a transition is a `git mv`. The "board" is `ls active/`. There
+- **State is the status, not a log.** A work item's status _is which directory
+  it lives in_; a transition is a `git mv`. The "board" is `ls active/`. There
   is no global ledger file to drift, double-count, or burn tokens
   re-summarizing.
 - **Per-node, never global.** Each item, term, and capability owns one bounded
@@ -47,20 +47,20 @@ of truth, built on a deliberate stance:
   history.
 - **Mechanism in the tool, judgment in the human/agent.** Legal transitions,
   slug integrity, reference validity, and the Definition-of-Done gate are
-  *enforced* by a deterministic CLI — not left to a prose checklist that gets
+  _enforced_ by a deterministic CLI — not left to a prose checklist that gets
   followed only sometimes.
 - **Co-located with the code it describes.** The docs live in the repo. One
-  atomic commit can carry a code change *and* its status/capability change
+  atomic commit can carry a code change _and_ its status/capability change
   together, reviewable in the same diff.
 
 The shorthand for the work component is a **"recursive, OS-native Jira"** — and
-just as important is what it deliberately *refuses*: no sprints, no story
+just as important is what it deliberately _refuses_: no sprints, no story
 points, no burndown charts, no SLAs, no estimation ceremony. Just items,
 statuses, legal transitions, and a done-gate.
 
 ## Storage abstraction (the prime directive)
 
-TCW ships a **filesystem-native default**, but the *model* is storage-abstracted
+TCW ships a **filesystem-native default**, but the _model_ is storage-abstracted
 so it can run against an external tracker (Jira, a wiki, a graph DB) where one is
 already in use. That portability is what makes it viable at enterprise scale.
 Every operation has to pass one test:
@@ -74,7 +74,7 @@ So the CLI talks to abstract store interfaces (`TaxonomyStore`,
 `CapabilitiesStore`, `WorkStore`); the shipped adapters (`FsTaxonomyStore`,
 `FsCapabilitiesStore`, `FsWorkStore`) realize them on the filesystem. The
 filesystem superpowers — co-located docs, atomic commits, grep/diff/PR
-legibility, `mv`-as-transition — are *bonuses layered on top*, never
+legibility, `mv`-as-transition — are _bonuses layered on top_, never
 load-bearing assumptions of the model. The full rules live in
 [`AGENTS.md`](AGENTS.md).
 
@@ -82,7 +82,7 @@ load-bearing assumptions of the model. The full rules live in
 
 - **Agent-driven development**, where an LLM needs a legible, enforced place to
   record what a project is and where its work stands — and where "told to follow
-  the rules" isn't enough, because the invariants must be *mechanically* held.
+  the rules" isn't enough, because the invariants must be _mechanically_ held.
 - **Teams that want their domain glossary, feature inventory, and change log to
   live next to the code** and move in the same commits and PRs, instead of in
   three drifting external tools.
@@ -108,7 +108,7 @@ This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, and `tcw-plugin`
 skills plus the `/tcw-init`, `/tcw-doctor`, `/tcw-plan-work`,
 `/tcw-drive-work-to-completion`, `/tcw-taxonomy-init`, and
 `/tcw-capabilities-init` commands. `/tcw-init` puts the `tcw` CLI on your
-PATH from the plugin's *own clone*, so there's one copy — **don't also
+PATH from the plugin's _own clone_, so there's one copy — **don't also
 `pip install tcw` separately**, or the two can drift (`/tcw-doctor` detects this
 and re-points). Run `/tcw-doctor` any time `tcw` goes missing or a plugin update
 leaves it stale.
@@ -175,15 +175,15 @@ operations use only reciprocal registrations:
 ```yaml
 id: orchestrator
 connected-projects:
-  children:
-    project-a: ../project-a
+    children:
+        project-a: ../project-a
 ```
 
 ```yaml
 id: project-a
 connected-projects:
-  parent:
-    orchestrator: ../orchestrator
+    parent:
+        orchestrator: ../orchestrator
 ```
 
 Relative locators resolve from the declaring config; absolute locators are also
@@ -198,7 +198,7 @@ Connections do not imply component inheritance. Each axis opts in explicitly:
 ```yaml
 # docs/taxonomy/config.yaml
 extends:
-  - orchestrator
+    - orchestrator
 ```
 
 The source project ID is also the inherited namespace.
@@ -340,7 +340,7 @@ themselves.
 
 ### `tcw taxonomy` — the nouns
 
-Taxonomy entries form a **forest, and the slug *is* the path**:
+Taxonomy entries form a **forest, and the slug _is_ the path**:
 `admin/permission` is a different entry from `billing/permission`, and addressing
 is by that path. Entries have two kinds: **Vocabulary** for the fundamental
 language of the project, and **Feature** for the user- or application-facing
@@ -597,8 +597,8 @@ A large item can be **decomposed into child items** with `tcw work new
 and `tcw work list` renders children indented under their parent. A child shares
 its parent's status by living inside it — starting or completing the parent
 carries its children along, while transitioning a child on its own promotes it
-to a top-level item. (That keeps any one item small; for work spanning *separate
-repos*, use a cross-node epic instead — see below.)
+to a top-level item. (That keeps any one item small; for work spanning _separate
+repos_, use a cross-node epic instead — see below.)
 
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted
@@ -625,7 +625,7 @@ completion, so the standing capability ledger stays current by construction.
 
 For cross-node discovery (`tcw work nodes` / epics / delegate / escalate), a
 **node** is a git repo with a `docs/work/`; "orchestrator" and "project" are
-relative roles. (The *current node* — where `tcw` operates day-to-day — is the
+relative roles. (The _current node_ — where `tcw` operates day-to-day — is the
 nearest `tcw-config.yaml` ancestor, which may be a subfolder.) A node nested
 under another is a **child**, the enclosing one its **parent**. An **epic** is
 an ordinary work item that tasks in child nodes point at via an
@@ -678,7 +678,7 @@ work is never silently dropped.
 
 ## Skills — the judgment layer
 
-The CLI is the *mechanism*; five skills in [`skills/`](skills/) are the *judgment*
+The CLI is the _mechanism_; five skills in [`skills/`](skills/) are the _judgment_
 that drives it (the work↔capability lifecycle the tool only enforces structurally):
 
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — plan a request or existing work item
@@ -690,7 +690,7 @@ that drives it (the work↔capability lifecycle the tool only enforces structura
   For unusually large plans it can declare staged plan documents, load only the
   stage being executed, and use that stage's pre- and post-checks.
 - **[`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)** — the `## Capability
-  changes` planning gate, contradiction-detection, the `Missing → Supported`
+changes` planning gate, contradiction-detection, the `Missing → Supported`
   ledger flip at completion, product-layer wording coordination, and bootstrapping
   a capabilities ledger (`/tcw-capabilities-init`).
 - **[`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)** — declaring vocabulary and

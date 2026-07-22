@@ -2,6 +2,6 @@ id: cap-2bd014
 name: Validate a TCW node
 Status: Supported
 Subject:
-- node
+    - node
 Planning doc: 2026-07-10-add-tcw-reference-protocol-tcw-validate-and-web-view-link-navigation
 Feature: connected-project-registry

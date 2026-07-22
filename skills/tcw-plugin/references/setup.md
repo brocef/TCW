@@ -1,6 +1,6 @@
 # Setup — install `tcw` from the plugin clone
 
-Run when `tcw` is not yet on PATH. Installs the CLI from the plugin's *own clone*
+Run when `tcw` is not yet on PATH. Installs the CLI from the plugin's _own clone_
 so there is one source of truth — **don't also `pip install tcw` separately.**
 
 1. **Resolve the plugin clone root.** Prefer `$CLAUDE_PLUGIN_ROOT` if set at
@@ -10,12 +10,12 @@ so there is one source of truth — **don't also `pip install tcw` separately.**
    marketplace/repo name and the version changes on every update.
 
 2. **Check `pipx`** (`command -v pipx`):
-   - **present →** `pipx install "<clone-root>"`. pipx owns its own venv, which
-     sidesteps PEP 668 ("externally-managed-environment").
-   - **absent (common) →** fallback ladder, in order:
-     `python3 -m pip install --user pipx && pipx ensurepath` (then retry the pipx
-     install); or `python3 -m pip install --user "<clone-root>"`; or a dedicated
-     venv. **Never** `pip install` into a managed base interpreter.
+    - **present →** `pipx install "<clone-root>"`. pipx owns its own venv, which
+      sidesteps PEP 668 ("externally-managed-environment").
+    - **absent (common) →** fallback ladder, in order:
+      `python3 -m pip install --user pipx && pipx ensurepath` (then retry the pipx
+      install); or `python3 -m pip install --user "<clone-root>"`; or a dedicated
+      venv. **Never** `pip install` into a managed base interpreter.
 
 3. **Verify:** `tcw --version` resolves and prints a version. If the user plans
    to use `tcw serve`, also run `node --version` and require 22.12 or newer.

@@ -14,7 +14,7 @@ tcw work new "<sub-item title>" --parent <parent-slug>
 - A child inherits the parent's status by living inside it. `tcw work start`/
   `complete` on the **parent** carries its children along; transitioning a
   **child** on its own promotes it to a top-level item (it de-nests).
-- Decompose at *planning* time (in the parent's `plan.md`, list the children you
+- Decompose at _planning_ time (in the parent's `plan.md`, list the children you
   intend to spin off), then create them. Each child gets its own
   `initial-request.md`/`spec.md`/`plan.md` as it's planned — the parent stays a thin
   umbrella.

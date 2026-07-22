@@ -2,4 +2,4 @@ id: cap-9591e5
 name: Start a work item
 Status: Supported
 Subject:
-- work-item/transition
+    - work-item/transition

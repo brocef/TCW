@@ -4,7 +4,7 @@ description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered 
 when_to_use: Use when planning, seeding, or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, linking related entries, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase.
 allowed-tools: Bash(tcw *), Read, Grep, Glob
 metadata:
-  author: Brian Cefali
+    author: Brian Cefali
 license: Apache-2.0
 ---
 
@@ -70,13 +70,13 @@ refine with the user → write) → read [`references/init.md`](references/init.
 
 ## Quick reference
 
-| Goal | Command |
-|---|---|
-| add vocabulary | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]` |
-| add a feature | `tcw taxonomy add "<Name>" --kind feature --vocab <term> [--vocab <term>...]` |
-| nest under a parent | `tcw taxonomy add "<Name>" --parent <path>` |
-| link related terms | edit `relatesTo` in the term's `meta.yaml`, then `check` |
-| browse / read / find | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>` |
-| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>` |
-| validate | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
-| remove a local term | `tcw taxonomy rm <path>` |
+| Goal                            | Command                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]`                                                    |
+| add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <term> [--vocab <term>...]`                                |
+| nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                  |
+| link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                     |
+| browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                 |
+| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>`                                        |
+| validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
+| remove a local term             | `tcw taxonomy rm <path>`                                                                                     |

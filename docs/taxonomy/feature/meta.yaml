@@ -1,4 +1,3 @@
 name: Feature
 relatesTo:
-- vocabulary
-
+    - vocabulary

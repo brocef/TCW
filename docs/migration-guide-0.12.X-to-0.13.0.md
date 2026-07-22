@@ -25,16 +25,16 @@ Declare direct children on the parent and the one direct parent on each child:
 # parent/tcw-config.yaml
 id: parent-project
 connected-projects:
-  children:
-    child-project: ../child
+    children:
+        child-project: ../child
 ```
 
 ```yaml
 # child/tcw-config.yaml
 id: child-project
 connected-projects:
-  parent:
-    parent-project: ../parent
+    parent:
+        parent-project: ../parent
 ```
 
 Locators may be absolute or relative to the config directory. Do not use `~` or
@@ -48,14 +48,14 @@ Replace every alias-to-path map:
 
 ```yaml
 extends:
-  shared: ../shared-repo
+    shared: ../shared-repo
 ```
 
 with a list of registered project IDs:
 
 ```yaml
 extends:
-  - shared-project
+    - shared-project
 ```
 
 Do this independently in `docs/taxonomy/config.yaml` and

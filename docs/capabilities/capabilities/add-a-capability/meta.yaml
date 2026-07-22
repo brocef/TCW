@@ -2,4 +2,4 @@ id: cap-95fd73
 name: Add a capability
 Status: Supported
 Subject:
-- capability
+    - capability

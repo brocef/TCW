@@ -9,8 +9,8 @@
 
 You are migrating a TCW project from a **pre-0.11.0** on-disk representation to the
 **0.11.0** representation. The one and only structural change that needs migrating
-is the **Capabilities** axis: capabilities moved from a *file + `## heading`* model
-to a *folder-per-capability* model with stable ids. Taxonomy and Work are
+is the **Capabilities** axis: capabilities moved from a _file + `## heading`_ model
+to a _folder-per-capability_ model with stable ids. Taxonomy and Work are
 **unchanged** — do not touch `docs/taxonomy/` or `docs/work/`. The new
 `tcw://` linking and `tcw validate` features are purely additive and need no
 migration.
@@ -27,6 +27,7 @@ Capabilities were addressed as `<file_id>#<heading>`.
 
 **After (0.11.0):** every capability is its **own folder** `docs/capabilities/<path>/`
 containing:
+
 - `meta.yaml` — `id` (opaque stable id), `name`, then the fields (`Status`,
   `Subject`, `Feature`, `Planning doc`, …). `Subject` is now a **list**.
 - `description.md` — the body prose.
@@ -49,6 +50,7 @@ overrides and `tcw://` references — so the id must be assigned **deterministic
 ## 3. Detect whether migration is even needed
 
 Look under `docs/capabilities/`:
+
 - If every capability is already a folder with a `meta.yaml` + `description.md`
   and there are **no** stray `*.md` capability files, the project is already on
   the 0.11.0 model — **stop, nothing to do.**
@@ -65,14 +67,14 @@ already-migrated `description.md`, and the retired sidecars `errors.md` /
 1. **Compute the file id** (`file_id`): the file's path under
    `docs/capabilities/` with the `.md` dropped — **except** a file literally named
    `capabilities.md`, whose `file_id` is its **parent directory** path.
-   - `docs/capabilities/web.md` → `file_id = web`
-   - `docs/capabilities/capabilities/capabilities.md` → `file_id = capabilities`
-   - `docs/capabilities/auth/login.md` → `file_id = auth/login`
-   - **Edge case:** a `capabilities.md` sitting *directly* in `docs/capabilities/`
-     (no enclosing namespace folder) has no target path — do **not** migrate it
-     mechanically; give each of its capabilities an explicit namespace folder by
-     hand. (Real projects always namespace their capabilities, so you're unlikely
-     to hit this.)
+    - `docs/capabilities/web.md` → `file_id = web`
+    - `docs/capabilities/capabilities/capabilities.md` → `file_id = capabilities`
+    - `docs/capabilities/auth/login.md` → `file_id = auth/login`
+    - **Edge case:** a `capabilities.md` sitting _directly_ in `docs/capabilities/`
+      (no enclosing namespace folder) has no target path — do **not** migrate it
+      mechanically; give each of its capabilities an explicit namespace folder by
+      hand. (Real projects always namespace their capabilities, so you're unlikely
+      to hit this.)
 
 2. **Parse the file into capability blocks.** Split on lines starting with `## `.
    For each block: the heading text is the `name`; the immediately-following
@@ -81,29 +83,31 @@ already-migrated `description.md`, and the retired sidecars `errors.md` /
 3. **Compute each heading's slug** (`heading_slug(name)`): lowercase, strip any
    character that is not a word char / whitespace / hyphen, then replace runs of
    whitespace with a single `-`.
-   - `"Browse TCW content in a local web app"` → `browse-tcw-content-in-a-local-web-app`
+    - `"Browse TCW content in a local web app"` → `browse-tcw-content-in-a-local-web-app`
 
 4. **Choose the target folder path:**
-   - File has **one** heading → collapse: target = `file_id` (drop the heading
-     segment). `web.md`'s single heading → folder `docs/capabilities/web/`.
-   - File has **multiple** headings → one folder per heading:
-     target = `file_id/<heading_slug>`. `capabilities/capabilities.md`'s "Add a
-     capability" → folder `docs/capabilities/capabilities/add-a-capability/`.
-   - A duplicate heading slug within one file is **fatal** — it can't get a unique
-     id. Stop and fix that source file by hand.
+    - File has **one** heading → collapse: target = `file_id` (drop the heading
+      segment). `web.md`'s single heading → folder `docs/capabilities/web/`.
+    - File has **multiple** headings → one folder per heading:
+      target = `file_id/<heading_slug>`. `capabilities/capabilities.md`'s "Add a
+      capability" → folder `docs/capabilities/capabilities/add-a-capability/`.
+    - A duplicate heading slug within one file is **fatal** — it can't get a unique
+      id. Stop and fix that source file by hand.
 
 5. **Assign the stable id** (deterministic, so re-runs and federated copies agree):
-   ```
-   id = "cap-" + sha1(f"{file_id}#{heading_slug}").hexdigest()[:6]
-   ```
-   (SHA-1 of the exact string `<file_id>#<heading_slug>`, first 6 hex chars.)
+
+    ```
+    id = "cap-" + sha1(f"{file_id}#{heading_slug}").hexdigest()[:6]
+    ```
+
+    (SHA-1 of the exact string `<file_id>#<heading_slug>`, first 6 hex chars.)
 
 6. **Write the folder:**
-   - `meta.yaml` with keys in this order: `id`, `name`, then each parsed field.
-     Convert the `Subject` field from a scalar (`Subject: cli` or comma-separated
-     `a, b`) to a **YAML list**. Leave other fields (`Status`, `Feature`,
-     `Planning doc`, …) as scalars.
-   - `description.md` with the block's body (may be empty).
+    - `meta.yaml` with keys in this order: `id`, `name`, then each parsed field.
+      Convert the `Subject` field from a scalar (`Subject: cli` or comma-separated
+      `a, b`) to a **YAML list**. Leave other fields (`Status`, `Feature`,
+      `Planning doc`, …) as scalars.
+    - `description.md` with the block's body (may be empty).
 
 7. After all folders are written **and verified** (§5), **delete the legacy
    `*.md` files** you migrated.
@@ -111,23 +115,28 @@ already-migrated `description.md`, and the retired sidecars `errors.md` /
 ### Concrete example
 
 Legacy `docs/capabilities/web.md`:
+
 ```markdown
 # Web — capabilities
 
 ## Browse TCW content in a local web app
+
 **Status:** Supported
 **Planning doc:** 2026-07-01-local-read-only-web-viewer-tcw-serve
 **Subject:** cli
 ```
+
 Becomes `docs/capabilities/web/meta.yaml`:
+
 ```yaml
 id: cap-9d225a
 name: Browse TCW content in a local web app
 Status: Supported
 Planning doc: 2026-07-01-local-read-only-web-viewer-tcw-serve
 Subject:
-- cli
+    - cli
 ```
+
 plus an (empty here) `docs/capabilities/web/description.md`. Note the top-of-file
 `# Web — capabilities` title line is discarded — it was never a capability, only a
 file header.
@@ -155,6 +164,7 @@ as one commit.
 
 Very old trees may contain artifacts that 0.11.0 removed outright — handle these by
 hand, they are **not** part of the mechanical transform above:
+
 - `errors.md` / `states.md` sidecars → **drop them** (the model no longer has
   per-capability error/state sidecars). Preserve anything still meaningful by
   folding it into the capability's `description.md` body first.
@@ -232,6 +242,7 @@ Leave the `p.unlink()` commented until §5 passes, then delete the legacy files 
 
 You're now on the 0.11.0 model. Two additive features are available (no migration,
 just usable):
+
 - **`tcw://` links** — reference any object from an object's body with
   `[text](tcw://[<namespace>/]<axis>/<ref>)` (axis `T`/`C`/`W`).
 - **`tcw validate [path]`** — one-pass YAML + `tcw://` link + component-check

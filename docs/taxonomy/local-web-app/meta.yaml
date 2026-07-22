@@ -2,7 +2,7 @@ name: Local web app
 kind: Feature
 relatesTo: []
 vocabulary:
-- work-item
-- term
-- capability
-- node
+    - work-item
+    - term
+    - capability
+    - node

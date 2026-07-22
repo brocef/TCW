@@ -4,7 +4,7 @@ description: Teaches a TCW user how to report a bug, issue, or suggestion back t
 when_to_use: Use when a user wants to report a problem with the `tcw` CLI or the TCW plugin/skills, request a feature, or send a suggestion upstream to the TCW project — i.e. feedback about TCW itself, filed as a GitHub issue. Do not use it for the user's own project work items (that is tcw-work).
 allowed-tools: Bash(tcw *), Read
 metadata:
-  author: Brian Cefali
+    author: Brian Cefali
 license: Apache-2.0
 ---
 
@@ -12,7 +12,7 @@ license: Apache-2.0
 
 Feedback about **TCW itself** — a `tcw` bug, a rough edge in a skill, a feature
 idea, a suggestion — goes to the project's issue tracker on GitHub, **not** into
-the user's local `tcw work` store. (`tcw work` tracks changes to *their*
+the user's local `tcw work` store. (`tcw work` tracks changes to _their_
 project; it is not a channel to the TCW maintainers.)
 
 **File it here:** https://github.com/brocef/TCW/issues
@@ -34,20 +34,24 @@ project; it is not a channel to the TCW maintainers.)
 **Title:** <one line: what breaks, where>
 
 ### Environment
+
 - tcw version: <output of `tcw --version`>
 - OS / platform: <e.g. macOS 14, Ubuntu 24.04>
 - Install method: <pipx / pip --user / editable / other>
 
 ### Steps to reproduce
+
 1. <exact command or action>
 2. <...>
 3. <...>
 
 ### Expected vs. actual
+
 - Expected: <what should have happened>
 - Actual: <what happened — paste the error / output verbatim>
 
 ### Remediation
+
 <proposed fix, workaround you found, or "unknown — needs investigation">
 ```
 
@@ -57,12 +61,15 @@ project; it is not a channel to the TCW maintainers.)
 **Title:** <one line: the change you want>
 
 ### Motivation
+
 <the problem or friction today — why the status quo falls short>
 
 ### Description
+
 <what you are proposing, concretely — the command, flag, behavior, or wording>
 
 ### Benefits
+
 <who it helps and how; what it unlocks or simplifies>
 ```
 

@@ -1,11 +1,18 @@
 {
-  "name": "tcw",
-  "version": "0.14.0",
-  "description": "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project, with skills that drive the tcw CLI.",
-  "author": {
-    "name": "Brian Cefali"
-  },
-  "keywords": ["taxonomy", "capabilities", "work", "tcw", "sdlc", "agent-sdlc"],
-  "skills": "./skills/",
-  "commands": "./commands/"
+    "name": "tcw",
+    "version": "0.14.0",
+    "description": "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project, with skills that drive the tcw CLI.",
+    "author": {
+        "name": "Brian Cefali"
+    },
+    "keywords": [
+        "taxonomy",
+        "capabilities",
+        "work",
+        "tcw",
+        "sdlc",
+        "agent-sdlc"
+    ],
+    "skills": "./skills/",
+    "commands": "./commands/"
 }

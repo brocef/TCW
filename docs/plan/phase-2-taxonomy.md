@@ -1,13 +1,13 @@
 # Phase 2 — Taxonomy (TCW component 1 of 3: the nouns)
 
-**Status:** spec ✓ · build ✓ (see *Build notes*, Part C)
+**Status:** spec ✓ · build ✓ (see _Build notes_, Part C)
 **Delivers:** `tcw taxonomy` + `FsTaxonomyStore`, local-path `extends`.
 **Depends on:** Phase 1 (package + CLI skeleton + node detection).
 **Build checklist:** `TaxonomyStore` interface → `FsTaxonomyStore` over `docs/taxonomy/` → the six subcommands (B.2) → `extends` resolution (B.6) → `check` → tests (B.8).
 
 > Spec **and** build plan for component 1. Part A is the model; Part B is the buildable tool; B.9 records the resolved open questions. Framework-wide rules: [`../../AGENTS.md`](../../AGENTS.md).
-**Date:** 2026-06-18
-**Scope:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling components: [`phase-5-work`](phase-5-work.md), [`phase-3-capabilities`](phase-3-capabilities.md).
+> **Date:** 2026-06-18
+> **Scope:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling components: [`phase-5-work`](phase-5-work.md), [`phase-3-capabilities`](phase-3-capabilities.md).
 
 ---
 
@@ -17,20 +17,20 @@
 
 The system has three components, defined in dependency order — the `tcw` binary's three subcommand groups:
 
-1. **`tcw taxonomy`** — the *things* an application deals with (domain entities/concepts). The **nouns**.
+1. **`tcw taxonomy`** — the _things_ an application deals with (domain entities/concepts). The **nouns**.
 2. **`tcw capabilities`** — what a user can do with them, each a miniature user story. The **user stories**.
 3. **`tcw work`** — the changes to those capabilities and to the machinery (and to the project itself). The **changes**.
 
-Taxonomy comes first because the other two reference it: a capability describes the behavior of *something*, and a work item changes *something* — that something is a taxonomy term. Today that subject is only ever *inferred* from prose and surrounding language; taxonomy makes it an explicit, addressable registry + glossary. (`tcw` = taxonomy, capabilities, work.)
+Taxonomy comes first because the other two reference it: a capability describes the behavior of _something_, and a work item changes _something_ — that something is a taxonomy term. Today that subject is only ever _inferred_ from prose and surrounding language; taxonomy makes it an explicit, addressable registry + glossary. (`tcw` = taxonomy, capabilities, work.)
 
 This spec covers the taxonomy component; `tcw capabilities` ([phase-3](phase-3-capabilities.md)) and `tcw work` ([phase-5](phase-5-work.md)) are the other two component specs.
 
 ### A.2 Terms form a forest
 
-A **term** is a domain entity or concept. Terms are **hierarchical**: a term may contain child terms (sub-concepts, or the same word in a narrower context). The same leaf name can recur under different parents — `admin/permission` and `some-object/permission` are *different terms*.
+A **term** is a domain entity or concept. Terms are **hierarchical**: a term may contain child terms (sub-concepts, or the same word in a narrower context). The same leaf name can recur under different parents — `admin/permission` and `some-object/permission` are _different terms_.
 
-- A term's **identity is its path** — the chain of ancestor local-names from the taxonomy root. The slug *is* that path (`admin/permission`).
-- Leaf names are unique only **among siblings**; the path disambiguates globally. (Contrast the work-sdlc's node-unique slugs — taxonomy needs no "resolve anywhere / error on duplicate" rule, because the path *is* the address.)
+- A term's **identity is its path** — the chain of ancestor local-names from the taxonomy root. The slug _is_ that path (`admin/permission`).
+- Leaf names are unique only **among siblings**; the path disambiguates globally. (Contrast the work-sdlc's node-unique slugs — taxonomy needs no "resolve anywhere / error on duplicate" rule, because the path _is_ the address.)
 - **Addressing is by path.** A bare leaf (`permission`) is convenience sugar, valid only when unambiguous.
 
 ### A.3 Term anatomy
@@ -39,7 +39,7 @@ Each term carries:
 
 - **name** — display form ("Admin Permission").
 - **slug / path** — its identity (`admin/permission`).
-- **description** — long-form prose (what the thing *is*).
+- **description** — long-form prose (what the thing _is_).
 - **metadata** — small fields, including **`relatesTo`**: cross-links to other terms that pertain to this one in a non-obvious way (across the hierarchy).
 - **attachments** — optional supplementary docs/images.
 - **children** — sub-terms.
@@ -48,7 +48,7 @@ Each term carries:
 
 ### A.4 Storage abstraction
 
-Per the framework prime directive (the litmus test in the system guide), the model is defined abstractly and the filesystem is the *default realization*. A **`TaxonomyStore`** interface — `list · get(path) · add(term, parent) · remove(path) · search · check` — is what the CLI depends on; `FsTaxonomyStore` realizes it as nested directories under `docs/taxonomy/` (Part B). A tree of named nodes with cross-links is implementable by any backend (a graph DB, a wiki, a glossary service), so the model passes the litmus test; remote backends are additive.
+Per the framework prime directive (the litmus test in the system guide), the model is defined abstractly and the filesystem is the _default realization_. A **`TaxonomyStore`** interface — `list · get(path) · add(term, parent) · remove(path) · search · check` — is what the CLI depends on; `FsTaxonomyStore` realizes it as nested directories under `docs/taxonomy/` (Part B). A tree of named nodes with cross-links is implementable by any backend (a graph DB, a wiki, a glossary service), so the model passes the litmus test; remote backends are additive.
 
 ### A.5 Federation via `extends`
 
@@ -56,15 +56,15 @@ Taxonomies **compose**: one can extend others to import shared vocabulary.
 
 - The taxonomy-root config (`config.yaml`) declares `extends: { <alias>: <repo-root-path> }`. The **consumer chooses each alias**; the path points at another **repo root** (the tool looks for `docs/taxonomy/` inside it).
 - Each alias is a **named namespace**; the local taxonomy is the default, unprefixed namespace. Multiple `extends` entries → multiple namespaces, so a project can import several shared taxonomies cleanly.
-- **No silent merge.** A local `Some/Term` and an imported `shared/Some/Term` are *distinct terms in distinct namespaces*, never merged or overwritten. Conflicts can only arise in a *consumer* (a shared repo is self-contained); the namespace keeps them apart, so the author disambiguates by qualifying with the alias.
+- **No silent merge.** A local `Some/Term` and an imported `shared/Some/Term` are _distinct terms in distinct namespaces_, never merged or overwritten. Conflicts can only arise in a _consumer_ (a shared repo is self-contained); the namespace keeps them apart, so the author disambiguates by qualifying with the alias.
 - **Source types: local path first.** A sibling-repo path (`../shared-docs-repo`) covers a co-checked-out workspace entirely. Remote sources (git/URL) — which need fetch, cache, and **version-pinning** so the vocabulary doesn't shift underneath you — are a documented future source type. Abstractly `extends` is a list of upstream source refs; each adapter resolves them its own way.
 
 ### A.6 Why taxonomy shares differently from capabilities
 
-The two components share across repos by *opposite* mechanisms, deliberately:
+The two components share across repos by _opposite_ mechanisms, deliberately:
 
-- **Capabilities forbid cross-repo references** and relay canonical wording through the orchestrator — because implementations *diverge* per platform (web vs mobile realize the "same" capability differently); direct links would couple implementations.
-- **Taxonomy wants one canonical definition imported everywhere** — "Argument" must mean the same thing in every repo. So direct federation (`extends`) is correct, and it *supersedes* any orchestrator-relay model for taxonomy.
+- **Capabilities forbid cross-repo references** and relay canonical wording through the orchestrator — because implementations _diverge_ per platform (web vs mobile realize the "same" capability differently); direct links would couple implementations.
+- **Taxonomy wants one canonical definition imported everywhere** — "Argument" must mean the same thing in every repo. So direct federation (`extends`) is correct, and it _supersedes_ any orchestrator-relay model for taxonomy.
 
 Vocabulary is canonical-shared; behavior is locally-divergent. Same framework, opposite sharing models, for principled reasons.
 
@@ -73,13 +73,13 @@ Vocabulary is canonical-shared; behavior is locally-divergent. Same framework, o
 Taxonomy is the **root noun** the other two hang off, by loose one-directional pointers:
 
 - A **capability** optionally declares a **`subject`** = a taxonomy term (by ref). A work item may likewise reference the terms it touches.
-- The pointer is capability→term (and work→term), never the reverse: a term stays behavior-agnostic — it doesn't list its capabilities — so the noun is independent of what's done with it. The tool can *resolve* a subject ref but never *requires* one — the same loose-coupling style as work↔capabilities.
+- The pointer is capability→term (and work→term), never the reverse: a term stays behavior-agnostic — it doesn't list its capabilities — so the noun is independent of what's done with it. The tool can _resolve_ a subject ref but never _requires_ one — the same loose-coupling style as work↔capabilities.
 
 ### A.8 Design principles (shared with the framework)
 
 - Plain markdown/YAML in git; the CLI is a safe accessor, not a gatekeeper; the store is the database.
 - No daemon, no database, no server, no web UI.
-- **Mechanism vs. judgment:** the tool owns structure, identity (path), reference resolution, federation, and validation (`check`); humans/skills write term *content* (names, descriptions, relationships).
+- **Mechanism vs. judgment:** the tool owns structure, identity (path), reference resolution, federation, and validation (`check`); humans/skills write term _content_ (names, descriptions, relationships).
 - **Abstract spine, filesystem leverage** + the litmus test (the framework guide). Recursion: each node has its own `docs/taxonomy/`; cross-node sharing is `extends`, not nesting.
 
 ---
@@ -138,11 +138,11 @@ A reference is `[<alias>/]<path>`. Resolution:
 
 1. **Prefixed** (`shared/Some/Term`) → that aliased taxonomy's term. Unambiguous by construction.
 2. **Bare** (`Some/Term`):
-   - local defines it → **the local term** (bare always means local when local has it);
-   - else exactly one extended taxonomy defines it → that one (normalized to `<alias>/Some/Term`);
-   - else (none, or two-or-more) → **ambiguous**; the author must qualify. `check` flags it.
+    - local defines it → **the local term** (bare always means local when local has it);
+    - else exactly one extended taxonomy defines it → that one (normalized to `<alias>/Some/Term`);
+    - else (none, or two-or-more) → **ambiguous**; the author must qualify. `check` flags it.
 
-References *inside an imported term* (its `relatesTo`, its prose) resolve in **that term's authoring namespace** — so a shared repo's internal cross-refs keep working when imported, and a consumer needn't re-declare the shared repo's own upstreams.
+References _inside an imported term_ (its `relatesTo`, its prose) resolve in **that term's authoring namespace** — so a shared repo's internal cross-refs keep working when imported, and a consumer needn't re-declare the shared repo's own upstreams.
 
 ### B.7 Git behavior and node detection
 
@@ -170,7 +170,8 @@ Built: `TaxonomyStore` ABC + `Term` (`tcw/store/base.py`); `FsTaxonomyStore` ove
 Shared FS helpers added to `fs.py` (`find_node`, `load_yaml`/`dump_yaml`, `git_stage`/`git_rm`, `slugify`) are the Phase-4 shared-core candidates — left in `fs.py` for now (don't pre-abstract).
 
 **Deliberate simplifications (recorded so they don't read as bugs):**
-- **Bare-*leaf*-anywhere sugar not implemented.** Addressing is by path; `get("permission")` resolves a top-level term, not a deep `admin/permission`. The path *is* the address (A.2); B.6's three namespace-resolution branches (local-wins / unique-extended / ambiguous) are fully implemented.
+
+- **Bare-_leaf_-anywhere sugar not implemented.** Addressing is by path; `get("permission")` resolves a top-level term, not a deep `admin/permission`. The path _is_ the address (A.2); B.6's three namespace-resolution branches (local-wins / unique-extended / ambiguous) are fully implemented.
 - **Prefixed-ref + `list` go one `extends` level deep.** Deep transitive federation (an alias's own `extends`) is the deferred remote-`extends` transitivity (B.9 / Phase 6); local-path single-level works.
 
 ## Part C — Place in the roadmap

@@ -4,7 +4,7 @@ description: TCW orientation across the plugin's skills, plus install/repair of 
 when_to_use: Use for TCW orientation across the plugin's skills, or when the `tcw` CLI is missing or broken — not found on PATH, `tcw --version` fails, or a plugin update left it stale — to install or repair it from this plugin's own clone.
 allowed-tools: Bash(tcw *), Bash(command -v *), Bash(pipx list *), Read
 metadata:
-  author: Brian Cefali
+    author: Brian Cefali
 compatibility: Requires Python 3.11+; `tcw serve` additionally requires Node.js 22.12+; installs the tcw CLI via pipx from the plugin clone.
 license: Apache-2.0
 ---
@@ -14,9 +14,9 @@ license: Apache-2.0
 TCW has three project axes plus this plugin-maintenance skill:
 
 1. **Taxonomy (`tcw-taxonomy`)** registers the project's language:
-   - **Vocabulary** entries are conceptual terms.
-   - **Feature** entries are user- or application-facing manifestations that
-     operate on or involve vocabulary.
+    - **Vocabulary** entries are conceptual terms.
+    - **Feature** entries are user- or application-facing manifestations that
+      operate on or involve vocabulary.
 2. **Capabilities (`tcw-capabilities`)** describe what users can do. A
    capability can point loosely at a taxonomy `Subject` and strongly at a
    taxonomy `Feature`.
@@ -26,7 +26,7 @@ TCW has three project axes plus this plugin-maintenance skill:
 Plus a feedback skill, orthogonal to the three axes:
 
 - **Report (`tcw-report`)** teaches a user how to send feedback about TCW
-  *itself* — a `tcw` bug or a suggestion — upstream as a GitHub issue, with a
+  _itself_ — a `tcw` bug or a suggestion — upstream as a GitHub issue, with a
   ready-to-fill skeleton. It is not for the user's own project work (that is
   `tcw-work`).
 

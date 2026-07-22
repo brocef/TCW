@@ -1,4 +1,4 @@
 name: Capability
 relatesTo:
-- term
-- capability/subject
+    - term
+    - capability/subject

@@ -1,14 +1,14 @@
 {
-  "name": "tcw",
-  "owner": {
-    "name": "Brian Cefali"
-  },
-  "plugins": [
-    {
-      "name": "tcw",
-      "source": "./",
-      "description": "Taxonomy · Capabilities · Work — skills + slash commands that drive the tcw CLI.",
-      "version": "0.14.0"
-    }
-  ]
+    "name": "tcw",
+    "owner": {
+        "name": "Brian Cefali"
+    },
+    "plugins": [
+        {
+            "name": "tcw",
+            "source": "./",
+            "description": "Taxonomy · Capabilities · Work — skills + slash commands that drive the tcw CLI.",
+            "version": "0.14.0"
+        }
+    ]
 }

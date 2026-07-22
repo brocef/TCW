@@ -1,0 +1,27 @@
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+pnpm-lock.yaml
+
+# Generated web bundles and build output
+tcw/serve/dist/
+dist/
+build/
+coverage/
+test-results/
+playwright-report/
+
+# Tool caches, logs, and worktrees
+.agents/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.prettier-cache
+*.log
+.worktrees/
+
+# Historical work and released documentation are byte-stable
+docs/work/completed/
+docs/changelogs/v*.md
+docs/release-notes/v*.md

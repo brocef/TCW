@@ -1,7 +1,7 @@
 # Doctor — diagnose & repair the `tcw` install
 
 **Mental model:** Claude Code copies the repo into a version-namespaced cache dir
-(the *source of truth*); pipx builds an isolated venv *from* that dir (a built
+(the _source of truth_); pipx builds an isolated venv _from_ that dir (a built
 copy). "No drift" is what this procedure enforces — it is not automatic.
 
 1. **Locate `tcw`:** `command -v tcw` → realpath. Find its package source via

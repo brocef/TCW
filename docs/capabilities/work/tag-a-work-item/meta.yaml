@@ -3,4 +3,4 @@ name: Tag a work item
 Status: Supported
 Planning doc: 2026-07-17-add-tags-to-work-items-for-filtering
 Subject:
-- work-item
+    - work-item

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the `blocked` work-item status with a blocked-by *relation* stored in `state.yaml`, with cycle-safe edit commands, a topologically ordered board, and start/complete gating on unresolved blockers.
+**Goal:** Replace the `blocked` work-item status with a blocked-by _relation_ stored in `state.yaml`, with cycle-safe edit commands, a topologically ordered board, and start/complete gating on unresolved blockers.
 
 **Architecture:** Blocked-ness becomes a derived overlay, not a folder. The abstract `WorkStore` (core) owns the new relation ops, cycle detection, ordering, and gating — all pure computation over `get`/`set_field`. `FsWorkStore` only changes where it reads the list (`state.yaml`, not `links.yaml`) and which status folders exist. The CLI gains `edit` / `--blocked-by` / `--force`.
 
@@ -27,12 +27,14 @@
 Atomic demolition: dropping the `blocked` folder forces removing `block`/`unblock`/`link` and rewriting the tests that use them, all in one green commit. No new behavior yet — just the relation data readable/writable via the existing `set_field`/`get`.
 
 **Files:**
+
 - Modify: `tcw/store/base.py` (`WORK_STATUSES`, `LEGAL_TRANSITIONS`, `WorkItem`, `WorkStore`)
 - Modify: `tcw/store/fs.py` (`WORK_STATUSES`, `FsWorkStore.get`, remove `link`, `_safe_yaml` docstring)
 - Modify: `tcw/work/cli.py` (`SUBCOMMANDS`, remove `_block`/`_unblock` + their parsers, `_print_item`, `init` help)
 - Test: `tests/test_work.py` (rewrite the 5 block-dependent tests; add a `blocked_by`-in-`state.yaml` read test)
 
 **Interfaces:**
+
 - Produces: `WorkItem.blocked_by: list[dict]`; `WORK_STATUSES = ("inbox","backlog","active","completed")`; `FsWorkStore.get()` reads `blocked_by` from `state.yaml`. `WorkStore.block/unblock/link` and `FsWorkStore.link` no longer exist.
 
 - [ ] **Step 1: Rewrite the block-dependent tests first (they will fail to import/run)**
@@ -209,15 +211,17 @@ git commit -m "refactor(work): drop blocked status; blocked_by lives in state.ya
 ### Task 2: `add_blocker` / `remove_blocker` with cycle + self-block guards
 
 **Files:**
+
 - Modify: `tcw/store/base.py` (`WorkStore`: add `_entry_for`, `_same_entry`, `_reaches`, `add_blocker`, `remove_blocker`)
 - Test: `tests/test_work.py`
 
 **Interfaces:**
+
 - Consumes: `WorkItem.blocked_by`, `WorkStore.get`, `WorkStore.set_field` (Task 1).
 - Produces:
-  - `WorkStore.add_blocker(self, slug: str, ref: str) -> None`
-  - `WorkStore.remove_blocker(self, slug: str, ref: str) -> None`
-  - `WorkStore._reaches(self, start: str, target: str) -> bool`
+    - `WorkStore.add_blocker(self, slug: str, ref: str) -> None`
+    - `WorkStore.remove_blocker(self, slug: str, ref: str) -> None`
+    - `WorkStore._reaches(self, start: str, target: str) -> bool`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -345,15 +349,17 @@ git commit -m "feat(work): add_blocker/remove_blocker with cycle + self-block gu
 ### Task 3: Gating — `unresolved_blockers` + `start`/`complete` with `--force`
 
 **Files:**
+
 - Modify: `tcw/store/base.py` (`WorkStore`: add `unresolved_blockers`; rewrite `start`/`complete`)
 - Test: `tests/test_work.py`
 
 **Interfaces:**
+
 - Consumes: `add_blocker` (Task 2), `WorkItem.status`/`blocked_by`.
 - Produces:
-  - `WorkStore.unresolved_blockers(self, item: WorkItem) -> list[str]`
-  - `WorkStore.start(self, slug: str, force: bool = False) -> WorkItem`
-  - `WorkStore.complete(self, slug: str, resolution: str, dod_ack: list[str], force: bool = False) -> WorkItem`
+    - `WorkStore.unresolved_blockers(self, item: WorkItem) -> list[str]`
+    - `WorkStore.start(self, slug: str, force: bool = False) -> WorkItem`
+    - `WorkStore.complete(self, slug: str, resolution: str, dod_ack: list[str], force: bool = False) -> WorkItem`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -476,14 +482,16 @@ git commit -m "feat(work): gate start/complete on unresolved blockers (--force o
 ### Task 4: `topo_order` + `board`
 
 **Files:**
+
 - Modify: `tcw/store/base.py` (module-level `topo_order`; `WorkStore.board`)
 - Test: `tests/test_work.py`
 
 **Interfaces:**
+
 - Consumes: `WorkItem.slug`/`blocked_by`, `WorkStore.query`.
 - Produces:
-  - `topo_order(items: list[WorkItem]) -> list[WorkItem]` (module-level)
-  - `WorkStore.board(self, status: str | None = None) -> list[WorkItem]`
+    - `topo_order(items: list[WorkItem]) -> list[WorkItem]` (module-level)
+    - `WorkStore.board(self, status: str | None = None) -> list[WorkItem]`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -593,10 +601,12 @@ git commit -m "feat(work): topological board ordering (blocker before blocked)"
 ### Task 5: CLI — `edit`, `new --blocked-by`, `start/complete --force`, ordered `list`
 
 **Files:**
+
 - Modify: `tcw/work/cli.py` (`SUBCOMMANDS`, `_split`, `_new`, `_list`, `_start`, `_complete`, `_edit`, `add_subparser`)
 - Test: `tests/test_work.py`
 
 **Interfaces:**
+
 - Consumes: `add_blocker`/`remove_blocker` (Task 2), `unresolved_blockers`/`start`/`complete` (Task 3), `board` (Task 4).
 - Produces: CLI verbs `edit`, `new --blocked-by`, `start --force`, `complete --force`; `list` ordered + annotated.
 
@@ -835,6 +845,7 @@ Expected: PASS (all tests).
 - [ ] **Step 7: Smoke-test the CLI by hand (optional but recommended)**
 
 Run from a scratch repo:
+
 ```bash
 cd "$(mktemp -d)" && git init -q && git config user.email t@t && git config user.name t
 python -m tcw work init
@@ -844,6 +855,7 @@ python -m tcw work list            # B should sort before A; A shows "blocked-by
 python -m tcw work start "$A"       # refused: blocked by B
 python -m tcw work start "$A" --force
 ```
+
 Expected: `list` orders `B` before `A`; `start "$A"` (no force) prints "blocked by".
 
 - [ ] **Step 8: Commit**
@@ -860,6 +872,7 @@ git commit -m "feat(work): edit/new blocked-by flags, --force gating, ordered li
 Run the `skill-cefailures:documentation-sync` evaluation; this task pre-identifies every entry whose trigger fires. The public CLI surface changed (commands removed/added) and behavior changed, so all Documentation-Sync entries apply, plus the design doc and capabilities.
 
 **Files:**
+
 - Modify: `docs/plan/phase-5-work.md` (the source-of-truth design — rewrite block/unblock sections, the `links.yaml` description, the CLI table, the transition diagram, and the test list)
 - Modify: `README.md` (CLI surface)
 - Modify: `docs/release-notes/upcoming.md`
@@ -868,7 +881,8 @@ Run the `skill-cefailures:documentation-sync` evaluation; this task pre-identifi
 
 - [ ] **Step 1: Update the source-of-truth design `docs/plan/phase-5-work.md`**
 
-Make the doc describe the *new* model (never leave code/design drift — CLAUDE.md):
+Make the doc describe the _new_ model (never leave code/design drift — CLAUDE.md):
+
 - Directory list: `inbox, backlog, active, completed` (drop `blocked`); update the "Directories partition by actionability" paragraph to describe blocked-ness as a derived overlay (an item with ≥1 non-completed blocker), not a folder.
 - Remove the `block`/`unblock` rows from the CLI table; add `edit` (blocked-by/blocks/unblocked-by), `new --blocked-by`, and `--force` on `start`/`complete`.
 - Replace the transition diagram's `block`/`unblock`/`blocked` arc with the four-status machine (`inbox|backlog → active → completed`, `drop` from inbox/backlog).
@@ -883,6 +897,7 @@ In the `tcw work` usage: remove `block`/`unblock`; document `tcw work edit <slug
 - [ ] **Step 3: Update `docs/release-notes/upcoming.md`**
 
 Plain language, no module names. Example entry:
+
 ```markdown
 - Work items can now record what blocks them. Use `tcw work edit <item> --blocked-by <other>` (or `--blocks` for the reverse, `--unblocked-by` to clear), and `tcw work new "<title>" --blocked-by a,b`. The board (`tcw work list`) now lists blockers before the work they hold up and flags anything still blocked. Starting or completing a blocked item is refused unless you pass `--force`. The separate "blocked" column and the old `block`/`unblock` commands are gone — blocked is now just "has an unfinished blocker".
 ```
@@ -890,21 +905,27 @@ Plain language, no module names. Example entry:
 - [ ] **Step 4: Update `docs/changelogs/upcoming.md`**
 
 Technical, grouped, with the commit range. Get the range:
+
 ```bash
 git rev-parse --short HEAD          # end of range
 git log --oneline work-blocked-by   # find the first commit of this branch
 ```
+
 Add entries:
+
 ```markdown
 ### Added
+
 - `tcw work edit <slug> --blocked-by/--blocks/--unblocked-by` and `tcw work new --blocked-by`; `--force` on `start`/`complete`.
 - `WorkStore.add_blocker`/`remove_blocker` (cycle- and self-block-guarded), `unresolved_blockers`, `board()`, and module-level `topo_order`.
 
 ### Changed
+
 - `blocked_by` is stored in `state.yaml`; `tcw work list` is topologically ordered and annotates blocked items.
 - `WorkItem.blocked_on` → `WorkItem.blocked_by`.
 
 ### Removed
+
 - The `blocked` status/folder, `tcw work block`/`unblock`, `WorkStore.block`/`unblock`/`link`, and `links.yaml`.
 ```
 
@@ -928,6 +949,7 @@ git commit -m "docs(work): sync design, README, release notes, changelog, capabi
 ## Self-Review
 
 **Spec coverage:**
+
 - Model (statuses, transitions, `blocked_by` in `state.yaml`, drop `link`) → Task 1. ✔
 - `add_blocker`/`remove_blocker`/entry identity/`_reaches`/self-block/cycle → Task 2. ✔
 - `unresolved_blockers` + `start`/`complete` gating + `--force` → Task 3. ✔

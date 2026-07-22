@@ -20,9 +20,9 @@ Process:
 1. Identify likely planning documents using filename, heading, and content cues
    such as plan, spec, proposal, roadmap, todo, followup, or implementation.
 2. For each candidate, inspect the document and decide whether it is:
-   - a real planning artifact that should become TCW work;
-   - obsolete/no-op material that should be reported before deletion;
-   - already represented by an existing TCW work item.
+    - a real planning artifact that should become TCW work;
+    - obsolete/no-op material that should be reported before deletion;
+    - already represented by an existing TCW work item.
 3. For each document that should migrate, create a backlog item with
    `tcw work new "<title>"`.
 4. Write `initial-request.md` in the new item folder from the source document

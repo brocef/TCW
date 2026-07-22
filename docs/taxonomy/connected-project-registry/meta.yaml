@@ -2,6 +2,6 @@ name: Connected project registry
 kind: Feature
 relatesTo: []
 vocabulary:
-- node
-- namespace
-- reference
+    - node
+    - namespace
+    - reference

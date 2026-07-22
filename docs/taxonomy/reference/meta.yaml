@@ -1,4 +1,4 @@
 name: Reference
 relatesTo:
-- term
-- capability
+    - term
+    - capability

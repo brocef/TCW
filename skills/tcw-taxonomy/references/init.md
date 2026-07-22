@@ -9,10 +9,13 @@ refine loop below. Bootstrap both taxonomy entry kinds:
   involve vocabulary.
 
 ## 1. Ensure the tree exists
+
 `tcw taxonomy init` if `docs/taxonomy/` is absent (no-op if present).
 
 ## 2. Inheritance
+
 Ask the user: **"Does this project inherit its taxonomy from other repos?"**
+
 - If yes, collect a list of sibling-repo paths. For each, derive an alias from the
   repo directory name, confirm it with the user, and run
   `tcw taxonomy extends add <registered-project-id>`.
@@ -21,6 +24,7 @@ Ask the user: **"Does this project inherit its taxonomy from other repos?"**
 - Run `tcw taxonomy check`.
 
 ## 3. Deep-dive (draft)
+
 Survey the codebase for two related drafts:
 
 - **Vocabulary candidates:** core models/entities, ubiquitous-language terms,
@@ -37,6 +41,7 @@ proposed parent if any, and the vocabulary refs each feature operates on or
 involves.
 
 ## 4. Refine + write
+
 Present the draft. Run a lightweight loop with the user — add / cut / rename /
 merge / re-nest / split vocabulary from feature — until they're satisfied. Then
 write the agreed entries:

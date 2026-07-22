@@ -2,4 +2,4 @@ id: cap-17ca61
 name: Bootstrap the CLI
 Status: Supported
 Subject:
-- cli
+    - cli

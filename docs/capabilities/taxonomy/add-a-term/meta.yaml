@@ -2,5 +2,5 @@ id: cap-563e2e
 name: Add a term
 Status: Supported
 Subject:
-- term
+    - term
 Feature: taxonomy-feature-registry

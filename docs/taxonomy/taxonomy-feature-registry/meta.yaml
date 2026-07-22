@@ -1,10 +1,9 @@
 name: Taxonomy feature registry
 kind: Feature
 relatesTo:
-- feature
-- vocabulary
+    - feature
+    - vocabulary
 vocabulary:
-- feature
-- vocabulary
-- term
-
+    - feature
+    - vocabulary
+    - term

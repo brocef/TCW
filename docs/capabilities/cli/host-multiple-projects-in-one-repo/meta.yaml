@@ -2,6 +2,6 @@ id: cap-0fe6cc
 name: Host multiple projects in one repo
 Status: Supported
 Subject:
-- node
+    - node
 Planning doc: 2026-06-22-node-sentinel-tcw-config-yaml-and-sentinel-based-node-detection
 Feature: connected-project-registry

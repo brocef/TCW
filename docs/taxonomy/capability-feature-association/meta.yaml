@@ -1,9 +1,8 @@
 name: Capability feature association
 kind: Feature
 relatesTo:
-- capability
-- feature
+    - capability
+    - feature
 vocabulary:
-- capability
-- feature
-
+    - capability
+    - feature

@@ -3,4 +3,4 @@ name: Reset an override
 Status: Supported
 Planning doc: 2026-07-16-drop-or-reset-a-local-capability-override-to-re-inherit-upstream
 Subject:
-- capability
+    - capability

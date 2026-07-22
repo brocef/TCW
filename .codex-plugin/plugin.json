@@ -1,21 +1,28 @@
 {
-  "name": "tcw",
-  "version": "0.14.0",
-  "description": "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project.",
-  "author": {
-    "name": "Brian Cefali"
-  },
-  "homepage": "https://github.com/brocef/TCW",
-  "repository": "https://github.com/brocef/TCW",
-  "keywords": ["taxonomy", "capabilities", "work", "tcw", "sdlc", "agent-sdlc"],
-  "skills": "./skills/",
-  "interface": {
-    "displayName": "tcw",
-    "shortDescription": "Skills that drive the tcw CLI: taxonomy, capabilities, and work tracking.",
-    "longDescription": "tcw (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes. This plugin ships five skills — the three axis drivers tcw-taxonomy, tcw-capabilities, and tcw-work; tcw-plugin for installing and repairing the CLI; and tcw-report for filing bugs and suggestions upstream — driving the tcw CLI from inside an AI coding agent.",
-    "developerName": "Brian Cefali",
-    "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
-    "defaultPrompt": "Help me use tcw to plan and track work."
-  }
+    "name": "tcw",
+    "version": "0.14.0",
+    "description": "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project.",
+    "author": {
+        "name": "Brian Cefali"
+    },
+    "homepage": "https://github.com/brocef/TCW",
+    "repository": "https://github.com/brocef/TCW",
+    "keywords": [
+        "taxonomy",
+        "capabilities",
+        "work",
+        "tcw",
+        "sdlc",
+        "agent-sdlc"
+    ],
+    "skills": "./skills/",
+    "interface": {
+        "displayName": "tcw",
+        "shortDescription": "Skills that drive the tcw CLI: taxonomy, capabilities, and work tracking.",
+        "longDescription": "tcw (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes. This plugin ships five skills — the three axis drivers tcw-taxonomy, tcw-capabilities, and tcw-work; tcw-plugin for installing and repairing the CLI; and tcw-report for filing bugs and suggestions upstream — driving the tcw CLI from inside an AI coding agent.",
+        "developerName": "Brian Cefali",
+        "category": "Developer Tools",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": "Help me use tcw to plan and track work."
+    }
 }

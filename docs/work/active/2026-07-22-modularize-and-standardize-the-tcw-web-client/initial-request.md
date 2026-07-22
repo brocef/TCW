@@ -32,4 +32,3 @@ capabilities. No taxonomy, server API, storage interface, URL, or persisted data
 format changes are expected. Stop after implementation and automated
 verification so the user can visually verify the result before capability
 reconciliation, work completion, or release.
-

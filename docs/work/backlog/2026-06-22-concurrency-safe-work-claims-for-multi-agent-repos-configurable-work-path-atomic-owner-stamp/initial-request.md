@@ -7,9 +7,9 @@
 `tcw work` gives no guarantee that two agents in the same repo don't both work
 the same item. `start()` is a check-then-move (`tcw/store/base.py` `transition`:
 `_require(slug)` reads the status, then `_effect_transition` moves the folder) —
-a TOCTOU window. The folder rename and git's `index.lock` give *accidental*
+a TOCTOU window. The folder rename and git's `index.lock` give _accidental_
 mutual exclusion today, but the loser of a race gets an ugly git stack trace,
-nothing records *who* holds an active item or *when* they claimed it, and nothing
+nothing records _who_ holds an active item or _when_ they claimed it, and nothing
 coordinates selection (two agents both pick the top of `board`).
 
 ## Decided design (one machine, shared filesystem; work axis only; git-backed)
@@ -41,7 +41,7 @@ the loser, and stamp the winner.
   wrap in retry-on-`index.lock`, translate "source gone" → a typed
   `AlreadyActive(owner, since)` exception the CLI renders gracefully.
 - **`owner` / `started` fields** on `WorkItem`; `start(owner=…)` stamps the winner
-  *after* the move (only the rename winner reaches the stamp, so no contention).
+  _after_ the move (only the rename winner reaches the stamp, so no contention).
 - **Worktree decoupling (external mode only)**: today `start --worktree` commits
   the work-state move and creates the code worktree in the same `node_root`. In
   external mode these split — work-state commit → external work repo, code worktree
@@ -56,7 +56,7 @@ the loser, and stamp the winner.
   owner/started = assignee/transition-time (✓); atomic-rename claim is an FS-adapter
   realization of the abstract "atomic transition" (✓). Accepted trade: in external
   mode the status flip is no longer in the same commit as the code (AGENTS.md calls
-  co-location a *bonus, not load-bearing*) — completion becomes a separate write to
+  co-location a _bonus, not load-bearing_) — completion becomes a separate write to
   the external store.
 - **Explicitly out of scope**: leases/TTL + stale-claim reaping (add only if many
   ephemeral agents churn), lockfiles (the rename is the lock), a `claim-next`

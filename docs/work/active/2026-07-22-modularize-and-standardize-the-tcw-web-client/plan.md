@@ -1,17 +1,17 @@
 ---
 stages:
-  - id: formatting-foundation
-    title: Formatting foundation
-    depends_on: []
-  - id: modular-client-architecture
-    title: Modular client architecture
-    depends_on: [formatting-foundation]
-  - id: tree-editor-experience
-    title: Tree and editor experience
-    depends_on: [modular-client-architecture]
-  - id: assets-docs-verification
-    title: Generated assets, documentation, and verification
-    depends_on: [tree-editor-experience]
+    - id: formatting-foundation
+      title: Formatting foundation
+      depends_on: []
+    - id: modular-client-architecture
+      title: Modular client architecture
+      depends_on: [formatting-foundation]
+    - id: tree-editor-experience
+      title: Tree and editor experience
+      depends_on: [modular-client-architecture]
+    - id: assets-docs-verification
+      title: Generated assets, documentation, and verification
+      depends_on: [tree-editor-experience]
 ---
 
 # Implementation plan — modular TCW web client
