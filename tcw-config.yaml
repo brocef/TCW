@@ -1,6 +1,7 @@
 id: tcw
 work:
-    tags:
-        - cli
-        - docs
-        - web
+  tags:
+  - cli
+  - docs
+  - skills
+  - web
