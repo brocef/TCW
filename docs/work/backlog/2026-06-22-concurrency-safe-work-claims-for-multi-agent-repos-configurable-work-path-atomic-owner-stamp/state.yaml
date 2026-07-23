@@ -1,8 +1,9 @@
 slug: 2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos-configurable-work-path-atomic-owner-stamp
-title:
-    Concurrency-safe work claims for multi-agent repos (configurable work-path
-    + atomic owner stamp)
-phase: ""
-created: "2026-06-22"
+title: Concurrency-safe work claims for multi-agent repos (configurable work-path
+  + atomic owner stamp)
+phase: ''
+created: '2026-06-22'
 resolution: null
 priority: null
+tags:
+- cli

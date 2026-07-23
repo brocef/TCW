@@ -11,8 +11,15 @@ first, so it does not fire on validation errors.
 Some store operations write two files sequentially, each atomically, but with no
 transaction spanning both:
 
-- `FsWorkStore.create_work` — `state.yaml` then `initial-request.md`.
-- `FsTaxonomyStore.update_term` — `meta.yaml` then `description.md`.
+- `FsWorkStore.create_work` — `state.yaml` then `initial-request.md`
+  (`tcw/store/fs.py`, still `mkdir` → `_atomic_write` → `_atomic_write` with no
+  rollback on the second failure).
+- **`FsTreeStore._write_node`** — `meta.yaml` then `description.md`. The
+  original request named `FsTaxonomyStore.update_term`; that write now routes
+  through this shared helper, which **both the taxonomy and capabilities stores
+  use**. Fixing it there covers `update_term`, `update_capability`, and every
+  other folder-node create/update in one place — do not patch `update_term`
+  directly.
 
 If the process fails between the two writes (disk full, permission, crash), the
 object is left half-written (e.g. `state.yaml` present, body missing).

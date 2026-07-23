@@ -1,7 +1,9 @@
 slug: 2026-07-03-transactional-multi-file-writes-in-the-fs-store
 title: Transactional multi-file writes in the Fs store
-phase: ""
-created: "2026-07-03"
+phase: ''
+created: '2026-07-03'
 resolution: null
 effort: low
 complexity: medium
+tags:
+- tech-debt

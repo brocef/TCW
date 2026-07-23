@@ -554,6 +554,9 @@ test("runs Work start and complete lifecycle controls", async ({
             .locator(".modal-box")
             .getByRole("heading", { name: "Complete Work Item" })
     ).toBeVisible()
+    await expect(
+        page.locator(".modal-box .reconciliation-reminder")
+    ).toContainText("Reconcile the capabilities ledger before completing.")
     await expect(page).toHaveScreenshot("lifecycle-dialog.png", {
         animations: "disabled",
     })

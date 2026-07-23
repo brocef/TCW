@@ -1,6 +1,8 @@
 slug: 2026-07-02-add-a-vendored-rich-markdown-editor-to-the-local-web-app
 title: Add a vendored rich Markdown editor to the local web app
-phase: ""
-created: "2026-07-02"
+phase: ''
+created: '2026-07-02'
 resolution: null
 priority: null
+tags:
+- web

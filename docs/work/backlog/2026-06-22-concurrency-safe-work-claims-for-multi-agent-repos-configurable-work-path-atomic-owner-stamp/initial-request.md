@@ -22,9 +22,14 @@ the loser, and stamp the winner.
 
 ## Product changes
 
-- **`work-path` config at repo root** (e.g. `tcw.yaml`) selects where the work
-  store lives. Default / relative → resolved against repo root (`docs/work`,
-  in-repo, unchanged behavior). Absolute → external shared dir for multi-agent use.
+- **`work-path` config in the node sentinel `tcw-config.yaml`** selects where the
+  work store lives. (The original request proposed a new `tcw.yaml`; the
+  `tcw-config.yaml` sentinel shipped in
+  `2026-06-22-node-sentinel-tcw-config-yaml-and-sentinel-based-node-detection`
+  and is now the node's config file — do not add a second one. It already carries
+  the `work.tags` registry, so a `work.path` key fits the existing shape.)
+  Default / relative → resolved against the node root (`docs/work`, in-repo,
+  unchanged behavior). Absolute → external shared dir for multi-agent use.
   Both modes run the **same `FsWorkStore` code** — only the resolved root differs.
 - **`owner` + `started` shown on the board/view**: `active (alice, 2h ago)`.
 - **Graceful contention message**: `start X` on an already-active item →
@@ -33,7 +38,8 @@ the loser, and stamp the winner.
 
 ## Technical changes
 
-- **Config resolution**: read `work-path`, compute the store root; `FsWorkStore`
+- **Config resolution**: read `work.path` from `tcw-config.yaml`, compute the
+  store root; `FsWorkStore`
   already takes `root` as a parameter, so this is the only new branching. No
   symlinks, no baked paths (honors AGENTS.md "no hard-coded paths in references" —
   it's a config value resolved through the store).
@@ -69,7 +75,7 @@ the loser, and stamp the winner.
 
 ## Open for the spec
 
-- Config file name/shape (`tcw.yaml`? a `[work]` table?) and precedence.
+- Exact key shape under `tcw-config.yaml` (`work.path`?) and precedence.
 - Exact `index.lock` retry policy (count/backoff).
 - Whether `owner` defaults from an env var (e.g. agent id) or must be passed.
 - Capabilities-axis reconciliation (tcw-capabilities planning gate) — there is a

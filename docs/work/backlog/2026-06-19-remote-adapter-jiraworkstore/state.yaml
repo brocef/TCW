@@ -1,5 +1,7 @@
 slug: 2026-06-19-remote-adapter-jiraworkstore
-title: "Remote adapter: JiraWorkStore"
-phase: ""
-created: "2026-06-19"
+title: 'Remote adapter: JiraWorkStore'
+phase: ''
+created: '2026-06-19'
 resolution: null
+tags:
+- remote

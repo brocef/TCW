@@ -1,0 +1,13 @@
+slug: 2026-06-19-additional-capability-sidecars
+title: Additional capability sidecars
+phase: ''
+created: '2026-06-19'
+resolution: wontfix
+blocked_by:
+- external: a real project that needs events.md or metrics.md sidecars
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
