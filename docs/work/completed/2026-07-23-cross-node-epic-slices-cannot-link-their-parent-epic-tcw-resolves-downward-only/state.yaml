@@ -3,7 +3,7 @@ title: Cross-node epic slices cannot link their parent epic (tcw:// resolves dow
   only)
 phase: ''
 created: '2026-07-23'
-resolution: null
+resolution: done
 effort: medium
 complexity: medium
 tags:
@@ -11,3 +11,9 @@ tags:
 - docs
 - skills
 - bug
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
