@@ -1,0 +1,7 @@
+slug: 2026-07-23-emit-new-location-when-cli-commands-move-a-tcw-object
+title: Emit new location when CLI commands move a TCW object
+phase: ''
+created: '2026-07-23'
+resolution: null
+tags:
+- cli
