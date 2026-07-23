@@ -1,104 +1,111 @@
 # Plan — Emit new location when CLI commands move a TCW object
 
-Small, single-context change: one CLI helper, three call sites, test updates,
-docs. No staged plan. Approach **A** from the spec (reuse `st.path()`; no
-interface change). Verification command: `pytest tests/test_work.py -q`.
+Approach **B** (spec): add an abstract `WorkStore.locate(slug) -> str | None`,
+realize it in `FsWorkStore`, and have the CLI depend only on the abstract method.
+Four call sites (`start`, `complete`, `inbox accept`, `new`) plus test updates and
+docs. Single context; no staged plan. Verification: `pytest tests/test_work.py -q`
+(and `pytest -q` before closeout).
 
-## Phase 1 — CLI helper + wire into the three handlers
+## Phase 1 — Store interface + FS adapter
 
-File: `tcw/work/cli.py`.
-
-1. Add a module-level helper near the other `_`-helpers:
+1. `tcw/store/base.py`, class `WorkStore` — add the abstract method next to
+   `artifact_locator` (`:633`):
 
    ```python
-   def _rel_location(st, slug: str) -> str | None:
-       """Repo-relative home of `slug` for transition messages, or None.
-       Resolves through the store's locator; never raises. Falls back to the
-       absolute path if the item lives outside node_root.
-       # ponytail: FS-only via st.path(). Promote WorkStore.locate() -> str|None
-       # (mirroring artifact_locator) when a non-FS adapter needs this.
-       """
-       p = st.path(slug)
+   @abstractmethod
+   def locate(self, slug: str) -> str | None:
+       """A short, human-readable location for the item's current home, or None
+       if the item does not exist. Adapters realize it however fits their backing
+       store (a filesystem: the repo-relative folder path; a remote tracker: an
+       issue URL or status label). Presentation only — do not parse it."""
+   ```
+
+2. `tcw/store/fs.py`, class `FsWorkStore` — implement it near `path` (`:1583`):
+
+   ```python
+   def locate(self, slug: str) -> str | None:
+       p = self.path(slug)
        if p is None:
            return None
        try:
-           return str(p.relative_to(st.node_root))
+           return str(p.relative_to(self.node_root))
        except ValueError:
-           return str(p)
+           return str(p)          # item outside node_root: absolute, don't crash
    ```
 
-2. `_start` (`:444`): after a successful non-worktree start, build the location
-   and augment stdout. Keep `_complete_hint` on stderr unchanged.
-   - non-worktree (`:455`): `started {args.slug}` → append ` → {loc}` when `loc`.
-   - worktree (`:468`): keep the worktree note, add the location:
-     `started {args.slug} → {loc} (worktree {wt})` (append the `→ {loc}` before
-     the worktree segment; if `loc` is None, keep today's line).
-   - Resolve `loc = _rel_location(st, bare)` (use the resolved `st`/`bare`, not
-     `args.slug`, for lookup; keep `args.slug` in the verb text so qualified
-     slugs still read correctly — matches the `:1497` test).
+   No other `WorkStore` subclass exists, so no further adapters need changing.
 
-3. `_complete` (`:561`): after `st.complete(...)` succeeds (`:609`), before/at the
-   `completed …` print (`:613`):
-   `completed {args.slug} ({args.resolution})` → append ` → {loc}` when `loc`.
-   Resolve `loc` **before** worktree teardown is irrelevant (folder already
-   moved by `complete`); `st.path(bare)` now returns the `completed/` dir.
+## Phase 2 — CLI wiring
 
-4. `_inbox_accept` (`:259`): keep `print(item.slug)` on stdout (scriptable).
-   After it, add a stderr hint mirroring `_new`'s `→ edit:` line:
-   `print(f"→ now at {loc}", file=sys.stderr)` when `loc` is not None, with
-   `loc = _rel_location(st, item.slug)`.
+File: `tcw/work/cli.py`. Each site resolves `loc = st.locate(bare)` (or
+`item.slug` where that's what's in hand) and appends only when `loc` is truthy.
+The CLI must **not** import/compute `node_root`/`relative_to` for this — it's all
+in the adapter now.
 
-Wording invariant: slug + repo-relative destination via `_rel_location`. Arrows
-as above; adjust only if a test or readability demands.
+1. `_start` (`:444`):
+   - non-worktree (`:455`): `started {args.slug}` → `started {args.slug} → {loc}`.
+   - worktree (`:468`): `started {args.slug} → {loc} (worktree {wt})`; if `loc`
+     is None keep today's `started {args.slug} → worktree {wt}`.
+   - Keep `_complete_hint` on stderr unchanged. Use resolved `bare` for
+     `locate`, `args.slug` in the verb (qualified slugs read correctly — matches
+     `:1497`).
+2. `_complete` (`:613`): `completed {args.slug} ({args.resolution})` →
+   append ` → {loc}` (folder already moved to `completed/` by `st.complete`).
+3. `_inbox_accept` (`:268`): keep `print(item.slug)` on stdout; add
+   `print(f"→ now at {loc}", file=sys.stderr)` when `loc`, with
+   `loc = st.locate(item.slug)`.
+4. `_new` (`:219`): keep `print(item.slug)` on stdout; add
+   `print(f"→ created at {loc}", file=sys.stderr)` when `loc`, alongside the
+   existing `→ edit:` / `→ next:` hints. `locate` reports the real folder,
+   including `--parent`-nested placement.
+
+Wording invariant: slug + repo-relative location via `st.locate()`.
 
 **Cross-node (qualified slug) note:** for `tcw work start project-a/slug`, `st`
-is the resolved sub-node store, so `_rel_location` returns a path relative to
-*that node's* root (`docs/work/active/slug`), not `project-a/docs/work/...`. The
-qualified slug in the verb already names the node, so the node-relative location
-is unambiguous and the message reads `started project-a/slug → docs/work/active/slug`.
-# ponytail: node-relative is fine; add CWD-relative only if the cross-node case
-# proves confusing in practice.
+is the resolved sub-node store, so `locate` returns a path relative to *that
+node's* root (`docs/work/active/slug`), not `project-a/docs/work/...`. The
+qualified slug in the verb already names the node, so the message reads
+`started project-a/slug → docs/work/active/slug` — unambiguous. If the cross-node
+case proves confusing in practice, add CWD-relative rendering later.
 
-## Phase 2 — Tests
+## Phase 3 — Tests
 
-File: `tests/test_work.py`.
+1. `tests/test_fs_*` / `tests/test_work.py` — add a unit test for
+   `FsWorkStore.locate`: repo-relative path for a backlog/active/completed item;
+   `None` for a missing slug; and (monkeypatching `path` to return a `/tmp/...`
+   path outside `node_root`) the absolute-string fallback with no raise. This is
+   the one non-trivial branch.
+2. `test_work.py:880` (`test_cli_new_and_start_emit_next_step_hints`): replace the
+   exact `== f"started {slug}"` with: stdout starts with `started {slug}` and
+   contains `docs/work/active/{slug}`. Also assert `new`'s stderr now contains
+   `docs/work/backlog/{slug}` (the `→ created at` line) — extends the existing
+   `:876` stderr assertion.
+3. Add/extend a test asserting `complete` stdout contains
+   `docs/work/completed/{slug}`, and `inbox accept` stdout is the bare slug while
+   **stderr** contains `docs/work/backlog/{slug}`.
+4. `:1497` uses `in` and survives augmentation — leave as-is.
 
-1. `:880` (`test_cli_new_and_start_emit_next_step_hints`): replace the exact
-   `== f"started {slug}"` with an assertion that stdout starts with
-   `started {slug}` and contains `docs/work/active/{slug}` (the new location).
-2. Add a focused test (or extend an existing complete/inbox test) asserting:
-   - `complete` stdout contains `docs/work/completed/{slug}`.
-   - `inbox accept` stdout is the bare slug and **stderr** contains
-     `docs/work/backlog/{slug}`.
-3. `:1497` uses `in` and already survives — leave unless the surrounding block
-   also needs the location asserted (optional).
-4. Add a direct unit test of `_rel_location` for the guards: returns None when
-   `path()` is None, and returns the absolute string (no raise) when the path is
-   outside `node_root`. This is the one non-trivial branch — cover it here rather
-   than trying to provoke it through the CLI.
+## Phase 4 — Documentation sync
 
-## Phase 3 — Documentation sync
+Run the `documentation-sync` skill; expected:
 
-Run the `documentation-sync` skill; expected to fire:
-
-- `docs/changelogs/upcoming.md` [Any-Code-Change] — add a Changed entry
-  (transition commands now report the item's new location) with the HEAD hash
-  range. **Will fire.**
-- `docs/release-notes/upcoming.md` [Public-API] — plain-language note that
-  `start`/`complete`/`inbox accept` now tell you where the item moved. **Will
-  fire.**
-- `README.md` [Public-API] — grep for quoted transition output; update only if it
-  shows the old `started <slug>` form. Likely no change.
+- `docs/changelogs/upcoming.md` [Any-Code-Change] — **fires.** Added: abstract
+  `WorkStore.locate`; Changed: `start`/`complete`/`inbox accept`/`new` now report
+  the item's repo-relative location. Include the HEAD hash range.
+- `docs/release-notes/upcoming.md` [Public-API] — **fires.** Plain-language note
+  that these commands now tell you where the item is.
 - `skills/tcw-work/SKILL.md` [Skill-Driven-Component] — grep for quoted
-  transition output; update only if it drifts. Likely no change.
+  transition output; update only if it drifts (likely no change).
+- `README.md` [Public-API] — grep for quoted transition output; update only if it
+  shows the old form (likely no change).
 
 ## Parallelization / dependencies
 
-Phase 1 → Phase 2 (tests assert Phase 1's output). Phase 3 independent of 1–2
-content but done last so hashes are final. No cross-item dependencies.
+Phase 1 → Phase 2 (CLI calls the new method) → Phase 3 (tests assert the output).
+Phase 4 last so hashes are final. No cross-item dependencies.
 
 ## Closeout reminders
 
-- No capability reconciliation needed (no `capabilities.yaml` delta).
+- No capability reconciliation (no `capabilities.yaml` delta).
 - Version bump is a user closeout decision; the user-visible output change is a
   minor-bump candidate.
