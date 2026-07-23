@@ -92,22 +92,41 @@ None material. Plan step 1.3 asked which way `<own-id>/<slug>` went: the registr
 caches the anchor's own config first, so `registry.get` returns it and a
 self-qualified ref resolves to the local store.
 
-## Follow-up notes
+## Follow-up: the SPA dead-end (now fixed in-scope)
 
-**Recommend filing as a backlog item** (the plan's phase 5): `resolve_tcw_ref`
-returns a **bare** SPA key for the `tcw://W/<proj>/<slug>` spelling
-(`tcw/refs.py:117` — `parsed.namespace` is empty for that form) and never reaches
-the `include_descendants` hosting gate at `tcw/refs.py:109`, which only guards the
-`tcw://<ns>/W/<slug>` spelling. So a cross-node work link resolves `ok` but
-dead-ends in the web viewer, which looks the slug up locally.
+The plan's phase 5 flagged a pre-existing defect: `resolve_tcw_ref` returned a
+**bare** SPA key for the `tcw://W/<proj>/<slug>` spelling and bypassed the hosting
+gate, so a cross-node link resolved `ok` and then dead-ended in the web viewer.
+At the user's direction (2026-07-23) this was fixed here rather than deferred.
 
-Verified **pre-existing**: it reproduces for a *descendant* link on the code
-before this change, so this item did not introduce it. `tcw validate` only
-inspects `.ok`, which is why it stayed hidden. A real fix means deciding whether
-`resolve_tcw_ref`'s `ok` means "resolves in the graph" (validate's question) or
-"the viewer can open it" (serve's question) — they are different questions
-currently sharing one flag, and separating them is a design change, not a bug fix.
+The fix separates the two questions that were sharing `ResolveResult.ok`:
 
-Also worth noting for whoever picks that up: `parse_tcw_uri`'s first-bare-axis-wins
-rule is what makes the two spellings behave differently. Documenting one canonical
-spelling would prevent the next instance of this confusion.
+- **Does the ref resolve in the registered graph?** — validate's question, and all
+  `ok` now answers. `resolve_tcw_ref` returns the same qualified key for both
+  spellings and reports the owning project in a new `ResolveResult.project` field
+  (empty when local). It lost its `include_descendants` parameter — resolution is
+  no longer viewer-aware.
+- **Can *this* viewer open it?** — serve's question, so the gate moved to
+  `tcw serve`'s `/api/resolve`, which consults a new `_hosted_projects()` (the
+  descendants it aggregates) and returns `ok:false` for an unhostable
+  ancestor/foreign ref. The SPA already renders a non-`ok` link inert, so an
+  upward link now shows as plain text instead of a dead link. No client change
+  was needed — the `/api/resolve` JSON shape (`{ok, axis?, key?}`) is unchanged;
+  `project` is server-internal.
+
+Verified end-to-end against the throwaway graph: both spellings resolve upward
+and report `project`; the child's aggregating server reports the upward link
+`ok:false`; the parent's server still hosts the downward link. New tests:
+`test_resolve_foreign_work_resolves_and_reports_project`,
+`test_resolve_local_work_reports_no_project` (test_refs), and
+`test_resolve_ancestor_work_is_unhosted` (test_serve_resolve).
+`test_resolve_descendant_work_gated` was rewritten to the new contract
+(resolution succeeds; the *server* gates).
+
+Web client TS tests were **not run** — this checkout has no web build tooling
+(`package.json`/`node_modules` absent). The client contract is unchanged, so no
+client test is affected, but this was not executed here.
+
+Remaining note for a future cleanup (not a bug): `parse_tcw_uri`'s
+first-bare-axis-wins rule is why the two spellings parse differently in the first
+place. Documenting one canonical spelling would prevent the confusion recurring.

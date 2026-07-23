@@ -167,30 +167,41 @@ def test_resolve_federated_capability(tmp_path):
     assert r.ok and r.key == "base/auth/login"
 
 
-# ── resolve: descendant work (gated on include_descendants) ───────────────────
+# ── resolve: foreign work (resolves in the graph; hosting is the viewer's call) ─
 
-def test_resolve_descendant_work_needs_include(tmp_path):
+def test_resolve_foreign_work_resolves_and_reports_project(tmp_path):
+    """Both spellings of a foreign work ref resolve and carry the owning project.
+
+    `parse_tcw_uri` reads `tcw://<id>/W/<slug>` with a parsed namespace and
+    `tcw://W/<id>/<slug>` as a bare ref whose qualifier is a project id; both must
+    land on the same qualified key and expose `project`, so the SPA can gate on
+    whether it hosts that project.
+    """
     root = node(tmp_path)
     sub = subnode(root, "sub/proj")
     item = FsWorkStore.open(sub).create("Child task", created="2026-01-01")
-    uri = f"tcw://proj/W/{item.slug}"
-    assert resolve_tcw_ref(root, uri, include_descendants=False).ok is False
-    r = resolve_tcw_ref(root, uri, include_descendants=True)
-    assert r.ok and r.key == f"proj/{item.slug}"
+    for uri in (f"tcw://proj/W/{item.slug}", f"tcw://W/proj/{item.slug}"):
+        r = resolve_tcw_ref(root, uri)
+        assert r.ok and r.axis == "W" and r.key == f"proj/{item.slug}"
+        assert r.project == "proj"
+
+
+def test_resolve_local_work_reports_no_project(tmp_path):
+    root = node(tmp_path)
+    item = FsWorkStore.open(root).create("Local", created="2026-01-01")
+    r = resolve_tcw_ref(root, f"tcw://W/{item.slug}")
+    assert r.ok and r.key == item.slug and r.project == ""
 
 
 def test_resolve_parent_work_from_child(tmp_path):
-    """The cross-node epic back-link: a child slice points at the parent's epic.
-
-    Uses the `tcw://W/<project-id>/<slug>` spelling from GitHub issue #7, which
-    `parse_tcw_uri` reads as a bare-namespace ref whose qualifier is resolved by
-    `resolve_qualified_work_ref` — so no `include_descendants` gate applies.
+    """The cross-node epic back-link: a child slice points at the parent's epic
+    (GitHub issue #7). Resolves upward, and marks the parent as the owning project.
     """
     root = node(tmp_path)
     sub = subnode(root, "proj")
     epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
     r = resolve_tcw_ref(sub, f"tcw://W/repo/{epic.slug}")
-    assert r.ok and r.axis == "W"
+    assert r.ok and r.axis == "W" and r.project == "repo"
 
 
 def test_resolve_unregistered_project_names_the_cause(tmp_path):

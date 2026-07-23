@@ -28,6 +28,17 @@ category, with commit hash ranges so entries trace back to source.
   docstring's stale path-containment prose was rewritten — the function already
   keyed on canonical IDs, and traversal/`.git`/unregistered-path qualifiers fail
   because they are not registry IDs, not because of a path check.
+- `resolve_tcw_ref` (`tcw/refs.py`) no longer conflates "resolves in the graph"
+  with "the viewer can open it". Both spellings of a foreign work ref
+  (`tcw://<id>/W/<slug>` and `tcw://W/<id>/<slug>`) now return the same qualified
+  key plus the owning `project`; `ok` reflects graph resolution only. Previously
+  the `tcw://W/<id>/<slug>` spelling returned a **bare** local key and bypassed the
+  hosting gate entirely, so a cross-node link resolved `ok` and then dead-ended in
+  the SPA on a key the viewer looked up locally. The hosting decision moved to its
+  owner: `tcw serve`'s `/api/resolve` gates on `_hosted_projects()` (the
+  descendants it aggregates), reporting an unhostable ancestor/foreign ref as
+  `ok:false` so the SPA renders it inert instead of dead-ending. `resolve_tcw_ref`
+  lost its `include_descendants` parameter.
 
 ## Changed
 

@@ -119,6 +119,25 @@ def test_resolve_descendant_work_gated(tmp_path):
         httpd.shutdown()
 
 
+def test_resolve_ancestor_work_is_unhosted(tmp_path):
+    """A child's viewer resolves an upward link in the graph but cannot open it —
+    it aggregates descendants, never ancestors — so /api/resolve reports ok:false
+    rather than handing the SPA a key that dead-ends. Both spellings, since that
+    is precisely the pair that used to diverge."""
+    root = _node(tmp_path, "root")
+    child = _node(tmp_path, "child")
+    _connect(root, child)
+    epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
+    httpd, base = _start(child, include_descendants=True)
+    try:
+        _, body = _resolve(base, [
+            f"tcw://W/root/{epic.slug}", f"tcw://root/W/{epic.slug}"])
+        assert body[f"tcw://W/root/{epic.slug}"] == {"ok": False}
+        assert body[f"tcw://root/W/{epic.slug}"] == {"ok": False}
+    finally:
+        httpd.shutdown()
+
+
 def test_resolve_foreign_and_malformed(tmp_path):
     root = _node(tmp_path)
     httpd, base = _start(root)

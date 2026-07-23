@@ -378,6 +378,20 @@ class TcwHandler(BaseHTTPRequestHandler):
             return resolve_qualified_work_ref(self.server.node_root, slug)
         return FsWorkStore.open(self.server.node_root), slug
 
+    def _hosted_projects(self) -> set[str]:
+        """Project IDs whose items this server actually serves — the descendants it
+        aggregates, or nothing when not aggregating.
+
+        A work ref can resolve anywhere in the registered graph, but the SPA can
+        only open what this board lists. An ancestor's item is a valid reference
+        and an unopenable link, so `/api/resolve` reports it as unresolved rather
+        than handing the client a key that dead-ends.
+        """
+        if not self.server.include_descendants:
+            return set()
+        anchor = self.server.node_root.resolve()
+        return {registered_project_id(anchor, root) for root in descendant_nodes(anchor)}
+
     def _board(self) -> list:
         """The board; with --include-descendants, the anchor plus every descendant
         node's board, each descendant item's slug qualified (`sub/proj/<slug>`)."""
@@ -894,10 +908,10 @@ class TcwHandler(BaseHTTPRequestHandler):
             for uri in uris[:RESOLVE_MAX_URIS]:
                 if not isinstance(uri, str):
                     continue
-                r = resolve_tcw_ref(self.server.node_root, uri,
-                                    include_descendants=self.server.include_descendants)
+                r = resolve_tcw_ref(self.server.node_root, uri)
+                ok = r.ok and (not r.project or r.project in self._hosted_projects())
                 result[uri] = ({"ok": True, "axis": _AXIS_WORD.get(r.axis), "key": r.key}
-                               if r.ok else {"ok": False})
+                               if ok else {"ok": False})
             self._send_json(HTTPStatus.OK, result)
             return
 

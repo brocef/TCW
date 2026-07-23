@@ -43,6 +43,7 @@ class ResolveResult:
     axis: str | None
     key: str | None
     reason: str
+    project: str = ""      # owning project id for a foreign work ref; "" = local
 
 
 def _segment_ok(seg: str) -> bool:
@@ -78,16 +79,25 @@ def parse_tcw_uri(uri: str) -> TcwRef | None:
     return TcwRef("/".join(segs[:axis_idx]), segs[axis_idx].upper(), ref)
 
 
-def resolve_tcw_ref(
-    node_root: Path | None, uri: str, include_descendants: bool = False,
-) -> ResolveResult:
+def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
     """Resolve a ``tcw://`` uri against the node at ``node_root``, returning the
     SPA object key (namespace-qualified where present). Never propagates a store
     exception — a store failure becomes ``ok=False`` with a reason.
 
-    A descendant-node (namespaced) **work** ref resolves only when
-    ``include_descendants`` is set; otherwise the viewer isn't hosting it and the
-    SPA would dead-end, so it reports ``ok=False``.
+    ``ok`` answers one question only: **does this reference resolve in the
+    registered graph?** That is what `tcw validate` asks. Whether a *viewer* can
+    open it is a different question with a different answer per server, so it is
+    not decided here — a foreign work ref reports its owning project in
+    ``project`` and the viewer gates on that (see `tcw serve`'s ``/api/resolve``).
+    Conflating the two is what made a valid cross-node link report ``ok`` and then
+    dead-end in the SPA: the two spellings of a namespaced work ref took different
+    paths, and the one people actually write never reached the gate at all.
+
+    Both spellings now produce the same qualified key. ``parse_tcw_uri`` treats the
+    first T/C/W segment as the axis, so ``tcw://<id>/W/<slug>`` arrives with a
+    parsed namespace while ``tcw://W/<id>/<slug>`` arrives as a bare ref whose
+    qualifier is resolved by ``resolve_qualified_work_ref``; keying off where the
+    ref actually landed, rather than off the spelling, covers both.
     """
     parsed = parse_tcw_uri(uri)
     if parsed is None:
@@ -107,16 +117,16 @@ def resolve_tcw_ref(
                 return ResolveResult(False, "C", None, f"no capability: {ns_ref}")
             return ResolveResult(True, "C", cap.qualified, "")
         # axis == "W"
-        if parsed.namespace and not include_descendants:
-            return ResolveResult(
-                False, "W", None,
-                "descendant work ref not hosted (viewer not aggregating descendants)")
         resolved = resolve_qualified_work_ref(node_root, ns_ref)
         if resolved is None:
             return ResolveResult(
                 False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
-        _store, bare = resolved
-        key = f"{parsed.namespace}/{bare}" if parsed.namespace else bare
-        return ResolveResult(True, "W", key, "")
+        store, bare = resolved
+        if store.node_root == node_root.resolve():        # landed locally
+            return ResolveResult(True, "W", bare, "")
+        # Foreign: the qualifier is a project id (a status-path locator is always
+        # local), and the SPA keys foreign items the way the board prints them.
+        project = ns_ref.partition("/")[0]
+        return ResolveResult(True, "W", f"{project}/{bare}", "", project)
     except Exception as e:  # store errors (AmbiguousRef, MultipleMatch, IO) -> ok=False
         return ResolveResult(False, parsed.axis, None, str(e))

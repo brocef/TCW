@@ -47,7 +47,8 @@ Two things to know:
   intentional, and it already worked that way in the downward direction.
 - The local web app still shows your project and the ones beneath it. A link
   pointing upward is valid and passes `tcw validate`, but you can't open it from
-  the sub-project's web view.
+  the sub-project's web view — it now shows as a plain, non-clickable reference
+  there rather than a link that goes nowhere.
 
 If you get a project name wrong, the error now says so plainly —
 `no such project in this graph: <name>` — instead of the old, misleading
