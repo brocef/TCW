@@ -430,7 +430,9 @@ def test_add_and_remove_blocker_roundtrip(tmp_path):
     assert st.get(a.slug).blocked_by == [{"slug": b.slug}]
     st.remove_blocker(a.slug, b.slug)
     assert st.get(a.slug).blocked_by == []
-    st.remove_blocker(a.slug, b.slug)                   # absent → no-op
+    with pytest.raises(ValueError) as e:                # absent → fails closed
+        st.remove_blocker(a.slug, b.slug)
+    assert a.slug in str(e.value) and b.slug in str(e.value)
 
 
 def test_external_blocker_stored(tmp_path):
@@ -440,6 +442,85 @@ def test_external_blocker_stored(tmp_path):
     assert st.get(a.slug).blocked_by == [{"external": "waiting on vendor"}]
     st.remove_blocker(a.slug, "waiting on vendor")
     assert st.get(a.slug).blocked_by == []
+
+
+def test_external_prefix_roundtrips_with_display_form(tmp_path):
+    """The `external: <text>` string the board prints is accepted back as a ref."""
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    st.add_blocker(a.slug, "external: JIRA-123")
+    assert st.get(a.slug).blocked_by == [{"external": "JIRA-123"}]
+    st.add_blocker(a.slug, "JIRA-123")                  # same entry → idempotent
+    assert st.get(a.slug).blocked_by == [{"external": "JIRA-123"}]
+    assert st.unresolved_blockers(st.get(a.slug)) == ["external: JIRA-123"]
+    st.remove_blocker(a.slug, "external: JIRA-123")     # exactly what show printed
+    assert st.get(a.slug).blocked_by == []
+
+
+def test_external_blocker_survives_a_comma(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    a = st.create("A", created="2026-01-01")
+    text = "waiting on vendor A, then legal signoff"
+    st.add_blocker(a.slug, text)
+    assert st.get(a.slug).blocked_by == [{"external": text}]   # one entry, not two
+    st.remove_blocker(a.slug, f"external: {text}")
+    assert st.get(a.slug).blocked_by == []
+
+
+# ── blocker CLI flags (repeatable; fail-closed removal) ──────────────────────
+
+def test_blocker_flags_are_repeatable(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")
+    assert main(["work", "edit", a.slug,
+                 "--blocked-by", "vendor A, then legal",
+                 "--blocked-by", "vendor B"]) == 0
+    assert st.get(a.slug).blocked_by == [
+        {"external": "vendor A, then legal"}, {"external": "vendor B"}]
+    assert main(["work", "edit", a.slug,
+                 "--unblocked-by", "external: vendor A, then legal",
+                 "--unblocked-by", "vendor B"]) == 0
+    assert st.get(a.slug).blocked_by == []
+
+
+def test_unblocked_by_unmatched_ref_fails_closed(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")
+    st.add_blocker(a.slug, "vendor A")
+    assert main(["work", "edit", a.slug, "--unblocked-by", "not-a-blocker"]) == 1
+    assert "no such blocker" in capsys.readouterr().err
+    assert st.get(a.slug).blocked_by == [{"external": "vendor A"}]
+
+
+def test_bad_unblock_aborts_before_any_blocker_write(tmp_path, monkeypatch):
+    """Removals run first, so one bad ref leaves the whole edit unapplied."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    a = st.create("A", created="2026-01-01")
+    assert main(["work", "edit", a.slug,
+                 "--blocked-by", "vendor A",
+                 "--unblocked-by", "not-a-blocker"]) == 1
+    assert st.get(a.slug).blocked_by == []
+
+
+def test_new_blocked_by_is_repeatable(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "A",
+                 "--blocked-by", "vendor A, then legal",
+                 "--blocked-by", "vendor B"]) == 0
+    slug = capsys.readouterr().out.strip().splitlines()[-1]
+    assert FsWorkStore.open(root).get(slug).blocked_by == [
+        {"external": "vendor A, then legal"}, {"external": "vendor B"}]
 
 
 def test_self_block_refused(tmp_path):
@@ -762,7 +843,8 @@ def test_cli_new_blocked_by(tmp_path, monkeypatch):
     root = node(tmp_path)
     monkeypatch.chdir(root)
     b = FsWorkStore.open(root).create("B", created="2026-01-01")
-    assert main(["work", "new", "A", "--blocked-by", f"{b.slug}, , extra"]) == 0
+    assert main(["work", "new", "A",
+                 "--blocked-by", b.slug, "--blocked-by", "extra"]) == 0
     items = FsWorkStore.open(root).query(status="backlog")
     a = next(i for i in items if i.title == "A")
     assert a.blocked_by == [{"slug": b.slug}, {"external": "extra"}]

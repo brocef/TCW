@@ -831,8 +831,23 @@ class WorkStore(ABC):
             raise ValueError(f"no such work item: {slug}")
         return item
 
+    @staticmethod
+    def _normalize_ref(ref: str) -> str:
+        """Canonical form of a blocker ref: strip one leading `external:` label.
+
+        Display renders an external blocker as `external: <text>`, so input has to
+        accept that string back or the board's own output isn't a usable ref. A
+        slug can never start with `external:` (slugify → [a-z0-9-]), so stripping
+        before the slug probe is safe.
+        """
+        ref = ref.strip()
+        if ref.lower().startswith("external:"):
+            ref = ref[len("external:"):].strip()
+        return ref
+
     def _entry_for(self, ref: str) -> dict:
         """A blocker entry: a resolvable ref → {slug}, else {external}."""
+        ref = self._normalize_ref(ref)
         return {"slug": ref} if self.get(ref) is not None else {"external": ref}
 
     @staticmethod
@@ -874,11 +889,19 @@ class WorkStore(ABC):
         self.set_field(slug, "blocked_by", item.blocked_by + [entry])
 
     def remove_blocker(self, slug: str, ref: str) -> None:
+        """Remove one blocker. Fails closed on a ref that matches nothing.
+
+        Deliberately asymmetric with `add_blocker`, which is idempotent: adding a
+        blocker that's already there is harmless, but silently "removing" one that
+        isn't there tells the caller the item is unblocked when it still is.
+        """
         item = self._require(slug)
+        norm = self._normalize_ref(ref)
         kept = [e for e in item.blocked_by
-                if e.get("slug") != ref and e.get("external") != ref]
-        if len(kept) != len(item.blocked_by):
-            self.set_field(slug, "blocked_by", kept)
+                if e.get("slug") != norm and e.get("external") != norm]
+        if len(kept) == len(item.blocked_by):
+            raise ValueError(f"no such blocker on {slug}: {ref}")
+        self.set_field(slug, "blocked_by", kept)
 
     def board(self, status: str | None = None) -> list[WorkItem]:
         """The board in workable order: query(status) priority-sorted, then

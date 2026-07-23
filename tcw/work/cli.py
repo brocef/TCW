@@ -205,7 +205,7 @@ def _new(args: argparse.Namespace) -> int:
             priority=args.priority,
             effort=args.effort or "",
             complexity=args.complexity or "",
-            blockers=_split(args.blocked_by) or None,
+            blockers=args.blocked_by or None,
             parent=args.parent,
             initiative=args.initiative or "",
             type="epic" if args.epic else "",
@@ -493,12 +493,15 @@ def _edit(args: argparse.Namespace) -> int:
             if st.get(ref) is None:
                 print(f"tcw work edit: no such work item: {ref}", file=sys.stderr)
                 return 1
-        for ref in _split(args.blocked_by):
+        # Removals first: they fail closed, so a bad --unblocked-by ref aborts
+        # before any --blocked-by/--blocks write lands (same spirit as the
+        # up-front --blocks validation above).
+        for ref in (args.unblocked_by or []):
+            st.remove_blocker(bare, ref)
+        for ref in (args.blocked_by or []):
             st.add_blocker(bare, ref)
         for ref in blocks:
             st.add_blocker(ref, bare)             # reverse link: bare into ref's blocked_by
-        for ref in _split(args.unblocked_by):
-            st.remove_blocker(bare, ref)
         # Use composite update for field changes
         st.update_work(
             bare,
@@ -683,7 +686,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="estimated effort: low|medium|high|very-high (or L/M/H/VH)")
     pn.add_argument("--complexity", type=_work_level,
                     help="estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
-    pn.add_argument("--blocked-by", help="comma-separated slugs/externals that block it")
+    pn.add_argument("--blocked-by", action="append",
+                    help="a slug or external text that blocks it (repeatable)")
     pn.add_argument("--tag", action="append", type=_tag,
                     help="apply a registered tag (repeatable)")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
@@ -718,9 +722,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pe = g.add_parser("edit", help="change blocking links between items")
     pe.add_argument("slug")
-    pe.add_argument("--blocked-by", help="comma-separated slugs/externals that block this item")
+    pe.add_argument("--blocked-by", action="append",
+                    help="a slug or external text that blocks this item (repeatable)")
     pe.add_argument("--blocks", help="comma-separated items this item blocks")
-    pe.add_argument("--unblocked-by", help="comma-separated blockers to remove")
+    pe.add_argument("--unblocked-by", action="append",
+                    help="a blocker to remove (repeatable; accepts the "
+                         "'external: …' form shown by show/list)")
     pe.add_argument("--priority", type=int, help="set integer priority (higher = higher)")
     pe.add_argument("--effort", type=_work_level,
                     help="set estimated effort: low|medium|high|very-high (or L/M/H/VH)")

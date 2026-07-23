@@ -489,8 +489,9 @@ tcw work inbox accept request.md       # consume it into a new backlog item; pri
 tcw work inbox accept request.md --title "Clear title"
 
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
-tcw work new "Add PDF export" --blocked-by "other-slug,external:JIRA-123"
-                                       # create with blockers pre-attached
+tcw work new "Add PDF export" --blocked-by other-slug --blocked-by "external: JIRA-123"
+                                       # create with blockers pre-attached (flag is repeatable —
+                                       # one blocker per flag, so its text may contain commas)
 tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
 tcw work new "Big rework" --effort high --complexity very-high
                                        # optional estimates (low|medium|high|very-high; L/M/H/VH shorthand ok)
@@ -516,9 +517,11 @@ tcw work path "$slug"                  # current filesystem path of the slug
 tcw work start "$slug"                 # backlog → active (refused if blocked/gated)
 tcw work start "$slug" --force         # override unresolved blockers or initiative gates
 
-tcw work edit "$slug" --blocked-by other-slug    # record a new blocker
+tcw work edit "$slug" --blocked-by other-slug    # record a new blocker (repeatable)
 tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
-tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker
+tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (repeatable;
+                                                 # accepts the "external: …" form show/list print,
+                                                 # and fails if it matches no blocker)
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
 tcw work edit "$slug" --tag bug --untag stale    # apply/remove tags (repeatable)
