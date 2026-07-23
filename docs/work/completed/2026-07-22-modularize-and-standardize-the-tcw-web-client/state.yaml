@@ -1,9 +1,15 @@
 slug: 2026-07-22-modularize-and-standardize-the-tcw-web-client
 title: Modularize and standardize the TCW web client
-phase: ""
-created: "2026-07-22"
-resolution: null
+phase: ''
+created: '2026-07-22'
+resolution: done
 effort: high
 complexity: medium
 tags:
-    - web
+- web
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
