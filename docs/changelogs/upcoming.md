@@ -17,7 +17,6 @@ category, with commit hash ranges so entries trace back to source.
   accepted back as input. Placing it in the two shared helpers means
   `create_work`, `update_work`, and the web app's `blockers` field
   (`tcw/serve/__init__.py:736` → `tcw/store/fs.py:2217,2324`) inherit the fix.
-
 - `resolve_qualified_work_ref` (`tcw/store/fs.py`) resolves a `<project-id>/`
   qualifier via `FsProjectRegistry.get` over the whole registered graph instead of
   a `descendants()`-only table, so cross-node refs work in any direction
@@ -41,7 +40,6 @@ category, with commit hash ranges so entries trace back to source.
 - `tcw work list -i` / `tcw serve` aggregation is deliberately unchanged
   (`include_descendants` untouched) — addressing and linking are graph-wide,
   board aggregation stays downward-only.
-
 - **Breaking:** `--blocked-by` (on `work new` and `work edit`) and
   `--unblocked-by` (on `work edit`) are now `action="append"` and no longer
   comma-split, matching the `--tag` idiom. One flag occurrence = one blocker, so
