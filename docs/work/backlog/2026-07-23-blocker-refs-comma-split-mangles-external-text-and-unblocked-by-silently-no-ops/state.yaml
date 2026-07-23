@@ -1,0 +1,11 @@
+slug: 2026-07-23-blocker-refs-comma-split-mangles-external-text-and-unblocked-by-silently-no-ops
+title: 'Blocker refs: comma-split mangles external text and --unblocked-by silently
+  no-ops'
+phase: ''
+created: '2026-07-23'
+resolution: null
+effort: low
+complexity: low
+tags:
+- cli
+- bug

@@ -1,0 +1,13 @@
+slug: 2026-07-23-cross-node-epic-slices-cannot-link-their-parent-epic-tcw-resolves-downward-only
+title: Cross-node epic slices cannot link their parent epic (tcw:// resolves downward
+  only)
+phase: ''
+created: '2026-07-23'
+resolution: null
+effort: medium
+complexity: medium
+tags:
+- cli
+- docs
+- skills
+- bug
