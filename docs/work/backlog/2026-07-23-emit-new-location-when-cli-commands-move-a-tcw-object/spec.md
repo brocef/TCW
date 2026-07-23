@@ -9,27 +9,30 @@ this item (no product-layer delta beyond message wording).
 
 ## Problem
 
-Work-transition commands report *that* a transition happened but not *where the
-item now lives*:
+Commands that place or relocate a work item report *that* it happened but not
+*where the item now lives* (in a form you can go straight to):
 
-| command | current stdout |
+| command | current output |
 | --- | --- |
-| `tcw work start <slug>` | `started <slug>` |
-| `tcw work complete <slug> …` | `completed <slug> (<resolution>)` |
-| `tcw work inbox accept <entry>` | `<slug>` (bare) |
+| `tcw work start <slug>` | `started <slug>` (stdout) |
+| `tcw work complete <slug> …` | `completed <slug> (<resolution>)` (stdout) |
+| `tcw work inbox accept <entry>` | `<slug>` (stdout, bare) |
+| `tcw work new "<title>"` | `<slug>` (stdout) + `→ edit: <abs>/initial-request.md` (stderr) |
 
-Because the destination folder is never named, agents (and people) keep looking
-for a started item in `backlog/` instead of `active/`, or for an accepted item in
-`inbox/` instead of `backlog/`.
+Because the item's folder is never named as a repo-relative path, agents (and
+people) keep looking for a started item in `backlog/` instead of `active/`, an
+accepted item in `inbox/` instead of `backlog/`, or a freshly created item they
+can't yet see. `new` does print a path, but it's the absolute *file* to edit, not
+the item's folder home.
 
 ## Goals
 
-- After a command relocates a work item, the output names the item's **new
-  location** so the reader can go straight to it.
-- Consistent phrasing across the relocating commands, keeping the slug in the
-  message so existing habits/greps still match.
-- Location string is obtained **through the store**, not by hardcoding
-  `docs/work/<status>/<slug>` string-building in the command handler.
+- After a command places or relocates a work item, the output names the item's
+  **location** (repo-relative) so the reader can go straight to it.
+- Consistent phrasing across the commands, keeping the slug in the message so
+  existing habits/greps still match.
+- Location string is obtained **through the store** (an abstract locator), not by
+  hardcoding `docs/work/<status>/<slug>` string-building in the command handler.
 
 ## Non-goals
 
@@ -38,14 +41,18 @@ for a started item in `backlog/` instead of `active/`, or for an accepted item i
   needed for this change).
 - Touching the taxonomy or capabilities axes (their status is an in-place field
   edit, not a folder move — the confusion doesn't arise there).
-- Rewording `delegate`/`escalate`/`new`, which already print a realized path.
+- Rewording `delegate`/`escalate`, which already print the realized inbox `Path`.
+- Removing `new`'s existing `→ edit:` file hint — it stays; we *add* the
+  repo-relative folder location beside it.
 
 ## Constraints
 
 - **Abstraction litmus (prime directive).** The message value is a filesystem
-  path, but it must be resolved *through the store's locator*, never by
-  concatenating `docs/work/<status>/<slug>` in the CLI. See the design decision
-  below for how this stays litmus-clean.
+  path, but "where does this item live now" is an abstract, portable concept: a
+  remote tracker realizes it as an issue URL or status label. So it belongs on
+  the store interface as an abstract locator that each adapter realizes — the CLI
+  never concatenates `docs/work/<status>/<slug>` and never touches
+  `.node_root`/`relative_to` itself. See the design decision below.
 - **Preserve scriptable stdout contracts.** `inbox accept` and `new` print a
   bare slug on stdout (machine-readable); their human hints go to stderr. That
   contract must not break. `start`/`complete` stdout is a **prose sentence**, not
@@ -80,20 +87,53 @@ Store facts (`tcw/store/base.py`, `tcw/store/fs.py`):
 - `st.node_root` is the repo root, so
   `st.path(slug).relative_to(st.node_root)` == `docs/work/<status>/<slug>` — the
   exact repo-relative string the message wants.
-- `path()` is FS-only (returns a `Path`); the abstract interface has no
-  item-location accessor. The abstract `artifact_locator(slug, name) -> str|None`
-  (`base.py:633`) is the nearest existing "openable handle" pattern.
+- `path()` is FS-only (returns a `Path`); the abstract `WorkStore` interface has
+  **no item-location accessor** — this is the gap approach B fills. The abstract
+  `artifact_locator(slug, name) -> str|None` (`base.py:633`, `@abstractmethod`) is
+  the existing "openable handle" pattern to mirror.
+- **Only `FsWorkStore` subclasses `WorkStore`** (`fs.py:1539`); no test doubles
+  subclass it. So adding a new `@abstractmethod` forces exactly one adapter to
+  implement it — no conformance breakage.
 
 Out of scope, confirmed: `drop` deletes (no destination); `delegate`/`escalate`
-already `print(doc)` (the realized inbox `Path`); `new` already prints
-`→ edit: {body}` on stderr; `capabilities set --status` is an in-place field
-edit (path unchanged); taxonomy has no transitions.
+already `print(doc)` (the realized inbox `Path`); `capabilities set --status` is
+an in-place field edit (path unchanged); taxonomy has no transitions.
 
 ## Proposed behavior
 
-After a successful relocation, resolve the item's new home via `st.path(bare)`,
-render it repo-relative (`relative_to(st.node_root)`), and surface it on the
-command's existing human-facing stream:
+### New abstract store method (approach B)
+
+Add to `WorkStore` (`tcw/store/base.py`) an abstract locator mirroring
+`artifact_locator`:
+
+```python
+@abstractmethod
+def locate(self, slug: str) -> str | None:
+    """A short, human-readable location for the item's current home, or None
+    if the item does not exist. Adapters realize it however fits their backing
+    store (a filesystem: the repo-relative folder path; a remote tracker: an
+    issue URL or status label). Presentation only — do not parse it."""
+```
+
+`FsWorkStore.locate` (`tcw/store/fs.py`) realizes it as the repo-relative folder,
+degrading gracefully and **never raising**:
+
+```python
+def locate(self, slug: str) -> str | None:
+    p = self.path(slug)
+    if p is None:
+        return None
+    try:
+        return str(p.relative_to(self.node_root))
+    except ValueError:
+        return str(p)          # item outside node_root: absolute, don't crash
+```
+
+The CLI calls `st.locate(bare)` only — it never touches `.node_root` or
+`relative_to`. All the path/relative logic lives in the adapter, where the litmus
+test says filesystem realization belongs.
+
+### CLI output (resolve via `st.locate(bare)`, surface on the existing stream)
 
 - **`start`** (stdout is prose → augment):
   `started <slug> → docs/work/active/<slug>`
@@ -102,69 +142,68 @@ command's existing human-facing stream:
 - **`complete`** (stdout is prose → augment):
   `completed <slug> (<resolution>) → docs/work/completed/<slug>`
 - **`inbox accept`** (stdout is a scriptable bare slug → keep it, add stderr
-  hint, mirroring `_new`'s `→ edit:` line):
-  stdout: `<slug>` (unchanged) · stderr: `→ now at docs/work/backlog/<slug>`
+  hint): stdout `<slug>` (unchanged) · stderr `→ now at docs/work/backlog/<slug>`
+- **`new`** (stdout is a scriptable bare slug → keep it; add the folder location
+  on stderr beside the existing `→ edit:`/`→ next:` hints):
+  stdout `<slug>` (unchanged) · stderr `→ created at docs/work/backlog/<slug>`
+  (nested `--parent` items land under the parent folder — `locate` reports
+  wherever the item actually is).
 
 Exact arrow/verb wording is a small choice settled in `plan.md`; the invariant is
-*slug + repo-relative destination, resolved through `st.path()`*.
+*slug + repo-relative location, resolved through `st.locate()`*.
 
-A tiny shared CLI helper (e.g. `_rel_location(st, slug) -> str | None`) formats
-`st.path(slug)` repo-relative once, so the three call sites don't repeat the
-`relative_to` dance. It degrades gracefully and **never raises**: if `path()`
-returns `None` the suffix is skipped; if the path is not under `st.node_root`
-(`relative_to` would raise `ValueError`), fall back to the absolute path string
-rather than crashing the command.
+## Design decision — abstract locator (approach B, chosen)
 
-## Design decision — how to resolve the location (the judgment call)
+Add `WorkStore.locate(slug) -> str | None` and realize it in `FsWorkStore`; the
+CLI depends only on the abstract method.
 
-**Recommended (A): reuse the existing FS locator in the CLI.** Call
-`st.path(bare).relative_to(st.node_root)` in the three handlers. No interface
-change.
+- **Litmus-clean.** "Where does this item live now" is a portable concept — a
+  Jira adapter answers with an issue URL, a wiki with a page path. It belongs on
+  the interface; the FS adapter realizes it as a folder path. The CLI holds no
+  filesystem-layout knowledge for this feature.
+- Mirrors the existing `artifact_locator` "openable handle" pattern, so it reads
+  as a natural extension of the interface rather than a novel abstraction.
+- Reusable: `tcw serve` and any future consumer get the same location concept for
+  free instead of re-deriving repo-relative paths.
+- Cost: one `@abstractmethod` + one adapter impl. Only `FsWorkStore` must satisfy
+  it (no other subclasses), so the blast radius is a single method.
+- **Abstract, not a concrete `return None` default**, deliberately: a future
+  adapter should be *forced* to answer "where does this item live" rather than
+  silently inherit "nowhere" — that is the portability guarantee B exists for,
+  and it matches `artifact_locator`, which is likewise `@abstractmethod`. The
+  cost is one trivial method per new adapter.
 
-- Litmus-clean because it resolves *through the store's declared locator*
-  (`path()`) rather than hardcoding the `docs/work/<status>/` layout, and it adds
-  **nothing** to the abstract `WorkStore` interface. The CLI is already
-  FS-adapter-bound (it uses `.node_root`/`.root`/`.body_path` throughout), so no
-  new model coupling is introduced.
-- Smallest diff; consistent with how `_new` already surfaces `body_path`.
-- Ceiling: a future non-FS CLI (JiraWorkStore) would need its own location
-  rendering. That is exactly when promoting an abstract locator pays for itself —
-  do it then, not speculatively.
-
-**Alternative (B): promote an abstract `locate(slug) -> str | None` to
-`WorkStore`.** FS realizes it as the repo-relative folder; a remote store could
-realize it as an issue URL / status label. Mirrors the existing
-`artifact_locator` pattern and lets other consumers (`tcw serve`) share the
-concept.
-
-- More portable, but adds an interface method + adapter impl no current consumer
-  needs. YAGNI until a second adapter or a second consumer appears.
-
-Recommendation: **A now, B as the documented upgrade path** (leave a
-`ponytail:`-style note at the helper naming `locate()` as the promotion point).
-**This is the open decision for your review.**
+Rejected alternative (A): compute `st.path().relative_to(st.node_root)` inline in
+the CLI. Smaller diff, but bakes filesystem-layout knowledge into the CLI and
+leaves the abstract interface unable to express location — declined in favor of
+the portable design.
 
 ## Acceptance criteria
 
-- `tcw work start`, `tcw work complete`, and `tcw work inbox accept` each name
-  the item's new repo-relative location in their output.
-- The location is obtained via `st.path()`, not string-built from status.
+- `WorkStore` exposes an abstract `locate(slug) -> str | None`; `FsWorkStore`
+  implements it as the repo-relative folder path.
+- `tcw work start`, `tcw work complete`, `tcw work inbox accept`, and
+  `tcw work new` each name the item's repo-relative location in their output,
+  obtained via `st.locate()` (no `relative_to`/`node_root` in the CLI).
 - `inbox accept` / `new` stdout remains a bare slug; their location text is on
   stderr. `start` / `complete` stdout stays a single prose line, now including
   the location.
 - `--worktree` start still reports the worktree and now also the active-folder
   location.
-- If `st.path()` returns `None` (shouldn't happen post-transition), the command
-  still succeeds and simply omits the location suffix; if the path is not under
-  `node_root`, it falls back to the absolute path (never raises `ValueError`).
+- `locate` returns `None` for a missing item (command still succeeds, suffix
+  omitted) and falls back to the absolute path when the item is outside
+  `node_root` (never raises `ValueError`).
 - Existing exit codes and gate behavior unchanged.
 
 ## Risks / dependencies
 
 - **Test churn:** `tests/test_work.py:880` asserts
-  `start_out.out.strip() == f"started {slug}"` and `:1497` asserts
-  `f"started project-a/{slug}" in out.out`. These and any `completed …` / inbox
-  assertions must be updated to the new format. Low risk, mechanical.
+  `start_out.out.strip() == f"started {slug}"`, `:876` asserts `new`'s stderr, and
+  `:1497` asserts `f"started project-a/{slug}" in out.out`. These and any
+  `completed …` / inbox assertions must be updated to the new format. Low risk,
+  mechanical.
+- Adding an `@abstractmethod` to `WorkStore` would break any other concrete
+  subclass — verified there is none but `FsWorkStore`.
 - No dependency on other work items.
 
 ## Documentation Sync (triggers expected to fire)
