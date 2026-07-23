@@ -18,7 +18,29 @@ category, with commit hash ranges so entries trace back to source.
   `create_work`, `update_work`, and the web app's `blockers` field
   (`tcw/serve/__init__.py:736` → `tcw/store/fs.py:2217,2324`) inherit the fix.
 
+- `resolve_qualified_work_ref` (`tcw/store/fs.py`) resolves a `<project-id>/`
+  qualifier via `FsProjectRegistry.get` over the whole registered graph instead of
+  a `descendants()`-only table, so cross-node refs work in any direction
+  (GitHub #7, `c999f70..HEAD`). Fixes the reported symptom — a cross-node epic
+  slice could not link its parent epic: `tcw validate` rejected
+  `tcw://W/<parent-id>/<epic-slug>` with `no such work item`. One guard covers
+  every consumer: CLI addressing (`tcw/work/cli.py` `_resolve`), `tcw validate`
+  (`tcw/validate.py` → `tcw/refs.py`), and `tcw serve`'s `/api/resolve`. The
+  docstring's stale path-containment prose was rewritten — the function already
+  keyed on canonical IDs, and traversal/`.git`/unregistered-path qualifiers fail
+  because they are not registry IDs, not because of a path check.
+
 ## Changed
+
+- New `qualified_work_ref_problem(anchor, ref)` (`tcw/store/fs.py`) returns a
+  cause-naming failure message: `no such project in this graph: <id>` for an
+  unregistered qualifier, `<id> has no work component` for a registered project
+  without `docs/work`, else the generic `no such work item: <ref>`. Called on the
+  cold failure path by `_resolve` and by `resolve_tcw_ref`'s W branch; wraps its
+  registry open in a `try` so `resolve_tcw_ref` stays contractually non-raising.
+- `tcw work list -i` / `tcw serve` aggregation is deliberately unchanged
+  (`include_descendants` untouched) — addressing and linking are graph-wide,
+  board aggregation stays downward-only.
 
 - **Breaking:** `--blocked-by` (on `work new` and `work edit`) and
   `--unblocked-by` (on `work edit`) are now `action="append"` and no longer

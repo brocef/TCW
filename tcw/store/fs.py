@@ -174,7 +174,7 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
 
     Bare slug (no '/')      -> (anchor store, slug)             [unchanged]
     '<status>/…/<slug>'     -> (anchor store, <slug>)           [status-path locator]
-    'sub/proj/<slug>'       -> (descendant-node store, <slug>)  [cross-node addressing]
+    '<project-id>/<slug>'   -> (that node's store, <slug>)      [cross-node addressing]
 
     A leading segment in `WORK_STATUSES` marks a status-path locator (the path a
     board/`work path` prints): the last segment is the bare slug, intermediate
@@ -183,17 +183,24 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
     stays the identity. (A subproject literally named after a status is not
     addressable via the bare status-prefix form; use its slug.)
 
-    The qualifier is the descendant node's path relative to `anchor`. A slug never
-    contains '/' (slugify -> [a-z0-9-]), so the final '/'-segment is always the
-    bare slug and everything before it the qualifier — unambiguous. If that
-    invariant changes, revisit this split.
+    The qualifier is a **canonical project ID**, and it resolves against the whole
+    registered graph in any direction — descendant, ancestor, or sibling. Cross-node
+    epic slices live in a child node and point at an epic in the parent, so a
+    downward-only rule made that relation machine-trackable but unlinkable. IDs are
+    unique and cycle-checked, and connections must be reciprocal
+    (`_validate_reciprocity`), so admitting the whole graph adds no ambiguity and no
+    new trust: an unregistered project stays unreachable.
 
-    Returns None when the qualifier is not a real node genuinely inside `anchor`:
-    an unknown path, a traversal/absolute/symlink *escape*, or a path through
-    `.git`/`.worktrees` (a `start --worktree` checkout copies the sentinel, so it
-    would otherwise look like a real node the board never emits). Equivalent to
-    `cd`-ing into the node, so it belongs in the FS adapter, not the abstract
-    store — cross-node addressing realized over the filesystem tree.
+    A slug never contains '/' (slugify -> [a-z0-9-]), so the final '/'-segment is
+    always the bare slug and everything before it the qualifier — unambiguous. If
+    that invariant changes, revisit this split.
+
+    Returns None when the qualifier is not a registered project ID, or names one
+    with no work component. Path-shaped qualifiers therefore never resolve — a
+    nested-but-unregistered node, a traversal/absolute escape, and a `.git` /
+    `.worktrees` path (a `start --worktree` checkout copies the sentinel) all fail
+    because none of them is an ID in the graph. Resolving an ID to a store root is
+    a filesystem concern, so this belongs in the FS adapter, not the abstract store.
     """
     anchor = anchor.resolve()
     ref = ref.strip()
@@ -214,14 +221,38 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
     if not qualifier or not bare or "/" in bare:
         return None
     registry = FsProjectRegistry.open(anchor).require_valid()
-    descendants = {project.id: project for project in registry.descendants()}
-    target_project = descendants.get(qualifier)
+    target_project = registry.get(qualifier)       # any node in the registered graph
     if target_project is None:
         return None
     target = Path(target_project.locator)
     if not (target / "docs" / "work").is_dir():
         return None
     return FsWorkStore.open(target), bare
+
+
+def qualified_work_ref_problem(anchor: Path, ref: str) -> str:
+    """Why `resolve_qualified_work_ref(anchor, ref)` failed, as a user-facing
+    message. Cold path only — callers use it after a `None`, so the extra registry
+    open costs nothing that matters.
+
+    Names the *cause* rather than the symptom: "no such work item" reads like a
+    typo when the real problem is an unregistered project. Degrades to the generic
+    message on a broken graph, so a caller contractually forbidden from raising
+    (`resolve_tcw_ref`) stays safe.
+    """
+    generic = f"no such work item: {ref}"
+    qualifier, _, bare = ref.partition("/")
+    if not qualifier or not bare or "/" in bare or qualifier in WORK_STATUSES:
+        return generic                             # bare slug or status-path locator
+    try:
+        project = FsProjectRegistry.open(anchor).require_valid().get(qualifier)
+    except Exception:
+        return generic
+    if project is None:
+        return f"no such project in this graph: {qualifier}"
+    if not (Path(project.locator) / "docs" / "work").is_dir():
+        return f"{qualifier} has no work component"
+    return generic                                 # project resolved; the slug didn't
 
 
 def git_stage(node_root: Path, *paths: Path) -> None:

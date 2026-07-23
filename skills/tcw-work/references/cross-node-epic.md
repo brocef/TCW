@@ -14,6 +14,18 @@ Use `--parent` children only when the slices are work items in the same project.
    child node's `inbox/`. The orchestrator never writes into a child's tracking
    tree directly; the child agent runs process-inbox and
    `tcw work new --initiative <epic-slug>` to adopt the slice.
+
+   The adopted slice carries the epic's bare slug in its `state.yaml`, which is
+   machine-tracked but invisible to a human reading the request. Link the epic in
+   prose too, at the top of the slice's `initial-request.md`:
+
+   ```
+   Epic: [<epic title>](tcw://W/<orchestrator-project-id>/<epic-slug>)
+   ```
+
+   `<project-id>/<slug>` resolves to any node in the registered graph, in any
+   direction, so the upward link validates. Note the viewer caveat: a child's
+   `tcw serve` aggregates descendants, so it cannot open an ancestor's item.
 3. **Each sub-project works its slice independently**, linking its own
    capabilities. Product-layer wording is coordinated over the inbox channel
    (`tcw work escalate "capability wording: …"`) — **non-blocking**; never wait

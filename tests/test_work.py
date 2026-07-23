@@ -1557,12 +1557,23 @@ def test_bare_slug_not_found_across_nodes(tmp_path, monkeypatch, capsys):
     assert main(["work", "show", f"project-a/{slug}"]) == 0   # qualified resolves
 
 
-def test_unresolvable_qualifier_errors_with_qualified_slug(tmp_path, monkeypatch, capsys):
+def test_unresolvable_qualifier_names_the_unregistered_project(tmp_path, monkeypatch, capsys):
+    """The cause, not the symptom — 'no such work item' read like a typo."""
     from tcw.cli import main
     root = node(tmp_path)
     monkeypatch.chdir(root)
     assert main(["work", "show", "Nope/2026-01-01-foo"]) == 1
-    assert "tcw work show: no such work item: Nope/2026-01-01-foo" in capsys.readouterr().err
+    assert "tcw work show: no such project in this graph: Nope" in capsys.readouterr().err
+
+
+def test_parent_qualified_slug_addressable_from_child(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    child = subnode(root, "sub")
+    epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
+    monkeypatch.chdir(child)
+    assert main(["work", "show", f"repo/{epic.slug}"]) == 0
+    assert "Parent epic" in capsys.readouterr().out
 
 
 def test_qualified_ambiguous_bare_surfaces_multiple_match(tmp_path, monkeypatch, capsys):

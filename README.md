@@ -597,6 +597,19 @@ A **bare** slug still resolves against the current node only. (`blocked-by:`
 refs shown on a qualified row stay node-local — they are bare slugs within that
 descendant.)
 
+A qualified slug addresses **any node in the registered graph, in any direction** —
+descendant, ancestor, or sibling — not just nodes below you. A child project can
+therefore address (and link) an epic that lives in its parent. Project IDs are
+canonical and connections must be reciprocal, so there is nothing ambiguous to
+resolve; an unregistered project, or a path-shaped qualifier such as
+`some/folder/<slug>`, still does not resolve. A qualifier that names no registered
+project reports `no such project in this graph: <id>` rather than a misleading
+"no such work item".
+
+Note that `tcw work list -i` and `tcw serve` remain **descendant-only** — they
+aggregate boards downward. Addressing and linking are graph-wide; aggregation is
+not.
+
 `tcw work audit-work-backlog` reviews backlog items in board order and prints
 read-only cleanup recommendations. It flags likely duplicates or already-finished
 work, broken local file references, stale blockers, malformed capability deltas,

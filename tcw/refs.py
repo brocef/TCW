@@ -22,6 +22,7 @@ from urllib.parse import unquote
 from tcw.store.fs import (
     FsCapabilitiesStore,
     FsTaxonomyStore,
+    qualified_work_ref_problem,
     resolve_qualified_work_ref,
 )
 
@@ -112,7 +113,8 @@ def resolve_tcw_ref(
                 "descendant work ref not hosted (viewer not aggregating descendants)")
         resolved = resolve_qualified_work_ref(node_root, ns_ref)
         if resolved is None:
-            return ResolveResult(False, "W", None, f"no work item: {ns_ref}")
+            return ResolveResult(
+                False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
         _store, bare = resolved
         key = f"{parsed.namespace}/{bare}" if parsed.namespace else bare
         return ResolveResult(True, "W", key, "")

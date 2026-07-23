@@ -179,6 +179,26 @@ def test_resolve_descendant_work_needs_include(tmp_path):
     assert r.ok and r.key == f"proj/{item.slug}"
 
 
+def test_resolve_parent_work_from_child(tmp_path):
+    """The cross-node epic back-link: a child slice points at the parent's epic.
+
+    Uses the `tcw://W/<project-id>/<slug>` spelling from GitHub issue #7, which
+    `parse_tcw_uri` reads as a bare-namespace ref whose qualifier is resolved by
+    `resolve_qualified_work_ref` — so no `include_descendants` gate applies.
+    """
+    root = node(tmp_path)
+    sub = subnode(root, "proj")
+    epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
+    r = resolve_tcw_ref(sub, f"tcw://W/repo/{epic.slug}")
+    assert r.ok and r.axis == "W"
+
+
+def test_resolve_unregistered_project_names_the_cause(tmp_path):
+    root = node(tmp_path)
+    r = resolve_tcw_ref(root, "tcw://W/ghost/2026-01-01-x")
+    assert r.ok is False and r.reason == "no such project in this graph: ghost"
+
+
 # ── resolve: failure modes (never raises) ─────────────────────────────────────
 
 def test_resolve_dangling_capability(tmp_path):

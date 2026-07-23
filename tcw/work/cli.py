@@ -12,8 +12,8 @@ from tcw.store.base import (
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
     descendant_nodes, ensure_worktree_ignored, find_node, git_commit,
-    merge_worktree, parent_node, registered_project_id, remove_worktree,
-    resolve_qualified_work_ref,
+    merge_worktree, parent_node, qualified_work_ref_problem, registered_project_id,
+    remove_worktree, resolve_qualified_work_ref,
 )
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
@@ -53,18 +53,19 @@ def _store() -> FsWorkStore | None:
 def _resolve(slug: str, label: str) -> tuple[FsWorkStore, str] | None:
     """Resolve a (possibly subproject-qualified) slug to (store, bare_slug).
 
-    A bare slug stays on the anchor node (unchanged); `sub/proj/<slug>` resolves
-    to the descendant node's store — equivalent to `cd`-ing there first. Prints
-    the right message and returns None on failure (no work node here, or the
-    qualifier names no real node) so callers just `return 1`. Item existence is
-    still the caller's `get`/`path` check — the returned slug is always bare."""
+    A bare slug stays on the anchor node (unchanged); `<project-id>/<slug>`
+    resolves to that node's store — equivalent to `cd`-ing there first — for any
+    node in the registered graph, in any direction. Prints the right message and
+    returns None on failure (no work node here, or the qualifier names no
+    registered project) so callers just `return 1`. Item existence is still the
+    caller's `get`/`path` check — the returned slug is always bare."""
     node = find_node(NAME)
     if node is None:
         print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return None
     resolved = resolve_qualified_work_ref(node, slug)
-    if resolved is None:                          # qualifier names no node within anchor
-        print(f"tcw work {label}: no such work item: {slug}", file=sys.stderr)
+    if resolved is None:
+        print(f"tcw work {label}: {qualified_work_ref_problem(node, slug)}", file=sys.stderr)
         return None
     return resolved
 

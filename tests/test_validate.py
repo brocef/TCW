@@ -8,13 +8,13 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.validate import validate
 
 
-def node(tmp_path: Path, name: str = "repo") -> Path:
+def node(tmp_path: Path, name: str = "repo", project_id: str | None = None) -> Path:
     root = tmp_path / name
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["taxonomy", "capabilities", "work"], root)
+    init(["taxonomy", "capabilities", "work"], root, project_id)
     return root
 
 
@@ -58,6 +58,34 @@ def test_dangling_link_is_a_problem(tmp_path):
     _body(root, "signin", "Broken [x](tcw://C/does-not-exist).")
     problems = validate(root)
     assert any("tcw://C/does-not-exist" in p for p in problems)
+
+
+def test_upward_epic_link_validates(tmp_path):
+    """GitHub issue #7: a child node's slice links its parent's epic in prose."""
+    import yaml
+    from tcw.store.fs import FsWorkStore
+    root = node(tmp_path, "root", "root")
+    child = node(tmp_path, "child", "child")
+    root_cfg = yaml.safe_load((root / "tcw-config.yaml").read_text())
+    root_cfg["connected-projects"] = {"children": {"child": str(child)}}
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(root_cfg, sort_keys=False))
+    child_cfg = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    child_cfg["connected-projects"] = {"parent": {"root": str(root)}}
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_cfg, sort_keys=False))
+
+    epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
+    slice_ = FsWorkStore.open(child).create("Slice", created="2026-01-02")
+    FsWorkStore.open(child).write_artifact(
+        slice_.slug, "initial-request",
+        f"Epic: [Parent epic](tcw://W/root/{epic.slug})\n")
+    assert validate(child) == []
+
+
+def test_link_to_unregistered_project_names_the_cause(tmp_path):
+    root = node(tmp_path)
+    _body(root, "signin", "Bad [x](tcw://W/ghost/2026-01-01-x).")
+    problems = validate(root)
+    assert any("no such project in this graph: ghost" in p for p in problems)
 
 
 def test_malformed_link_is_a_problem(tmp_path):
