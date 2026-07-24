@@ -5,8 +5,8 @@ doc-sync self-application. No staged plan documents — splitting would not redu
 agent must load. Phases are mostly sequential; the only hard ordering is **skill files before the
 references that point at them**.
 
-Adopted defaults for the spec's open decisions (confirm at review): skill folder `documentation-sync`;
-setup as `references/setup.md` (no slash command); one-line lifecycle handoff.
+Spec open decisions — **confirmed by user**: skill folder `documentation-sync`; setup as
+`references/setup.md` (no slash command); one-line lifecycle handoff.
 
 ## Phase 1 — Port the skill (`skills/documentation-sync/`)
 
@@ -123,6 +123,6 @@ are independent edits. Phase 4 after implementation settles. One agent, sequenti
 
 - **Version bump:** offer at closeout. This is a meaningful plugin addition — a `patch` (or `minor`)
   via `scripts/cut_version.py` is the likely call; user decides.
-- **Separate-repo follow-up:** after TCW's copy lands, open a GitHub issue on
-  `github.com/brocef/skill-cefailures` to remove/deprecate its `documentation-sync` skill. Confirm with
-  the user whether to file it at closeout.
+- **Separate-repo follow-up (confirmed timing):** as the **last step of closeout**, after everything
+  else is finished, open a GitHub issue on `github.com/brocef/skill-cefailures` to remove/deprecate its
+  `documentation-sync` skill.
