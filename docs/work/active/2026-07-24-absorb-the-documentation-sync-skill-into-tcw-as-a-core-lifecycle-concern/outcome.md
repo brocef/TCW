@@ -40,6 +40,18 @@ invoke the skill (positive check).
 - Count grep — README and codex manifest both read "six"; neither reads "five".
 - Manifests parse as valid JSON.
 
+## Post-implementation dual review
+
+Ran dual review on the implementation diff (Opus subagent + `bllm-review-many`). No blocking issues.
+The Opus review caught one real defect: the guard test's positive lifecycle check asserted only the
+substring `documentation-sync`, which **already existed** in both lifecycle files pre-rewire
+("documentation-sync expectations" / "explicit documentation-sync tasks") — so it would have passed
+even if the rewire were reverted (a false-pass hole its own docstring claimed to prevent). Fixed:
+the check now asserts the literal `invoke the \`documentation-sync\` skill` phrase (present only
+post-rewire), and a new test forbids a stray `:cut-version` command reference in the skill. Guard test
+now 4 assertions, all green. Other review items (add executable tests for the prose skill; "CLI"→
+"workflow" framing; external-project back-compat) dismissed as N/A or intentional.
+
 ## Deviations from plan
 
 None. Both the `.claude-plugin/*` framing soften (kept in scope per the plan revision) and the light

@@ -55,10 +55,27 @@ def test_no_skill_cefailures_references():
     assert not offenders, f"stale skill-cefailures references: {offenders}"
 
 
+# The exact invocation phrase, present only after the rewire. The bare word
+# "documentation-sync" is NOT sufficient — both lifecycle files already contained
+# it pre-rewire ("documentation-sync expectations" / "explicit documentation-sync
+# tasks"), so asserting the word alone would pass even if the rewire were reverted.
+INVOKE_PHRASE = "invoke the `documentation-sync` skill"
+
+
 def test_lifecycle_invokes_documentation_sync():
     """Positive check: the rewire landed. Both lifecycle references must invoke
     the skill by name, or a skipped gate would pass the absence check above."""
     for ref in LIFECYCLE_REFS:
-        assert "documentation-sync" in ref.read_text(encoding="utf-8"), (
+        assert INVOKE_PHRASE in ref.read_text(encoding="utf-8"), (
             f"{ref} does not invoke the documentation-sync skill"
         )
+
+
+def test_skill_has_no_cut_version_command_ref():
+    """The absorbed skill defers to the project's version-cut process; it must not
+    resurrect the external `:cut-version` command reference."""
+    offenders = [
+        f for f in SKILL_DIR.rglob("*.md")
+        if ":cut-version" in f.read_text(encoding="utf-8")
+    ]
+    assert not offenders, f"stray :cut-version command reference: {offenders}"
