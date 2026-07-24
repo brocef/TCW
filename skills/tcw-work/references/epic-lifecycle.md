@@ -46,7 +46,7 @@ Write `spec.md` as an overview spec. It should describe the initiative, affected
 Commit `spec.md` and its related TCW work-file changes before writing the
 coordination plan.
 
-Write `plan.md` as a coordination plan. It should list child tasks, delegation commands, dependency order, possible parallelism, rollup checkpoints, verification expectations, and documentation-sync expectations.
+Write `plan.md` as a coordination plan. It should list child tasks, delegation commands, dependency order, possible parallelism, rollup checkpoints, verification expectations, and documentation-sync expectations (invoke the `documentation-sync` skill to evaluate the project's `## Documentation Sync` triggers).
 
 If that coordination plan becomes large enough that selective loading materially
 reduces context, it may declare bounded stage documents using the same staged
@@ -95,4 +95,4 @@ Stop for user verification after child work is reconciled. Write `refined-outcom
 Commit `refined-outcome.md` and its related TCW work-file changes before the
 completion transition.
 
-An epic cannot complete while initiative child tasks are still open. Complete or explicitly defer child tasks first, then run a final reconcile. Before `tcw work complete`, reconcile capabilities for product-layer changes and evaluate Documentation Sync triggers. After completion succeeds, commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.
+An epic cannot complete while initiative child tasks are still open. Complete or explicitly defer child tasks first, then run a final reconcile. Before `tcw work complete`, reconcile capabilities for product-layer changes and invoke the `documentation-sync` skill to evaluate Documentation Sync triggers. After completion succeeds, commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.

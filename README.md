@@ -711,7 +711,7 @@ work is never silently dropped.
 
 ## Skills — the judgment layer
 
-The CLI is the _mechanism_; five skills in [`skills/`](skills/) are the _judgment_
+The CLI is the _mechanism_; six skills in [`skills/`](skills/) are the _judgment_
 that drives it (the work↔capability lifecycle the tool only enforces structurally):
 
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — plan a request or existing work item
@@ -737,9 +737,15 @@ changes` planning gate, contradiction-detection, the `Missing → Supported`
   send a suggestion **upstream to the TCW project** as a GitHub issue, with a
   ready-to-fill skeleton for each. Found a bug or have an idea? File it at
   [github.com/brocef/TCW/issues](https://github.com/brocef/TCW/issues).
+- **[`documentation-sync`](skills/documentation-sync/SKILL.md)** — the cross-cutting
+  process skill the work lifecycle invokes at its plan and completion gates:
+  evaluate a project's `## Documentation Sync` triggers so docs (README, changelog,
+  release notes, driving skills) move with the code that changes them.
 
-They name `tcw …` commands (and, for `tcw-plugin`, `pipx`) and never reimplement
-tool logic — mechanism stays in the binary, judgment in the skills.
+The five axis/plugin skills name `tcw …` commands (and, for `tcw-plugin`, `pipx`)
+and never reimplement tool logic — mechanism stays in the binary, judgment in the
+skills; `documentation-sync` is a cross-cutting process skill rather than a CLI
+driver.
 
 ---
 

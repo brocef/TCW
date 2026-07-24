@@ -57,7 +57,7 @@ Write `plan.md` with:
 - parallelization opportunities and dependencies;
 - expected file/module touch points;
 - verification commands;
-- explicit documentation-sync tasks for triggers that are expected to fire.
+- explicit documentation-sync tasks: invoke the `documentation-sync` skill to evaluate the project's `## Documentation Sync` triggers and surface a task for every trigger expected to fire.
 
 For a plan large enough that selective loading materially reduces context,
 `plan.md` may instead be a concise entry point with canonical `stages`
@@ -128,8 +128,8 @@ related TCW work files before running the completion transition.
 After verification/refinement, ask the user to decide:
 
 - completion route: local merge target, PR, or leave branch/worktree as-is;
-- documentation updates still needed;
+- documentation updates still needed (invoke the `documentation-sync` skill to evaluate triggers);
 - whether natural-language follow-ups should become new TCW backlog items;
 - version bump: major, minor, patch, or no version bump.
 
-Before `tcw work complete`, reconcile capabilities for product changes and evaluate Documentation Sync triggers. Then run `tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm` when the user has approved closeout. After it succeeds, inspect and commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.
+Before `tcw work complete`, reconcile capabilities for product changes and invoke the `documentation-sync` skill to evaluate Documentation Sync triggers. Then run `tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm` when the user has approved closeout. After it succeeds, inspect and commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.

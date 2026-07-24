@@ -18,8 +18,8 @@
     "skills": "./skills/",
     "interface": {
         "displayName": "tcw",
-        "shortDescription": "Skills that drive the tcw CLI: taxonomy, capabilities, and work tracking.",
-        "longDescription": "tcw (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes. This plugin ships five skills — the three axis drivers tcw-taxonomy, tcw-capabilities, and tcw-work; tcw-plugin for installing and repairing the CLI; and tcw-report for filing bugs and suggestions upstream — driving the tcw CLI from inside an AI coding agent.",
+        "shortDescription": "Skills for the tcw workflow: taxonomy, capabilities, work tracking, and documentation sync.",
+        "longDescription": "tcw (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes. This plugin ships six skills — the three axis drivers tcw-taxonomy, tcw-capabilities, and tcw-work; tcw-plugin for installing and repairing the CLI; tcw-report for filing bugs and suggestions upstream; and documentation-sync, a cross-cutting process skill that keeps docs in step with code — driving the tcw workflow from inside an AI coding agent.",
         "developerName": "Brian Cefali",
         "category": "Developer Tools",
         "capabilities": ["Read", "Write"],
