@@ -2,7 +2,13 @@ slug: 2026-07-24-absorb-the-documentation-sync-skill-into-tcw-as-a-core-lifecycl
 title: Absorb the documentation-sync skill into TCW as a core lifecycle concern
 phase: ''
 created: '2026-07-24'
-resolution: null
+resolution: done
 tags:
 - skills
 - docs
+dod:
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
