@@ -327,6 +327,25 @@ def test_cli_drift_flags_shipped_but_missing(tmp_path, monkeypatch, capsys):
     assert "shipped-missing" in capsys.readouterr().out
 
 
+def test_cli_drift_ignores_a_discarded_planning_doc(tmp_path, monkeypatch, capsys):
+    """`shipped-missing` asks "did it ship?", not "is it closed?". A discarded
+    item's capability is *supposed* to stay Missing — flagging it was a false
+    positive before `discarded` existed, when every closure landed in completed/."""
+    from tcw.cli import main
+    from tcw.store.fs import FsWorkStore, init
+    root = node(tmp_path)
+    init(["work"], root)
+    write_cap(root, "auth/login", Status="Missing")
+    st = FsWorkStore.open(root)
+    slug = st.create("Ship login", created="2026-01-01").slug
+    FsCapabilitiesStore.open(root).set("auth/login", {"Planning doc": slug})
+    st.complete(slug, "wontfix", dod_ack=[], force=True)
+    assert FsWorkStore.open(root).get(slug).status == "discarded"
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "drift"]) == 0
+    assert "no capability drift" in capsys.readouterr().out
+
+
 def test_cli_drift_active_planning_doc_not_flagged(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     from tcw.store.fs import FsWorkStore, init

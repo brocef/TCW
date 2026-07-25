@@ -10,7 +10,8 @@ from datetime import date
 from pathlib import Path
 
 from tcw.store.base import (
-    RefError, SidecarError, WorkItem, declared_capabilities, topo_order,
+    RESOLVED_STATUSES, RefError, SidecarError, WorkItem, declared_capabilities,
+    topo_order,
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsWorkStore, child_nodes, git_stage, parent_node,
@@ -103,12 +104,15 @@ def _capability_deltas(tasks: list[tuple[str, WorkItem]]) -> list[str]:
 
 
 def _ready(tasks: list[tuple[str, WorkItem]]) -> list[str]:
-    incomplete = {item.slug for _, item in tasks if item.status != "completed"}
+    # "Resolved", not "shipped": a discarded task is done being worked on, so it
+    # neither needs doing nor holds back anything blocked on it.
+    unresolved = {item.slug for _, item in tasks
+                  if item.status not in RESOLVED_STATUSES}
     ready: list[str] = []
     for _rel, item in tasks:
-        if item.status == "completed":
+        if item.status in RESOLVED_STATUSES:
             continue
-        blocked = any(b.get("slug") in incomplete or "external" in b for b in item.blocked_by)
+        blocked = any(b.get("slug") in unresolved or "external" in b for b in item.blocked_by)
         if not blocked:
             ready.append(item.slug)
     return ready

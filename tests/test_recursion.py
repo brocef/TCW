@@ -413,3 +413,26 @@ def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):
     assert wt.exists()
     assert FsWorkStore.open(root).get(slug).status == "active"
     assert not (root / ".git" / "MERGE_HEAD").exists()            # half-merge aborted
+
+
+def test_reconcile_counts_a_discarded_child_as_resolved(tmp_path):
+    """The rollup asks "is this still open?", so a discarded child is done being
+    worked on and must not hold its epic open forever."""
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    epic_store = FsWorkStore.open(parent)
+    epic = epic_store.create("Epic", created="2026-01-01")
+    epic_store.set_field(epic.slug, "type", "epic")
+    epic_store.start(epic.slug)
+    task_store = FsWorkStore.open(child)
+    task = task_store.create("Slice", created="2026-01-02")
+    task_store.set_field(task.slug, "initiative", epic.slug)
+
+    with pytest.raises(ValueError, match="initiative children are still open"):
+        epic_store.complete(epic.slug, "done", [])
+
+    task_store.complete(task.slug, "wontfix", [])            # abandoned, not shipped
+    assert FsWorkStore.open(child).get(task.slug).status == "discarded"
+    block = reconcile(parent, epic.slug)
+    assert "ready-to-close" in block or "ready to close" in block.lower()
+    assert epic_store.complete(epic.slug, "done", []).status == "completed"

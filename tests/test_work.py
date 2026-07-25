@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tcw.store.base import WORK_ARTIFACTS, WORK_STATUSES, IllegalTransition, MultipleMatch, StaleRevision, topo_order
+from tcw.store.base import (
+    RESOLVED_STATUSES, WORK_ARTIFACTS, WORK_STATUSES, IllegalTransition,
+    MultipleMatch, StaleRevision, resolution_status, topo_order,
+)
 from tcw.store.fs import FsWorkStore, init
 
 
@@ -44,13 +47,18 @@ def subnode(parent: Path, rel: str) -> Path:
 
 def test_init_gitkeep_persistence(tmp_path):
     root = node(tmp_path)
-    for s in ("inbox", "backlog", "active", "completed"):
+    for s in ("inbox", "backlog", "active", "completed", "discarded"):
         assert (root / "docs" / "work" / s / ".gitkeep").is_file()
     assert not (root / "docs" / "work" / "blocked").exists()
 
 
 def test_formal_work_statuses_exclude_raw_inbox():
-    assert WORK_STATUSES == ("backlog", "active", "completed")
+    assert WORK_STATUSES == ("backlog", "active", "completed", "discarded")
+
+
+def test_resolved_statuses_are_the_two_terminal_ones():
+    assert RESOLVED_STATUSES == ("completed", "discarded")
+    assert all(s in WORK_STATUSES for s in RESOLVED_STATUSES)
 
 
 def test_raw_inbox_state_yaml_is_not_discovered_as_work(tmp_path):
@@ -1588,3 +1596,222 @@ def test_qualified_ambiguous_bare_surfaces_multiple_match(tmp_path, monkeypatch,
     monkeypatch.chdir(root)
     assert main(["work", "show", "project-a/dup"]) == 1
     assert "resolves to 2 items" in capsys.readouterr().err
+
+
+# ── discarded status ─────────────────────────────────────────────────────────
+
+def _persisted_dod(root: Path, status: str, slug: str) -> list:
+    """`dod` lives in state.yaml, not on WorkItem."""
+    state = yaml.safe_load((root / "docs/work" / status / slug / "state.yaml").read_text())
+    return state.get("dod", [])
+
+@pytest.mark.parametrize("resolution,expected", [
+    ("done", "completed"),
+    ("wontfix", "discarded"),
+    ("duplicate", "discarded"),
+    ("superseded", "discarded"),
+])
+def test_resolution_selects_the_terminal_folder(tmp_path, resolution, expected):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create(f"Close as {resolution}", created="2026-01-01")
+    st.start(item.slug)
+    assert st.complete(item.slug, resolution, []).status == expected
+    assert (root / "docs/work" / expected / item.slug / "state.yaml").is_file()
+
+
+@pytest.mark.parametrize("bad", ["", "nope", None, "Done"])
+def test_resolution_status_raises_rather_than_guessing(bad):
+    """A silent `else: discarded` would make a corrupt item read as consistent."""
+    with pytest.raises(ValueError):
+        resolution_status(bad)
+
+
+@pytest.mark.parametrize("resolution", ["wontfix", "duplicate", "superseded"])
+def test_discard_direct_from_backlog(tmp_path, resolution):
+    """The friction this status exists to remove: no throwaway start."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Never going to happen", created="2026-01-01")
+    assert st.complete(item.slug, resolution, []).status == "discarded"
+
+
+def test_backlog_to_completed_still_refused_for_a_plain_item(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Not started", created="2026-01-01")
+    with pytest.raises(IllegalTransition):
+        st.complete(item.slug, "done", [])
+
+
+def test_completable_epic_still_closes_from_backlog(tmp_path):
+    """The done-only exception survives; (backlog, discarded) doesn't subsume it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create_work("Epic", created="2026-01-01", type="epic").item
+    child = st.create_work("Child", created="2026-01-01",
+                           initiative=epic.slug).item
+    st.start(epic.slug)
+    st.start(child.slug)
+    st.complete(child.slug, "done", [])
+    st = FsWorkStore.open(root)
+    assert st.get(epic.slug).status == "active"
+    assert st.complete(epic.slug, "done", []).status == "completed"
+
+
+def test_discarded_blocker_no_longer_blocks(tmp_path):
+    """A decision not to do it is as final as doing it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    blocker = st.create("Blocker", created="2026-01-01")
+    target = st.create("Target", created="2026-01-01")
+    st.add_blocker(target.slug, blocker.slug)
+    assert st.unresolved_blockers(st.get(target.slug)) == [blocker.slug]
+    st.complete(blocker.slug, "wontfix", [])
+    st = FsWorkStore.open(root)
+    assert st.unresolved_blockers(st.get(target.slug)) == []
+    assert st.start(target.slug).status == "active"
+
+
+def test_epic_completable_with_a_discarded_child(tmp_path):
+    """A child nobody will do must not hold its epic open forever."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create_work("Epic", created="2026-01-01", type="epic").item
+    shipped = st.create_work("Shipped", created="2026-01-01",
+                             initiative=epic.slug).item
+    dropped = st.create_work("Abandoned", created="2026-01-01",
+                             initiative=epic.slug).item
+    st.start(epic.slug)
+    st.start(shipped.slug)
+    st.complete(shipped.slug, "done", [])
+    st = FsWorkStore.open(root)
+    assert not st.epic_completable(st.get(epic.slug))      # one child still open
+    st.complete(dropped.slug, "wontfix", [])
+    st = FsWorkStore.open(root)
+    assert st.epic_completable(st.get(epic.slug))
+    assert st.complete(epic.slug, "done", []).status == "completed"
+
+
+def test_list_hides_discarded_by_default(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    kept = st.create("Still open", created="2026-01-01")
+    gone = st.create("Abandoned", created="2026-01-01")
+    st.complete(gone.slug, "wontfix", [])
+    monkeypatch.chdir(root)
+
+    assert main(["work", "list"]) == 0
+    out = capsys.readouterr().out
+    assert kept.slug in out and gone.slug not in out
+
+    assert main(["work", "list", "--all"]) == 0
+    assert gone.slug in capsys.readouterr().out
+
+    assert main(["work", "list", "--status", "discarded"]) == 0
+    out = capsys.readouterr().out
+    assert gone.slug in out and kept.slug not in out
+
+
+def test_discard_skips_the_dod_checklist_but_still_needs_confirm(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Abandon me", created="2026-01-01")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "complete", item.slug, "--resolution", "wontfix"]) == 1
+    captured = capsys.readouterr()
+    assert "Definition of Done" not in captured.out
+    assert "is permanent" in captured.err
+
+    assert main(["work", "complete", item.slug, "--resolution", "wontfix", "--confirm"]) == 0
+    captured = capsys.readouterr()
+    assert "Definition of Done" not in captured.out
+    assert "discarded" in captured.out
+    assert _persisted_dod(root, "discarded", item.slug) == []
+
+
+def test_done_still_prints_the_dod_checklist(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Ship me", created="2026-01-01")
+    st.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug, "--resolution", "done", "--confirm"]) == 0
+    assert "Definition of Done" in capsys.readouterr().out
+    assert _persisted_dod(root, "completed", item.slug) != []
+
+
+def test_check_flags_status_resolution_disagreement(tmp_path):
+    """`complete()` can't produce this — a hand-run `mv` or a bad merge can."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Moved by hand", created="2026-01-01")
+    st.start(item.slug)
+    st.complete(item.slug, "wontfix", [])
+    src = root / "docs/work/discarded" / item.slug
+    src.rename(root / "docs/work/completed" / item.slug)
+    problems = FsWorkStore.open(root).check()
+    assert any("belongs in 'discarded'" in p for p in problems)
+
+
+def test_check_flags_terminal_status_without_a_resolution(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Orphaned", created="2026-01-01")
+    (root / "docs/work/backlog" / item.slug).rename(
+        root / "docs/work/discarded" / item.slug)
+    problems = FsWorkStore.open(root).check()
+    assert any("missing or invalid resolution" in p for p in problems)
+
+
+def test_check_flags_open_item_carrying_a_resolution(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Half transitioned", created="2026-01-01")
+    st.set_field(item.slug, "resolution", "done")
+    problems = FsWorkStore.open(root).check()
+    assert any("only a closed item has one" in p for p in problems)
+
+
+def test_check_is_clean_for_a_healthy_node(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    open_item = st.create("Open", created="2026-01-01")
+    shipped = st.create("Shipped", created="2026-01-01")
+    st.start(shipped.slug)
+    st.complete(shipped.slug, "done", [])
+    dropped = st.create("Dropped", created="2026-01-01")
+    st.complete(dropped.slug, "superseded", [])
+    assert FsWorkStore.open(root).check() == []
+    assert open_item.slug                                  # created, still untouched
+
+
+def test_discard_leaves_the_unmerged_branch_intact(tmp_path, monkeypatch, capsys):
+    """Deciding work isn't wanted is not authority to destroy an unmerged branch."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    sub = _git_subnode(root, "project-a")
+    slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "start", f"project-a/{slug}", "--worktree"]) == 0
+    capsys.readouterr()
+    wt = sub / ".worktrees" / slug
+    assert wt.is_dir()
+    (wt / "only-on-the-branch.txt").write_text("unmerged work\n")
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-qm", "wip"], check=True)
+
+    assert main(["work", "complete", f"project-a/{slug}",
+                 "--resolution", "wontfix", "--confirm"]) == 0
+    err = capsys.readouterr().err
+    assert not wt.exists()                                   # worktree torn down
+    assert f"work/{slug}" in err and "left intact" in err
+    branches = subprocess.run(["git", "-C", str(sub), "branch", "--list", f"work/{slug}"],
+                              capture_output=True, text=True).stdout
+    assert f"work/{slug}" in branches                         # branch survives
+    assert not (sub / "only-on-the-branch.txt").exists()      # and was NOT merged
+    assert FsWorkStore.open(sub).get(slug).status == "discarded"

@@ -6,8 +6,9 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    WORK_RESOLUTIONS, WORK_STATUSES, _UNSET, IllegalTransition, MultipleMatch,
-    WorkItem, normalize_tag, normalize_work_level,
+    RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
+    IllegalTransition, MultipleMatch, WorkItem, normalize_tag,
+    normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
@@ -273,7 +274,7 @@ def _visible_board_items(st: FsWorkStore, status: str | None, show_all: bool,
                          tags: list[str] | None = None) -> list[WorkItem]:
     items = st.board(status=status)
     if status is None and not show_all:
-        items = [i for i in items if i.status != "completed"]
+        items = [i for i in items if i.status not in RESOLVED_STATUSES]
     if tags:                                       # --tag filter: match-any (OR)
         wanted = set(tags)
         items = [i for i in items if wanted & set(i.tags)]
@@ -579,14 +580,24 @@ def _complete(args: argparse.Namespace) -> int:
             print(f"tcw work complete: blocked by: {', '.join(blockers)} "
                   f"(use --force to override)", file=sys.stderr)
             return 1
-    checklist = st.dod_checklist()
-    print("Definition of Done — acknowledge each item:")
-    for c in checklist:
-        print(f"  [ ] {c}")
-    if not args.confirm:
-        print("Refused: re-run with --confirm once the checklist is satisfied.", file=sys.stderr)
+    # A discard is not a shipment: the Definition-of-Done checklist, the
+    # capability gate, and the worktree merge-back all exist to police shipped
+    # work, so none of them apply. `--confirm` still does — closing is terminal.
+    shipping = resolution_status(args.resolution) == "completed"
+    checklist = st.dod_checklist() if shipping else []
+    if shipping:
+        print("Definition of Done — acknowledge each item:")
+        for c in checklist:
+            print(f"  [ ] {c}")
+        if not args.confirm:
+            print("Refused: re-run with --confirm once the checklist is satisfied.",
+                  file=sys.stderr)
+            return 1
+    elif not args.confirm:
+        print(f"Refused: discarding {args.slug} as '{args.resolution}' is "
+              f"permanent. Re-run with --confirm.", file=sys.stderr)
         return 1
-    if has_worktree and branch:                       # merge-back before the rename/teardown
+    if shipping and has_worktree and branch:          # merge-back before the rename/teardown
         err = merge_worktree(st.node_root, branch)
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
@@ -594,10 +605,12 @@ def _complete(args: argparse.Namespace) -> int:
         item = st.get(bare)                           # re-read: the sidecar's declared
                                                       # list may have changed on the branch
     # Capabilities gate — after merge-back so both the declared list and the
-    # capability statuses are read from the merged primary tree.
+    # capability statuses are read from the merged primary tree. On a discard it
+    # degrades to a warning: blocking abandonment on reconciliation would put
+    # friction on the very path this exists to smooth.
     if not args.force:
         problems = capability_gate(st, item)
-        if problems:
+        if problems and shipping:
             print("tcw work complete: declared capabilities not reconciled:",
                   file=sys.stderr)
             for p in problems:
@@ -605,14 +618,25 @@ def _complete(args: argparse.Namespace) -> int:
             print("Reconcile them (tcw capabilities set <path> --status <S>) "
                   "or re-run with --force.", file=sys.stderr)
             return 1
+        for p in problems:
+            print(f"warning: unreconciled capability: {p}", file=sys.stderr)
+        if problems:
+            print("Mark them Omitted (tcw capabilities set <path> --status Omitted) "
+                  "if they will never be built.", file=sys.stderr)
     try:
         st.complete(bare, args.resolution, dod_ack=checklist, force=args.force)
     except _ERRORS as e:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
-    print(f"completed {args.slug} ({args.resolution})")
+    print(f"{'completed' if shipping else 'discarded'} {args.slug} ({args.resolution})")
     if has_worktree:
-        for w in remove_worktree(st.node_root, bare, branch):
+        if not shipping and branch:
+            # The branch is deliberately kept: a discard decides the work isn't
+            # wanted, which is not authority to destroy an unmerged branch.
+            print(f"tcw work complete: work branch '{branch}' was not merged and "
+                  f"is left intact; delete it with "
+                  f"`git branch -D {branch}` if you're sure.", file=sys.stderr)
+        for w in remove_worktree(st.node_root, bare, branch if shipping else None):
             print(f"tcw work complete: {w}", file=sys.stderr)
     return 0
 
@@ -635,7 +659,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the changes — work items through a state machine")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed work storage")
+    pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed/discarded work storage")
     pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
     pi.set_defaults(func=_init)
 
@@ -696,11 +720,11 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
     pn.set_defaults(func=_new)
 
-    pl = g.add_parser("list", help="the board (hides completed unless --status/--all)")
+    pl = g.add_parser("list", help="the board (hides completed + discarded unless --status/--all)")
     pl.add_argument("--status", choices=WORK_STATUSES)
     pl.add_argument("--tag", action="append", type=_tag,
                     help="only items carrying this tag (repeatable = match any)")
-    pl.add_argument("--all", action="store_true", help="include completed items")
+    pl.add_argument("--all", action="store_true", help="include completed and discarded items")
     pl.add_argument("-i", "--incl-desc", "--include-descendants",
                     dest="include_descendants", action="store_true",
                     help="also list every descendant work node's board, grouped by node")
@@ -739,7 +763,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--untag", action="append", type=_tag, help="remove a tag (repeatable)")
     pe.set_defaults(func=_edit)
 
-    pc = g.add_parser("complete", help="active → completed (DoD gate)")
+    pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")
     pc.add_argument("slug")
     pc.add_argument("--resolution", required=True, choices=sorted(WORK_RESOLUTIONS))
     pc.add_argument("--confirm", action="store_true")

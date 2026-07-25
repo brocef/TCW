@@ -25,7 +25,8 @@ import yaml
 
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, DEFAULT_DOD,
-    TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, WORK_STATUSES, _UNSET,
+    RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
+    WORK_STATUSES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
@@ -1927,6 +1928,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             for tag in item.tags:
                 if tag not in registered:
                     problems.append(f"{item.slug}: unregistered tag '{tag}'")
+            problems.extend(self._status_resolution_problems(item))
             try:
                 stages = self._declared_plan_stages(item.slug)
                 if stages:
@@ -1952,6 +1954,29 @@ class FsWorkStore(FsTreeStore, WorkStore):
             except ValueError as exc:
                 problems.append(f"{item.slug}: {exc}")
         return problems
+
+    @staticmethod
+    def _status_resolution_problems(item) -> list[str]:
+        """Status and resolution must agree. `complete()` derives the status from
+        the resolution, so no code path can produce a disagreement — but the
+        filesystem adapter stores status as a folder, and a hand-run `mv` or a
+        bad merge can. This is the detector for that, not a second source of
+        truth."""
+        terminal = item.status in RESOLVED_STATUSES
+        if not terminal:
+            if item.resolution:
+                return [f"{item.slug}: status '{item.status}' carries a "
+                        f"resolution '{item.resolution}' (only a closed item has one)"]
+            return []
+        try:
+            expected = resolution_status(item.resolution)
+        except ValueError:
+            return [f"{item.slug}: status '{item.status}' with missing or invalid "
+                    f"resolution {item.resolution!r}"]
+        if expected != item.status:
+            return [f"{item.slug}: resolution '{item.resolution}' belongs in "
+                    f"'{expected}' but the item is in '{item.status}'"]
+        return []
 
     @staticmethod
     def _nonempty_markdown_section(content: str, heading: str) -> bool:

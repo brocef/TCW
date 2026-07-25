@@ -207,6 +207,11 @@ def _shipped_but_missing(node, st) -> list[tuple[str, str]]:
             item = work.get(str(slug))
         except Exception:
             item = None
+        # `completed` alone, deliberately NOT `RESOLVED_STATUSES`: this asks
+        # "did it ship?", not "is it closed?". A discarded item's capability is
+        # *supposed* to stay Missing (or be marked Omitted) — reporting it as
+        # shipped-but-unreconciled would be a false positive, which is exactly
+        # what happened before `discarded` existed.
         if item is not None and item.status == "completed":
             out.append((c.path, str(slug)))
     return out

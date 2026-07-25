@@ -431,16 +431,40 @@ class CapabilitiesStore(ABC):
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────
 
-WORK_STATUSES = ("backlog", "active", "completed")
+WORK_STATUSES = ("backlog", "active", "completed", "discarded")
+
+# The two terminal statuses. `completed` means *shipped*; `discarded` means
+# *closed without shipping*. Anything asking "is this item still open?" wants
+# this tuple — anything asking "did this ship?" wants `completed` alone. The
+# distinction is load-bearing: `tcw capabilities drift` reports a still-Missing
+# capability only for work that actually shipped.
+RESOLVED_STATUSES = ("completed", "discarded")
 
 # The legal-transition graph lives in the *core* (phase-5-work B.1/B.3): the
 # adapter only effects a move the core has already deemed legal. `drop` is
 # handled separately (delete, backlog only).
 LEGAL_TRANSITIONS = {
     ("backlog", "active"),                           # start
-    ("active", "completed"),                        # complete (DoD gate)
+    ("active", "completed"),                        # complete --resolution done
+    ("active", "discarded"),                        # complete, any other resolution
+    ("backlog", "discarded"),                       # abandon without a throwaway start
 }
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
+
+
+def resolution_status(resolution: str) -> str:
+    """The terminal status a resolution closes into: `done` ships (`completed`),
+    everything else is abandoned (`discarded`).
+
+    Raises on an unknown resolution rather than guessing a destination. That
+    matters for `check()`, which calls this on arbitrary persisted YAML: a
+    silent `else: "discarded"` would make a corrupt-resolution item sitting in
+    `discarded/` read as *consistent* and defeat the detector.
+    """
+    if resolution not in WORK_RESOLUTIONS:
+        raise ValueError(f"invalid resolution '{resolution}' "
+                         f"(choose: {', '.join(sorted(WORK_RESOLUTIONS))})")
+    return "completed" if resolution == "done" else "discarded"
 WORK_LEVELS = ("low", "medium", "high", "very-high")  # effort/complexity scale
 WORK_LEVEL_ALIASES = {"l": "low", "m": "medium", "h": "high", "vh": "very-high"}
 
@@ -910,14 +934,16 @@ class WorkStore(ABC):
 
     def epic_completable(self, item: WorkItem) -> bool:
         """True iff `item` is an epic that is ready to close: it is `type: epic`,
-        not already completed, has at least one initiative child, and every child
-        is completed. Built on `initiative_children` (cross-node in adapters that
-        override it), so the "all resolved" signal and the `complete` gate share
-        one source of truth. An empty epic is not completable (nothing resolved)."""
-        if item.type != "epic" or item.status == "completed":
+        not already resolved, has at least one initiative child, and every child
+        is resolved (completed *or* discarded — a child nobody will do no longer
+        holds its epic open). Built on `initiative_children` (cross-node in
+        adapters that override it), so the "all resolved" signal and the
+        `complete` gate share one source of truth. An empty epic is not
+        completable (nothing resolved)."""
+        if item.type != "epic" or item.status in RESOLVED_STATUSES:
             return False
         children = self.initiative_children(item.slug)
-        return bool(children) and all(c.status == "completed" for c in children)
+        return bool(children) and all(c.status in RESOLVED_STATUSES for c in children)
 
     def transition(self, slug: str, to_status: str) -> WorkItem:
         item = self._require(slug)
@@ -928,15 +954,16 @@ class WorkStore(ABC):
 
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
         """Labels of blockers that still block `item`. An entry is unresolved if
-        it is external, or a slug whose item is not completed. A slug that no
-        longer resolves counts as resolved (silently)."""
+        it is external, or a slug whose item is not resolved — a *discarded*
+        blocker no longer blocks, since a decision not to do it is as final as
+        doing it. A slug that no longer resolves counts as resolved (silently)."""
         out: list[str] = []
         for b in item.blocked_by:
             if "external" in b:
                 out.append(f"external: {b['external']}")
             elif "slug" in b:
                 blocker = self.get(b["slug"])
-                if blocker is not None and blocker.status != "completed":
+                if blocker is not None and blocker.status not in RESOLVED_STATUSES:
                     out.append(b["slug"])
             # else: structurally malformed entry — skip (degrade, don't crash)
         return out
@@ -961,20 +988,22 @@ class WorkStore(ABC):
 
     def complete(self, slug: str, resolution: str, dod_ack: list[str],
                  force: bool = False) -> WorkItem:
-        if resolution not in WORK_RESOLUTIONS:
-            raise ValueError(f"invalid resolution '{resolution}' "
-                             f"(choose: {', '.join(sorted(WORK_RESOLUTIONS))})")
+        dest = resolution_status(resolution)          # raises on a bad resolution
         item = self._require(slug)
         # A completable epic (all children resolved) may close straight from
         # `backlog` — coordinator epics never needed their own start/active. This
-        # is a scoped exception, not a global `(backlog, completed)` transition.
-        from_backlog_epic = item.status == "backlog" and self.epic_completable(item)
-        if (item.status, "completed") not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
-            raise IllegalTransition(f"cannot complete from {item.status} (only active)")
+        # is a scoped exception, not a global `(backlog, completed)` transition,
+        # and it is `done`-only: `(backlog, discarded)` is a real transition that
+        # any item may take, so it needs no exception.
+        from_backlog_epic = (dest == "completed" and item.status == "backlog"
+                             and self.epic_completable(item))
+        if (item.status, dest) not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
+            raise IllegalTransition(f"cannot complete from {item.status} "
+                                    f"as '{resolution}' (→ {dest})")
         if not force:
             if item.type == "epic":
                 open_children = [i.slug for i in self.initiative_children(slug)
-                                 if i.status != "completed"]
+                                 if i.status not in RESOLVED_STATUSES]
                 if open_children:
                     raise ValueError(f"Cannot complete epic {slug}; initiative "
                                      f"children are still open: "
@@ -986,10 +1015,10 @@ class WorkStore(ABC):
                                  + " (use --force to override)")
         self.set_field(slug, "resolution", resolution)
         self.set_field(slug, "dod", dod_ack)
-        if from_backlog_epic:                            # bypass transition()'s own
-            self._effect_transition(slug, "completed")   # LEGAL_TRANSITIONS check
+        if from_backlog_epic:                       # bypass transition()'s own
+            self._effect_transition(slug, dest)     # LEGAL_TRANSITIONS check
             return self._require(slug)
-        return self.transition(slug, "completed")
+        return self.transition(slug, dest)
 
     def drop(self, slug: str) -> None:
         item = self._require(slug)
