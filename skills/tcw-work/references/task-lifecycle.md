@@ -132,4 +132,6 @@ After verification/refinement, ask the user to decide:
 - whether natural-language follow-ups should become new TCW backlog items;
 - version bump: major, minor, patch, or no version bump.
 
-Before `tcw work complete`, reconcile capabilities for product changes and invoke the `documentation-sync` skill to evaluate Documentation Sync triggers. Then run `tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm` when the user has approved closeout. After it succeeds, inspect and commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.
+Before `tcw work complete`, reconcile capabilities for product changes and invoke the `documentation-sync` skill to evaluate Documentation Sync triggers. Then run `tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm` when the user has approved closeout.
+
+The resolution picks the destination: `done` lands in `completed/`, anything else in `discarded/`. If closeout concludes the work should **not** ship, choose the honest resolution rather than forcing a `done` — a discard skips the Definition-of-Done and capability gates (mark any declared capability `Omitted`), so most of the closeout checklist above does not apply to it. After it succeeds, inspect and commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.

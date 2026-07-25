@@ -1,6 +1,6 @@
 # TCW work lifecycle
 
-Use this file to choose the smallest lifecycle document needed for the current work item. TCW's durable unit is the work item folder; lifecycle artifacts live beside `initial-request.md` so the item can move through `backlog`, `active`, and `completed` without losing context. `initial-request.md` is the always-present body/overview surface and canonical request artifact.
+Use this file to choose the smallest lifecycle document needed for the current work item. TCW's durable unit is the work item folder; lifecycle artifacts live beside `initial-request.md` so the item can move through `backlog`, `active`, and its terminal status — `completed` (shipped) or `discarded` (closed without shipping) — without losing context. `initial-request.md` is the always-present body/overview surface and canonical request artifact.
 
 ## Common rules
 
@@ -18,6 +18,10 @@ Use this file to choose the smallest lifecycle document needed for the current w
 - `tcw work start <slug>` is the implementation boundary. Run it before the first code edit and commit that status transition before implementation changes.
 - `tcw work complete <slug> ...` is the closeout boundary. After it succeeds,
   commit the completion status transition and its related work-file changes.
+- Not every item ships. When the decision is to abandon one, close it with a
+  non-`done` resolution: it lands in `discarded/`, skips the Definition-of-Done
+  and capability gates, and is legal directly from `backlog` — an item that was
+  never started needs no throwaway `start` to be closed.
 - Do not silently complete after implementation. Stop for user verification/refinement before `tcw work complete`.
 
 ## Choose the lifecycle

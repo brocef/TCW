@@ -234,7 +234,8 @@ pnpm prettify          # format maintained source and documentation
 pnpm prettify:check    # verify formatting without rewriting files
 ```
 
-Dependencies, generated bundles and caches, completed work items, and versioned
+Dependencies, generated bundles and caches, closed work items (completed and
+discarded), and versioned
 release archives are excluded; current source, configuration, taxonomy,
 capabilities, active/backlog work, this README, and upcoming notes remain in the
 formatting surface. `pnpm typecheck` also runs the formatting check.
@@ -265,16 +266,16 @@ matches plus the ancestors needed to reach them. The list column scrolls
 independently, so a long tree stays navigable without moving the header or the
 detail pane. A clear control appears inside a non-empty filter, tree controls
 provide larger keyboard-accessible targets, and Work rows tint their full
-surface by backlog, active, or completed status. Each axis keeps its create
+surface by backlog, active, completed, or discarded status. Each axis keeps its create
 control immediately above the object tree. Every Taxonomy, Capability, and Work
 entry shows its last-modified timestamp in both the tree row and detail header.
 Above that are **multi-select category filters**: on the Work board,
 `Status` and `Tags` dropdowns use a checkbox per value (select several to match
 **any**), and in the Taxonomy view a `Kind` dropdown covers `Feature` and
-`Vocabulary`. Backlog and active statuses are selected by default; completed is
-not. Work items can be sorted by name or last-modified time in either direction;
-the selected sort applies within the fixed active, backlog, then completed
-status groups. All of these compose with the text filter. Each work row has a
+`Vocabulary`. Backlog and active statuses are selected by default; completed and
+discarded are not. Work items can be sorted by name or last-modified time in
+either direction; the selected sort applies within the fixed active, backlog,
+completed, then discarded status groups. All of these compose with the text filter. Each work row has a
 button to copy its slug to the clipboard. Beyond browsing, you can **create and
 edit** any object directly from the browser:
 
@@ -471,17 +472,24 @@ item lives in and a transition is a move between folders:
 
 ```
 raw inbox entry  --accept-->  backlog  --start-->  active
-                                                       |
-                                                   completed
-                         (drop deletes a backlog item)
+                                  |                    |
+                                  |   --resolution done-+--> completed   ("we shipped it")
+                                  |                    |
+                                  +--- wontfix / duplicate / superseded --> discarded
+                                                            ("we closed it without shipping")
+                         (drop deletes a backlog item outright)
 ```
+
+The **resolution picks the destination**, so `completed/` answers "what
+shipped?" on its own. A backlog item can be discarded directly — abandoning an
+idea never needed a throwaway `start`.
 
 Blocked-ness is a **derived overlay**: an item is blocked when it has at least
 one unresolved blocker recorded in its data — there is no separate "blocked"
 folder or status.
 
 ```sh
-tcw work init                          # docs/work/{inbox,backlog,active,completed}/
+tcw work init                          # docs/work/{inbox,backlog,active,completed,discarded}/
 
 tcw work inbox list                    # list each raw file or folder entry
 tcw work inbox show request.md         # inspect metadata, text, and resource manifest
@@ -502,10 +510,12 @@ tcw work tags list                     # print the registered tags
 tcw work tags rm tech-debt             # unregister (warns about items still carrying it)
 tcw work new "Login crash" --tag bug   # apply a registered tag (repeatable; unregistered → error)
 
-tcw work list                          # the board: priority first, then topologically ordered (hides completed)
+tcw work list                          # the board: priority first, then topologically ordered
+                                       # (hides completed and discarded)
 tcw work list --status active          # filter to one column
 tcw work list --tag bug                # only items carrying a tag (repeatable = match any)
-tcw work list --all                    # include completed items too
+tcw work list --all                    # include completed and discarded items too
+tcw work list --status discarded       # only the items closed without shipping
 tcw work list -i                       # descendant boards; --incl-desc and --include-descendants are aliases
 tcw work audit-work-backlog            # report stale, duplicate, blocked, or misplaced backlog items
 tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
@@ -528,7 +538,8 @@ tcw work edit "$slug" --tag bug --untag stale    # apply/remove tags (repeatable
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
-tcw work drop some-slug                # delete a backlog item
+tcw work complete "$slug" --resolution wontfix --confirm        # → discarded/ (no Definition of Done; legal from backlog)
+tcw work drop some-slug                # erase a mis-created item, leaving no record
 ```
 
 `complete` **enforces capability reconciliation**: if the item's `capabilities.yaml`
@@ -536,6 +547,14 @@ declares a `new:` capability that still reads `Missing`, or any declared path th
 no longer resolves, the completion is refused (flip it with `tcw capabilities set`,
 mark it `Omitted`, or `--force` past). For a `--worktree` item the check runs after
 the branch merges back, so a status flip made on the work branch counts.
+
+A **discard is not a shipment**, so none of the shipping gates apply to one: no
+Definition-of-Done checklist, no capability enforcement (just a warning naming
+anything left `Missing`), and no branch merge-back. `--confirm` is still
+required, since closing is permanent. Discarding a `--worktree` item tears down
+the worktree but **keeps the unmerged branch**, naming it so you can delete it
+deliberately — deciding work isn't wanted is not the same as authorizing its
+destruction.
 
 **Tags** classify items for filtering. Each project registers its valid tag set
 centrally in `tcw-config.yaml` (`tcw work tags add|rm|list`); an item then carries
@@ -575,8 +594,9 @@ when unspecified). `stages` is a compact lifecycle artifact string: `R` for
 `initial-request.md`, `S` for `spec.md`, `P` for `plan.md`, `O` for
 `outcome.md`, and `F` for `refined-outcome.md`; missing or empty artifacts do
 not contribute letters, and `-` means no lifecycle artifacts are present. The
-board shows the live columns (backlog and active) and hides completed items
-by default — pass `--status completed` to list them or `--all` for everything.
+board shows the live columns (backlog and active) and hides both closed
+columns by default — pass `--status completed` or `--status discarded` to list
+one, or `--all` for everything.
 It sorts by priority first (higher integer above lower, unspecified-priority
 items keeping creation order), then topologically — blockers appear before the
 items they block, since a priority preference can't jump a hard dependency —

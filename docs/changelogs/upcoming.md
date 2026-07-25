@@ -3,6 +3,61 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
 
+<changes starting-hash="0f7acd7" ending-hash="43b27a8">
+
+### Added
+
+- `discarded` work status (`WORK_STATUSES`), plus `RESOLVED_STATUSES` and
+  `resolution_status(resolution)` in `tcw/store/base.py`. The resolution selects the
+  terminal status: `done` → `completed`, everything else → `discarded`.
+  `resolution_status` raises on an unknown resolution rather than defaulting, so
+  `check()` cannot read a corrupt-resolution item as consistent.
+- `LEGAL_TRANSITIONS` gains `("active", "discarded")` and `("backlog", "discarded")`.
+  The latter removes the throwaway `backlog → active → completed` round-trip
+  previously required to abandon a backlog item.
+- `FsWorkStore.check()` status/resolution consistency detector: terminal status with a
+  missing or invalid resolution, a resolution disagreeing with the item's status, and a
+  non-terminal status carrying a resolution. `complete()` is the only writer of a
+  terminal status, so this detects externally-corrupted state (a hand-run `mv`, a bad
+  merge), not a second source of truth.
+- `docs/migration-guide-0.14.X-to-0.15.0.md`.
+
+### Changed
+
+- Split the overloaded `status != "completed"` idiom. Four sites meant _resolved_ and
+  now use `RESOLVED_STATUSES` — `unresolved_blockers`, `epic_completable`,
+  `complete()`'s open-children check (all `tcw/store/base.py`), and the reconcile
+  rollup `_ready()` (`tcw/work/recursion.py`). One site means _shipped_ and
+  deliberately still reads `completed` alone: `_shipped_but_missing`
+  (`tcw/capabilities/cli.py`), now commented to prevent a future "fix".
+- `tcw work complete` branches on the resolution (`tcw/work/cli.py`): a discard skips
+  the Definition-of-Done checklist (records `dod: []`), degrades the capability gate to
+  a non-blocking warning, and skips `merge_worktree`. `remove_worktree` is called with
+  `branch=None` so the worktree is torn down but the unmerged branch survives.
+  `--confirm` is still required. Blocker gating is unchanged for both routes.
+- `tcw work list` hides `discarded` alongside `completed`; `--all` and
+  `--status discarded` reveal it. `--status` choices derive from `WORK_STATUSES`.
+- Web client: `WORK_STATUSES` extended in `ui/app.tsx` and `ui/content-views.tsx`,
+  `model/tree.ts` sorts `discarded` last, the status filter defaults it off, and the
+  complete modal branches on resolution (drops the DoD list, swaps the reconciliation
+  reminder for a discard warning, relabels the action `Discard`). The HTTP API needed
+  no change — it delegates destination choice to the model.
+- `.prettierignore` excludes `docs/work/discarded/` beside `docs/work/completed/`.
+- `RESERVED_PROJECT_IDS` gains `discarded`, since it derives from `WORK_STATUSES`.
+
+### Fixed
+
+- `tcw capabilities drift` no longer reports `shipped-missing` for a capability whose
+  planning doc was closed as `wontfix`/`duplicate`/`superseded`. Those items previously
+  landed in `completed/` and tripped a check that means "did this ship?".
+
+### Internal
+
+- Migrated this repo's three non-`done` closures into `docs/work/discarded/` (`43b27a8`).
+  `state.yaml` is unedited — status derives from the folder, so the move is the change.
+
+</changes>
+
 <changes starting-hash="d163961" ending-hash="b8e3895">
 
 ### Added

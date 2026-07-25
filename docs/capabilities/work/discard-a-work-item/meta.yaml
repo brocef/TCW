@@ -1,6 +1,6 @@
 id: cap-1d6864
 name: Discard a work item
-Status: Missing
+Status: Supported
 Planning doc: 2026-07-23-add-a-discarded-work-status-for-non-done-closures
 Subject:
     - work-item/transition

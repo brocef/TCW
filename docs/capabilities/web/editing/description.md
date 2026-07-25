@@ -5,6 +5,12 @@ editor while preserving canonical identifiers and free-form entry. Every saved
 object is immediately checked with TCW's standard validation rules, with any
 findings shown as post-save warnings.
 
+The complete dialog mirrors the CLI's closeout gates. Choosing `done` shows the
+Definition-of-Done checklist and the capabilities-reconciliation reminder;
+choosing a non-`done` resolution replaces both with a discard warning and
+relabels the action, because a discarded item is closed without shipping and
+those gates do not apply to it.
+
 When a work item's plan declares stage documents, users can inspect their
 metadata and dependencies and create, edit, delete, or open each declared
 document individually with revision-conflict protection.
