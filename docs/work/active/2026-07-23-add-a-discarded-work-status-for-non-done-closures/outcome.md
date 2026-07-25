@@ -44,8 +44,9 @@ lifecycle references, plus `docs/migration-guide-0.14.X-to-0.15.0.md`.
 ## Verification
 
 ```
-python -m pytest        732 passed   (568 before this item)
-pnpm vitest run          42 passed
+python -m pytest        733 passed   (568 before this item)
+pnpm vitest run          43 passed
+pnpm prettify:check      clean  (repo-wide, for the first time)
 tcw taxonomy check       taxonomy OK
 tcw capabilities check   capabilities OK
 tcw capabilities drift   no capability drift
@@ -54,7 +55,8 @@ git diff --check         clean
 ```
 
 Commits: `0f7acd7` (core + CLI), `f7f80ef` (web), `43b27a8` (migration),
-`f0e91a7` (docs + ledger).
+`f0e91a7` (docs + ledger), `404ebec` (follow-up fixes), `5d0b02a` (doc sync +
+repo-wide format).
 
 Tests specifically covering the resolved/shipped split, since a wrong call there
 is the failure mode this item was most exposed to:
@@ -77,34 +79,48 @@ is the failure mode this item was most exposed to:
    API returns 422. That test already existed
    (`test_complete_invalid_resolution_422`) and still passes, so no new test was
    needed — the concern the reviewer raised was already covered.
-2. `pnpm prettify:check` fails on 25 files. **This is pre-existing**, verified by
-   stashing all work and re-running: 32 files failed before this item, and the
-   failing set was byte-identical with and without my changes. The count dropped
-   to 25 because I formatted the files this item touched. The remaining failures
-   are TCW's own CLI-generated `state.yaml` files and skill docs across the repo
-   — unrelated drift, deliberately not fixed here.
+2. `pnpm prettify:check` was failing on 25 files, all pre-existing drift in
+   TCW's own generated `state.yaml` files and skill docs (verified by stashing
+   all work: the failing set was byte-identical with and without my changes).
+   Cleared by a repo-wide `pnpm prettify` at the user's instruction — see
+   follow-up 2.
+3. The blocker gate on a discard shipped as the spec described, then was
+   reversed at verification — see follow-up 1. This is the one intentional
+   divergence from the approved spec, made with the user's approval.
 
-## Follow-up notes
+## Follow-ups — all three resolved in-item
 
-Not TCW items yet — creating them is a closeout decision.
+Raised at verification and addressed on the user's instruction rather than
+deferred to backlog items (`404ebec`, `5d0b02a`).
 
-1. **The blocker gate on a discard is worth reconsidering.** The approved spec
-   said blockers gate a discard exactly as they gate a completion, and that is
-   what shipped (`test_discard_is_still_blocker_gated` documents it). But the
-   reasoning behind the other gate removals arguably applies here too: "we've
-   been blocked on this vendor for six months, so — wontfix" is close to the
-   canonical reason to discard something, and requiring `--force` for it is
-   friction of exactly the kind this item set out to remove. The gate on `start`
-   means "don't begin work that can't proceed"; the gate on `complete --done`
-   means "don't claim you shipped something whose dependency isn't done."
-   Neither rationale covers a discard. **Raised for your decision** — it is a
-   one-line change either way.
-2. **Repo-wide prettier drift** (the 25 files above) deserves its own cleanup
-   item, or a decision that CLI-generated TCW files should be prettier-ignored
-   the way `completed/` and `discarded/` already are.
-3. **The duplicated `WORK_STATUSES` literal** in `web/client/src/ui/app.tsx` and
-   `content-views.tsx` was extended in place, as the spec scoped it. Worth
-   deduplicating eventually.
+1. **Blockers no longer gate a discard.** The approved spec had them gating both
+   routes; on review that was wrong. "Don't claim you shipped this while its
+   dependency is unfinished" says nothing about giving up, and being blocked
+   indefinitely is one of the most common reasons to abandon work — so requiring
+   `--force` there was friction on the exact path this status exists to smooth.
+   `complete()` now checks blockers only when `dest == "completed"`.
+
+    The **epic open-children gate still applies to both routes**, and that
+    asymmetry is deliberate: an initiative child cannot start until its epic is
+    active, so closing an epic by either route strands its open children.
+    Covered by `test_blockers_gate_a_completion_but_not_a_discard` and
+    `test_epic_children_gate_applies_to_a_discard_too`.
+
+2. **Repo-wide prettier drift cleared.** `pnpm prettify` across the whole repo;
+   `prettify:check` now passes for the first time. The pre-existing failures
+   were TCW's own generated `state.yaml` files and skill docs — formatted rather
+   than prettier-ignored, per the user's call.
+
+3. **Web `WORK_STATUSES` deduplicated** into `model/types.ts`.
+   `model/tree.ts` keeps `WORK_STATUS_ORDER` as a separate export, since display
+   precedence (live work first) is genuinely a different concern from the
+   canonical vocabulary — with a test asserting the order map covers every
+   status, so the two cannot drift when a fifth status appears.
+
+    Deduplicating surfaced a bug this item had introduced: the sort's
+    unknown-status fallback was a hard-coded `3`, which meant "after everything"
+    with three statuses but tied with `discarded` once it took index 3. Now
+    `WORK_STATUS_ORDER.size`.
 
 ## For the next items in this sequence
 
