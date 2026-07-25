@@ -3,7 +3,7 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
 
-<changes starting-hash="0f7acd7" ending-hash="404ebec">
+<changes starting-hash="0f7acd7" ending-hash="3984829">
 
 ### Added
 
@@ -55,6 +55,19 @@ category, with commit hash ranges so entries trace back to source.
 - `RESERVED_PROJECT_IDS` gains `discarded`, since it derives from `WORK_STATUSES`.
 
 ### Fixed
+
+- `tcw serve` shipped a stale prebuilt bundle: `tcw/serve/dist` was not regenerated
+  after the client source changed, so none of the web behavior above reached a real
+  browser. Caught by `pnpm check:build` (`23630db`).
+- The complete modal rendered its discard form by default, because `shipping` was
+  `resolution === "done"` and the dialog opens with an unset resolution — titling it
+  "Close Work Item" with a "Discard" button before any choice was made. An unset
+  resolution now counts as shipping (`3984829`).
+- Backlog items offered only Start and Drop, leaving `backlog → discarded`
+  unreachable in the web app and pushing users toward a hard delete. They now offer
+  Start · Discard · Drop, with Discard opening the modal in discard-only mode
+  (`done` omitted, since it is not legal from backlog). `TLifecycleAction` gains
+  `discard` as a UI intent; the API action stays `complete` (`3984829`).
 
 - `tcw capabilities drift` no longer reports `shipped-missing` for a capability whose
   planning doc was closed as `wontfix`/`duplicate`/`superseded`. Those items previously
