@@ -67,3 +67,11 @@ upgrading. This is rare enough that TCW does not attempt an automatic rename.
 - **Nothing else.** `tcw work drop` is unchanged (still a hard delete for a
   mis-created item), the four resolutions are unchanged, and no existing command
   changed its flags.
+
+## One behavior change to be aware of
+
+Unresolved blockers no longer refuse a non-`done` closure. If you scripted
+`--force` purely to abandon a blocked item, you can drop the flag — but note
+that `--force` also overrides the epic open-children gate, which still applies
+to a discard. Completing as `done` is unchanged: blockers gate it exactly as
+before.

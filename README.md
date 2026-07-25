@@ -283,8 +283,9 @@ edit** any object directly from the browser:
   complexity, tags, blockers, parent, initiative); edit body and metadata; edit
   lifecycle artifacts and the `capabilities.yaml` sidecar using a Markdown
   editor with live preview; and run lifecycle actions (start, complete, drop).
-  The complete action requires resolving blockers and acknowledging every
-  Definition-of-Done item, plus a capabilities reconciliation reminder.
+  Completing as `done` requires resolving blockers and acknowledging every
+  Definition-of-Done item, plus a capabilities reconciliation reminder;
+  discarding drops all three for a single confirmation.
 - **Taxonomy entries** — create Vocabulary or Feature entries; edit name,
   description, kind, and relations. Validation check failures are shown in the
   UI after saving.
@@ -550,11 +551,17 @@ the branch merges back, so a status flip made on the work branch counts.
 
 A **discard is not a shipment**, so none of the shipping gates apply to one: no
 Definition-of-Done checklist, no capability enforcement (just a warning naming
-anything left `Missing`), and no branch merge-back. `--confirm` is still
+anything left `Missing`), no branch merge-back, and **no blocker check** — being
+blocked indefinitely is one of the best reasons to give up on something, so
+needing `--force` to act on it would be backwards. `--confirm` is still
 required, since closing is permanent. Discarding a `--worktree` item tears down
 the worktree but **keeps the unmerged branch**, naming it so you can delete it
 deliberately — deciding work isn't wanted is not the same as authorizing its
 destruction.
+
+An **epic** is the one exception: open initiative children block closing it by
+either route, because a child can't start until its epic is active, so closing
+the epic would strand them.
 
 **Tags** classify items for filtering. Each project registers its valid tag set
 centrally in `tcw-config.yaml` (`tcw work tags add|rm|list`); an item then carries
@@ -657,8 +664,10 @@ Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted
 — anything else is refused, not silently allowed.
 
-**Completion is gated.** `tcw work complete` prints the Definition of Done and
-refuses without `--confirm` (and without `--force` if unresolved blockers exist):
+**Completion is gated.** `tcw work complete --resolution done` prints the
+Definition of Done and refuses without `--confirm` (and without `--force` if
+unresolved blockers exist). A discard prints no checklist and is not
+blocker-gated, but still refuses without `--confirm`:
 
 ```
 Definition of Done — acknowledge each item:

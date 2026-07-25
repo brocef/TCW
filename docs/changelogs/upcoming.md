@@ -3,7 +3,7 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
 
-<changes starting-hash="0f7acd7" ending-hash="43b27a8">
+<changes starting-hash="0f7acd7" ending-hash="404ebec">
 
 ### Added
 
@@ -34,7 +34,7 @@ category, with commit hash ranges so entries trace back to source.
   the Definition-of-Done checklist (records `dod: []`), degrades the capability gate to
   a non-blocking warning, and skips `merge_worktree`. `remove_worktree` is called with
   `branch=None` so the worktree is torn down but the unmerged branch survives.
-  `--confirm` is still required. Blocker gating is unchanged for both routes.
+  `--confirm` is still required.
 - `tcw work list` hides `discarded` alongside `completed`; `--all` and
   `--status discarded` reveal it. `--status` choices derive from `WORK_STATUSES`.
 - Web client: `WORK_STATUSES` extended in `ui/app.tsx` and `ui/content-views.tsx`,
@@ -42,7 +42,16 @@ category, with commit hash ranges so entries trace back to source.
   complete modal branches on resolution (drops the DoD list, swaps the reconciliation
   reminder for a discard warning, relabels the action `Discard`). The HTTP API needed
   no change — it delegates destination choice to the model.
+- Unresolved blockers no longer gate a discard (`complete()` checks them only when
+  `dest == "completed"`). The epic open-children gate still applies to both routes,
+  since an initiative child cannot start until its epic is active.
+- Web `WORK_STATUSES` deduplicated into `model/types.ts`; `model/tree.ts` exports
+  `WORK_STATUS_ORDER` (display precedence, a separate concern) and `tree.test.ts`
+  guards that it covers every canonical status. The sort's unknown-status fallback
+  is now `WORK_STATUS_ORDER.size` rather than a hard-coded `3`, which stopped
+  meaning "after everything" once `discarded` took index 3.
 - `.prettierignore` excludes `docs/work/discarded/` beside `docs/work/completed/`.
+- Whole-repo `pnpm prettify` pass; `prettify:check` is clean for the first time.
 - `RESERVED_PROJECT_IDS` gains `discarded`, since it derives from `WORK_STATUSES`.
 
 ### Fixed

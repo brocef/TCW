@@ -12,7 +12,9 @@ internal module names.
   start it first, just so you could abandon it.
 - Discarding is deliberately lighter than completing. There's no Definition-of-Done
   checklist to tick (confirming that tests pass in order to abandon something never
-  made sense), and an unreconciled capability warns instead of blocking. You still
+  made sense), an unreconciled capability warns instead of blocking, and an item
+  that's blocked by something else can be discarded freely — waiting forever on a
+  dependency is one of the better reasons to give up on a piece of work. You still
   have to confirm, because closing an item is permanent. If the item had its own
   work branch, TCW cleans up the working copy but keeps the branch, and tells you its
   name — abandoning an idea shouldn't quietly delete code you never merged.
