@@ -251,12 +251,37 @@ reminder with the discard warning, matching the CLI exactly.
 
 ### 7. Migration
 
-A one-time move of the three items above, in **its own commit**, separate from
-the feature commits. Implemented as a throwaway script rather than a shipped
-command: it runs once against this repo, and a `tcw work migrate` subcommand
-would be permanent surface for a one-off. Downstream adopters with the same
-drift are served by the `check()` disagreement warning, which tells them exactly
-which items to move.
+**No migration code.** Two separate concerns, neither of which needs any:
+
+**This repo** — three `git mv`s in **their own commit**, separate from the
+feature commits:
+
+```sh
+git mv docs/work/completed/2026-06-19-additional-capability-sidecars \
+       docs/work/discarded/
+git mv docs/work/completed/2026-07-03-live-browser-test-pass-for-the-interactive-web-editor \
+       docs/work/discarded/
+git mv docs/work/completed/2026-07-03-per-object-capability-revision-token-fix-file-scoped-409s \
+       docs/work/discarded/
+```
+
+`state.yaml` needs no edit — status is derived from the folder
+(`_status_of`, `fs.py:1563`), so the move *is* the status change. `tcw validate`
+and the new `check()` consistency rule verify the result.
+
+**Downstream adopters** — a migration guide, matching this repo's established
+`docs/migration-guide-<from>-to-<to>.md` pattern (there are two already, and
+`v0.13.0`'s release notes link theirs). It instructs an agent or human to move
+every `completed/` item carrying a non-`done` resolution into `discarded/`, and
+names the two other breaking edges: `discarded` joins the reserved project-ID
+set (the 0.13 guide already documents work-status names as reserved), and any
+`completed/<slug>` status-path locator pointing at a moved item must be
+re-pointed.
+
+A shipped `tcw work migrate` subcommand would be permanent CLI surface for a
+one-time move that `git mv` already performs, and the guide is how this project
+has handled every prior breaking change. `check()` tells an adopter exactly
+which items are affected, so the guide does not need to enumerate them.
 
 ## Acceptance criteria
 
@@ -284,7 +309,9 @@ which items to move.
   to `discarded`.
 - `discarded/<slug>` resolves as a status-path locator; `completed/<slug>` no
   longer resolves for a migrated item.
-- The three historical items live in `discarded/` and `tcw validate` is clean.
+- The three historical items live in `discarded/`, `tcw validate` is clean, and
+  `check()` reports no status/resolution disagreement across the whole node.
+- A migration guide exists for the release and is linked from its release notes.
 - Web board filters, status ordering, and the complete modal match CLI behavior.
 
 ## Risks and dependencies
