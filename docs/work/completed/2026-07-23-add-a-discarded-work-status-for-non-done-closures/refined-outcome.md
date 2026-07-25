@@ -162,12 +162,30 @@ Web-surface work is not verified until the bundle is rebuilt and the app is
 driven in a browser. `pnpm lint`, `pnpm check:build`, and `pnpm test:e2e` belong
 in the verification matrix for any item touching `web/`.
 
-### Note on the e2e suite
+### The e2e suite: root-caused and fixed
 
-`pnpm test:e2e` cannot currently run clean here: Playwright 1.55 wants
-`chromium_headless_shell-1187`, which is not in the local browser cache, and the
-cached `chromium-1187` is missing its framework. Driving system Google Chrome
-via `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` runs the suite but fails the
-screenshot-baseline tests, since the baselines were captured with the pinned
-build. The one non-screenshot test passed. **Unresolved environment issue**,
-unrelated to this item's changes — worth its own item.
+Initially the suite could not run here at all: Playwright 1.55 wants
+`chromium_headless_shell-1187`, and its own installer kept producing a 624K stub
+instead of the full 310M bundle. Fetching the archives directly from
+Playwright's CDN and extracting them by hand gave a working pinned browser.
+
+That exposed the real problem, which was never environmental. **Every screenshot
+baseline embedded a live `Modified at <date>, <time>`** rendered from the
+fixture's actual creation time, so the digits differed on any run at a different
+minute than the capture — 19-30 pixels, enough to fail. Because the suite is
+serial, that second test blocked the ten after it, which is why the whole suite
+looked broken rather than one assertion looking flaky. The suite could not pass
+on any machine except the one that captured its baselines.
+
+Fixed in `a72af29`: all eight `toHaveScreenshot` assertions mask
+`time.modified-at`, and every baseline is regenerated with the mask applied. No
+`maxDiffPixels` tolerance was added — genuine pixel regressions still fail.
+`status-filter-popover` and `filters-popover` also change on purpose, capturing
+the new fourth `Discarded` toggle.
+
+`pnpm test:e2e` now passes 12/12 on clean runs.
+
+A later combined run failed while other work ran concurrently; the user
+identified this as contention over the shared Chromium install with another
+agent in a different repository, not a defect in this suite. It passes
+consistently when run alone.

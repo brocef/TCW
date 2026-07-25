@@ -3,7 +3,7 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
 
-<changes starting-hash="0f7acd7" ending-hash="3984829">
+<changes starting-hash="0f7acd7" ending-hash="a72af29">
 
 ### Added
 
@@ -63,6 +63,13 @@ category, with commit hash ranges so entries trace back to source.
   `resolution === "done"` and the dialog opens with an unset resolution — titling it
   "Close Work Item" with a "Discard" button before any choice was made. An unset
   resolution now counts as shipping (`3984829`).
+- The Playwright parity suite could not pass on any machine but the one that captured
+  its baselines: every screenshot embedded a live `Modified at <date>, <time>` from the
+  fixture's creation time, so the digits differed on any run at a different minute
+  (19-30 pixels — enough to fail). Serial mode meant that second test blocked the ten
+  after it. All eight `toHaveScreenshot` assertions now mask `time.modified-at` and
+  every baseline is regenerated; no `maxDiffPixels` tolerance was added, so genuine
+  pixel regressions still fail (`a72af29`).
 - Backlog items offered only Start and Drop, leaving `backlog → discarded`
   unreachable in the web app and pushing users toward a hard delete. They now offer
   Start · Discard · Drop, with Discard opening the modal in discard-only mode
