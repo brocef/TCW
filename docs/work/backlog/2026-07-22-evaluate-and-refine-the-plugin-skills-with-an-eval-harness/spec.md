@@ -6,7 +6,7 @@ None. This item adds contributor-facing measurement machinery under `evals/`
 and tunes skill prose. No `tcw` CLI surface changes, so nothing a user can do
 changes. The `capabilities.yaml` sidecar is deliberately absent.
 
-Re-run the gate at closeout: if a refinement changes *what* a skill instructs an
+Re-run the gate at closeout: if a refinement changes _what_ a skill instructs an
 agent to do rather than how reliably it does it, the affected `plugin/*` or
 `work/*` entries may need a body edit (not a status flip).
 
@@ -32,8 +32,8 @@ validated by a second guess.
 ## Non-goals
 
 - No `tcw` CLI or store changes.
-- No description-triggering optimization (whether skills *fire* is a separate
-  axis from whether they *work*).
+- No description-triggering optimization (whether skills _fire_ is a separate
+  axis from whether they _work_).
 - No iterate-until-clean loop, and no deep single-skill coverage.
 - No LLM-judge grading where the fixture's end state answers the question
   mechanically.
@@ -43,23 +43,23 @@ validated by a second guess.
 ### Run isolation — resolved empirically
 
 The blocking design question was how to run a with-skill and a baseline arm that
-differ *only* in whether the tcw skills are reachable. Six probes:
+differ _only_ in whether the tcw skills are reachable. Six probes:
 
-| Mechanism | Result |
-| --- | --- |
-| `--disallowed-tools Skill` | Kills all skills — clean baseline, but no matching with-skill arm |
-| `--plugin-dir <repo>` | Also loads the other 8 globally-enabled plugins |
-| `--settings '{"enabledPlugins":{"tcw@tcw":true}}'` | Merges additively; foreign plugins remain |
-| `--disallowed-tools 'Skill(ns:*)'` | No namespace scoping |
-| `CLAUDE_CONFIG_DIR=<clean>` | `Not logged in` — keychain auth is config-dir-keyed |
-| `--bare` | Clean, but refuses OAuth; needs `ANTHROPIC_API_KEY` |
-| **`--settings` with explicit `false` per plugin** | **Works — suppresses each plugin and its hooks** |
+| Mechanism                                          | Result                                                            |
+| -------------------------------------------------- | ----------------------------------------------------------------- |
+| `--disallowed-tools Skill`                         | Kills all skills — clean baseline, but no matching with-skill arm |
+| `--plugin-dir <repo>`                              | Also loads the other 8 globally-enabled plugins                   |
+| `--settings '{"enabledPlugins":{"tcw@tcw":true}}'` | Merges additively; foreign plugins remain                         |
+| `--disallowed-tools 'Skill(ns:*)'`                 | No namespace scoping                                              |
+| `CLAUDE_CONFIG_DIR=<clean>`                        | `Not logged in` — keychain auth is config-dir-keyed               |
+| `--bare`                                           | Clean, but refuses OAuth; needs `ANTHROPIC_API_KEY`               |
+| **`--settings` with explicit `false` per plugin**  | **Works — suppresses each plugin and its hooks**                  |
 
 The last row is the runner. Both arms pass the same explicit-`false` map for
 every foreign plugin and differ only in `"tcw@tcw": true|false`.
 
 **Hooks were the bigger contaminant, not the skill listing.** SessionStart hooks
-*do* fire under `claude -p` (verified). Two inject unconditionally:
+_do_ fire under `claude -p` (verified). Two inject unconditionally:
 
 - `superpowers` (`hooks/session-start`) injects `using-superpowers/SKILL.md`
   verbatim — the "if there is even a 1% chance a skill might apply you
@@ -81,7 +81,7 @@ removing them would need `--bare` and an API key, which buys little here.
 `tcw.store.fs.init`, and drives the full lifecycle handshake through
 `tcw.cli.main`. The eval seeder should follow that pattern rather than invent
 one. That file is also the existing CLI-level regression for the same handshake
-the skills teach — the eval harness measures the *judgment* layer that pytest
+the skills teach — the eval harness measures the _judgment_ layer that pytest
 structurally cannot reach.
 
 ### The skills are mechanically gradeable
@@ -130,15 +130,15 @@ Seven cases. One integration case matters more than any single-skill case,
 because the chain `Vocabulary → Features → Capabilities → Work` is the thing the
 skills coordinate and the thing most likely to be dropped.
 
-| # | Skill | Scenario |
-| --- | --- | --- |
-| 1 | tcw-work | Feature request in chat → item created, planned, `start` before first code edit, per-stage commits |
-| 2 | tcw-work | Inbox triage of the raw `slow-login.md` request → accepted with sensible title and tags |
-| 3 | tcw-capabilities | Close out the mid-flight item → ledger flipped `Missing → Supported`, then `complete`, without `--force` |
-| 4 | tcw-taxonomy | Register loose domain language → correct Vocabulary vs Feature split, `--vocab` links, `check` clean |
-| 5 | tcw-plugin | Orientation: "which axis does this belong in, and where do I start?" |
-| 6 | tcw-report | "`tcw work complete` threw a traceback" → GitHub issue skeleton, **not** a local work item |
-| 7 | cross-axis | Product change requiring a new term, a new capability, and a work item, in the right order |
+| #   | Skill            | Scenario                                                                                                 |
+| --- | ---------------- | -------------------------------------------------------------------------------------------------------- |
+| 1   | tcw-work         | Feature request in chat → item created, planned, `start` before first code edit, per-stage commits       |
+| 2   | tcw-work         | Inbox triage of the raw `slow-login.md` request → accepted with sensible title and tags                  |
+| 3   | tcw-capabilities | Close out the mid-flight item → ledger flipped `Missing → Supported`, then `complete`, without `--force` |
+| 4   | tcw-taxonomy     | Register loose domain language → correct Vocabulary vs Feature split, `--vocab` links, `check` clean     |
+| 5   | tcw-plugin       | Orientation: "which axis does this belong in, and where do I start?"                                     |
+| 6   | tcw-report       | "`tcw work complete` threw a traceback" → GitHub issue skeleton, **not** a local work item               |
+| 7   | cross-axis       | Product change requiring a new term, a new capability, and a work item, in the right order               |
 
 Case 6 is the sharpest negative test in the set: the natural wrong answer
 (logging it as local work) is exactly what `tcw-report` exists to prevent.

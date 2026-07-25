@@ -22,20 +22,22 @@ File names follow the pattern `v{version}.md`. The `upcoming.md` files hold cont
 
 ## Release Notes vs. Changelogs
 
-| Aspect | Release Notes (`docs/release-notes/`) | Changelog (`docs/changelogs/`) |
-|--------|----------------------------------------|--------------------------------|
-| Audience | End-users | Developers (contributors, dependents) |
-| Tone | Plain language, understandable by anyone familiar with the app | Technical, precise |
-| Content | User-facing changes only | All changes including internals, refactors, dependency bumps |
-| Detail level | What changed and why it matters to the user | What changed, where, and how |
+| Aspect       | Release Notes (`docs/release-notes/`)                          | Changelog (`docs/changelogs/`)                               |
+| ------------ | -------------------------------------------------------------- | ------------------------------------------------------------ |
+| Audience     | End-users                                                      | Developers (contributors, dependents)                        |
+| Tone         | Plain language, understandable by anyone familiar with the app | Technical, precise                                           |
+| Content      | User-facing changes only                                       | All changes including internals, refactors, dependency bumps |
+| Detail level | What changed and why it matters to the user                    | What changed, where, and how                                 |
 
 **Release notes guidance:**
+
 - Write in plain language — no jargon, no internal module names
 - Focus on outcomes: what can the user now do, what was fixed, what changed
 - Group by category when useful (e.g., "New Features", "Bug Fixes", "Breaking Changes")
 - Omit purely internal changes (refactors, dev tooling, test-only changes)
 
 **Changelog guidance:**
+
 - Include everything: features, fixes, refactors, dependency changes, CI/CD updates, test additions
 - Reference file paths, function names, or modules where helpful
 - Group by category (e.g., "Added", "Changed", "Fixed", "Removed", "Internal")
@@ -85,6 +87,7 @@ Two scenarios surface drift:
 - **`v{version}.md` exists but `upcoming.md` has older content that predates the bump:** the `upcoming.md` content needs to be merged into the versioned file. Again, confirm with the user before merging — losing or relocating an entry without acknowledgment is worse than asking.
 
 After confirmation, the rotation is:
+
 1. Rename `upcoming.md` to `v{version}.md` in both directories
 2. Start a fresh `upcoming.md` for subsequent work
 
@@ -94,7 +97,7 @@ Always run the cross-check before appending — never silently lose content that
 
 ## Existing Project Migration
 
-**Migration is always offered, never executed unilaterally.** Do not rewrite, move, or delete a project's existing CHANGELOG, release notes, or version-history files without explicit user approval. The table below lists *suggestions you can offer* — not a script to run.
+**Migration is always offered, never executed unilaterally.** Do not rewrite, move, or delete a project's existing CHANGELOG, release notes, or version-history files without explicit user approval. The table below lists _suggestions you can offer_ — not a script to run.
 
 When first working in a project, check whether it already has release notes or changelogs in a different format or location (e.g., a single `CHANGELOG.md` at the root, a `CHANGES.txt`, release notes embedded in `README.md`, GitHub Releases only, or a `docs/` subfolder with a different naming scheme).
 
@@ -106,19 +109,19 @@ Only after the user agrees, follow the suggestion below. Always preserve the ori
 
 **Suggested migrations to offer:**
 
-| What you find | Migration to propose |
-|---------------|----------------------|
-| Single root `CHANGELOG.md` | Split into `docs/changelogs/` per-version files; extract user-facing entries into `docs/release-notes/` |
-| Release notes in `README.md` | Extract into `docs/release-notes/` per-version files; remove or replace the README section with a pointer |
-| Flat `docs/changelog.md` or similar | Restructure into per-version files under `docs/changelogs/` and `docs/release-notes/` |
-| Per-version files with different naming (e.g., `1.2.3.md` without `v` prefix) | Rename to `v{version}.md` |
-| Only GitHub Releases (no files in repo) | Pull release content into `docs/release-notes/` and `docs/changelogs/` per-version files |
-| Correct structure but missing one side (e.g., changelogs exist but no release notes) | Generate the missing side from the existing content |
+| What you find                                                                        | Migration to propose                                                                                      |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Single root `CHANGELOG.md`                                                           | Split into `docs/changelogs/` per-version files; extract user-facing entries into `docs/release-notes/`   |
+| Release notes in `README.md`                                                         | Extract into `docs/release-notes/` per-version files; remove or replace the README section with a pointer |
+| Flat `docs/changelog.md` or similar                                                  | Restructure into per-version files under `docs/changelogs/` and `docs/release-notes/`                     |
+| Per-version files with different naming (e.g., `1.2.3.md` without `v` prefix)        | Rename to `v{version}.md`                                                                                 |
+| Only GitHub Releases (no files in repo)                                              | Pull release content into `docs/release-notes/` and `docs/changelogs/` per-version files                  |
+| Correct structure but missing one side (e.g., changelogs exist but no release notes) | Generate the missing side from the existing content                                                       |
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---------|-----|
-| Silently rotating `upcoming.md` during version cross-check | Tell the user what you found and confirm before renaming |
-| Acting on a migration without explicit user agreement | The migration table lists *offers* — never execute one unilaterally |
+| Mistake                                                           | Fix                                                                              |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Silently rotating `upcoming.md` during version cross-check        | Tell the user what you found and confirm before renaming                         |
+| Acting on a migration without explicit user agreement             | The migration table lists _offers_ — never execute one unilaterally              |
 | Rotating files by hand when the project has a version-cut process | Use the project's documented version-cut process; it rotates as part of the bump |

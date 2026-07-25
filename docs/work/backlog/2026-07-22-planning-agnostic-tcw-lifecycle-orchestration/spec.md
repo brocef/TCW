@@ -79,20 +79,20 @@ from this shape:
 
 ```yaml
 work:
-  lifecycle:
-    skills:
-      spec:
-        - superpowers:brainstorming
-      plan:
-        - superpowers:writing-plans
-      implement:
-        - superpowers:subagent-driven-development
-      review:
-        - superpowers:requesting-code-review
-      verify:
-        - superpowers:verification-before-completion
-      integrate:
-        - superpowers:finishing-a-development-branch
+    lifecycle:
+        skills:
+            spec:
+                - superpowers:brainstorming
+            plan:
+                - superpowers:writing-plans
+            implement:
+                - superpowers:subagent-driven-development
+            review:
+                - superpowers:requesting-code-review
+            verify:
+                - superpowers:verification-before-completion
+            integrate:
+                - superpowers:finishing-a-development-branch
 ```
 
 Each value is a list of non-blank strings. Declaration order is significant.

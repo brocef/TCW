@@ -5,6 +5,7 @@ Read this when the project's `CLAUDE.md` has no `## Documentation Sync` section 
 If the project's `CLAUDE.md` has no `## Documentation Sync` section, ask the user: "Would you like to set up a Documentation Sync section in your CLAUDE.md?"
 
 If they agree, help them fill it out by asking:
+
 1. **Which files** should be kept in sync with code changes? (e.g., README.md, CHANGELOG.md, guides)
 2. **What trigger** applies to each file? Offer the base triggers from the "Trigger Reference" table in this skill's `SKILL.md` (`Public-API`, `Public-{Name}-API`, `Any-Code-Change`, `Only-Breaking`), and note that a project may define its own named trigger where none of those fit.
 3. **What description** should guide how updates are written for each file?
@@ -30,8 +31,8 @@ This keeps deferred work in the same board the rest of the project's work lives 
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---------|-----|
-| Not creating the changelog file if it doesn't exist | If the file is listed in Documentation Sync, create it if missing |
-| Omitting the opening directive line | The skill must be reloaded each session; the directive is what triggers that |
-| Adding a `docs/FOLLOWUPS.md` log in a TCW project | Track deferred code work as `tcw work` backlog items instead |
+| Mistake                                             | Fix                                                                          |
+| --------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Not creating the changelog file if it doesn't exist | If the file is listed in Documentation Sync, create it if missing            |
+| Omitting the opening directive line                 | The skill must be reloaded each session; the directive is what triggers that |
+| Adding a `docs/FOLLOWUPS.md` log in a TCW project   | Track deferred code work as `tcw work` backlog items instead                 |

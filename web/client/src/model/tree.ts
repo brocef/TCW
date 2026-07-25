@@ -3,7 +3,10 @@ import type { TreeNode, WorkItem } from "./types"
 export type TWorkSortKey = "name" | "modified"
 export type TSortDirection = "ascending" | "descending"
 
-const WORK_STATUS_ORDER = new Map([
+// Display precedence, deliberately not the canonical WORK_STATUSES order: live
+// work first, closed work last. Every WORK_STATUSES value must appear here
+// (guarded in tree.test.ts).
+export const WORK_STATUS_ORDER = new Map([
     ["active", 0],
     ["backlog", 1],
     ["completed", 2],
@@ -124,8 +127,11 @@ export function sortWorkTree(
         left: TreeNode<WorkItem>,
         right: TreeNode<WorkItem>
     ) => {
-        const leftStatus = WORK_STATUS_ORDER.get(left.item?.status ?? "") ?? 3
-        const rightStatus = WORK_STATUS_ORDER.get(right.item?.status ?? "") ?? 3
+        const unknown = WORK_STATUS_ORDER.size // sorts after every known status
+        const leftStatus =
+            WORK_STATUS_ORDER.get(left.item?.status ?? "") ?? unknown
+        const rightStatus =
+            WORK_STATUS_ORDER.get(right.item?.status ?? "") ?? unknown
         if (leftStatus !== rightStatus) return leftStatus - rightStatus
         if (!left.item || !right.item)
             return left.name.localeCompare(right.name)

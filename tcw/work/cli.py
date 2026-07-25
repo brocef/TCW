@@ -574,16 +574,17 @@ def _complete(args: argparse.Namespace) -> int:
         return 1
     branch = item.branch or None              # capture before complete moves the folder
     has_worktree = bool(item.worktree)
-    if not args.force:
+    # A discard is not a shipment: the blocker check, the Definition-of-Done
+    # checklist, the capability gate, and the worktree merge-back all exist to
+    # police shipped work, so none of them apply. `--confirm` still does —
+    # closing is terminal.
+    shipping = resolution_status(args.resolution) == "completed"
+    if shipping and not args.force:
         blockers = st.unresolved_blockers(item)
         if blockers:
             print(f"tcw work complete: blocked by: {', '.join(blockers)} "
                   f"(use --force to override)", file=sys.stderr)
             return 1
-    # A discard is not a shipment: the Definition-of-Done checklist, the
-    # capability gate, and the worktree merge-back all exist to police shipped
-    # work, so none of them apply. `--confirm` still does — closing is terminal.
-    shipping = resolution_status(args.resolution) == "completed"
     checklist = st.dod_checklist() if shipping else []
     if shipping:
         print("Definition of Done — acknowledge each item:")

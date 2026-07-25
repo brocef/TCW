@@ -1,5 +1,9 @@
 export type Axis = "work" | "taxonomy" | "capabilities"
 
+// Canonical work statuses, mirroring WORK_STATUSES in tcw/store/base.py.
+// Display precedence is a separate concern — see WORK_STATUS_ORDER in ./tree.
+export const WORK_STATUSES = ["backlog", "active", "completed", "discarded"]
+
 export type JsonRecord = Record<string, unknown>
 
 export interface WorkItem extends JsonRecord {

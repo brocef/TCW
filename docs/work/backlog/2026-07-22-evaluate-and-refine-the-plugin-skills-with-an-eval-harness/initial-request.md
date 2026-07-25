@@ -72,8 +72,8 @@ a baseline comparison can show that.
 
 - No remote-store or CLI behavior changes. This item measures and tunes the
   judgment layer; mechanism stays in the binary.
-- No description-triggering optimization loop. Whether skills *fire* is a
-  separate axis from whether they *work*; defer it.
+- No description-triggering optimization loop. Whether skills _fire_ is a
+  separate axis from whether they _work_; defer it.
 - No iterate-until-clean refinement loop, and no deep single-skill coverage.
 
 ## Known drift to fold in

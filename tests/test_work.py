@@ -1815,3 +1815,31 @@ def test_discard_leaves_the_unmerged_branch_intact(tmp_path, monkeypatch, capsys
     assert f"work/{slug}" in branches                         # branch survives
     assert not (sub / "only-on-the-branch.txt").exists()      # and was NOT merged
     assert FsWorkStore.open(sub).get(slug).status == "discarded"
+
+
+def test_blockers_gate_a_completion_but_not_a_discard(tmp_path):
+    """"Blocked indefinitely" is a reason to give up, not a reason you can't.
+    The gate says "don't claim you shipped this while its dependency is
+    unfinished" — which says nothing about abandoning it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    blocker = st.create("Vendor work", created="2026-01-01")
+    target = st.create("Depends on the vendor", created="2026-01-02")
+    st.add_blocker(target.slug, blocker.slug)
+    st.start(target.slug, force=True)
+
+    with pytest.raises(ValueError, match="blocked by"):
+        st.complete(target.slug, "done", [])
+    assert st.complete(target.slug, "wontfix", []).status == "discarded"
+
+
+def test_epic_children_gate_applies_to_a_discard_too(tmp_path):
+    """Unlike blockers: an initiative child can't start until its epic is
+    active, so closing an epic either way strands open children."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create_work("Epic", created="2026-01-01", type="epic").item
+    st.create_work("Child", created="2026-01-02", initiative=epic.slug)
+    st.start(epic.slug)
+    with pytest.raises(ValueError, match="initiative children are still open"):
+        st.complete(epic.slug, "wontfix", [])

@@ -63,8 +63,8 @@ Draft assertions now but treat them as provisional — the methodology is explic
 that you don't know what "good" looks like until the first outputs land. Expect
 to revise them after phase 3 and before grading.
 
-Case 6 (`tcw-report`) needs its negative assertion stated positively: *no new
-item appears under `docs/work/`*. That is the failure mode worth catching.
+Case 6 (`tcw-report`) needs its negative assertion stated positively: _no new
+item appears under `docs/work/`_. That is the failure mode worth catching.
 
 ## Phase 3 — Runner
 
@@ -87,7 +87,7 @@ claude -p --settings '{"enabledPlugins": {<every plugin>: false, "tcw@tcw": <arm
 
 `--output-format stream-json` gives the transcript and token/duration figures;
 persist them as `timing.json` per run. Transcripts are not optional — the
-methodology treats them as a primary signal for *why* something failed, and
+methodology treats them as a primary signal for _why_ something failed, and
 phase 5 depends on reading them.
 
 Assert isolation once at startup rather than trusting it: a probe run in each
@@ -126,7 +126,7 @@ both before trusting them.
 ## Phase 5 — Review and refine
 
 Present outputs and benchmark for human review before making any skill edit —
-the numbers say *what* failed, the transcripts and your judgment say *why*.
+the numbers say _what_ failed, the transcripts and your judgment say _why_.
 
 Then refine, under three standing constraints:
 

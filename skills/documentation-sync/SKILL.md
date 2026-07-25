@@ -27,6 +27,7 @@ Before reporting any code change complete, invoke the `documentation-sync` skill
 The opening directive is a hint: it tells the agent to invoke this skill before reporting code-change work complete. It is not a hard guarantee — sessions that don't touch code can ignore it. But for any session that does change code, the directive is what surfaces the trigger-evaluation step instead of letting it slip.
 
 Each entry has three parts:
+
 1. **File path** — the document to potentially update
 2. **Trigger** (in brackets) — when this file needs updating
 3. **Description** — what the file is for and how to write updates for it
@@ -35,12 +36,12 @@ Each entry has three parts:
 
 ### Trigger Reference
 
-| Trigger | Fires When | Example |
-|---------|-----------|---------|
-| `Public-API` | Exported APIs, schemas, types, or public interfaces change — **excluding** any area covered by a more specific `Public-{Name}-API` entry in the same section | Renamed a function parameter, added a new export |
-| `Public-{Name}-API` | Public interfaces change for a specific area of the codebase. `{Name}` is a descriptive label (not necessarily an exact folder path) that unambiguously identifies the area. | `Public-CLI-API` fires when CLI flags/behavior change; `Public-Auth-API` fires when auth endpoints change |
-| `Any-Code-Change` | A **behavior-affecting** code change — anything that alters runtime behavior, build output, or visible API surface. **Does not fire** for cosmetic-only edits (formatting, whitespace, comments, lint autofixes, test-fixture rearrangement that doesn't change assertions). | Internal refactor, dependency bump that changes behavior, bugfix |
-| `Only-Breaking` | Reverse-incompatible changes are introduced | Removed a parameter, changed return type, dropped support |
+| Trigger             | Fires When                                                                                                                                                                                                                                                                   | Example                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `Public-API`        | Exported APIs, schemas, types, or public interfaces change — **excluding** any area covered by a more specific `Public-{Name}-API` entry in the same section                                                                                                                 | Renamed a function parameter, added a new export                                                          |
+| `Public-{Name}-API` | Public interfaces change for a specific area of the codebase. `{Name}` is a descriptive label (not necessarily an exact folder path) that unambiguously identifies the area.                                                                                                 | `Public-CLI-API` fires when CLI flags/behavior change; `Public-Auth-API` fires when auth endpoints change |
+| `Any-Code-Change`   | A **behavior-affecting** code change — anything that alters runtime behavior, build output, or visible API surface. **Does not fire** for cosmetic-only edits (formatting, whitespace, comments, lint autofixes, test-fixture rearrangement that doesn't change assertions). | Internal refactor, dependency bump that changes behavior, bugfix                                          |
+| `Only-Breaking`     | Reverse-incompatible changes are introduced                                                                                                                                                                                                                                  | Removed a parameter, changed return type, dropped support                                                 |
 
 **Partition rule for `Public-API` and `Public-{Name}-API`:** When a Documentation Sync section lists both, the named entries carve their areas out of the generic `Public-API`. A CLI flag change fires `Public-CLI-API` only, not both. If no named entry covers the change, fall back to `Public-API`.
 
@@ -74,10 +75,10 @@ The point is to keep doc work visible — either as named-file tasks upfront, or
 
 These workflows are deeper than the core trigger-evaluation loop and live as references so they only load when actually needed:
 
-| Reference | Load when |
-|-----------|-----------|
+| Reference                                    | Load when                                                                                                                                                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`. |
-| `references/setup.md` | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet. |
+| `references/setup.md`                        | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                      |
 
 ## When to offer version and changelog options
 
@@ -96,8 +97,8 @@ Don't offer mid-flow, and don't offer for trivial in-isolation edits. Don't chan
 
 These are trigger-evaluation slips. Mistakes specific to release-notes/changelog work live in `references/release-notes-and-changelogs.md`.
 
-| Mistake | Fix |
-|---------|-----|
-| Skipping doc updates under time pressure | Triggers are objective — evaluate them regardless of urgency |
-| Treating `{Name}` in `Public-{Name}-API` as an exact path | It's a descriptive label — `Public-CLI-API` could refer to `src/cli/`, `lib/commands/`, etc. |
-| Hardcoding one project's version-cut command into this skill | Defer to the project's own Versioning section; this skill stays portable |
+| Mistake                                                      | Fix                                                                                          |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Skipping doc updates under time pressure                     | Triggers are objective — evaluate them regardless of urgency                                 |
+| Treating `{Name}` in `Public-{Name}-API` as an exact path    | It's a descriptive label — `Public-CLI-API` could refer to `src/cli/`, `lib/commands/`, etc. |
+| Hardcoding one project's version-cut command into this skill | Defer to the project's own Versioning section; this skill stays portable                     |

@@ -113,13 +113,13 @@ Tests in `tests/test_work.py` should prove:
    ownership rules and quick reference.
 2. Update `skills/tcw-work/references/lifecycle.md`,
    `task-lifecycle.md`, and `epic-lifecycle.md` as needed to:
-   - inspect the effective lifecycle policy;
-   - preflight configured skill availability and fail closed;
-   - invoke skills in declared order through the fixed prompt envelope;
-   - preserve generic TCW behavior for unmapped checkpoints;
-   - record review, verification, and integration evidence in the bounded
-     artifact spine;
-   - reserve commits and transitions for TCW.
+    - inspect the effective lifecycle policy;
+    - preflight configured skill availability and fail closed;
+    - invoke skills in declared order through the fixed prompt envelope;
+    - preserve generic TCW behavior for unmapped checkpoints;
+    - record review, verification, and integration evidence in the bounded
+      artifact spine;
+    - reserve commits and transitions for TCW.
 3. Update `commands/tcw-plan-work.md` and
    `commands/tcw-drive-work-to-completion.md` to route through configured
    checkpoints without duplicating the lifecycle reference documents.
@@ -163,14 +163,14 @@ Documentation Sync triggers expected to fire:
    no longer Missing and all changed entries match shipped behavior.
 6. Run the complete verification matrix:
 
-   ```text
-   python -m pytest
-   pnpm prettify:check
-   tcw taxonomy check
-   tcw capabilities check
-   tcw validate
-   git diff --check
-   ```
+    ```text
+    python -m pytest
+    pnpm prettify:check
+    tcw taxonomy check
+    tcw capabilities check
+    tcw validate
+    git diff --check
+    ```
 
 7. Record implementation and verification evidence in `outcome.md`, then stop
    for explicit user verification and refinement. Do not complete the item or

@@ -1001,6 +1001,9 @@ class WorkStore(ABC):
             raise IllegalTransition(f"cannot complete from {item.status} "
                                     f"as '{resolution}' (→ {dest})")
         if not force:
+            # The epic gate applies to *both* routes: an initiative child cannot
+            # start until its epic is active, so closing an epic with open
+            # children strands them either way.
             if item.type == "epic":
                 open_children = [i.slug for i in self.initiative_children(slug)
                                  if i.status not in RESOLVED_STATUSES]
@@ -1009,10 +1012,16 @@ class WorkStore(ABC):
                                      f"children are still open: "
                                      f"{', '.join(open_children)}. Complete or "
                                      f"defer them first.")
-            blockers = self.unresolved_blockers(item)
-            if blockers:
-                raise ValueError("blocked by: " + ", ".join(blockers)
-                                 + " (use --force to override)")
+            # Blockers gate a *shipment*, not an abandonment. "Don't claim you
+            # shipped this while its dependency is unfinished" says nothing
+            # about giving up — being blocked indefinitely is one of the most
+            # common reasons to discard something, so requiring --force there
+            # would be friction on the path `discarded` exists to smooth.
+            if dest == "completed":
+                blockers = self.unresolved_blockers(item)
+                if blockers:
+                    raise ValueError("blocked by: " + ", ".join(blockers)
+                                     + " (use --force to override)")
         self.set_field(slug, "resolution", resolution)
         self.set_field(slug, "dod", dod_ack)
         if from_backlog_epic:                       # bypass transition()'s own

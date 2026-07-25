@@ -47,8 +47,7 @@ import type {
     TDraft as Draft,
     TEditorSession as Editor,
 } from "./ui-types"
-
-const WORK_STATUSES = ["backlog", "active", "completed", "discarded"]
+import { WORK_STATUSES } from "../model/types"
 import type {
     Axis,
     AxisItem,

@@ -6,8 +6,17 @@ import {
     pruneTree,
     sortWorkTree,
     workAncestors,
+    WORK_STATUS_ORDER,
 } from "./tree"
+import { WORK_STATUSES } from "./types"
 import type { WorkItem } from "./types"
+
+test("every canonical work status has a display order", () => {
+    // Adding a status to WORK_STATUSES without teaching the sorter about it
+    // would silently lump it in with unknown statuses at the end of the board.
+    for (const status of WORK_STATUSES)
+        expect(WORK_STATUS_ORDER.has(status)).toBe(true)
+})
 
 describe("path tree", () => {
     test("creates folders and selectable leaves", () => {

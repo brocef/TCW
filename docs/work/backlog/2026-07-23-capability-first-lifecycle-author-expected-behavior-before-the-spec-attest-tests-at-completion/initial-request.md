@@ -9,7 +9,7 @@ GitHub issue [#5](https://github.com/brocef/TCW/issues/5), filed 2026-07-18.
 The capabilities axis is front-loaded in tooling but not in practice. `tcw work
 new` has the `## Capability changes` planning gate and `tcw work complete` fails
 closed on a declared `new:` capability still reading `Missing` — but both gates
-check that a capability *exists* and that its *status* flips, never that its
+check that a capability _exists_ and that its _status_ flips, never that its
 **behavior description** was authored first and drove the work. So a capability
 reads as documentation of what was built rather than the spec that shaped it.
 
@@ -23,7 +23,7 @@ Two lightweight refinements. No new objects, no CLI-breaking changes.
 
 1. **Reorder: capability expected-behavior becomes the first authored artifact.**
    For any item with a product delta, author the capability's `description.md`
-   expected behavior (a few plain bullets) *before* `spec.md`. The artifact spine
+   expected behavior (a few plain bullets) _before_ `spec.md`. The artifact spine
    for product items reads `capability-behavior → spec.md → plan.md → …`. This is
    guidance in the `tcw-work` and `tcw-capabilities` lifecycle docs — no
    enforcement change.
@@ -44,7 +44,7 @@ checklist, not new machinery.
 ## Meta changes
 
 Establishes the capability as the genuine source of truth for agentic work: plan
-*from* the capability behavior, implement, then attest the tests match it.
+_from_ the capability behavior, implement, then attest the tests match it.
 
 - Explicitly **not** in scope (rejected in the issue as too heavy): structured or
   executable acceptance-criteria fields, and test-ID traceability tags.

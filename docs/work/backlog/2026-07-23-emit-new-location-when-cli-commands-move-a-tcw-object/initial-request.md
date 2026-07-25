@@ -3,7 +3,7 @@
 ## Requested outcome
 
 When a `tcw` CLI command moves a TCW-managed object to a new location, the
-success message should tell the user *where the object now lives*, not just that
+success message should tell the user _where the object now lives_, not just that
 the transition happened.
 
 Concrete example from the request:
@@ -44,7 +44,7 @@ out of scope — that confusion doesn't arise there.
   message must be expressed so a non-filesystem store (Jira, wiki) could realize
   its own location string (issue URL, status label) instead. The CLI must obtain
   the location from the store, not hardcode `docs/work/<status>/` string-building
-  in the command handler. Resolving *how* (reuse the FS-only `path()`, or promote
+  in the command handler. Resolving _how_ (reuse the FS-only `path()`, or promote
   a small abstract locator to the store interface) is the central spec decision.
 - Message wording should be concise and greppable; keep the slug in it so
   existing habits still match.

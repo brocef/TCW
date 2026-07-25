@@ -9,20 +9,20 @@ this item (no product-layer delta beyond message wording).
 
 ## Problem
 
-Commands that place or relocate a work item report *that* it happened but not
-*where the item now lives* (in a form you can go straight to):
+Commands that place or relocate a work item report _that_ it happened but not
+_where the item now lives_ (in a form you can go straight to):
 
-| command | current output |
-| --- | --- |
-| `tcw work start <slug>` | `started <slug>` (stdout) |
-| `tcw work complete <slug> …` | `completed <slug> (<resolution>)` (stdout) |
-| `tcw work inbox accept <entry>` | `<slug>` (stdout, bare) |
-| `tcw work new "<title>"` | `<slug>` (stdout) + `→ edit: <abs>/initial-request.md` (stderr) |
+| command                         | current output                                                  |
+| ------------------------------- | --------------------------------------------------------------- |
+| `tcw work start <slug>`         | `started <slug>` (stdout)                                       |
+| `tcw work complete <slug> …`    | `completed <slug> (<resolution>)` (stdout)                      |
+| `tcw work inbox accept <entry>` | `<slug>` (stdout, bare)                                         |
+| `tcw work new "<title>"`        | `<slug>` (stdout) + `→ edit: <abs>/initial-request.md` (stderr) |
 
 Because the item's folder is never named as a repo-relative path, agents (and
 people) keep looking for a started item in `backlog/` instead of `active/`, an
 accepted item in `inbox/` instead of `backlog/`, or a freshly created item they
-can't yet see. `new` does print a path, but it's the absolute *file* to edit, not
+can't yet see. `new` does print a path, but it's the absolute _file_ to edit, not
 the item's folder home.
 
 ## Goals
@@ -42,7 +42,7 @@ the item's folder home.
 - Touching the taxonomy or capabilities axes (their status is an in-place field
   edit, not a folder move — the confusion doesn't arise there).
 - Rewording `delegate`/`escalate`, which already print the realized inbox `Path`.
-- Removing `new`'s existing `→ edit:` file hint — it stays; we *add* the
+- Removing `new`'s existing `→ edit:` file hint — it stays; we _add_ the
   repo-relative folder location beside it.
 
 ## Constraints
@@ -150,7 +150,7 @@ test says filesystem realization belongs.
   wherever the item actually is).
 
 Exact arrow/verb wording is a small choice settled in `plan.md`; the invariant is
-*slug + repo-relative location, resolved through `st.locate()`*.
+_slug + repo-relative location, resolved through `st.locate()`_.
 
 ## Design decision — abstract locator (approach B, chosen)
 
@@ -168,7 +168,7 @@ CLI depends only on the abstract method.
 - Cost: one `@abstractmethod` + one adapter impl. Only `FsWorkStore` must satisfy
   it (no other subclasses), so the blast radius is a single method.
 - **Abstract, not a concrete `return None` default**, deliberately: a future
-  adapter should be *forced* to answer "where does this item live" rather than
+  adapter should be _forced_ to answer "where does this item live" rather than
   silently inherit "nowhere" — that is the portability guarantee B exists for,
   and it matches `artifact_locator`, which is likewise `@abstractmethod`. The
   cost is one trivial method per new adapter.
