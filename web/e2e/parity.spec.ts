@@ -123,6 +123,7 @@ test("applies and persists light, dark, and live system preferences before React
         .toContain("dark")
     await expect(page).toHaveScreenshot("shell-system-dark.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
 
     await page.getByRole("button", { name: "Settings" }).click()
@@ -132,6 +133,7 @@ test("applies and persists light, dark, and live system preferences before React
     await expect(page.locator("html")).toHaveClass(/light/)
     await expect(page).toHaveScreenshot("shell-explicit-light.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
 
     await page.getByRole("button", { name: "Settings" }).click()
@@ -158,6 +160,7 @@ test("applies and persists light, dark, and live system preferences before React
     await page.getByRole("button", { name: "Settings" }).click()
     await expect(page).toHaveScreenshot("settings-responsive.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
     await page.keyboard.press("Escape")
 })
@@ -238,6 +241,7 @@ test("shows validation errors without dropping a Work draft", async ({
     )
     await expect(page).toHaveScreenshot("validation-editor.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
     page.once("dialog", async (dialog) => dialog.accept())
     await page.getByRole("button", { name: "Cancel" }).click()
@@ -405,6 +409,7 @@ test("applies axis-specific facets and browser history navigation", async ({
     ).not.toBeChecked()
     await expect(page).toHaveScreenshot("status-filter-popover.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
     await page.keyboard.press("Escape")
     const sort = page.getByRole("combobox", { name: "Sort work items" })
@@ -420,6 +425,7 @@ test("applies axis-specific facets and browser history navigation", async ({
     await page.getByRole("checkbox", { name: "browser" }).click()
     await expect(page).toHaveScreenshot("filters-popover.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
     await expect(
         page.getByText("Browser parity fixture", { exact: true })
@@ -513,6 +519,7 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
     await expect(page.getByLabel("Title")).toHaveValue("Local stale draft")
     await expect(page).toHaveScreenshot("stale-write-conflict.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
     page.once("dialog", async (dialog) => dialog.accept())
     await page.getByRole("button", { name: "Refresh from server" }).click()
@@ -559,6 +566,7 @@ test("runs Work start and complete lifecycle controls", async ({
     ).toContainText("Reconcile the capabilities ledger before completing.")
     await expect(page).toHaveScreenshot("lifecycle-dialog.png", {
         animations: "disabled",
+        mask: [page.locator("time.modified-at")],
     })
     await page.getByLabel("Resolution").click()
     await page.getByRole("option", { name: "done" }).click()
