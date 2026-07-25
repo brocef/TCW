@@ -2,9 +2,12 @@ id: tcw
 work:
   tags:
   - bug
+  - capabilities
   - cli
   - docs
   - remote
   - skills
+  - taxonomy
   - tech-debt
   - web
+  - work
