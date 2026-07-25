@@ -23,5 +23,6 @@ playwright-report/
 
 # Historical work and released documentation are byte-stable
 docs/work/completed/
+docs/work/discarded/
 docs/changelogs/v*.md
 docs/release-notes/v*.md
