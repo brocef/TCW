@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -10,6 +10,23 @@ let server: ChildProcess
 let serverError = ""
 
 test.describe.configure({ mode: "serial" })
+
+// Screenshots must not encode the wall clock. Every view renders a live
+// "Modified at <date>, <time>" from the fixture's real creation time, so
+// baselines captured at one minute fail at another. Masking alone is not
+// enough — the mask rectangle tracks the element's width, which itself changes
+// with the text ("6:14 PM" vs "10:14 PM"). Overwriting the text with a constant
+// fixes both the glyphs and the width, and keeps the baselines readable.
+// Assigning textContent is CSSOM, not an injected stylesheet, so it does not
+// trip the app's `default-src 'self'` CSP the way addStyleTag does.
+async function stableScreenshot(page: Page, name: string) {
+    await page.evaluate(() => {
+        document.querySelectorAll("time.modified-at").forEach((element) => {
+            element.textContent = "Modified at Jan 1, 2026, 12:00 AM"
+        })
+    })
+    await expect(page).toHaveScreenshot(name, { animations: "disabled" })
+}
 
 test.beforeAll(async () => {
     const nodeRoot = await mkdtemp(join(tmpdir(), "tcw-playwright-"))
@@ -121,20 +138,14 @@ test("applies and persists light, dark, and live system preferences before React
     await expect
         .poll(() => page.evaluate(() => document.documentElement.className))
         .toContain("dark")
-    await expect(page).toHaveScreenshot("shell-system-dark.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "shell-system-dark.png")
 
     await page.getByRole("button", { name: "Settings" }).click()
     await page.getByRole("radio", { name: "Light" }).click()
     await expect(page.locator("html")).toHaveClass(/light/)
     await page.reload()
     await expect(page.locator("html")).toHaveClass(/light/)
-    await expect(page).toHaveScreenshot("shell-explicit-light.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "shell-explicit-light.png")
 
     await page.getByRole("button", { name: "Settings" }).click()
     await page.getByRole("radio", { name: "System" }).click()
@@ -158,10 +169,7 @@ test("applies and persists light, dark, and live system preferences before React
     await page.keyboard.press("Escape")
     await expect(page.getByRole("radio", { name: "System" })).toBeHidden()
     await page.getByRole("button", { name: "Settings" }).click()
-    await expect(page).toHaveScreenshot("settings-responsive.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "settings-responsive.png")
     await page.keyboard.press("Escape")
 })
 
@@ -239,10 +247,7 @@ test("shows validation errors without dropping a Work draft", async ({
     await expect(page.getByLabel("Markdown", { exact: true })).toHaveValue(
         "draft stays here"
     )
-    await expect(page).toHaveScreenshot("validation-editor.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "validation-editor.png")
     page.once("dialog", async (dialog) => dialog.accept())
     await page.getByRole("button", { name: "Cancel" }).click()
 })
@@ -407,10 +412,7 @@ test("applies axis-specific facets and browser history navigation", async ({
     await expect(
         page.getByRole("checkbox", { name: "Completed" })
     ).not.toBeChecked()
-    await expect(page).toHaveScreenshot("status-filter-popover.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "status-filter-popover.png")
     await page.keyboard.press("Escape")
     const sort = page.getByRole("combobox", { name: "Sort work items" })
     await expect(sort).toContainText("Name")
@@ -423,10 +425,7 @@ test("applies axis-specific facets and browser history navigation", async ({
     await expect(sort).toContainText("Modified")
     await page.getByRole("button", { name: "Tags" }).click()
     await page.getByRole("checkbox", { name: "browser" }).click()
-    await expect(page).toHaveScreenshot("filters-popover.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "filters-popover.png")
     await expect(
         page.getByText("Browser parity fixture", { exact: true })
     ).toBeVisible()
@@ -517,10 +516,7 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
     await page.getByRole("button", { name: "Save" }).click()
     await expect(page.getByText("Stale write detected")).toBeVisible()
     await expect(page.getByLabel("Title")).toHaveValue("Local stale draft")
-    await expect(page).toHaveScreenshot("stale-write-conflict.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "stale-write-conflict.png")
     page.once("dialog", async (dialog) => dialog.accept())
     await page.getByRole("button", { name: "Refresh from server" }).click()
     await expect(page.locator(".fields")).toContainText("77")
@@ -564,10 +560,7 @@ test("runs Work start and complete lifecycle controls", async ({
     await expect(
         page.locator(".modal-box .reconciliation-reminder")
     ).toContainText("Reconcile the capabilities ledger before completing.")
-    await expect(page).toHaveScreenshot("lifecycle-dialog.png", {
-        animations: "disabled",
-        mask: [page.locator("time.modified-at")],
-    })
+    await stableScreenshot(page, "lifecycle-dialog.png")
     await page.getByLabel("Resolution").click()
     await page.getByRole("option", { name: "done" }).click()
     for (const checkbox of await page
