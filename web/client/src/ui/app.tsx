@@ -48,7 +48,7 @@ import type {
     TEditorSession as Editor,
 } from "./ui-types"
 
-const WORK_STATUSES = ["backlog", "active", "completed"]
+const WORK_STATUSES = ["backlog", "active", "completed", "discarded"]
 import type {
     Axis,
     AxisItem,
@@ -81,6 +81,7 @@ export function App() {
         backlog: true,
         active: true,
         completed: false,
+        discarded: false, // hidden by default, matching `tcw work list`
     })
     const [kindFilter, setKindFilter] = useState<string[]>([])
     const [tagFilter, setTagFilter] = useState<string[]>([])

@@ -998,6 +998,32 @@ class TestLifecycleActions:
         })
         assert status == HTTPStatus.UNPROCESSABLE_ENTITY
 
+    def test_complete_non_done_resolution_discards(self, seeded):
+        """The API delegates destination choice to the model, so a discard needs
+        no separate endpoint — and needs no start, either. (force: the seeded
+        item carries an external blocker, which still gates a discard.)"""
+        root, base, slug = seeded
+        status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {
+            "resolution": "superseded",
+            "dod_ack": [],
+            "force": True,
+        })
+        assert status == HTTPStatus.OK, body
+        assert body["status"] == "discarded"
+
+    def test_discard_is_still_blocker_gated(self, seeded):
+        """Per spec: the blocker check applies to a discard as it does to a
+        completion. Open question raised at verification — "I'm blocked forever,
+        so wontfix" is arguably the canonical discard and needing --force for it
+        is friction. Documents current behavior, not a settled preference."""
+        root, base, slug = seeded
+        status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {
+            "resolution": "wontfix",
+            "dod_ack": [],
+        })
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert "blocked by" in body["error"]
+
     def test_complete_from_inbox_422(self, seeded):
         root, base, slug = seeded
         # Item is in backlog by default — cannot complete from backlog

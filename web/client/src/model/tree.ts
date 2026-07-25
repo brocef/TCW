@@ -7,6 +7,7 @@ const WORK_STATUS_ORDER = new Map([
     ["active", 0],
     ["backlog", 1],
     ["completed", 2],
+    ["discarded", 3],
 ])
 
 export function buildPathTree<T>(

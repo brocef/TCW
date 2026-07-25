@@ -97,13 +97,13 @@ tuple.
 This is the finding that shapes the work. Five call sites use the literal
 `"completed"` where they mean **resolved**:
 
-| Site | Meaning | Effect of a `discarded` item today |
-| --- | --- | --- |
-| `base.py:939` `unresolved_blockers` | resolved | a discarded blocker blocks forever |
-| `base.py:920` `epic_completable` | resolved | a discarded child never lets its epic close |
-| `base.py:977` `complete()` open-children | resolved | same, on the direct-complete path |
-| `recursion.py:106,109` reconcile rollup | resolved | rollup reports the epic permanently incomplete |
-| `capabilities/cli.py:210` shipped-missing | **shipped** | correct as-is — must stay `completed` only |
+| Site                                      | Meaning     | Effect of a `discarded` item today             |
+| ----------------------------------------- | ----------- | ---------------------------------------------- |
+| `base.py:939` `unresolved_blockers`       | resolved    | a discarded blocker blocks forever             |
+| `base.py:920` `epic_completable`          | resolved    | a discarded child never lets its epic close    |
+| `base.py:977` `complete()` open-children  | resolved    | same, on the direct-complete path              |
+| `recursion.py:106,109` reconcile rollup   | resolved    | rollup reports the epic permanently incomplete |
+| `capabilities/cli.py:210` shipped-missing | **shipped** | correct as-is — must stay `completed` only     |
 
 Four become `resolved`; one stays `completed`. Getting that split wrong is the
 main correctness risk in this item, and it is the difference between a folder
@@ -152,7 +152,7 @@ def resolution_status(resolution: str) -> str:
 It **must not** default unknown input to `discarded`. `complete()` validates the
 resolution before calling, so the raise is unreachable there — but `check()`
 calls it on arbitrary persisted YAML, and a silent `else: "discarded"` would
-make a corrupt-resolution item in `discarded/` read as *consistent*, defeating
+make a corrupt-resolution item in `discarded/` read as _consistent_, defeating
 the detector below.
 
 `complete()` calls `resolution_status()` for its destination instead of
@@ -185,7 +185,7 @@ LEGAL_TRANSITIONS = {
 ```
 
 The `from_backlog_epic` exception is **preserved and narrowed to `done`**. It
-exists so a coordinator epic whose children all resolved can close as *shipped*
+exists so a coordinator epic whose children all resolved can close as _shipped_
 from `backlog`; the general `(backlog, discarded)` transition does not subsume
 that, because it produces the wrong status. In code the legality test becomes:
 
@@ -211,13 +211,13 @@ means shipped, and narrowing it is the bug fix noted in the problem statement.
 
 A non-`done` closure is not a shipment, so the shipment gates do not apply:
 
-| Gate | `done` | non-`done` |
-| --- | --- | --- |
-| Blocker check (unless `--force`) | yes | yes |
-| DoD checklist printed | yes | **no** — `dod: []` is recorded |
-| `--confirm` required | yes | **yes** |
-| Capability gate (fails closed) | yes | **no** — warns instead |
-| Worktree merge-back | yes | **no** — see below |
+| Gate                             | `done` | non-`done`                     |
+| -------------------------------- | ------ | ------------------------------ |
+| Blocker check (unless `--force`) | yes    | yes                            |
+| DoD checklist printed            | yes    | **no** — `dod: []` is recorded |
+| `--confirm` required             | yes    | **yes**                        |
+| Capability gate (fails closed)   | yes    | **no** — warns instead         |
+| Worktree merge-back              | yes    | **no** — see below             |
 
 Requiring an operator to acknowledge "tests pass" in order to abandon an item is
 nonsense, and blocking the abandonment on capability reconciliation puts
@@ -266,7 +266,7 @@ git mv docs/work/completed/2026-07-03-per-object-capability-revision-token-fix-f
 ```
 
 `state.yaml` needs no edit — status is derived from the folder
-(`_status_of`, `fs.py:1563`), so the move *is* the status change. `tcw validate`
+(`_status_of`, `fs.py:1563`), so the move _is_ the status change. `tcw validate`
 and the new `check()` consistency rule verify the result.
 
 **Downstream adopters** — a migration guide, matching this repo's established

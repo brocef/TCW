@@ -3,4 +3,4 @@ name: Discard a work item
 Status: Missing
 Planning doc: 2026-07-23-add-a-discarded-work-status-for-non-done-closures
 Subject:
-- work-item/transition
+    - work-item/transition

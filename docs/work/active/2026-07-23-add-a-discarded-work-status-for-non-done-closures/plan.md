@@ -26,10 +26,10 @@ and commit that transition before the first code edit.
    `from_backlog_epic` to `dest == "completed"`; use `dest` in both the
    legality check and the final `transition()` / `_effect_transition()` calls.
 6. **The resolved split** — switch to `RESOLVED_STATUSES`:
-   - `unresolved_blockers` (`base.py:939`)
-   - `epic_completable` (`base.py:920`, both the child test and its own
-     already-terminal guard)
-   - `complete()`'s open-children check (`base.py:977`)
+    - `unresolved_blockers` (`base.py:939`)
+    - `epic_completable` (`base.py:920`, both the child test and its own
+      already-terminal guard)
+    - `complete()`'s open-children check (`base.py:977`)
 
 Tests (`tests/test_work.py`, `tests/test_epic_completable.py`):
 
@@ -78,14 +78,14 @@ Tests: one case each, plus a clean node reporting nothing.
    both; `--status discarded` selects it. `--status` choices pick the new value
    up from `WORK_STATUSES` automatically.
 2. `_complete` (line 561) branches on the resolution:
-   - **DoD** — print the checklist only for `done`; pass `dod_ack=[]` otherwise.
-     `--confirm` is still required either way.
-   - **Capability gate** — run `capability_gate` only for `done`. For a discard,
-     print a non-blocking warning naming any declared capability still reading
-     `Missing`, suggesting `tcw capabilities set <path> --status Omitted`.
-   - **Worktree** — skip `merge_worktree` for a discard. Still call
-     `remove_worktree`, and warn naming the retained branch so the user can
-     `git branch -D` it deliberately.
+    - **DoD** — print the checklist only for `done`; pass `dod_ack=[]` otherwise.
+      `--confirm` is still required either way.
+    - **Capability gate** — run `capability_gate` only for `done`. For a discard,
+      print a non-blocking warning naming any declared capability still reading
+      `Missing`, suggesting `tcw capabilities set <path> --status Omitted`.
+    - **Worktree** — skip `merge_worktree` for a discard. Still call
+      `remove_worktree`, and warn naming the retained branch so the user can
+      `git branch -D` it deliberately.
 
 Tests (`tests/test_work.py`):
 

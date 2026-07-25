@@ -84,16 +84,24 @@ describe("work tree", () => {
                 status: "completed",
                 modified: "2026-05-01T00:00:00Z",
             },
+            {
+                slug: "discarded",
+                title: "Discarded",
+                status: "discarded",
+                modified: "2026-06-01T00:00:00Z",
+            },
         ])
 
+        // discarded sorts last: closed-without-shipping is the least
+        // interesting column on the board.
         expect(
             sortWorkTree(tree, "name", "ascending").map((node) => node.path)
-        ).toEqual(["a-active", "z-active", "backlog", "completed"])
+        ).toEqual(["a-active", "z-active", "backlog", "completed", "discarded"])
         expect(
             sortWorkTree(tree, "modified", "descending").map(
                 (node) => node.path
             )
-        ).toEqual(["a-active", "z-active", "backlog", "completed"])
+        ).toEqual(["a-active", "z-active", "backlog", "completed", "discarded"])
     })
 })
 

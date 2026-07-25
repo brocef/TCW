@@ -44,7 +44,7 @@ import type {
     TEditorSession as Editor,
 } from "./ui-types"
 
-const WORK_STATUSES = ["backlog", "active", "completed"]
+const WORK_STATUSES = ["backlog", "active", "completed", "discarded"]
 const CAPABILITY_FIELDS = [
     ["Status", ["", "Supported", "Partial", "Missing", "Blocked", "Omitted"]],
     ["Priority", ["", "P0", "P1", "P2", "P3"]],
@@ -1173,46 +1173,77 @@ export function CompleteModal({
     const [checked, setChecked] = useState<string[]>([])
     const [resolution, setResolution] = useState("")
     const [force, setForce] = useState(false)
+    // A discard is not a shipment: no Definition of Done, no reconciliation
+    // gate — just a warning. Mirrors `tcw work complete` exactly.
+    const shipping = resolution === "done"
     return (
-        <Modal title="Complete Work Item" onClose={onClose}>
+        <Modal
+            title={shipping ? "Complete Work Item" : "Close Work Item"}
+            onClose={onClose}
+        >
             <Errors errors={errors} />
-            <Callout.Root className="reconciliation-reminder" color="blue">
-                <Callout.Text>
-                    <strong>Reconciliation reminder</strong>
-                    <br />
-                    Reconcile the capabilities ledger before completing.
-                </Callout.Text>
-            </Callout.Root>
+            {shipping ? (
+                <Callout.Root className="reconciliation-reminder" color="blue">
+                    <Callout.Text>
+                        <strong>Reconciliation reminder</strong>
+                        <br />
+                        Reconcile the capabilities ledger before completing.
+                    </Callout.Text>
+                </Callout.Root>
+            ) : (
+                resolution && (
+                    <Callout.Root className="discard-warning" color="amber">
+                        <Callout.Text>
+                            <strong>This item will be discarded</strong>
+                            <br />
+                            It lands in <code>discarded/</code>, not{" "}
+                            <code>completed/</code>, and this is permanent. Mark
+                            any capability it declared as <code>Omitted</code>{" "}
+                            if it will never be built.
+                        </Callout.Text>
+                    </Callout.Root>
+                )
+            )}
             <SelectInput
                 label="Resolution"
                 value={resolution}
                 options={["", "done", "wontfix", "duplicate", "superseded"]}
                 onChange={setResolution}
             />
-            <Heading as="h3" size="3">
-                Definition of Done
-            </Heading>
-            <Flex className="dod-list" direction="column">
-                {checklist.map((item) => (
-                    <Text as="label" className="dod-item" key={item} size="2">
-                        <Flex align="center" gap="2">
-                            <Checkbox
-                                checked={checked.includes(item)}
-                                onCheckedChange={(next) =>
-                                    setChecked(
-                                        next
-                                            ? [...checked, item]
-                                            : checked.filter(
-                                                  (value) => value !== item
-                                              )
-                                    )
-                                }
-                            />{" "}
-                            {item}
-                        </Flex>
-                    </Text>
-                ))}
-            </Flex>
+            {shipping && (
+                <>
+                    <Heading as="h3" size="3">
+                        Definition of Done
+                    </Heading>
+                    <Flex className="dod-list" direction="column">
+                        {checklist.map((item) => (
+                            <Text
+                                as="label"
+                                className="dod-item"
+                                key={item}
+                                size="2"
+                            >
+                                <Flex align="center" gap="2">
+                                    <Checkbox
+                                        checked={checked.includes(item)}
+                                        onCheckedChange={(next) =>
+                                            setChecked(
+                                                next
+                                                    ? [...checked, item]
+                                                    : checked.filter(
+                                                          (value) =>
+                                                              value !== item
+                                                      )
+                                            )
+                                        }
+                                    />{" "}
+                                    {item}
+                                </Flex>
+                            </Text>
+                        ))}
+                    </Flex>
+                </>
+            )}
             {force && (
                 <Callout.Root className="modal-error" color="red">
                     <Callout.Text>
@@ -1233,19 +1264,26 @@ export function CompleteModal({
                 <Button
                     type="button"
                     disabled={
-                        !resolution || checked.length !== checklist.length
+                        !resolution ||
+                        (shipping && checked.length !== checklist.length)
                     }
                     onClick={() =>
                         void onComplete({
                             resolution,
-                            dod_ack: checked,
+                            dod_ack: shipping ? checked : [],
                             force,
                         }).then((ok) => {
                             if (!ok) setForce(true)
                         })
                     }
                 >
-                    {force ? "Complete (ignore blockers)" : "Complete"}
+                    {force
+                        ? shipping
+                            ? "Complete (ignore blockers)"
+                            : "Discard (ignore blockers)"
+                        : shipping
+                          ? "Complete"
+                          : "Discard"}
                 </Button>
             </Flex>
         </Modal>

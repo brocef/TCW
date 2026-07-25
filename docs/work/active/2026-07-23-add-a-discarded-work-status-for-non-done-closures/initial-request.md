@@ -21,9 +21,9 @@ Add **`discarded`** as a fourth work status, alongside `backlog`, `active`, and
 
 Resolution decides the destination, with no per-item judgment:
 
-| Resolution | Lands in |
-| --- | --- |
-| `done` | `completed/` |
+| Resolution                           | Lands in     |
+| ------------------------------------ | ------------ |
+| `done`                               | `completed/` |
 | `wontfix`, `duplicate`, `superseded` | `discarded/` |
 
 `completed/` then means exactly "we shipped this", which is the property that
@@ -33,7 +33,7 @@ makes the board readable at a glance.
 
 - `active → discarded` — the normal abandonment path.
 - **`backlog → discarded` directly** — no throwaway `start`. This is the friction
-  that prompted the request; a backlog item is the *most* likely thing to be
+  that prompted the request; a backlog item is the _most_ likely thing to be
   abandoned and today it is the hardest.
 - `discarded` is terminal: no reopen transition in this item. (Re-raising an
   abandoned idea should be a fresh item with fresh context, which is what the
