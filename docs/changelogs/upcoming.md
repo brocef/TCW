@@ -3,7 +3,7 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
 
-<changes starting-hash="0f7acd7" ending-hash="a72af29">
+<changes starting-hash="0f7acd7" ending-hash="ab13b5d">
 
 ### Added
 
@@ -68,8 +68,11 @@ category, with commit hash ranges so entries trace back to source.
   fixture's creation time, so the digits differed on any run at a different minute
   (19-30 pixels — enough to fail). Serial mode meant that second test blocked the ten
   after it. All eight `toHaveScreenshot` assertions now mask `time.modified-at` and
-  every baseline is regenerated; no `maxDiffPixels` tolerance was added, so genuine
-  pixel regressions still fail (`a72af29`).
+  every baseline is regenerated. Masking alone proved insufficient — the mask
+  rectangle tracks the element's box, which changes with the text ("6:14 PM" vs
+  "10:14 PM") — so `time.modified-at` is now overwritten with a constant string
+  instead, fixing glyphs and width together. No `maxDiffPixels` tolerance was added,
+  so genuine pixel regressions still fail (`a72af29`, `ab13b5d`).
 - Backlog items offered only Start and Drop, leaving `backlog → discarded`
   unreachable in the web app and pushing users toward a hard delete. They now offer
   Start · Discard · Drop, with Discard opening the modal in discard-only mode
