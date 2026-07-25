@@ -2,7 +2,7 @@ import { useState } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { vi } from "vitest"
 import { ThemeProvider } from "../theme"
-import { DetailView, FilterControls } from "./content-views"
+import { CompleteModal, DetailView, FilterControls } from "./content-views"
 import type { TDetail } from "./ui-types"
 
 window.HTMLElement.prototype.scrollIntoView = vi.fn()
@@ -127,3 +127,29 @@ test("renders modified subtext in every detail view", () => {
 
     expect(screen.getAllByText(/^Modified at /)).toHaveLength(3)
 })
+
+test("the complete modal opens in its completion form, not its discard form", async () => {
+    // Regression: `shipping` was `resolution === "done"`, so the unset default
+    // rendered the discard presentation — titling the dialog "Close Work Item"
+    // and labelling its button "Discard" before the user had chosen anything.
+    render(
+        <ThemeProvider>
+            <CompleteModal
+                detail={{ dodChecklist: ["tests pass"] } as never}
+                onClose={() => undefined}
+                onComplete={async () => true}
+                errors={[]}
+            />
+        </ThemeProvider>
+    )
+
+    expect(screen.getByText("Complete Work Item")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Complete" })).toBeVisible()
+    expect(screen.getByText("Definition of Done")).toBeVisible()
+    expect(screen.getByText(/Reconciliation reminder/)).toBeVisible()
+    expect(screen.queryByText(/This item will be discarded/)).toBeNull()
+})
+
+// The discard form is reached by picking a non-`done` resolution from a Radix
+// Select in a portal, which jsdom drives poorly — that half is covered by the
+// browser pass instead of faked here.

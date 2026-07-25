@@ -46,6 +46,7 @@ import type {
     TDetail as Detail,
     TDraft as Draft,
     TEditorSession as Editor,
+    TLifecycleAction,
 } from "./ui-types"
 import { WORK_STATUSES } from "../model/types"
 import type {
@@ -113,9 +114,7 @@ export function App() {
     const [conflict, setConflict] = useState<unknown>(null)
     const [warnings, setWarnings] = useState<string[]>([])
     const [toast, setToast] = useState("")
-    const [modal, setModal] = useState<"drop" | "start" | "complete" | null>(
-        null
-    )
+    const [modal, setModal] = useState<TLifecycleAction | null>(null)
     const [loadError, setLoadError] = useState("")
 
     const showToast = useCallback((message: string) => {
@@ -1005,12 +1004,13 @@ export function App() {
                     errors={errors}
                 />
             )}
-            {modal === "complete" && detail && (
+            {(modal === "complete" || modal === "discard") && detail && (
                 <CompleteModal
                     detail={detail as WorkDetail}
                     onClose={() => setModal(null)}
                     onComplete={(options) => doAction("complete", options)}
                     errors={errors}
+                    discardOnly={modal === "discard"}
                 />
             )}
         </>

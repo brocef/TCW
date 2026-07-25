@@ -47,4 +47,6 @@ export type TListPaneState = {
     expanded: Record<Axis, Set<string>>
 }
 
-export type TLifecycleAction = "start" | "complete" | "drop"
+// UI button intents. `discard` is not a distinct API action — it opens the
+// complete modal pre-set to a non-`done` resolution, and posts `complete`.
+export type TLifecycleAction = "start" | "complete" | "drop" | "discard"

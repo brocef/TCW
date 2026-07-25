@@ -42,6 +42,7 @@ import type {
     TDetail as Detail,
     TDraft as Draft,
     TEditorSession as Editor,
+    TLifecycleAction,
 } from "./ui-types"
 import { WORK_STATUSES } from "../model/types"
 const CAPABILITY_FIELDS = [
@@ -273,7 +274,7 @@ export function DetailView({
         kind?: "artifacts" | "plan-stages"
     ) => void
     onDeletePlanStage: (slug: string, name: string, revision?: string) => void
-    onAction: (action: "start" | "complete" | "drop") => void
+    onAction: (action: TLifecycleAction) => void
 }) {
     if (axis === "work") {
         const payload = detail as WorkDetail
@@ -313,6 +314,15 @@ export function DetailView({
                                 onClick={() => onAction("start")}
                             >
                                 Start
+                            </Button>
+                            <Button
+                                className="action-btn discard"
+                                color="amber"
+                                variant="soft"
+                                type="button"
+                                onClick={() => onAction("discard")}
+                            >
+                                Discard
                             </Button>
                             <Button
                                 className="action-btn drop"
@@ -1154,11 +1164,15 @@ export function CompleteModal({
     onClose,
     onComplete,
     errors,
+    discardOnly = false,
 }: {
     detail: WorkDetail
     onClose: () => void
     onComplete: (options: JsonRecord) => Promise<boolean>
     errors: string[]
+    // Opened from a backlog item, where `done` is not a legal destination —
+    // only the abandonment resolutions are offered.
+    discardOnly?: boolean
 }) {
     const checklist = detail.dodChecklist?.length
         ? detail.dodChecklist
@@ -1170,11 +1184,16 @@ export function CompleteModal({
               "version offered",
           ]
     const [checked, setChecked] = useState<string[]>([])
-    const [resolution, setResolution] = useState("")
+    const [resolution, setResolution] = useState(discardOnly ? "wontfix" : "")
     const [force, setForce] = useState(false)
     // A discard is not a shipment: no Definition of Done, no reconciliation
     // gate — just a warning. Mirrors `tcw work complete` exactly.
-    const shipping = resolution === "done"
+    //
+    // An unset resolution counts as shipping so the dialog opens in its
+    // completion form. Treating "" as a discard would title the dialog "Close
+    // Work Item" and label its button "Discard" before the user has chosen
+    // anything — pre-framing the destructive route as the default.
+    const shipping = resolution === "" || resolution === "done"
     return (
         <Modal
             title={shipping ? "Complete Work Item" : "Close Work Item"}
@@ -1206,7 +1225,11 @@ export function CompleteModal({
             <SelectInput
                 label="Resolution"
                 value={resolution}
-                options={["", "done", "wontfix", "duplicate", "superseded"]}
+                options={
+                    discardOnly
+                        ? ["wontfix", "duplicate", "superseded"]
+                        : ["", "done", "wontfix", "duplicate", "superseded"]
+                }
                 onChange={setResolution}
             />
             {shipping && (
