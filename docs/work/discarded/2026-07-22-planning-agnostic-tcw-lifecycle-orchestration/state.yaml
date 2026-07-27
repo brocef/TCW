@@ -1,12 +1,13 @@
 slug: 2026-07-22-planning-agnostic-tcw-lifecycle-orchestration
 title: Planning-agnostic TCW lifecycle orchestration
-phase: ""
-created: "2026-07-22"
-resolution: null
+phase: ''
+created: '2026-07-22'
+resolution: superseded
 effort: high
 complexity: high
 tags:
-    - cli
-    - docs
-    - skills
-    - work
+- cli
+- docs
+- skills
+- work
+dod: []
