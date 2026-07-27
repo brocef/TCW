@@ -8,9 +8,10 @@ export type TSortDirection = "ascending" | "descending"
 // (guarded in tree.test.ts).
 export const WORK_STATUS_ORDER = new Map([
     ["active", 0],
-    ["backlog", 1],
-    ["completed", 2],
-    ["discarded", 3],
+    ["review", 1],
+    ["backlog", 2],
+    ["completed", 3],
+    ["discarded", 4],
 ])
 
 export function buildPathTree<T>(
