@@ -332,7 +332,46 @@ Carried forward substantially unchanged:
 Extended by this initiative:
 
 - Bindings apply to **both** ladders, keyed by stage id or transition id.
-- A binding may be a skill reference **or** a shell command.
+- A binding is a skill reference **or** a shell command, **declared explicitly**
+  rather than inferred:
+
+  ```yaml
+  stages:
+    spec:      [{skill: superpowers:brainstorming}]
+  transitions:
+    complete:  {pre: [{command: "pytest -q"}]}
+  ```
+
+  Guessing which a bare string meant is a whole class of bug for no benefit.
+  A mapping with neither key, or both, fails validation.
+
+### Hook execution contract
+
+These are correctness- and security-relevant and belong in the spec, not in
+whatever the implementation happens to do:
+
+- **Working directory** is the node root — the directory holding
+  `tcw-config.yaml`. Never the process cwd, which varies by caller.
+- **Commands run through the shell**, so pipelines and `&&` work. The config
+  lives in the user's own repository and is trusted exactly as much as any file
+  there; this is stated so nobody mistakes it for a sandbox.
+- **Environment** inherits the caller's, plus `TCW_SLUG`, `TCW_STATUS`,
+  `TCW_TRANSITION`, and `TCW_NODE_ROOT`, so a hook can act without re-deriving
+  context.
+- **Timeout** defaults to 300s per command and is configurable. A hung hook must
+  not wedge a transition forever.
+- **`pre` hooks run in declared order; the first non-zero exit aborts the
+  transition** and the remaining hooks do not run. The item does not move.
+- **A failing `post` hook never rolls back.** The move and its commit have
+  already happened, and unwinding a committed transition is worse than the
+  failure. TCW reports the failure and exits non-zero so a caller notices, but
+  the item stays where it moved to.
+- **Skill bindings are `[judgment]` on every harness, and unenforceable on some.**
+  Codex cannot discover an arbitrary skill name as a capability, so the
+  superseded spec's "configured-but-missing skill fails closed at agent
+  preflight" holds only where the harness can enumerate skills. Elsewhere the
+  agent can do no better than report the binding unavailable and stop. Do not
+  design anything that depends on that check firing.
 - Transition bindings distinguish `pre` (may block the move) from `post` (may
   not).
 - A third output mode, `--directive`, exists for Claude's dynamic context
@@ -363,7 +402,9 @@ Extended by this initiative:
 
 ## Child tasks
 
-Sequential; the CLI must land before the skill documents it.
+Sequential. The CLI must land before the skill documents it, and methodology
+resolution must be settled before any stage document is written — a stage doc
+that does not know where its methodology comes from cannot be authored.
 
 1. **`review` status and transitions** — `WORK_STATUSES`, the new edges, the `pr`
    field, deletion of `phase`, the web TS mirror and its missing parity test.
@@ -375,7 +416,32 @@ Sequential; the CLI must land before the skill documents it.
    persisting `dod:`; the `LifecyclePolicy` model, validation, and
    `tcw work lifecycle` in all three output modes (human, `--json`,
    `--directive`).
-3. **Skill and command restructure** — seven stage docs on the fixed shape
+3. **Methodology resolution** — the piece this epic cannot be planned around.
+   TCW's stage documents specify the **contract** (what a stage is for, its
+   inputs, the artifact it produces, how it exits) but not the **methodology**
+   (how you actually arrive at a spec, a plan, an implementation). Methodology
+   varies by team and must be replaceable without forking the plugin.
+
+   Resolution order, first match wins, modeled directly on the existing
+   `bare-wins-local` capability behavior (`fs.py:627`, `:1096`):
+
+   ```
+   1. repo-local     docs/work/lifecycle/<stage-id>.md
+   2. configured     stages: {spec: [{skill: …}]}
+   3. shipped        the plugin's default methodology
+   ```
+
+   The override target is a document **in the consumer's repository**, never a
+   skill file: Claude namespaces plugin skills so a project cannot shadow one,
+   and the Agent Skills spec defines no layering at all. A repo-resident document
+   is the only mechanism available on both harnesses, and it keeps resolution
+   inside TCW where `origin` reporting and a `reset` path already have prior art.
+
+   This child owns: the resolution order, what a methodology document must
+   provide to satisfy a stage contract, `origin` reporting through
+   `tcw work lifecycle`, and the shipped defaults themselves.
+
+4. **Skill and command restructure** — seven stage docs on the fixed shape
    **Purpose / Inputs / Produce / Steps / Exit**, every step carrying its actor
    and enforcement marker; delta-only epic and cross-node docs; deletion of
    `lifecycle.md`, `task-lifecycle.md`, and `epic-lifecycle.md`; five commands;
@@ -385,19 +451,25 @@ Sequential; the CLI must land before the skill documents it.
    failure paths (a missing input, discovery that contradicts the request, work
    too large for one item) live there rather than in a sixth section.
 
-   Reference files are `transitions.md` (all five in one file — do not pre-split
-   for five short gate sets) and `hooks.md` (genuinely rare; most projects
-   configure nothing). Delegation guidance folds **into `SKILL.md`**, because
-   deciding whether to dispatch a stage applies every time and the router is
-   where always-relevant judgment belongs.
+   Reference file names carry **no ordinal** — `stage-spec.md`, not
+   `lifecycle-2-spec.md`. Ordinals recreate exactly the renumbering churn the
+   stable-ID rule exists to prevent, and routing is by literal path. Order lives
+   in the router's table, which is the one place it can change cheaply.
 
-   **`SKILL.md` has a hard budget of 80 lines.** It is loaded on every use of the
-   skill, so its size is a recurring token cost rather than a one-time one. The
-   delegation rule gets roughly five lines — the stage table already carries a
-   `Delegable` column, so the prose is only "transitions never; subagents cannot
-   ask the user." If folding it in would breach the budget, it goes back to its
-   own file instead; the budget wins, not the tidiness.
-4. **Post-mortem skill** — the skill, the `post-mortem.md` artifact, the
+   Reference files: one `stage-<id>.md` per stage, plus `transitions.md` (all
+   five in one file — do not pre-split for five short gate sets), `hooks.md`,
+   `delegation.md`, `epic-deltas.md`, `cross-node-deltas.md`, and `decompose.md`.
+
+   **`SKILL.md` has a hard budget of 60 lines**, and the rule when it is breached
+   is **extract, never grow**. It loads on every use of the skill, so its size is
+   a recurring cost paid forever, while a reference file is paid only when its
+   gate fires. Delegation therefore lives in `delegation.md`, not inline.
+
+   Harness-specific fallbacks do **not** go in the router. They are per-stage, so
+   they live in the stage document — which every harness reads anyway on the path
+   to performing that stage. That removes the tension between the budget and
+   Codex correctness entirely: neither has to give.
+5. **Post-mortem skill** — the skill, the `post-mortem.md` artifact, the
    read-only `tcw-post-mortem` agent, and the `verify`-stage hook that offers it
    when verification surfaced serious unforeseen issues.
 

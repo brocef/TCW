@@ -13,20 +13,28 @@ wording.
 
 ```
 skills/tcw-work/
-  SKILL.md                          router only — ~60 lines
+  SKILL.md                          router only — hard cap 60 lines
   references/
-    lifecycle-0-inbox.md            id: inbox
-    lifecycle-1-request.md          id: request
-    lifecycle-2-spec.md             id: spec
-    lifecycle-3-plan.md             id: plan
-    lifecycle-4-implement.md        id: implement
-    lifecycle-5-verify.md           id: verify
-    lifecycle-6-postmortem.md       id: postmortem
+    stage-inbox.md                  id: inbox
+    stage-request.md                id: request
+    stage-spec.md                   id: spec
+    stage-plan.md                   id: plan
+    stage-implement.md              id: implement
+    stage-verify.md                 id: verify
+    stage-postmortem.md             id: postmortem
     transitions.md                  all five, with gates
     hooks.md                        binding skills/commands to ids
+    delegation.md                   dispatching stages to subagents
+    methodology.md                  where a stage's "how" resolves from
     epic-deltas.md                  differences only
     cross-node-deltas.md            differences only
     decompose.md                    --parent vs --initiative (unchanged)
+
+docs/work/lifecycle/                (in the CONSUMER's repo, not the plugin)
+  spec.md                           optional methodology override for stage spec
+
+No ordinals in filenames: the name is the stable id, and order lives only in the
+router's table.
 
 skills/tcw-post-mortem/
   SKILL.md
@@ -92,26 +100,20 @@ authority.
 `tcw work show <slug>`, open that stage's reference, and read only the inputs it
 declares. Never load the whole lifecycle to perform one stage.
 
-## Delegation
-
-Where subagents exist, dispatch stages marked delegable; give the subagent the
-stage document and its declared `Inputs`, nothing more. **Delegable means
-permitted, not required** — with no subagents available, run the same stage here,
-following the same document. **Never delegate a transition**: those carry the
-gates and belong to the session holding the primary checkout. Never delegate
-`request` or `verify` — a subagent cannot ask the user. Check the artifact named
-in `Produce` before transitioning; a subagent's context is gone once it returns.
-
 ## Routing
 
 | When | Read |
 |---|---|
-| performing any stage | `references/lifecycle-<n>-<id>.md` |
+| performing any stage | `references/stage-<id>.md` |
 | moving an item's status | `references/transitions.md` |
 | a stage or transition has a configured binding | `references/hooks.md` |
+| dispatching a stage to a subagent | `references/delegation.md` |
 | the item is `type: epic` | the stage doc **plus** `references/epic-deltas.md` |
 | slices span registered projects | `references/cross-node-deltas.md` |
 | one item is too large | `references/decompose.md` |
+
+Harness-specific fallbacks are **not** here. They are per-stage and live in the
+stage document, which every harness reads on its way to performing that stage.
 
 ## Notation
 
@@ -122,7 +124,7 @@ Every step is marked with who acts and what enforces it:
 
 ---
 
-## 3. A stage document — `lifecycle-2-spec.md`
+## 3. A stage document — `stage-spec.md`
 
 ````markdown
 # Stage: spec
@@ -362,20 +364,17 @@ All questions raised by the first review round have been decided:
 
 ## 10. Still open for critique
 
-- **The 80-line `SKILL.md` budget is asserted, not demonstrated.** The sketch in
-  section 2 plus the delegation paragraph is close to it already, and the routing
-  table grows with every reference file. If the budget cannot be met, either
-  delegation moves back out or the two-ladder tables get trimmed — decide which
-  before writing, not after.
-- **`Notes` has no size discipline.** It is optional and free-form by design, but
-  an artifact whose `Notes` outgrows its required sections has become a scratch
+- **This sketch still shows only the contract half of a stage document.** Section
+  3's `Steps` are contract-flavored placeholders, not methodology. Once child 3
+  defines the methodology interface, the sample should be rewritten to show a
+  contract and a resolved methodology side by side — that is the pairing nobody
+  has actually seen yet, and it is where this design is most likely to be wrong.
+- **`Notes` has no size discipline.** Optional and free-form by design, but an
+  artifact whose `Notes` outgrows its required sections has become a scratch
   file. Worth a soft convention, or worth leaving alone until it happens.
-- **Methodology resolution is settled in principle, unwritten in practice.**
-  Amended Option A (repo-local methodology document → configured skill → shipped
-  default) is agreed, but this sketch still shows only the contract half. What a
-  methodology document must provide — its interface to TCW — is undefined, and
-  child 3 cannot write the shipped defaults without it.
-- **`postmortem` still has no trigger in the trace.** Marking it out-of-band
-  names the shape but not the mechanism: nothing in the flow decides when to
-  offer it. Child 4 owns that, and the `verify`-stage hook is the only candidate
-  so far.
+- **`postmortem` still has no trigger.** Marking it out-of-band names the shape
+  but not the mechanism: nothing in the flow decides when to offer it. Child 5
+  owns that, and the `verify`-stage binding is the only candidate so far.
+- **The 60-line router cap is still asserted, not demonstrated.** Section 2 is
+  close to it, and the routing table grew by two rows. If it cannot be met, the
+  rule is extract — never grow — so something else moves to a reference file.
