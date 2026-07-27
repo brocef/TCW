@@ -12,3 +12,5 @@ capability-reconciliation gate, and the unresolved-blocker check do not apply â€
 explicitly, and TCW warns me (without blocking) if the item declared
 capabilities I should mark `Omitted`. A discarded item counts as resolved: it
 stops blocking whatever it blocked, and it lets its parent epic close.
+
+TCW commits the status move itself, scoped to the item's own folders so unrelated edits in my working tree are never swept in. I turn that off with `work.auto-commit-transitions: false` in `tcw-config.yaml`, and `work.trunk-branch` adds an advisory warning when I transition from some other branch.
