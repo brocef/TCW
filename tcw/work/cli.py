@@ -7,7 +7,8 @@ from pathlib import Path
 
 from tcw.store.base import (
     RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
-    IllegalTransition, MultipleMatch, TransitionCommitError, WorkItem, normalize_tag,
+    IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
+    TransitionCommitError, WorkItem, normalize_tag,
     normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
@@ -16,12 +17,13 @@ from tcw.store.fs import (
     merge_worktree, parent_node, qualified_work_ref_problem, registered_project_id,
     remove_worktree, resolve_qualified_work_ref,
 )
+from tcw.work.hooks import run_post, run_pre
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
                "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
-               "escalate", "tags"}
+               "escalate", "tags", "lifecycle"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 # TransitionCommitError is included deliberately: the item *did* move, and its
@@ -445,6 +447,20 @@ def _path(args: argparse.Namespace) -> int:
     return 0
 
 
+def _post_result(err: str | None, transition: str, slug: str) -> int:
+    """Report a `post` hook failure without pretending the transition failed.
+
+    The move and its commit have already happened; unwinding a committed
+    transition is worse than the failure. Exit non-zero so nothing downstream
+    reads this as clean, but say plainly that the item moved.
+    """
+    if err is None:
+        return 0
+    print(f"tcw work {transition}: {err}. {slug} moved and was committed; the "
+          f"hook failure does not roll that back.", file=sys.stderr)
+    return 1
+
+
 def _complete_hint(slug: str) -> None:
     print(f"→ next: when done & verified, run "
           f"`tcw work complete {slug} --resolution done --confirm`", file=sys.stderr)
@@ -455,15 +471,22 @@ def _start(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
+    # `pre` hooks run before the store is touched at all — not merely before the
+    # move. `complete()` writes fields first, so a hook evaluated any later could
+    # strand a resolution on an unmoved item.
+    if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog")):
+        print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
+        return 1
     try:
         st.start(bare, force=args.force)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
+    post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active")
     if not args.worktree:
         print(f"started {args.slug}")
         _complete_hint(args.slug)
-        return 0
+        return _post_result(post_err, "start", args.slug)
     node = st.node_root
     ensure_worktree_ignored(node)
     st.set_field(bare, "worktree", f"{WORKTREES_DIR}/{bare}")
@@ -495,7 +518,7 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     print(f"started {args.slug} → worktree {wt}")
     _complete_hint(args.slug)
-    return 0
+    return _post_result(post_err, "start", args.slug)
 
 
 def _submit(args: argparse.Namespace) -> int:
@@ -503,17 +526,21 @@ def _submit(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
+    if (err := run_pre(st.lifecycle_policy(), "submit", st.node_root, bare, "active")):
+        print(f"tcw work submit: {err}; {bare} not moved", file=sys.stderr)
+        return 1
     try:
         st.submit(bare)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
+    post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review")
     print(f"submitted {args.slug} → review")
     print(f"→ next: verify the work, then either "
           f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
           f"send it back, delete refined-outcome.md and run "
           f"`tcw work rework {args.slug}`", file=sys.stderr)
-    return 0
+    return _post_result(post_err, "submit", args.slug)
 
 
 def _rework(args: argparse.Namespace) -> int:
@@ -521,14 +548,127 @@ def _rework(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
+    if (err := run_pre(st.lifecycle_policy(), "rework", st.node_root, bare, "review")):
+        print(f"tcw work rework: {err}; {bare} not moved", file=sys.stderr)
+        return 1
     try:
         st.rework(bare)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
+    post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active")
     print(f"reworking {args.slug} → active")
     print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
           file=sys.stderr)
+    return _post_result(post_err, "rework", args.slug)
+
+
+def _lifecycle_lines(step, bindings_for) -> list[str]:
+    """Human-readable block for one step. `bindings_for(step)` yields
+    (label, [Binding]) pairs so stages and transitions render alike."""
+    out = [f"{step.id}  [{step.kind}]", f"  {step.objective}"]
+    if step.moves:
+        out.append(f"  moves:    {step.moves}")
+    if step.inputs:
+        out.append(f"  inputs:   {', '.join(step.inputs)}")
+    if step.produces:
+        out.append(f"  produces: {step.produces}")
+    if step.gates:
+        out.append(f"  gates:    {'; '.join(step.gates)}")
+    for label, bindings in bindings_for(step):
+        if bindings:
+            refs = ", ".join(f"{b.kind}:{b.ref}" for b in bindings)
+            out.append(f"  {label:9}{refs}")
+    return out
+
+
+def _directive_text(step, bindings) -> str:
+    """One complete instruction, or "" when nothing is bound.
+
+    Never a bare value: this is injected verbatim into an agent's context, so an
+    unbound id has to render as *nothing* rather than as a broken sentence.
+    """
+    if not bindings:
+        return ""
+    skills = [b.ref for b in bindings if b.kind == "skill"]
+    commands = [b.ref for b in bindings if b.kind == "command"]
+    parts = []
+    if skills:
+        parts.append(f"invoke the {' then '.join(skills)} skill"
+                     f"{'s' if len(skills) > 1 else ''}")
+    if commands:
+        parts.append("run " + " then ".join(f"`{c}`" for c in commands))
+    where = "this stage" if step.kind == "stage" else f"the {step.id} transition"
+    return f"For {where}, {' and '.join(parts)}."
+
+
+def _lifecycle(args: argparse.Namespace) -> int:
+    # A work ref resolves the item's *owning* node, so a qualified descendant
+    # reports its own policy rather than the anchor's.
+    if args.slug:
+        resolved = _resolve(args.slug, "lifecycle")
+        if resolved is None:
+            return 1
+        st, _bare = resolved
+    else:
+        st = _store()
+        if st is None:
+            return 1
+    try:
+        policy = st.lifecycle_policy()
+    except _ERRORS as e:
+        print(f"tcw work lifecycle: {e}", file=sys.stderr)
+        return 1
+
+    def bindings_for(step):
+        if step.kind == "stage":
+            return [("bind:", policy.stage(step.id))]
+        tb = policy.transition(step.id)
+        return [("pre:", tb.pre), ("post:", tb.post)]
+
+    if args.directive:
+        # Exactly one of --stage/--transition, enforced by argparse; an unknown
+        # id is an *error*, not an empty directive, so a typo in an injected
+        # command never renders as silence.
+        wanted = args.stage or args.transition
+        step = LIFECYCLE_STEPS_BY_ID.get(wanted)
+        kind = "stage" if args.stage else "transition"
+        if step is None or step.kind != kind:
+            legal = [s.id for s in LIFECYCLE_STEPS if s.kind == kind]
+            print(f"tcw work lifecycle: unknown {kind} '{wanted}'; expected one "
+                  f"of {', '.join(legal)}", file=sys.stderr)
+            return 1
+        flat = [b for _label, bs in bindings_for(step) for b in bs]
+        text = _directive_text(step, flat)
+        if text:                                   # empty = print nothing at all
+            print(text)
+        return 0
+
+    steps = [s for s in LIFECYCLE_STEPS
+             if not args.stage and not args.transition
+             or (args.stage and s.id == args.stage and s.kind == "stage")
+             or (args.transition and s.id == args.transition and s.kind == "transition")]
+    if not steps:
+        print(f"tcw work lifecycle: unknown id "
+              f"'{args.stage or args.transition}'", file=sys.stderr)
+        return 1
+
+    if args.json:
+        import json
+        payload = [{
+            "id": s.id, "kind": s.kind, "objective": s.objective,
+            "moves": s.moves, "inputs": list(s.inputs),
+            "produces": s.produces, "gates": list(s.gates),
+            "bindings": {label.rstrip(":"): [{b.kind: b.ref} for b in bs]
+                         for label, bs in bindings_for(s)},
+        } for s in steps]
+        print(json.dumps({"timeout": policy.timeout, "steps": payload}, indent=2))
+        return 0
+
+    for i, step in enumerate(steps):
+        if i:
+            print()
+        print("\n".join(_lifecycle_lines(step, bindings_for)))
     return 0
 
 
@@ -653,6 +793,12 @@ def _complete(args: argparse.Namespace) -> int:
     # police shipped work, so none of them apply. `--confirm` still does —
     # closing is terminal.
     shipping = resolution_status(args.resolution) == "completed"
+    # The binding keys on the **move**, not the verb: `complete --resolution done`
+    # fires `complete`'s hooks and any other resolution fires `discard`'s. One
+    # binding firing for both "we shipped it" and "we gave up on it" would erase
+    # exactly the distinction `discard` exists to preserve.
+    transition_id = "complete" if shipping else "discard"
+    policy = st.lifecycle_policy()
     if shipping and not args.force:
         blockers = st.unresolved_blockers(item)
         if blockers:
@@ -704,11 +850,19 @@ def _complete(args: argparse.Namespace) -> int:
         if problems:
             print("Mark them Omitted (tcw capabilities set <path> --status Omitted) "
                   "if they will never be built.", file=sys.stderr)
+    # Last thing before the store is touched. `complete()` writes the resolution
+    # with `set_field` before it moves the item, so a hook evaluated any later
+    # could abort having already stamped a resolution onto an unmoved item.
+    if (err := run_pre(policy, transition_id, st.node_root, bare, item.status)):
+        print(f"tcw work complete: {err}; {bare} not closed", file=sys.stderr)
+        return 1
     try:
         st.complete(bare, args.resolution, dod_ack=checklist, force=args.force)
     except _ERRORS as e:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
+    post_err = run_post(policy, transition_id, st.node_root, bare,
+                        "completed" if shipping else "discarded")
     print(f"{'completed' if shipping else 'discarded'} {args.slug} ({args.resolution})")
     if has_worktree:
         if not shipping and branch and not args.already_integrated:
@@ -721,7 +875,7 @@ def _complete(args: argparse.Namespace) -> int:
                   f"`git branch -D {branch}` if you're sure.", file=sys.stderr)
         for w in remove_worktree(st.node_root, bare, branch if shipping else None):
             print(f"tcw work complete: {w}", file=sys.stderr)
-    return 0
+    return _post_result(post_err, transition_id, args.slug)
 
 
 def _drop(args: argparse.Namespace) -> int:
@@ -835,6 +989,18 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     prw = g.add_parser("rework", help="review → active (verification rejected the work)")
     prw.add_argument("slug")
     prw.set_defaults(func=_rework)
+
+    plc = g.add_parser("lifecycle",
+                       help="print the stage/transition contract and configured bindings")
+    plc.add_argument("slug", nargs="?",
+                     help="report the owning node's policy for this item (default: local node)")
+    plc.add_argument("--json", action="store_true", help="machine-readable output")
+    plc.add_argument("--directive", action="store_true",
+                     help="emit one instruction line for an agent, or nothing when unbound")
+    sel = plc.add_mutually_exclusive_group()
+    sel.add_argument("--stage", help="limit to one stage id")
+    sel.add_argument("--transition", help="limit to one transition id")
+    plc.set_defaults(func=_lifecycle)
 
     pe = g.add_parser("edit", help="change blocking links between items")
     pe.add_argument("slug")

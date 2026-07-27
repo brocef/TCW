@@ -569,6 +569,90 @@ class LifecyclePolicy:
 DEFAULT_HOOK_TIMEOUT = 300
 
 
+@dataclass(frozen=True)
+class LifecycleStep:
+    """One stage or transition, with the contract `tcw work lifecycle` reports.
+
+    This table is the **single source of truth** for what each id is for and what
+    it produces. Child-4's stage documents must agree with it, and having it in
+    one machine-readable place is what makes that agreement checkable rather than
+    a matter of two prose documents happening to say the same thing.
+    """
+    id: str
+    kind: str                        # "stage" | "transition"
+    objective: str
+    inputs: tuple[str, ...] = ()     # lifecycle artifacts the step may read
+    produces: str = ""               # the one artifact a stage writes; "" for transitions
+    moves: str = ""                  # "from → to" for a transition; "" for a stage
+    gates: tuple[str, ...] = ()      # what the tool refuses past
+
+
+# Ordered: stages in lifecycle order, then transitions in the order they occur.
+# `postmortem` is out-of-band — it holds no position in the ordering and is
+# triggered by condition rather than by sequence — so it sits last among stages.
+LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
+    LifecycleStep(
+        id="inbox", kind="stage",
+        objective="Triage a raw inbox entry into a work item.",
+        produces=""),
+    LifecycleStep(
+        id="request", kind="stage",
+        objective="Capture what is being asked for, and why.",
+        produces="initial-request.md"),
+    LifecycleStep(
+        id="spec", kind="stage",
+        objective="Decide what to build and why, before deciding how.",
+        inputs=("initial-request.md",), produces="spec.md"),
+    LifecycleStep(
+        id="plan", kind="stage",
+        objective="Decide how to build it, in ordered, checkable steps.",
+        inputs=("initial-request.md", "spec.md"), produces="plan.md"),
+    LifecycleStep(
+        id="implement", kind="stage",
+        objective="Build it, and record what actually happened.",
+        inputs=("spec.md", "plan.md", "rework.md"), produces="outcome.md"),
+    LifecycleStep(
+        id="verify", kind="stage",
+        objective="Obtain the user's acceptance decision on the finished work.",
+        inputs=("spec.md", "outcome.md"),
+        produces="refined-outcome.md (accepted) or rework.md (rejected)"),
+    LifecycleStep(
+        id="postmortem", kind="stage",
+        objective="Find which stage first missed a problem. Out-of-band: legal "
+                  "in review or after completion, and never changes status.",
+        inputs=("initial-request.md", "spec.md", "plan.md", "outcome.md",
+                "refined-outcome.md", "rework.md"),
+        produces="post-mortem.md"),
+    LifecycleStep(
+        id="start", kind="transition",
+        objective="Begin implementation.", moves="backlog → active",
+        gates=("unresolved blockers", "the initiative epic must be active")),
+    LifecycleStep(
+        id="submit", kind="transition",
+        objective="Hand finished work to verification.", moves="active → review"),
+    LifecycleStep(
+        id="rework", kind="transition",
+        objective="Send rejected work back for another pass.",
+        moves="review → active",
+        gates=("refined-outcome.md must be absent",)),
+    LifecycleStep(
+        id="complete", kind="transition",
+        objective="Close the item as shipped.",
+        moves="review | active → completed",
+        gates=("unresolved blockers", "open initiative children",
+               "declared capabilities reconciled", "worktree merge-back",
+               "--confirm")),
+    LifecycleStep(
+        id="discard", kind="transition",
+        objective="Close the item without shipping. Reached as "
+                  "`complete --resolution <not-done>`, not a verb of its own.",
+        moves="backlog | active | review → discarded",
+        gates=("--confirm",)),
+)
+
+LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}
+
+
 def _parse_binding(raw: Any, where: str, problems: list[str]) -> "Binding | None":
     if not isinstance(raw, dict):
         problems.append(f"{where}: binding must be a mapping "
