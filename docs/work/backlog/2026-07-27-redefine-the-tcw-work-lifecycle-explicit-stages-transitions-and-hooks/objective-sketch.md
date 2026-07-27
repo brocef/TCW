@@ -184,8 +184,9 @@ Ordering is a dependency, not a ritual: the binding must be honored first, and
 
 **Ends well:**
 
-- `[auto]` tcw — the spec-stage commit, when `auto-commit-transitions` is on.
-  Otherwise `[judgment]` agent: commit `spec.md` and only its related work files.
+- `[judgment]` agent — commit `spec.md` and only its related work files. Stage
+  commits are agent-owned: nothing runs at the end of a stage, so nothing can
+  enforce this. `auto-commit-transitions` covers *transitions* only.
 - Next stage: `plan`.
 
 **Ends badly:**

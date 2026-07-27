@@ -164,6 +164,17 @@ nothing at all. Two reviewers read these as redundant; they are not, but only
 because the requirement they encode belongs to the implementation, not to
 behavior.
 
+### Stage commits stay agent-owned
+
+`auto-commit-transitions` covers **transitions only**. Nothing in the CLI runs at
+the end of a stage, so a stage commit cannot be `[auto]` without inventing a
+stage-finalization command — deliberately not built. Committing a stage artifact
+is `[judgment]`, stated once in each stage document's `Exit` rather than
+scattered through the guidance.
+
+This is an accepted, named weakness: the artifacts most often skipped today are
+the ones nothing checks, and this leaves them that way.
+
 ### Terminology rule
 
 **"Gate" is reserved for `[gated]`.** A gate is something the tool refuses past.
