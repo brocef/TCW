@@ -71,13 +71,13 @@ session replaced them:
 <!-- tcw:rollup -->
 ### Rollup: 2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks
 
-| node | slug | status | phase | blocked-by |
-|---|---|---|---|---|
-| . | 2026-07-27-add-the-review-status-and-the-submit-rework-transitions | backlog | - | - |
-| . | 2026-07-27-commit-every-work-transition-add-lifecycle-policy-config | backlog | - | 2026-07-27-add-the-review-status-and-the-submit-rework-transitions |
-| . | 2026-07-27-add-tcw-work-methodology-to-resolve-a-stage-s-skill-binding | backlog | - | 2026-07-27-commit-every-work-transition-add-lifecycle-policy-config |
-| . | 2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands | backlog | - | 2026-07-27-add-tcw-work-methodology-to-resolve-a-stage-s-skill-binding |
-| . | 2026-07-27-add-the-post-mortem-skill-and-its-verify-stage-trigger | backlog | - | 2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands |
+| node | slug | status | blocked-by |
+|---|---|---|---|
+| . | 2026-07-27-add-the-review-status-and-the-submit-rework-transitions | review | - |
+| . | 2026-07-27-commit-every-work-transition-add-lifecycle-policy-config | backlog | 2026-07-27-add-the-review-status-and-the-submit-rework-transitions |
+| . | 2026-07-27-add-tcw-work-methodology-to-resolve-a-stage-s-skill-binding | backlog | 2026-07-27-commit-every-work-transition-add-lifecycle-policy-config |
+| . | 2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands | backlog | 2026-07-27-add-tcw-work-methodology-to-resolve-a-stage-s-skill-binding |
+| . | 2026-07-27-add-the-post-mortem-skill-and-its-verify-stage-trigger | backlog | 2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands |
 
 **Next:** 2026-07-27-add-the-review-status-and-the-submit-rework-transitions
 <!-- /tcw:rollup -->
