@@ -75,10 +75,10 @@ session replaced them:
 |---|---|---|---|
 | . | 2026-07-27-add-lifecycle-policy-config-and-the-hook-layer | backlog | - |
 | . | 2026-07-27-add-tcw-work-methodology-to-resolve-a-stage-s-skill-binding | backlog | 2026-07-27-add-lifecycle-policy-config-and-the-hook-layer |
-| . | 2026-07-27-commit-every-work-transition-trunk-branch-and-dod-cleanup | backlog | - |
 | . | 2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands | backlog | 2026-07-27-add-tcw-work-methodology-to-resolve-a-stage-s-skill-binding |
 | . | 2026-07-27-add-the-post-mortem-skill-and-its-verify-stage-trigger | backlog | 2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands |
 | . | 2026-07-27-add-the-review-status-and-the-submit-rework-transitions | completed | - |
+| . | 2026-07-27-commit-every-work-transition-trunk-branch-and-dod-cleanup | review | - |
 
 **Next:** 2026-07-27-add-lifecycle-policy-config-and-the-hook-layer, 2026-07-27-commit-every-work-transition-trunk-branch-and-dod-cleanup
 <!-- /tcw:rollup -->
