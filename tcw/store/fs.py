@@ -31,7 +31,8 @@ from tcw.store.base import (
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
-    SidecarResource, StaleRevision, TransitionCommitError,
+    LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
+    parse_lifecycle_policy,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -1976,6 +1977,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
         value = self._work_config().get("auto-commit-transitions")
         return value if isinstance(value, bool) else True
 
+    def lifecycle_policy(self) -> LifecyclePolicy:
+        """The node's configured stage/transition bindings.
+
+        **Problems are discarded here on purpose.** Reading a policy must not
+        break `tcw work list` because someone mistyped a key; `tcw validate` is
+        where malformed configuration surfaces. Both call the same pure parser,
+        so they can never disagree about what is legal.
+        """
+        policy, _problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        return policy
+
+    def lifecycle_problems(self) -> list[str]:
+        """Policy problems, prefixed with the file they came from — for `check`."""
+        _policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        return [f"{SENTINEL}: {p}" for p in problems]
+
     def trunk_branch(self) -> str | None:
         """The branch transitions are expected to land on, or None when unset.
         Advisory only — TCW warns and commits where it is."""
@@ -2023,6 +2040,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def check(self, identifier: str | None = None) -> list[str]:
         registered = set(self.registered_tags())
         problems: list[str] = []
+        if identifier is None:                         # node-wide config, not per-item
+            problems.extend(self.lifecycle_problems())
         if identifier is not None:
             item = self.get(identifier)
             if item is None:

@@ -19,8 +19,9 @@ from tcw.store.fs import (
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
-SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "edit", "complete",
-               "drop", "nodes", "reconcile", "delegate", "escalate", "tags"}
+SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
+               "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
+               "escalate", "tags"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 # TransitionCommitError is included deliberately: the item *did* move, and its

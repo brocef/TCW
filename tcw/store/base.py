@@ -506,6 +506,187 @@ def normalize_tag(value: str) -> str:
     return tag
 
 
+# ── Lifecycle policy (stage/transition bindings) ─────────────────────────────
+#
+# Two ladders. A **stage** produces one lifecycle artifact; a **transition** moves
+# status. Nothing is both. These ids are **public API**: a user's
+# `tcw-config.yaml` keys on them, so renaming one silently breaks their
+# configuration. Insertions are safe; renames are not.
+
+STAGE_IDS = ("inbox", "request", "spec", "plan", "implement", "verify", "postmortem")
+
+# `discard` is a transition but **not** a CLI verb. Every other id here is the
+# command you type; `discard` is reached as `complete --resolution <not-done>`,
+# because the resolution picks the destination folder. Bindings key on the *move*
+# rather than on the verb, so `complete --resolution done` fires `complete`'s
+# hooks and `complete --resolution wontfix` fires `discard`'s. Keying on the verb
+# instead would make one binding fire for two opposite outcomes — "we shipped it"
+# and "we gave up on it" — which is exactly the distinction `discard` exists to
+# preserve.
+TRANSITION_IDS = ("start", "submit", "complete", "rework", "discard")
+
+
+@dataclass(frozen=True)
+class Binding:
+    """One configured hook: a skill reference *or* a shell command, never both.
+
+    Declared explicitly rather than inferred from a bare string. Guessing which a
+    plain value meant is a whole class of bug bought for nothing.
+    """
+    skill: str = ""
+    command: str = ""
+
+    @property
+    def kind(self) -> str:
+        return "skill" if self.skill else "command"
+
+    @property
+    def ref(self) -> str:
+        return self.skill or self.command
+
+
+@dataclass
+class TransitionBindings:
+    """`pre` may block the move; `post` may not."""
+    pre: list[Binding] = field(default_factory=list)
+    post: list[Binding] = field(default_factory=list)
+
+
+@dataclass
+class LifecyclePolicy:
+    """A node's configured stage and transition bindings. Empty is the default."""
+    stages: dict[str, list[Binding]] = field(default_factory=dict)
+    transitions: dict[str, TransitionBindings] = field(default_factory=dict)
+    timeout: int = 300
+
+    def stage(self, stage_id: str) -> list[Binding]:
+        return self.stages.get(stage_id, [])
+
+    def transition(self, transition_id: str) -> TransitionBindings:
+        return self.transitions.get(transition_id, TransitionBindings())
+
+
+DEFAULT_HOOK_TIMEOUT = 300
+
+
+def _parse_binding(raw: Any, where: str, problems: list[str]) -> "Binding | None":
+    if not isinstance(raw, dict):
+        problems.append(f"{where}: binding must be a mapping "
+                        f"({{skill: …}} or {{command: …}}), got {type(raw).__name__}")
+        return None
+    unknown = set(raw) - {"skill", "command"}
+    if unknown:
+        problems.append(f"{where}: unknown binding key(s) {', '.join(sorted(unknown))}; "
+                        f"expected 'skill' or 'command'")
+        return None
+    skill, command = raw.get("skill"), raw.get("command")
+    if skill is not None and command is not None:
+        problems.append(f"{where}: binding declares both 'skill' and 'command'; "
+                        f"choose one")
+        return None
+    if skill is None and command is None:
+        problems.append(f"{where}: binding declares neither 'skill' nor 'command'")
+        return None
+    value = skill if skill is not None else command
+    if not isinstance(value, str) or not value.strip():
+        problems.append(f"{where}: binding '{'skill' if skill is not None else 'command'}' "
+                        f"must be a non-blank string")
+        return None
+    return (Binding(skill=value.strip()) if skill is not None
+            else Binding(command=value.strip()))
+
+
+def _parse_binding_list(raw: Any, where: str, problems: list[str]) -> list[Binding]:
+    if not isinstance(raw, list):
+        problems.append(f"{where}: expected a list of bindings, "
+                        f"got {type(raw).__name__}")
+        return []
+    out: list[Binding] = []
+    seen: set[str] = set()
+    for i, entry in enumerate(raw):
+        binding = _parse_binding(entry, f"{where}[{i}]", problems)
+        if binding is None:
+            continue
+        if binding.ref in seen:
+            problems.append(f"{where}: duplicate binding '{binding.ref}'")
+            continue
+        seen.add(binding.ref)
+        out.append(binding)                            # declaration order is significant
+    return out
+
+
+def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
+    """Parse a `work.lifecycle` mapping into a policy plus a problem list.
+
+    Pure: takes an already-loaded object, touches no filesystem, and never raises.
+    `tcw validate` reports the problems and the adapter discards them — reading a
+    policy must not break `tcw work list` just because someone mistyped a key.
+    One implementation so the two can never disagree about what is legal, which
+    is the drift this whole initiative exists to remove.
+    """
+    policy = LifecyclePolicy()
+    problems: list[str] = []
+    if raw is None:
+        return policy, problems
+    if not isinstance(raw, dict):
+        return policy, [f"work.lifecycle: expected a mapping, got {type(raw).__name__}"]
+
+    unknown = set(raw) - {"stages", "transitions", "timeout"}
+    if unknown:
+        problems.append(f"work.lifecycle: unknown key(s) {', '.join(sorted(unknown))}; "
+                        f"expected 'stages', 'transitions', or 'timeout'")
+
+    timeout = raw.get("timeout", DEFAULT_HOOK_TIMEOUT)
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+        problems.append("work.lifecycle.timeout: expected a positive integer "
+                        "(seconds)")
+    else:
+        policy.timeout = timeout
+
+    stages = raw.get("stages")
+    if stages is not None:
+        if not isinstance(stages, dict):
+            problems.append(f"work.lifecycle.stages: expected a mapping, "
+                            f"got {type(stages).__name__}")
+        else:
+            for sid, value in stages.items():
+                where = f"work.lifecycle.stages.{sid}"
+                if sid not in STAGE_IDS:
+                    problems.append(f"{where}: unknown stage id; expected one of "
+                                    f"{', '.join(STAGE_IDS)}")
+                    continue
+                policy.stages[sid] = _parse_binding_list(value, where, problems)
+
+    transitions = raw.get("transitions")
+    if transitions is not None:
+        if not isinstance(transitions, dict):
+            problems.append(f"work.lifecycle.transitions: expected a mapping, "
+                            f"got {type(transitions).__name__}")
+        else:
+            for tid, value in transitions.items():
+                where = f"work.lifecycle.transitions.{tid}"
+                if tid not in TRANSITION_IDS:
+                    problems.append(f"{where}: unknown transition id; expected one "
+                                    f"of {', '.join(TRANSITION_IDS)}")
+                    continue
+                if not isinstance(value, dict):
+                    problems.append(f"{where}: expected a mapping with 'pre' and/or "
+                                    f"'post', got {type(value).__name__}")
+                    continue
+                extra = set(value) - {"pre", "post"}
+                if extra:
+                    problems.append(f"{where}: unknown key(s) "
+                                    f"{', '.join(sorted(extra))}; expected 'pre' or 'post'")
+                bindings = TransitionBindings()
+                for phase in ("pre", "post"):
+                    if value.get(phase) is not None:
+                        setattr(bindings, phase, _parse_binding_list(
+                            value[phase], f"{where}.{phase}", problems))
+                policy.transitions[tid] = bindings
+
+    return policy, problems
+
+
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
                "reviewed", "version offered")
 # Appended, never inserted in lifecycle position: the tuple's order drives the
@@ -720,6 +901,15 @@ class WorkStore(ABC):
 
     # -- tag registry (a node-scoped controlled vocabulary; any backend can
     #    realize a registered set + membership check) --
+
+    @abstractmethod
+    def lifecycle_policy(self) -> LifecyclePolicy:
+        """The node's configured stage/transition bindings; empty when unset.
+
+        The *policy* is storage-neutral — any backend can serve a mapping of ids
+        to references. *Executing* what it declares is not: running a shell
+        command is a local concern and lives in the CLI, never here.
+        """
 
     @abstractmethod
     def registered_tags(self) -> list[str]:
