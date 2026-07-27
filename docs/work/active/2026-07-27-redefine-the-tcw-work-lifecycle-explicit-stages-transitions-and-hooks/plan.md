@@ -6,20 +6,34 @@ boundaries, the order, and what must be true at each rollup.
 
 ## Dependency order
 
-Strictly sequential. Nothing here parallelizes usefully: each child establishes
-vocabulary the next one depends on.
+Almost sequential — each child establishes vocabulary the next one depends on,
+with one genuine fork.
 
 ```
-1. review status + transitions      CLI — the model
+1. review status + transitions      CLI — the model                 ✅ completed
         ↓
-2. transition commits + policy      CLI — behavior and config
-        ↓
-3. methodology resolution           what a stage's "how" resolves from
-        ↓
-4. skill + command restructure      docs — describes 1, 2, and 3
-        ↓
-5. post-mortem skill                needs 4's stage docs to read
+        ├── 2a. transition commits + trunk-branch + DoD    behavior
+        │                                                  (joins at 4)
+        └── 2b. lifecycle policy config + hooks            configuration
+                ↓
+        3. methodology resolution   what a stage's "how" resolves from
+                ↓
+        4. skill + command restructure   docs — describes 1, 2a, 2b, and 3
+                ↓
+        5. post-mortem skill             needs 4's stage docs to read
 ```
+
+**The 2a/2b split was made after the combined spec was written and reviewed.**
+The original child 2 carried auto-commit, `trunk-branch`, `dod:` removal,
+`--already-integrated`, `LifecyclePolicy`, hook execution, policy validation, and
+`tcw work lifecycle` — too much for one item, and the two halves share no code.
+The reviewed spec sections were carried across unchanged rather than rewritten,
+so the review that produced them still applies.
+
+**2a and 2b are genuinely parallel**, and the blocker graph now says so rather
+than asserting a false ordering: neither blocks the other, and `reconcile` lists
+both as next. Only 2b blocks child 3 — methodology resolution builds on the
+binding concept, and has nothing to do with commit behavior.
 
 Two hard ordering constraints, both discovered during planning rather than
 assumed:
@@ -36,7 +50,7 @@ Naming an artifact and defining its contents are different jobs, and they land i
 different children. Stated once here rather than discovered later:
 
 - **Child 1** owns only that `post-mortem` and `rework` **exist** in the bounded
-  `WORK_ARTIFACTS` set.
+  `WORK_ARTIFACTS` set. ✅ shipped.
 - **Child 4** owns every artifact's **required sections**, expressed as the
   `Produce` section of the stage document that writes it. `rework.md`'s shape is
   defined by `stage-verify.md`; `post-mortem.md`'s by `stage-postmortem.md`.
@@ -67,7 +81,13 @@ existing `state.yaml` carries `phase: ""` and no code path ever writes anything
 else, so nothing is lost. The adapter already tolerates its absence
 (`fs.py:1785` reads it with a default). Required: a test that loads a
 pre-existing item whose `state.yaml` still contains `phase` and confirms it is
-read without error and dropped on the next write.
+read without error.
+
+**Corrected by implementation:** this section originally predicted the key would
+be *dropped on the next write*. It is not — `set_field` is a read-modify-write
+over the raw mapping, so unknown keys survive. The migration is that `phase`
+stops being read and displayed; existing items keep an inert key, and no rewrite
+pass was added to erase it.
 
 **Done when:** an item traverses `active → review → active → review → completed`;
 `rework` refuses while `refined-outcome.md` exists; `complete` still works from
@@ -76,33 +96,59 @@ appears nowhere; and **the Python↔TypeScript status parity test exists and
 fails** when the two sets diverge. That test is a named deliverable, not a
 by-product — it is the one guard that does not exist today.
 
-## Child 2 — transition commits, config, and policy
+## Child 2a — transition commits, trunk-branch, and DoD cleanup
 
-Owns behavior and configuration. No new statuses.
+Owns what a transition *does*. No new statuses, no policy schema.
 
 - `auto-commit-transitions` (default **true**) — every transition commits its own
-  move through the existing scoped `git_commit(node, msg, *paths)`. No empty
-  commits. Stage commits stay `[judgment]`; nothing runs at stage end.
-- `trunk-branch` — compare `HEAD`, warn on mismatch, commit where you are.
+  move, implemented in `FsWorkStore._effect_transition`, the single choke point
+  both the CLI and `tcw serve` pass through. Committing has no abstract analog,
+  so it belongs in the adapter, not the CLI.
+- Commits scoped to the item's source and destination paths, not `docs/work` —
+  `git commit -- <paths>` takes working-tree state, so a broad pathspec sweeps in
+  every other item's uncommitted edits.
+- Three distinct outcomes on a failed commit, never conflated: not a repo and
+  nothing-to-commit skip silently; everything else reports and exits non-zero.
+- `trunk-branch` — compare `HEAD`, warn on mismatch, commit where you are;
+  suppressed when the item's own `branch` field equals `HEAD`.
 - Stop persisting `dod:`. Keep the checklist as a closeout prompt; keep the real
-  gates (capability reconciliation, merge-back, `--confirm`).
+  gates. Stage commits stay `[judgment]`; nothing runs at stage end.
+- `tcw work complete --already-integrated`.
+
+**Done when:** every transition leaves a commit containing exactly the moved
+item; an unrelated edit elsewhere under `docs/work/` is not swept in; a real git
+failure is loud while the two benign ones are silent; a `tcw serve` transition is
+committed too; `--worktree` produces no duplicate commit.
+
+## Child 2b — lifecycle policy config and the hook layer
+
+Owns the schema and the contract for executing it. Changes no transition
+behavior.
+
 - `LifecyclePolicy` + `WorkStore.lifecycle_policy()`; FS adapter reads node-local
   `work.lifecycle`; bindings declared explicitly as `{skill: …}` or
   `{command: …}`, never inferred from a bare string.
-- The full hook execution contract from the spec: node-root cwd, shell
-  execution, `TCW_*` environment, 300s default timeout, `pre` aborts in declared
-  order, `post` failure never rolls back.
+- The full hook execution contract: node-root cwd, shell execution, `TCW_*`
+  environment, 300s default timeout, `pre` aborts in declared order, `post`
+  failure never rolls back.
+- **`pre` hooks run before the store is touched at all.** `complete()` writes the
+  resolution before it moves the item, so a hook evaluated inside it would strand
+  a resolution on an unmoved item. Execution lives in the CLI, which owns the
+  ordering — no `WorkStore` change, no transaction concept.
 - `tcw validate` rejects unknown ids, non-mapping/non-list shapes, blank or
   duplicate refs, and mappings with neither or both of `skill`/`command` — and
   never reorders or disturbs unrelated config.
 - `tcw work lifecycle [work-ref]` in three modes: human, `--json`, `--directive`.
-- `tcw work complete --already-integrated`.
 
-**Done when:** a node with no `work.lifecycle` behaves exactly as before apart
-from transition commits; every rejected policy shape has a test and an actionable
-message; `--directive` emits one complete instruction, or nothing, or exits
-non-zero on error with empty stdout; a qualified descendant uses its own node's
-policy.
+**Done when:** a node with no `work.lifecycle` behaves exactly as before; every
+rejected policy shape has a test and an actionable message; `--directive` emits
+one complete instruction, or nothing, or exits non-zero on error with empty
+stdout; a qualified descendant uses its own node's policy; an aborted `pre` hook
+leaves no field written.
+
+**`tcw serve` runs no hooks** — an accepted asymmetry, since running configured
+shell from an HTTP handler on a button click is a worse posture than a CLI the
+user invoked. The web complete modal must say so rather than leave it inferred.
 
 ## Child 3 — methodology resolution
 
@@ -192,9 +238,9 @@ carries its own share; none of it defers to the end.
 
 | Entry | Trigger | Owner |
 |---|---|---|
-| `README.md` | new status, `submit`/`rework`, `tcw work lifecycle`, new commands | 1, 2, 4 |
-| `docs/release-notes/upcoming.md` | new review step, auto-commit default, methodology overrides | 1, 2, 3, 5 |
-| `docs/changelogs/upcoming.md` | any code change | all five |
+| `README.md` | new status, `submit`/`rework`, `tcw work lifecycle`, new commands | 1, 2a, 2b, 4 |
+| `docs/release-notes/upcoming.md` | new review step, auto-commit default, methodology overrides | 1, 2a, 2b, 3, 5 |
+| `docs/changelogs/upcoming.md` | any code change | all six |
 | `skills/tcw-work/SKILL.md` | the component's CLI, model, and lifecycle all change | 4 (1–3 note deltas) |
 
 `auto-commit-transitions` defaulting to `true` is a **behavior change** — plain
@@ -212,12 +258,18 @@ not to restate this plan's predictions.
 
 ## Creating the children
 
+Created as `--initiative`, not `--parent`: these are scheduled and completed
+independently over time, and `reconcile` follows the initiative relation. The
+epic must be `active` before any child can start.
+
 ```
 E=2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks
 
 tcw work new "Add the review status and the submit/rework transitions" \
     --initiative $E --tag work --tag cli --effort high --complexity high --priority 10
-tcw work new "Commit every work transition; add lifecycle policy config" \
+tcw work new "Commit every work transition; trunk-branch and DoD cleanup" \
+    --initiative $E --tag work --tag cli --effort high --complexity medium --priority 9
+tcw work new "Add lifecycle policy config and the hook layer" \
     --initiative $E --tag work --tag cli --effort high --complexity high --priority 9
 tcw work new "Add tcw work methodology to resolve a stage's skill binding" \
     --initiative $E --tag work --tag cli --effort medium --complexity low --priority 8
@@ -227,9 +279,10 @@ tcw work new "Add the post-mortem skill and its verify-stage trigger" \
     --initiative $E --tag skills --effort medium --complexity low --priority 6
 ```
 
-`--initiative`, not `--parent`: these are scheduled and completed independently
-over time, and `reconcile` follows the initiative relation. The epic must be
-`active` before any child can start.
+**Ordering is enforced, not described.** `blocked_by` chains 2b → 3 → 4 → 5, so
+`start()` fails closed on an unresolved blocker and `reconcile`'s **Next** names
+only what is actually workable. 2a and 2b carry no blocker between them, which is
+the graph stating the truth that they are parallel.
 
 ## Risks
 
@@ -245,7 +298,7 @@ over time, and `reconcile` follows the initiative relation. The epic must be
 - **Unenforceable bindings.** Codex cannot enumerate skills, so a
   configured-but-missing skill cannot fail closed there. Nothing may depend on
   that check firing.
-- **Scope.** Five children across CLI, config, documents, and two new skills.
+- **Scope.** Six children across CLI, config, documents, and two new skills — child 2 was split once its spec showed how much it carried.
 - **Child 3 is a deliberate down payment.** It ships the binding concept without
   the override model, so the first design that builds on it may want the command
   to answer differently. Its contract — "name the skill for this stage" — is

@@ -1,0 +1,11 @@
+slug: 2026-07-27-commit-every-work-transition-trunk-branch-and-dod-cleanup
+title: Commit every work transition; trunk-branch and DoD cleanup
+created: '2026-07-27'
+resolution: null
+priority: 9
+effort: high
+complexity: medium
+tags:
+- work
+- cli
+initiative: 2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks

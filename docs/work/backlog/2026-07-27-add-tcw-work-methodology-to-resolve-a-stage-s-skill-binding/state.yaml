@@ -11,4 +11,4 @@ tags:
 - cli
 initiative: 2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks
 blocked_by:
-- slug: 2026-07-27-commit-every-work-transition-add-lifecycle-policy-config
+- slug: 2026-07-27-add-lifecycle-policy-config-and-the-hook-layer
