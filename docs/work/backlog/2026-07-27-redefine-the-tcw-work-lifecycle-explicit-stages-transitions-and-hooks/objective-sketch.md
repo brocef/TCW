@@ -69,7 +69,7 @@ conflate them: a stage produces an artifact, a transition moves status.
 | `spec` | `spec.md` | backlog | yes |
 | `plan` | `plan.md` | backlog | yes |
 | `implement` | `outcome.md` | active | yes |
-| `verify` | `refined-outcome.md` | review | no |
+| `verify` | `refined-outcome.md` **or** `rework.md` | review | no |
 | `postmortem` | `post-mortem.md` | review, or after completed | yes |
 
 | Transition | Move | Verb |
@@ -77,7 +77,7 @@ conflate them: a stage produces an artifact, a transition moves status.
 | `start` | backlog → active | `tcw work start` |
 | `submit` | active → review | `tcw work submit` |
 | `complete` | review \| active → completed | `tcw work complete` |
-| `rework` | review → active | `tcw work rework` |
+| `rework` | review → active | `tcw work rework` (refuses while `refined-outcome.md` exists) |
 | `discard` | backlog \| active \| review → discarded | `tcw work complete --resolution …` |
 
 The `inbox` stage is not a transition: `tcw work inbox accept` **creates** the
@@ -308,7 +308,7 @@ the main context.
 | 12 | tcw | move active→review, commit; run `gh pr create` | `[auto]` | — |
 | 13 | **`tcw-verifier`** | assess the diff, report findings | `[judgment]` | **isolated** |
 | 14 | user | approve, or send back | `[judgment]` | main |
-| 15 | agent | stage `verify` → `refined-outcome.md` | `[judgment]` | main |
+| 15 | agent | stage `verify` → `refined-outcome.md` (accepted) or `rework.md` (rejected) | `[judgment]` | main |
 | 16 | agent | `tcw work complete <slug> --resolution done --confirm` | `[gated]` | main |
 | 17 | tcw | `pytest -q` pre-hook; capability reconciliation gate; merge-back; move; commit | `[auto]`+`[gated]` | — |
 
@@ -321,7 +321,7 @@ findings. Four of seven stages run outside it.
 |---|---|
 | 4, 7, 10 — delegated stage produces no artifact, or one missing required sections | `[judgment]` coordinating session re-dispatches with the gap named, or escalates to the user. No transition was attempted, so nothing refuses. |
 | 10 — implementation cannot complete | The item stays `active`. Record what blocked it in `outcome.md`, then either `tcw work edit --blocked-by …` or discard with a non-`done` resolution. |
-| 14 — user rejects | `tcw work rework <slug>` → back to `active`, return to step 10. |
+| 14 — user rejects | Write `rework.md` naming what is still required, **delete `refined-outcome.md`**, then `tcw work rework <slug>` → back to `active`, return to step 10. The transition refuses while `refined-outcome.md` is still there, so the deletion cannot be forgotten silently. `rework.md` is a declared input to the re-run of `implement`. |
 | 17 — `pre` hook exits non-zero | The move is refused; the item stays in `review`. |
 | 17 — merge conflict | Fails closed; branch and worktree left intact; item stays put. Resolve and re-run rather than `--force`. |
 

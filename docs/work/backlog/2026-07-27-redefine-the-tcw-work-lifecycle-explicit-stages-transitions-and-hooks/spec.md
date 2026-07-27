@@ -75,7 +75,7 @@ verification can fail and the model has no transition for that outcome.
 | `spec` | `spec.md` | backlog |
 | `plan` | `plan.md` | backlog |
 | `implement` | `outcome.md` | active |
-| `verify` | `refined-outcome.md` | review |
+| `verify` | `refined-outcome.md` **or** `rework.md` | review |
 | `postmortem` | `post-mortem.md` | review, or after `completed` |
 
 **Transitions** — each changes status and commits:
@@ -85,7 +85,7 @@ verification can fail and the model has no transition for that outcome.
 | `start` | backlog → active | blockers, epic-active; soft: `plan.md` present |
 | `submit` | active → review | soft: `outcome.md` present |
 | `complete` | review \| active → completed | capability gate, merge-back, `--confirm` |
-| `rework` | review → active | none |
+| `rework` | review → active | `refined-outcome.md` must be **absent** |
 | `discard` | backlog \| active \| review → discarded | `--confirm` |
 
 `complete` is **one** transition id with two legal source statuses, not two
@@ -94,6 +94,30 @@ stage was skipped — plain stderr output, not a second acknowledgement gate, an
 not a distinct binding target. `complete` does **not** require
 `refined-outcome.md`: verification is optional by design, and the artifact's
 absence is itself the signal that verification produced nothing.
+
+### Rework: delete, don't accumulate
+
+`verify` produces exactly one artifact, and which one records its verdict:
+`refined-outcome.md` on acceptance, `rework.md` on rejection. `rework.md` states
+what the implementation still has to do.
+
+On the rejection path the agent **deletes `refined-outcome.md`** — that document
+asserts the work was verified, and after a rejection it is simply false. TCW does
+not delete it for them; instead **`tcw work rework` fails closed while
+`refined-outcome.md` is still present**, so forgetting is `[gated]` rather than
+silent. The agent also updates any other artifact that the rework invalidates.
+
+`rework.md` then becomes a declared **input to the `implement` stage**, which is
+what keeps a stale `outcome.md` from being read as "implementation complete":
+re-implementation is driven by `rework.md`, not by artifact presence alone. No
+general "status constrains stage" rule is needed.
+
+Deliberately accepted: a second rework overwrites the first `rework.md`, and the
+deleted `refined-outcome.md` is not preserved as a file. Both live in git, which
+is the archive — `AGENTS.md` already settles that state is the status and git is
+history. Keeping an accumulating `rejected-*-N.md` series was considered and
+rejected: it needs an unbounded name space in a folder the prime directive says
+must stay bounded, and managing the series costs more than the record is worth.
 
 ### `postmortem` is a stage with no transition
 
@@ -343,6 +367,9 @@ Sequential; the CLI must land before the skill documents it.
 
 1. **`review` status and transitions** — `WORK_STATUSES`, the new edges, the `pr`
    field, deletion of `phase`, the web TS mirror and its missing parity test.
+   `WORK_ARTIFACTS` gains `post-mortem` and `rework`, and the set stays bounded —
+   no accumulating series, no globbing the item folder. `tcw work rework` fails
+   closed while `refined-outcome.md` is present.
 2. **Transition commits, config, and DoD cleanup** — auto-commit every
    transition; `work.auto-commit-transitions` and `work.trunk-branch`; stop
    persisting `dod:`; the `LifecyclePolicy` model, validation, and
