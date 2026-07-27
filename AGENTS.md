@@ -44,6 +44,16 @@ After planning concludes, and implementation is about to begin, use `tcw work st
 - Python with type hints; pytest over `tmp_path` git repos. Use the ABC + adapter pattern for stores; extract the shared tree-store core only once two components are real (don't pre-abstract).
 - **Skill authoring (progressive disclosure):** a `skills/<name>/SKILL.md` is a **thin router** — keep always-relevant judgment inline (the core lifecycle, the gates) and push genuinely rare sub-procedures into `skills/<name>/references/*.md` read on demand, each reached by a clear gate condition in the router (the `tcw-plugin` and `tcw-work` skills are the pattern). Only split once a skill's conditional detail is large enough to earn the indirection — for ~50-line, mostly-always-relevant skills it's a no-op; leave them inline.
 
+## Harness compatibility (Claude and Codex)
+
+TCW ships to **both** Claude Code and Codex, and their plugin standards differ: Claude's system is far richer, while Codex follows the [Agentskills specification](https://agentskills.io/specification.md). Both are first-class targets — a task a Claude user can accomplish, a Codex user must also be able to accomplish.
+
+**Claude-only features are welcome as _enhancements_, never as the sole carrier of a requirement.** Dynamic context injection (`` !`cmd` ``), skill/command arguments, custom subagents, and hooks are Claude-only; their syntax is inert in Codex rather than fatal, so using them does not break a skill. That makes them safe to reach for — but only for ergonomics.
+
+The rule that follows: **anything that must be guaranteed belongs in the `tcw` CLI**, which behaves identically under both harnesses. If a behavior only happens because Claude injected a line of context or fired a hook, a Codex user does not get it. Ask of every mechanism: _what does a Codex agent see here, and can it still finish the job?_ If the answer is no, the requirement is in the wrong layer.
+
+Codex has no slash commands, so anything reachable via `commands/` must also be reachable by invoking the skill directly (the `tcw-plugin` skill is the existing pattern).
+
 ## Documentation Sync
 
 Before reporting any code change complete, invoke the `documentation-sync` skill to evaluate the entries below. When writing an implementation plan, include explicit documentation-update tasks for every entry whose trigger is expected to fire.
