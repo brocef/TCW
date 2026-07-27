@@ -10,3 +10,5 @@ tags:
 - skills
 - docs
 initiative: 2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks
+blocked_by:
+- slug: 2026-07-27-add-tcw-work-methodology-to-resolve-a-stage-s-skill-binding

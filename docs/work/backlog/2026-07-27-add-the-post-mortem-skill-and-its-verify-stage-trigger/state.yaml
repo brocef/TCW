@@ -9,3 +9,5 @@ complexity: low
 tags:
 - skills
 initiative: 2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks
+blocked_by:
+- slug: 2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands
