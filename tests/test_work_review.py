@@ -9,7 +9,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
 
 from tcw.store.base import (
     LEGAL_TRANSITIONS, RESOLVED_STATUSES, WORK_STATUSES, IllegalTransition,
@@ -289,3 +288,97 @@ def test_the_artifact_set_stays_bounded(tmp_path):
     item = st.create("Task", created="2026-01-01")
     with pytest.raises(ValueError):
         st.write_artifact(item.slug, "rejected-refined-outcome-2", "# Nope\n")
+
+
+# ── the CLI surface ──────────────────────────────────────────────────────────
+
+def test_cli_submit_and_rework_round_trip(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "start", item.slug]) == 0
+    capsys.readouterr()
+
+    assert main(["work", "submit", item.slug]) == 0
+    assert "→ review" in capsys.readouterr().out
+    assert FsWorkStore.open(root).get(item.slug).status == "review"
+
+    assert main(["work", "rework", item.slug]) == 0
+    assert "→ active" in capsys.readouterr().out
+    assert FsWorkStore.open(root).get(item.slug).status == "active"
+
+
+def test_cli_submit_from_backlog_fails_without_a_traceback(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    item = FsWorkStore.open(root).create("Task", created="2026-01-01")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "submit", item.slug]) == 1
+    assert "not a legal transition" in capsys.readouterr().err
+    assert FsWorkStore.open(root).get(item.slug).status == "backlog"
+
+
+def test_cli_rework_reports_the_blocking_artifact_by_name(tmp_path, monkeypatch, capsys):
+    """The refusal has to say which file and what to do about it — the whole
+    point is that the operator can act on it without reading the source."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    st.start(item.slug)
+    st.submit(item.slug)
+    st.write_artifact(item.slug, "refined-outcome", "# Verified\n")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "rework", item.slug]) == 1
+    err = capsys.readouterr().err
+    assert "refined-outcome.md" in err and "rework.md" in err
+    assert FsWorkStore.open(root).get(item.slug).status == "review"
+
+
+def test_cli_complete_warns_when_the_verify_stage_was_skipped(tmp_path, monkeypatch, capsys):
+    """`[prompted]`: the tool must say something. Not a gate — exit status is 0
+    and no extra confirmation is read."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    st.start(item.slug)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "complete", item.slug, "--resolution", "done", "--confirm"]) == 0
+    assert "the verify stage was skipped" in capsys.readouterr().err
+    assert FsWorkStore.open(root).get(item.slug).status == "completed"
+
+
+def test_cli_complete_from_review_does_not_warn(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    st.start(item.slug)
+    st.submit(item.slug)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "complete", item.slug, "--resolution", "done", "--confirm"]) == 0
+    assert "verify stage was skipped" not in capsys.readouterr().err
+
+
+def test_cli_list_shows_a_review_item_with_its_stage_letters(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    st.write_artifact(item.slug, "rework", "# Rework\n")
+    st.start(item.slug)
+    st.submit(item.slug)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "list"]) == 0
+    line = next(l for l in capsys.readouterr().out.splitlines() if item.slug in l)
+    assert "| review |" in line
+    assert "W" in line.split("|")[2]          # the rework artifact's stage letter

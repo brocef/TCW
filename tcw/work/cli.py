@@ -473,6 +473,40 @@ def _start(args: argparse.Namespace) -> int:
     return 0
 
 
+def _submit(args: argparse.Namespace) -> int:
+    resolved = _resolve(args.slug, "submit")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        st.submit(bare)
+    except _ERRORS as e:
+        print(f"tcw work: {e}", file=sys.stderr)
+        return 1
+    print(f"submitted {args.slug} → review")
+    print(f"→ next: verify the work, then either "
+          f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
+          f"send it back, delete refined-outcome.md and run "
+          f"`tcw work rework {args.slug}`", file=sys.stderr)
+    return 0
+
+
+def _rework(args: argparse.Namespace) -> int:
+    resolved = _resolve(args.slug, "rework")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        st.rework(bare)
+    except _ERRORS as e:
+        print(f"tcw work: {e}", file=sys.stderr)
+        return 1
+    print(f"reworking {args.slug} → active")
+    print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
+          file=sys.stderr)
+    return 0
+
+
 def _edit(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "edit")
     if resolved is None:
@@ -576,6 +610,14 @@ def _complete(args: argparse.Namespace) -> int:
         return 1
     branch = item.branch or None              # capture before complete moves the folder
     has_worktree = bool(item.worktree)
+    # `[prompted]`: an obligation on the CLI to say something, not a gate and not
+    # an interactive prompt. Completing straight from `active` skips the verify
+    # stage, which is legal and often right for a small change — the point is
+    # that it not happen without anyone noticing. Read before the transition;
+    # afterwards the status is terminal and the branch is unreachable.
+    if item.status == "active":
+        print(f"tcw work complete: completing {args.slug} directly from active; "
+              f"the verify stage was skipped", file=sys.stderr)
     # A discard is not a shipment: the blocker check, the Definition-of-Done
     # checklist, the capability gate, and the worktree merge-back all exist to
     # police shipped work, so none of them apply. `--confirm` still does —
@@ -747,6 +789,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pst.add_argument("--worktree", action="store_true",
                      help="isolate the item in its own git worktree + branch")
     pst.set_defaults(func=_start)
+
+    psb = g.add_parser("submit", help="active → review (implemented, acceptance pending)")
+    psb.add_argument("slug")
+    psb.set_defaults(func=_submit)
+
+    prw = g.add_parser("rework", help="review → active (verification rejected the work)")
+    prw.add_argument("slug")
+    prw.set_defaults(func=_rework)
 
     pe = g.add_parser("edit", help="change blocking links between items")
     pe.add_argument("slug")
