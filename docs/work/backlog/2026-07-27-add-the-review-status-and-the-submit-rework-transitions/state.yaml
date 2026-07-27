@@ -1,0 +1,12 @@
+slug: 2026-07-27-add-the-review-status-and-the-submit-rework-transitions
+title: Add the review status and the submit/rework transitions
+phase: ''
+created: '2026-07-27'
+resolution: null
+priority: 10
+effort: high
+complexity: high
+tags:
+- work
+- cli
+initiative: 2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks
