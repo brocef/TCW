@@ -24,7 +24,6 @@ skills/tcw-work/
     lifecycle-6-postmortem.md       id: postmortem
     transitions.md                  all five, with gates
     hooks.md                        binding skills/commands to ids
-    delegation.md                   dispatching stages to subagents
     epic-deltas.md                  differences only
     cross-node-deltas.md            differences only
     decompose.md                    --parent vs --initiative (unchanged)
@@ -93,6 +92,14 @@ authority.
 `tcw work show <slug>`, open that stage's reference, and read only the inputs it
 declares. Never load the whole lifecycle to perform one stage.
 
+## Delegation
+
+Dispatch stages marked delegable to a subagent; give it the stage document and
+its declared `Inputs`, nothing more. **Never delegate a transition** — those
+commit on the primary checkout and carry the gates. Never delegate `request` or
+`verify`: a subagent cannot ask the user. Check the artifact named in `Produce`
+before transitioning; a subagent's context is gone once it returns.
+
 ## Routing
 
 | When | Read |
@@ -100,7 +107,6 @@ declares. Never load the whole lifecycle to perform one stage.
 | performing any stage | `references/lifecycle-<n>-<id>.md` |
 | moving an item's status | `references/transitions.md` |
 | a stage or transition has a configured binding | `references/hooks.md` |
-| dispatching a stage to a subagent | `references/delegation.md` |
 | the item is `type: epic` | the stage doc **plus** `references/epic-deltas.md` |
 | slices span registered projects | `references/cross-node-deltas.md` |
 | one item is too large | `references/decompose.md` |
@@ -149,6 +155,9 @@ they do not exist yet.
 - `## Current state` — with file references
 - `## Proposed behavior` · `## Acceptance criteria`
 - `## Risks and dependencies`
+- `## Notes` — optional, last. Anything worth keeping that has no home above: how
+  this stage actually ended, a dead end not worth re-exploring, something `plan`
+  should know before it starts. Omit it when there is nothing to say.
 
 ## Steps
 
@@ -160,18 +169,21 @@ Ordering is a dependency, not a ritual: the binding must be honored first, and
 2. `[judgment]` agent — deep-dive the repository enough that the design is
    settled, not sketched.
 3. `[judgment]` agent — for a product delta, run the tcw-capabilities planning
-   check **before** settling the technical shape. Nothing enforces this.
+   **check** before settling the technical shape. Nothing enforces this — it is a
+   check, not a gate; "gate" is reserved for `[gated]`.
 4. `[judgment]` user — resolve any open question that changes the shape of the
    work. Ask; do not assume.
 5. `[judgment]` agent — write `spec.md`.
 
 ## Exit
 
+**Ends well:**
+
 - `[auto]` tcw — the spec-stage commit, when `auto-commit-transitions` is on.
   Otherwise `[judgment]` agent: commit `spec.md` and only its related work files.
 - Next stage: `plan`.
 
-## When this stage cannot finish
+**Ends badly:**
 
 - `initial-request.md` is missing or a bare scaffold → return to stage `request`.
   Do not infer a request from the title.
@@ -179,6 +191,8 @@ Ordering is a dependency, not a ritual: the binding must be honored first, and
   silently respec.
 - The work turns out too large for one item → read `decompose.md` and split
   before writing a spec that spans several deliverables.
+
+Record which of these happened in the artifact's `## Notes`.
 ````
 
 ---
@@ -325,36 +339,37 @@ its own `Steps`. Agent definitions for delegable stages must include Bash.
 
 ---
 
-## 9. Open for critique
+## 9. Resolved
 
-**A terminology collision worth settling before anything is written.** The word
-"gate" currently means two things: the enforcement marker `[gated]` (the tool
-refuses), and prose usages like "the capabilities planning gate" that are pure
-`[judgment]`. Two independent reviewers tripped on exactly this. The sketch now
-says "planning *check*", but the spec still says "gate" in several places. Either
-reserve "gate" for `[gated]` everywhere, or the marker vocabulary undercuts
-itself on contact.
+All questions raised by the first review round have been decided:
 
-**Collapse `[prompted]` into `[judgment]`?** Both reviewers raised this
-unprompted. Operationally they are identical — the agent may skip either. The
-only difference is whether the tool emitted text first, which is a property of
-the tool, not of the step. Three levels (`[auto]` / `[gated]` / `[judgment]`)
-may carry all the meaning with less labeling burden.
+| Question | Decision |
+|---|---|
+| "gate" collides with `[gated]` | Reserve "gate" for `[gated]`. The capabilities planning *gate* becomes a **check**. "DoD gate" splits: checklist is `[prompted]`, reconciliation is `[gated]`. |
+| Collapse `[prompted]` into `[judgment]`? | **Keep both.** `[prompted]` is an obligation on the *tool*, and therefore testable. The redundancy is only from the agent's side. |
+| A sixth stage-doc section | **No.** `Exit` covers ending well and ending badly. Five sections stand, plus optional `Notes` on artifacts. |
+| Split `transitions.md`? | **No.** Not for five short gate sets. |
+| Separate `hooks.md`? | **Yes** — genuinely rare, most projects configure nothing. |
+| Separate `delegation.md`? | **No** — folded into `SKILL.md`, which has a hard 80-line budget. If it breaches, it goes back out; the budget wins. |
+| Is `postmortem` really a stage? | **Yes**, marked out-of-band: it produces an artifact but holds no position in the ordering. |
+| Delegation token cost | Stated honestly — the coordinator re-reads each artifact. A large win, not a total one. |
 
-**A sixth stage-doc section appeared.** The sample now has
-"When this stage cannot finish", because both reviewers flagged that the shape
-had no error handling. That is a real gap, but it breaks the agreed five-part
-shape — worth confirming rather than absorbing silently.
+## 10. Still open for critique
 
-Still open:
-
-- Should `transitions.md` split once it carries five gate sets, or does one file
-  stay right?
-- The trace assumes the coordinating session re-reads each delegated artifact.
-  That is a real token cost the table does not show, and it partly offsets the
-  isolation win.
-- `postmortem` has no command range and no natural trigger in the trace — it only
-  appears when something went wrong. Is a stage the right shape for it?
-- Do `hooks.md` and `delegation.md` earn separate files, or fold into
-  `transitions.md` and `SKILL.md` respectively? One reviewer called the file
-  count over-engineering.
+- **The 80-line `SKILL.md` budget is asserted, not demonstrated.** The sketch in
+  section 2 plus the delegation paragraph is close to it already, and the routing
+  table grows with every reference file. If the budget cannot be met, either
+  delegation moves back out or the two-ladder tables get trimmed — decide which
+  before writing, not after.
+- **`Notes` has no size discipline.** It is optional and free-form by design, but
+  an artifact whose `Notes` outgrows its required sections has become a scratch
+  file. Worth a soft convention, or worth leaving alone until it happens.
+- **Methodology resolution is settled in principle, unwritten in practice.**
+  Amended Option A (repo-local methodology document → configured skill → shipped
+  default) is agreed, but this sketch still shows only the contract half. What a
+  methodology document must provide — its interface to TCW — is undefined, and
+  child 3 cannot write the shipped defaults without it.
+- **`postmortem` still has no trigger in the trace.** Marking it out-of-band
+  names the shape but not the mechanism: nothing in the flow decides when to
+  offer it. Child 4 owns that, and the `verify`-stage hook is the only candidate
+  so far.

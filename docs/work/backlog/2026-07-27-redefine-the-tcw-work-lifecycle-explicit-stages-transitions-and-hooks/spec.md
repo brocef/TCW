@@ -112,9 +112,29 @@ Invariants every child must preserve:
   Stage detection stays artifact presence; status stays the folder.
 - `RESOLVED_STATUSES` remains `(completed, discarded)` — an item in `review` still
   blocks its dependents.
-- `postmortem` is the only artifact writable after `completed`.
+- `postmortem` is the only artifact writable after `completed`. It is an
+  **out-of-band stage**: it produces an artifact like any other, but holds no
+  position in the ordering and is triggered by condition rather than by sequence.
+  It is not a separate kind of thing — inventing a third category for one member
+  would cost more than the label.
 - The compressed `active → completed` path survives for small changes.
 - Verification rigor is hook-defined. Unbound means the skill's stop-and-ask.
+
+### Every artifact carries an optional `Notes` section
+
+Any lifecycle artifact may end with `## Notes`: free-form observations the
+authoring agent judged worth keeping but that do not belong in the artifact
+proper. Typical contents are how the stage actually ended, a dead end not worth
+re-exploring, or something the next stage should know before it starts.
+
+This matters most under delegation. **A subagent's context is discarded when it
+returns** — everything it noticed and did not write down is lost. `Notes` is the
+only channel for the part of that knowledge which has no home in the artifact's
+required sections. It is also the trail a post-mortem reads: `Notes` across the
+spine is the record of what each stage knew at the time.
+
+`Notes` is always optional, never a gate, and never required to be non-empty. A
+stage that has nothing to add omits it.
 
 ## Execution model
 
@@ -130,8 +150,25 @@ have to guess whether something happens on its own.
 |---|---|
 | `[auto]` | The tool does it. Cannot not happen. |
 | `[gated]` | The agent initiates; the tool refuses if preconditions fail. Outcome guaranteed. |
-| `[prompted]` | The tool emits text; the agent may ignore it. |
-| `[judgment]` | Nothing enforces it. |
+| `[prompted]` | **The tool must emit a reminder**; the agent may ignore it. |
+| `[judgment]` | Nothing is emitted and nothing enforces it. |
+
+`[prompted]` and `[judgment]` look identical from the agent's side — both are
+skippable — and the difference is deliberately on the *tool's* side. `[prompted]`
+is an obligation on the CLI, and therefore testable ("does `complete` from
+`active` print the verify-skipped warning?"). `[judgment]` asserts the CLI says
+nothing at all. Two reviewers read these as redundant; they are not, but only
+because the requirement they encode belongs to the implementation, not to
+behavior.
+
+### Terminology rule
+
+**"Gate" is reserved for `[gated]`.** A gate is something the tool refuses past.
+Anything the agent is merely expected to do is a **check** or a **step**, never a
+gate. The one existing misuse is the tcw-capabilities "planning gate", which is
+`[judgment]` and must be renamed to **planning check** wherever it appears.
+"DoD gate" is two different things and must be split when rewritten: displaying
+the checklist is `[prompted]`, capability reconciliation is `[gated]`.
 
 Context injection and Claude's prompt-based hooks are `[prompted]` delivered by
 the harness rather than by stdout — same strength, Claude-only delivery. A bound
@@ -194,6 +231,12 @@ This makes the main session a coordinator: it owns transitions and the two
 interactive stages, and dispatches the rest. `implement` is the largest token
 sink and the most valuable delegation, leaving the main context holding
 `outcome.md` rather than an entire diff.
+
+Isolation is not free, and the spec should not pretend otherwise: the
+coordinating session **re-reads each delegated artifact** to verify it. The win
+is reading an artifact of a few hundred lines instead of an implementation
+transcript of several thousand — large, but not total. Where `Produce` names
+required sections, the check can be structural rather than a full read.
 
 Two consequences for the stage-doc shape:
 
@@ -289,6 +332,23 @@ Sequential; the CLI must land before the skill documents it.
    and enforcement marker; delta-only epic and cross-node docs; deletion of
    `lifecycle.md`, `task-lifecycle.md`, and `epic-lifecycle.md`; five commands;
    and the read-only `tcw-verifier` agent.
+
+   `Exit` covers **both** how the stage ends well and how it ends badly — the
+   failure paths (a missing input, discovery that contradicts the request, work
+   too large for one item) live there rather than in a sixth section.
+
+   Reference files are `transitions.md` (all five in one file — do not pre-split
+   for five short gate sets) and `hooks.md` (genuinely rare; most projects
+   configure nothing). Delegation guidance folds **into `SKILL.md`**, because
+   deciding whether to dispatch a stage applies every time and the router is
+   where always-relevant judgment belongs.
+
+   **`SKILL.md` has a hard budget of 80 lines.** It is loaded on every use of the
+   skill, so its size is a recurring token cost rather than a one-time one. The
+   delegation rule gets roughly five lines — the stage table already carries a
+   `Delegable` column, so the prose is only "transitions never; subagents cannot
+   ask the user." If folding it in would breach the budget, it goes back to its
+   own file instead; the budget wins, not the tidiness.
 4. **Post-mortem skill** — the skill, the `post-mortem.md` artifact, the
    read-only `tcw-post-mortem` agent, and the `verify`-stage hook that offers it
    when verification surfaced serious unforeseen issues.
@@ -350,6 +410,10 @@ a candidate skill or a whole configured workflow for TCW compatibility).
   and has these sections" rather than a judgment about quality.
 - Every stage doc is followable by a Codex agent with no injection, no custom
   agents, and no slash commands.
+- No document uses the word "gate" for anything that is not `[gated]`.
+- `SKILL.md` is at most 80 lines.
+- Every stage doc's `Exit` names at least one failure path.
+- `Notes` is accepted and preserved on every artifact, and required on none.
 - `phase` is gone from the model, `state.yaml`, `show`, and the reconcile table.
 - Python and TypeScript status sets are guarded by a parity test.
 - README, release notes, changelog, skills, and plugin manifests describe the
