@@ -50,6 +50,10 @@ verification can fail and the model has no transition for that outcome.
 - A command surface addressing stage *ranges*.
 - Every transition commits, so status is visible on trunk rather than stranded in
   a feature branch.
+- **Every documented behavior states who performs it and whether anything
+  enforces it**, so reliance on agent judgment is visible rather than implied.
+- A delegation model that lets a coordinating session dispatch stages to
+  subagents and keep only transitions and user interaction in its own context.
 
 ## Non-goals
 
@@ -112,6 +116,108 @@ Invariants every child must preserve:
 - The compressed `active → completed` path survives for small changes.
 - Verification rigor is hook-defined. Unbound means the skill's stop-and-ask.
 
+## Execution model
+
+Every behavior the lifecycle describes carries two attributes, and both must be
+stated wherever the behavior is documented. Readers — human or agent — must never
+have to guess whether something happens on its own.
+
+**Actor:** `tcw`, `agent`, or `user`.
+
+**Enforcement level:**
+
+| Marker | Meaning |
+|---|---|
+| `[auto]` | The tool does it. Cannot not happen. |
+| `[gated]` | The agent initiates; the tool refuses if preconditions fail. Outcome guaranteed. |
+| `[prompted]` | The tool emits text; the agent may ignore it. |
+| `[judgment]` | Nothing enforces it. |
+
+Context injection and Claude's prompt-based hooks are `[prompted]` delivered by
+the harness rather than by stdout — same strength, Claude-only delivery. A bound
+skill is `[judgment]` regardless: injection makes the binding visible without the
+agent going looking, but never makes invocation certain.
+
+This is why the `Gates` section disappears from the stage-doc *shape*: a gate is
+simply a step marked `[gated]`. That is a documentation change only — it does not
+move where a gate runs or who evaluates it. Gates remain in the CLI, evaluated at
+their transition.
+
+### Current distribution, and what it means
+
+Classifying today's lifecycle shows every enforcement mechanism clustered at
+`complete`: `inbox accept`, the `start` blocker and epic-active checks, capability
+reconciliation, `--confirm`, and merge-back are `[gated]` or `[auto]`, while the
+whole planning half — writing each artifact, the capability *planning* gate,
+per-stage commits, documentation sync — is `[judgment]` end to end. The most
+repeated rule in the current documentation, "stop for user verification," is
+`[judgment]` with nothing behind it.
+
+That distribution matches the measured artifact data (97% `spec.md` / `plan.md`,
+62% `refined-outcome.md`): the front half works because agents follow
+instructions, not because anything checks. This initiative does not attempt to
+convert the planning half to `[gated]`. It requires only that **every step
+declares its level**, so the reliance on judgment is visible instead of implied.
+
+## Delegation model
+
+Derived from the two-ladder split, and binding on the stage docs:
+
+- **Stages are delegable to a subagent. Transitions are not.** A transition must
+  commit on the primary checkout to be visible at all, and it carries the gates,
+  which are evaluated once by the session holding the user relationship.
+- **`request` and `verify` are not delegable either** — for a different reason: a
+  subagent cannot ask the user, and both stages exist to obtain user input.
+
+| Stage | Delegable |
+|---|---|
+| `inbox`, `request`, `verify` | no — interactive |
+| `spec`, `plan`, `implement`, `postmortem` | yes |
+
+The table lists **stages only**. `review` is a status, not a stage, and `submit` /
+`rework` are transitions — all three are covered by the rule above that
+transitions are never delegated.
+
+`verify` is non-delegable because it ends in a user decision, not because all of
+its work is interactive. Its **assessment** — reading the diff, running checks,
+forming an opinion — is delegable read-only work; its **approval** is not. The
+coordinating session dispatches the assessment, presents the result, and holds
+the user's answer. This is what `tcw-verifier` exists for, and why that agent
+cannot write.
+
+If a delegated stage fails to produce its named artifact, that is a `[judgment]`
+failure caught by the coordinating session, not a `[gated]` one: no transition has
+been attempted yet, so nothing refuses. The session checks `Produce` and either
+re-dispatches or escalates to the user.
+
+This makes the main session a coordinator: it owns transitions and the two
+interactive stages, and dispatches the rest. `implement` is the largest token
+sink and the most valuable delegation, leaving the main context holding
+`outcome.md` rather than an entire diff.
+
+Two consequences for the stage-doc shape:
+
+- **`Inputs` doubles as the subagent's context brief.** The section that exists
+  for token efficiency is the same one that makes delegation correct.
+- **`Produce` is the return contract, and must be specific enough to check.** A
+  subagent returning "done" gives the coordinating session nothing to verify; the
+  session confirms the named artifact exists and reads it before transitioning.
+
+### Custom agents
+
+A custom agent earns its place only when it needs a different tool set or model
+than the default; otherwise the stage doc is already the brief and a general
+agent suffices. That test passes twice:
+
+- `tcw-verifier` — read-only (no `Edit`/`Write`), for the `verify` stage's
+  assessment work.
+- `tcw-post-mortem` — read-only, for `postmortem`.
+
+Both stay inside the plugin-subagent restrictions (no `hooks`, `mcpServers`, or
+`permissionMode`). Codex has no custom agents, so per the harness-compatibility
+rule in `AGENTS.md` these are accelerators only: every stage doc must stand alone
+without them.
+
 ## Hook layer
 
 Adopted from the superseded `planning-agnostic-tcw-lifecycle-orchestration` spec,
@@ -141,6 +247,31 @@ Extended by this initiative:
 - A binding may be a skill reference **or** a shell command.
 - Transition bindings distinguish `pre` (may block the move) from `post` (may
   not).
+- A third output mode, `--directive`, exists for Claude's dynamic context
+  injection. It emits a **complete instruction line or nothing at all** — never a
+  bare value — so an unbound stage renders as empty rather than as a broken
+  sentence:
+
+  ```
+  !`tcw work lifecycle --stage spec --directive`
+  →  "For this stage, invoke the superpowers:brainstorming skill."
+  →  ""            (unbound)
+  ```
+
+  Exit status is 0 in both cases — bound and unbound are both success. **Failure
+  is distinguishable:** on an unreadable config, an unknown stage id, or an
+  unresolvable work reference, `--directive` writes nothing to stdout, a
+  diagnostic to stderr, and exits **non-zero**, so a silent empty injection never
+  masks an error.
+
+  `--directive` **never executes a binding.** For a shell-command binding it
+  emits an instruction naming the command; running it remains the agent's step,
+  subject to the same `[judgment]` level as any other binding. This keeps a
+  read-only inspection command read-only.
+
+  Codex receives no injection, so every stage doc must also carry the
+  harness-neutral instruction to consult `tcw work lifecycle <slug>` for its
+  bindings. Injection is the accelerator; the command is the contract.
 
 ## Child tasks
 
@@ -151,14 +282,16 @@ Sequential; the CLI must land before the skill documents it.
 2. **Transition commits, config, and DoD cleanup** — auto-commit every
    transition; `work.auto-commit-transitions` and `work.trunk-branch`; stop
    persisting `dod:`; the `LifecyclePolicy` model, validation, and
-   `tcw work lifecycle`.
-3. **Skill and command restructure** — seven stage docs on a fixed five-part
-   shape (Purpose / Inputs / Produce / Gates / Exit), delta-only epic and
-   cross-node docs, deletion of `lifecycle.md`, `task-lifecycle.md`, and
-   `epic-lifecycle.md`, and five commands.
-4. **Post-mortem skill** — the skill, the `post-mortem.md` artifact, and the
-   `verify`-stage hook that offers it when verification surfaced serious
-   unforeseen issues.
+   `tcw work lifecycle` in all three output modes (human, `--json`,
+   `--directive`).
+3. **Skill and command restructure** — seven stage docs on the fixed shape
+   **Purpose / Inputs / Produce / Steps / Exit**, every step carrying its actor
+   and enforcement marker; delta-only epic and cross-node docs; deletion of
+   `lifecycle.md`, `task-lifecycle.md`, and `epic-lifecycle.md`; five commands;
+   and the read-only `tcw-verifier` agent.
+4. **Post-mortem skill** — the skill, the `post-mortem.md` artifact, the
+   read-only `tcw-post-mortem` agent, and the `verify`-stage hook that offers it
+   when verification surfaced serious unforeseen issues.
 
 ## Migration
 
@@ -175,6 +308,9 @@ Sequential; the CLI must land before the skill documents it.
 - `auto-commit-transitions` changes existing behavior (plain `start` commits
   nothing today) and needs a release note regardless of its default.
 - Items completed before this change keep their stored `dod:`; new ones omit it.
+- **Stage documents are skill files, not per-item artifacts.** Changing their
+  shape rewrites `skills/tcw-work/references/` and nothing under `docs/work/`. No
+  existing work item contains a stage document, so none needs migrating.
 
 ## Deferred — explicitly not in scope
 
@@ -205,6 +341,15 @@ a candidate skill or a whole configured workflow for TCW compatibility).
 - A qualified descendant item uses its own node's policy.
 - An agent resuming at a stage loads that stage's doc and only its declared
   inputs.
+- Every documented step names an actor and an enforcement marker; no step is
+  ambiguous about whether it happens on its own.
+- `--directive` emits a complete instruction or empty output, never a fragment,
+  and exits 0 in both cases.
+- Each delegable stage's `Produce` section names the artifact's path and the
+  sections it must contain, so verifying a delegated result is "the file exists
+  and has these sections" rather than a judgment about quality.
+- Every stage doc is followable by a Codex agent with no injection, no custom
+  agents, and no slash commands.
 - `phase` is gone from the model, `state.yaml`, `show`, and the reconcile table.
 - Python and TypeScript status sets are guarded by a parity test.
 - README, release notes, changelog, skills, and plugin manifests describe the
@@ -215,6 +360,10 @@ inference, and each child's spec is expected to name them explicitly: lazy
 `review/` creation against a node that predates the status; `tcw validate`
 coverage for every rejected policy shape; and auto-commit behavior on an existing
 repository, including that it creates no empty commits.
+
+Child 2 additionally owns the `--directive` contract: bound emits one complete
+instruction, unbound emits nothing, both exit 0, and every error path exits
+non-zero with stderr output and an empty stdout.
 
 ## Risks
 
