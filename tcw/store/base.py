@@ -431,13 +431,18 @@ class CapabilitiesStore(ABC):
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────
 
-WORK_STATUSES = ("backlog", "active", "completed", "discarded")
+WORK_STATUSES = ("backlog", "active", "review", "completed", "discarded")
 
 # The two terminal statuses. `completed` means *shipped*; `discarded` means
 # *closed without shipping*. Anything asking "is this item still open?" wants
 # this tuple — anything asking "did this ship?" wants `completed` alone. The
 # distinction is load-bearing: `tcw capabilities drift` reports a still-Missing
 # capability only for work that actually shipped.
+#
+# `review` is deliberately NOT here. It means "implemented, acceptance pending",
+# and verification can still reject the work (that is what the `rework` edge is
+# for). Treating it as resolved would let a dependent start against work that
+# may yet come back.
 RESOLVED_STATUSES = ("completed", "discarded")
 
 # The legal-transition graph lives in the *core* (phase-5-work B.1/B.3): the
@@ -445,8 +450,12 @@ RESOLVED_STATUSES = ("completed", "discarded")
 # handled separately (delete, backlog only).
 LEGAL_TRANSITIONS = {
     ("backlog", "active"),                           # start
+    ("active", "review"),                           # submit
     ("active", "completed"),                        # complete --resolution done
     ("active", "discarded"),                        # complete, any other resolution
+    ("review", "active"),                           # rework — the one reverse edge
+    ("review", "completed"),                        # complete --resolution done
+    ("review", "discarded"),                        # complete, any other resolution
     ("backlog", "discarded"),                       # abandon without a throwaway start
 }
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
@@ -499,7 +508,11 @@ def normalize_tag(value: str) -> str:
 
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
                "reviewed", "version offered")
-WORK_ARTIFACTS = ("initial-request", "spec", "plan", "outcome", "refined-outcome")
+# Appended, never inserted in lifecycle position: the tuple's order drives the
+# stage-letter string in `tcw work list`, so inserting would shift every
+# existing item's display.
+WORK_ARTIFACTS = ("initial-request", "spec", "plan", "outcome", "refined-outcome",
+                  "rework", "post-mortem")
 
 # Bounded sidecar registry — each entry declares the expected media type and
 # the validation rule applied before persistence.  New sidecars are added here.
@@ -983,6 +996,41 @@ class WorkStore(ABC):
             if blockers:
                 raise ValueError("blocked by: " + ", ".join(blockers)
                                  + " (use --force to override)")
+        return self.transition(slug, "active")
+
+    def submit(self, slug: str) -> WorkItem:
+        """`active` → `review`: implementation is done, acceptance is pending.
+
+        Carries no gate. `outcome.md` being present is a *check* the agent makes,
+        not something the tool refuses past — submitting work whose outcome
+        document is still unwritten is a judgment call the operator is allowed to
+        make, and refusing would be the tool inventing a policy.
+        """
+        return self.transition(slug, "review")
+
+    def rework(self, slug: str) -> WorkItem:
+        """`review` → `active`: verification rejected the work.
+
+        Fails closed while `refined-outcome.md` is present. That document asserts
+        the work was verified and accepted; after a rejection the assertion is
+        simply false, and leaving it in place would let the next reader trust it.
+        TCW does not delete it — silently destroying a user's document to unblock
+        a transition is the wrong shape — so the refusal names the file and the
+        action instead.
+
+        This is the *only* transition the artifact gates. `complete` from
+        `review` is unaffected on either resolution: a present
+        `refined-outcome.md` is the normal path into `--resolution done`, and
+        abandoning verified work as `wontfix` is a legitimate decision. Only
+        `rework` asserts the opposite of what the file says.
+        """
+        if any(a.name == "refined-outcome" and a.present
+               for a in self.artifacts(slug)):
+            raise ValueError(
+                f"cannot rework {slug}: refined-outcome.md still asserts this "
+                "work was verified. Delete it (and write rework.md describing "
+                "what remains) before sending the item back."
+            )
         return self.transition(slug, "active")
 
     def complete(self, slug: str, resolution: str, dod_ack: list[str],

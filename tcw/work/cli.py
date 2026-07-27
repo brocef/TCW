@@ -286,11 +286,15 @@ def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -
         "plan": "P",
         "outcome": "O",
         "refined-outcome": "F",
+        "rework": "W",
+        "post-mortem": "M",
     }
     stages = ""
     for artifact in st.artifacts(it.slug):
         if artifact.present:
-            stages += labels[artifact.name]
+            # `.get` rather than `[]`: WORK_ARTIFACTS is the registry, and a name
+            # added there without a letter here should not crash the board.
+            stages += labels.get(artifact.name, "?")
     blockers = st.unresolved_blockers(it)
     suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
     ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""

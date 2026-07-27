@@ -2180,6 +2180,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         self._stage(d / "state.yaml")
 
     def _effect_transition(self, slug: str, to_status: str) -> None:
+        # Nodes created before a status existed have no folder for it, and
+        # `git mv` refuses when the destination's parent is missing. Creating it
+        # here is an adapter detail with no abstract analog (the prime directive
+        # sends "ensure a directory exists" straight into the adapter), and it is
+        # status-agnostic on purpose: it also repairs a hand-deleted folder
+        # rather than special-casing whichever status was added last.
+        (self.root / to_status).mkdir(parents=True, exist_ok=True)
         self._mv(self._find(slug), self.root / to_status / slug)
 
     def _delete(self, slug: str) -> None:

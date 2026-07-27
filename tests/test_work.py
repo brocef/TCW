@@ -53,7 +53,7 @@ def test_init_gitkeep_persistence(tmp_path):
 
 
 def test_formal_work_statuses_exclude_raw_inbox():
-    assert WORK_STATUSES == ("backlog", "active", "completed", "discarded")
+    assert WORK_STATUSES == ("backlog", "active", "review", "completed", "discarded")
 
 
 def test_resolved_statuses_are_the_two_terminal_ones():
@@ -227,6 +227,8 @@ def test_artifacts_report_bounded_presence_and_locator(tmp_path):
         "plan": True,
         "outcome": False,
         "refined-outcome": False,
+        "rework": False,
+        "post-mortem": False,
     }
     assert st.artifact_locator(item.slug, "plan") == str(d / "plan.md")
     assert st.artifact_locator(item.slug, "../plan") is None
