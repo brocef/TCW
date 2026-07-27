@@ -70,7 +70,7 @@ conflate them: a stage produces an artifact, a transition moves status.
 | `plan` | `plan.md` | backlog | yes |
 | `implement` | `outcome.md` | active | yes |
 | `verify` | `refined-outcome.md` | review | no |
-| `postmortem` | `post-mortem.md` | any | yes |
+| `postmortem` | `post-mortem.md` | review, or after completed | yes |
 
 | Transition | Move | Verb |
 |---|---|---|
@@ -94,11 +94,13 @@ declares. Never load the whole lifecycle to perform one stage.
 
 ## Delegation
 
-Dispatch stages marked delegable to a subagent; give it the stage document and
-its declared `Inputs`, nothing more. **Never delegate a transition** — those
-commit on the primary checkout and carry the gates. Never delegate `request` or
-`verify`: a subagent cannot ask the user. Check the artifact named in `Produce`
-before transitioning; a subagent's context is gone once it returns.
+Where subagents exist, dispatch stages marked delegable; give the subagent the
+stage document and its declared `Inputs`, nothing more. **Delegable means
+permitted, not required** — with no subagents available, run the same stage here,
+following the same document. **Never delegate a transition**: those carry the
+gates and belong to the session holding the primary checkout. Never delegate
+`request` or `verify` — a subagent cannot ask the user. Check the artifact named
+in `Produce` before transitioning; a subagent's context is gone once it returns.
 
 ## Routing
 
@@ -134,17 +136,20 @@ explicitly out of scope, and how anyone will know it worked.
 
 ## Inputs
 
-Read exactly:
+**Lifecycle context — read exactly these, and no other work item:**
 
 - `initial-request.md`
-
-Also, only if applicable:
-
 - the epic's `spec.md`, when the item has `initiative:`
-- `tcw capabilities list` output, when there is a product delta
 
-Do **not** read other work items, and do not read this item's later artifacts —
-they do not exist yet.
+**Repository discovery — unrestricted.** This stage exists to understand the
+current system, so read whatever code, tests, and docs the design requires. The
+restriction above bounds *lifecycle* reading, not investigation.
+
+**Other axes**, when there is a product delta: route to the `tcw-capabilities`
+skill and follow it. Reading `tcw capabilities list` output is not a substitute
+for that skill under any harness.
+
+Do not read this item's later artifacts — they do not exist yet.
 
 ## Produce
 

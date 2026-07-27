@@ -108,8 +108,11 @@ Invariants every child must preserve:
 
 - **IDs are public API.** No ordinal appears in an ID. Inserting a stage later
   must not renumber an existing binding.
-- **A stage produces an artifact; a transition moves status.** Nothing is both.
-  Stage detection stays artifact presence; status stays the folder.
+- **A stage produces at most one *lifecycle artifact*; a transition moves
+  status.** Nothing is both. "Artifact" means the named lifecycle Markdown file
+  and nothing else: `inbox` produces none (it creates the item), and `implement`
+  produces `outcome.md` plus arbitrary code, which is not an artifact in this
+  sense. Stage detection stays artifact presence; status stays the folder.
 - `RESOLVED_STATUSES` remains `(completed, discarded)` — an item in `review` still
   blocks its dependents.
 - `postmortem` is the only artifact writable after `completed`. It is an
@@ -200,9 +203,16 @@ declares its level**, so the reliance on judgment is visible instead of implied.
 
 Derived from the two-ladder split, and binding on the stage docs:
 
-- **Stages are delegable to a subagent. Transitions are not.** A transition must
-  commit on the primary checkout to be visible at all, and it carries the gates,
-  which are evaluated once by the session holding the user relationship.
+- **Stages are delegable to a subagent. Transitions are not.** A transition
+  carries the gates, and those are evaluated once, by the session that holds the
+  user relationship and the primary checkout. (The earlier rationale — "so status
+  is visible on trunk" — overclaimed: `trunk-branch` only warns, so TCW commits
+  on whatever branch is checked out and cannot guarantee trunk.)
+- **"Delegable" means permitted, never required.** A harness without subagents —
+  Codex has none — executes the same stage in the main session, following the
+  same stage document. Delegation is an optimization for context isolation; no
+  behavior depends on it, and the isolation and token savings simply do not
+  apply where it is unavailable.
 - **`request` and `verify` are not delegable either** — for a different reason: a
   subagent cannot ask the user, and both stages exist to obtain user input.
 
