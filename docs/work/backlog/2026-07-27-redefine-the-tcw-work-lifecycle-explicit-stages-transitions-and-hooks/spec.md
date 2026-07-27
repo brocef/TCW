@@ -416,30 +416,40 @@ that does not know where its methodology comes from cannot be authored.
    persisting `dod:`; the `LifecyclePolicy` model, validation, and
    `tcw work lifecycle` in all three output modes (human, `--json`,
    `--directive`).
-3. **Methodology resolution** — the piece this epic cannot be planned around.
+3. **Methodology resolution** — deliberately the smallest thing that establishes
+   the concept.
+
    TCW's stage documents specify the **contract** (what a stage is for, its
    inputs, the artifact it produces, how it exits) but not the **methodology**
    (how you actually arrive at a spec, a plan, an implementation). Methodology
-   varies by team and must be replaceable without forking the plugin.
+   varies by team, so a stage document must be able to point at one rather than
+   contain it.
 
-   Resolution order, first match wins, modeled directly on the existing
-   `bare-wins-local` capability behavior (`fs.py:627`, `:1096`):
+   The whole mechanism is one command:
 
    ```
-   1. repo-local     docs/work/lifecycle/<stage-id>.md
-   2. configured     stages: {spec: [{skill: …}]}
-   3. shipped        the plugin's default methodology
+   $ tcw work methodology spec
+   superpowers:brainstorming
    ```
 
-   The override target is a document **in the consumer's repository**, never a
-   skill file: Claude namespaces plugin skills so a project cannot shadow one,
-   and the Agent Skills spec defines no layering at all. A repo-resident document
-   is the only mechanism available on both harnesses, and it keeps resolution
-   inside TCW where `origin` reporting and a `reset` path already have prior art.
+   Every stage document then carries a single harness-neutral step —
+   *"run `tcw work methodology <stage>` and invoke the skill it names"* — which
+   reads identically under Claude and Codex. This is the reason to prefer it over
+   the earlier design: dynamic context injection becomes optional sugar for a
+   command both harnesses can run, instead of the primary path with a Codex
+   fallback bolted alongside. One instruction, no asymmetry.
 
-   This child owns: the resolution order, what a methodology document must
-   provide to satisfy a stage contract, `origin` reporting through
-   `tcw work lifecycle`, and the shipped defaults themselves.
+   Resolution is configured binding → shipped default, reported so the caller
+   knows which won. Unresolved prints nothing and exits 0; the stage proceeds on
+   TCW's own guidance.
+
+   **Deliberately deferred:** a repo-local `docs/work/lifecycle/<stage>.md`
+   override, the `bare-wins-local` three-tier order, `reset`, and any definition
+   of what a methodology *document* must contain. Those need the concept to exist
+   before they can be designed against it, and none of them is required to make
+   skill-use bindings useful. When they land, the override slots in ahead of the
+   configured binding without changing this command's contract — which is the
+   point of shipping the command first.
 
 4. **Skill and command restructure** — seven stage docs on the fixed shape
    **Purpose / Inputs / Produce / Steps / Exit**, every step carrying its actor

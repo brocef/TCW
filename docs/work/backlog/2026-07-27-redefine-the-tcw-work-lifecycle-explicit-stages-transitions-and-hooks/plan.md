@@ -106,32 +106,32 @@ policy.
 
 ## Child 3 — methodology resolution
 
-The piece the epic cannot be planned around. Owns the contract/methodology split.
+Establishes the concept of skill-use bindings with the smallest surface that
+works. Explicitly not the final design.
 
-- Resolution order, first match wins, modeled on `bare-wins-local`
-  (`fs.py:627`, `:1096`): repo-local `docs/work/lifecycle/<stage-id>.md` →
-  configured binding → shipped default.
-- **The override target is a document in the consumer's repository, never a skill
-  file.** Verified: Claude namespaces plugin skills so a project cannot shadow
-  one, and the Agent Skills spec defines no layering at all.
-- Define what a methodology document must supply to satisfy a stage contract, and
-  what it may not override.
-- `origin` reporting through `tcw work lifecycle`, matching how
-  `tcw capabilities list` already flags provenance.
-- Write the shipped default methodologies.
+- `tcw work methodology <stage>` prints the skill to use for that stage, and
+  where it came from. Resolution: configured binding → shipped default.
+- Unresolved prints nothing and exits 0 — the stage proceeds on TCW's own
+  guidance. An unknown stage id exits non-zero.
+- Ship a default binding per stage, or none where TCW has no opinion.
 
-**Explicitly out of scope for this child**, because two reviewers independently
-called it the most likely to expand: rewriting the `tcw-work` stage documents
-(child 4), any build or composition step that bakes methodology into generated
-files (rejected — plugin files are replaced on update and plugin skills cannot be
-shadowed), and shipping more than one default methodology per stage.
+The value is that every stage document can then carry one harness-neutral step —
+*run `tcw work methodology <stage>` and invoke the skill it names* — reading
+identically under Claude and Codex, with dynamic injection reduced to optional
+sugar rather than the primary path.
 
-**Done when:** a stage resolves its methodology from each of the three sources
-and `tcw work lifecycle` reports which one won; a project with no override and no
-config behaves exactly as it does with the shipped default; and a methodology
-document that attempts to override a contract field is **rejected by
-`tcw validate` with an error naming the field** — "enforced" means that error
-exists and is tested, nothing looser.
+**Explicitly out of scope**, because two reviewers called this the likeliest
+child to expand: a repo-local `docs/work/lifecycle/<stage>.md` override, the
+three-tier `bare-wins-local` order, a `reset` path, any definition of what a
+methodology *document* must contain, and any build step that bakes methodology
+into generated files (already rejected — plugin files are replaced on update, and
+plugin skills cannot be shadowed). Each can slot in later ahead of the configured
+binding without changing this command's contract.
+
+**Done when:** `tcw work methodology <stage>` resolves a configured binding, then
+a shipped default, then prints nothing — and reports which of those applied; an
+unknown stage exits non-zero; and a node with no configuration behaves exactly as
+it does today.
 
 ## Child 4 — skill and command restructure
 
@@ -219,8 +219,8 @@ tcw work new "Add the review status and the submit/rework transitions" \
     --initiative $E --tag work --tag cli --effort high --complexity high --priority 10
 tcw work new "Commit every work transition; add lifecycle policy config" \
     --initiative $E --tag work --tag cli --effort high --complexity high --priority 9
-tcw work new "Resolve stage methodology from repo, config, or shipped default" \
-    --initiative $E --tag work --tag skills --effort high --complexity very-high --priority 8
+tcw work new "Add tcw work methodology to resolve a stage's skill binding" \
+    --initiative $E --tag work --tag cli --effort medium --complexity low --priority 8
 tcw work new "Restructure the tcw-work skill into per-stage references and commands" \
     --initiative $E --tag skills --tag docs --effort high --complexity medium --priority 7
 tcw work new "Add the post-mortem skill and its verify-stage trigger" \
@@ -246,4 +246,7 @@ over time, and `reconcile` follows the initiative relation. The epic must be
   configured-but-missing skill cannot fail closed there. Nothing may depend on
   that check firing.
 - **Scope.** Five children across CLI, config, documents, and two new skills.
-  Child 3 is the least defined and the most likely to expand.
+- **Child 3 is a deliberate down payment.** It ships the binding concept without
+  the override model, so the first design that builds on it may want the command
+  to answer differently. Its contract — "name the skill for this stage" — is
+  chosen to survive that, but it is an untested bet.
