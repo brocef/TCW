@@ -283,6 +283,66 @@ def git_commit(node_root: Path, message: str, *paths: str) -> None:
     subprocess.run(cmd, check=True)
 
 
+def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
+    """Scoped commit that distinguishes *benign* from *real* failure.
+
+    Returns None when the commit succeeded or when there was legitimately nothing
+    to do; returns an error message otherwise. `git_commit` raises on everything,
+    which is right for a caller that knows there are changes — auto-commit does
+    not know that, and must not treat "already committed" as an error nor a held
+    `index.lock` as success.
+
+    Three outcomes, deliberately not collapsed:
+
+    - **Not a repository** — a `tmp_path` store in a test, or a node whose repo
+      was removed. Skip silently; committing was never possible.
+    - **Nothing to do** — the pathspec is clean, or (after an already-committed
+      move) names a path git no longer knows. Skip silently.
+    - **Anything else** — `index.lock` held, no write permission, a failing
+      pre-commit hook, a corrupt repo. Report it.
+
+    The nothing-to-do case is detected with `git status --porcelain` rather than
+    by matching `git commit`'s stderr. Three different English sentences cover it
+    ("nothing to commit" for a clean pathspec, "pathspec ... did not match" for a
+    vanished one, "nothing added to commit but untracked files present"), all are
+    localized, and all have changed across git versions; porcelain output is
+    contractually stable and exits 0 in every case.
+
+    **Untracked entries are excluded from that check.** A scoped
+    `git commit -- <paths>` commits tracked content only, so a pathspec holding
+    nothing but untracked files has nothing to commit — porcelain would report
+    `??` lines and mislead the check into calling `git commit`, which then fails
+    benignly and would be reported as a real error. Callers that want untracked
+    content committed must stage it first, which is what `git_mv` already does.
+    """
+    if subprocess.run(["git", "-C", str(node_root), "rev-parse", "--git-dir"],
+                      capture_output=True).returncode != 0:
+        return None                                    # not a repo — nothing to commit into
+    status = subprocess.run(
+        ["git", "-C", str(node_root), "status", "--porcelain", "--", *paths],
+        capture_output=True, text=True)
+    if status.returncode == 0 and not [
+            ln for ln in status.stdout.splitlines() if ln.strip()
+            and not ln.startswith("??")]:
+        return None                                    # genuinely nothing to commit
+    r = subprocess.run(
+        ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *paths],
+        capture_output=True, text=True)
+    if r.returncode != 0:
+        return (r.stderr or r.stdout).strip() or f"git commit failed ({r.returncode})"
+    return None
+
+
+def git_current_branch(node_root: Path) -> str | None:
+    """The checked-out branch name, or None outside a repo / on a detached HEAD."""
+    r = subprocess.run(["git", "-C", str(node_root), "rev-parse", "--abbrev-ref", "HEAD"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    name = r.stdout.strip()
+    return None if not name or name == "HEAD" else name
+
+
 def ensure_worktree_ignored(node_root: Path) -> None:
     """Add `.worktrees/` to the node's .gitignore (a linked worktree dir is
     untracked otherwise and would clutter/be staged). Idempotent; stages it."""
@@ -1875,6 +1935,33 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not isinstance(work, dict):                 # absent or hand-edited to a scalar/list
             return []
         return sorted(str(t) for t in (work.get("tags") or []))
+
+    # -- transition-commit policy (node-root `tcw-config.yaml` → `work.*`) --
+
+    def _work_config(self) -> dict:
+        """The `work:` mapping, or {} when absent or hand-edited to a non-mapping.
+        Tolerant by design: a malformed key must not break transitions."""
+        try:
+            work = self._config().get("work")
+        except ValueError:                             # malformed sentinel
+            return {}
+        return work if isinstance(work, dict) else {}
+
+    def auto_commit_transitions(self) -> bool:
+        """Whether a transition commits its own status move. Default True.
+
+        Any non-boolean value reads as the default rather than as false: a typo
+        in the config silently disabling the commit is a worse failure than
+        ignoring it, because nothing would look wrong until someone noticed the
+        repository full of uncommitted moves."""
+        value = self._work_config().get("auto-commit-transitions")
+        return value if isinstance(value, bool) else True
+
+    def trunk_branch(self) -> str | None:
+        """The branch transitions are expected to land on, or None when unset.
+        Advisory only — TCW warns and commits where it is."""
+        value = self._work_config().get("trunk-branch")
+        return value.strip() or None if isinstance(value, str) else None
 
     def _write_tags(self, tags: set[str]) -> list[str]:
         """Read-modify-write `work.tags` (preserving other config keys), stage
