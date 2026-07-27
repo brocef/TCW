@@ -1200,6 +1200,24 @@ export function CompleteModal({
             onClose={onClose}
         >
             <Errors errors={errors} />
+            {/* The CLI runs configured `pre`/`post` hooks around a transition;
+                the web app deliberately does not — running arbitrary configured
+                shell from an HTTP handler on a button click is a meaningfully
+                worse posture than a CLI the user invoked. That is a real
+                behavioral difference between the two surfaces, so it is stated
+                rather than left to be inferred: a `pre` hook that would block
+                this transition will not block it here. */}
+            <Callout.Root className="hooks-not-run" color="gray">
+                <Callout.Text>
+                    <strong>Configured hooks do not run here</strong>
+                    <br />
+                    The web app performs and commits the transition, but does not
+                    run any commands bound to it in <code>tcw-config.yaml</code>.
+                    Use <code>tcw work complete</code> if you need them. If the
+                    commit itself is refused, the item still moves and the reason
+                    is printed by <code>tcw serve</code> in your terminal.
+                </Callout.Text>
+            </Callout.Root>
             {shipping ? (
                 <Callout.Root className="reconciliation-reminder" color="blue">
                     <Callout.Text>

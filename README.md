@@ -500,6 +500,44 @@ Blocked-ness is a **derived overlay**: an item is blocked when it has at least
 one unresolved blocker recorded in its data — there is no separate "blocked"
 folder or status.
 
+### Binding your own skills and commands to the lifecycle
+
+The lifecycle has named **stages** (each producing one document) and named
+**transitions** (each moving status). A node can bind its own agent skills or
+shell commands to any of them:
+
+```yaml
+# tcw-config.yaml
+work:
+    lifecycle:
+        stages:
+            spec: [{ skill: superpowers:brainstorming }]
+        transitions:
+            complete:
+                pre: [{ command: "pytest -q" }]
+```
+
+A binding is a `skill:` **or** a `command:` — never a bare string, because
+guessing which one was meant is a class of bug bought for nothing. `tcw validate`
+rejects an unknown id, a malformed shape, a blank or duplicated reference, and a
+binding declaring neither or both.
+
+`pre` hooks run **before** anything is written: a non-zero exit aborts the
+transition and the item does not move. `post` hooks run after, and a failure
+there **never rolls back** — the move already happened, so `tcw` reports it and
+exits non-zero while the item stays where it went. Commands run through the shell
+with the node root as the working directory and `TCW_SLUG`, `TCW_STATUS`,
+`TCW_TRANSITION`, and `TCW_NODE_ROOT` in the environment, with a 300-second
+default timeout (`work.lifecycle.timeout`).
+
+Skill bindings are **reported, never run** — `tcw` cannot invoke a skill, only
+your agent can. Run `tcw work lifecycle` to see what is bound.
+
+Two things worth knowing: `tcw-config.yaml` is a file in your own repository and
+is trusted exactly as much as any other file there — this is not a sandbox. And
+`tcw serve` does **not** run hooks, so a `pre` hook that would block a transition
+does not block it from the web app.
+
 **Every transition commits its own move.** `tcw work start`, `submit`, `rework`,
 and `complete` each leave a commit recording just that item's status change —
 scoped to the item's own folders, so unrelated edits in your working tree are
@@ -541,6 +579,11 @@ tcw work audit-work-backlog            # report stale, duplicate, blocked, or mi
 tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
 tcw work consolidate-plans docs/plans --apply --delete
                                        # create backlog items, then delete migrated sources
+tcw work lifecycle                     # the stage/transition contract + this node's bindings
+tcw work lifecycle --json              # the same, machine-readable
+tcw work lifecycle --stage spec --directive
+                                       # one instruction line for an agent, or nothing if unbound
+
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
 tcw work path "$slug"                  # current filesystem path of the slug
 

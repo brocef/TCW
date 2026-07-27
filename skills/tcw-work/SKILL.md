@@ -66,6 +66,25 @@ metadata.
 
 For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, check whether taxonomy Vocabulary or Feature entries need to be added/updated, then run the tcw-capabilities planning gate before writing the technical plan.
 
+## Lifecycle bindings (skills and commands a node configures)
+
+A node may bind its own agent skills or shell commands to any lifecycle stage or
+transition in `tcw-config.yaml` (`work.lifecycle`). **Before performing a stage,
+run `tcw work lifecycle <slug>` and honor what it reports** — that command is the
+contract, works identically under Claude and Codex, and never runs anything
+itself. Claude's dynamic injection of `--directive` is an accelerator on top of
+it, never the path.
+
+TCW runs `command:` bindings for you at transitions: `pre` failures abort the
+move, `post` failures do not roll it back. **`skill:` bindings are yours to
+invoke** — the CLI names them and stops there.
+
+If a configured skill is unavailable, **report it and stop; do not proceed as
+though it ran.** This cannot fail closed on every harness: Codex cannot enumerate
+skills to confirm one exists, so nothing may depend on such a check firing.
+
+`tcw serve` runs no hooks — a transition made from the web app skips them.
+
 ## Tags
 
 Tags are a project-scoped classification vocabulary for grouping and filtering
@@ -144,6 +163,7 @@ The core lifecycle above is self-sufficient. For these rarer situations, read th
 | tag an item                                    | `tcw work new "<t>" --tag <tag>` · `tcw work edit <slug> --tag <tag> --untag <tag>` (repeatable; each `--tag` must be registered or it's rejected)                                                                                                                                                                                                                                                                                                                 |
 | filter by tag                                  | `tcw work list --tag <tag>` (repeatable = match any); a tag later unregistered while still on an item is flagged by `tcw validate`                                                                                                                                                                                                                                                                                                                                 |
 | record / clear a blocker                       | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` (both repeatable — **one flag per blocker**, never comma-separated, so external prose may contain commas). A ref is a slug or free text; free text is stored as an external blocker and displayed as `external: <text>`, which is itself a valid ref. `--unblocked-by` **fails closed** when the ref matches no blocker, and removals apply before additions so a bad ref aborts the whole edit |
+| inspect the lifecycle contract + bindings       | `tcw work lifecycle [work-ref] [--json]`; `--stage <id> --directive` emits one instruction line for an agent, or nothing when unbound                                                                                                                                                                                                            |
 | topology                                       | `tcw work nodes`                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | epic rollup                                    | `tcw work reconcile <epic-slug>` (`--complete-when-ready` auto-closes a fully-resolved epic)                                                                                                                                                                                                                                                                                                                                                                       |
 | close a done epic                              | when all children are resolved the epic shows `ready-to-close` in `list`/rollup and may `complete` **directly from backlog** — no throwaway `start`                                                                                                                                                                                                                                                                                                                |

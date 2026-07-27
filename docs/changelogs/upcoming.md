@@ -139,3 +139,49 @@ category, with commit hash ranges so entries trace back to source.
   repository fails at item *creation*, because every write stages and staging is
   `git add` with `check=True`. `git_commit_result`'s not-a-repo branch is
   defensive depth for a repo that vanishes mid-run.
+
+
+## Added (`36193dd..HEAD`)
+
+- **`LifecyclePolicy`, `Binding`, `TransitionBindings`, `STAGE_IDS`,
+  `TRANSITION_IDS`** in `store/base.py`, plus `WorkStore.lifecycle_policy()`.
+  The ids are public API — user config keys on them, so a rename breaks it
+  silently. `discard` is the one transition with no CLI verb: it is
+  `complete --resolution <not-done>`, and bindings key on the **move**, so the
+  two resolutions of `complete` fire different hooks.
+- **`parse_lifecycle_policy(raw) -> (policy, problems)`** — pure, never raises.
+  `tcw validate` reports the problems; `FsWorkStore.lifecycle_policy()` discards
+  them, because reading a policy must not break `tcw work list` over a mistyped
+  key. One implementation so the two cannot disagree. Parsing is partial: one bad
+  binding does not discard its siblings, and every problem is reported.
+- **`LIFECYCLE_STEPS`** — the machine-readable contract for every stage and
+  transition (objective, inputs, produced artifact, status move, gates). Child
+  4's stage documents must agree with it; one source makes that checkable.
+- **`tcw work lifecycle [work-ref]`** — read-only, in three modes. Human and
+  `--json` expose the same contract. `--directive` emits **one complete
+  instruction line or nothing at all**, exits 0 for both bound and unbound, and
+  on any error writes nothing to stdout, a diagnostic to stderr, and exits
+  non-zero — so a silent empty injection can never mask a typo. It never executes
+  a binding.
+- **`tcw/work/hooks.py`** — `run_pre` / `run_post` / `run_bindings`. Node-root
+  cwd, shell execution, `TCW_SLUG`/`TCW_STATUS`/`TCW_TRANSITION`/`TCW_NODE_ROOT`,
+  300s default timeout (`work.lifecycle.timeout`), declared order, first `pre`
+  failure aborts. Skill bindings are reported, never executed.
+- `tests/test_lifecycle_policy.py`, `tests/test_lifecycle_hooks.py`.
+
+## Changed (`36193dd..HEAD`)
+
+- **`pre` hooks run before the store is touched at all.** `complete()` writes the
+  resolution with `set_field` before it moves the item, so a hook evaluated
+  inside the store would strand a resolution on an unmoved item. Execution lives
+  in the CLI, which owns the ordering — no interface change, no transaction
+  concept. `tests/test_lifecycle_hooks.py` asserts the *field* as well as the
+  status after an aborted `complete`.
+- **A failing `post` hook exits non-zero without rolling back**, and says so:
+  the move and its commit have already happened.
+- The web complete modal states that configured hooks do not run there, and that
+  a refused auto-commit still moves the item and reports to `tcw serve`'s
+  terminal. Carried over from child 2a's deferred item — same surface.
+- `work/cli.py`'s `SUBCOMMANDS` gains `submit`, `rework`, and `lifecycle`. The
+  first two were a child-1 omission; latent, since work's `DEFAULT_SUBCOMMAND` is
+  `None`, but wrong data that would misdispatch if that changed.

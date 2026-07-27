@@ -120,3 +120,52 @@ check, and `--confirm`. Only the merge is skipped.
 - Completed items no longer store a Definition-of-Done list. It was the same five
   lines on every item, so it never recorded anything. The checklist is still
   shown before you confirm. Items completed earlier are untouched.
+
+
+## Bind your own skills and commands to the lifecycle
+
+TCW's lifecycle has named steps — stages that produce a document, transitions
+that move an item's status. You can now attach your own agent skills or shell
+commands to any of them, in `tcw-config.yaml`:
+
+```yaml
+work:
+    lifecycle:
+        stages:
+            spec: [{ skill: superpowers:brainstorming }]
+        transitions:
+            complete:
+                pre: [{ command: "pytest -q" }]
+```
+
+Say `skill:` or `command:` explicitly — a bare string is rejected rather than
+guessed at. `tcw validate` will tell you exactly which line is wrong.
+
+**`pre` runs before anything changes.** If it fails, the transition is cancelled
+and nothing is written. **`post` runs after**, and if it fails the item has
+already moved — TCW reports the failure and exits non-zero, but does not undo
+anything.
+
+Your commands run from the project root with `TCW_SLUG`, `TCW_STATUS`,
+`TCW_TRANSITION`, and `TCW_NODE_ROOT` available, and are given five minutes
+before timing out (`work.lifecycle.timeout` changes that).
+
+Skills are **named, not run** — TCW can't invoke a skill; your agent does that.
+
+Two limits worth knowing up front:
+
+- `tcw-config.yaml` is a file in your own repository, and commands from it run
+  with your permissions. It is trusted like a `Makefile`, not sandboxed.
+- **The web app does not run hooks.** `tcw serve` still performs and commits the
+  transition, but skips anything you've bound to it — a `pre` hook that would
+  block a transition will not block it there. The complete dialog says so.
+
+## Seeing what the lifecycle expects
+
+```sh
+tcw work lifecycle              # every stage and transition, and what's bound
+tcw work lifecycle --json       # the same, for scripts
+```
+
+It lists what each step is for, what it reads, what it produces, and what the
+tool will refuse past. It changes nothing and runs nothing.
