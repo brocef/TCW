@@ -15,9 +15,9 @@ Use this file to choose the smallest lifecycle document needed for the current w
   changes or create an empty commit when the stage was already complete and
   unchanged. A command that runs several missing stages must create separate,
   ordered commits for each stage.
-- `tcw work start <slug>` is the implementation boundary. Run it before the first code edit and commit that status transition before implementation changes.
-- `tcw work complete <slug> ...` is the closeout boundary. After it succeeds,
-  commit the completion status transition and its related work-file changes.
+- `tcw work start <slug>` is the implementation boundary. Run it before the first code edit; TCW commits the status move itself.
+- `tcw work complete <slug> ...` is the closeout boundary. TCW commits the
+  status move itself; commit any related work-file changes alongside it.
 - Not every item ships. When the decision is to abandon one, close it with a
   non-`done` resolution: it lands in `discarded/`, skips the Definition-of-Done
   and capability gates, and is legal directly from `backlog` — an item that was

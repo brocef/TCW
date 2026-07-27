@@ -74,3 +74,68 @@ category, with commit hash ranges so entries trace back to source.
 - Two existing assertions updated for the new constants
   (`test_formal_work_statuses_exclude_raw_inbox`,
   `test_artifacts_report_bounded_presence_and_locator`).
+
+
+## Added (`e34f082..HEAD`)
+
+- **`work.auto-commit-transitions` (default `true`)** — every status transition
+  commits its own move, implemented in `FsWorkStore._effect_transition`. That is
+  the single choke point both the CLI and `tcw serve` pass through; a CLI-side
+  implementation would leave web-app transitions staged but uncommitted.
+  Commits are scoped to the item's source and destination folders, **not**
+  `docs/work` — a scoped `git commit -- <paths>` takes working-tree state, so a
+  broad pathspec sweeps in every other item's uncommitted edits.
+- **`git_commit_result(node_root, message, *paths)`** — a commit that
+  distinguishes benign from real failure, which `git_commit` cannot.
+  Not-a-repository and nothing-to-commit return `None`; everything else (a held
+  `index.lock`, no write permission, a rejecting pre-commit hook) returns a
+  message. Detection is `git status --porcelain`, not a match on `git commit`'s
+  stderr: three different localized, version-dependent sentences cover the benign
+  cases. Untracked (`??`) entries are excluded, and pathspecs are filtered
+  individually — `git commit` fails outright if *any* pathspec matches nothing,
+  which is exactly what a transition's vacated source folder does.
+- **`TransitionCommitError`** — raised when the move landed but its commit was
+  refused. Deliberately distinct: the item *did* move, so reporting a failed
+  transition would be false and would invite a retry of something that already
+  happened.
+- **`git_current_branch(node_root)`** — `None` outside a repo or on a detached
+  `HEAD`.
+- **`work.trunk-branch`** — advisory. Warns once when `HEAD` differs and commits
+  where it is; never checks out, never commits elsewhere, never refuses.
+  Suppressed when the item's own `branch` field equals `HEAD`, so a `--worktree`
+  item does not warn on every transition.
+- **`tcw work complete --already-integrated`** — for a `--worktree` item whose
+  branch was merged outside TCW. Skips the merge-back and nothing else; rejected
+  on an item with no worktree; suppresses the branch-not-merged warning.
+- **`tests/test_work_autocommit.py`** — the plumbing, the policy keys, the
+  scoping, `--worktree`, and `--already-integrated`.
+
+## Changed (`e34f082..HEAD`)
+
+- **`tcw work start --worktree` no longer double-commits.** The store commits the
+  move; `_start`'s commit narrows to `.gitignore` and the `worktree`/`branch`
+  fields. Both still land before `add_worktree`, since the work branch is created
+  from `HEAD`. **`--worktree` commits regardless of
+  `auto-commit-transitions`** — otherwise the branch would be created without the
+  item's own status move on it.
+- **`tcw serve` treats `TransitionCommitError` as success**, logging to stderr.
+  The item moved, so an error status would make the UI re-render the old status.
+- `skills/tcw-work/`, its references, and `commands/tcw-drive-work-to-completion.md`
+  no longer instruct the agent to commit status moves by hand — that guidance is
+  now wrong, not merely redundant.
+
+## Removed (`e34f082..HEAD`)
+
+- **`dod:` is no longer persisted.** `_complete` passed the entire checklist as
+  the acknowledgement unconditionally, so every completed item stored the same
+  fixed 5-string constant and the field could never differ. The checklist is
+  still printed before `--confirm`. `dod_ack` stays in `complete()`'s signature —
+  a remote adapter may have somewhere to put it. Existing items keep their stored
+  value unread; no rewrite pass, same treatment as `phase`.
+
+## Internal
+
+- Pre-existing behavior pinned rather than changed: a store outside a git
+  repository fails at item *creation*, because every write stages and staging is
+  `git add` with `check=True`. `git_commit_result`'s not-a-repo branch is
+  defensive depth for a repo that vanishes mid-run.

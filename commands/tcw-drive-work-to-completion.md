@@ -29,8 +29,9 @@ After writing or materially updating any lifecycle artifact, commit that stage's
 artifact and related TCW work files before continuing to the next missing stage.
 If this command runs several stages, produce separate ordered commits rather
 than one batched lifecycle commit. Inspect each diff, stage narrowly, and do not
-create empty commits for unchanged stages. Commit `tcw work start` and
-`tcw work complete` status moves separately at their transition boundaries.
+create empty commits for unchanged stages. **TCW commits the `start`,
+`submit`, `rework`, and `complete` status moves itself** — do not commit them
+by hand.
 
 Run all remaining stages through task implementation or epic coordination. Before
 that stage begins, run `tcw work start <slug>` if the item is not active and ask

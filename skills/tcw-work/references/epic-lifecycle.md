@@ -95,4 +95,4 @@ Stop for user verification after child work is reconciled. Write `refined-outcom
 Commit `refined-outcome.md` and its related TCW work-file changes before the
 completion transition.
 
-An epic cannot complete while initiative child tasks are still open. Complete or explicitly defer child tasks first, then run a final reconcile. Before `tcw work complete`, reconcile capabilities for product-layer changes and invoke the `documentation-sync` skill to evaluate Documentation Sync triggers. After completion succeeds, commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.
+An epic cannot complete while initiative child tasks are still open. Complete or explicitly defer child tasks first, then run a final reconcile. Before `tcw work complete`, reconcile capabilities for product-layer changes and invoke the `documentation-sync` skill to evaluate Documentation Sync triggers. TCW commits the completion move itself; commit any related work-file changes alongside it.

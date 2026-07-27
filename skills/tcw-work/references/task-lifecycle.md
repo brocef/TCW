@@ -71,7 +71,7 @@ initiative tasks for those needs.
 Checkpoint the plan stage before implementation: inspect and commit `plan.md`
 and only the related TCW work files changed while producing it.
 
-When planning is complete and implementation is about to begin, run `tcw work start <slug>` before the first code edit. Commit that status change as a separate commit after the plan-stage checkpoint and before implementation changes. If the task has `initiative: <epic-slug>`, the epic must be active first. Use `--worktree` when isolation is useful; in that flow the primary checkout carries status transitions and the work branch carries implementation edits.
+When planning is complete and implementation is about to begin, run `tcw work start <slug>` before the first code edit. TCW commits the status move itself, after the plan-stage checkpoint and before implementation changes. If the task has `initiative: <epic-slug>`, the epic must be active first. Use `--worktree` when isolation is useful; in that flow the primary checkout carries status transitions and the work branch carries implementation edits.
 
 ## 4. Implementation -> `outcome.md`
 
@@ -136,4 +136,4 @@ After verification/refinement, ask the user to decide:
 
 Before `tcw work complete`, reconcile capabilities for product changes and invoke the `documentation-sync` skill to evaluate Documentation Sync triggers. Then run `tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm` when the user has approved closeout.
 
-The resolution picks the destination: `done` lands in `completed/`, anything else in `discarded/`. If closeout concludes the work should **not** ship, choose the honest resolution rather than forcing a `done` — a discard skips the Definition-of-Done and capability gates (mark any declared capability `Omitted`), so most of the closeout checklist above does not apply to it. After it succeeds, inspect and commit the completion status move and related TCW work-file changes as the final lifecycle checkpoint.
+The resolution picks the destination: `done` lands in `completed/`, anything else in `discarded/`. If closeout concludes the work should **not** ship, choose the honest resolution rather than forcing a `done` — a discard skips the Definition-of-Done and capability gates (mark any declared capability `Omitted`), so most of the closeout checklist above does not apply to it. TCW commits the completion move itself; inspect and commit any related work-file changes alongside it.

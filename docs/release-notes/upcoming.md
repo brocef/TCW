@@ -57,3 +57,66 @@ will report the collision.
   rollup tables, but nothing ever set it, so it was always blank. Existing items
   are unaffected.
 - Items in review appear on the board directly under active work.
+
+
+## Work transitions now commit themselves
+
+**This changes what `tcw work` does to your repository, so it is worth reading.**
+
+Previously, moving an item between statuses staged the change and left it for you
+to commit. Now `tcw work start`, `submit`, `rework`, and `complete` each make
+their own commit recording just that move.
+
+The commit is **scoped to the item that moved**. Other work in progress in your
+tree — an edited spec for a different item, uncommitted notes — is left exactly
+as it was and is never swept in.
+
+This applies to the local web app too. Changing an item's status in `tcw serve`
+now commits it, the same as the command line does.
+
+### Turning it off
+
+```yaml
+# tcw-config.yaml
+work:
+    auto-commit-transitions: false
+```
+
+Transitions then behave exactly as they did before: staged, and yours to commit.
+
+One exception: `tcw work start --worktree` always commits, whatever this setting
+says. The work branch is created from your current commit, so if the status move
+were not committed first the new branch would not contain the very item it was
+made for.
+
+### Warning when you are off your main branch
+
+```yaml
+# tcw-config.yaml
+work:
+    trunk-branch: main
+```
+
+With this set, transitioning an item while some other branch is checked out
+prints a warning and commits where you are. It never switches branches, never
+commits somewhere else, and never refuses. Items with their own TCW work branch
+do not warn — that is where they are supposed to be.
+
+## Completing work that was merged elsewhere
+
+If you used `tcw work start --worktree` and then merged the branch yourself —
+through a pull request, say — TCW's own merge step has nothing left to do and
+would only get in the way:
+
+```sh
+tcw work complete my-item --resolution done --confirm --already-integrated
+```
+
+Everything else still applies: blockers, capability reconciliation, the epic
+check, and `--confirm`. Only the merge is skipped.
+
+## Smaller things
+
+- Completed items no longer store a Definition-of-Done list. It was the same five
+  lines on every item, so it never recorded anything. The checklist is still
+  shown before you confirm. Items completed earlier are untouched.

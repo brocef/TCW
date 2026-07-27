@@ -500,6 +500,14 @@ Blocked-ness is a **derived overlay**: an item is blocked when it has at least
 one unresolved blocker recorded in its data — there is no separate "blocked"
 folder or status.
 
+**Every transition commits its own move.** `tcw work start`, `submit`, `rework`,
+and `complete` each leave a commit recording just that item's status change —
+scoped to the item's own folders, so unrelated edits in your working tree are
+never swept in. Set `work.auto-commit-transitions: false` in `tcw-config.yaml` to
+turn it off and commit them yourself. `work.trunk-branch: main` adds a warning
+when you transition an item from some other branch; it is advisory only and
+never checks anything out.
+
 ```sh
 tcw work init                          # docs/work/{inbox,backlog,active,review,completed,discarded}/
 
@@ -555,6 +563,9 @@ tcw work edit "$slug" --pr https://github.com/o/r/pull/7   # record the pull req
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
+tcw work complete "$slug" --resolution done --confirm --already-integrated
+                                       # the work branch was merged outside TCW (a merged PR):
+                                       # skip the merge-back, keep every other gate
 tcw work complete "$slug" --resolution wontfix --confirm        # → discarded/ (no Definition of Done; legal from backlog)
 tcw work drop some-slug                # erase a mis-created item, leaving no record
 ```
