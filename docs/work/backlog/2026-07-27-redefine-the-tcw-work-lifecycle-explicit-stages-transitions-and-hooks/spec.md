@@ -231,10 +231,20 @@ repository, including that it creates no empty commits.
 - **ID stability.** Once published, renaming a stage or transition id breaks user
   configuration. The set should be reviewed hard before release.
 
-## Open questions
+## Resolved decisions
 
-- `work.trunk-branch`: warn when `HEAD` differs (design leans this way), or
-  actually commit to the named branch?
-- `auto-commit-transitions`: default `true` (matches intent, changes behavior) or
-  `false` (preserves it)?
-- Does `submit` warrant its own CLI verb, or is it `tcw work review <slug>`?
+- **`work.trunk-branch` warns only.** It declares the branch transitions are
+  expected to land on; when `HEAD` differs, TCW prints a warning and commits
+  where it is. It never checks out, rewrites, or commits to a branch other than
+  the current one — that plumbing is not worth it for a case that is already an
+  operator mistake worth surfacing.
+- **`auto-commit-transitions` defaults to `true`.** Every transition commits its
+  own status move. This changes existing behavior — plain `tcw work start`
+  commits nothing today — so it needs a release note and a prominent changelog
+  entry, not just a config line.
+- **The transition verb is `submit`.** `tcw work submit <slug>` moves
+  `active → review`. The CLI verb, the transition id, and the hook binding key
+  are all the same string. It fits the existing operator-perspective family
+  (`start` → `submit` → `complete`); `review` was rejected because it names what
+  happens next rather than what the caller is doing, and reads as though the
+  command performs the review.
