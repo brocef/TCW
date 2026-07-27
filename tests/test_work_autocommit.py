@@ -480,3 +480,91 @@ def test_a_transition_through_the_store_used_by_serve_commits(tmp_path):
 
     assert log_count(root) == before + 1
     assert porcelain(root) == ""
+
+
+# ── --already-integrated ─────────────────────────────────────────────────────
+
+def test_already_integrated_skips_the_merge_but_keeps_the_gates(
+        tmp_path, monkeypatch, capsys):
+    """For a branch merged outside TCW — typically a merged PR. It skips the
+    merge-back and nothing else."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = make_item(root)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    # Stand in for an external merge: the branch exists but was never merged, so
+    # TCW's own merge-back would have pulled it in. --already-integrated must not.
+    wt = root / ".worktrees" / slug                    # the item's own worktree
+    (wt / "only-on-the-branch.txt").write_text("x")
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-qm", "branch work"], check=True)
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm",
+                 "--already-integrated"]) == 0
+    capsys.readouterr()
+
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+    assert not (root / "only-on-the-branch.txt").exists()   # the merge was skipped
+
+
+def test_already_integrated_still_refuses_on_an_unreconciled_capability(
+        tmp_path, monkeypatch, capsys):
+    """"Skips the merge and nothing else" has to be true of the gate that
+    actually blocks completions."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    init(["capabilities"], root, "repo")               # the gate no-ops without one
+    slug = make_item(root)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    st = FsWorkStore.open(root)
+    (st.path(slug) / "capabilities.yaml").write_text(
+        "new:\n  - work/never-built\n", encoding="utf-8")
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm",
+                 "--already-integrated"]) == 1
+    assert "not reconciled" in capsys.readouterr().err
+    assert FsWorkStore.open(root).get(slug).status == "active"
+
+
+def test_already_integrated_tolerates_a_worktree_removed_externally(
+        tmp_path, monkeypatch, capsys):
+    """An external flow that merged the PR may well have cleaned up after
+    itself. Teardown is best-effort and must stay that way."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = make_item(root)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    subprocess.run(["git", "-C", str(root), "worktree", "remove", "--force",
+                    str(root / ".worktrees" / slug)], check=True)
+    subprocess.run(["git", "-C", str(root), "branch", "-D", f"work/{slug}"],
+                   capture_output=True, check=True)
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm",
+                 "--already-integrated"]) == 0
+    capsys.readouterr()
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_already_integrated_is_rejected_without_a_worktree(tmp_path, monkeypatch, capsys):
+    """Accepting it silently would teach the wrong model: the flag skips a
+    merge-back only a TCW-created worktree ever performs."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = make_item(root)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug]) == 0
+    capsys.readouterr()
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm",
+                 "--already-integrated"]) == 1
+    assert "--already-integrated" in capsys.readouterr().err
+    assert FsWorkStore.open(root).get(slug).status == "active"

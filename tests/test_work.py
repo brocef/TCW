@@ -1735,7 +1735,15 @@ def test_discard_skips_the_dod_checklist_but_still_needs_confirm(tmp_path, monke
     assert _persisted_dod(root, "discarded", item.slug) == []
 
 
-def test_done_still_prints_the_dod_checklist(tmp_path, monkeypatch, capsys):
+def test_done_still_prints_the_dod_checklist_but_no_longer_stores_it(
+        tmp_path, monkeypatch, capsys):
+    """The checklist is `[prompted]` — printing it is the whole job.
+
+    It is no longer persisted: `_complete` passed the entire checklist as the
+    acknowledgement unconditionally, so every completed item stored the same
+    fixed 5-string constant and the field could never differ. Same treatment as
+    `phase`: the key stops being written, existing items keep theirs unread, and
+    no rewrite pass is added."""
     from tcw.cli import main
     root = node(tmp_path)
     st = FsWorkStore.open(root)
@@ -1744,7 +1752,26 @@ def test_done_still_prints_the_dod_checklist(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(root)
     assert main(["work", "complete", item.slug, "--resolution", "done", "--confirm"]) == 0
     assert "Definition of Done" in capsys.readouterr().out
-    assert _persisted_dod(root, "completed", item.slug) != []
+    assert _persisted_dod(root, "completed", item.slug) == []
+
+
+def test_an_item_completed_before_the_change_keeps_its_stored_dod(tmp_path):
+    """The migration is a no-op in the same sense `phase` was: unread, not
+    erased. Nothing rewrites 60 completed items to drop a key nothing consults."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Legacy", created="2026-01-01")
+    st.start(item.slug)
+    st.complete(item.slug, "done", [])
+    state_path = root / "docs/work/completed" / item.slug / "state.yaml"
+    state = yaml.safe_load(state_path.read_text())
+    state["dod"] = ["tests pass", "docs synced"]           # as an older tcw wrote it
+    state_path.write_text(yaml.safe_dump(state, sort_keys=False))
+
+    reloaded = FsWorkStore.open(root).get(item.slug)
+    assert reloaded is not None and reloaded.status == "completed"
+    assert not hasattr(reloaded, "dod")
+    assert _persisted_dod(root, "completed", item.slug) == ["tests pass", "docs synced"]
 
 
 def test_check_flags_status_resolution_disagreement(tmp_path):

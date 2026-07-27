@@ -671,7 +671,13 @@ def _complete(args: argparse.Namespace) -> int:
         print(f"Refused: discarding {args.slug} as '{args.resolution}' is "
               f"permanent. Re-run with --confirm.", file=sys.stderr)
         return 1
-    if shipping and has_worktree and branch:          # merge-back before the rename/teardown
+    if args.already_integrated and not has_worktree:
+        # Accepting it silently would teach the wrong model: the flag exists to
+        # skip a merge-back that only a TCW-created worktree ever performs.
+        print(f"tcw work complete: --already-integrated applies to an item started "
+              f"with --worktree; {args.slug} has none.", file=sys.stderr)
+        return 1
+    if shipping and has_worktree and branch and not args.already_integrated:
         err = merge_worktree(st.node_root, branch)
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
@@ -704,9 +710,11 @@ def _complete(args: argparse.Namespace) -> int:
         return 1
     print(f"{'completed' if shipping else 'discarded'} {args.slug} ({args.resolution})")
     if has_worktree:
-        if not shipping and branch:
+        if not shipping and branch and not args.already_integrated:
             # The branch is deliberately kept: a discard decides the work isn't
             # wanted, which is not authority to destroy an unmerged branch.
+            # Suppressed under --already-integrated, where the branch *was*
+            # merged — just not by TCW.
             print(f"tcw work complete: work branch '{branch}' was not merged and "
                   f"is left intact; delete it with "
                   f"`git branch -D {branch}` if you're sure.", file=sys.stderr)
@@ -851,6 +859,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pc.add_argument("--resolution", required=True, choices=sorted(WORK_RESOLUTIONS))
     pc.add_argument("--confirm", action="store_true")
     pc.add_argument("--force", action="store_true", help="complete despite unresolved blockers")
+    pc.add_argument("--already-integrated", action="store_true",
+                    help="the work branch was merged outside TCW (e.g. a merged PR): "
+                         "skip the merge-back, keep every other gate")
     pc.set_defaults(func=_complete)
 
     pd = g.add_parser("drop", help="backlog → deleted")

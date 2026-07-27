@@ -1085,7 +1085,16 @@ class WorkStore(ABC):
                     raise ValueError("blocked by: " + ", ".join(blockers)
                                      + " (use --force to override)")
         self.set_field(slug, "resolution", resolution)
-        self.set_field(slug, "dod", dod_ack)
+        # `dod_ack` is deliberately not persisted. It was written to every
+        # completed item as the same fixed 5-string constant — `_complete` passes
+        # the whole checklist unconditionally — so it recorded nothing that could
+        # ever differ. The checklist is still *printed* before `--confirm`, which
+        # is the only thing it ever really did.
+        #
+        # The parameter stays in the signature: removing it is an interface
+        # change for no gain, and a remote adapter may have somewhere to put it.
+        # Items completed before this change keep their stored `dod:` unread,
+        # exactly as `phase` was handled — no rewrite pass.
         if from_backlog_epic:                       # bypass transition()'s own
             self._effect_transition(slug, dest)     # LEGAL_TRANSITIONS check
             return self._require(slug)
