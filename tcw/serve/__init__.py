@@ -19,7 +19,7 @@ from urllib.parse import unquote, urlparse
 
 from tcw.store.base import (
     CAP_FIELDS, CAP_STATUSES, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
-    IllegalTransition, RefError, StaleRevision,
+    IllegalTransition, RefError, StaleRevision, TransitionCommitError,
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
@@ -157,6 +157,24 @@ def _with_warnings(response: dict, node_root: Path, axis: str, ref: str) -> dict
 
 
 # ── Exception mapping ─────────────────────────────────────────────────────────
+
+
+def _transition_ok(work, slug: str, run):
+    """Run a transition, treating a refused auto-commit as success.
+
+    The item **moved** — that is what `TransitionCommitError` means — so
+    reporting an error status would make the UI re-render the old status and
+    invite the user to retry a transition that already happened. The commit is a
+    repository-level concern the browser cannot act on anyway.
+
+    It is not swallowed: the failure goes to the server's stderr, where the
+    operator running `tcw serve` sees it and can commit by hand.
+    """
+    try:
+        return run()
+    except TransitionCommitError as e:
+        print(f"tcw serve: {e}", file=sys.stderr)
+        return work.get(slug)
 
 
 def _map_store_error(e: Exception) -> tuple[int, bytes]:
@@ -795,7 +813,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             if action == "start":
                 force = bool(body.get("force", False))
                 try:
-                    item = work.start(slug, force=force)
+                    item = _transition_ok(work, slug, lambda: work.start(slug, force=force))
                     item.slug = qslug             # echo the qualified slug to the UI
                     self._send_json(HTTPStatus.OK, _jsonable(item))
                 except (ValueError, StaleRevision, IllegalTransition, RefError) as e:
@@ -816,7 +834,9 @@ class TcwHandler(BaseHTTPRequestHandler):
                 if not isinstance(dod_ack, list):
                     dod_ack = []
                 try:
-                    item = work.complete(slug, resolution, dod_ack, force=force)
+                    item = _transition_ok(
+                        work, slug,
+                        lambda: work.complete(slug, resolution, dod_ack, force=force))
                     item.slug = qslug             # echo the qualified slug to the UI
                     self._send_json(HTTPStatus.OK, _jsonable(item))
                 except (ValueError, StaleRevision, IllegalTransition, RefError) as e:

@@ -397,3 +397,86 @@ def test_no_trunk_warning_when_unset(tmp_path, capsys):
     capsys.readouterr()
     committed(root).start(slug)
     assert "trunk-branch" not in capsys.readouterr().err
+
+
+# ── --worktree, which must commit regardless of the setting ──────────────────
+
+def branch_has_item(root: Path, branch: str, slug: str) -> bool:
+    """Whether the item's folder exists under `active/` on `branch`."""
+    r = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", branch,
+         f"docs/work/active/{slug}/"],
+        capture_output=True, text=True, check=True)
+    return bool(r.stdout.strip())
+
+
+def test_worktree_start_puts_the_status_move_on_the_branch(tmp_path, monkeypatch, capsys):
+    """The ordering the worktree flow depends on: the branch is created from
+    HEAD, so the move must be committed before `add_worktree` runs."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = make_item(root)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    assert FsWorkStore.open(root).get(slug).status == "active"
+    assert branch_has_item(root, f"work/{slug}", slug)
+    assert porcelain(root) == ""                       # nothing left behind
+
+
+def test_worktree_start_commits_even_with_auto_commit_off(tmp_path, monkeypatch, capsys):
+    """The documented exception. With the setting off and no commit here, the
+    branch would be created without the item's own status move on it —
+    a worktree whose item is not in it."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = make_item(root)
+    set_config(root, **{"auto-commit-transitions": False})
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "config"], check=True)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    assert branch_has_item(root, f"work/{slug}", slug)
+    assert porcelain(root) == ""
+
+
+def test_worktree_start_creates_no_empty_commit(tmp_path, monkeypatch, capsys):
+    """The store commits the move and `_start` commits `.gitignore` plus the
+    worktree fields. Two commits, and neither is empty."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = make_item(root)
+    before = log_count(root)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    assert log_count(root) == before + 2
+    for i in range(2):                                 # neither commit is empty
+        stat = subprocess.run(
+            ["git", "-C", str(root), "show", "--stat", "--pretty=format:", f"HEAD~{i}"],
+            capture_output=True, text=True, check=True)
+        assert stat.stdout.strip()
+
+
+# ── the web API goes through the same choke point ────────────────────────────
+
+def test_a_transition_through_the_store_used_by_serve_commits(tmp_path):
+    """`tcw serve` calls `work.start(...)` on the same FsWorkStore the CLI uses,
+    and auto-commit lives in `_effect_transition` rather than in the CLI
+    precisely so this path is covered. A CLI-only implementation would leave a
+    web transition staged but uncommitted."""
+    root = node(tmp_path)
+    slug = make_item(root)
+    before = log_count(root)
+
+    FsWorkStore.open(root).start(slug)                 # exactly what serve does
+
+    assert log_count(root) == before + 1
+    assert porcelain(root) == ""

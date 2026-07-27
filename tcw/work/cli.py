@@ -7,12 +7,12 @@ from pathlib import Path
 
 from tcw.store.base import (
     RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
-    IllegalTransition, MultipleMatch, WorkItem, normalize_tag,
+    IllegalTransition, MultipleMatch, TransitionCommitError, WorkItem, normalize_tag,
     normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
     COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
-    descendant_nodes, ensure_worktree_ignored, find_node, git_commit,
+    descendant_nodes, ensure_worktree_ignored, find_node, git_commit_result,
     merge_worktree, parent_node, qualified_work_ref_problem, registered_project_id,
     remove_worktree, resolve_qualified_work_ref,
 )
@@ -23,7 +23,10 @@ SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "edit", 
                "drop", "nodes", "reconcile", "delegate", "escalate", "tags"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
-_ERRORS = (ValueError, IllegalTransition, MultipleMatch)
+# TransitionCommitError is included deliberately: the item *did* move, and its
+# message says so. The non-zero exit is the point — a refused commit must not
+# read as success — but nothing here should imply the transition failed.
+_ERRORS = (ValueError, IllegalTransition, MultipleMatch, TransitionCommitError)
 
 
 def _work_level(value: str) -> str:
@@ -464,8 +467,27 @@ def _start(args: argparse.Namespace) -> int:
     ensure_worktree_ignored(node)
     st.set_field(bare, "worktree", f"{WORKTREES_DIR}/{bare}")
     st.set_field(bare, "branch", f"work/{bare}")
+    # The store already committed the status move (unless auto-commit is off).
+    # What is still uncommitted is `.gitignore` and the worktree/branch fields
+    # written just above — and both must land before `add_worktree`, because the
+    # work branch is created from HEAD and would otherwise not carry them.
+    #
+    # The pathspec deliberately names both status folders. With auto-commit off
+    # the move is still staged and this commit is the one that records it, and a
+    # staged rename needs both halves or the deletion is left behind.
+    # `git_commit_result` drops pathspecs git has nothing for, so listing the
+    # already-committed source folder is harmless.
+    #
+    # `--worktree` commits regardless of `auto-commit-transitions`: with the
+    # setting off and no commit here, the branch would be created without the
+    # item's own status move on it, producing a worktree whose item is not in it.
+    paths = [f"docs/work/backlog/{bare}", f"docs/work/active/{bare}", ".gitignore"]
+    err = git_commit_result(node, f"tcw work: start {bare} (worktree)", *paths)
+    if err:
+        print(f"tcw work start: {bare} is active, but committing the worktree "
+              f"setup failed:\n{err}", file=sys.stderr)
+        return 1
     try:
-        git_commit(node, f"tcw work: start {bare} (worktree)", "docs/work", ".gitignore")
         wt, _branch = add_worktree(node, bare)
     except subprocess.CalledProcessError as e:
         print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
