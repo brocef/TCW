@@ -528,7 +528,6 @@ class WorkItem:
     slug: str
     title: str
     status: str
-    phase: str = ""
     created: str = ""
     modified: str = ""               # adapter-provided last-modified timestamp
     resolution: str | None = None

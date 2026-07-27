@@ -94,8 +94,6 @@ def _print_item(item: WorkItem) -> None:
         print(f"type: {item.type}")
     if item.initiative:
         print(f"initiative: {item.initiative}")
-    if item.phase:
-        print(f"phase: {item.phase}")
     if item.priority is not None:
         print(f"priority: {item.priority}")
     if item.effort:

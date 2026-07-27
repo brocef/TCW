@@ -20,11 +20,18 @@ out of every later diff.
 - `tcw/work/recursion.py:127,134` — drop the column from the header, the
   separator row, and the row template. The separator has one fewer `---`.
 
-**Test:** `tests/test_work.py` gains a case that writes a `state.yaml`
-containing `phase: ""` by hand, loads the item, asserts no error and no
-attribute, then sets an unrelated field and asserts the key is gone from the
-re-read file. This is the no-op migration proof the spec requires; it is the
-only new test in this task.
+**Test:** `tests/test_work.py` gains a case that writes a stale `phase:` into a
+`state.yaml` by hand, loads the item, asserts no error and no attribute, writes
+an unrelated field, and renders the item through `show`. This is the no-op
+migration proof the spec requires; it is the only new test in this task.
+
+**Corrected during implementation:** the plan first asserted the key would be
+*dropped* on the next write. It is not. `set_field` (`fs.py:2173`) is a
+read-modify-write over the raw mapping, so unknown keys survive. The migration
+is that `phase` stops being read and stops being displayed, not that it is
+erased — and no rewrite pass is being added to erase it, because churning every
+item's `state.yaml` to delete an already-ignored value is not worth it. The
+spec's design section and criterion 9 were corrected to match.
 
 Existing rollup assertions in `tests/test_recursion.py` that match the table
 header will need updating — check before assuming the task is test-free.

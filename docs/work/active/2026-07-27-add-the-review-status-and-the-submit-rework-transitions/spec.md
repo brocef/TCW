@@ -163,9 +163,17 @@ and no code path writes anything else, so no information is lost. Removal is
 safe in both directions:
 
 - *Old file, new code:* the loader builds `WorkItem` from named keys and ignores
-  unknown ones, so a lingering `phase:` key is dropped on the next write.
+  unknown ones, so a lingering `phase:` key is simply never read.
 - *New file, old code:* `fs.py:1785` read it with a `.get("phase", "")` default,
   so a downgrade would not crash either.
+
+**The key is not erased from existing items, and no rewrite pass is added.**
+`set_field` (`fs.py:2173`) is a read-modify-write over the raw mapping, so
+unknown keys survive every subsequent write. Existing items keep an inert
+`phase:` line indefinitely. That is the correct outcome, not a shortcoming:
+erasing it would mean touching every item's `state.yaml` to remove a value that
+is already ignored, trading real churn for cosmetics. The migration is that the
+field stops being read and stops being displayed.
 
 The reconcile table loses its column rather than blanking it. A column that is
 `-` on every row of every rollup is worse than no column: it implies a fact
@@ -244,8 +252,9 @@ Each is checkable; none is prose.
 8. A node whose `docs/work/` has no `review/` folder accepts a `submit` and
    creates the folder; a node whose folder was hand-deleted behaves the same for
    any status.
-9. An item whose `state.yaml` still contains `phase:` loads without error, and
-   the key is absent after the next write.
+9. An item whose `state.yaml` still contains `phase:` loads without error,
+   exposes no `phase` attribute, renders through `show` without it, and accepts
+   further field writes; the inert key may remain in the file.
 10. `grep -rn phase` over `tcw/` and `web/client/src/` returns no work-model hit.
 11. `tests/test_status_parity.py` passes as shipped and fails when either
     status list is edited alone.

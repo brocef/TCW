@@ -124,14 +124,14 @@ def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
     if not tasks:
         lines.append("_No tasks reference this initiative yet._")
     else:
-        lines += ["| node | slug | status | phase | blocked-by |", "|---|---|---|---|---|"]
+        lines += ["| node | slug | status | blocked-by |", "|---|---|---|---|"]
         by_node: dict[str, list[WorkItem]] = {}
         for rel, item in tasks:
             by_node.setdefault(rel, []).append(item)
         for rel in sorted(by_node):                       # deterministic: node, then topo
             for item in topo_order(by_node[rel]):
                 lines.append(f"| {rel} | {item.slug} | {item.status} | "
-                             f"{item.phase or '-'} | {_blocker_labels(item)} |")
+                             f"{_blocker_labels(item)} |")
         deltas = _capability_deltas(tasks)
         if deltas:
             lines += ["", "**Capability deltas:**", *deltas]

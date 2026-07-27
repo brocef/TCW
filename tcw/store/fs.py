@@ -1782,7 +1782,6 @@ class FsWorkStore(FsTreeStore, WorkStore):
             slug=d.name,
             title=state.get("title", d.name),
             status=self._status_of(d),
-            phase=state.get("phase", ""),
             created=state.get("created", ""),
             modified=self._modified_timestamp(d),
             resolution=state.get("resolution"),
@@ -2121,7 +2120,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             request += "\n"
         temp = Path(tempfile.mkdtemp(prefix=f".{slug}-", dir=self.root / "backlog"))
         try:
-            state = {"slug": slug, "title": accepted_title, "phase": "",
+            state = {"slug": slug, "title": accepted_title,
                      "created": created, "resolution": None}
             dump_yaml(temp / "state.yaml", state)
             (temp / "initial-request.md").write_text(request, encoding="utf-8")
@@ -2166,7 +2165,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
             f"{body}\n", encoding="utf-8")
         dump_yaml(d / "state.yaml", {
-            "slug": slug, "title": title, "phase": "", "created": created,
+            "slug": slug, "title": title, "created": created,
             "resolution": None, "priority": priority})
         self._stage(d / "initial-request.md", d / "state.yaml")
         return self.get(slug)
@@ -2286,7 +2285,6 @@ class FsWorkStore(FsTreeStore, WorkStore):
         state: dict = {
             "slug": slug,
             "title": title,
-            "phase": "",
             "created": created_date,
             "resolution": None,
         }

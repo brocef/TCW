@@ -1843,3 +1843,36 @@ def test_epic_children_gate_applies_to_a_discard_too(tmp_path):
     st.start(epic.slug)
     with pytest.raises(ValueError, match="initiative children are still open"):
         st.complete(epic.slug, "wontfix", [])
+
+
+def test_a_state_yaml_still_carrying_phase_stays_readable(tmp_path):
+    """`phase` was a dead field: declared since the first work commit, displayed
+    by `show` and the rollup, and never written non-empty by any code path.
+
+    Removing it must be a no-op for every item created before the removal. It is
+    not *erased* from those items — `set_field` is a read-modify-write over the
+    raw mapping, so unknown keys survive — it simply stops being read. That is
+    the whole migration: no rewrite pass, no churn, and an inert key nothing
+    consults."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Predates the removal", created="2026-01-01")
+
+    state_path = root / "docs" / "work" / "backlog" / item.slug / "state.yaml"
+    state = yaml.safe_load(state_path.read_text())
+    assert "phase" not in state                       # new items never write it
+    state["phase"] = "some-stale-value"               # simulate a pre-existing item
+    state_path.write_text(yaml.safe_dump(state, sort_keys=False))
+
+    reloaded = st.get(item.slug)                      # read ignores the stale key
+    assert reloaded is not None
+    assert reloaded.title == "Predates the removal"
+    assert not hasattr(reloaded, "phase")
+
+    st.set_field(item.slug, "priority", 3)            # writes still work over it
+    assert st.get(item.slug).priority == 3
+    assert yaml.safe_load(state_path.read_text())["phase"] == "some-stale-value"
+
+    # And it reaches no output surface: `show` renders the item without it.
+    from tcw.work.cli import _print_item
+    _print_item(st.get(item.slug))
