@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 from datetime import date, datetime, timezone
@@ -30,7 +31,7 @@ from tcw.store.base import (
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
-    SidecarResource, StaleRevision,
+    SidecarResource, StaleRevision, TransitionCommitError,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -283,6 +284,23 @@ def git_commit(node_root: Path, message: str, *paths: str) -> None:
     subprocess.run(cmd, check=True)
 
 
+def _has_committable_changes(node_root: Path, path: str) -> bool:
+    """Whether `path` has changes a scoped commit would actually record.
+
+    Untracked (`??`) entries are excluded: a scoped `git commit -- <paths>`
+    records tracked content only, so a pathspec holding nothing else has nothing
+    to commit — and calling `git commit` anyway produces a benign failure that
+    would then be misreported as a real one. Callers wanting untracked content
+    committed stage it first, which is what `git_mv` already does.
+    """
+    r = subprocess.run(
+        ["git", "-C", str(node_root), "status", "--porcelain", "--", path],
+        capture_output=True, text=True)
+    if r.returncode != 0:                              # unknown to git — nothing to record
+        return False
+    return any(ln.strip() and not ln.startswith("??") for ln in r.stdout.splitlines())
+
+
 def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
     """Scoped commit that distinguishes *benign* from *real* failure.
 
@@ -318,15 +336,16 @@ def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
     if subprocess.run(["git", "-C", str(node_root), "rev-parse", "--git-dir"],
                       capture_output=True).returncode != 0:
         return None                                    # not a repo — nothing to commit into
-    status = subprocess.run(
-        ["git", "-C", str(node_root), "status", "--porcelain", "--", *paths],
-        capture_output=True, text=True)
-    if status.returncode == 0 and not [
-            ln for ln in status.stdout.splitlines() if ln.strip()
-            and not ln.startswith("??")]:
+    # Filter to the pathspecs git actually has committable changes for, and pass
+    # only those. `git commit` fails outright if *any* pathspec matches nothing,
+    # so a transition's now-empty source folder — which git may never have known,
+    # if the item was created but not yet committed — would otherwise abort a
+    # commit whose destination path is perfectly valid.
+    live = [p for p in paths if _has_committable_changes(node_root, p)]
+    if not live:
         return None                                    # genuinely nothing to commit
     r = subprocess.run(
-        ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *paths],
+        ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *live],
         capture_output=True, text=True)
     if r.returncode != 0:
         return (r.stderr or r.stdout).strip() or f"git commit failed ({r.returncode})"
@@ -2268,6 +2287,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         self._stage(d / "state.yaml")
 
     def _effect_transition(self, slug: str, to_status: str) -> None:
+        # Read the item *before* the move: afterwards `_find` points at the new
+        # location and the pre-move branch/worktree fields are what the
+        # trunk-branch check needs.
+        item = self.get(slug)
+        src = self._find(slug)
         # Nodes created before a status existed have no folder for it, and
         # `git mv` refuses when the destination's parent is missing. Creating it
         # here is an adapter detail with no abstract analog (the prime directive
@@ -2275,7 +2299,55 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # status-agnostic on purpose: it also repairs a hand-deleted folder
         # rather than special-casing whichever status was added last.
         (self.root / to_status).mkdir(parents=True, exist_ok=True)
-        self._mv(self._find(slug), self.root / to_status / slug)
+        dst = self.root / to_status / slug
+        self._mv(src, dst)
+        if self.auto_commit_transitions():
+            self._commit_transition(slug, src, dst, to_status, item)
+
+    def _commit_transition(self, slug: str, src: Path, dst: Path,
+                           to_status: str, item: "WorkItem | None") -> None:
+        """Commit the status move, scoped to the two folders it touched.
+
+        Scoped to `src` and `dst` rather than the whole work root: a scoped
+        `git commit -- <paths>` takes *working-tree* state, so a broad pathspec
+        would sweep every other item's uncommitted edits into a status commit.
+
+        The move is never rolled back on a commit failure. The `git mv` already
+        landed in both the index and the working tree, and undoing it introduces
+        a second failure mode worse than the first — so the error says the item
+        moved and the commit did not.
+        """
+        self._warn_off_trunk(item)
+        rel = [str(p.relative_to(self.node_root)) for p in (src, dst)]
+        err = git_commit_result(self.node_root,
+                                f"tcw work: {slug} → {to_status}", *rel)
+        if err:
+            raise TransitionCommitError(
+                f"{slug} moved to {to_status}, but committing it failed:\n{err}")
+
+    def _warn_off_trunk(self, item: "WorkItem | None") -> None:
+        """`work.trunk-branch` is advisory: warn on a mismatch and commit where we
+        are. TCW never checks out, never commits to another branch, and never
+        refuses — that plumbing is not worth it for what is already an operator
+        mistake worth surfacing.
+
+        Suppressed inside a TCW-created worktree, detected by the *item's* own
+        `branch` field rather than by probing the checkout: a `--worktree` item is
+        supposed to be on `work/<slug>`, so warning there would fire constantly
+        on the one workflow behaving correctly. Probing for a linked worktree
+        would also catch worktrees TCW knows nothing about, which is not the case
+        being excused.
+        """
+        trunk = self.trunk_branch()
+        if not trunk:
+            return
+        current = git_current_branch(self.node_root)
+        if current is None or current == trunk:
+            return
+        if item is not None and item.branch and item.branch == current:
+            return                                     # a TCW work branch, as intended
+        print(f"tcw work: on branch '{current}', but work.trunk-branch is "
+              f"'{trunk}'; committing the transition here.", file=sys.stderr)
 
     def _delete(self, slug: str) -> None:
         d = self._find(slug)

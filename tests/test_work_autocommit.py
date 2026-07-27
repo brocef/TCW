@@ -8,6 +8,7 @@ in unrelated edits, or report success when the repository refused the write.
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tcw.store.fs import (
@@ -209,3 +210,190 @@ def test_policy_keys_do_not_disturb_the_tag_registry(tmp_path):
     assert st.registered_tags() == ["bug", "cli"]
     assert st.auto_commit_transitions() is False
     assert st.trunk_branch() == "main"
+
+
+# ── the behavior: every transition commits its own move ──────────────────────
+
+def committed(root: Path) -> FsWorkStore:
+    """A store on a node whose scaffolding is already committed."""
+    return FsWorkStore.open(root)
+
+
+def make_item(root: Path, title: str = "Task") -> str:
+    """Create an item and commit it, so transitions start from a clean tree."""
+    st = FsWorkStore.open(root)
+    item = st.create(title, created="2026-01-01")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", f"add {item.slug}"],
+                   check=True)
+    return item.slug
+
+
+@pytest.mark.parametrize("drive,expected", [
+    (lambda st, s: st.start(s), "active"),
+    (lambda st, s: (st.start(s), st.submit(s))[-1], "review"),
+    (lambda st, s: (st.start(s), st.submit(s), st.rework(s))[-1], "active"),
+    (lambda st, s: (st.start(s), st.complete(s, "done", []))[-1], "completed"),
+    (lambda st, s: (st.start(s), st.complete(s, "wontfix", []))[-1], "discarded"),
+])
+def test_every_transition_commits_its_own_move(tmp_path, drive, expected):
+    root = node(tmp_path)
+    slug = make_item(root)
+    before = log_count(root)
+    st = committed(root)
+
+    assert drive(st, slug).status == expected
+    assert log_count(root) > before
+    assert porcelain(root) == ""                       # nothing left staged or dirty
+
+
+def test_a_transition_commit_names_the_item_and_its_destination(tmp_path):
+    root = node(tmp_path)
+    slug = make_item(root)
+    committed(root).start(slug)
+    msg = subprocess.run(["git", "-C", str(root), "log", "-1", "--pretty=%s"],
+                         capture_output=True, text=True, check=True).stdout.strip()
+    assert slug in msg and "active" in msg
+
+
+def test_a_transition_commit_does_not_sweep_in_an_unrelated_item(tmp_path):
+    """The property the scoping exists for, and the one test that fails if the
+    pathspec is widened back to `docs/work`. Every other test in this file passes
+    with a broad pathspec."""
+    root = node(tmp_path)
+    mine = make_item(root, "Mine")
+    other = make_item(root, "Other")
+    st = committed(root)
+
+    other_doc = st.path(other) / "spec.md"
+    other_doc.write_text("# Uncommitted work in progress\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "--", str(other_doc)], check=True)
+
+    st.start(mine)
+
+    dirty = porcelain(root)
+    assert "spec.md" in dirty                          # still staged, not swept in
+    assert mine in subprocess.run(
+        ["git", "-C", str(root), "log", "-1", "--pretty=%s"],
+        capture_output=True, text=True, check=True).stdout
+
+
+def test_auto_commit_off_leaves_the_move_staged(tmp_path):
+    """The escape hatch reproduces today's behavior exactly."""
+    root = node(tmp_path)
+    slug = make_item(root)
+    set_config(root, **{"auto-commit-transitions": False})
+    before = log_count(root)
+
+    assert FsWorkStore.open(root).start(slug).status == "active"
+    assert log_count(root) == before
+    assert porcelain(root) != ""                       # staged, awaiting the caller
+
+
+def test_a_second_transition_attempt_creates_no_empty_commit(tmp_path):
+    """The already-committed case: the source folder is gone and git does not
+    know it, which `git commit` reports as a pathspec error rather than as
+    'nothing to commit'. Neither is a failure."""
+    root = node(tmp_path)
+    slug = make_item(root)
+    st = committed(root)
+    st.start(slug)
+    after_first = log_count(root)
+
+    src = root / "docs/work/backlog" / slug
+    dst = root / "docs/work/active" / slug
+    from tcw.store.fs import git_commit_result
+    assert git_commit_result(root, "again", str(src.relative_to(root)),
+                             str(dst.relative_to(root))) is None
+    assert log_count(root) == after_first
+
+
+def test_a_transition_outside_a_repository_fails_in_git_mv_as_it_always_has(tmp_path):
+    """Not a regression from auto-commit, and worth pinning so nobody "fixes" it.
+
+    Every write stages, and staging is `git add` with `check=True`, so a non-git
+    node fails at item *creation* — long before any transition or commit. The
+    not-a-repo branch in `git_commit_result` is defensive depth for a store
+    handed a path whose repo vanished mid-run, not support for a non-git node;
+    it is tested directly at the function level above.
+
+    `tcw init` refuses outside a repo for exactly this reason."""
+    root = tmp_path / "plain"
+    root.mkdir()
+    init(["work"], root, "plain")
+    st = FsWorkStore.open(root)
+    with pytest.raises(subprocess.CalledProcessError):
+        st.create("Task", created="2026-01-01")     # even creation stages
+
+
+def test_a_refused_commit_reports_but_leaves_the_item_moved(tmp_path):
+    """The distinction TransitionCommitError exists for: the move succeeded and
+    must not be retried; only the commit is missing."""
+    from tcw.store.base import TransitionCommitError
+
+    root = node(tmp_path)
+    slug = make_item(root)
+    st = committed(root)
+    # A rejecting pre-commit hook, not a held `index.lock`: the lock blocks
+    # `git mv` too, so the move would never happen and the case under test —
+    # move succeeded, commit refused — could not arise.
+    hook = root / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+
+    with pytest.raises(TransitionCommitError) as excinfo:
+        st.start(slug)
+
+    assert "moved to active" in str(excinfo.value)
+    assert FsWorkStore.open(root).get(slug).status == "active"   # it really moved
+
+
+# ── trunk-branch ─────────────────────────────────────────────────────────────
+
+def test_no_trunk_warning_when_the_branch_matches(tmp_path, capsys):
+    root = node(tmp_path)
+    slug = make_item(root)
+    set_config(root, **{"trunk-branch": "main"})
+    capsys.readouterr()
+    committed(root).start(slug)
+    assert "trunk-branch" not in capsys.readouterr().err
+
+
+def test_trunk_warning_on_a_mismatch_but_the_commit_still_lands(tmp_path, capsys):
+    root = node(tmp_path)
+    slug = make_item(root)
+    set_config(root, **{"trunk-branch": "main"})
+    subprocess.run(["git", "-C", str(root), "checkout", "-qb", "feature"], check=True)
+    before = log_count(root)
+    capsys.readouterr()
+
+    committed(root).start(slug)
+
+    err = capsys.readouterr().err
+    assert "feature" in err and "main" in err
+    assert log_count(root) == before + 1              # warned, committed anyway
+    assert git_current_branch(root) == "feature"      # and never checked anything out
+
+
+def test_no_trunk_warning_on_the_items_own_work_branch(tmp_path, capsys):
+    """A `--worktree` item is supposed to be on `work/<slug>`; warning there
+    would fire constantly on the one workflow behaving correctly."""
+    root = node(tmp_path)
+    slug = make_item(root)
+    set_config(root, **{"trunk-branch": "main"})
+    st = FsWorkStore.open(root)
+    st.set_field(slug, "branch", f"work/{slug}")
+    subprocess.run(["git", "-C", str(root), "checkout", "-qb", f"work/{slug}"], check=True)
+    capsys.readouterr()
+
+    FsWorkStore.open(root).start(slug)
+    assert "trunk-branch" not in capsys.readouterr().err
+
+
+def test_no_trunk_warning_when_unset(tmp_path, capsys):
+    root = node(tmp_path)
+    slug = make_item(root)
+    subprocess.run(["git", "-C", str(root), "checkout", "-qb", "anything"], check=True)
+    capsys.readouterr()
+    committed(root).start(slug)
+    assert "trunk-branch" not in capsys.readouterr().err

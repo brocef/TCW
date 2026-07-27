@@ -22,11 +22,15 @@ observable behavior change.
   | Nothing to commit | `git commit` non-zero **and** output matches nothing-to-commit | `None` |
   | Anything else | `git commit` non-zero otherwise | the message |
 
-  **Match git's actual output, not a guess.** `git commit` with a clean pathspec
-  prints `nothing to commit, working tree clean` or `no changes added to commit`
-  depending on index state. Determine the real strings by running both cases
-  before writing the matcher, and pin them in a test — a matcher built from
-  memory that silently stops matching turns the benign case into a loud one.
+  **Resolved during implementation: do not match git's output at all.** Probing
+  the real cases showed *three* distinct benign sentences, all localized and all
+  version-dependent. `git status --porcelain` is the stable signal — it exits 0
+  even for a pathspec git has never heard of. Two further findings, both from
+  running it rather than reasoning about it: untracked (`??`) entries must be
+  excluded, because a scoped commit records tracked content only; and pathspecs
+  must be filtered individually, because `git commit` fails outright if *any* one
+  of them matches nothing — which is exactly what a transition's vacated source
+  folder does.
 
 - `FsWorkStore._auto_commit_enabled()` reading `work.auto-commit-transitions`
   through the existing `_config()`, defaulting to `True`. Not yet consulted.
@@ -81,8 +85,13 @@ print it and exit non-zero without implying the item did not move.
 - `auto-commit-transitions: false` leaves the move staged and uncommitted.
 - Transitioning twice — the second finding nothing to commit — does not raise
   and creates no empty commit.
-- A store on a non-repo directory transitions without error.
-- A held `index.lock` produces a non-zero CLI exit with the item **moved**.
+- A store on a non-repo directory fails at *creation*, as it always has —
+  pinned as pre-existing behavior, not fixed. `git_commit_result`'s not-a-repo
+  branch stays as defensive depth and is tested directly.
+- A rejecting **pre-commit hook** produces `TransitionCommitError` with the item
+  **moved**. Not a held `index.lock`: the lock blocks `git mv` too, so the move
+  would never happen and the case under test could not arise. (`index.lock` still
+  drives the unit-level test of `git_commit_result`, where no move is involved.)
 - `trunk-branch` matching / mismatching / suppressed-in-worktree.
 
 Existing tests that transition items now produce commits. Most use `tmp_path`

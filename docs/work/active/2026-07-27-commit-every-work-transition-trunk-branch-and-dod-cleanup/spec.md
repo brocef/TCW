@@ -93,8 +93,26 @@ operator needs to see:
 | Condition | Detection | Outcome |
 |---|---|---|
 | Not a git repository | `git rev-parse --git-dir` fails | Skip silently. Not an error. |
-| Nothing to commit | `git commit` exits non-zero, stdout says nothing to commit | Skip silently. The move was already committed. |
+| Nothing to commit | **`git status --porcelain` reports no non-`??` entry** for the pathspec | Skip silently. Already committed, or nothing tracked to record. |
 | Anything else — `index.lock` held, no write permission, a failing pre-commit hook, a detached or corrupt repo | `git commit` exits non-zero for any other reason | **Report on stderr, exit non-zero.** The item has still moved; the move is not rolled back. |
+
+**Detection is porcelain, not stderr matching.** Three different English
+sentences cover the benign cases — `nothing to commit`,
+`error: pathspec ... did not match any file(s) known to git` (a source folder git
+never knew, because the item was created but not yet committed), and
+`nothing added to commit but untracked files present`. All are localized and all
+have changed across git versions. Porcelain output is contractually stable and
+exits 0 in every case. Each was confirmed by running it, not recalled.
+
+Two consequences that only surfaced by trying it:
+
+- **Untracked entries must be excluded** from the check. A scoped commit records
+  tracked content only, so a pathspec holding nothing else has nothing to commit,
+  and calling `git commit` anyway produces a benign failure that would be
+  misreported as a real one.
+- **Pathspecs must be filtered before being passed.** `git commit` fails outright
+  if *any* pathspec matches nothing, so a transition's now-empty source folder
+  would abort a commit whose destination path is perfectly valid.
 
 The third row is the one worth getting right. The item moving without a commit
 is recoverable — the operator commits it. Silently reporting success when the
@@ -224,7 +242,11 @@ operator resumes closeout with `--already-integrated`.
    matching today's behavior.
 4. A repeated transition attempt on an already-committed move does not raise;
    no empty commit is created.
-5. A store opened outside a git repository still transitions, without error.
+5. A store outside a git repository fails at item *creation*, as it always has
+   — not a regression, and pinned so nobody "fixes" it. Every write stages, and
+   staging is `git add` with `check=True`. `git_commit_result`'s not-a-repo
+   branch is defensive depth for a repo that vanished mid-run, tested directly
+   at the function level.
 6. A commit that fails for a reason *other* than "nothing to commit" or "not a
    repo" — simulated with a held `index.lock` — reports on stderr and exits
    non-zero, while leaving the item moved. It is not silently swallowed.

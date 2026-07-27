@@ -531,6 +531,20 @@ class IllegalTransition(Exception):
     """A status transition not in the legal graph (the enforcement — B.3)."""
 
 
+class TransitionCommitError(Exception):
+    """A transition moved the item but its auto-commit was refused.
+
+    Deliberately distinct from every other store error, because the item **did
+    move** — reporting this as a failed transition would be false, and would
+    invite a caller to retry a move that already happened. The status is correct
+    on disk; only the commit is missing, and the operator can make it by hand.
+
+    Raised by the FS adapter when `git_commit_result` reports a real failure (a
+    held `index.lock`, no write permission, a rejecting pre-commit hook). Benign
+    conditions — not a repository, nothing to commit — never raise.
+    """
+
+
 class MultipleMatch(Exception):
     """A slug resolves to more than one item folder (slug integrity broken)."""
 
