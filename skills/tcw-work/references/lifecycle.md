@@ -1,6 +1,6 @@
 # TCW work lifecycle
 
-Use this file to choose the smallest lifecycle document needed for the current work item. TCW's durable unit is the work item folder; lifecycle artifacts live beside `initial-request.md` so the item can move through `backlog`, `active`, and its terminal status — `completed` (shipped) or `discarded` (closed without shipping) — without losing context. `initial-request.md` is the always-present body/overview surface and canonical request artifact.
+Use this file to choose the smallest lifecycle document needed for the current work item. TCW's durable unit is the work item folder; lifecycle artifacts live beside `initial-request.md` so the item can move through `backlog`, `active`, optionally `review`, and its terminal status — `completed` (shipped) or `discarded` (closed without shipping) — without losing context. `initial-request.md` is the always-present body/overview surface and canonical request artifact.
 
 ## Common rules
 

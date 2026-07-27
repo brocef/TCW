@@ -472,11 +472,13 @@ formal work in a **single-node state machine** where status is the folder a work
 item lives in and a transition is a move between folders:
 
 ```
-raw inbox entry  --accept-->  backlog  --start-->  active
-                                  |                    |
-                                  |   --resolution done-+--> completed   ("we shipped it")
-                                  |                    |
-                                  +--- wontfix / duplicate / superseded --> discarded
+raw inbox entry  --accept-->  backlog  --start-->  active  --submit-->  review
+                                  |                    |                   |
+                                  |                    |     <--rework-----+
+                                  |                    |                   |
+                                  |   --resolution done-+-------------------+--> completed
+                                  |                    |                   |    ("we shipped it")
+                                  +--- wontfix / duplicate / superseded ---+--> discarded
                                                             ("we closed it without shipping")
                          (drop deletes a backlog item outright)
 ```
@@ -485,12 +487,21 @@ The **resolution picks the destination**, so `completed/` answers "what
 shipped?" on its own. A backlog item can be discarded directly — abandoning an
 idea never needed a throwaway `start`.
 
+`review` means **implemented, acceptance pending**. It is not a finished state:
+an item sitting in review still blocks whatever depends on it and still holds
+its epic open, because verification can send it back. `rework` is the only
+reverse move in the machine — nothing ever leaves `completed/` or `discarded/`.
+
+Review is **optional**. A small change can still go straight from `active` to
+`completed`; `tcw work complete` just prints a note saying the verify step was
+skipped, and completes.
+
 Blocked-ness is a **derived overlay**: an item is blocked when it has at least
 one unresolved blocker recorded in its data — there is no separate "blocked"
 folder or status.
 
 ```sh
-tcw work init                          # docs/work/{inbox,backlog,active,completed,discarded}/
+tcw work init                          # docs/work/{inbox,backlog,active,review,completed,discarded}/
 
 tcw work inbox list                    # list each raw file or folder entry
 tcw work inbox show request.md         # inspect metadata, text, and resource manifest
@@ -513,7 +524,7 @@ tcw work new "Login crash" --tag bug   # apply a registered tag (repeatable; unr
 
 tcw work list                          # the board: priority first, then topologically ordered
                                        # (hides completed and discarded)
-tcw work list --status active          # filter to one column
+tcw work list --status active          # filter to one column (backlog|active|review|completed|discarded)
 tcw work list --tag bug                # only items carrying a tag (repeatable = match any)
 tcw work list --all                    # include completed and discarded items too
 tcw work list --status discarded       # only the items closed without shipping
@@ -528,6 +539,10 @@ tcw work path "$slug"                  # current filesystem path of the slug
 tcw work start "$slug"                 # backlog → active (refused if blocked/gated)
 tcw work start "$slug" --force         # override unresolved blockers or initiative gates
 
+tcw work submit "$slug"                # active → review (implemented, acceptance pending)
+tcw work rework "$slug"                # review → active (verification rejected the work;
+                                       # refused while refined-outcome.md still says it passed)
+
 tcw work edit "$slug" --blocked-by other-slug    # record a new blocker (repeatable)
 tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
 tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (repeatable;
@@ -536,6 +551,7 @@ tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (rep
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
 tcw work edit "$slug" --tag bug --untag stale    # apply/remove tags (repeatable)
+tcw work edit "$slug" --pr https://github.com/o/r/pull/7   # record the pull request for this item
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities

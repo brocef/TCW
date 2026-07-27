@@ -111,6 +111,8 @@ Input: `outcome.md`.
 
 Stop for user verification. Do not silently complete the item after implementation. Discuss the result, the verification evidence, and the follow-up notes. If the user requests tweaks, make them and remain in this stage until they give explicit approval to close out the current item.
 
+Optionally run `tcw work submit <slug>` first, so the item's status says `review` while it waits on that decision rather than reading as still-in-progress. If verification rejects the work, delete `refined-outcome.md`, record what remains in `rework.md`, and run `tcw work rework <slug>` to move back to `active` — the command refuses while `refined-outcome.md` is still present, since that document asserts the opposite. Completing straight from `active` remains legal; it prints a note that the verify stage was skipped.
+
 Write `refined-outcome.md` with:
 
 - the user's verification decision;
