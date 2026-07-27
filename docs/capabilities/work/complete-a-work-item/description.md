@@ -1,4 +1,6 @@
 As a user, I run `tcw work complete <slug> --resolution <r>` to close an item, and **the resolution picks where it lands**: `done` files it under `completed/`, while `wontfix`, `duplicate`, and `superseded` file it under `discarded/` (see [Discard a work item](tcw://C/work/discard-a-work-item)). So `completed/` answers "what shipped?" on its own.
 
+I may complete from either `active` or `review`. Completing from `active` skips the verify stage, so the tool prints a note saying so on stderr — advisory only: it does not refuse and does not ask for a second confirmation.
+
 Completing as `done`, the tool checks for unresolved blockers (refused unless I pass `--force`), then prints the Definition-of-Done checklist and refuses until I re-run with `--confirm`. Discarding skips both checks — a blocker is a reason to give up, not a reason I can't — but still requires `--confirm`.
 For epics, the tool refuses completion while related initiative child tasks are still open. Once every child is resolved, an epic is **completable directly from `backlog`** — I don't have to `start` a coordinator epic into `active` just to close it. I can also let `tcw work reconcile <epic> --complete-when-ready` auto-complete a ready epic after refreshing its rollup; the Definition-of-Done and capability-reconciliation gates still run either way.

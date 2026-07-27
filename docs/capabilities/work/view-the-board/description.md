@@ -1,7 +1,8 @@
 As a user, I run `tcw work list` to see the local board, with lifecycle stages,
 priority, tags, blockers, and ready-to-close epic state. The board shows live work
 and hides both closed columns — `completed` and `discarded` — so `--all` or
-`--status discarded` is how I look at what was closed. With
+`--status discarded` is how I look at what was closed. Items in `review` are
+live work, not closed, so they stay on the default board. With
 `--include-descendants`, TCW follows the registered project graph and groups
 every reachable descendant board by canonical project ID. Descendant items are
 qualified as `<project-id>/<slug>`, including deep descendants whose filesystem
