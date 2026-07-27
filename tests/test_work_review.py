@@ -382,3 +382,42 @@ def test_cli_list_shows_a_review_item_with_its_stage_letters(tmp_path, monkeypat
     line = next(l for l in capsys.readouterr().out.splitlines() if item.slug in l)
     assert "| review |" in line
     assert "W" in line.split("|")[2]          # the rework artifact's stage letter
+
+
+# ── the pr field ─────────────────────────────────────────────────────────────
+
+def test_pr_round_trips_through_state_and_show(tmp_path, monkeypatch, capsys):
+    """Nothing in this change consumes `pr`. It is the durable place for a
+    pull-request URL so the next child's `complete --already-integrated` has a
+    field to read rather than a convention to guess."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    monkeypatch.chdir(root)
+
+    assert st.get(item.slug).pr == ""                  # absent by default
+    assert main(["work", "show", item.slug]) == 0
+    assert "pr:" not in capsys.readouterr().out        # and not rendered when empty
+
+    url = "https://github.com/example/repo/pull/7"
+    assert main(["work", "edit", item.slug, "--pr", url]) == 0
+    capsys.readouterr()
+    assert FsWorkStore.open(root).get(item.slug).pr == url
+
+    assert main(["work", "show", item.slug]) == 0
+    assert f"pr: {url}" in capsys.readouterr().out
+
+    assert main(["work", "edit", item.slug, "--pr", ""]) == 0
+    assert FsWorkStore.open(root).get(item.slug).pr == ""
+
+
+def test_pr_survives_a_transition(tmp_path):
+    """A transition is a folder move, so the field rides along — worth pinning,
+    since the field's whole purpose is to outlive the implement stage."""
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    st.set_field(item.slug, "pr", "https://example.test/pr/1")
+    st.start(item.slug)
+    st.submit(item.slug)
+    assert st.get(item.slug).pr == "https://example.test/pr/1"

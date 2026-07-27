@@ -1796,6 +1796,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             type=state.get("type", ""),
             worktree=state.get("worktree", ""),
             branch=state.get("branch", ""),
+            pr=state.get("pr", ""),
             parent=self._parent_slug(d),
         )
 

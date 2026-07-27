@@ -104,6 +104,8 @@ def _print_item(item: WorkItem) -> None:
         print(f"tags: {', '.join(item.tags)}")
     if item.resolution:
         print(f"resolution: {item.resolution}")
+    if item.pr:
+        print(f"pr: {item.pr}")
     if item.blocked_by:
         labels = []
         for b in item.blocked_by:
@@ -540,6 +542,11 @@ def _edit(args: argparse.Namespace) -> int:
             st.add_blocker(bare, ref)
         for ref in blocks:
             st.add_blocker(ref, bare)             # reverse link: bare into ref's blocked_by
+        # A plain scalar with no validation and no clearing semantics beyond "",
+        # so `set_field` rather than the composite `update_work` — the composite
+        # exists for fields that need normalization or a revision guard.
+        if args.pr is not None:
+            st.set_field(bare, "pr", args.pr)
         # Use composite update for field changes
         st.update_work(
             bare,
@@ -812,6 +819,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--complexity", type=_work_level,
                     help="set estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
+    pe.add_argument("--pr", help='pull-request URL for this item\'s code (use "" to clear)')
     pe.add_argument("--tag", action="append", type=_tag, help="apply a registered tag (repeatable)")
     pe.add_argument("--untag", action="append", type=_tag, help="remove a tag (repeatable)")
     pe.set_defaults(func=_edit)

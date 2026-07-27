@@ -555,6 +555,7 @@ class WorkItem:
     type: str = ""                  # optional recursion sugar; only value: "epic"
     worktree: str = ""              # node-relative worktree path (start --worktree)
     branch: str = ""                # work branch name (start --worktree)
+    pr: str = ""                    # pull-request URL, if the work rides one
     parent: str = ""                # slug of the parent item; "" == top-level (node relation)
 
 
