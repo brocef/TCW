@@ -22,6 +22,11 @@ category.
   asserts every `tcw` invocation in `README.md`, `skills/**`, `commands/**`, and
   `agents/**` names a verb and flags that exist. Parses both backtick spans and
   fenced blocks.
+- `docs/migration-guide-0.15.X-to-0.16.0.md` — covers the changelog hash-range
+  removal. It documents a relaxation rather than a required migration, so it
+  states up front that no action is needed, then describes the optional cleanup
+  for projects holding `<changes>` wrappers. The plugin cache carries `docs/`
+  verbatim, so plugin users can read it without any packaging change.
 
 ## Removed
 
@@ -45,7 +50,12 @@ category.
 - `scripts/cut_version.py`'s `UPCOMING` header template for
   `docs/changelogs/upcoming.md` drops its hash clause, and the live
   `docs/changelogs/upcoming.md` header was matched to it so a rotation is not a
-  surprise diff. Existing entries keep the hashes they already carry.
+  surprise diff.
+- Every commit hash stripped from this file — 12 per-entry `` (`hash`) ``
+  suffixes and a trailing `Commit range:` footer — so the next release ships a
+  changelog consistent with the rule it announces. Entry prose is unchanged, and
+  released `docs/changelogs/v*.md` are untouched: they describe versions that
+  already shipped.
 - The end-of-`implement` documentation gate keeps its position but rests on one
   reason instead of two: `skills/documentation-sync/SKILL.md` and
   `skills/tcw-work/references/stage-implement.md` step 6 both drop the

@@ -14,8 +14,11 @@ release process carried a whole repair step for fixing ranges it had itself
 invalidated. Both are removed. A changelog entry is now prose describing what
 changed; searching your git history for it works the same as it always did.
 
-Entries you have already written keep the hashes they have. Nothing is rewritten
-and nothing you wrote under the old rule becomes invalid.
+Entries you have already written are fine as they are. The old wrappers render as
+nothing and no command has ever read them, so nothing you wrote under the old
+rule becomes invalid. There is a migration guide — `docs/migration-guide-0.15.X-to-0.16.0.md`,
+readable in your plugin folder — but it opens by telling you there is nothing you
+have to do, and the rest is optional cleanup.
 
 ## The backlog audit now works in Codex, and it is faster
 
