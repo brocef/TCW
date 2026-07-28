@@ -11,17 +11,17 @@ category.
   stale blockers, capability drift) and an **inter-item** list (duplicate or
   superseded, missing relationship edges, tag hygiene), with pipelined subagent
   dispatch — one agent per item feeding its findings plus a two-line summary to
-  one set-wide agent — capped at 8 concurrent as a sliding window. (`a5bc076`)
+  one set-wide agent — capped at 8 concurrent as a sliding window.
 - **Missing relationship edges** as an audit check: a dependency stated in an
   item's prose but never recorded with `tcw work edit --blocked-by`, so the
-  board shows both items as equally pickable. (`a5bc076`)
+  board shows both items as equally pickable.
 - `agents/tcw-backlog-auditor.md` — read-only agent (`Read, Glob, Grep, Bash`)
   for the per-item half of the audit. Enforces by tool set what was previously a
-  prompt request. (`a5bc076`)
+  prompt request.
 - `tests/test_documented_cli_surface.py` — walks the real `tcw --help` tree and
   asserts every `tcw` invocation in `README.md`, `skills/**`, `commands/**`, and
   `agents/**` names a verb and flags that exist. Parses both backtick spans and
-  fenced blocks. (`6e63405`)
+  fenced blocks.
 
 ## Removed
 
@@ -60,24 +60,23 @@ category.
   `tcw work consolidate-plans` with `--apply`/`--delete` (same two files), and
   `--pr` on `tcw work edit` (`commands.md`). The first two are AI-driven
   workflows that live as slash commands and are now documented as such.
-  (`dbb2340`)
 - The backlog-audit procedure was unreachable from Codex: it lived only in
   `commands/tcw-audit-work-backlog.md`, and `.codex-plugin/plugin.json` exposes
   `skills/` but has no `commands` key. Moved under `skills/`; the command file
-  is reduced to a pointer so the Claude slash command still works. (`a5bc076`)
+  is reduced to a pointer so the Claude slash command still works.
 - `AGENTS.md` and `skills/tcw-work/references/delegation.md` asserted that Codex
   has no subagents and no custom agents. Codex has both — `.codex/agents/*.toml`,
   model-driven spawning, `[agents] max_concurrent_threads_per_session`. The
   surrounding doctrine (delegation is an optimization, never load-bearing) is
-  unchanged; only the factual claim moved. (`dbb2340`)
+  unchanged; only the factual claim moved.
 - `.codex-plugin/plugin.json` `longDescription` said the plugin ships six
-  skills; it ships seven (`tcw-post-mortem` was missing). (`dbb2340`)
+  skills; it ships seven (`tcw-post-mortem` was missing).
 - `docs/capabilities/work/consolidate-plans/description.md` still claimed a
   `tcw work consolidate-plans` CLI verb — the one phantom the first sweep missed,
   because the guard's scan roots excluded the capability ledger. The guard now
   scans `docs/capabilities/**`; capability bodies are user-facing documentation
   and name commands like any other doc. Found by a trial run of the new audit
-  procedure. (`0886943`)
+  procedure.
 - Gaps in the new audit procedure, all found by that same trial run: the
   inter-item pass read `--status active`/`--status completed` but not
   `--status review` (the likeliest near-duplicate, since it is the work that just
@@ -86,16 +85,13 @@ category.
   fallback for sessions on a release that predates it; `<severity>` had no
   defined scale; a healthy item had no rendering; approvals had no grouping rule;
   and nothing asked a read-only pass to verify it had changed nothing.
-  (`0886943`)
 - `agents/tcw-verifier.md` and `agents/tcw-backlog-auditor.md` claimed "you have
   no write tools" while holding `Bash`, which can write. Both now state what the
   tool set actually gives (no file editing) and that the rest is a prohibition
-  honored, not a wall. `delegation.md` says the same. (`0568382`)
+  honored, not a wall. `delegation.md` says the same.
 
 ## Internal
 
 - `delegation.md`'s custom-agent test now records three passes rather than two,
   and names the read-only tool set as the strongest reason to define an agent:
-  it enforces what a prompt can only request. (`dbb2340`)
-
-Commit range: `24f4bc6..0886943`.
+  it enforces what a prompt can only request.

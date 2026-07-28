@@ -190,17 +190,34 @@ choice.
 
 ## Acceptance criteria
 
-1. `grep -rniE "commit[- ]hash range|commit range|starting-hash|ending-hash" skills/ scripts/ AGENTS.md docs/changelogs/upcoming.md` returns exactly one hit:
+1. `grep -rniE "commit[- ]hash range|commit range|starting-hash|ending-hash" skills/ scripts/ AGENTS.md` returns exactly one hit:
    `skills/tcw-post-mortem/SKILL.md:36` (out of scope per Non-goals).
 
-   *History of this criterion.* It was briefly corrected during `implement` to
-   expect **two** hits: the spec's site-inventory grep (see Notes) was
-   case-sensitive on `commit range` and had missed
-   `` Commit range: `24f4bc6..0886943`. `` at `docs/changelogs/upcoming.md:71` —
-   the footer of a pending entry written under the old rule in commit `3633c30`.
-   Under the original Non-goals that line was untouchable, so the criterion had
-   to widen. The `verify` gate then put the pending file in scope, AC3 deletes
-   the line, and the criterion returns to its original one-hit form.
+   The grep roots are the **instruction surfaces** — the skills that teach the
+   rule, the one script that emits it, and TCW's own adoption of it. That is what
+   the criterion is actually about: no shipped instruction asks for a hash range.
+
+   *History of this criterion — it was wrong twice, in opposite directions.*
+
+   - **Written** expecting one hit over roots that also included
+     `docs/changelogs/upcoming.md`.
+   - **Corrected during `implement`** to expect **two**: the spec's
+     site-inventory grep (see Notes) was case-sensitive on `commit range` and had
+     missed `` Commit range: `24f4bc6..0886943`. `` at
+     `docs/changelogs/upcoming.md:71`, the footer of a pending entry written under
+     the old rule in commit `3633c30`. The original Non-goals made that line
+     untouchable, so the criterion had to widen to accommodate it.
+   - **Corrected again after the `verify` gate**, when AC3 deleted that footer.
+     The count did not return to one: it went to **three**, because the changelog
+     entry announcing this very change has to name `starting-hash`,
+     `ending-hash`, and "commit-hash ranges" in order to say what was removed.
+
+   A changelog is not an instruction, so the third state exposed a defect in the
+   criterion rather than in the work — the grep root was wrong from the start.
+   `docs/changelogs/upcoming.md` is dropped from the roots; AC3 (no hashes in it)
+   and AC4 (its header matches the template) cover that file, and they cover it
+   better, because they do not break when an entry legitimately names the thing
+   it removed.
 2. `git diff --stat` for the whole change lists no file matching
    `docs/changelogs/v*.md`.
 3. `docs/changelogs/upcoming.md` contains **no** commit hash: no
