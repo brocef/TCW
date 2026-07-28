@@ -27,6 +27,11 @@ DOC_FILES = sorted(
     + list((REPO / "skills").rglob("*.md"))
     + list((REPO / "commands").glob("*.md"))
     + list((REPO / "agents").glob("*.md"))
+    # The capability ledger describes what a user can do, so it names commands
+    # too — and it was the one place a phantom verb survived the first sweep,
+    # because the sweep did not look here. Capability bodies are user-facing
+    # documentation; treat them as such.
+    + list((REPO / "docs" / "capabilities").rglob("*.md"))
 )
 
 BACKTICKED = re.compile(r"`([^`\n]*\btcw\b[^`\n]*)`")

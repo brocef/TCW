@@ -67,12 +67,12 @@ what each item is *about*, which means reading every folder — the work the
 per-item agents just did. So each per-item agent returns its findings **plus** a
 two-line "what this item is about", and the inter-item agent consumes those
 summaries instead of re-reading the backlog. It additionally reads the one-line
-output of `tcw work list --status active` and `--status completed` (the duplicate
-check spans all three statuses), opening a folder only when a summary makes a
-candidate look real.
+output of `tcw work list --status active`, `--status review`, and
+`--status completed` — the duplicate check spans **every** status, and an item in
+`review` is the likeliest near-duplicate of all, since it is the work that just
+happened. Open a folder only when a summary makes a candidate look real.
 
-Cap concurrency at **8**, as a sliding window — a new item dispatches as each slot
-frees. A 60-item backlog must not spawn 60 agents.
+Dispatch in **batches of at most 8**. A 60-item backlog must not spawn 60 agents.
 
 The two-line summary is a **return contract**: if an agent omits it or returns
 something malformed, re-dispatch that item or read the folder yourself. One bad
@@ -84,7 +84,10 @@ from the inter-item agent's input.
 - **Read-only.** Never mutate, transition, or tag. Approval belongs to the session
   holding the user relationship. Prefer the `tcw-backlog-auditor` agent, which
   holds no file-editing tools — that narrows the blast radius, though it still
-  needs `Bash` to verify anything, so say this in the dispatch either way.
+  needs `Bash` to verify anything, so say this in the dispatch either way. **If
+  that agent is not in your roster** — it ships with the plugin, so any session on
+  an older release lacks it — use any agent without `Write`/`Edit` and paste this
+  section into the dispatch. Never skip the audit for want of a named agent.
 - **Verify against the working tree; do not summarize the item's prose.** This is
   where the value is, and it is not enforceable — only instructable. An item
   claiming a defect is worthless until you check whether the defect still exists;
@@ -101,13 +104,35 @@ Per item:
   action: <exact next step or command>
 ```
 
+**Severity** is one of `critical` · `high` · `medium` · `low`, scored on the cost
+of acting on the item *as it currently stands* — not on how interesting the
+finding is. `high` means starting it now would waste real work (a plan whose
+every anchor has moved). `low` means it needs a touch-up someone will absorb in
+passing. Without a fixed scale two audits are not comparable.
+
+An item with nothing wrong still gets a line — `<slug> | keep as-is | none |
+<why it is healthy>` — because "audited, clean" and "not audited" must not look
+the same.
+
 Close with the inter-item findings and a short list of categories that produced
-nothing — "no duplicates, no capability drift" is a result worth stating, because
-it distinguishes a check that ran clean from one that never ran.
+nothing — "no duplicates, no capability drift" is a result worth stating, for the
+same reason.
+
+Finally, confirm you changed nothing: `git status --porcelain` should be empty.
+Every agent in this procedure holds `Bash`, so read-only is a rule honored rather
+than a wall enforced — check it rather than assume it.
 
 ## The approval rule
 
 **Do not silently mutate, drop, complete, or move items.** Ask before performing
-any cleanup, including tag registration and tag edits. When the user approves, use
-TCW commands for state transitions and tag edits wherever a command exists, and
-preserve useful context in the remaining or replacement item.
+any cleanup, including tag registration and tag edits.
+
+**Group the asks by kind** — one approval for the tag edits, one for the blocker
+edges, one for the drops. A real audit produces a dozen or more candidate
+actions; asking per item is unusable and asking once for everything is a blanket
+yes on decisions that deserve individual thought. Drops and completions are
+irreversible enough to name individually inside their group.
+
+When the user approves, use TCW commands for state transitions and tag edits
+wherever a command exists, and preserve useful context in the remaining or
+replacement item.

@@ -51,6 +51,31 @@ subagent fan-out the audit workflow gained? Migrating many plan documents is
 per-document work with the same shape. Decide deliberately — it may not be worth
 it, but it should not be missed by default.
 
+## Safety: do not apply the pattern verbatim
+
+**`commands/tcw-consolidate-plans.md` carries `disable-model-invocation: true`,
+and the audit command does not.** That is not an oversight — this workflow
+**deletes files** (`--delete` removes each source document after migration), and
+the flag was added in v0.9.0 for exactly that reason. Only three command files
+carry it: this one, `tcw-doctor`, and `tcw-init`.
+
+Skill references have no equivalent flag. So moving the procedure into
+`skills/tcw-work/references/` **removes the guard that stops a model from
+invoking a destructive workflow on its own initiative** — under both harnesses.
+Migrating it the way the audit workflow was migrated would be a safety
+regression, not a parity win.
+
+The spec must resolve this before anything moves. Options, none yet chosen:
+carry an explicit user-confirmation rule at the top of the reference; keep the
+destructive `--delete` half behind the command file while the discovery half
+moves; or leave the whole thing command-only and accept the Codex gap as
+deliberate. Found by the trial audit run on 2026-07-28.
+
+Related: `docs/capabilities/work/consolidate-plans/description.md` claimed a
+`tcw work consolidate-plans` CLI verb that never existed. Fixed in the sibling
+item, and `tests/test_documented_cli_surface.py` now scans `docs/capabilities/`
+so it cannot recur.
+
 ## Meta changes
 
 Litmus test: not applicable — nothing here touches the store interface. This is
