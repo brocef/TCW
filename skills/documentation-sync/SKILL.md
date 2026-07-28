@@ -15,7 +15,7 @@ This is a cross-cutting process skill: it does not drive a `tcw` axis, it govern
 | **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `tcw-work` → `references/stage-implement.md` step 6 |
 | **After `complete`** | Offer the version options; run the cut if the user picks a bump. | `tcw-work` → `references/stage-verify.md` step 9 |
 
-One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands, and a changelog entry can't state its commit range until the range exists. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
+One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
 ## The Documentation Sync Section
 
