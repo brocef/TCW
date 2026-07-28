@@ -220,11 +220,25 @@ choice.
    it removed.
 2. `git diff --stat` for the whole change lists no file matching
    `docs/changelogs/v*.md`.
-3. `docs/changelogs/upcoming.md` contains **no** commit hash: no
-   `` (`hash`) `` suffix on any entry and no `Commit range:` footer. Entry prose
-   is otherwise unchanged — the diff removes hash attributions and nothing else.
-   *(Inverted at `verify`. It previously required every suffix to survive. AC2
-   still guards the released files, which is the boundary that held.)*
+3. `docs/changelogs/upcoming.md` carries no commit hash *attribution*:
+
+   ```bash
+   grep -nE '\(`[0-9a-f]{7}`\)' docs/changelogs/upcoming.md   # no output
+   grep -nE '^Commit range:'    docs/changelogs/upcoming.md   # no output
+   ```
+
+   Entry prose is otherwise unchanged — the diff removes attributions and
+   nothing else.
+
+   Both patterns are deliberately shape-specific rather than a keyword search:
+   the file's own entries have to *name* `Commit range:` and `` (`hash`) `` in
+   order to describe removing them, exactly as AC1 discovered. An attribution is
+   a hash in parentheses, or a footer at the start of a line; prose about one is
+   neither.
+
+   *(Inverted at `verify` — it previously required every suffix to survive —
+   then made shape-specific when the first wording matched its own changelog
+   entry. AC2 still guards the released files, the boundary that held.)*
 4. The header string `scripts/cut_version.py` writes for
    `docs/changelogs/upcoming.md` is byte-identical to the header currently in
    `docs/changelogs/upcoming.md` (everything above the first `##` heading).
