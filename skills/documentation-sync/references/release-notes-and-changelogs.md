@@ -49,7 +49,7 @@ Projects using this structure should include these entries in their CLAUDE.md `#
 
 ```markdown
 - `docs/release-notes/upcoming.md` [Public-API] — User-facing release notes; plain language, no jargon
-- `docs/changelogs/upcoming.md` [Any-Code-Change] — Developer changelog with commit hash ranges
+- `docs/changelogs/upcoming.md` [Any-Code-Change] — Developer changelog; technical, grouped by category
 ```
 
 The trigger system determines when these files get updated — release notes fire on public-facing changes, changelogs fire on any code change.
