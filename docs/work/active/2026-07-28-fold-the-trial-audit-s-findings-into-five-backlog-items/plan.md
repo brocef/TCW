@@ -52,10 +52,9 @@ Run: `pytest tests/test_work.py -q`.
 - The corrected caller claim: no caller under `tcw/`; `.create(` appears across 17
   test modules, every one of which builds an `FsWorkStore`. Collapsing it into
   `create_work` stays an option, priced as a test-surface migration.
-- The `create_work` gap (`fs.py:2498-2501`): `d.mkdir()` then two separate
-  `_atomic_write` calls. Per-file atomic, not transactional; an interruption
-  leaves `state.yaml` with no `initial-request.md`. This one is on the production
-  path (`cli.py:208`, `serve/__init__.py:773`).
+- ~~The `create_work` gap~~ — **dropped during implementation.** The item already
+  names `create_work` in its Problem section; the spec proposed it as new without
+  re-reading the target. See the withdrawn finding in `spec.md`.
 - `accept_inbox` (`fs.py:2246-2269`) as the in-repo precedent to copy — `mkdtemp`
   → populate → `os.replace` → `rmtree` on except — so the implementer extends a
   pattern instead of designing a helper.

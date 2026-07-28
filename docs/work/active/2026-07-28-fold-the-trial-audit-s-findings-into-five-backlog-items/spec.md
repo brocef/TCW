@@ -115,15 +115,19 @@ does. This is itself an instance of
 `2026-07-28-scan-every-markdown-file-for-phantom-cli-verbs-excluding-archives`.
 The route is settled in Notes; the retitle itself stays in this item either way.
 
-### Bonus finding (from re-verification, not the trial run)
+### ~~Bonus finding~~ — withdrawn during implementation
 
-`create_work` — the *production* create path — is also not multi-file
-transactional: `d.mkdir()` then two separate `_atomic_write` calls
-(`fs.py:2498-2501`). Each file lands atomically; the pair does not. An
-interruption between them leaves a directory with `state.yaml` and no
-`initial-request.md`. This belongs in the transactional-writes item alongside the
-`create` finding, and it matters more, because it is on the path users actually
-hit.
+This spec claimed `create_work`'s two-write gap (`fs.py:2498-2501`) as a new
+finding "that matters more, because it is on the path users actually hit". It is
+**already the target item's first bullet** — that item's `initial-request.md:14-16`
+names `create_work` and describes the exact `mkdir` → `_atomic_write` →
+`_atomic_write` shape with no rollback.
+
+Verifying the code without re-reading the item the finding was destined for is
+the same mistake, in miniature, that this whole item exists to clean up after.
+Withdrawn — and nothing is lost: the genuinely new material for that item is
+`FsWorkStore.create` (a write site it does not list, and the weaker one — no
+`_atomic_write` at all) plus the `accept_inbox` precedent.
 
 ### The four edits
 
@@ -158,8 +162,8 @@ option, no interactive prompt. `tcw work new` already takes a title positionally
 ## Acceptance criteria
 
 - `2026-07-03-transactional-multi-file-writes-in-the-fs-store` names `create`
-  (`fs.py:2288-2295`), `create_work`'s two-write gap (`fs.py:2498-2501`), and
-  `accept_inbox` (`fs.py:2246-2269`) as the precedent.
+  (`fs.py:2288-2295`) as a write site and `accept_inbox` (`fs.py:2246-2269`) as
+  the precedent. (It already named `create_work`; see the withdrawn finding.)
 - That item states `create` has no caller under `tcw/`, and that `.create(`
   appears across 17 test modules (every one of which constructs an
   `FsWorkStore`) — rather than repeating the trial run's "sole caller
