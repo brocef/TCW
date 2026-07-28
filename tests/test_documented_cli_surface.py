@@ -1,0 +1,135 @@
+"""Every `tcw` verb and flag named in the docs actually exists in the CLI.
+
+The defect this catches shipped three times undetected: `tcw work
+audit-work-backlog`, `tcw work consolidate-plans --apply --delete`, and `tcw work
+edit --pr` were all documented in `README.md` and the agent-facing
+`skills/tcw-work/references/commands.md` without ever existing. Two of them were
+AI-driven workflows that live as slash commands, written up as if they were CLI
+subcommands; the third was pure invention.
+
+Agent-facing docs are the worst place for this: an agent reads `commands.md`,
+runs the verb, and gets an argparse error instead of the workflow.
+
+Scope: this parses `tcw`-prefixed invocations out of backtick spans and fenced
+blocks. Prose that describes a command without writing it out slips past, so a
+green run means "names no nonexistent verb", not "the docs are correct".
+"""
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parent.parent
+
+DOC_FILES = sorted(
+    [REPO / "README.md"]
+    + list((REPO / "skills").rglob("*.md"))
+    + list((REPO / "commands").glob("*.md"))
+    + list((REPO / "agents").glob("*.md"))
+)
+
+BACKTICKED = re.compile(r"`([^`\n]*\btcw\b[^`\n]*)`")
+FENCE = re.compile(r"^```.*?^```", re.M | re.S)
+WORD = re.compile(r"[a-z][a-z0-9-]*$")
+FLAG = re.compile(r"--[a-z][a-z-]*")
+
+
+def _invocations(text: str) -> list[str]:
+    """Every documented `tcw …` command, from backticks and fenced blocks alike.
+
+    Fenced blocks matter as much as backticks: README's command reference is one,
+    and two of the three phantom verbs this test exists for live there.
+    """
+    found = BACKTICKED.findall(text)
+    for block in FENCE.findall(text):
+        for line in block.splitlines()[1:-1]:
+            line = line.split("#", 1)[0].strip()      # drop trailing comments
+            if line.startswith("tcw "):
+                found.append(line)
+    return found
+
+
+def _help(argv: list[str]) -> str:
+    """`--help` text, or "" when the command path doesn't exist."""
+    r = subprocess.run(["tcw", *argv, "--help"], capture_output=True, text=True)
+    return r.stdout + r.stderr if r.returncode == 0 else ""
+
+
+def _subcommands(text: str) -> list[str]:
+    """The subcommand names in a `--help`, or [] for a leaf command.
+
+    argparse spells subparser choices `{a,b,c}` in the usage line's positional
+    slot — but it spells a *flag's* choices the same way. Two disguises to strip
+    before looking, or a value set gets walked as if it were a subcommand:
+
+    - optional flags, bracketed — `[--status {backlog,active,…}]`
+    - **required** flags, which argparse renders bare — `--resolution
+      {done,duplicate,…}` on `tcw work complete`. This one bites hardest:
+      `tcw work complete done --help` returns `complete`'s own help rather than
+      failing, so a bad walk recurses until the stack gives out.
+
+    What survives both is positional, i.e. genuine subcommands.
+    """
+    usage = text.split("\n\n", 1)[0]
+    positional = re.sub(r"--[a-z][a-z-]*\s*\{[^}]*\}", "", usage, flags=re.S)
+    positional = re.sub(r"\[[^\]]*\]", "", positional, flags=re.S)
+    choices = re.search(r"\{([a-z0-9,-]+)\}", positional)
+    return choices.group(1).split(",") if choices else []
+
+
+def _walk(path: list[str], tree: dict[tuple, set[str]]) -> None:
+    """Record {command path: its flags} for `path` and every subcommand under it.
+
+    Recursing is what makes nested groups like `tcw work inbox accept` resolve,
+    instead of reading `accept` as a flag-bearing verb of `inbox`.
+    """
+    if tuple(path) in tree or len(path) > 4:   # tcw's real depth is 3; cap so a
+        return                                 # formatting change can't hang CI
+    text = _help(path)
+    if not text:
+        return
+    tree[tuple(path)] = set(FLAG.findall(text))
+    for child in _subcommands(text):
+        _walk([*path, child], tree)
+
+
+@pytest.fixture(scope="module")
+def tree() -> dict[tuple, set[str]]:
+    """Every valid `tcw …` command path mapped to the flags it accepts."""
+    out: dict[tuple, set[str]] = {}
+    _walk([], out)
+    return out
+
+
+def _check(span: str, tree: dict[tuple, set[str]]) -> str | None:
+    """The problem with this documented invocation, or None."""
+    tokens = span[span.index("tcw") + 3:].split()
+    path: list[str] = []
+    for token in tokens:
+        if not WORD.match(token):        # <slug>, "text", |, #comment → args start
+            break
+        if tuple([*path, token]) in tree:
+            path.append(token)
+            continue
+        # An unknown word where the current node has children is a phantom verb.
+        if any(len(k) == len(path) + 1 and k[:len(path)] == tuple(path) for k in tree):
+            return f"no such verb: tcw {' '.join([*path, token])}"
+        break                            # a positional arg, not a subcommand
+    known = tree.get(tuple(path), set())
+    for flag in FLAG.findall(span):
+        if flag not in known:
+            return f"no such flag: {flag} on tcw {' '.join(path)}"
+    return None
+
+
+@pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))
+def test_documented_verbs_and_flags_exist(doc, tree):
+    problems = []
+    for span in _invocations(doc.read_text(encoding="utf-8")):
+        if (problem := _check(span, tree)) is not None:
+            problems.append(f"`{span}` — {problem}")
+    assert not problems, (
+        f"{doc.relative_to(REPO)} documents a nonexistent CLI surface:\n  "
+        + "\n  ".join(problems)
+    )
