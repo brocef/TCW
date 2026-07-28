@@ -32,7 +32,7 @@ UPCOMING = {
     "docs/changelogs/upcoming.md": (
         "# Upcoming\n\n"
         "Developer changelog for the next version. Technical and precise; grouped by\n"
-        "category, with commit hash ranges so entries trace back to source.\n"
+        "category.\n"
     ),
     "docs/release-notes/upcoming.md": (
         "# Upcoming\n\n"
