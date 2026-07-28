@@ -49,6 +49,15 @@ def test_agents_marketplace_carries_no_version():
     assert all("version" not in p for p in data.get("plugins", []))
 
 
+def test_claude_agents_key_is_md_files_not_a_directory():
+    """Claude's schema accepts only `.md` file paths for `agents` (unlike
+    `skills`/`commands`, which take directories). A directory there fails
+    install with "agents: Invalid input"; omitting the key auto-loads agents/."""
+    agents = _load(CLAUDE_PLUGIN).get("agents")
+    paths = [agents] if isinstance(agents, str) else (agents or [])
+    assert all(p.endswith(".md") for p in paths), f"agents must be .md files: {agents}"
+
+
 def test_symlink_points_at_repo_root():
     link = REPO / "plugins" / "tcw"
     assert link.is_symlink(), f"{link} must be a symlink"
