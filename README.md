@@ -579,10 +579,6 @@ tcw work list --tag bug                # only items carrying a tag (repeatable =
 tcw work list --all                    # include completed and discarded items too
 tcw work list --status discarded       # only the items closed without shipping
 tcw work list -i                       # descendant boards; --incl-desc and --include-descendants are aliases
-tcw work audit-work-backlog            # report stale, duplicate, blocked, or misplaced backlog items
-tcw work consolidate-plans docs/plans  # dry-run: find external plans to migrate
-tcw work consolidate-plans docs/plans --apply --delete
-                                       # create backlog items, then delete migrated sources
 tcw work lifecycle                     # the stage/transition contract + this node's bindings
 tcw work lifecycle --json              # the same, machine-readable
 tcw work lifecycle --stage spec --directive
@@ -710,20 +706,22 @@ Note that `tcw work list -i` and `tcw serve` remain **descendant-only** — they
 aggregate boards downward. Addressing and linking are graph-wide; aggregation is
 not.
 
-`tcw work audit-work-backlog` reviews backlog items in board order and prints
-read-only cleanup recommendations. It flags likely duplicates or already-finished
-work, broken local file references, stale blockers, malformed capability deltas,
-vague or under-specified items, and items that appear to belong in another TCW
-node. The command reports evidence and suggested next actions; it does not move,
-complete, drop, or rewrite items.
+Two backlog chores are **AI-driven reviews rather than CLI commands** — they need
+judgment the CLI cannot supply, so the assistant runs them:
 
-`tcw work consolidate-plans [PATH ...]` finds Markdown planning documents outside
-`docs/work/` and migrates them into backlog items. It is dry-run by default:
-without `--apply`, it prints each candidate source and inferred title. With
-`--apply`, it creates one backlog item per source, writes `initial-request.md`
-with the source content and provenance, and copies obvious spec/plan sections
-into `spec.md` and `plan.md`. With `--delete`, it removes each source document
-only after its work item has been created successfully.
+**Auditing the backlog** reviews items in board order and reports read-only
+cleanup recommendations: likely duplicates or already-finished work, broken file
+references, stale blockers, malformed capability deltas, vague items, and items
+that look like they belong in another TCW node. It reports evidence and suggested
+next actions and asks before changing anything. Ask the assistant to audit the
+backlog, or run `/tcw-audit-work-backlog` in Claude Code; the procedure lives in
+the `tcw-work` skill, so it works under either harness.
+
+**Consolidating external plans** finds Markdown planning documents outside
+`docs/work/` and migrates them into backlog items, writing `initial-request.md`
+with the source content and provenance and copying obvious spec/plan sections
+into `spec.md` and `plan.md`. Run `/tcw-consolidate-plans` in Claude Code. (This
+one is not yet reachable from Codex.)
 
 A large item can be **decomposed into child items** with `tcw work new
 "<title>" --parent <slug>`: the child's folder is created inside the parent's,

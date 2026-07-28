@@ -19,10 +19,11 @@ not. Dispatch the assessment, present the result, hold the answer yourself.
 
 ## Delegable means permitted, never required
 
-A harness without subagents — Codex has none — runs the same stage in the main
-session, following the same document. Delegation is an optimization for context
-isolation. **No behavior depends on it**, and where it is unavailable only the
-token saving is lost.
+Claude and Codex both have subagents, so a stage document may instruct delegation
+outright. A session that cannot dispatch — or should not, because the work is too
+coupled to split — runs the same stage in the main session, following the same
+document. Delegation is an optimization for context isolation. **No behavior
+depends on it**, and where it is unavailable only the token saving is lost.
 
 ## What makes it correct
 
@@ -53,8 +54,14 @@ sink and the most valuable delegation.
 
 A custom agent earns its place only when it needs a different tool set or model
 than the default; otherwise the stage document is already the brief. That test
-passes twice, both read-only: `tcw-verifier` for the `verify` stage's assessment,
-and `tcw-post-mortem` for `postmortem`.
+passes three times, all read-only: `tcw-verifier` for the `verify` stage's
+assessment, `tcw-post-mortem` for `postmortem`, and `tcw-backlog-auditor` for the
+per-item half of [`audit-backlog.md`](audit-backlog.md).
 
-Codex has no custom agents, so both are **accelerators only**. Every stage
-document stands alone without them.
+A read-only tool set is the strongest reason to define one: it *enforces* what a
+prompt can only request. An agent with no write tools cannot mutate the store
+even if it misreads its instructions.
+
+The `agents/` directory is Claude packaging — Codex defines its own in
+`.codex/agents/*.toml` — so all three are **accelerators only**. Every document
+they serve stands alone without them.

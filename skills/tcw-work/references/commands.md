@@ -14,7 +14,6 @@
 | close without shipping | `tcw work complete <slug> --resolution wontfix\|duplicate\|superseded --confirm` |
 | delete a backlog item | `tcw work drop <slug>` (no record kept) |
 | record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated |
-| record the pull request | `tcw work edit <slug> --pr <url>` |
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>` |
 | tags | `tcw work tags add\|rm\|list` · `tcw work edit <slug> --tag <t> --untag <t>` |
 | nest a coupled piece | `tcw work new "<sub>" --parent <slug>` |
@@ -22,9 +21,15 @@
 | epic rollup | `tcw work reconcile <epic-slug> [--complete-when-ready]` |
 | hand work down / up | `tcw work delegate <child> "<title>"` · `tcw work escalate "<title>"` |
 | topology | `tcw work nodes` |
-| audit the backlog | `tcw work audit-work-backlog` |
-| migrate external plans | `tcw work consolidate-plans [PATH …] [--apply] [--delete]` |
 | validate | `tcw validate [path]` |
+
+**Not CLI subcommands.** Two workflows are AI-driven reviews with no `tcw` verb
+behind them — the CLI cannot run them, and asking it to is an argparse error:
+
+| Goal | How to reach it |
+|---|---|
+| audit the backlog | [`audit-backlog.md`](audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude |
+| migrate external plans | `/tcw-consolidate-plans` — Claude only, not yet reachable from Codex |
 
 ## Addressing
 
