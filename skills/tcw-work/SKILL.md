@@ -63,6 +63,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences
 - [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
 - [`decompose.md`](references/decompose.md) — splitting one item into nested pieces
+- [`audit-backlog.md`](references/audit-backlog.md) — reviewing the whole backlog for stale, duplicate, or misplaced items
 
 > **Web editing:** items, artifacts, and the `capabilities.yaml` sidecar can also
 > be edited through `tcw serve`. It commits transitions but runs **no** hooks.
