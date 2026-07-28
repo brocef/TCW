@@ -177,7 +177,17 @@ file's write and assert:
   proceed, the caller still sees the real failure, at the price of a leftover
   partial directory. That trade is deliberate — an unremovable directory means
   something is wrong that a masked exception would only hide.
-- **`_write_node`'s `existed` check is TOCTOU-racy** under concurrent writers: a
-  second writer creating the node between the check and the failure would see its
-  node removed. Out of scope (see Non-goals), and no worse than today, where the
-  same race corrupts the node outright.
+- **`_write_node`'s `existed` check is TOCTOU-racy** under concurrent writers.
+  Stated precisely, because the earlier "no worse than today" framing was too
+  generous: if a second writer creates the node between our `d.exists()` check
+  and our write failure, `existed` is `False` and the rollback removes a
+  directory we did not create. That is a *new* failure mode — today the same
+  race corrupts the node, whereas after this change it can delete it.
+
+  Accepted anyway. The race needs another process to create *and* populate the
+  node inside the microseconds between our check and our `mkdir`, and then needs
+  our own write to fail. Closing it properly means an ownership signal that
+  survives the check-to-write gap — `mkdir(exist_ok=False)` on a create-only
+  path, or a lock — which is exactly the concurrency work already tracked in
+  `2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos-…`. Doing it
+  here would be that item's design, half-built, in the wrong place.
