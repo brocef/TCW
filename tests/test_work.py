@@ -857,6 +857,11 @@ def test_cli_edit_title_keeps_slug_and_body(tmp_path, monkeypatch):
     # The body's heading is prose the user owns; the store must leave it alone.
     assert body_path.read_bytes() == before
 
+    # An edit that does not pass --title must not disturb the title: _provided
+    # maps the absent flag to _UNSET, which update_work skips.
+    assert main(["work", "edit", item.slug, "--priority", "5"]) == 0
+    assert FsWorkStore.open(root).get(item.slug).title == "New title"
+
 
 @pytest.mark.parametrize("bad", ["", "   "])
 def test_cli_edit_rejects_empty_title(tmp_path, monkeypatch, bad):
