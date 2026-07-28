@@ -84,3 +84,8 @@ def test_main_end_to_end(tmp_path):
     msg = subprocess.run(["git", "-C", str(root), "log", "-1", "--pretty=%s"],
                          capture_output=True, text=True).stdout.strip()
     assert msg == "chore(release): cut v0.2.3"
+    # everything the cut touched is *in* the commit — the retitle above used to
+    # be left unstaged, so the tag pointed at a file still titled "# Upcoming".
+    dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                           capture_output=True, text=True).stdout
+    assert dirty == "", f"cut left uncommitted changes:\n{dirty}"

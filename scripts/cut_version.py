@@ -130,8 +130,10 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
 
     bump_files(root, old, new)
     rotate_upcoming(root, new)
+    rotated = [str(Path(rel).with_name(f"v{new}.md")) for rel in UPCOMING]
     _git(root, "add", "--",
-         *VERSION_FILES.keys(), *UPCOMING.keys())          # version edits + fresh upcoming
+         *VERSION_FILES.keys(), *UPCOMING.keys(),          # version edits + fresh upcoming
+         *rotated)                                          # …and the retitled rotated files
     _git(root, "commit", "-qm", f"chore(release): cut v{new}")  # picks up the staged renames too
     _git(root, "tag", f"v{new}")
     print(f"cut v{new} (was v{old}). Push with: git push origin main --tags")

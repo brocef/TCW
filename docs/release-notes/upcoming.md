@@ -2,14 +2,3 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
-
-## The plugin installs again in Claude Code
-
-Installing TCW in Claude Code failed with "invalid manifest file" and a
-validation error about agents. The plugin's manifest pointed at its agents
-folder in a way Claude Code doesn't accept — it wants the agent files listed
-individually, or nothing at all, in which case it finds the folder on its own.
-We removed the line, so Claude Code finds both agents by itself and the install
-goes through.
-
-Nothing else changes. If you're on Codex, you were never affected.
