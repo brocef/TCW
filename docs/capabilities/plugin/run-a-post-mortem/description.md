@@ -1,0 +1,3 @@
+As a user or agent, I run a post-mortem on a work item that surfaced a problem — verification rejected it, a spec claim turned out false, or something shipped that should not have — to find which lifecycle stage could first have caught it.
+The `tcw-post-mortem` skill reads the artifact spine backwards, using each artifact's `## Notes` as the primary trail, and separates "nobody could have known" from "nobody checked" — only the second is actionable. It writes `post-mortem.md` and never changes the item's status, so it is legal both while the item is in review and after it has completed.
+Under Claude the analysis can be delegated to the read-only `tcw-post-mortem` agent or launched with `/tcw-post-mortem`; Codex runs the same analysis inline by invoking the skill.

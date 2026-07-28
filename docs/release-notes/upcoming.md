@@ -193,3 +193,27 @@ Two new commands: `/tcw-process-inbox` for triaging raw requests, and
 able to change anything. Codex has no custom agents and no slash commands, so
 every one of these workflows is also reachable by asking the agent to use the
 `tcw-work` skill directly — nothing is available only one way.
+
+
+## Post-mortems on finished work
+
+When something goes wrong with a work item — verification sends it back, or a
+plan turns out to have been built on a wrong assumption — you can now ask for a
+post-mortem:
+
+```
+/tcw-post-mortem <slug>
+```
+
+It reads the item's documents backwards from the outcome and answers one
+question: **which step could first have caught this?** It writes `post-mortem.md`
+alongside the item's other documents and changes nothing else — it does not
+reopen a completed item, and it can be run before or after completion, since the
+need for one is often only obvious afterwards.
+
+It is deliberately reluctant to recommend anything. If the cause was a one-off,
+or the only available advice is "be more careful", it says so and stops rather
+than inventing process.
+
+Codex users get the same thing by asking the agent to use the `tcw-post-mortem`
+skill.

@@ -104,12 +104,13 @@ In **Claude Code**:
 /tcw-init        # installs the `tcw` CLI from the plugin's own clone (via pipx)
 ```
 
-This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`, and
-`documentation-sync` skills; the `/tcw-init`, `/tcw-doctor`,
-`/tcw-process-inbox`, `/tcw-plan-work`, `/tcw-drive-work-to-completion`,
-`/tcw-verify-work`, `/tcw-audit-work-backlog`, `/tcw-consolidate-plans`,
-`/tcw-taxonomy-init`, and `/tcw-capabilities-init` commands; and the read-only
-`tcw-verifier` agent. `/tcw-init` puts the `tcw` CLI on your
+This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`,
+`tcw-post-mortem`, and `documentation-sync` skills; the `/tcw-init`,
+`/tcw-doctor`, `/tcw-process-inbox`, `/tcw-plan-work`,
+`/tcw-drive-work-to-completion`, `/tcw-verify-work`, `/tcw-post-mortem`,
+`/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`, and
+`/tcw-capabilities-init` commands; and the read-only `tcw-verifier` and
+`tcw-post-mortem` agents. `/tcw-init` puts the `tcw` CLI on your
 PATH from the plugin's _own clone_, so there's one copy — **don't also
 `pip install tcw` separately**, or the two can drift (`/tcw-doctor` detects this
 and re-points). Run `/tcw-doctor` any time `tcw` goes missing or a plugin update

@@ -225,3 +225,27 @@ category, with commit hash ranges so entries trace back to source.
 - `references/lifecycle.md`, `task-lifecycle.md`, `epic-lifecycle.md`, and
   `process-inbox.md`. The first two were ~85% identical and had already drifted —
   the measured fact that opened this epic.
+
+
+## Added (`494eec9..HEAD`)
+
+- **`skills/tcw-post-mortem/`** — the methodology half of the `postmortem` stage:
+  reading the artifact spine backwards, what each layer tends to reveal, and the
+  distinction between "nobody could have known" and "nobody checked" (only the
+  second is actionable). It points at
+  `tcw-work/references/stage-postmortem.md` for the contract and deliberately
+  does not restate it.
+- **`agents/tcw-post-mortem.md`** — read-only analysis; reports, never writes.
+- **`commands/tcw-post-mortem.md`**, also reachable by invoking the skill.
+- Capability `plugin/run-a-post-mortem`.
+
+## Removed (`494eec9..HEAD`)
+
+- **`WorkItem.pr`**, added earlier in this same epic. It was introduced on the
+  prediction that `complete --already-integrated` would read it; that flag needs
+  only the pre-existing `worktree` and `branch` fields, and neither the lifecycle
+  policy work nor the stage documents found a use. Four children passed with no
+  consumer, so it is deleted rather than left as a persisted field nothing reads.
+
+  Third application of the pattern this epic established, after `phase` and
+  `dod` — and the only one where the epic removed a field it had itself added.
