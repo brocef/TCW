@@ -1,0 +1,1 @@
+Binding a node's own agent skills or shell commands to named lifecycle stages and transitions, so TCW's fixed contract carries a team's methodology without TCW knowing it.

@@ -1,0 +1,4 @@
+As a user, I bind my own agent skills or shell commands to named lifecycle stages and transitions in `tcw-config.yaml` under `work.lifecycle`, so TCW's fixed contract carries my team's methodology without TCW knowing anything about it.
+A binding is `{skill: <ref>}` or `{command: <shell>}`, declared explicitly — a bare string is rejected rather than guessed at. Declaration order is significant. `tcw validate` rejects an unknown id, a malformed shape, a blank or duplicated reference, and a binding declaring neither or both keys, naming the offending key each time.
+TCW runs my `command:` bindings around transitions: `pre` failures abort the move before anything is written, and `post` failures never roll it back. `skill:` bindings are named for my agent to invoke; the CLI cannot run them.
+Hooks run from the project root with `TCW_SLUG`, `TCW_STATUS`, `TCW_TRANSITION`, and `TCW_NODE_ROOT` set, under a configurable timeout. `tcw serve` runs no hooks.

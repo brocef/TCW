@@ -1,0 +1,3 @@
+As a user or agent, I run `tcw work lifecycle [work-ref]` to see every lifecycle stage and transition in order — what each is for, what it reads, what it produces, what the tool refuses past, and which of my own skills or commands are bound to it. It changes nothing and runs nothing.
+`--json` gives the same contract for tooling. `--stage <id> --directive` emits one complete instruction line for an agent, or nothing at all when the id is unbound; both exit 0, while any error writes nothing to stdout and exits non-zero, so an empty injection can never hide a typo.
+A qualified reference reports the owning node's policy rather than the anchor's.
