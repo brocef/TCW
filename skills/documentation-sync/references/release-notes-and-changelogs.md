@@ -43,29 +43,6 @@ File names follow the pattern `v{version}.md`. The `upcoming.md` files hold cont
 - Group by category (e.g., "Added", "Changed", "Fixed", "Removed", "Internal")
 - Be specific enough that a developer can understand the scope without reading the diff
 
-## Changelog Entry Format
-
-Wrap changelog entries with commit hash ranges so readers can trace changes back to source:
-
-```markdown
-<changes starting-hash="abc1234" ending-hash="def5678">
-- Renamed `host` parameter to `hostname` in `createClient`
-- Added optional `timeout` parameter to `createClient`
-</changes>
-```
-
-Where `abc1234` is the first commit and `def5678` is the last commit of the changes being documented.
-
-```bash
-# Get the most recent commit hash
-git rev-parse --short HEAD
-
-# Get a range if multiple commits were made
-git log --oneline -n <number_of_commits>
-```
-
-**Skip hash wrappers** if git is unavailable, the directory is not a repo, or the user has asked not to include them. In those cases, write entries without the `<changes>` wrappers.
-
 ## Recommended Documentation Sync Entries
 
 Projects using this structure should include these entries in their CLAUDE.md `## Documentation Sync` section:
