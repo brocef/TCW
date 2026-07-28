@@ -41,6 +41,14 @@ def _work_level(value: str) -> str:
         raise argparse.ArgumentTypeError(str(e))
 
 
+def _nonempty(value: str) -> str:
+    """argparse ``type=`` for --title: `create_work` refuses an empty title, so
+    `edit` must too — otherwise the CLI can reach a state creation forbids."""
+    if not value.strip():
+        raise argparse.ArgumentTypeError("title must be non-empty")
+    return value
+
+
 def _tag(value: str) -> str:
     """argparse ``type=`` for --tag/--untag: normalize to a canonical slug."""
     try:
@@ -706,6 +714,7 @@ def _edit(args: argparse.Namespace) -> int:
         # Use composite update for field changes
         st.update_work(
             bare,
+            title=_provided(args.title),
             initiative=_provided(args.initiative),
             priority=_provided(args.priority),
             effort=_provided(args.effort),
@@ -995,8 +1004,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     sel.add_argument("--transition", help="limit to one transition id")
     plc.set_defaults(func=_lifecycle)
 
-    pe = g.add_parser("edit", help="change blocking links between items")
+    pe = g.add_parser("edit", help="change an item's title, estimates, tags, or blocking links")
     pe.add_argument("slug")
+    pe.add_argument("--title", type=_nonempty, help="set the item title (the slug is unchanged)")
     pe.add_argument("--blocked-by", action="append",
                     help="a slug or external text that blocks this item (repeatable)")
     pe.add_argument("--blocks", help="comma-separated items this item blocks")

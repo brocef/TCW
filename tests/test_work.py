@@ -840,6 +840,38 @@ def test_cli_edit_blocked_by_and_blocks(tmp_path, monkeypatch):
     assert FsWorkStore.open(root).get(a.slug).blocked_by == []
 
 
+def test_cli_edit_title_keeps_slug_and_body(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    item = FsWorkStore.open(root).create("Old title", created="2026-01-01")
+    body_path = root / "docs" / "work" / "backlog" / item.slug / "initial-request.md"
+    before = body_path.read_bytes()
+
+    assert main(["work", "edit", item.slug, "--title", "New title"]) == 0
+    detail = FsWorkStore.open(root).get_detail(item.slug)
+    assert detail.item.title == "New title"
+    # The slug is the stable ID: a retitle must not recompute it, or every
+    # existing reference to this item breaks.
+    assert detail.item.slug == item.slug
+    # The body's heading is prose the user owns; the store must leave it alone.
+    assert body_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("bad", ["", "   "])
+def test_cli_edit_rejects_empty_title(tmp_path, monkeypatch, bad):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    item = FsWorkStore.open(root).create("Keep me", created="2026-01-01")
+    # `create_work` refuses an empty title; `edit` must not offer a back door to
+    # a titleless item. argparse exits 2 on a type= rejection.
+    with pytest.raises(SystemExit) as e:
+        main(["work", "edit", item.slug, "--title", bad])
+    assert e.value.code == 2
+    assert FsWorkStore.open(root).get(item.slug).title == "Keep me"
+
+
 def test_cli_edit_blocks_nonexistent_errors(tmp_path, monkeypatch):
     from tcw.cli import main
     root = node(tmp_path)
