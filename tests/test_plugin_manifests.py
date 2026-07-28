@@ -7,6 +7,8 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 import tcw
 
 REPO = Path(__file__).resolve().parent.parent
@@ -56,6 +58,18 @@ def test_claude_agents_key_is_md_files_not_a_directory():
     agents = _load(CLAUDE_PLUGIN).get("agents")
     paths = [agents] if isinstance(agents, str) else (agents or [])
     assert all(p.endswith(".md") for p in paths), f"agents must be .md files: {agents}"
+
+
+@pytest.mark.parametrize("skill", sorted((REPO / "skills").glob("*/SKILL.md")), ids=lambda p: p.parent.name)
+def test_every_skill_has_name_and_description_frontmatter(skill):
+    """Codex refuses to load a skill whose SKILL.md lacks `---` frontmatter with
+    a name and description; Claude silently tolerates it, so only a test catches
+    the drop."""
+    lines = skill.read_text(encoding="utf-8").splitlines()
+    assert lines and lines[0] == "---", f"{skill} is missing YAML frontmatter"
+    end = lines.index("---", 1)
+    keys = {ln.split(":", 1)[0] for ln in lines[1:end] if not ln.startswith((" ", "\t"))}
+    assert {"name", "description"} <= keys, f"{skill} frontmatter lacks name/description"
 
 
 def test_symlink_points_at_repo_root():

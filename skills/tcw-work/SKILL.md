@@ -1,3 +1,13 @@
+---
+name: tcw-work
+description: Drives the `tcw work` change-tracking CLI — the Work axis of TCW (Taxonomy · Capabilities · Work). Use when planning, starting, implementing, verifying, or completing a tcw work item; resuming one across sessions; triaging a docs/work/inbox request; decomposing an item into child items; or coordinating a cross-node epic. Does not reimplement the CLI.
+when_to_use: Use when starting, continuing, triaging, planning, implementing, verifying, or decomposing tcw work items — when a user asks to plan work, drive work to completion, process a docs/work/inbox request, start or complete an item, resume an active item across sessions, break a large item into child items (`tcw work new --parent`), or coordinate orchestrator-level work across sub-project nodes via a cross-node epic.
+allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+metadata:
+    author: Brian Cefali
+license: Apache-2.0
+---
+
 # Driving `tcw work`
 
 `tcw work` is the change-tracking state machine. This skill is the **judgment**
