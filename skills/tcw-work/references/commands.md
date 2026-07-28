@@ -15,6 +15,7 @@
 | delete a backlog item | `tcw work drop <slug>` (no record kept) |
 | record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated |
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>` |
+| retitle an item | `tcw work edit <slug> --title "<new title>"` — the slug is the stable ID and does not change; the body's `#` heading is prose you edit yourself |
 | tags | `tcw work tags add\|rm\|list` · `tcw work edit <slug> --tag <t> --untag <t>` |
 | nest a coupled piece | `tcw work new "<sub>" --parent <slug>` |
 | add an epic task | `tcw work new "<task>" --initiative <epic-slug>` |

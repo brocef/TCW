@@ -599,6 +599,7 @@ tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
 tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (repeatable;
                                                  # accepts the "external: …" form show/list print,
                                                  # and fails if it matches no blocker)
+tcw work edit "$slug" --title "A better title"   # rename the item (the slug never changes)
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
 tcw work edit "$slug" --tag bug --untag stale    # apply/remove tags (repeatable)
