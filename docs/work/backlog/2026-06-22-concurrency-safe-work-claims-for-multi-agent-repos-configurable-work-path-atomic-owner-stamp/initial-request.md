@@ -33,21 +33,55 @@ the loser, and stamp the winner.
   Both modes run the **same `FsWorkStore` code** — only the resolved root differs.
 - **`owner` + `started` shown on the board/view**: `active (alice, 2h ago)`.
 - **Graceful contention message**: `start X` on an already-active item →
-  "X claimed by alice since <T>; pick another (or `--force` to take over)" instead
-  of a git stack trace / bare `IllegalTransition`.
+  "X claimed by alice since <T>; pick another (or take over)" instead of a git
+  stack trace / bare `IllegalTransition`.
+
+  > **Correction (2026-07-28 audit).** This proposed `--force` for the take-over.
+  > `tcw work start --force` **already exists** and means something else —
+  > "start despite unresolved blockers" (`cli.py:973`; `complete` has its own at
+  > `cli.py:1020`). Overloading it would make one flag mean "ignore blockers" and
+  > "steal another agent's claim", which are not the same risk. The take-over
+  > needs a different name; picking it is this item's spec's call.
 
 ## Technical changes
 
 - **Config resolution**: read `work.path` from `tcw-config.yaml`, compute the
-  store root; `FsWorkStore`
-  already takes `root` as a parameter, so this is the only new branching. No
-  symlinks, no baked paths (honors AGENTS.md "no hard-coded paths in references" —
-  it's a config value resolved through the store).
+  store root. No symlinks, no baked paths (honors AGENTS.md "no hard-coded paths
+  in references" — it's a config value resolved through the store).
+
+  > **Correction (2026-07-28 audit).** This bullet used to end "`FsWorkStore`
+  > already takes `root` as a parameter, so this is the only new branching."
+  > That is false, and it is the load-bearing assumption of the whole external
+  > mode. `FsTreeStore.__init__` derives `node_root = root.parent.parent`
+  > (`fs.py:578-585`) — so pointing `root` at an external directory silently
+  > moves `node_root` too. And `node_root`, not `root`, is what these key off:
+  >
+  > - every git operation — `git_stage`, `git_rm`, `git_mv`, `git_commit`
+  >   (`fs.py:261-349`), i.e. the atomic-rename claim below;
+  > - the sentinel reader (`SENTINEL`, `find_node_root`; `fs.py:85`, `110-127`);
+  > - hook cwd (`work/hooks.py:61`).
+  >
+  > The sentinel is the sharp edge: the file that would hold `work.path` is
+  > itself located relative to `node_root`, which `work.path` moves. That is
+  > config-reads-config, and the spec has to break the cycle deliberately —
+  > presumably by resolving the sentinel from the *code* repo before the store
+  > root is computed. Treat `root` and `node_root` as two independent inputs,
+  > not one derived from the other.
 - **Atomic-rename claim**: keep `git mv` (its worktree move is an atomic rename),
   wrap in retry-on-`index.lock`, translate "source gone" → a typed
   `AlreadyActive(owner, since)` exception the CLI renders gracefully.
 - **`owner` / `started` fields** on `WorkItem`; `start(owner=…)` stamps the winner
   _after_ the move (only the rename winner reaches the stamp, so no contention).
+
+  > **Correction (2026-07-28 audit).** "After the move" now costs more than when
+  > this was written. The move is committed *inside* `_effect_transition`
+  > (`fs.py:2321-2322` → `_commit_transition`), so a stamp applied after it lands
+  > as a **second commit** rather than riding along with the transition — every
+  > claim becomes two commits, and there is a window where the item reads active
+  > with no owner. Either stamp before `_effect_transition` commits (which means
+  > writing to a folder that is about to move), or extend the transition to carry
+  > the stamp. The contention argument for "after" still holds; only its price
+  > changed.
 - **Worktree decoupling (external mode only)**: today `start --worktree` commits
   the work-state move and creates the code worktree in the same `node_root`. In
   external mode these split — work-state commit → external work repo, code worktree
