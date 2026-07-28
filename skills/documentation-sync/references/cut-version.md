@@ -130,17 +130,13 @@ touched. What changes is the tag's position and the release documents' contents.
 4. **Reset the `upcoming.md` files** to their empty-header state — their content
    just moved.
 
-5. **Extend the commit-hash ranges.** An entry that read `` (`abc1234`..) ``
-   should now cover through the new HEAD. A stale range is the one artifact of a
-   fold that silently lies afterwards.
-
-6. **Commit**, matching the project's style:
+5. **Commit**, matching the project's style:
 
    ```bash
    git commit -m "chore(release): fold <description> into v{version}"
    ```
 
-7. **Re-tag at HEAD.**
+6. **Re-tag at HEAD.**
 
    ```bash
    git tag v{version}
@@ -160,4 +156,3 @@ push time.
 | Pushing the tag without asking                                | Pushing a tag is publishing — confirm first                                  |
 | Bumping when the user chose "keep the current version"        | That choice touches changelog files only                                     |
 | Folding into a tag that was already pushed                    | Both checks must pass first; otherwise cut a new version                     |
-| Folding and leaving the old commit ranges in `v{version}.md`  | Extend them through the new HEAD — a stale range outlives the fold           |
