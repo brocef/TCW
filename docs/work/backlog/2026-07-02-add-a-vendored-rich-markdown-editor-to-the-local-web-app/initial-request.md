@@ -1,9 +1,10 @@
-# Add a vendored rich Markdown editor to the local web app
+# Add a rich Markdown editor to the local web app
 
-> **Title note:** "vendored" is historical. It described the pre-rewrite
-> constraint (single-file UMD assets shipped as Python package data). The web
-> client is now a built React app, so the editor is a normal npm dependency
-> bundled at build time. The slug is kept for stability.
+> **Slug note:** the slug still says "vendored". That word is historical — it
+> described the pre-rewrite constraint (single-file UMD assets shipped as Python
+> package data). The web client is now a built React app, so the editor is a
+> normal npm dependency bundled at build time. The title was corrected on
+> 2026-07-28; the slug is the item's stable ID and is kept as-is.
 
 ## Context
 
