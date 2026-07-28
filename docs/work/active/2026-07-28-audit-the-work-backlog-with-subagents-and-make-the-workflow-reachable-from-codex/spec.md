@@ -274,6 +274,15 @@ filed for closing that gap** (task 8).
   1-3 and 6's "works without it" are review-only. Accepted — the guard test
   (criterion 5) covers the class of defect that actually shipped three times;
   prose quality is not testable and the next real audit run is its check.
+- **The guard test's surface walk is coupled to argparse's usage formatting.**
+  *(Recorded during implementation — this was not anticipated at spec time.)*
+  Subcommand choices and flag choices are both rendered `{a,b,c}`; the walk tells
+  them apart by position, stripping `[optional groups]` **and** bare
+  `--flag {…}` pairs — the latter because a *required* flag renders unbracketed
+  (`tcw work complete --resolution {done,…}`). If that formatting changes, the
+  failure mode is an infinite recursion, not a clean error, because
+  `tcw work complete done --help` returns `complete`'s own help instead of
+  failing. A depth cap of 4 is the backstop.
 - **The guard test can only check what it can parse.** It resolves
   `tcw <group> <verb>` and `--flag` tokens from fenced blocks and backticks;
   prose that describes a command without writing it out will slip past. That is
