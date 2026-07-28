@@ -45,8 +45,7 @@ correction recorded. Optional `## Notes`.
    invoke the `documentation-sync` skill once over the whole change: evaluate
    every trigger in `AGENTS.md` against the finished diff, not against the task
    you just committed. Docs written
-   task-by-task describe a shape the work no longer has by the end, and a
-   changelog entry cannot state its commit range until there is one. Commit the
+   task-by-task describe a shape the work no longer has by the end. Commit the
    doc updates separately from the code. **REQUIRED SUB-SKILL: Use
    documentation-sync.** — agent `[judgment]`
 7. Write `outcome.md` and commit it. — agent `[judgment]`
