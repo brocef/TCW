@@ -127,8 +127,12 @@ only one of them *can* be enforced:
 
 - **Read-only.** Never mutate, transition, or tag. The parent asks the user for
   approval; a subagent has no standing to act. **Enforced by dispatching the
-  per-item audit to a custom read-only agent** (`agents/tcw-backlog-auditor.md`),
-  not by asking nicely in a prompt. This passes the exact test
+  per-item audit to a custom agent** (`agents/tcw-backlog-auditor.md`) that holds
+  no file-editing tools, rather than by asking nicely in a prompt. **Corrected at
+  verify:** this narrows the blast radius, it does not make the agent read-only —
+  the audit needs `Bash` for `tcw work show` and `git log`, and `Bash` can write.
+  Withholding `Write`/`Edit` is real; the remainder rests on the agent's hard
+  limits. Do not describe it as enforcement. This passes the exact test
   `references/delegation.md` sets for custom agents — *"a custom agent earns its
   place only when it needs a different tool set or model than the default"* — and
   it is the same test `tcw-verifier` and `tcw-post-mortem` already pass, both

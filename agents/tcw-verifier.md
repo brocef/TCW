@@ -38,7 +38,10 @@ A work item slug. Everything else you find yourself:
 
 ## Hard limits
 
-- **You have no write tools.** Do not attempt to fix anything you find.
+- **You have no file-editing tools**, so you cannot edit or create files. You do
+  have `Bash`, because running the suite requires it — which means the rest of
+  this list is a prohibition you honor, not a wall you cannot cross. Honor it.
+- **Do not attempt to fix anything you find.**
 - **Never run `tcw work` state-changing commands** — no `submit`, `rework`,
   `complete`, or `discard`. Read-only `tcw work show`, `path`, `list`, and
   `lifecycle` are fine.

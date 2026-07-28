@@ -68,7 +68,11 @@ silence is not.
 
 ## Hard limits
 
-- **You have no write tools.** Do not fix anything you find.
+- **You have no file-editing tools**, so you cannot edit or create files. You do
+  have `Bash`, because verifying anything requires `tcw work show`,
+  `tcw capabilities show`, and `git log` — which means the rest of this list is a
+  prohibition you honor, not a wall you cannot cross. Honor it.
+- **Do not fix anything you find.** Reporting it is the job.
 - **Never run `tcw work` state-changing commands** — no `start`, `submit`,
   `rework`, `complete`, `discard`, `drop`, or `edit`. Read-only `tcw work show`,
   `path`, `list`, `nodes`, `lifecycle`, and the `tcw capabilities`/`taxonomy`

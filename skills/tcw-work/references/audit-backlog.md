@@ -82,8 +82,9 @@ from the inter-item agent's input.
 ### What every per-item dispatch must say
 
 - **Read-only.** Never mutate, transition, or tag. Approval belongs to the session
-  holding the user relationship. Prefer the `tcw-backlog-auditor` agent, whose
-  tool set enforces this rather than requesting it.
+  holding the user relationship. Prefer the `tcw-backlog-auditor` agent, which
+  holds no file-editing tools — that narrows the blast radius, though it still
+  needs `Bash` to verify anything, so say this in the dispatch either way.
 - **Verify against the working tree; do not summarize the item's prose.** This is
   where the value is, and it is not enforceable — only instructable. An item
   claiming a defect is worthless until you check whether the defect still exists;

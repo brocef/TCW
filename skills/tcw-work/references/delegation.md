@@ -58,9 +58,12 @@ passes three times, all read-only: `tcw-verifier` for the `verify` stage's
 assessment, `tcw-post-mortem` for `postmortem`, and `tcw-backlog-auditor` for the
 per-item half of [`audit-backlog.md`](audit-backlog.md).
 
-A read-only tool set is the strongest reason to define one: it *enforces* what a
-prompt can only request. An agent with no write tools cannot mutate the store
-even if it misreads its instructions.
+A read-only tool set is the strongest reason to define one — but be precise about
+how much it buys. Withholding `Write`/`Edit` genuinely removes the ability to
+change a file. It does **not** make an agent read-only, because all three of
+these need `Bash` to do their job at all, and `Bash` can write. So the tool set
+narrows the blast radius; the agent's own hard limits carry the rest. Say that in
+the agent, rather than claiming a guarantee the tool set does not give.
 
 The `agents/` directory is Claude packaging — Codex defines its own in
 `.codex/agents/*.toml` — so all three are **accelerators only**. Every document
