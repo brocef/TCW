@@ -23,6 +23,36 @@ category.
   `agents/**` names a verb and flags that exist. Parses both backtick spans and
   fenced blocks. (`6e63405`)
 
+## Removed
+
+- The commit-hash-range requirement for changelog entries. The
+  `## Changelog Entry Format` section of
+  `skills/documentation-sync/references/release-notes-and-changelogs.md` is
+  gone in full — the `<changes starting-hash= ending-hash=>` wrapper, the
+  `git rev-parse --short HEAD` recipe, and the "Skip hash wrappers" escape
+  hatch, which had nothing left to escape from. No project adopting the skill
+  inherits the requirement.
+- Fold step 5 of `references/cut-version.md` ("Extend the commit-hash ranges")
+  and its Common Mistakes row. The step existed only to repair ranges the fold
+  itself invalidated; remaining steps renumber `1.`–`6.`.
+
+## Changed
+
+- The recommended Documentation Sync entry for `docs/changelogs/upcoming.md`
+  now reads "Developer changelog; technical, grouped by category" in both
+  copies — `skills/documentation-sync/SKILL.md` and
+  `references/release-notes-and-changelogs.md`.
+- `scripts/cut_version.py`'s `UPCOMING` header template for
+  `docs/changelogs/upcoming.md` drops its hash clause, and the live
+  `docs/changelogs/upcoming.md` header was matched to it so a rotation is not a
+  surprise diff. Existing entries keep the hashes they already carry.
+- The end-of-`implement` documentation gate keeps its position but rests on one
+  reason instead of two: `skills/documentation-sync/SKILL.md` and
+  `skills/tcw-work/references/stage-implement.md` step 6 both drop the
+  commit-range clause and argue solely from shape drift.
+- `AGENTS.md` (and `CLAUDE.md`, its symlink) no longer asks for commit hash
+  ranges in TCW's own changelog entries.
+
 ## Fixed
 
 - Three documented CLI surfaces that never existed: `tcw work

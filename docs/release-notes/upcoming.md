@@ -3,6 +3,20 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## Changelog entries no longer need to carry commit hashes
+
+Until now, the documentation assistant asked you to wrap every developer
+changelog entry in the range of git commits it came from, and to look those
+commits up as part of writing the entry. That requirement is gone.
+
+The hashes went stale as soon as anyone rebased, amended, or squashed — and the
+release process carried a whole repair step for fixing ranges it had itself
+invalidated. Both are removed. A changelog entry is now prose describing what
+changed; searching your git history for it works the same as it always did.
+
+Entries you have already written keep the hashes they have. Nothing is rewritten
+and nothing you wrote under the old rule becomes invalid.
+
 ## The backlog audit now works in Codex, and it is faster
 
 Asking the assistant to audit your backlog reviews every waiting item and reports
