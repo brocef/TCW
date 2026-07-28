@@ -7,7 +7,15 @@ description: Use when completing a coding task and deciding whether documentatio
 
 After completing code changes, check the project's `CLAUDE.md` for a `## Documentation Sync` section and evaluate each listed file's trigger before reporting the task complete. If the section is missing, ask the user whether to add one — read `references/setup.md` to walk them through it.
 
-This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project it is invoked from the `tcw-work` lifecycle at the **plan** gate (surface predicted doc-update tasks in `plan.md`) and the **completion** gate (evaluate triggers before `tcw work complete`).
+This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `tcw-work` lifecycle invokes it at three points:
+
+| Lifecycle point | What this skill does | Reference |
+| --- | --- | --- |
+| **`plan`** | Predict which triggers will fire and name a doc task for each — scheduled as one block at the *end* of the plan. | `tcw-work` → `references/stage-plan.md` step 4 |
+| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `tcw-work` → `references/stage-implement.md` step 6 |
+| **After `complete`** | Offer the version options; run the cut if the user picks a bump. | `tcw-work` → `references/stage-verify.md` step 9 |
+
+One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands, and a changelog entry can't state its commit range until the range exists. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
 ## The Documentation Sync Section
 
@@ -79,6 +87,7 @@ These workflows are deeper than the core trigger-evaluation loop and live as ref
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`. |
 | `references/setup.md`                        | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                      |
+| `references/cut-version.md`                  | The user picked a `patch`/`minor`/`major` bump from the completion options below and you're running the version cut — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. |
 
 ## When to offer version and changelog options
 
@@ -91,7 +100,7 @@ After a substantial set of changes has settled — a feature, a bug fix, a refac
 
 "Changelog files" means the release-note and developer-changelog working files listed in the project's `## Documentation Sync` section, such as `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md`. Update only the files whose triggers fire.
 
-Don't offer mid-flow, and don't offer for trivial in-isolation edits. Don't change the version unless the user selects `major`, `minor`, or `patch`. For those three choices, **use the project's own version-cut process** — every project bumps its version differently, so follow whatever its `CLAUDE.md` / Versioning section documents (it names the files to bump and the tool or script to run). For the keep-current-version choice, leave version-bearing metadata, tags, and working-file names unchanged and update the applicable changelog files in place.
+Don't offer mid-flow, and don't offer for trivial in-isolation edits. Don't change the version unless the user selects `major`, `minor`, or `patch`. For those three choices, read `references/cut-version.md` — it starts by deferring to **the project's own version-cut process** (every project bumps differently; its `CLAUDE.md` / Versioning section names the files and the script) and falls back to the manual ritual only when the project has none. For the keep-current-version choice, leave version-bearing metadata, tags, and working-file names unchanged and update the applicable changelog files in place.
 
 ## Common Mistakes
 

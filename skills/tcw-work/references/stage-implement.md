@@ -19,7 +19,7 @@ the most valuable to delegate.
 
 ## Produce
 
-`results.md`, in the item's folder, plus the code itself. Code is not a lifecycle
+`outcome.md`, in the item's folder, plus the code itself. Code is not a lifecycle
 artifact; `outcome.md` is.
 
 Required: what shipped, task by task, with commit references; the test result;
@@ -41,10 +41,21 @@ correction recorded. Optional `## Notes`.
    the implementation contradicts is the most valuable thing this stage produces;
    silently working around it is how documentation starts lying. — agent
    `[judgment]`
-6. Before reporting the work complete, invoke the `documentation-sync` skill to
-   evaluate every trigger in `AGENTS.md`. **REQUIRED SUB-SKILL: Use
+6. **Once every plan task is done and the suite is green — and not before —**
+   invoke the `documentation-sync` skill once over the whole change: evaluate
+   every trigger in `AGENTS.md` against the finished diff, not against the task
+   you just committed. Docs written
+   task-by-task describe a shape the work no longer has by the end, and a
+   changelog entry cannot state its commit range until there is one. Commit the
+   doc updates separately from the code. **REQUIRED SUB-SKILL: Use
    documentation-sync.** — agent `[judgment]`
 7. Write `outcome.md` and commit it. — agent `[judgment]`
+
+Step 6 is the lifecycle's documentation gate: the last thing implementation does
+before it reports done. `verify` inherits docs already current, so the user is
+reviewing the change and its documentation together rather than being asked to
+accept a diff whose docs are still pending. The version cut is **not** part of
+this — it belongs after `tcw work complete`; see `stage-verify.md`.
 
 This stage is **delegable**, and is where delegation pays: the coordinating
 session ends up holding `outcome.md` rather than an entire diff. See
@@ -52,8 +63,9 @@ session ends up holding `outcome.md` rather than an entire diff. See
 
 ## Exit
 
-**Well:** the suite is green, `outcome.md` records what shipped and what the plan
-got wrong, and `submit` is the next move.
+**Well:** the suite is green, every fired Documentation Sync trigger has been
+answered, `outcome.md` records what shipped and what the plan got wrong, and
+`submit` is the next move.
 
 **Badly:**
 

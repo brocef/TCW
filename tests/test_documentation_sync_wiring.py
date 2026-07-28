@@ -15,7 +15,15 @@ SKILL_FILES = [
     SKILL_DIR / "SKILL.md",
     SKILL_DIR / "references" / "release-notes-and-changelogs.md",
     SKILL_DIR / "references" / "setup.md",
+    SKILL_DIR / "references" / "cut-version.md",
 ]
+
+# Claude-only slash commands are thin routers; the procedure they route to must
+# live in the skill so a Codex user reaches it too (AGENTS.md harness rule).
+COMMAND_ROUTES = {
+    REPO / "commands" / "tcw-docs-sync-setup.md": "references/setup.md",
+    REPO / "commands" / "tcw-cut-version.md": "references/cut-version.md",
+}
 
 # Absorption must leave no dangling reference to the source plugin here.
 NO_CEFAILURES_ROOTS = [
@@ -75,10 +83,22 @@ def test_lifecycle_invokes_documentation_sync():
 
 
 def test_skill_has_no_cut_version_command_ref():
-    """The absorbed skill defers to the project's version-cut process; it must not
-    resurrect the external `:cut-version` command reference."""
+    """The version-cut procedure lives in this skill's own `references/cut-version.md`
+    (reachable without slash commands). It must not point at the external
+    plugin-namespaced `…:cut-version` command it was absorbed from."""
     offenders = [
         f for f in SKILL_DIR.rglob("*.md")
         if ":cut-version" in f.read_text(encoding="utf-8")
     ]
     assert not offenders, f"stray :cut-version command reference: {offenders}"
+
+
+def test_commands_route_into_the_skill():
+    """Each slash command is a router: it must exist and name the skill reference
+    that carries the procedure, so Codex (no slash commands) reaches the same
+    content by invoking the skill directly."""
+    for cmd, ref in COMMAND_ROUTES.items():
+        assert cmd.is_file(), f"missing command: {cmd}"
+        body = cmd.read_text(encoding="utf-8")
+        assert "documentation-sync" in body, f"{cmd} does not name the skill"
+        assert ref in body, f"{cmd} does not route to {ref}"

@@ -39,9 +39,14 @@ stage. Dependency order there is guidance, not a lifecycle gate.
    typically after its infrastructure exists and with its tests already written.
    — agent `[judgment]`
 4. Before finalizing, invoke the `documentation-sync` skill to evaluate every
-   entry in `AGENTS.md`,
-   and name a task for each trigger expected to fire. **REQUIRED SUB-SKILL: Use
-   documentation-sync.** — agent `[judgment]`
+   entry in `AGENTS.md`, and name a task for each trigger expected to fire.
+   **Schedule them as one block at the end of the plan**, after the code tasks —
+   implementation answers the triggers in a single pass over the finished diff
+   (`stage-implement.md` step 6), so a doc task interleaved between code tasks is
+   mis-sequenced. When the scope is exploratory enough that per-file prediction
+   would be guesswork, name one final "re-evaluate Documentation Sync triggers"
+   task instead. **REQUIRED SUB-SKILL: Use documentation-sync.** — agent
+   `[judgment]`
 5. Record dependencies between items as blockers, not prose:
    `tcw work edit <slug> --blocked-by <ref>`. A blocker is `[gated]` — `start`
    refuses past it — while a sentence in a plan is not. — agent `[gated]`

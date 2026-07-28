@@ -108,8 +108,9 @@ This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`,
 `tcw-post-mortem`, and `documentation-sync` skills; the `/tcw-init`,
 `/tcw-doctor`, `/tcw-process-inbox`, `/tcw-plan-work`,
 `/tcw-drive-work-to-completion`, `/tcw-verify-work`, `/tcw-post-mortem`,
-`/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`, and
-`/tcw-capabilities-init` commands; and the read-only `tcw-verifier` and
+`/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,
+`/tcw-capabilities-init`, `/tcw-docs-sync-setup`, and `/tcw-cut-version`
+commands; and the read-only `tcw-verifier` and
 `tcw-post-mortem` agents. `/tcw-init` puts the `tcw` CLI on your
 PATH from the plugin's _own clone_, so there's one copy — **don't also
 `pip install tcw` separately**, or the two can drift (`/tcw-doctor` detects this
@@ -841,7 +842,10 @@ changes` planning check, contradiction-detection, the `Missing → Supported`
 - **[`documentation-sync`](skills/documentation-sync/SKILL.md)** — the cross-cutting
   process skill the work lifecycle invokes at its plan and completion gates:
   evaluate a project's `## Documentation Sync` triggers so docs (README, changelog,
-  release notes, driving skills) move with the code that changes them.
+  release notes, driving skills) move with the code that changes them. It also
+  sets a project's Documentation Sync section up in the first place
+  (`/tcw-docs-sync-setup`) and runs the version cut when a change set is done
+  (`/tcw-cut-version`).
 
 The five axis/plugin skills name `tcw …` commands (and, for `tcw-plugin`, `pipx`)
 and never reimplement tool logic — mechanism stays in the binary, judgment in the

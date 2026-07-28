@@ -2,3 +2,62 @@
 
 Developer changelog for the next version. Technical and precise; grouped by
 category, with commit hash ranges so entries trace back to source.
+
+## Added (`bfa8d99`..)
+
+- `commands/tcw-docs-sync-setup.md` — routes to the `documentation-sync` skill's
+  `references/setup.md`; the Claude-side entry point for authoring a project's
+  `## Documentation Sync` section and creating its tracked files.
+- `commands/tcw-cut-version.md` — routes to the new
+  `skills/documentation-sync/references/cut-version.md`; names this repo's own
+  `scripts/cut_version.py` as the Step-0 project process.
+- `skills/documentation-sync/references/cut-version.md` — the version-cut
+  procedure: defer to the project's documented process first, then the
+  bump-size table (pragmatic size-of-change framing, not strict SemVer) and the
+  manual bump → rotate → commit → tag ritual.
+
+## Changed (`bfa8d99`..)
+
+- `skills/documentation-sync/SKILL.md` — added the `cut-version.md` row to the
+  companion-references table; the "offer version and changelog options" section
+  now points at that reference instead of only gesturing at the project's
+  process.
+- `README.md` — command list and the `documentation-sync` skill bullet mention
+  both new commands.
+
+Both commands are thin routers over skill content (harness-compatibility rule:
+anything reachable via `commands/` is reachable by invoking the skill directly).
+
+## Changed — documentation-sync bound to fixed lifecycle points (`bfa8d99`..)
+
+- `skills/tcw-work/references/stage-implement.md` — step 6 is now the explicit
+  **documentation gate**: one pass after all plan tasks are green, evaluated
+  against the finished diff rather than the last commit, committed separately
+  from code, before `outcome.md`. Rationale (mid-flight docs describe a shape
+  the change outgrows; a changelog range doesn't exist until the range does) is
+  stated inline. `## Exit` now requires fired triggers to be answered.
+- `skills/tcw-work/references/stage-plan.md` — step 4 schedules predicted doc
+  tasks as one block at the *end* of the plan, matching where implementation
+  executes them; names the exploratory fallback (a single "re-evaluate
+  Documentation Sync triggers" task).
+- `skills/tcw-work/references/stage-verify.md` — new step 9: after
+  `tcw work complete` on the acceptance path, offer the version options and
+  route the cut to `documentation-sync`'s `cut-version.md` / `/tcw-cut-version`.
+  Explicitly post-completion, never mid-implementation.
+- `skills/documentation-sync/SKILL.md` — the vague "plan gate and completion
+  gate" line is replaced by a three-row table naming the exact lifecycle point,
+  behavior, and owning `tcw-work` reference for each invocation.
+- `tests/test_documentation_sync_wiring.py` — `cut-version.md` added to the
+  required skill files; new `test_commands_route_into_the_skill` asserts each
+  command exists, names the skill, and routes to its reference (the
+  harness-compatibility rule, enforced rather than trusted).
+
+The rule was deliberately **not** added to `skills/tcw-work/SKILL.md` — the
+router is at its 60-line budget and the placement is stage-specific, so it lives
+in the three stage documents that own it.
+
+## Fixed (`bfa8d99`..)
+
+- `skills/tcw-work/references/stage-implement.md` — `## Produce` named
+  `results.md`; the stage produces `outcome.md`, as the rest of the document and
+  the SKILL.md stage table already said.
