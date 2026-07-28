@@ -1,0 +1,9 @@
+slug: 2026-07-28-drop-commit-hash-ranges-from-changelog-entries
+title: Drop commit hash ranges from changelog entries
+created: '2026-07-28'
+resolution: null
+effort: low
+complexity: low
+tags:
+- docs
+- skills
