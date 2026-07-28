@@ -70,9 +70,11 @@ def test_main_end_to_end(tmp_path):
     root = make_repo(tmp_path, "0.2.2")
     cv.main(["patch"], root=root)
     assert cv.current_version(root) == "0.2.3"
-    # old upcoming content rotated into the versioned files
-    assert (root / "docs/changelogs/v0.2.3.md").read_text() == "# Upcoming\n\nchangelog entries here\n"
-    assert (root / "docs/release-notes/v0.2.3.md").read_text() == "# Upcoming\n\nrelease notes here\n"
+    # old upcoming content rotated into the versioned files, retitled to the
+    # version it shipped as. Rotation used to be a bare `git mv`, so a released
+    # document kept the `# Upcoming` placeholder it was drafted under.
+    assert (root / "docs/changelogs/v0.2.3.md").read_text() == "# v0.2.3\n\nchangelog entries here\n"
+    assert (root / "docs/release-notes/v0.2.3.md").read_text() == "# v0.2.3\n\nrelease notes here\n"
     # fresh upcoming.md reset (header kept, old entries gone)
     fresh = (root / "docs/changelogs/upcoming.md").read_text()
     assert "# Upcoming" in fresh and "changelog entries here" not in fresh

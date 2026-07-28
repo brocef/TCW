@@ -605,7 +605,6 @@ tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (rep
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
 tcw work edit "$slug" --tag bug --untag stale    # apply/remove tags (repeatable)
-tcw work edit "$slug" --pr https://github.com/o/r/pull/7   # record the pull request for this item
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities

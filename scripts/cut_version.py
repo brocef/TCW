@@ -100,11 +100,20 @@ def _git(root: Path, *args: str) -> None:
 
 
 def rotate_upcoming(root: Path, version: str) -> None:
-    """`git mv` each upcoming.md → v{version}.md, then recreate a fresh upcoming.md."""
+    """`git mv` each upcoming.md → v{version}.md, then recreate a fresh upcoming.md.
+
+    The rotated file is retitled `# v{version}`. Without this every released
+    document keeps the `# Upcoming` placeholder it was drafted under, which is
+    how 84 of the first 92 shipped files came to be titled "Upcoming"."""
     for rel, header in UPCOMING.items():
         src = root / rel
         dst = src.with_name(f"v{version}.md")
         _git(root, "mv", str(src), str(dst))
+        text = dst.read_text(encoding="utf-8")
+        if text.startswith("# Upcoming\n"):
+            dst.write_text(
+                f"# v{version}\n" + text[len("# Upcoming\n"):], encoding="utf-8"
+            )
         src.write_text(header, encoding="utf-8")
 
 
