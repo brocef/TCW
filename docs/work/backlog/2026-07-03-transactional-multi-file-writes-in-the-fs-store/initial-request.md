@@ -31,7 +31,7 @@ object is left half-written (e.g. `state.yaml` present, body missing).
 ### On `FsWorkStore.create` specifically
 
 It has **no caller under `tcw/`** — both production create paths go through
-`create_work` (`cli.py:208`, `serve/__init__.py:773`). So "collapse it into
+`create_work` (`cli.py:216`, `serve/__init__.py:773`). So "collapse it into
 `create_work` and delete it" is a live alternative to protecting it, and probably
 the smaller end state.
 

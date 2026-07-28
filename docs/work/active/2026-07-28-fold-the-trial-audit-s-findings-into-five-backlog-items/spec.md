@@ -73,7 +73,7 @@ Two *claims* failed, both recorded below.
 | …sole caller is `tests/test_recursion.py` | **FAILED** — see below |
 | `accept_inbox` fix precedent (`fs.py:2246-2269`) | **Confirmed** — `mkdtemp` → populate → `os.replace` → `rmtree` on except |
 | `node_root = root.parent.parent` (`fs.py:578-585`) | **Confirmed** (`fs.py:579`) |
-| `start --force` already exists (`cli.py:973`) | **Confirmed** — "start despite unresolved blockers" |
+| `start --force` already exists (`cli.py:982`) | **Confirmed** — "start despite unresolved blockers" |
 | Move committed inside `_effect_transition` | **Confirmed** — `fs.py:2321-2322` calls `_commit_transition` |
 | `Term.origin` is a single alias used as a dict key (`fs.py:893`, `base.py:156-158`) | **Confirmed** — also `fs.py:863`; declared `base.py:152` |
 | Cycles already guarded at any depth (`fs.py:656-664`, `868-884`) | **Confirmed** |
@@ -81,15 +81,14 @@ Two *claims* failed, both recorded below.
 | Editor item's `state.yaml` title still says "vendored" | **Confirmed, reframed** — see below |
 | Retitle via `tcw work edit … --title` | **FAILED** — no such flag; see below |
 
-**Failed claim 1 — "sole caller `tests/test_recursion.py`".** `create` is called
-from at least eight test modules (`test_serve_write.py`, `test_environment_hardness.py`,
-`test_capabilities.py`, `test_refs.py`, `test_serve_resolve.py`,
-`test_serve_descendants.py`, `test_recursion.py`). The substantive claim survives
-in corrected form: `create` has **no production caller** — nothing under `tcw/`
-calls it. Both production paths (`cli.py:208`, `serve/__init__.py:773`) go through
-`create_work` (`fs.py:2410`). So "collapse it into `create_work`" remains a live
-option, but it is a test-surface migration across eight modules, not a one-file
-change. The finding is transcribed with that correction, not as originally worded.
+**Failed claim 1 — "sole caller `tests/test_recursion.py`".** `.create(` appears
+across 17 test modules, every one of which constructs an `FsWorkStore`. The
+substantive claim survives in corrected form: `create` has **no production
+caller** — nothing under `tcw/` calls it. Both production paths (`cli.py:216`,
+`serve/__init__.py:773`) go through `create_work` (`fs.py:2410`). So "collapse it
+into `create_work`" remains a live option, but it is a test-surface migration,
+not a one-file change. The finding is transcribed with that correction, not as
+originally worded.
 
 **Reframed finding — the "vendored" title.** The trial run recorded the title as
 "contradicted by the item's own body". The body does not contradict it; it
@@ -173,7 +172,7 @@ option, no interactive prompt. `tcw work new` already takes a title positionally
   the resolved root is the only new branching; the correction cites
   `fs.py:578-585` and names git ops, the sentinel reader, and hook cwd as the
   other consumers of `node_root`.
-- That item records that `start --force` is taken (`cli.py:973`) and that the
+- That item records that `start --force` is taken (`cli.py:982`) and that the
   owner stamp lands as a second commit after `_effect_transition`.
 - `2026-07-01-transitive-taxonomy-inheritance` states that `Term.origin` is a
   single alias used as a dict key and that its multi-hop encoding is a spec

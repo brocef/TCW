@@ -38,8 +38,8 @@ the loser, and stamp the winner.
 
   > **Correction (2026-07-28 audit).** This proposed `--force` for the take-over.
   > `tcw work start --force` **already exists** and means something else —
-  > "start despite unresolved blockers" (`cli.py:973`; `complete` has its own at
-  > `cli.py:1020`). Overloading it would make one flag mean "ignore blockers" and
+  > "start despite unresolved blockers" (`cli.py:982`; `complete` has its own at
+  > `cli.py:1030`). Overloading it would make one flag mean "ignore blockers" and
   > "steal another agent's claim", which are not the same risk. The take-over
   > needs a different name; picking it is this item's spec's call.
 

@@ -74,7 +74,7 @@ text**, so the edits land at the claims they correct, not in a footer:
   hook cwd (`work/hooks.py:61`) key off — including the sentinel that would hold
   `work.path` itself, making it config-reads-config.
 - At the `--force` proposal: `start --force` already exists with different
-  semantics — "start despite unresolved blockers" (`cli.py:973`) — so the
+  semantics — "start despite unresolved blockers" (`cli.py:982`) — so the
   take-over flag needs another name. Record the collision, **do not pick the
   replacement name**: naming a flag on that item's own CLI surface is its spec's
   call, and choosing it here is exactly the silent scope-widening this item's
