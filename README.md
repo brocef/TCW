@@ -105,7 +105,7 @@ In **Claude Code**:
 ```
 
 This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`,
-`tcw-post-mortem`, and `documentation-sync` skills; the `/tcw-init`,
+`tcw-post-mortem`, `tcw-report`, and `documentation-sync` skills; the `/tcw-init`,
 `/tcw-doctor`, `/tcw-process-inbox`, `/tcw-plan-work`,
 `/tcw-drive-work-to-completion`, `/tcw-verify-work`, `/tcw-post-mortem`,
 `/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,

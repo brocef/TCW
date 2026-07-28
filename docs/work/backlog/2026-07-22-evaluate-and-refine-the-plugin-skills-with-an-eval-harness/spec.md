@@ -12,7 +12,14 @@ agent to do rather than how reliably it does it, the affected `plugin/*` or
 
 ## Problem
 
-The five skills are the plugin's judgment layer — the thing the README calls the
+> **Count note (refreshed 2026-07-28):** this spec was written when the plugin
+> shipped 5 skills and 8 commands. It now ships **7 skills** (`tcw-work`,
+> `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`, `tcw-report`,
+> `tcw-post-mortem`, `documentation-sync`) and **13 commands**. Every "five" /
+> "eight" below has been corrected; the one substantive consequence is that the
+> test set covers 5 of 7 skills — see the note under **Test set**.
+
+The seven skills are the plugin's judgment layer — the thing the README calls the
 counterpart to the CLI's mechanism. Their quality has only ever been established
 by reading them. Nobody knows whether an agent holding `tcw-work` actually
 outperforms one holding only `tcw --help`, which parts of the prose carry the
@@ -27,7 +34,8 @@ validated by a second guess.
   token and time cost, and a human-reviewed findings pass.
 - Skill refinements justified by that evidence, applied where the signal is
   unambiguous and surfaced for decision where it is a judgment call.
-- README command-list drift fixed.
+- ~~README command-list drift fixed.~~ Already done, 2026-07-28 — see **Known
+  drift**.
 
 ## Non-goals
 
@@ -95,10 +103,13 @@ grader reserved only for prose-quality assertions.
 
 ### Known drift
 
-`README.md`'s install section lists six commands; `commands/` contains eight.
-`/tcw-audit-work-backlog` and `/tcw-consolidate-plans` are unlisted. Both carry
-`disable-model-invocation: true` except `tcw-audit-work-backlog`, which does
-not — worth confirming that asymmetry is intentional while in there.
+**Resolved 2026-07-28 — nothing left to do here.** The original drift (README
+listing six commands against eight in `commands/`) is gone: `README.md` now lists
+all 13 commands, and its skill list was corrected in the same pass to include
+`tcw-report`. The `disable-model-invocation: true` asymmetry noted here was
+confirmed intentional and is now owned by
+`2026-07-28-make-the-consolidate-plans-workflow-reachable-from-codex`, which
+turns on exactly that flag. Do not re-audit it from this item.
 
 ## Proposed behavior
 
@@ -124,7 +135,14 @@ declares an unflipped `Missing` capability, an untriaged inbox request, and a
 registered tag set. Rich enough that every skill has something real to act on,
 and deliberately primed so the completion gate has something to fail closed on.
 
-### Test set — thin across all five
+### Test set — thin across the five tcw-* skills
+
+> **Coverage note (refreshed 2026-07-28):** the plugin now ships 7 skills, and
+> this table covers 5. `tcw-post-mortem` and `documentation-sync` are
+> **uncovered**. Decide before the harness is built: add a case each, or exclude
+> them explicitly and say so in the findings report — the same way case 5 already
+> handles `tcw-plugin`'s untested repair half. Silent partial coverage is the one
+> outcome this item exists to prevent.
 
 Seven cases. One integration case matters more than any single-skill case,
 because the chain `Vocabulary → Features → Capabilities → Work` is the thing the
@@ -169,7 +187,8 @@ broken before iteration 2.
   where the skill showed **no** measurable lift, which is a real result.
 - Refinements applied where unambiguous; judgment calls surfaced, not silently
   applied.
-- README lists all eight commands.
+- Every skill the plugin ships is either covered by a case or named as
+  deliberately uncovered in the findings report.
 - `pytest` green.
 
 ## Risks

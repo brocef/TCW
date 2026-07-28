@@ -1,5 +1,12 @@
 # Evaluate and refine the plugin skills with an eval harness
 
+> **Count note (refreshed 2026-07-28):** every "five skills" and "eight commands"
+> below is stale. The plugin now ships **7 skills** — the five named plus
+> `tcw-post-mortem` and `documentation-sync` — and **13 commands**. The "Known
+> drift to fold in" section is also resolved: `README.md` now lists all 13
+> commands and all 7 skills. `spec.md` carries the corrected counts and the
+> resulting coverage decision.
+
 ## Product changes
 
 None expected at planning time. This item builds contributor-facing measurement

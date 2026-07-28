@@ -152,10 +152,10 @@ including any skill that showed **no** measurable lift, and the fact that
 
 Independent of phases 1–5; can run any time.
 
-- **`README.md`** [Public-API] — list all eight commands in the install section
-  (add `/tcw-audit-work-backlog`, `/tcw-consolidate-plans`). While there, confirm
-  whether `tcw-audit-work-backlog` lacking `disable-model-invocation: true` is
-  intentional; if not, that is a separate one-line fix worth raising.
+- ~~**`README.md`** [Public-API] — list all eight commands in the install
+  section.~~ **Done 2026-07-28, outside this item.** The install section now
+  lists all 13 commands and all 7 skills. Only re-touch `README.md` here if a
+  refinement in phase 5 changes documented skill behavior.
 - **`docs/changelogs/upcoming.md`** [Any-Code-Change] — Added: the eval harness
   and its fixture guard. Changed: any skill refinements. Include the commit hash
   range.

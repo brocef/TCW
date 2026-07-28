@@ -56,12 +56,17 @@ and two of its headline claims turned out wrong.
 - `tcw capabilities show taxonomy/federate-shared-vocabulary` is `Partial` with a
   Gaps line already naming this — link it.
 
-### `2026-06-19-typed-taxonomy-relations`
+### ~~`2026-06-19-typed-taxonomy-relations`~~ — closed 2026-07-28
 
-- `docs/plan/phase-2-taxonomy.md:157` explicitly defers typed relations on YAGNI
-  grounds: *"deferred until a consumer needs them (the tool reads pointers, humans
-  write meaning)"*. That is a recorded decision, and much stronger evidence than
-  "no driving need" — it makes the discard-or-name-the-consumer choice concrete.
+This finding was acted on rather than transcribed. `docs/plan/phase-2-taxonomy.md:157`
+explicitly defers typed relations on YAGNI grounds: *"deferred until a consumer
+needs them (the tool reads pointers, humans write meaning)"* — a recorded
+decision, not an absence of demand. No consumer appeared, so the item was
+**discarded** in the 2026-07-28 audit. Four items remain to fold, not five; the
+slug keeps "five" for stability.
+
+Leave `phase-2-taxonomy.md:157` in place — it is the evidence for the discard,
+not a duplicate of the dropped item.
 
 ### `2026-07-02-add-a-vendored-rich-markdown-editor-…`
 
@@ -77,9 +82,16 @@ Also unrecorded and worth a decision, though not item-specific: **the three
 while none can start. That is one decision about the `remote` tag, not three about
 individual items. Raise it rather than re-auditing them indefinitely.
 
+**Decided 2026-07-28:** raised and settled. All three keep their items and sit at
+**priority 10**, the bottom band, which is now the park marker — the path stays
+on file in `phase-6-beyond.md` and the refreshed model notes are preserved, at no
+cost. Do not re-open this per-item; a future audit that wants to change it is
+changing one decision about the `remote` tag.
+
 ## Acceptance criteria
 
-- Each of the five items carries its findings, with citations re-verified.
+- Each of the four remaining items carries its findings, with citations
+  re-verified. (The fifth, `typed-taxonomy-relations`, was discarded instead.)
 - Any finding that fails re-verification is dropped and the failure noted here.
 - No item's scope is silently widened — a finding that changes what an item *is*
   gets raised, not absorbed.
