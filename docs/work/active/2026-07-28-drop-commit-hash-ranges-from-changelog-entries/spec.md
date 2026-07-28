@@ -151,8 +151,18 @@ entry.
 
 ## Acceptance criteria
 
-1. `grep -rniE "commit[- ]hash range|commit range|starting-hash|ending-hash" skills/ scripts/ AGENTS.md docs/changelogs/upcoming.md` returns exactly one hit:
-   `skills/tcw-post-mortem/SKILL.md:36` (out of scope per Non-goals).
+1. `grep -rniE "commit[- ]hash range|commit range|starting-hash|ending-hash" skills/ scripts/ AGENTS.md docs/changelogs/upcoming.md` returns exactly two hits, both out of scope per Non-goals:
+   - `skills/tcw-post-mortem/SKILL.md:36` — reading `git log` during a post-mortem.
+   - `docs/changelogs/upcoming.md:71` — `` Commit range: `24f4bc6..0886943`. ``, the
+     trailing footer of a *pending changelog entry* written under the old rule
+     (commit `3633c30`). It is entry content below the first `##` heading, so
+     Non-goals and AC3 both forbid editing it.
+
+   **Corrected during `implement`.** The spec originally asserted one hit. The
+   site inventory grep recorded under Notes was case-sensitive (`commit range`)
+   and so missed `Commit range:`; this AC's own grep is `-i` and catches it. No
+   instruction prose is involved — the requirement is gone from every skill —
+   so the finding changes the criterion's wording, not the work.
 2. `git diff --stat` for the whole change lists no file matching
    `docs/changelogs/v*.md`.
 3. `docs/changelogs/upcoming.md` still contains every `` (`hash`) `` suffix it
