@@ -19,7 +19,7 @@ Each capability is a **path-addressed folder** (`docs/capabilities/<path>/` = `m
 
 > **Web editing:** Capabilities can also be created and edited through the local `tcw serve` web app; check failures are surfaced in the UI.
 
-## The `## Capability changes` planning gate (at `tcw work new`)
+## The `## Capability changes` planning check (at `tcw work new`)
 
 When a work item has a product delta, name each new / changed / removed capability and record it:
 

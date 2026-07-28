@@ -185,3 +185,43 @@ category, with commit hash ranges so entries trace back to source.
 - `work/cli.py`'s `SUBCOMMANDS` gains `submit`, `rework`, and `lifecycle`. The
   first two were a child-1 omission; latent, since work's `DEFAULT_SUBCOMMAND` is
   `None`, but wrong data that would misdispatch if that changed.
+
+
+## Changed (`ae8e2d3..HEAD`)
+
+- **`skills/tcw-work/` restructured into one document per lifecycle id.** Seven
+  `references/stage-<id>.md` files on a fixed shape — Purpose / Inputs / Produce
+  / Steps / Exit — with every step carrying an actor and one of `[auto]`,
+  `[gated]`, `[prompted]`, `[judgment]`. No ordinals in any filename; order lives
+  in the router's table.
+- **`SKILL.md` is a 58-line router**, down from 170. The rule on breach is
+  extract, never grow. Every displaced section has a named destination.
+- New references: `transitions.md` (all five in one file), `hooks.md`,
+  `delegation.md`, `epic-deltas.md`, `tags.md`, `commands.md`.
+  `cross-node-epic.md` → `cross-node-deltas.md`.
+- `epic-deltas.md` is a **delta list**, not a second lifecycle. That is what
+  `epic-lifecycle.md` was, and why it drifted from `task-lifecycle.md`.
+- The tcw-capabilities "planning gate" is now the **planning check** — it is
+  `[judgment]`, and "gate" is reserved for `[gated]`.
+- `tests/test_documentation_sync_wiring.py` retargeted at `stage-plan.md` and
+  `stage-implement.md`, the two stages where `AGENTS.md` requires the skill.
+
+## Added (`ae8e2d3..HEAD`)
+
+- **`tests/test_skill_lifecycle_parity.py`** — 71 checks asserting the skill
+  agrees with `LIFECYCLE_STEPS`: one document per id and no orphans; `Produce`
+  and `Inputs` covering the table's artifacts; five sections in order; every
+  marker recognized; no ordinals; no reference to a deleted document; the router
+  reachable to every reference and within budget. Proven to fail on real drift in
+  both `Produce` and `Inputs` before landing.
+- `commands/tcw-process-inbox.md` and `commands/tcw-verify-work.md`;
+  `tcw-plan-work` and `tcw-drive-work-to-completion` retargeted at stage ranges.
+- **`agents/tcw-verifier.md`** — read-only assessment for the `verify` stage, plus
+  the `agents` key in the Claude manifest. Codex has no custom agents, so it is an
+  accelerator: every stage document stands alone without it.
+
+## Removed (`ae8e2d3..HEAD`)
+
+- `references/lifecycle.md`, `task-lifecycle.md`, `epic-lifecycle.md`, and
+  `process-inbox.md`. The first two were ~85% identical and had already drifted —
+  the measured fact that opened this epic.

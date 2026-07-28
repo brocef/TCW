@@ -169,3 +169,27 @@ tcw work lifecycle --json       # the same, for scripts
 
 It lists what each step is for, what it reads, what it produces, and what the
 tool will refuse past. It changes nothing and runs nothing.
+
+
+## The work skill is reorganized around the lifecycle
+
+The `tcw-work` skill used to describe the lifecycle in two long documents that
+said almost the same thing — and had quietly stopped agreeing with each other, and
+with the tool. Both are gone.
+
+In their place there is **one short document per lifecycle step**, each with the
+same five headings: what the step is for, what it reads, what it produces, the
+steps themselves, and how it ends — including how it ends badly. Your agent loads
+only the one it needs.
+
+Every documented step now says **who does it and whether anything enforces it**:
+the tool does it automatically, the tool refuses if you get it wrong, the tool
+reminds you, or nothing checks at all. Where TCW relies on judgment, it now says
+so instead of implying otherwise.
+
+Two new commands: `/tcw-process-inbox` for triaging raw requests, and
+`/tcw-verify-work` for the acceptance step. Claude users also get a read-only
+`tcw-verifier` agent that assesses finished work against its spec without being
+able to change anything. Codex has no custom agents and no slash commands, so
+every one of these workflows is also reachable by asking the agent to use the
+`tcw-work` skill directly — nothing is available only one way.

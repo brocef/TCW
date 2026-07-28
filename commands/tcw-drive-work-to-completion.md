@@ -1,44 +1,31 @@
 ---
-description: Drive a TCW work item through every remaining lifecycle stage up to user verification, then close out only after explicit approval.
-argument-hint: <work-item-slug>
-allowed-tools: Bash(tcw *)
-disable-model-invocation: true
+description: Drive a TCW work item from wherever it is through implementation, stopping for user verification before closeout.
 ---
 
-Current state of the requested item (empty if no/invalid slug):
+Use the `tcw-work` skill. This command covers **the current stage through
+`complete`**.
 
-!`tcw work show $ARGUMENTS 2>/dev/null`
+Read `skills/tcw-work/SKILL.md` and detect the current stage from the item's
+type, status, and existing artifacts. Load **only** the document for the stage
+you are in; the router's "Finding your place" table maps missing artifacts to
+stages.
 
-Use the `tcw-work` skill. Read `skills/tcw-work/references/lifecycle.md` and detect the
-current lifecycle path and stage from the item type, item status, and existing
-artifacts:
+If `plan.md` declares bounded stage documents, read the manifest first and then
+only the stage document relevant to the current slice. Dependency ordering there
+is guidance, not a transition gate.
 
-- missing `initial-request.md` -> start at request ingestion;
-- missing `spec.md` -> continue with request processing;
-- missing `plan.md` -> continue with spec processing;
-- missing `outcome.md` -> start/continue task implementation or epic coordination;
-- missing or stale `refined-outcome.md` -> stop for verification and refinement.
+Commit each lifecycle artifact as you write it, in separate ordered commits —
+never one batched lifecycle commit. Inspect each diff and stage narrowly. TCW
+commits the `start`, `submit`, `rework`, and `complete` status moves itself; do
+not commit those by hand.
 
-When `plan.md` declares stages, read it first and then load only the stage
-document relevant to the current slice. Run its pre-stage checks before
-implementation and post-stage checks afterward. Dependency ordering is guidance,
-not a transition gate; record informal progress in `plan.md` or `outcome.md`
-without treating it as formal stage state.
+Before implementation begins, run `tcw work start <slug>` if the item is not
+already active, and ask whether to run the remaining stages sequentially or
+dispatch independent ones to subagents (`references/delegation.md`).
 
-After writing or materially updating any lifecycle artifact, commit that stage's
-artifact and related TCW work files before continuing to the next missing stage.
-If this command runs several stages, produce separate ordered commits rather
-than one batched lifecycle commit. Inspect each diff, stage narrowly, and do not
-create empty commits for unchanged stages. **TCW commits the `start`,
-`submit`, `rework`, and `complete` status moves itself** — do not commit them
-by hand.
+**Do not complete the item silently.** Stop at `verify` and hold there until the
+user explicitly approves closeout — see `references/stage-verify.md`. At closeout,
+confirm the merge or PR route, the documentation updates, any follow-up items,
+and the version choice before running `tcw work complete`.
 
-Run all remaining stages through task implementation or epic coordination. Before
-that stage begins, run `tcw work start <slug>` if the item is not active and ask
-whether to execute sequentially or parallelize genuinely independent phases with
-subagents.
-
-Do not silently complete the item after implementation. Stop in verification and
-refinement until the user explicitly approves closeout. At closeout, confirm merge
-or PR route, documentation updates, follow-up TCW item creation, and version bump
-choice before running `tcw work complete <slug> --resolution ... --confirm`.
+$ARGUMENTS

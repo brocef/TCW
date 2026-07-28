@@ -1,170 +1,58 @@
----
-name: tcw-work
-description: Drives the `tcw work` change-tracking CLI — the Work axis of TCW (Taxonomy · Capabilities · Work). Use when planning, starting, implementing, verifying, or completing a tcw work item; resuming one across sessions; triaging a docs/work/inbox request; decomposing an item into child items; or coordinating a cross-node epic. Does not reimplement the CLI.
-when_to_use: Use when starting, continuing, triaging, planning, implementing, verifying, or decomposing tcw work items — when a user asks to plan work, drive work to completion, process a docs/work/inbox request, start or complete an item, resume an active item across sessions, break a large item into child items (`tcw work new --parent`), or coordinate orchestrator-level work across sub-project nodes via a cross-node epic.
-allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
-metadata:
-    author: Brian Cefali
-license: Apache-2.0
----
-
 # Driving `tcw work`
 
-`tcw work` is the change-tracking state machine: raw inbox entries are accepted into `backlog → active`, optionally through **`review`** (implemented, acceptance pending), then close into **`completed`** (shipped) or **`discarded`** (closed without shipping) — the resolution picks which, and `backlog → discarded` is legal, so abandoning an item never needs a throwaway `start`. `review → active` (`rework`) is the only reverse edge; nothing leaves a resolved status. Blocked is a derived overlay, not a status. This skill is the _judgment_ on top of the tool. Name `tcw …` commands; never hand-edit `docs/work/` when a command exists. The capability axis is **REQUIRED SUB-SKILL: Use tcw-capabilities** at the planning and completion gates.
+`tcw work` is the change-tracking state machine. This skill is the **judgment**
+on top of it. Name `tcw …` commands; never hand-edit `docs/work/` when a command
+exists.
 
-> **Web editing:** Work items, lifecycle artifacts, and the `capabilities.yaml` sidecar can also be created and edited through the local `tcw serve` web app. The web-complete modal surfaces the DoD acknowledgments and the capabilities reconciliation reminder, matching the CLI gate.
+Work is the last layer in `Vocabulary → Features → Capabilities → Work`; an item
+may change any earlier one. For a product delta, check those layers in order
+first. **REQUIRED SUB-SKILL: Use tcw-capabilities.** `tcw-plugin` maps the
+skills.
 
-Work is the final layer in the TCW chain: `Vocabulary -> Features ->
-Capabilities -> Work`. A work item can describe changes to any earlier layer:
-new vocabulary, new or changed features, new or changed capabilities, code, docs,
-or the project process itself. For product changes, check the earlier layers in
-order before settling the plan: vocabulary terms first, then taxonomy Features,
-then capabilities. See `tcw-plugin` for the cross-skill map.
+## Two ladders
 
-**Project identity:** `tcw init --id <project-id>` marks the current directory
-with a canonical ID in `tcw-config.yaml`; existing configured nodes may omit the
-flag. Commands still select the nearest enclosing sentinel, but all
-cross-project operations follow only reciprocal `connected-projects`
-registrations. Project locators may be relative, absolute, nested, or elsewhere;
-TCW never scans for peers. Every command fails closed on an ID-less or invalid
-graph. See `references/cross-node-epic.md`.
+A **stage** produces one artifact. A **transition** moves status. Nothing is
+both. Stage detection is artifact presence; status is the folder.
 
-## Primary lifecycle
+| Stage | Produces | Runs in | Document |
+|---|---|---|---|
+| `inbox` | — (creates the item) | pre-item | [`stage-inbox.md`](references/stage-inbox.md) |
+| `request` | `initial-request.md` | backlog | [`stage-request.md`](references/stage-request.md) |
+| `spec` | `spec.md` | backlog | [`stage-spec.md`](references/stage-spec.md) |
+| `plan` | `plan.md` | backlog | [`stage-plan.md`](references/stage-plan.md) |
+| `implement` | `outcome.md` | active | [`stage-implement.md`](references/stage-implement.md) |
+| `verify` | `refined-outcome.md` **or** `rework.md` | review | [`stage-verify.md`](references/stage-verify.md) |
+| `postmortem` | `post-mortem.md` | review, or after completed | [`stage-postmortem.md`](references/stage-postmortem.md) |
 
-Drive work through the TCW SDLC. Read [`references/lifecycle.md`](references/lifecycle.md) whenever planning a work item, driving an item toward completion, resuming mid-flight work whose next stage is unclear, or compressing stages for a small change. It dispatches by the item relation fields to one of two leaves, which you can also read directly: [`references/epic-lifecycle.md`](references/epic-lifecycle.md) for a `type: epic` item, [`references/task-lifecycle.md`](references/task-lifecycle.md) for a standalone item or initiative child task.
+`start` · `submit` · `rework` · `complete` · `discard` →
+[`transitions.md`](references/transitions.md)
 
-The artifact spine is:
+## Finding your place
 
-`initial-request.md` → `spec.md` → `plan.md` → `outcome.md` → `refined-outcome.md`
+Read the item, then load **only** the document for the first missing artifact:
+no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md` →
+`plan` · no `outcome.md` → `implement` · no `refined-outcome.md`/`rework.md` →
+`verify`. Resume across sessions with `tcw work list --status active` →
+`tcw work show <slug>`; for an epic, `tcw work reconcile <slug>` first.
 
-`plan.md` may optionally declare a bounded DAG of stage documents when selective
-loading materially reduces context. Always read `plan.md` first, then read only
-the stage document relevant to the current implementation slice. Run that
-document's pre-stage checks before its implementation and its post-stage checks
-afterward. Dependency order is guidance, not a lifecycle gate; prose annotations
-in `plan.md` or `outcome.md` are informal progress, never formal stage state.
+## Always
 
-**Commit every stage as you go.** After writing or materially updating any
-lifecycle artifact, commit that artifact and the related TCW work files before
-starting the next stage. Use narrow staging so unrelated working-tree changes
-are never swept into a lifecycle checkpoint; do not create empty commits for
-unchanged stages. The `tcw work start` and `tcw work complete` status moves are
-separate commits at their respective transition boundaries — and **TCW makes
-those two itself**: every transition commits its own status move. You commit the
-stage artifacts; the tool commits the moves.
+- **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
+  it. Never batch several stages into one commit. TCW commits the *transitions*
+  itself; do not commit those by hand.
+- **Run `tcw work lifecycle --stage <id>`** before a stage and honor any binding
+  it reports → [`hooks.md`](references/hooks.md)
+- For a small change, ask whether to compress planning detail — but keep the item
+  the durable source of truth and write whatever is needed to resume or review.
 
-`initial-request.md` is always-present — it serves as the item body/overview
-surface, scratch space, and the managed rollup target for epics.
+## Read on demand
 
-The work store exposes the bounded lifecycle artifact set through
-`artifacts(slug)` and openable handles through `artifact_locator(slug, name)`.
-Use those store methods for board or viewer behavior; do not reconstruct artifact
-state by globbing item folders outside the filesystem adapter.
-`WorkItem.modified` is a read-only, adapter-provided presentation timestamp for
-viewer sorting/display; it is not an editable field or persisted work-item
-metadata.
+- [`commands.md`](references/commands.md) — every command, addressing, slash commands
+- [`delegation.md`](references/delegation.md) — dispatching stages to subagents
+- [`tags.md`](references/tags.md) — the node's tag vocabulary
+- [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences
+- [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
+- [`decompose.md`](references/decompose.md) — splitting one item into nested pieces
 
-For small changes, ask whether to compress unnecessary planning detail, but keep the work item as the durable source of truth and write any artifact that is needed to resume or review the work. **Product-first:** if there is any product delta, check whether taxonomy Vocabulary or Feature entries need to be added/updated, then run the tcw-capabilities planning gate before writing the technical plan.
-
-## Lifecycle bindings (skills and commands a node configures)
-
-A node may bind its own agent skills or shell commands to any lifecycle stage or
-transition in `tcw-config.yaml` (`work.lifecycle`). **Before performing a stage,
-run `tcw work lifecycle <slug>` and honor what it reports** — that command is the
-contract, works identically under Claude and Codex, and never runs anything
-itself. Claude's dynamic injection of `--directive` is an accelerator on top of
-it, never the path.
-
-TCW runs `command:` bindings for you at transitions: `pre` failures abort the
-move, `post` failures do not roll it back. **`skill:` bindings are yours to
-invoke** — the CLI names them and stops there.
-
-If a configured skill is unavailable, **report it and stop; do not proceed as
-though it ran.** This cannot fail closed on every harness: Codex cannot enumerate
-skills to confirm one exists, so nothing may depend on such a check firing.
-
-`tcw serve` runs no hooks — a transition made from the web app skips them.
-
-## Tags
-
-Tags are a project-scoped classification vocabulary for grouping and filtering
-work across lifecycle statuses. They are descriptive facets such as `cli`,
-`docs`, `bug`, or `tech-debt`; they do not change priority, status, ownership, or
-transition rules. Prefer a small reusable vocabulary over one-off tags that
-repeat an item's title.
-
-Each node registers its allowed tags in `tcw-config.yaml`. Manage that registry
-through the CLI: `tcw work tags list`, `tcw work tags add <tag>...`, and
-`tcw work tags rm <tag>...`. Removing a registered tag warns when items still
-carry it, and `tcw validate` rejects that stale state until the affected items
-are retagged or the tag is restored.
-
-During request intake, inspect the registry, choose all materially applicable
-tags, and create the item with repeatable `--tag <tag>` options. Register a
-missing tag first only when it will be useful beyond this one item. For existing
-items use `tcw work edit <slug> --tag <tag> --untag <tag>`; list filtering uses
-repeatable `tcw work list --tag <tag>` with match-any semantics.
-
-## The lifecycle handshake
-
-**You drive the transitions — the tool never moves an item for you, so its status is only as accurate as you keep it.** Two transitions are mandatory and the easy ones to forget:
-
-- **Before you write the first line of code for an item, run `tcw work start <slug>`.** If you ever notice you're editing code while the item is still in `backlog`, you skipped this — stop and start it.
-- **The moment the work is done and verified, run `tcw work complete <slug> …`.** Don't leave a shipped item sitting in `active`. Deciding _not_ to do an item is the same command with a non-`done` resolution — and it works straight from `backlog`.
-
-Keep status in step _as you go_; don't batch the transitions at the end. The per-command detail:
-
-- **`tcw work new`** — declare the delta; for a product delta, record `Missing` capabilities (tcw-capabilities).
-- **`tcw work submit <slug>`** — `active → review`, once implementation is done and you want the work verified before it closes. Optional: a small change may complete straight from `active`, and `complete` then prints a note that the verify stage was skipped. An item in `review` is **not** resolved — it still blocks its dependents and still holds its epic open.
-- **`tcw work rework <slug>`** — `review → active`, when verification rejected the work. It **fails closed while `refined-outcome.md` is present**: that document asserts the work was verified, and after a rejection it is false. Delete it yourself (TCW never will), record what remains in `rework.md`, then run the command.
-- **`tcw work start <slug>`** — when planning concludes and implementation begins, move the item to active. **This transition is the first implementation commit** (AGENTS.md) — run it after the separate `plan.md` checkpoint and before the first code change. **TCW commits the move for you** (`work.auto-commit-transitions`, default true), scoped to the item's own folders so unrelated edits are never swept in; do not commit it by hand. Add `--worktree` to isolate the item's code in its own git worktree + branch (transitions stay on the primary checkout; edits ride the work branch and merge back).
-- **during `active`** — on any capability change, run contradiction-detection (tcw-capabilities).
-- **`tcw work complete <slug> --resolution <done|wontfix|duplicate|superseded> --confirm`** — the final step. **The resolution picks the destination:** `done` → `completed/`, anything else → `discarded/`. A discard is not a shipment, so it skips the DoD checklist **and the blocker check** (being blocked is a reason to give up, not a reason you can't), degrades the capability gate to a warning (mark leftovers `Omitted`), and skips the worktree merge-back — tearing down the worktree but **keeping the unmerged branch**, named in the warning. `--confirm` is still required, and it is legal directly from `backlog`. Everything below describes the `done` route. Reconcile capabilities first (the tcw-capabilities ledger flip): the DoD "capabilities reconciled" item is now **enforced**, not just acknowledged — `complete` **fails closed** if a capability the item declared in its `capabilities.yaml` `new:` list still reads `Missing`, or if any declared path doesn't resolve. Flip it (`tcw capabilities set <path> --status <S>`), mark it `Omitted` if you deliberately didn't build it, or `--force` past the gate with the reason in `outcome.md`. (`changed:` entries are only checked for resolution, not status.) TCW commits the completion move itself. `--force` also overrides unresolved blockers. If the branch was merged outside TCW — a merged PR — add `--already-integrated` to skip the merge-back while keeping every other gate. For a `--worktree` item, `complete` **merges the work branch back** into the primary checkout before tearing it down (the caps gate runs **after** the merge, so a flip made on the work branch counts), and **fails closed** on a merge conflict (branch + worktree left intact, item stays `active`) — resolve the conflict and re-run rather than `--force`ing past it.
-
-## Resume (across sessions)
-
-`tcw work list --status active` → `tcw work show <slug>` → read the item's `initial-request.md` body plus whatever lifecycle artifacts exist (`spec.md`, `plan.md`, `outcome.md`, `refined-outcome.md`). For an epic, `tcw work reconcile <slug>` to refresh the rollup before choosing the next action.
-
-## Sub-procedures (read on demand)
-
-The core lifecycle above is self-sufficient. For these rarer situations, read the matching doc and follow it:
-
-- **Planning, implementation, verification, and closeout across the SDLC** → [`references/lifecycle.md`](references/lifecycle.md)
-- **Triaging a `docs/work/inbox/` doc** (raw request / `delegate`/`escalate` drop) → [`references/process-inbox.md`](references/process-inbox.md)
-- **Splitting one item into nested pieces that transition together** (`--parent`) → [`references/decompose.md`](references/decompose.md)
-- **Coordinating independently scheduled epic tasks** (`--initiative`, valid in the same node or across nodes) → [`references/epic-lifecycle.md`](references/epic-lifecycle.md); for delegation across separate sub-project repos, also read [`references/cross-node-epic.md`](references/cross-node-epic.md)
-
-## Quick reference
-
-| Goal                                           | Command                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| plan a request/item                            | `/tcw-plan-work` or read [`references/lifecycle.md`](references/lifecycle.md)                                                                                                                                                                                                                                                                                                                                                                                      |
-| drive remaining stages                         | `/tcw-drive-work-to-completion` or read [`references/lifecycle.md`](references/lifecycle.md)                                                                                                                                                                                                                                                                                                                                                                       |
-| triage an inbox entry                          | `tcw work inbox list` → `tcw work inbox show <entry>` → `tcw work inbox accept <entry> [--title <title>]`                                                                                                                                                                                                                                                                                                                                                          |
-| split an item into coupled nested pieces       | `tcw work new "<sub>" --parent <slug>` (child nests under it; parent transitions carry it; starting/completing it alone de-nests it)                                                                                                                                                                                                                                                                                                                               |
-| add an independently scheduled task to an epic | `tcw work new "<task>" --initiative <epic-slug>` (same-node or cross-node; included by `reconcile`)                                                                                                                                                                                                                                                                                                                                                                |
-| discard an item                                | `tcw work complete <slug> --resolution <wontfix\|duplicate\|superseded> --confirm` — lands in `discarded/`, legal **directly from `backlog`**; no DoD checklist, capability gate degrades to a warning, worktree branch kept unmerged                                                                                                                                                                                                                              |
-| submit for verification                        | `tcw work submit <slug>` (active → review; optional)                                                                                                                                                                                                                                                                                                                                                                                                               |
-| send back for rework                           | `tcw work rework <slug>` (review → active; refused while `refined-outcome.md` exists — delete it first)                                                                                                                                                                                                                                                                                                                                                            |
-| record the pull request                        | `tcw work edit <slug> --pr <url>`                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| start work                                     | `tcw work start <slug> [--worktree]`                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| finish work                                    | `tcw work complete <slug> --resolution done --confirm`                                                                                                                                                                                                                                                                                                                                                                                                             |
-| see the board                                  | `tcw work list [--status active]` (hides completed **and discarded**; `--all` to include; `-i` / `--incl-desc` / `--include-descendants` lists registered descendant boards grouped by project ID, with initiative children indented beneath visible epics; descendant items print `<project-id>/<slug>`; shows lifecycle stages and sorts by priority/topology)                                                                                                   |
-| address an item in another node                | pass `<project-id>/<slug>` to any work command; **any** node in the registered graph resolves — descendant, ancestor, or sibling — while a bare slug remains local (`tcw serve` uses the same IDs). Unregistered projects and path-shaped qualifiers never resolve; a bad qualifier reports `no such project in this graph: <id>`                                                                                                                                  |
-| audit backlog relevance                        | `tcw work audit-work-backlog` (read-only cleanup recommendations for stale, duplicate, broken, blocked, vague, or misplaced backlog items)                                                                                                                                                                                                                                                                                                                         |
-| migrate external plans                         | `tcw work consolidate-plans [PATH ...] [--apply] [--delete]` (dry-run first; converts external planning docs into backlog items)                                                                                                                                                                                                                                                                                                                                   |
-| find item files                                | `tcw work path <slug>`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| validate the node                              | `tcw validate [path]` (always validates the whole registered graph; `path` narrows YAML/link/component checks only)                                                                                                                                                                                                                                                                                                                                                |
-| reference another object in prose              | `[text](tcw://W/<slug>)` locally; `[text](tcw://W/<project-id>/<slug>)` for **any** registered node (`W`, any direction — this is how a cross-node epic slice links its parent epic); `<project-id>/` before the axis (`tcw://<id>/C/<ref>`) is explicit axis inheritance (`T`/`C`)                                                                                                                                                                                |
-| address by status path                         | any work command also accepts a `<status>/…/<slug>` locator (e.g. `active/my-item`); the status segment must match the item's real status, intermediate segments are ignored, and the slug stays the identity                                                                                                                                                                                                                                                      |
-| set priority                                   | `tcw work new "<t>" --priority N` · `tcw work edit <slug> --priority N` (higher int = higher; default unspecified)                                                                                                                                                                                                                                                                                                                                                 |
-| set estimates                                  | `tcw work new "<t>" --effort <l> --complexity <l>` · `tcw work edit <slug> --effort <l> --complexity <l>` (`<l>` = low\|medium\|high\|very-high, or L/M/H/VH shorthand; optional; shown in `show`, not `list`)                                                                                                                                                                                                                                                     |
-| manage tags                                    | `tcw work tags add\|rm\|list <tag>...` — the node's registered tag set, stored in `tcw-config.yaml` (`work.tags`); fail-closed vocabulary                                                                                                                                                                                                                                                                                                                          |
-| tag an item                                    | `tcw work new "<t>" --tag <tag>` · `tcw work edit <slug> --tag <tag> --untag <tag>` (repeatable; each `--tag` must be registered or it's rejected)                                                                                                                                                                                                                                                                                                                 |
-| filter by tag                                  | `tcw work list --tag <tag>` (repeatable = match any); a tag later unregistered while still on an item is flagged by `tcw validate`                                                                                                                                                                                                                                                                                                                                 |
-| record / clear a blocker                       | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` (both repeatable — **one flag per blocker**, never comma-separated, so external prose may contain commas). A ref is a slug or free text; free text is stored as an external blocker and displayed as `external: <text>`, which is itself a valid ref. `--unblocked-by` **fails closed** when the ref matches no blocker, and removals apply before additions so a bad ref aborts the whole edit |
-| inspect the lifecycle contract + bindings       | `tcw work lifecycle [work-ref] [--json]`; `--stage <id> --directive` emits one instruction line for an agent, or nothing when unbound                                                                                                                                                                                                            |
-| topology                                       | `tcw work nodes`                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| epic rollup                                    | `tcw work reconcile <epic-slug>` (`--complete-when-ready` auto-closes a fully-resolved epic)                                                                                                                                                                                                                                                                                                                                                                       |
-| close a done epic                              | when all children are resolved the epic shows `ready-to-close` in `list`/rollup and may `complete` **directly from backlog** — no throwaway `start`                                                                                                                                                                                                                                                                                                                |
-| hand work down / up                            | `tcw work delegate <child> "<t>"` · `tcw work escalate "<t>"`                                                                                                                                                                                                                                                                                                                                                                                                      |
+> **Web editing:** items, artifacts, and the `capabilities.yaml` sidecar can also
+> be edited through `tcw serve`. It commits transitions but runs **no** hooks.

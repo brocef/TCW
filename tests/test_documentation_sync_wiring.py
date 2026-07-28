@@ -26,9 +26,12 @@ NO_CEFAILURES_ROOTS = [
     REPO / ".codex-plugin",
 ]
 
+# The two stages where AGENTS.md requires the skill: `plan` names a task per
+# trigger expected to fire, and `implement` evaluates them before the work is
+# reported complete. Retargeted from the retired task/epic lifecycle documents.
 LIFECYCLE_REFS = [
-    REPO / "skills" / "tcw-work" / "references" / "task-lifecycle.md",
-    REPO / "skills" / "tcw-work" / "references" / "epic-lifecycle.md",
+    REPO / "skills" / "tcw-work" / "references" / "stage-plan.md",
+    REPO / "skills" / "tcw-work" / "references" / "stage-implement.md",
 ]
 
 

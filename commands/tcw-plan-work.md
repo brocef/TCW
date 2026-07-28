@@ -1,43 +1,26 @@
 ---
-description: Plan a TCW work item from either an existing item or the user's chat request, producing the lifecycle planning artifacts in the work item folder.
+description: Plan a TCW work item from an existing item or the user's chat request, producing the lifecycle planning artifacts in the work item folder.
 ---
 
-Use the `tcw-work` skill. Read `skills/tcw-work/references/lifecycle.md`, choose the
-task or epic lifecycle, and run the planning stages for that lifecycle.
+Use the `tcw-work` skill. This command covers the stage range **`request` →
+`plan`**.
 
-For a task, this means request ingestion, request processing, and spec
-processing: `initial-request.md`, `spec.md`, and `plan.md`.
+Read `skills/tcw-work/SKILL.md`, find the first missing artifact, and run the
+stages from there through `plan.md`, loading **only** each stage's own document:
 
-For an epic, this means initiative intake, overview spec, and coordination /
-delegation plan using the same artifact names.
+- `references/stage-request.md` → `initial-request.md`
+- `references/stage-spec.md` → `spec.md`
+- `references/stage-plan.md` → `plan.md`
 
-Treat each produced artifact as a separate checkpoint. After writing or
-materially updating `initial-request.md`, commit it and its related TCW work
-files before creating `spec.md`; commit the spec stage before creating
-`plan.md`; then commit the plan stage. Inspect each diff and stage narrowly so
-unrelated changes are not included. Do not create empty commits for artifacts
-that already existed unchanged.
+For a `type: epic` item, also read `references/epic-deltas.md` — the same three
+stages, with an overview spec and a coordination plan.
 
-Use a staged plan only when splitting the implementation materially reduces the
-context that later agents must load. In that case keep `plan.md` as the concise
-manifest/overview, write each declared `plan/<id>.md` document with Objective,
-Pre-stage checks, Implementation, and Post-stage checks, and commit all of them
-together as the plan-stage checkpoint. Dependencies describe guidance and
-parallelism; they are not execution state.
+Each artifact is a separate checkpoint: write it, inspect the diff, stage
+narrowly, and commit before starting the next stage. Do not batch several stages
+into one commit, and do not create empty commits for artifacts that were already
+complete. TCW commits status transitions itself; do not commit those by hand.
 
-Input may be an existing TCW work item slug/path or a request written directly in
-chat. If the user provides only chat text, create the initial backlog item with
-`tcw work new "<title>"` and write all artifacts inside that item's folder.
+Stop at `plan.md`. Do not run `tcw work start` or write any code — that is
+`/tcw-drive-work-to-completion`. Ask the user to review the plan first.
 
-Classify the item as part of intake. Run `tcw work tags list`, choose every
-registered tag that materially helps people filter or audit this work, and apply
-it with repeatable `--tag <tag>` options on `tcw work new`. For an existing item,
-use `tcw work edit <slug> --tag <tag>` instead. If an important reusable category
-is missing from the project vocabulary, register it first with
-`tcw work tags add <tag>`; do not create one-off tags that merely restate the
-title. Record the chosen tags in the request-stage checkpoint.
-
-For small changes, offer to compress unnecessary planning detail, but keep enough
-artifact context for another agent to resume safely. Stop before implementation;
-do not run `tcw work start` unless the user explicitly pivots from planning into
-implementation.
+$ARGUMENTS
