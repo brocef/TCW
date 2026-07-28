@@ -55,8 +55,10 @@ done
 
 # The tag itself is unpushed, but its commit may already have ridden out on a
 # remote branch — the release content is public even if the label is not. This
-# reads cached remote-tracking refs (no fetch), so it can only add certainty,
-# never remove it; the per-remote tag check above is the authoritative one.
+# reads cached remote-tracking refs, so a recent `git fetch` sharpens it; it can
+# only add certainty, never remove it. The per-remote `ls-remote` above stays the
+# authoritative check and cannot be replaced by any amount of fetching: fetched
+# tags are indistinguishable from local ones in refs/tags/.
 if [ "$published" = "no" ] && [ -n "$(git branch -r --contains "$tag" 2>/dev/null)" ]; then
   published="yes (commit already on a remote branch)"
 fi
@@ -70,7 +72,10 @@ fi
 if [ -n "$unreachable" ]; then
   say "UNKNOWN" "Could not reach remote(s) to check whether $tag was pushed:$why
 
-Do not fold on a guess — ask the user whether $tag has been published."
+Do not fold on a guess — ask the user whether $tag has been published.
+Running 'git fetch' first does not help: fetched tags land in the same
+refs/tags/ namespace as locally-created ones, so no local ref distinguishes a
+published tag from an unpushed one. Only the remote can answer."
   exit 2
 fi
 

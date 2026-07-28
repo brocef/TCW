@@ -104,6 +104,11 @@ published (or there is nothing to fold) and on `2` the remote could not be
 reached; in both cases stop and cut a new version, or ask. A published tag that
 changes meaning is worse than an extra version number.
 
+The check has to touch the network, and a prior `git fetch` is not a substitute:
+fetched tags are written into the same `refs/tags/` namespace as ones you
+created, so no local ref says which of them the remote has. If the script cannot
+reach the remote, ask the user — do not fetch and assume.
+
 The version number does **not** change, so the version-bearing files are not
 touched. What changes is the tag's position and the release documents' contents.
 
