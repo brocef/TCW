@@ -845,7 +845,8 @@ changes` planning check, contradiction-detection, the `Missing → Supported`
   release notes, driving skills) move with the code that changes them. It also
   sets a project's Documentation Sync section up in the first place
   (`/tcw-docs-sync-setup`) and runs the version cut when a change set is done
-  (`/tcw-cut-version`).
+  (`/tcw-cut-version`) — including folding later work into a version that was
+  cut locally but never pushed.
 
 The five axis/plugin skills name `tcw …` commands (and, for `tcw-plugin`, `pipx`)
 and never reimplement tool logic — mechanism stays in the binary, judgment in the
