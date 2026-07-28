@@ -103,6 +103,23 @@ def test_unpushed_tag_whose_commit_rode_out_on_a_branch_is_not_foldable(
     assert "commit already on a remote branch" in result.stdout
 
 
+def test_tag_pushed_to_a_non_default_remote_is_not_foldable(
+    tmp_path: Path, repo: Path
+):
+    """Regression: checking only the upstream/origin remote reported FOLDABLE for
+    a tag that had been pushed to a second remote — the exact unsafe case."""
+    for name in ("origin", "other"):
+        git(repo, "init", "-q", "--bare", str(tmp_path / f"{name}.git"))
+        git(repo, "remote", "add", name, str(tmp_path / f"{name}.git"))
+    git(repo, "tag", "v1.0.0")
+    git(repo, "push", "-q", "other", "refs/tags/v1.0.0")  # tag only, non-default remote
+    commit(repo, "B")
+
+    result = run(repo)
+    assert result.returncode == 1, result.stdout
+    assert "tag present on 'other'" in result.stdout
+
+
 def test_unreachable_remote_reports_unknown(repo: Path, tmp_path: Path):
     """Offline or unreachable remote must not be read as 'unpublished'."""
     git(repo, "remote", "add", "origin", str(tmp_path / "does-not-exist.git"))
@@ -113,3 +130,46 @@ def test_unreachable_remote_reports_unknown(repo: Path, tmp_path: Path):
     assert result.returncode == 2, result.stdout
     assert "STATUS: UNKNOWN" in result.stdout
     assert "ask the user" in result.stdout
+
+
+def test_a_published_tag_beats_an_unreachable_remote(tmp_path: Path, repo: Path):
+    """One dead remote must not mask a definitive answer from a live one: a tag
+    found anywhere is NOT-FOLDABLE (1), not UNKNOWN (2)."""
+    git(repo, "remote", "add", "dead", str(tmp_path / "does-not-exist.git"))
+    git(repo, "init", "-q", "--bare", str(tmp_path / "live.git"))
+    git(repo, "remote", "add", "live", str(tmp_path / "live.git"))
+    git(repo, "tag", "v1.0.0")
+    git(repo, "push", "-q", "live", "refs/tags/v1.0.0")
+    commit(repo, "B")
+
+    result = run(repo)
+    assert result.returncode == 1, result.stdout
+    assert "tag present on 'live'" in result.stdout
+
+
+def test_tag_on_another_branch_is_invisible(repo: Path):
+    """`git describe` only sees tags reachable from HEAD; a tag on a side branch
+    is not 'the last version cut' for this line of work."""
+    git(repo, "checkout", "-q", "-b", "side")
+    commit(repo, "side work")
+    git(repo, "tag", "v1.0.0")
+    git(repo, "checkout", "-q", "main")
+    commit(repo, "B")
+
+    result = run(repo)
+    assert result.returncode == 1, result.stdout
+    assert "nothing has been cut yet" in result.stdout
+
+
+def test_tag_glob_argument_is_honored(repo: Path):
+    """Projects that don't prefix tags with `v` pass their own glob."""
+    git(repo, "tag", "release-1.0.0")
+    commit(repo, "B")
+
+    assert run(repo).returncode == 1  # default 'v*' glob finds nothing
+
+    result = subprocess.run(
+        [str(SCRIPT), "release-*"], cwd=repo, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout
+    assert "release-1.0.0 is unpublished" in result.stdout

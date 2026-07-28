@@ -65,8 +65,9 @@ file it keeps, then start a new one. Never lose content — every entry that was
 ## Step 3: Commit
 
 Stage the version bump and the rotated docs **together**, so the versioned
-notes/changelog ship with the version. Match the project's commit-message style
-if it has one; otherwise:
+notes/changelog ship with the version — and keep that release commit free of
+functional code changes, which belong to the commits being released. Match the
+project's commit-message style if it has one; otherwise:
 
 ```bash
 git commit -m "chore(release): cut v{version}"

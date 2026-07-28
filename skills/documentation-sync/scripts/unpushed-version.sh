@@ -31,35 +31,47 @@ if [ -z "$tag" ]; then
   exit 1
 fi
 
-# Prefer the upstream's remote; fall back to origin, then to the only remote.
-remote=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null | cut -d/ -f1)
-[ -n "$remote" ] || remote=$(git remote | grep -Fx origin || git remote | head -1)
+# Every remote, not just the default one: a tag pushed to any of them is
+# published, and picking one remote would report FOLDABLE for the others.
+remotes=$(git remote)
+published="no"
+unreachable=""
+why=""
 
-if [ -z "$remote" ]; then
-  # No remote at all: the tag cannot have been published anywhere.
-  published="no"
-else
+for remote in $remotes; do
   if ! ls_remote=$(GIT_TERMINAL_PROMPT=0 git ls-remote --tags "$remote" "refs/tags/$tag" 2>&1); then
-    say "UNKNOWN" "Could not reach remote '$remote' to check whether $tag was pushed:
-$ls_remote
-
-Do not fold on a guess — ask the user whether $tag has been published."
-    exit 2
+    # Note it and keep going: a definitive "published" on any other remote is a
+    # better answer than UNKNOWN, and only a clean sweep can justify FOLDABLE.
+    unreachable="$unreachable $remote"
+    why="$why
+  $remote: $ls_remote"
+    continue
   fi
   if [ -n "$ls_remote" ]; then
     published="yes (tag present on '$remote')"
-  elif [ -n "$(git branch -r --contains "$tag" 2>/dev/null)" ]; then
-    # Tag itself is unpushed, but its commit already rode out on a remote
-    # branch — the release content is public even if the label is not.
-    published="yes (commit already on a remote branch)"
-  else
-    published="no"
+    break
   fi
+done
+
+# The tag itself is unpushed, but its commit may already have ridden out on a
+# remote branch — the release content is public even if the label is not. This
+# reads cached remote-tracking refs (no fetch), so it can only add certainty,
+# never remove it; the per-remote tag check above is the authoritative one.
+if [ "$published" = "no" ] && [ -n "$(git branch -r --contains "$tag" 2>/dev/null)" ]; then
+  published="yes (commit already on a remote branch)"
 fi
 
 if [ "$published" != "no" ]; then
   say "NOT-FOLDABLE" "$tag is published — $published. Rewriting a tag others may have fetched is off the table; cut a new version instead."
   exit 1
+fi
+
+# No remote said "published", but some could not be asked — that is not proof.
+if [ -n "$unreachable" ]; then
+  say "UNKNOWN" "Could not reach remote(s) to check whether $tag was pushed:$why
+
+Do not fold on a guess — ask the user whether $tag has been published."
+  exit 2
 fi
 
 behind=$(git rev-list --count "$tag..HEAD" 2>/dev/null || echo 0)
@@ -68,7 +80,7 @@ if [ "$behind" -eq 0 ]; then
   exit 1
 fi
 
-say "FOLDABLE" "$tag is unpublished${remote:+ (absent from '$remote')} and has $behind commit(s) after it:
+say "FOLDABLE" "$tag is unpublished (absent from: ${remotes:-no remotes configured}) and has $behind commit(s) after it:
 
 $(git log --oneline "$tag..HEAD")
 
