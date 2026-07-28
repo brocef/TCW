@@ -42,6 +42,25 @@ category, with commit hash ranges so entries trace back to source.
   unchanged; only the factual claim moved. (`dbb2340`)
 - `.codex-plugin/plugin.json` `longDescription` said the plugin ships six
   skills; it ships seven (`tcw-post-mortem` was missing). (`dbb2340`)
+- `docs/capabilities/work/consolidate-plans/description.md` still claimed a
+  `tcw work consolidate-plans` CLI verb — the one phantom the first sweep missed,
+  because the guard's scan roots excluded the capability ledger. The guard now
+  scans `docs/capabilities/**`; capability bodies are user-facing documentation
+  and name commands like any other doc. Found by a trial run of the new audit
+  procedure. (`0886943`)
+- Gaps in the new audit procedure, all found by that same trial run: the
+  inter-item pass read `--status active`/`--status completed` but not
+  `--status review` (the likeliest near-duplicate, since it is the work that just
+  happened); "cap concurrency at 8 as a sliding window" prescribed a mechanism no
+  harness offers, now "batches of at most 8"; `tcw-backlog-auditor` had no
+  fallback for sessions on a release that predates it; `<severity>` had no
+  defined scale; a healthy item had no rendering; approvals had no grouping rule;
+  and nothing asked a read-only pass to verify it had changed nothing.
+  (`0886943`)
+- `agents/tcw-verifier.md` and `agents/tcw-backlog-auditor.md` claimed "you have
+  no write tools" while holding `Bash`, which can write. Both now state what the
+  tool set actually gives (no file editing) and that the rest is a prohibition
+  honored, not a wall. `delegation.md` says the same. (`0568382`)
 
 ## Internal
 
@@ -49,4 +68,4 @@ category, with commit hash ranges so entries trace back to source.
   and names the read-only tool set as the strongest reason to define an agent:
   it enforces what a prompt can only request. (`dbb2340`)
 
-Commit range: `24f4bc6..dbb2340`.
+Commit range: `24f4bc6..0886943`.

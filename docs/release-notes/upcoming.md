@@ -33,7 +33,8 @@ The first two are assistant-driven reviews rather than commands you type, and th
 documentation now says so and explains how to reach them. The `--pr` option is
 simply gone from the docs. A new check runs with the test suite and will fail the
 build if any documentation ever again names a `tcw` command or option that does
-not exist.
+not exist — including in the capability descriptions, which is where the last
+surviving one was hiding.
 
 Consolidating external plans is still Claude Code only; making it work in Codex
 is tracked as separate work.
