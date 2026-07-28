@@ -59,15 +59,27 @@ documentation gate justified by a rule that no longer exists.
    `upcoming.md` header text agrees with what `scripts/cut_version.py` writes.
 3. The end-of-`implement` documentation gate keeps its position and its force,
    restated on the half of its rationale that survives.
-4. No changelog file's *entries* are edited — released or pending.
+4. No **released** changelog file is edited. `docs/changelogs/v*.md` are history.
+   *(Amended at `verify` — originally "no changelog file's entries are edited,
+   released or pending". The pending file is now in scope; see Goal 5.)*
+5. The pending `docs/changelogs/upcoming.md` carries no commit hashes, so the
+   next release ships a changelog consistent with the rule this item introduces.
+   *(Added at `verify`.)*
+6. Projects already holding `<changes>` wrappers get a migration guide in
+   `docs/`, which the plugin cache carries verbatim. *(Added at `verify`.)*
 
 ## Non-goals
 
 - **Reconsidering when documentation is written during `implement`.** The gate's
   placement is out of scope; only the sentence explaining it changes.
-- **Stripping hashes from changelog entries.** Released `docs/changelogs/v*.md`
-  and the pending entries in `docs/changelogs/upcoming.md` keep the hashes they
-  already carry. Rewriting history was explicitly declined.
+- **Rewriting released changelog history.** `docs/changelogs/v*.md` keep every
+  hash they carry; they describe versions that already shipped.
+
+  *Amended at `verify`.* This Non-goal originally also covered the pending
+  entries in `docs/changelogs/upcoming.md`. The user overrode that half at the
+  verification gate: the pending file is unreleased, so bringing it in line with
+  the new rule is not rewriting history. The released-file boundary is unchanged
+  and remains the hard one.
 - **Any behavioral change to the `tcw` CLI.** No command emits or reads these
   hashes; none needs to change.
 - **`skills/tcw-post-mortem/SKILL.md:36`** ("The commit range. `git log` over the
@@ -144,30 +156,58 @@ the lifecycle's documentation gate.
 ### 7. `docs/changelogs/upcoming.md` line 3-4
 
 The file's own header prose is brought in line with site 5's new template, so a
-rotation does not silently change the header text. **Only the header changes** —
-every existing entry keeps its `` (`hash`) `` suffix. This is the one place the
-change touches a changelog file, and it touches instruction prose in it, not an
-entry.
+rotation does not silently change the header text.
+
+*Amended at `verify`.* This site originally read "**only the header changes** —
+every existing entry keeps its `` (`hash`) `` suffix". Sites 8 and 9 below were
+added when the verification gate widened the scope.
+
+### 8. `docs/changelogs/upcoming.md` entries *(added at `verify`)*
+
+Strip every commit hash from the pending changelog: all 12 per-entry
+`` (`hash`) `` suffixes and the `` Commit range: `24f4bc6..0886943`. `` footer.
+Entry prose is otherwise untouched — this removes attributions, not content.
+
+The file is unreleased, so this is not a history rewrite; `docs/changelogs/v*.md`
+remain closed (AC2). The result is that the next release ships a changelog whose
+form matches the rule the release itself announces.
+
+### 9. `docs/migration-guide-0.15.X-to-0.16.0.md` *(added at `verify`)*
+
+A new file, following `migration-guide-0.14.X-to-0.15.0.md` and its two
+predecessors. The whole repository *is* the plugin payload — the cache at
+`~/.claude/plugins/cache/tcw/tcw/<version>/` contains `docs/` verbatim — so no
+packaging change is needed for users to read it.
+
+It differs from every predecessor in kind: they describe required migrations
+(move files, run `tcw validate`), this one describes a **relaxation**. Nothing
+breaks on upgrade and nothing must be done. The guide has to lead with that and
+then offer the optional cleanup, rather than dressing a non-event as a
+procedure (AC9).
+
+The name presupposes a minor bump at closeout, which is the user's stated
+choice.
 
 ## Acceptance criteria
 
-1. `grep -rniE "commit[- ]hash range|commit range|starting-hash|ending-hash" skills/ scripts/ AGENTS.md docs/changelogs/upcoming.md` returns exactly two hits, both out of scope per Non-goals:
-   - `skills/tcw-post-mortem/SKILL.md:36` — reading `git log` during a post-mortem.
-   - `docs/changelogs/upcoming.md:71` — `` Commit range: `24f4bc6..0886943`. ``, the
-     trailing footer of a *pending changelog entry* written under the old rule
-     (commit `3633c30`). It is entry content below the first `##` heading, so
-     Non-goals and AC3 both forbid editing it.
+1. `grep -rniE "commit[- ]hash range|commit range|starting-hash|ending-hash" skills/ scripts/ AGENTS.md docs/changelogs/upcoming.md` returns exactly one hit:
+   `skills/tcw-post-mortem/SKILL.md:36` (out of scope per Non-goals).
 
-   **Corrected during `implement`.** The spec originally asserted one hit. The
-   site inventory grep recorded under Notes was case-sensitive (`commit range`)
-   and so missed `Commit range:`; this AC's own grep is `-i` and catches it. No
-   instruction prose is involved — the requirement is gone from every skill —
-   so the finding changes the criterion's wording, not the work.
+   *History of this criterion.* It was briefly corrected during `implement` to
+   expect **two** hits: the spec's site-inventory grep (see Notes) was
+   case-sensitive on `commit range` and had missed
+   `` Commit range: `24f4bc6..0886943`. `` at `docs/changelogs/upcoming.md:71` —
+   the footer of a pending entry written under the old rule in commit `3633c30`.
+   Under the original Non-goals that line was untouchable, so the criterion had
+   to widen. The `verify` gate then put the pending file in scope, AC3 deletes
+   the line, and the criterion returns to its original one-hit form.
 2. `git diff --stat` for the whole change lists no file matching
    `docs/changelogs/v*.md`.
-3. `docs/changelogs/upcoming.md` still contains every `` (`hash`) `` suffix it
-   carries at the start of this work — the only lines changed in that file are
-   in the header paragraph above the first `##` heading.
+3. `docs/changelogs/upcoming.md` contains **no** commit hash: no
+   `` (`hash`) `` suffix on any entry and no `Commit range:` footer. Entry prose
+   is otherwise unchanged — the diff removes hash attributions and nothing else.
+   *(Inverted at `verify`. It previously required every suffix to survive. AC2
+   still guards the released files, which is the boundary that held.)*
 4. The header string `scripts/cut_version.py` writes for
    `docs/changelogs/upcoming.md` is byte-identical to the header currently in
    `docs/changelogs/upcoming.md` (everything above the first `##` heading).
@@ -185,6 +225,11 @@ entry.
    `skills/documentation-sync/references/release-notes-and-changelogs.md`.
 8. `pytest` passes, including `tests/test_cut_version.py` and
    `tests/test_plugin_manifests.py`.
+9. `docs/migration-guide-0.15.X-to-0.16.0.md` exists, follows the naming
+   convention of its three predecessors, and states plainly that **no user
+   action is required** before describing the optional cleanup. It must not
+   invent a required ritual for a change that only relaxes a rule.
+   *(Added at `verify`.)*
 
 ## Risks
 
@@ -196,10 +241,11 @@ entry.
   AC5.*
 - **Downstream projects still holding `<changes>` wrappers.** Any project that
   adopted the skill earlier has changelog entries in a syntax the skill will no
-  longer explain. Accepted: the wrappers are inert Markdown, the entries stay
-  readable, and this item explicitly does not rewrite history. No migration note
-  is written, since the requirement's removal is announced in TCW's own release
-  notes.
+  longer explain. *Mitigated at `verify` by site 9.* The spec originally accepted
+  this unmitigated — the wrappers are inert Markdown and the removal is announced
+  in the release notes — but the user called for a migration guide, which now
+  carries the explanation and the optional cleanup. The wrappers still need no
+  action.
 - **`documentation-sync` regressing on its own change.** This item edits the very
   skill that governs the documentation gate; the gate must still be run on this
   work, against the *new* text. *Mitigation: the plan schedules the doc pass as
