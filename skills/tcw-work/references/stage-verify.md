@@ -53,8 +53,10 @@ Optional `## Notes`.
 8. If verification surfaced serious unforeseen problems, offer a post-mortem —
    see `stage-postmortem.md`. Only on the user's assent. — agent `[judgment]`
 9. On acceptance, after `tcw work complete`: if the change set is substantial
-   enough to release, **offer** the version options — major / minor / patch, or
-   keep the current version and update the changelog files in place. The cut is
+   enough to release, **offer** the version options — major / minor / patch;
+   keep the current version and update the changelog files in place; or, when
+   the last version tag was cut locally and never pushed, fold this work into
+   that unpublished version instead of stacking a second one on it. The cut is
    the user's call and comes after the item closes, never during implementation;
    `documentation-sync`'s `references/cut-version.md` runs it (`/tcw-cut-version`
    under Claude). Docs themselves are already current — implementation's step 6

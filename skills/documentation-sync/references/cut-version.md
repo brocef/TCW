@@ -84,6 +84,66 @@ gives readers a stable anchor.
 
 **Publishing is a human step.** Ask before `git push` / `git push --tags`.
 
+## Folding into an unpushed version
+
+Run this when the user picked option 5 — the last version was cut locally but
+never pushed, and the work since it should join that release rather than get a
+release of its own. Typical shape:
+
+```
+A ← origin/main        B (tag: v3.2.1)        C ← HEAD
+```
+
+`v3.2.1` was cut at `B`; `C` landed afterwards. Nothing about `v3.2.1` has
+reached anyone, so the tag can move to `C` and its notes can grow to cover it.
+
+**Re-confirm it is unpushed before touching anything** — run
+`scripts/unpushed-version.sh` and require exit code `0`. On `1` the tag is
+published (or there is nothing to fold) and on `2` the remote could not be
+reached; in both cases stop and cut a new version, or ask. A published tag that
+changes meaning is worse than an extra version number.
+
+The version number does **not** change, so the version-bearing files are not
+touched. What changes is the tag's position and the release documents' contents.
+
+1. **Delete the local tag.**
+
+   ```bash
+   git tag -d v{version}
+   ```
+
+2. **Merge the newer content into the versioned files.** Anything written into
+   `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md` since the
+   cut belongs to `v{version}.md` now — move it in, merging into the existing
+   sections rather than appending a second `## Added` beside the first.
+
+3. **Answer any still-unevaluated triggers** for the commits since the tag, into
+   the same `v{version}.md` files. The fold is a documentation gate like any
+   other; commits arriving after a cut are not exempt.
+
+4. **Reset the `upcoming.md` files** to their empty-header state — their content
+   just moved.
+
+5. **Extend the commit-hash ranges.** An entry that read `` (`abc1234`..) ``
+   should now cover through the new HEAD. A stale range is the one artifact of a
+   fold that silently lies afterwards.
+
+6. **Commit**, matching the project's style:
+
+   ```bash
+   git commit -m "chore(release): fold <description> into v{version}"
+   ```
+
+7. **Re-tag at HEAD.**
+
+   ```bash
+   git tag v{version}
+   ```
+
+Verify with `git tag --points-at HEAD` before reporting done — a fold that left
+the tag on the old commit looks identical in `git log` and is only discovered at
+push time.
+
 ## Common Mistakes
 
 | Mistake                                                       | Fix                                                                          |
@@ -93,3 +153,5 @@ gives readers a stable anchor.
 | Tagging an earlier or later commit                            | Tag the version-bump commit itself                                           |
 | Pushing the tag without asking                                | Pushing a tag is publishing — confirm first                                  |
 | Bumping when the user chose "keep the current version"        | That choice touches changelog files only                                     |
+| Folding into a tag that was already pushed                    | Both checks must pass first; otherwise cut a new version                     |
+| Folding and leaving the old commit ranges in `v{version}.md`  | Extend them through the new HEAD — a stale range outlives the fold           |

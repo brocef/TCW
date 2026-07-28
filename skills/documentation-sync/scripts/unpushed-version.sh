@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Is the project's most recent version tag still local-only?
+#
+# Answers the gate for option 5 of documentation-sync's version options: work
+# since an unpublished release can be folded into it instead of stacking a
+# second version on top. Run from anywhere inside the repo.
+#
+#   usage: unpushed-version.sh [tag-glob]     (default glob: v*)
+#
+# Exit codes:
+#   0  FOLDABLE     — tag exists, is unpublished, and has commits after it
+#   1  NOT-FOLDABLE — no tag, tag already published, or nothing to fold
+#   2  UNKNOWN      — could not reach the remote; ask the user before acting
+#
+# Read the exit code, not the prose. Every path prints one STATUS: line first.
+
+set -uo pipefail
+
+glob="${1:-v*}"
+
+say() { printf '%s\n%s\n' "STATUS: $1" "$2"; }
+
+git rev-parse --git-dir >/dev/null 2>&1 || {
+  say "NOT-FOLDABLE" "Not inside a git repository."
+  exit 1
+}
+
+tag=$(git describe --tags --abbrev=0 --match "$glob" 2>/dev/null) || true
+if [ -z "$tag" ]; then
+  say "NOT-FOLDABLE" "No tag matching '$glob' is reachable from HEAD — nothing has been cut yet."
+  exit 1
+fi
+
+# Prefer the upstream's remote; fall back to origin, then to the only remote.
+remote=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null | cut -d/ -f1)
+[ -n "$remote" ] || remote=$(git remote | grep -Fx origin || git remote | head -1)
+
+if [ -z "$remote" ]; then
+  # No remote at all: the tag cannot have been published anywhere.
+  published="no"
+else
+  if ! ls_remote=$(GIT_TERMINAL_PROMPT=0 git ls-remote --tags "$remote" "refs/tags/$tag" 2>&1); then
+    say "UNKNOWN" "Could not reach remote '$remote' to check whether $tag was pushed:
+$ls_remote
+
+Do not fold on a guess — ask the user whether $tag has been published."
+    exit 2
+  fi
+  if [ -n "$ls_remote" ]; then
+    published="yes (tag present on '$remote')"
+  elif [ -n "$(git branch -r --contains "$tag" 2>/dev/null)" ]; then
+    # Tag itself is unpushed, but its commit already rode out on a remote
+    # branch — the release content is public even if the label is not.
+    published="yes (commit already on a remote branch)"
+  else
+    published="no"
+  fi
+fi
+
+if [ "$published" != "no" ]; then
+  say "NOT-FOLDABLE" "$tag is published — $published. Rewriting a tag others may have fetched is off the table; cut a new version instead."
+  exit 1
+fi
+
+behind=$(git rev-list --count "$tag..HEAD" 2>/dev/null || echo 0)
+if [ "$behind" -eq 0 ]; then
+  say "NOT-FOLDABLE" "$tag is unpublished, but HEAD is at the tag — there is nothing since it to fold in."
+  exit 1
+fi
+
+say "FOLDABLE" "$tag is unpublished${remote:+ (absent from '$remote')} and has $behind commit(s) after it:
+
+$(git log --oneline "$tag..HEAD")
+
+Offer to fold that work into $tag rather than cutting a new version — unless it
+is too large for $tag to carry honestly, in which case recommend a fresh bump.
+Procedure: references/cut-version.md → 'Folding into an unpushed version'."
+exit 0

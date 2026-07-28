@@ -100,6 +100,20 @@ After a substantial set of changes has settled — a feature, a bug fix, a refac
 
 "Changelog files" means the release-note and developer-changelog working files listed in the project's `## Documentation Sync` section, such as `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md`. Update only the files whose triggers fire.
 
+**A fifth option appears only when the last version was cut but never published.** Before presenting the list, run this skill's gate script from inside the repo:
+
+```bash
+scripts/unpushed-version.sh          # optional arg: tag glob, default 'v*'
+```
+
+Read the **exit code**, not the prose: `0` foldable · `1` not foldable (no tag, already published, or nothing since it) · `2` the remote was unreachable — ask the user rather than guessing. It prints one `STATUS:` line and, when foldable, the tag and the commits that would join it.
+
+On `0`, that release exists nowhere but this machine, so the work since it can still join it. Offer:
+
+5. Fold the changes since `{tag}` into `{tag}` itself — re-dating the release rather than cutting a second one on top of it
+
+Read `references/cut-version.md` → "Folding into an unpushed version" to run it. Don't offer the fold when the intervening work is larger than the version it would be folded into can honestly carry — a feature folded into a patch is a mislabeled release; recommend a fresh bump instead. Never fold into a published tag: rewriting a tag other people may have fetched is off the table, which is what the gate exists to prevent. That judgment is yours; the script only answers *whether the tag is still local*.
+
 Don't offer mid-flow, and don't offer for trivial in-isolation edits. Don't change the version unless the user selects `major`, `minor`, or `patch`. For those three choices, read `references/cut-version.md` — it starts by deferring to **the project's own version-cut process** (every project bumps differently; its `CLAUDE.md` / Versioning section names the files and the script) and falls back to the manual ritual only when the project has none. For the keep-current-version choice, leave version-bearing metadata, tags, and working-file names unchanged and update the applicable changelog files in place.
 
 ## Common Mistakes
