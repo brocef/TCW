@@ -1,0 +1,11 @@
+slug: 2026-07-29-auto-install-the-tcw-cli-on-sessionstart-via-a-plugin-hook
+title: Auto-install the tcw CLI on SessionStart via a plugin hook
+created: '2026-07-29'
+resolution: null
+priority: 60
+effort: low
+complexity: medium
+tags:
+- cli
+- skills
+- docs
