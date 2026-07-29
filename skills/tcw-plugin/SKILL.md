@@ -2,7 +2,7 @@
 name: tcw-plugin
 description: TCW orientation across the plugin's skills, plus install/repair of the `tcw` CLI from the plugin's own clone. Use for cross-skill orientation, or when `tcw` is missing or broken — not on PATH, `tcw --version` fails, or a plugin update left it stale. Under Claude a `SessionStart` hook already installs the CLI automatically, so getting here means it did not finish the job; the `/tcw-doctor` command routes here, and Codex (no slash commands, no hook) uses this skill directly.
 when_to_use: Use for TCW orientation across the plugin's skills, or when the `tcw` CLI is missing or broken — not found on PATH, `tcw --version` fails, or a plugin update left it stale — to install or repair it from this plugin's own clone.
-allowed-tools: Bash(tcw *), Bash(command -v *), Bash(pipx list *), Read
+allowed-tools: Bash(tcw *), Bash(command -v *), Bash(realpath *), Bash(ls *), Bash(sort *), Bash(pipx *), Bash(python3 *), Bash(node --version), Bash(*/scripts/session_bootstrap.sh *), Read
 metadata:
     author: Brian Cefali
 compatibility: Requires Python 3.11+; `tcw serve` additionally requires Node.js 22.12+; installs the tcw CLI via pipx from the plugin clone.

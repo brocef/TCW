@@ -1,6 +1,6 @@
 ---
 description: Diagnose the tcw CLI install — is `tcw` on PATH, is it pipx/editable/missing, does it match the active plugin-cache version — and re-point it if a plugin update left it stale.
-allowed-tools: Bash(tcw *), Bash(command -v *), Bash(pipx *), Bash(python3 *)
+allowed-tools: Bash(tcw *), Bash(command -v *), Bash(realpath *), Bash(ls *), Bash(sort *), Bash(pipx *), Bash(python3 *), Bash(node --version), Bash(*/scripts/session_bootstrap.sh *), Read
 disable-model-invocation: true
 ---
 
