@@ -14,10 +14,13 @@ hook, and this is the install path.
    marketplace/repo name and the version changes on every update.
 
 2. **Run the reconcile:** `"<clone-root>"/scripts/session_bootstrap.sh "<clone-root>"`.
-   It `pipx install --force`s the clone, and skips silently when `tcw` is already
-   current, when the resolved `tcw` is a developer's `pip install -e` checkout
-   (never force over one), or when `pipx` is missing. Success is silent too; only
-   a failed install prints.
+   It `pipx install --force`s the clone, and skips silently when `pipx` is
+   missing, or when the `tcw` already on PATH is not one it may replace — a
+   developer's `pip install -e` checkout (never force over one), or anything
+   whose owning interpreter it cannot identify, such as a version manager's shim.
+   Invoked this way it is passed no sentinel path, so it cannot take the hook's
+   "already current" shortcut: it reinstalls rather than no-opping. Success is
+   silent too; only a failed install prints.
 
 3. **Verify:** `tcw --version` resolves and prints a version. If it does, stop.
 
