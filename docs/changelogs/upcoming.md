@@ -49,6 +49,13 @@ category.
   `True` by the time it runs, and its other two branches go through `_write_meta`,
   which does not create the directory at all. The guard wraps all three, which is
   what makes fresh-override materialization all-or-nothing.
+- `FsCapabilitiesStore.set` — the path `tcw capabilities set` actually uses,
+  where `update_capability` is web-editor-only — carries the same guard. It
+  materializes a fresh override through `_write_target` and previously wrote
+  `meta.yaml` with no rollback, leaving an empty override directory on failure.
+  Single-file, so never a partial object; the residue is what changed.
+- `_write_node` and `_write_meta` now document that they stage internally, so any
+  caller wrapping them in a rollback must key it on whether content landed.
 - `FsWorkStore.create_work` wraps its two writes in the same rollback. `mkdir`
   without `exist_ok` proves the directory is ours, so the rmtree is
   unconditional.
