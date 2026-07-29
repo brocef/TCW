@@ -4,6 +4,7 @@ The single automated guard against *authoring* drift (runtime cache-vs-installed
 drift is `/tcw-doctor`'s job, not this test's).
 """
 import json
+import os
 import tomllib
 from pathlib import Path
 
@@ -70,6 +71,20 @@ def test_every_skill_has_name_and_description_frontmatter(skill):
     end = lines.index("---", 1)
     keys = {ln.split(":", 1)[0] for ln in lines[1:end] if not ln.startswith((" ", "\t"))}
     assert {"name", "description"} <= keys, f"{skill} frontmatter lacks name/description"
+
+
+def test_hooks_manifest_wires_one_executable_session_start_script():
+    """The SessionStart install hook. `claude plugin validate` catches a broken
+    `hooks` path, but nothing outside this test catches the script losing its
+    executable bit — a hook that cannot run fails silently."""
+    hooks_file = REPO / _load(CLAUDE_PLUGIN)["hooks"]
+    assert hooks_file.is_file(), f"manifest points at a missing file: {hooks_file}"
+    entries = _load(hooks_file)["hooks"]["SessionStart"]
+    commands = [h["command"] for e in entries for h in e["hooks"]]
+    assert len(commands) == 1, f"expected exactly one SessionStart hook: {commands}"
+    script = REPO / commands[0].replace('"${CLAUDE_PLUGIN_ROOT}"/', "")
+    assert script.is_file(), f"hook command is not a file: {script}"
+    assert os.access(script, os.X_OK), f"hook command is not executable: {script}"
 
 
 def test_symlink_points_at_repo_root():
