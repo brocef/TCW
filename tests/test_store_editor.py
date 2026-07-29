@@ -20,7 +20,8 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore,
-    _revision, _revision_multi, _atomic_write, init, write_sentinel,
+    _revision, _revision_multi, _atomic_write, _atomic_write_all, init,
+    write_sentinel,
 )
 
 
@@ -862,6 +863,86 @@ def test_atomic_write_success_stages_file(tmp_path):
     p = tmp_path / "out.yaml"
     _atomic_write(p, "key: value\n")
     assert p.read_text() == "key: value\n"
+
+
+def _fail_writing(monkeypatch, name, exc=OSError(28, "No space left on device")):
+    """Make `Path.write_text` raise for one target file.
+
+    Matching on the target's *name* is deterministic where a call counter is not
+    — `_stage`, git, and fixture setup do their own writes. Temps are
+    `<name>.tmp`, so `startswith` catches the staged write too.
+    """
+    real = Path.write_text
+
+    def guard(self, *a, **kw):
+        if self.name.startswith(name):
+            raise exc
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "write_text", guard)
+
+
+def test_atomic_write_all_writes_both(tmp_path):
+    a, b = tmp_path / "a.yaml", tmp_path / "b.md"
+    _atomic_write_all([(a, "one\n"), (b, "two\n")])
+    assert (a.read_text(), b.read_text()) == ("one\n", "two\n")
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_atomic_write_all_single_pair(tmp_path):
+    """The one-entry shape `update_work` uses when `body is _UNSET`."""
+    a = tmp_path / "a.yaml"
+    _atomic_write_all([(a, "one\n")])
+    assert a.read_text() == "one\n"
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_atomic_write_all_cleans_up_on_base_exception(tmp_path, monkeypatch):
+    """A KeyboardInterrupt mid-batch still cleans up its temps."""
+    a, b = tmp_path / "a.yaml", tmp_path / "b.md"
+    _fail_writing(monkeypatch, "b.md", exc=KeyboardInterrupt())
+
+    with pytest.raises(KeyboardInterrupt):
+        _atomic_write_all([(a, "one\n"), (b, "two\n")])
+
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_atomic_write_all_staging_failure_promotes_nothing(tmp_path, monkeypatch):
+    a, b = tmp_path / "a.yaml", tmp_path / "b.md"
+    a.write_text("prior\n")
+    _fail_writing(monkeypatch, "b.md")
+
+    with pytest.raises(OSError):
+        _atomic_write_all([(a, "one\n"), (b, "two\n")])
+
+    assert a.read_text() == "prior\n"
+    assert not b.exists()
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_atomic_write_all_promote_failure_is_the_recorded_ceiling(tmp_path,
+                                                                 monkeypatch):
+    """The promote loop is not atomic across files. Pinned so the limit reads as
+    a decision on record rather than an accident someone silently 'fixes'."""
+    a, b = tmp_path / "a.yaml", tmp_path / "b.md"
+    real = Path.replace
+    calls = []
+
+    def guard(self, target):
+        calls.append(target)
+        if len(calls) == 2:
+            raise OSError(28, "No space left on device")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "replace", guard)
+
+    with pytest.raises(OSError):
+        _atomic_write_all([(a, "one\n"), (b, "two\n")])
+
+    assert a.read_text() == "one\n"      # first promoted
+    assert not b.exists()                # second was not
+    assert list(tmp_path.glob("*.tmp")) == []
 
 
 def test_artifact_write_preserves_prior_on_replace_failure(tmp_path):

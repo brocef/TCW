@@ -558,6 +558,34 @@ def _atomic_write(path: Path, content: str) -> None:
         raise
 
 
+def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
+    """Write several files as one unit: stage every temp, then promote each.
+
+    `pairs` is `(target path, content)` in promote order. The failure class this
+    closes is content production — ENOSPC, EACCES, a serialization error — which
+    can only happen in the staging phase, before anything is promoted, so the
+    targets are left untouched. One handler spans both phases and unlinks every
+    temp, so no `.tmp` is left beside a real file in the user's git tree.
+    `BaseException` matches `_atomic_write`: a `KeyboardInterrupt` mid-batch
+    still cleans up.
+
+    # ponytail: the promote loop is not atomic across files — a process death
+    # between two replace() calls still leaves a partial update. Upgrade path is
+    # a journal or a whole-directory swap (the `accept_inbox` shape, fs.py:2246);
+    # neither is worth its cost for the failure class actually reachable here.
+    """
+    staged = [(p.with_suffix(p.suffix + ".tmp"), p, c) for p, c in pairs]
+    try:
+        for tmp, _, content in staged:
+            tmp.write_text(content, encoding="utf-8")
+        for tmp, path, _ in staged:
+            tmp.replace(path)
+    except BaseException:
+        for tmp, _, _ in staged:
+            tmp.unlink(missing_ok=True)
+        raise
+
+
 # ── Shared tree-store core (Phase 4) ─────────────────────────────────────────
 
 class FsTreeStore:
