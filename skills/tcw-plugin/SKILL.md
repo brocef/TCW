@@ -1,6 +1,6 @@
 ---
 name: tcw-plugin
-description: TCW orientation across the plugin's skills, plus install/repair of the `tcw` CLI from the plugin's own clone. Use for cross-skill orientation, or when `tcw` is missing or broken — not on PATH, `tcw --version` fails, or a plugin update left it stale. The `/tcw-init` and `/tcw-doctor` commands route here; Codex (no slash commands) uses this skill directly.
+description: TCW orientation across the plugin's skills, plus install/repair of the `tcw` CLI from the plugin's own clone. Use for cross-skill orientation, or when `tcw` is missing or broken — not on PATH, `tcw --version` fails, or a plugin update left it stale. Under Claude a `SessionStart` hook already installs the CLI automatically, so getting here means it did not finish the job; the `/tcw-doctor` command routes here, and Codex (no slash commands, no hook) uses this skill directly.
 when_to_use: Use for TCW orientation across the plugin's skills, or when the `tcw` CLI is missing or broken — not found on PATH, `tcw --version` fails, or a plugin update left it stale — to install or repair it from this plugin's own clone.
 allowed-tools: Bash(tcw *), Bash(command -v *), Bash(pipx list *), Read
 metadata:
@@ -53,8 +53,11 @@ records the changes being made.
 # Installing & repairing the `tcw` CLI
 
 The plugin ships the skills; `tcw` itself is a Python package that has to be on
-your PATH. **Most of the time it already is — so check first, and only read the
-detailed procedure if there's a problem:**
+your PATH. **Under Claude it puts itself there:** a `SessionStart` hook runs
+`scripts/session_bootstrap.sh`, which installs the CLI from the plugin's own
+clone and re-installs it when a plugin update moves that clone. It is silent on
+success and on every deliberate skip, so it says nothing most sessions. **Check
+first, and only read a procedure below if there's a problem:**
 
 ```
 tcw --version      # works? → nothing to do. stop here.
@@ -63,9 +66,16 @@ tcw --version      # works? → nothing to do. stop here.
 If `tcw` is **missing or broken**, read the matching procedure in this skill's
 `references/` and follow it:
 
-- **Install** `tcw` from the plugin clone → read [`references/setup.md`](references/setup.md)
+- **Install** `tcw` from the plugin clone — the Codex path, where there is no
+  hook, and the Claude path when the automatic one did not finish the job →
+  read [`references/setup.md`](references/setup.md)
 - **Diagnose / repair** a stale, wrong, or shadowed install →
   read [`references/doctor.md`](references/doctor.md)
+
+Both run the same `scripts/session_bootstrap.sh "<clone-root>"` the hook runs;
+what they add is the judgment the script deliberately does not encode — choosing
+a Python environment when `pipx` is missing, and everything the hook does not
+touch (shadowed, duplicated, or editable installs).
 
 Node.js is not a general TCW prerequisite. Check for Node 22.12 or newer only
 when the user intends to run or diagnose `tcw serve`. Installed TCW already

@@ -3,6 +3,33 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## The `tcw` command now installs and updates itself
+
+There is nothing to run after installing or updating the TCW plugin. When a
+session starts, the plugin puts `tcw` on your PATH from its own copy of the
+project, and when an update moves that copy it replaces the old install. The
+stale `tcw` you used to be left with after a plugin update — until something
+misbehaved and you thought to go looking — is gone.
+
+Two things follow from that:
+
+- **`/tcw-init` no longer exists.** It was the manual version of this, and
+  nothing needs doing manually now. A brand-new install still takes effect at the
+  *next* session, since the plugin can only act when a session starts — so start
+  a fresh session after installing.
+- **`/tcw-doctor` is still there.** The automatic install only handles "missing"
+  and "out of date". Anything stranger — a second copy of `tcw` shadowing the
+  first, a half-broken install, `tcw serve` refusing to start — is still its job.
+
+Working on TCW itself from a checkout you installed with `pip install -e .`? That
+is left alone on purpose: your development copy stays the one on your PATH, and
+nothing installs over it. A machine without `pipx` is left alone too — picking a
+Python environment for you is not something that should happen unasked while a
+session starts, so `/tcw-doctor` walks you through it instead.
+
+If the automatic install ever fails, it says so at the start of the session and
+points you at `/tcw-doctor`, rather than leaving you to find out later.
+
 ## Rename a work item from the command line
 
 You can now change a work item's title after you create it:

@@ -101,21 +101,26 @@ In **Claude Code**:
 ```
 /plugin marketplace add brocef/TCW
 /plugin install tcw
-/tcw-init        # installs the `tcw` CLI from the plugin's own clone (via pipx)
 ```
 
+**Then start a new session** — the plugin installs the `tcw` CLI when a session
+begins, and one installed mid-session can't run until the next one starts.
+
 This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`,
-`tcw-post-mortem`, `tcw-report`, and `documentation-sync` skills; the `/tcw-init`,
+`tcw-post-mortem`, `tcw-report`, and `documentation-sync` skills; the
 `/tcw-doctor`, `/tcw-process-inbox`, `/tcw-plan-work`,
 `/tcw-drive-work-to-completion`, `/tcw-verify-work`, `/tcw-post-mortem`,
 `/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,
 `/tcw-capabilities-init`, `/tcw-docs-sync-setup`, and `/tcw-cut-version`
 commands; and the read-only `tcw-verifier` and
-`tcw-post-mortem` agents. `/tcw-init` puts the `tcw` CLI on your
-PATH from the plugin's _own clone_, so there's one copy — **don't also
-`pip install tcw` separately**, or the two can drift (`/tcw-doctor` detects this
-and re-points). Run `/tcw-doctor` any time `tcw` goes missing or a plugin update
-leaves it stale.
+`tcw-post-mortem` agents. There is nothing to run afterwards: the plugin puts
+`tcw` on your PATH from its _own clone_ (via pipx) at session start, and picks up
+a plugin update the same way, so there's one copy and it stays current —
+**don't also `pip install tcw` separately**, or the two can drift
+(`/tcw-doctor` detects this and re-points). A development checkout installed with
+`pip install -e .` is left alone, and so is a machine without `pipx` — choosing a
+Python environment isn't something that should happen unasked at session start.
+Run `/tcw-doctor` any time `tcw` goes missing or looks wrong.
 
 In **Codex** (no slash commands — skills only):
 
@@ -124,8 +129,9 @@ codex plugin marketplace add brocef/TCW --ref main
 codex plugin add tcw@tcw
 ```
 
-Then ask the agent to run the **`tcw-plugin`** setup — it installs the `tcw` CLI
-from the plugin clone the same way `/tcw-init` does.
+Codex has no session-start hook, so ask the agent to run the **`tcw-plugin`**
+setup — it installs the `tcw` CLI from the plugin clone by running the same
+script Claude runs automatically.
 
 ### As a Python package
 
@@ -832,8 +838,9 @@ changes` planning check, contradiction-detection, the `Missing → Supported`
   shared vocabulary (`tcw taxonomy extends`), and bootstrapping a taxonomy from
   an existing codebase (`/tcw-taxonomy-init`).
 - **[`tcw-plugin`](skills/tcw-plugin/SKILL.md)** — install/repair the `tcw` CLI
-  from the plugin's own clone (pipx); the single source of the `/tcw-init` and
-  `/tcw-doctor` procedure, and the Codex shim for them.
+  from the plugin's own clone (pipx); the single source of the `/tcw-doctor`
+  procedure and of the install the session-start hook performs automatically, and
+  the Codex entry point for both.
 - **[`tcw-report`](skills/tcw-report/SKILL.md)** — how to report a `tcw` bug or
   send a suggestion **upstream to the TCW project** as a GitHub issue, with a
   ready-to-fill skeleton for each. Found a bug or have an idea? File it at

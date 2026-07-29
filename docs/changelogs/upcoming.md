@@ -5,6 +5,37 @@ category.
 
 ## Added
 
+- `scripts/session_bootstrap.sh` (mode 755) — the whole install/refresh reconcile
+  for the `tcw` CLI, in one executable:
+  `session_bootstrap.sh [clone-root] [sentinel-path]`, defaulting to
+  `$CLAUDE_PLUGIN_ROOT` and `$CLAUDE_PLUGIN_DATA/installed-version`. The explicit
+  arguments are what let a Codex agent run the identical code path with neither
+  variable set. Check order, each exiting 0: unresolvable clone root → sentinel
+  matches the clone's `tcw/__init__.py` *and* `tcw` is on PATH → editable
+  (`direct_url.json` → `dir_info.editable`) install → `pipx` absent → otherwise
+  `pipx install --force`, then copy `tcw/__init__.py` to the sentinel. The
+  sentinel is written only after a successful install, so a failure leaves it
+  stale and the next session retries with no state to clean up. Silent on success
+  and on every deliberate skip; only a failed install prints, and it prints one
+  line to **stdout with exit 0** — `SessionStart` adds stdout to the agent's
+  context, while an exit-2 stderr becomes a transcript notice the agent never
+  sees. The editable probe strips `""`/`"."`/cwd from `sys.path` before reading
+  the distribution metadata: a session's cwd is usually the project, and a
+  `tcw.egg-info` in a TCW checkout would otherwise answer instead of the real
+  dist-info, inverting the guard into a force-install over the dev setup.
+- `hooks/hooks.json` — one `SessionStart` command hook invoking
+  `"${CLAUDE_PLUGIN_ROOT}"/scripts/session_bootstrap.sh`. `SessionStart` cannot
+  block startup and its command timeout is 600s, so a slow first install delays
+  nothing.
+- `tests/test_session_bootstrap.py` — the script's behavior under a fake `pipx`
+  shim prepended to `PATH`, one test per acceptance criterion (steady state,
+  editable install, pipx absent, failing pipx, successful install then silent
+  re-run). Hermetic: no test invokes real pipx or touches the developer's install.
+- `test_hooks_manifest_wires_one_executable_session_start_script` in
+  `tests/test_plugin_manifests.py` — asserts the manifest's `hooks` path resolves,
+  that exactly one `SessionStart` command is registered, and that the referenced
+  script exists and is executable. `claude plugin validate` catches a broken path;
+  nothing else catches a lost executable bit, which fails silently at runtime.
 - `tcw work edit <slug> --title "<title>"` — retitle an existing work item.
   `update_work` already accepted `title` and `tcw serve` already drove it that
   way; `_edit` now passes it through, so the CLI is no longer the one surface
@@ -17,6 +48,28 @@ category.
 
 ## Changed
 
+- `.claude-plugin/plugin.json` declares `"hooks": "./hooks/hooks.json"`. The root
+  location is auto-discovered, but the manifest already lists `skills` and
+  `commands` explicitly, so the key matches the file's convention.
+- `skills/tcw-plugin/references/setup.md` and `references/doctor.md` both
+  delegate the reconcile to `scripts/session_bootstrap.sh "<clone-root>"` instead
+  of restating its steps, keeping only the judgment the script does not encode:
+  setup keeps the pipx-missing fallback ladder (`pip install --user pipx`, `pip
+  --user`, a dedicated venv), doctor keeps install-kind classification, the
+  `sort -V` cache-version scan, and Node/`tcw serve` diagnosis. Doctor also now
+  notes that the script is silent on skips, so its source must be re-checked
+  afterwards — a sentinel that already matches makes the script a no-op, and
+  `pipx install --force` is then the direct fix. This is what makes the behavior
+  identical under both harnesses rather than a Claude-only bonus; treat a
+  regression here as functional, not cosmetic.
+- `skills/tcw-plugin/SKILL.md` — frontmatter `description` and the
+  "Installing & repairing" router describe an automatic install with the script
+  as the manual entry point, and name only `/tcw-doctor`.
+- `README.md` — the Claude install snippet drops `/tcw-init` and tells the user to
+  start a new session (a hook installed mid-session does not fire until the next
+  one); the command inventory, routing note, Codex paragraph, and skills list drop
+  it too. Historical `docs/changelogs/v0.2.0.md`, `docs/changelogs/v0.9.0.md`, and
+  `docs/release-notes/v0.2.0.md` keep their `/tcw-init` mentions as archive.
 - The `tcw work edit` subcommand help now reads "change an item's title,
   estimates, tags, or blocking links". It previously claimed the command changes
   blocking links, which had been incomplete since `--priority`, `--effort`,
@@ -76,6 +129,14 @@ category.
   `accept_inbox` already uses), and `_write_node`'s `existed` check is TOCTOU-racy
   under concurrent writers — tracked by
   `2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos`.
+
+## Removed
+
+- `commands/tcw-init.md`. The command was a thin router to the setup procedure
+  the hook now runs unprompted, so it had no remaining job. `/tcw-doctor` is
+  unaffected. An already-installed plugin may keep a stale `/tcw-init` until it is
+  reinstalled; it routes to the rewritten `setup.md`, which runs the same script,
+  so the worst case is a redundant-but-correct action.
 
 ## Internal
 
