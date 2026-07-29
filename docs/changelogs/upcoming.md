@@ -55,9 +55,14 @@ category.
 - `FsWorkStore.update_work` writes `state.yaml` and the body through the helper.
   The pair list is 1 or 2 entries — the body is still written only when one is
   supplied, so an unchanged body never churns its revision hash.
-- Staging (`self._stage`) stays outside both rollbacks: a git failure after both
-  files landed leaves a fully valid object on disk, and deleting it would destroy
-  content the caller just wrote.
+- No rollback destroys content that landed. In `_write_node` and `create_work`,
+  staging (`self._stage`) simply sits outside the rollback, so a git failure
+  after both files are written leaves a fully valid object on disk. In
+  `update_capability` it cannot: staging happens inside `_write_node`, which the
+  guard has to wrap. That rollback therefore keys on whether `meta.yaml` landed
+  rather than on who created the directory — a content failure promotes nothing
+  and rolls back, a successful write followed by a failed `git add` keeps the
+  files and leaves them merely unstaged.
 - Known ceilings, carried as `# ponytail:` comments in the code: the promote loop
   is not atomic across files (a process death between two `replace()` calls still
   leaves a partial update; the upgrade is a journal or the whole-directory swap
