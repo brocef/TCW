@@ -18,14 +18,34 @@ if [ -z "$sentinel" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
     sentinel="${CLAUDE_PLUGIN_DATA}/installed-version"
 fi
 
+# The `tcw` on PATH belongs to whichever interpreter its shebang names — ask that
+# one, never the PATH `python3`. They are routinely different: a version
+# manager's `python3` answers for whatever version is currently active, and a
+# `pipx install -e` or a venv install lives outside it entirely. Getting this
+# wrong is not a false alarm; it force-installs over someone's dev checkout,
+# silently, every session, until the versions happen to match.
+tcw_interpreter() {
+    local app py
+    app="$(command -v tcw)" || return 1
+    IFS= read -r py <"$app" 2>/dev/null || return 1
+    py="${py#\#!}"
+    py="${py%% *}"
+    case "$py" in
+        /*/python | /*/python[0-9.]*) printf '%s\n' "$py" ;;
+        # No absolute Python shebang: a version manager's shim
+        # (`#!/usr/bin/env bash`), a wrapper, a binary. We cannot identify who
+        # owns this `tcw`, so it is not ours to replace.
+        *) return 1 ;;
+    esac
+}
+
 # A developer's `pip install -e` checkout — report-and-don't-touch, per
 # skills/tcw-plugin/references/doctor.md. The sys.path filter is load-bearing: a
 # session's cwd is usually the project, and a `tcw.egg-info` sitting in a TCW
 # checkout would otherwise answer this question instead of the real dist-info,
 # turning the guard into a force-install over the dev setup.
 tcw_is_editable() {
-    command -v python3 >/dev/null 2>&1 || return 1
-    python3 - >/dev/null 2>&1 <<'PY'
+    "$1" - >/dev/null 2>&1 <<'PY'
 import json, os, sys
 sys.path = [p for p in sys.path if p not in ("", ".", os.getcwd())]
 from importlib.metadata import distribution
@@ -46,9 +66,11 @@ if [ -n "$sentinel" ] && [ -f "$sentinel" ] &&
     exit 0
 fi
 
-# 3. Leave a dev checkout alone.
-if command -v tcw >/dev/null 2>&1 && tcw_is_editable; then
-    exit 0
+# 3. Only replace a `tcw` whose own interpreter reports a plain, non-editable
+#    install. Anything else already on PATH belongs to someone else.
+if command -v tcw >/dev/null 2>&1; then
+    py="$(tcw_interpreter)" || exit 0
+    tcw_is_editable "$py" && exit 0
 fi
 
 # 4. Choosing a pipx bootstrap is a judgment call about someone's Python
@@ -59,7 +81,7 @@ command -v pipx >/dev/null 2>&1 || exit 0
 #    stale, so the next session retries with no state to clean up.
 if pipx install --force "$root" >/dev/null 2>&1; then
     if [ -n "$sentinel" ]; then
-        mkdir -p "$(dirname "$sentinel")" &&
+        mkdir -p "$(dirname "$sentinel")" 2>/dev/null &&
             cp "$root/tcw/__init__.py" "$sentinel"
     fi
 else
