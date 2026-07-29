@@ -23,6 +23,9 @@ from tcw.store.fs import (
     _revision, _revision_multi, _atomic_write, _atomic_write_all, init,
     write_sentinel,
 )
+# Federation setup is non-trivial and already written next door; the rollback
+# test that needs it belongs in this file, with the other fault-injection tests.
+from test_capabilities_federation import child_of
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -974,6 +977,28 @@ def test_write_node_failure_removes_directory_it_created(tmp_path, monkeypatch):
 
     assert not (root / "docs" / "taxonomy" / "admin").exists()
     assert list(root.rglob("*.tmp")) == []
+
+
+def test_update_capability_failure_removes_override_it_materialized(tmp_path,
+                                                                    monkeypatch):
+    """A fresh override directory rolls back too.
+
+    `update_capability` mkdirs the override itself, so `_write_node` sees a
+    directory that already "existed" and skips its own rollback — the guard has
+    to sit at the caller that created it.
+    """
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+
+    _fail_writing(monkeypatch, "description.md")
+    with pytest.raises(OSError) as excinfo:
+        FsCapabilitiesStore.open(child).update_capability(
+            "moderation/report-content", body="override body\n")
+
+    assert excinfo.value.errno == 28          # the injected error, not a rollback one
+    assert not d.exists()
+    assert list(child.rglob("*.tmp")) == []
 
 
 def test_update_work_body_failure_leaves_state_and_body_unchanged(tmp_path,

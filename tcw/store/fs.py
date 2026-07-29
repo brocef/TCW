@@ -1649,20 +1649,31 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             desc_text = body if body is not None else ""
         meta = self._merge_meta(meta, norm, is_override)
 
-        d.mkdir(parents=True, exist_ok=True)
-        if is_override and not desc_text.strip():
-            # An override's description.md is a *body delta*, and an empty one
-            # means "no delta" — `_apply_override` falls back to the upstream
-            # body (which is what makes append-only overrides work). So clearing
-            # an override's body drops the delta and re-inherits, rather than
-            # leaving an empty file that silently means the same thing.
-            desc.unlink(missing_ok=True)
-            self._write_meta(d, meta)
-            self._stage(d)                     # picks up the removal
-        elif body is _UNSET and not desc.exists():
-            self._write_meta(d, meta)          # pure delta — no empty body file
-        else:
-            self._write_node(d, meta, desc_text)
+        existed = d.exists()
+        d.mkdir(parents=True, exist_ok=True)   # _write_meta does not mkdir
+        try:
+            if is_override and not desc_text.strip():
+                # An override's description.md is a *body delta*, and an empty one
+                # means "no delta" — `_apply_override` falls back to the upstream
+                # body (which is what makes append-only overrides work). So clearing
+                # an override's body drops the delta and re-inherits, rather than
+                # leaving an empty file that silently means the same thing.
+                desc.unlink(missing_ok=True)
+                self._write_meta(d, meta)
+                self._stage(d)                 # picks up the removal
+            elif body is _UNSET and not desc.exists():
+                self._write_meta(d, meta)      # pure delta — no empty body file
+            else:
+                self._write_node(d, meta, desc_text)
+        except BaseException:
+            # The rollback has to live here, not in `_write_node`: we made the
+            # directory, so `_write_node`'s own `existed` is True by the time it
+            # runs, and the two `_write_meta` branches roll nothing back at all.
+            # Fresh-override materialization is the path this covers. Same
+            # `ignore_errors=True` and TOCTOU caveats as `_write_node`.
+            if not existed:
+                shutil.rmtree(d, ignore_errors=True)
+            raise
         return self.get_capability_detail(identifier)
 
 
