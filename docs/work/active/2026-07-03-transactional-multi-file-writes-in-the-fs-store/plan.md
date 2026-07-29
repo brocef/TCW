@@ -240,8 +240,11 @@ something surprises them.
 Automated (`python -m pytest -q`, repo root) covers acceptance criteria 1–6 and
 8 directly. What it does not check, and how to check it:
 
-- **AC 7 — `base.py` unchanged.** `git diff --stat main -- tcw/store/base.py`
-  must be empty at the end of the branch. No test asserts this.
+- **AC 7 — `base.py` unchanged.** No test asserts this. *(Corrected during
+  implementation: this item is worked on `main` itself, not a branch, so
+  `git diff main -- tcw/store/base.py` compares `main` to itself and is empty no
+  matter what the change did. Diff against the item's start commit instead —
+  `git diff --stat <the "→ active" commit>..HEAD -- tcw/store/base.py`.)*
 - **AC 2's second half — `create` has no write path of its own.** Read the final
   `create`; it should be a docstring/comment plus one `return`. `grep -n
   "write_text\|dump_yaml" tcw/store/fs.py` should show no hit inside it.
