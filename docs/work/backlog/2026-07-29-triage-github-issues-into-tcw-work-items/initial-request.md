@@ -116,8 +116,11 @@ description, or the wrong one will fire:
 **Assumptions to confirm at spec**
 
 - That grepping `docs/work/` for the issue URL is a sufficient "already
-  tracked" check, including for issues that were triaged and *rejected* —
-  those leave no work item, so a rejected issue would resurface on every
-  subsequent sweep unless something records the decision.
+  tracked" check. It only covers *accepted* issues. The inbox analogy is what
+  exposes the gap: `tcw work inbox accept` consumes the entry, so a
+  processed-and-rejected inbox entry is gone, whereas a rejected GitHub issue
+  is still open and still untracked, and would resurface on every subsequent
+  sweep. Where the rejection is recorded — on the issue itself via the reply,
+  or somewhere local — is the first thing `spec` has to settle.
 - That a triage decision this skill makes needs no durable record anywhere in
   `docs/work/` beyond the item it does or does not create.
