@@ -9,4 +9,6 @@ TCW commits the status move itself, scoped to the item's own folders so unrelate
 
 If the work branch was merged outside TCW — a merged pull request, say — I add `--already-integrated` to skip TCW's merge-back. Every other gate still runs: blockers, the epic-children check, capability reconciliation, and `--confirm`. It is rejected on an item that has no worktree.
 
-Completed items no longer store a Definition-of-Done list. It was the same fixed checklist on every item, so it recorded nothing; the checklist is still printed before I confirm.
+Completed items no longer store a Definition-of-Done list. It was the same checklist on every item, so it recorded nothing; the checklist is still printed before I confirm. Which entries it holds is my node's to choose — see [Customize the Definition of Done](tcw://C/work/customize-the-definition-of-done).
+
+When the item came from a GitHub issue, closing it out includes answering that issue: `tcw work path <slug>` finds the item folder and its `initial-request.md` records the issue under `## Origin`. `done`, `duplicate`, and `wontfix` close the issue; `superseded` closes it only when the superseding item absorbed the request rather than deferring it. A discard prints no checklist at all, so on those paths nothing prompts me — see [Triage GitHub issues into work items](tcw://C/plugin/triage-github-issues).
