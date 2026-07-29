@@ -1,13 +1,15 @@
 # Outcome: Transactional multi-file writes in the Fs store
 
-Three implementation passes. The first shipped all five plan tasks in order, one
+Four implementation passes. The first shipped all five plan tasks in order, one
 commit each, plus the Documentation Sync block; verification then found every
 acceptance criterion met and asked for one coverage gap closed and three prose
 errors corrected, which is the second pass. Reviewing the second pass surfaced a
-consequence of its own fix, which is the third. The full suite is green:
-**1079 passed in 151s** (`python -m pytest -q`, repo root) — baseline was 1066,
-and the 13 new tests are all fault-injection coverage. No existing test call site
-was edited (AC 8).
+consequence of its own fix, which is the third. Dogfooding through the real CLI
+then found the same class of gap on a path none of the three had touched, and the
+user chose to fix it here rather than file a follow-up — the fourth. The full
+suite is green: **1081 passed in 152s** (`python -m pytest -q`, repo root) —
+baseline was 1066, and the 15 new tests are all fault-injection coverage. No
+existing test call site was edited (AC 8).
 
 ## What shipped — first pass
 
@@ -88,6 +90,56 @@ confirmed non-vacuous the same way as the rework's: stash `fs.py`, run, observe
 it fail — pre-fix it fails with `FileNotFoundError` on reading the deleted
 `description.md`, which is the deletion itself. The rework's rollback test still
 passes, so the narrower condition did not weaken it.
+
+## What shipped — fourth pass
+
+Driven by `rework.md` (rewritten for this pass; the pass-2 text is in git
+history). **Scope growth, chosen deliberately by the user** over filing a
+follow-up item. Strictly outside the spec — `set` writes one file, so it cannot
+leave a *partial* object — but it leaves the same inert empty-directory residue
+the rest of the item removes.
+
+| Item | Commit | What landed |
+|---|---|---|
+| 1–3 | `fc0ce1f` | `FsCapabilitiesStore.set` captures `existed`, wraps its `_write_meta` call, and rolls back with the same content-landed guard. Rollback warning added to `_write_node`'s docstring and `_write_meta`. 2 tests. |
+
+**How dogfooding found it.** Driving the real CLI showed `tcw capabilities set`
+never reaches `update_capability` — that method's only caller is the web editor
+(`serve/__init__.py:1070`). The CLI goes through `FsCapabilitiesStore.set`, which
+materializes a fresh override via `_write_target` and then wrote `meta.yaml` with
+no rollback at all. Two earlier dogfood assertions were **vacuous** because of
+this and were corrected rather than believed: one blocked `description.md.tmp` on
+a path that only writes `meta.yaml`, and one credited `f2c5f9b` for an override
+surviving a failed `git add` when in fact nothing would have deleted it.
+
+**On the two new tests.** The rollback test fails before the fix. The
+staging-survival test passes before *and* after — necessarily, since pre-fix
+there was no rollback to delete anything. It is a guard against a future naive
+rollback, not evidence for this one, and is kept for that reason rather than
+counted as proof.
+
+**The trap, now named in the code.** `_write_node` and `_write_meta` both stage
+internally, so any caller wrapping them in a rollback also catches a `git add`
+failure that happened after content landed. That produced `f2c5f9b` and would
+have produced a third instance here. Both now carry the warning.
+
+## Dogfooding
+
+Beyond the suite, the change was driven through the real `tcw` CLI against
+throwaway nodes, with **no monkeypatching** — failures came from real filesystem
+state (a directory occupying a `<file>.tmp` path; a genuine `.git/index.lock`).
+16 CLI-level checks and 6 store-level checks, all passing, covering `work new`,
+`work edit`, `taxonomy add`, `capabilities add`/`set`, federation, and
+`update_capability`, each in both its happy and failing path, ending with
+`tcw validate` clean.
+
+The store-level check for `f2c5f9b` was confirmed non-vacuous by restoring
+`fs.py` to the pre-fix commit and re-running: the override is **deleted** without
+the fix and survives with it.
+
+Worth recording for whoever verifies next: `git stash push -- <path>` is a no-op
+against an already-committed change and produces a false green. Reverting a
+committed fix needs `git checkout <sha>~1 -- <path>`.
 
 ## Acceptance criteria
 
