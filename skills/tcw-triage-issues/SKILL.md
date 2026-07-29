@@ -199,3 +199,52 @@ answered, say so and move on.
 Close out with what happened per issue — accepted (with slugs), rejected (with
 outcomes), already tracked, and anything the sweep did not reach. If the user
 declined replies, say which issues are still open and awaiting one.
+
+## 8. Closing the loop when the work item finishes
+
+An accepted issue was told it is being tracked. **That is a promise, and this
+section is where it is kept.** Everything above happens once, at intake; this
+happens later, when the item that came out of it closes.
+
+You get here from `tcw work complete`, whose Definition-of-Done checklist can
+carry a line naming the originating issue (see
+`tcw-work/references/transitions.md`). Find the issue:
+
+```bash
+tcw work path <slug>      # → the item's folder; read initial-request.md's ## Origin
+```
+
+No `## Origin`, or no issue URL in it → the item did not come from an issue and
+there is nothing to do here.
+
+**What to say depends on how the item closed**, and the four resolutions do not
+mean the same thing to a reporter:
+
+| `--resolution` | Reply | Close the issue? |
+| --- | --- | --- |
+| `done` | It shipped — say in which version | **Yes** |
+| `duplicate` | Name the item that absorbed it | **Yes** |
+| `wontfix` | The actual reason it was not taken on | **Yes** |
+| `superseded` | What replaced it — **and whether the ask was absorbed or deferred** | **Only if absorbed** |
+
+**`superseded` is the one to slow down on.** It does not mean the request was
+refused. The superseding item may have absorbed it, or may have *deferred* it and
+written it down so it would not be lost. Closing the issue in the second case
+tells someone their request was declined when it was merely postponed — the same
+mistake §3 warns about, except here it is irreversible and public rather than
+just a mis-triage. Read what the superseding item actually did with the ask
+before drafting anything, and leave the issue open when it was deferred.
+
+**Nothing is posted without the user approving the exact text** — the same rule
+as §6, restated because you may have arrived here without reading it. Show the
+message verbatim, one at a time, and get approval for *that* message.
+
+```bash
+gh issue close <n> --comment "<text>"    # done / duplicate / wontfix
+gh issue comment <n> --body "<text>"     # superseded-but-deferred: reply, leave open
+```
+
+**A discard prints no checklist**, so nothing prompts you on three of those four
+rows — `tcw work complete` computes the Definition of Done only when the
+resolution is `done`. On any other resolution, the prompt is this document and
+nothing else.

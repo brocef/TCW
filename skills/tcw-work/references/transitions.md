@@ -68,7 +68,14 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
 - `--already-integrated` skips the merge-back when the branch was merged outside
   TCW (a merged PR). Every other gate still runs.
 - The Definition-of-Done checklist is printed before `--confirm`. `[prompted]` —
-  it is no longer stored.
+  it is no longer stored. The node sets its own list in `docs/work/dod.yaml`,
+  which **replaces** the built-in five (`tests pass`, `docs synced`,
+  `capabilities reconciled`, `reviewed`, `version offered`) rather than extending
+  them — omit one and it is gone, with no error.
+- **If the item came from a GitHub issue**, closing it out means saying so on the
+  issue and closing it — read `tcw-triage-issues` §8. `tcw work path <slug>` →
+  `initial-request.md` → `## Origin` is where the issue URL lives. Nothing is
+  posted without the user approving the exact text.
 
 A completable epic — every child resolved — may complete **directly from
 `backlog`**, with no throwaway `start`.
@@ -87,6 +94,13 @@ its own.
 - Capability reconciliation degrades to a warning. Mark leftovers `Omitted`.
 - A worktree is torn down but its **branch is kept**, and named in the warning —
   deciding work is unwanted is not authority to destroy an unmerged branch.
+- **No Definition-of-Done checklist is printed at all** — `complete` computes it
+  only when shipping. So if the item came from a GitHub issue, *nothing prompts
+  you*: this line is the only prompt there is. Read `tcw-triage-issues` §8 and
+  answer the issue. `wontfix` and `duplicate` close it; **`superseded` closes it
+  only if the superseding item absorbed the ask** — if it deferred the ask
+  instead, reply and leave the issue open, because closing it would tell the
+  reporter their request was refused when it was postponed.
 
 `tcw work drop <slug>` deletes a backlog item outright. That is not a transition
 and leaves no record.
