@@ -1,11 +1,12 @@
 # Outcome: Transactional multi-file writes in the Fs store
 
-Two implementation passes. The first shipped all five plan tasks in order, one
+Three implementation passes. The first shipped all five plan tasks in order, one
 commit each, plus the Documentation Sync block; verification then found every
 acceptance criterion met and asked for one coverage gap closed and three prose
-errors corrected, which is the second pass. The full suite is green:
-**1078 passed in 152s** (`python -m pytest -q`, repo root) — baseline was 1066,
-and the 12 new tests are all fault-injection coverage. No existing test call site
+errors corrected, which is the second pass. Reviewing the second pass surfaced a
+consequence of its own fix, which is the third. The full suite is green:
+**1079 passed in 151s** (`python -m pytest -q`, repo root) — baseline was 1066,
+and the 13 new tests are all fault-injection coverage. No existing test call site
 was edited (AC 8).
 
 ## What shipped — first pass
@@ -51,6 +52,42 @@ imports `child_of` from `tests/test_capabilities_federation.py` — the first
 cross-test-module import in this repo. The alternative was duplicating ~12 lines
 of registry/sentinel/`extends_add` setup, or moving the test away from the
 fault-injection family it belongs to.
+
+## What shipped — third pass
+
+Not driven by `rework.md`. Coordinating review of the rework's own diff found
+that the shape `rework.md` recommended had a consequence `rework.md` did not
+anticipate, so the correction is recorded here rather than in a second rework
+cycle.
+
+| Item | Commit | What landed |
+|---|---|---|
+| 1 | `f2c5f9b` | `update_capability`'s rollback keys on `not existed and not (d / "meta.yaml").exists()` rather than on `not existed` alone. 1 test. |
+| 2 | `cc5502c` | Changelog: replaced the now-false "staging stays outside **both** rollbacks" claim with what each of the three sites actually does. |
+
+**The defect.** The rework wrapped all three of `update_capability`'s branches in
+one guard — which is what `rework.md` asked for, and it does close the gap. But
+staging runs *inside* that guard: branch 1 calls `self._stage(d)` directly, and
+branch 3 stages inside `_write_node`. So a fresh override that was written
+successfully and then failed to `git add` — `index.lock` contention being the
+realistic case in a repo several agents share — had its fully-written files
+deleted by the rollback.
+
+That is the exact outcome the first pass engineered against, in `_write_node` and
+`create_work`, by keeping `self._stage` outside the rollback. Here that is not
+available: `_write_node` stages internally, so any guard wrapping it wraps its
+staging too. The fix keys the rollback on whether content actually landed instead
+of on who created the directory. `_atomic_write_all` promotes nothing on a
+content failure, so an absent `meta.yaml` is precisely "nothing landed"; a
+successful write followed by a failed `git add` leaves `meta.yaml` present, skips
+the rollback, and leaves the files merely unstaged — recoverable with `git add`,
+where deletion was not.
+
+`test_update_capability_keeps_override_when_staging_fails` pins it, and was
+confirmed non-vacuous the same way as the rework's: stash `fs.py`, run, observe
+it fail — pre-fix it fails with `FileNotFoundError` on reading the deleted
+`description.md`, which is the deletion itself. The rework's rollback test still
+passes, so the narrower condition did not weaken it.
 
 ## Acceptance criteria
 
