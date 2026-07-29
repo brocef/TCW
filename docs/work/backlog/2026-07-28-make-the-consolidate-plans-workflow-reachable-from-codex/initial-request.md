@@ -56,8 +56,8 @@ it, but it should not be missed by default.
 **`commands/tcw-consolidate-plans.md` carries `disable-model-invocation: true`,
 and the audit command does not.** That is not an oversight — this workflow
 **deletes files** (`--delete` removes each source document after migration), and
-the flag was added in v0.9.0 for exactly that reason. Only two command files
-carry it: this one and `tcw-doctor`.
+the flag was added in v0.9.0 for exactly that reason. Only three command files
+carry it: this one, `tcw-doctor`, and `tcw-init`.
 
 Skill references have no equivalent flag. So moving the procedure into
 `skills/tcw-work/references/` **removes the guard that stops a model from
