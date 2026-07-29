@@ -2,36 +2,3 @@
 
 Developer changelog for the next version. Technical and precise; grouped by
 category.
-
-## Changed
-
-- **`tcw-work` `request` stage now solicits reference material.**
-  `skills/tcw-work/references/stage-request.md` gains an optional
-  `## References` section in `Produce` — a link, repo path, or work item per
-  entry, each with a one-line reason — and a new `Steps` entry (step 3, after
-  "ask the user what is unclear", ahead of "write the request") that asks for it.
-  Capture-only: no fetching, validating, or summarizing, and links are context
-  for `spec` rather than directives it must accept. The empty case is recorded as
-  "asked; none provided" in `## Notes` so `spec` can distinguish it from a stage
-  that never asked. `Exit`/**Well** now requires that `spec` can start without
-  re-finding the requester's sources.
-- **`tcw-work` `spec` stage consumes the section.**
-  `skills/tcw-work/references/stage-spec.md` `Inputs` names
-  `initial-request.md`'s `## References` as the starting set for research, not the
-  limit of it, and step 3 reads those references before hunting for sources
-  independently.
-- **`tcw-work` `inbox` stage carries links through.**
-  `skills/tcw-work/references/stage-inbox.md` step 6 (post-accept tidying) now
-  collects an entry's existing links or attachments under `## References` instead
-  of leaving them buried in pasted text. No prompt is added there — at that stage
-  the requester is a GitHub issue reporter or another node and is not present to
-  ask; `request` does the asking. `Produce` remains "**No lifecycle artifact**".
-
-No CLI or `LIFECYCLE_STEPS` change was needed. `LIFECYCLE_STEPS[spec].inputs`
-(`tcw/store/base.py`) is a tuple of artifact *filenames*, not sections, and
-already declares `("initial-request.md",)`; `## References` lives inside that
-file. Nothing in the CLI reads artifact contents — `tcw/work/cli.py` knows
-`initial-request.md` only as the board's `R` presence marker — and the behavior
-added is asking a human a question, which belongs in the stage document both
-harnesses read identically. `skills/tcw-work/SKILL.md` names artifacts, never
-their sections, so the router is unchanged.
