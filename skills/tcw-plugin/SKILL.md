@@ -23,12 +23,17 @@ TCW has three project axes plus this plugin-maintenance skill:
 3. **Work (`tcw-work`)** tracks planned and completed changes to vocabulary,
    features, capabilities, code, and docs through the SDLC artifacts.
 
-Plus a feedback skill, orthogonal to the three axes:
+Plus two GitHub-issue skills, orthogonal to the three axes and pointing in
+opposite directions:
 
 - **Report (`tcw-report`)** teaches a user how to send feedback about TCW
   _itself_ — a `tcw` bug or a suggestion — upstream as a GitHub issue, with a
   ready-to-fill skeleton. It is not for the user's own project work (that is
   `tcw-work`).
+- **Triage (`tcw-triage-issues`)** reads the issues **on the user's own project**
+  and turns the ones worth doing into work items, rejecting the rest with a
+  reply. It is the intake counterpart to `stage-inbox.md`: a GitHub issue is an
+  inbox entry that happens to live on GitHub.
 
 Use the axis skills in that order when the task changes product meaning:
 
@@ -43,6 +48,9 @@ Practical routing:
   `tcw-work`; it invokes the capability gate for product deltas.
 - If the user wants to report a `tcw` bug or send a suggestion upstream to the
   TCW project, use `tcw-report`.
+- If the user wants to check, sweep, or work through the GitHub issues on _their
+  own_ project, use `tcw-triage-issues`. Note the direction: `tcw-report` writes
+  an issue to TCW, this one reads issues from the user's repo.
 - If `tcw` itself is unavailable or the plugin install is stale, stay in this
   skill and follow the install/repair procedures below.
 

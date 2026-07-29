@@ -107,8 +107,9 @@ In **Claude Code**:
 begins, and one installed mid-session can't run until the next one starts.
 
 This ships the `tcw-work`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`,
-`tcw-post-mortem`, `tcw-report`, and `documentation-sync` skills; the
-`/tcw-doctor`, `/tcw-process-inbox`, `/tcw-plan-work`,
+`tcw-post-mortem`, `tcw-report`, `tcw-triage-issues`, and `documentation-sync`
+skills; the
+`/tcw-doctor`, `/tcw-process-inbox`, `/tcw-triage-issues`, `/tcw-plan-work`,
 `/tcw-drive-work-to-completion`, `/tcw-verify-work`, `/tcw-post-mortem`,
 `/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,
 `/tcw-capabilities-init`, `/tcw-docs-sync-setup`, and `/tcw-cut-version`
@@ -818,7 +819,7 @@ work is never silently dropped.
 
 ## Skills — the judgment layer
 
-The CLI is the _mechanism_; six skills in [`skills/`](skills/) are the _judgment_
+The CLI is the _mechanism_; seven skills in [`skills/`](skills/) are the _judgment_
 that drives it (the work↔capability lifecycle the tool only enforces structurally):
 
 - **[`tcw-work`](skills/tcw-work/SKILL.md)** — plan a request or existing work item
@@ -845,6 +846,12 @@ changes` planning check, contradiction-detection, the `Missing → Supported`
   send a suggestion **upstream to the TCW project** as a GitHub issue, with a
   ready-to-fill skeleton for each. Found a bug or have an idea? File it at
   [github.com/brocef/TCW/issues](https://github.com/brocef/TCW/issues).
+- **[`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)** — the other
+  direction: sweep the GitHub issues on **your own project**, triage them, and
+  turn the ones worth doing into work items (`/tcw-triage-issues`). Most issues
+  shouldn't become work items, so it decides first — duplicate, not worth doing,
+  too vague to act on — and offers a reply to the reporter either way, which you
+  approve before anything is posted.
 - **[`documentation-sync`](skills/documentation-sync/SKILL.md)** — the cross-cutting
   process skill the work lifecycle invokes at its plan and completion gates:
   evaluate a project's `## Documentation Sync` triggers so docs (README, changelog,
@@ -854,10 +861,10 @@ changes` planning check, contradiction-detection, the `Missing → Supported`
   (`/tcw-cut-version`) — including folding later work into a version that was
   cut locally but never pushed.
 
-The five axis/plugin skills name `tcw …` commands (and, for `tcw-plugin`, `pipx`)
-and never reimplement tool logic — mechanism stays in the binary, judgment in the
-skills; `documentation-sync` is a cross-cutting process skill rather than a CLI
-driver.
+The six axis/plugin skills name `tcw …` commands (and, for `tcw-plugin`, `pipx`;
+for `tcw-triage-issues`, `gh`) and never reimplement tool logic — mechanism stays
+in the binary, judgment in the skills; `documentation-sync` is a cross-cutting
+process skill rather than a CLI driver.
 
 ---
 
