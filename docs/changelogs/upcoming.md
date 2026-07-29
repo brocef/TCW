@@ -2,11 +2,3 @@
 
 Developer changelog for the next version. Technical and precise; grouped by
 category.
-
-## Fixed
-
-- `.claude-plugin/plugin.json` no longer declares `"hooks": "./hooks/hooks.json"`.
-  Claude loads that path by convention, so naming it again made hook loading fail
-  with `Duplicate hooks file detected` — the manifest's `hooks` key is only for
-  *additional* hook files. Regression from v0.17.0.
-  `tests/test_plugin_manifests.py` now asserts the key is absent.
