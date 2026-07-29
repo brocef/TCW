@@ -134,6 +134,17 @@ noted:
    as cwd, and a `tcw.egg-info` in a TCW checkout is found first and has no
    `direct_url.json` — so the guard as originally specified answered "not
    editable" here and would have force-installed over the dev setup.)*
+   *(Corrected at `implement`, second pass: the probe must also run the
+   interpreter named in the shebang of the `tcw` on PATH, not the `python3` on
+   PATH. For a `pipx install -e` or an editable install into a venv those are
+   different interpreters, and the PATH one raises `PackageNotFoundError` — read
+   as "not editable", which force-installs over the checkout. The guard is
+   therefore stated as its inverse: **only replace a `tcw` whose own interpreter
+   reports a plain, non-editable install.** An install whose owner cannot be
+   identified — a version manager's shim, whose shebang names `bash` — is left
+   alone. That is why the original guard passed on this machine: `tcw` and
+   `python3` are both pyenv shims backed by the same interpreter, a coincidence
+   the probe never earned.)*
 4. **`pipx` absent** → exit (see Non-goals).
 5. Otherwise `pipx install --force "<clone-root>"`. On success, copy
    `tcw/__init__.py` to the sentinel and exit silently. On failure, leave the
@@ -207,7 +218,12 @@ both harnesses rather than a Claude-only bonus.
    `tcw/__init__.py`, and an immediately following run takes the silent
    steady-state path.
 9. `commands/tcw-init.md` is deleted, and `grep -rn "tcw-init"` over `README.md`,
-   `skills/`, `commands/`, and `docs/capabilities/` returns nothing.
+   `skills/`, and `commands/` returns nothing.
+   *(Corrected at `implement`: this originally included `docs/capabilities/` in
+   the same grep, which contradicted this spec's own Capability changes section
+   and plan Task 9 — both defer the `bootstrap-the-cli` description rewrite to
+   `complete`. The capability body still names `/tcw-init` at review by design;
+   criterion 11 is what covers it, at the stage that owns it.)*
 10. `README.md`'s Claude install snippet no longer shows `/tcw-init` and states
     that the hook installs the CLI at the next session start; the Codex paragraph
     (`README.md:127-128`) names the `tcw-plugin` skill without referring to

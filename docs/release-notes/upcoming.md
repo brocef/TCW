@@ -26,7 +26,10 @@ Two things follow from that:
 
 Working on TCW itself from a checkout you installed with `pip install -e .`? That
 is left alone on purpose: your development copy stays the one on your PATH, and
-nothing installs over it. A machine without `pipx` is left alone too, quietly —
+nothing installs over it. The same goes for a `tcw` that came from somewhere the
+plugin cannot account for — a virtual environment, or a version manager such as
+pyenv or asdf. It only ever replaces an ordinary install, and when it cannot tell,
+it does nothing. A machine without `pipx` is left alone too, quietly —
 picking a Python environment for you is not something that should happen unasked
 while a session starts. If `tcw` is missing and nothing seems to be installing
 it, that's the likely reason: ask for the **`tcw-plugin`** skill (or run

@@ -11,8 +11,8 @@ category.
   `$CLAUDE_PLUGIN_ROOT` and `$CLAUDE_PLUGIN_DATA/installed-version`. The explicit
   arguments are what let a Codex agent run the identical code path with neither
   variable set. Check order, each exiting 0: unresolvable clone root → sentinel
-  matches the clone's `tcw/__init__.py` *and* `tcw` is on PATH → editable
-  (`direct_url.json` → `dir_info.editable`) install → `pipx` absent → otherwise
+  matches the clone's `tcw/__init__.py` *and* `tcw` is on PATH → a `tcw` on PATH
+  that is not ours to replace → `pipx` absent → otherwise
   `pipx install --force`, then copy `tcw/__init__.py` to the sentinel. The
   sentinel is written only after a successful install, so a failure leaves it
   stale and the next session retries with no state to clean up. Silent on success
@@ -29,7 +29,8 @@ category.
   editable probe strips `""`/`"."`/cwd from `sys.path` before reading
   the distribution metadata: a session's cwd is usually the project, and a
   `tcw.egg-info` in a TCW checkout would otherwise answer instead of the real
-  dist-info, inverting the guard into a force-install over the dev setup.
+  dist-info, inverting the guard into a force-install over the dev setup. Which
+  interpreter runs that probe is a second, independent trap — see Fixed.
 - `hooks/hooks.json` — one `SessionStart` command hook invoking
   `"${CLAUDE_PLUGIN_ROOT}"/scripts/session_bootstrap.sh`. `SessionStart` cannot
   block startup and its command timeout is 600s, so a slow first install delays
@@ -65,17 +66,32 @@ category.
   --user`, a dedicated venv), doctor keeps install-kind classification, the
   `sort -V` cache-version scan, and Node/`tcw serve` diagnosis. Doctor also now
   notes that the script is silent on skips, so its source must be re-checked
-  afterwards — a sentinel that already matches makes the script a no-op, and
-  `pipx install --force` is then the direct fix. This is what makes the behavior
-  identical under both harnesses rather than a Claude-only bonus; treat a
-  regression here as functional, not cosmetic.
+  afterwards, and `pipx install --force` is the direct fix once the install has
+  been cleared. This is what makes the behavior identical under both harnesses
+  rather than a Claude-only bonus; treat a regression here as functional, not
+  cosmetic.
+- Both references described a skip the invocation they prescribe cannot take.
+  They run the script as `script "<clone-root>"` with no sentinel argument, and a
+  Bash tool call does not export `CLAUDE_PLUGIN_DATA`, so the steady-state branch
+  is unreachable on that path — yet setup claimed it "skips silently when `tcw` is
+  already current" and doctor explained a no-op as "its sentinel already matched".
+  Both now say the shortcut is unavailable when invoked without a sentinel and
+  name the skips that *can* fire (pipx missing; a `tcw` that is not ours to
+  replace). The prose moved rather than the invocation: passing a sentinel would
+  mean telling the agent a path it has no reliable way to know under Codex.
+- `references/doctor.md` steps 1–2 no longer route through the PATH `python3`.
+  Step 1 reads the shebang of `command -v tcw` to find the environment that owns
+  the install and reads its metadata from that environment's site-packages; the
+  old `python3 -c "… locate_file('') …"` recipe carried exactly the defect fixed
+  in the script, one layer up, and is gone. The human procedure and the script now
+  answer the question the same way.
 - `skills/tcw-plugin/SKILL.md` — frontmatter `description` and the
   "Installing & repairing" router describe an automatic install with the script
   as the manual entry point, and name only `/tcw-doctor`.
 - `skills/tcw-plugin/SKILL.md` and `commands/tcw-doctor.md` now carry the **same**
   `allowed-tools` list, covering every command their procedures instruct:
   `Bash(tcw *), Bash(command -v *), Bash(realpath *), Bash(ls *), Bash(sort *),
-  Bash(pipx *), Bash(python3 *), Bash(node --version),
+  Bash(head *), Bash(pipx *), Bash(python3 *), Bash(node --version),
   Bash(*/scripts/session_bootstrap.sh *), Read`. The skill previously granted only
   `Bash(pipx list *)`, so `setup.md`'s `pipx install` had been outside its grant
   since before the bootstrap script existed, and neither file permitted the script
@@ -113,6 +129,39 @@ category.
 
 ## Fixed
 
+- `scripts/session_bootstrap.sh` asked the wrong interpreter whether `tcw` was an
+  editable install. The probe ran the `python3` on PATH, which owns the `tcw` on
+  PATH only by coincidence: after `pipx install -e ~/src/TCW`, or an editable
+  install into a venv, it is a different interpreter and raises
+  `PackageNotFoundError` — swallowed by `>/dev/null 2>&1`, returning "not
+  editable" and force-installing over the developer's checkout, silently, every
+  session until the versions matched. Every test passed because this machine's
+  `tcw` and `python3` are both pyenv shims backed by one interpreter.
+  The guard is now stated as its inverse — **only replace a `tcw` whose own
+  interpreter reports a plain, non-editable install** — with the owner read from
+  the shebang of `command -v tcw` (`new tcw_interpreter()`): an absolute
+  `…/bin/python…` is questioned, anything else (`#!/usr/bin/env bash`, i.e. a
+  version manager's shim; a wrapper; a binary) is unidentifiable and therefore
+  untouchable. That covers editable installs, pipx-editable installs, venvs, and
+  shims in one check and degrades safely, at the cost of no longer force-
+  installing over a *non*-editable install that pipx did not make — which
+  `references/setup.md` already tells users not to have, and `/tcw-doctor`
+  diagnoses. Deriving the owner this way is what pipx's own metadata would
+  otherwise be needed for; the shebang is already on disk and needs no schema.
+  Covered by `test_editable_install_owned_by_another_interpreter_is_left_alone`
+  and `test_install_we_cannot_identify_is_left_alone`, both of which fail against
+  the previous probe.
+- `scripts/session_bootstrap.sh` leaked to stderr when the sentinel's parent
+  directory could not be created (a path component that is a regular file):
+  `mkdir` printed `… Not a directory` while rc stayed 0 and stdout stayed empty,
+  breaking the silence discipline on a path nothing else covered. `2>/dev/null`.
+- `tests/test_session_bootstrap.py` claimed hermeticity by construction but got
+  it from `/usr/bin:/bin` happening to hold no `pipx`; on a box with a distro
+  `/usr/bin/pipx`, `test_missing_pipx_…` would have invoked **real pipx** against
+  the real `HOME`. `_run` now asserts no `pipx` outside the fixture bindir is
+  resolvable on the PATH it builds, so the claim fails loudly instead of silently
+  not holding. That test also no longer puts a `tcw` on PATH, so the provenance
+  guard cannot pre-empt the branch it exists to cover.
 - `_atomic_write_all(pairs)` in `tcw/store/fs.py` — a module-level sibling of
   `_atomic_write` that writes several files as one unit: stage every
   `<path>.tmp`, then `replace` each in turn. A content-production failure
