@@ -93,7 +93,13 @@ All four entries in `AGENTS.md` → Documentation Sync fire. Scope is concrete, 
 each is a named task. Scheduled as one block after the code tasks, per
 `stage-plan.md` step 4 — one pass over the finished diff.
 
-### Task 5 — `skills/tcw-plugin/SKILL.md` [Skill-Driven-Component]
+### Task 5 — `skills/tcw-plugin/SKILL.md` and `commands/tcw-doctor.md` [Skill-Driven-Component]
+
+*(`commands/tcw-doctor.md` added at `implement`: the plan named no task for it,
+but its router summary said the procedure ends in `pipx install --force`, which
+task 3 made untrue. A thin router that misdescribes the procedure it routes to is
+the skill-driven-component trigger firing.)*
+
 
 The component this skill drives — how `tcw` gets installed — changes outright.
 Update the frontmatter `description` (line 3 names `/tcw-init` explicitly) and the

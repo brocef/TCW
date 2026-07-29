@@ -64,7 +64,20 @@ remembering to ask.
   fallback ladder when pipx is missing (`pip install --user pipx`, `pip --user`,
   a dedicated venv). Choosing among those is a judgment call about someone's
   Python environment and must not happen silently inside a session-start hook.
-  The script reports "pipx missing" and stops; the ladder stays as agent prose.
+  The script skips silently; the ladder stays as agent prose.
+  *(Corrected at `implement`: this originally read "reports 'pipx missing' and
+  stops", contradicting the silent-skip rule this same spec sets out under
+  Design — a status line on every session in every project is exactly the context
+  tax the design argues against. Silence won. `references/setup.md` carries the
+  compensating flow: run the script, verify `tcw --version`, and only if it is
+  still missing check `command -v pipx` yourself and take the ladder.)*
+- **The hook cannot replace `/tcw-doctor`'s repair.** *(Added at `implement`.)*
+  The script skips when its sentinel matches and `tcw` is on PATH — but doctor
+  exists for cases where both can hold while the install is still wrong (a
+  shadowed install; a re-clone of the same version at a new path). Collapsing
+  `doctor.md` to a bare "run the script" would make `/tcw-doctor` silently no-op
+  on exactly those. Its step 4 re-checks `tcw`'s source afterwards and falls back
+  to a direct `pipx install --force`.
 - No change to how `tcw` is packaged, built, or published.
 - Historical `docs/changelogs/v0.2.0.md`, `docs/changelogs/v0.9.0.md`, and
   `docs/release-notes/v0.2.0.md` mention `/tcw-init` as archive and are not edited.
@@ -104,14 +117,23 @@ neither variable is set. Order of checks, each exiting 0 and silently unless
 noted:
 
 1. **No clone root resolvable** → exit. (Nothing to install from.)
-2. **Editable dev install detected** → exit. This is the guard
+2. **Sentinel matches and `tcw` is on PATH** → exit. The steady-state path: one
+   `command -v` and one `cmp`, no interpreter start.
+   *(Corrected at `implement`: this was ordered after the editable check, which
+   contradicted the Risks section's "no Python starts" promise — the editable
+   probe runs `python3`. A dev checkout never has a matching sentinel, so moving
+   it first changes cost, not semantics.)*
+3. **Editable dev install detected** → exit. This is the guard
    `references/doctor.md:11-14` already mandates ("if `dir_info.editable == true`
    … report and don't touch it"), and it is not hypothetical: this repo's own
    checkout resolves `tcw` to a pyenv shim from `pip install -e .`, so without
    this guard the hook would force-install over the maintainer's dev setup on
    every session in this very repo.
-3. **Sentinel matches and `tcw` is on PATH** → exit. The steady-state path: one
-   `command -v` and one `cmp`.
+   *(Corrected at `implement`: the probe must strip `""`/`"."`/cwd from
+   `sys.path` before reading distribution metadata. A hook runs with the project
+   as cwd, and a `tcw.egg-info` in a TCW checkout is found first and has no
+   `direct_url.json` — so the guard as originally specified answered "not
+   editable" here and would have force-installed over the dev setup.)*
 4. **`pipx` absent** → exit (see Non-goals).
 5. Otherwise `pipx install --force "<clone-root>"`. On success, copy
    `tcw/__init__.py` to the sentinel and exit silently. On failure, leave the
@@ -161,7 +183,14 @@ both harnesses rather than a Claude-only bonus.
 ## Acceptance criteria
 
 1. `hooks/hooks.json` exists at the plugin root, registers exactly one
-   `SessionStart` command hook, and `claude plugin validate .` passes.
+   `SessionStart` command hook, and plugin-manifest validation passes.
+   *(Corrected at `implement`: `claude plugin validate .` was not runnable as
+   written — with a `.claude-plugin/marketplace.json` present, the CLI validates
+   the **marketplace** manifest and never looks at `plugin.json`. Exercising the
+   `hooks` key requires an isolated plugin dir with no marketplace manifest.
+   Verified there: passes, including `--strict`, and a deliberately bad path
+   errors with `hooks[0]: Path not found`, so the key is recognized rather than
+   silently tolerated.)*
 2. `.claude-plugin/plugin.json` contains `"hooks": "./hooks/hooks.json"`.
 3. `scripts/session_bootstrap.sh` is executable (mode 755, committed as such).
 4. Run against a clone root whose `tcw/__init__.py` matches the sentinel, with
