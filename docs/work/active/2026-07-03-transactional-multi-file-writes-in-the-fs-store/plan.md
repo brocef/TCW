@@ -167,8 +167,12 @@ item's path, no `*.tmp` under the store root, injected exception propagates
 **Changes:** `FsWorkStore.create` (fs.py:2277–2296) becomes a single delegating
 call — same signature, `WorkItem` return type preserved via
 `create_work(...).item` (`get_detail` builds `WorkDetail.item` from `self.get(slug)`
-at fs.py:2379, so this *is* the `self.get(slug)` the spec asks for, without a
-second read). The whole `_unique_slug` / parent-resolution / `mkdir` /
+and returns it untouched, so this *is* the `self.get(slug)` the spec asks for).
+*(Corrected during the rework: the original clause said "without a second read".
+It is backwards — `get_detail` goes on to read `state.yaml`, the body, and every
+artifact file to compute revision hashes, so `create` now does strictly more I/O
+than the code it replaced. Harmless to correctness; the equality of the returned
+item is the real and sufficient justification.)* The whole `_unique_slug` / parent-resolution / `mkdir` /
 `write_text` / `dump_yaml` / `_stage` body is deleted — it was a duplicate and
 weaker copy of `create_work`'s create path.
 
