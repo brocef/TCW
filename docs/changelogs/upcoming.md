@@ -44,12 +44,17 @@ category.
   directory (`existed` captured before `mkdir`). This is the shared helper behind
   every taxonomy and capability add/update, so `add`, `update_term`, and
   `update_capability` all inherit it without being patched individually.
+- `FsCapabilitiesStore.update_capability` additionally carries the same rollback
+  itself. It `mkdir`s before dispatching, so `_write_node`'s `existed` is already
+  `True` by the time it runs, and its other two branches go through `_write_meta`,
+  which does not create the directory at all. The guard wraps all three, which is
+  what makes fresh-override materialization all-or-nothing.
 - `FsWorkStore.create_work` wraps its two writes in the same rollback. `mkdir`
   without `exist_ok` proves the directory is ours, so the rmtree is
   unconditional.
 - `FsWorkStore.update_work` writes `state.yaml` and the body through the helper.
-  The pair list is 1 or 2 entries — the body is still written only when it
-  changed, so an unchanged body never churns its revision hash.
+  The pair list is 1 or 2 entries — the body is still written only when one is
+  supplied, so an unchanged body never churns its revision hash.
 - Staging (`self._stage`) stays outside both rollbacks: a git failure after both
   files landed leaves a fully valid object on disk, and deleting it would destroy
   content the caller just wrote.

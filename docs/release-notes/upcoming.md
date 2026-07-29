@@ -27,5 +27,5 @@ that failed partway through could leave an item whose details had been updated
 but whose request document had not, or leave a brand-new item behind as an empty
 shell on the board.
 
-One honest limit: this covers a save that fails. A machine losing power during
-the final instant of a save is still not covered.
+One honest limit: a save writes its files one after another at the very end. If
+that very last step fails, one file can land while another does not.

@@ -2340,8 +2340,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                priority: int | None = None, parent: str | None = None) -> WorkItem:
         """Create a work item — the `WorkItem`-returning face over `create_work`.
 
-        `get_detail(...).item` *is* the `self.get(slug)` this used to end with,
-        without a second read.
+        `get_detail(...).item` *is* the `self.get(slug)` this used to end with —
+        `get_detail` returns it untouched, so every field is identical.
 
         # ponytail: one create path. This used to be a second, weaker copy of
         # `create_work`'s — same slug, parent resolution, directory and body
