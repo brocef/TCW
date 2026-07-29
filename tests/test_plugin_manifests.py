@@ -74,11 +74,16 @@ def test_every_skill_has_name_and_description_frontmatter(skill):
 
 
 def test_hooks_manifest_wires_one_executable_session_start_script():
-    """The SessionStart install hook. `claude plugin validate` catches a broken
-    `hooks` path, but nothing outside this test catches the script losing its
-    executable bit — a hook that cannot run fails silently."""
-    hooks_file = REPO / _load(CLAUDE_PLUGIN)["hooks"]
-    assert hooks_file.is_file(), f"manifest points at a missing file: {hooks_file}"
+    """The SessionStart install hook. Claude loads `hooks/hooks.json` by
+    convention and rejects the plugin if the manifest names it again; nothing
+    outside this test catches that, nor the script losing its executable bit —
+    a hook that cannot run fails silently."""
+    assert "hooks" not in _load(CLAUDE_PLUGIN), (
+        "hooks/hooks.json is loaded by convention; naming it in the manifest is a "
+        "duplicate-hooks load error"
+    )
+    hooks_file = REPO / "hooks" / "hooks.json"
+    assert hooks_file.is_file(), f"missing hooks file: {hooks_file}"
     entries = _load(hooks_file)["hooks"]["SessionStart"]
     commands = [h["command"] for e in entries for h in e["hooks"]]
     assert len(commands) == 1, f"expected exactly one SessionStart hook: {commands}"
