@@ -557,6 +557,28 @@ turn it off and commit them yourself. `work.trunk-branch: main` adds a warning
 when you transition an item from some other branch; it is advisory only and
 never checks anything out.
 
+**The completion checklist is yours to set.** `tcw work complete --resolution
+done` prints a Definition of Done and refuses until you re-run with `--confirm`.
+Write your own as a plain list in `docs/work/dod.yaml`:
+
+```yaml
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
+```
+
+Two things to know. The file **replaces** the built-in list rather than adding to
+it — those five are the defaults, so a list that leaves one out drops that check
+from every completion, with no error. And it is printed only when the resolution
+is `done`: discarding an item (`wontfix`, `duplicate`, `superseded`) prints no
+checklist at all, so a line meant to cover those closures has nowhere to land.
+
+If the item came from a GitHub issue — `/tcw-triage-issues` records it — closing
+the item out means answering that issue and usually closing it too. A checklist
+line is the natural place to be reminded.
+
 ```sh
 tcw work init                          # docs/work/{inbox,backlog,active,review,completed,discarded}/
 
