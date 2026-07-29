@@ -77,15 +77,28 @@ tcw work show <slug>
 | --- | --- | --- |
 | `backlog` / `active` / `review` | Genuinely tracked | Report it, name the item, move on |
 | `completed` | The change already shipped | No new item. Offer a reply saying so, and close. |
-| `discarded` | It was considered and **rejected** | No new item. This is the "not worth doing" outcome with the reason already on record — offer a closure that gives it. |
+| `discarded` | It was closed **without being done** | Depends entirely on *why* — read `resolution` first. |
 
 The last two rows are the ones that bite. A discarded item means the project
-already decided against this issue and the reporter was never told: the issue is
-still open, still unanswered, and re-triaging it from scratch would relitigate a
-decision that has already been made. Read the discarded item's `state.yaml`
-`resolution` and its `initial-request.md` for the reason before drafting that
-reply — and if the resolution is `superseded`, find what superseded it, because
-"we're doing this differently" is a far better answer than "no".
+already decided something about this issue and the reporter was never told: the
+issue is still open, still unanswered, and re-triaging it from scratch would
+relitigate a decision that has already been made.
+
+**`discarded` is not a verdict — it is three verdicts.** Read the item's
+`state.yaml` `resolution` before drafting anything:
+
+| `resolution` | What it actually means | Reply |
+| --- | --- | --- |
+| `wontfix` | Genuinely rejected | The "not worth doing" outcome, reason on record. Close. |
+| `duplicate` | Folded into another item | Point at that item. Close. |
+| `superseded` | **Still wanted, tracked differently** | Find what superseded it and read what that item did with the request — absorbed, or deferred? |
+
+`superseded` is the trap. It does not mean no. The superseding item may have
+absorbed the request, or it may have *deferred* it and written it down so it
+would not be lost — in which case the honest answer is that nothing tracks it
+today and it likely needs recreating as a follow-up item. Saying "we decided
+against this" to a reporter whose request was merely postponed is the worst reply
+this skill can produce, and it is the one the folder name alone would lead you to.
 
 ## 4. Triage what is left
 
