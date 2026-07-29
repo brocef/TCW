@@ -6,6 +6,11 @@ Turn a raw drop in `docs/work/inbox/` — a pasted request, a delegation from
 another node, an escalation from a child — into a tracked work item. This is the
 only stage that runs before an item exists.
 
+A **GitHub issue is the same shape from a different source**: someone else's raw
+text, accepted or rejected. The `tcw-triage-issues` skill sweeps a project's open
+issues and reuses the judgment below for the ones it accepts; what it adds is
+GitHub-specific — reaching the issues, and replying to the reporter.
+
 ## Inputs
 
 The raw inbox entry, read with `tcw work inbox show <entry>`. An entry may be a
