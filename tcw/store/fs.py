@@ -2672,9 +2672,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
         # Write atomically
         state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
-        _atomic_write(d / "state.yaml", state_text)
+        writes = [(d / "state.yaml", state_text)]
         if body is not _UNSET:
-            _atomic_write(body_path, body_text)
+            writes.append((body_path, body_text))
+        # No directory rollback: the item directory already exists, so the
+        # staging phase is the protection.
+        _atomic_write_all(writes)
 
         self._stage(d / "state.yaml")
         if body is not _UNSET:

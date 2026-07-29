@@ -976,6 +976,25 @@ def test_write_node_failure_removes_directory_it_created(tmp_path, monkeypatch):
     assert list(root.rglob("*.tmp")) == []
 
 
+def test_update_work_body_failure_leaves_state_and_body_unchanged(tmp_path,
+                                                                  monkeypatch):
+    """AC 5 — a failed body write leaves state.yaml byte-for-byte as it was."""
+    root = _work_node(tmp_path)
+    st = FsWorkStore.open(root)
+    detail = st.create_work("Task", created="2026-01-01", body="original\n")
+    d = st.path(detail.item.slug)
+    state_before = (d / "state.yaml").read_bytes()
+    body_before = (d / "initial-request.md").read_bytes()
+
+    _fail_writing(monkeypatch, "initial-request.md")
+    with pytest.raises(OSError):
+        st.update_work(detail.item.slug, title="Changed", body="new body\n")
+
+    assert (d / "state.yaml").read_bytes() == state_before
+    assert (d / "initial-request.md").read_bytes() == body_before
+    assert list(root.rglob("*.tmp")) == []
+
+
 def test_artifact_write_preserves_prior_on_replace_failure(tmp_path):
     """write_artifact with a stale revision must not overwrite the file."""
     st = FsWorkStore.open(_work_node(tmp_path))
