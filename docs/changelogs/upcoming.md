@@ -16,10 +16,17 @@ category.
   `pipx install --force`, then copy `tcw/__init__.py` to the sentinel. The
   sentinel is written only after a successful install, so a failure leaves it
   stale and the next session retries with no state to clean up. Silent on success
-  and on every deliberate skip; only a failed install prints, and it prints one
-  line to **stdout with exit 0** — `SessionStart` adds stdout to the agent's
-  context, while an exit-2 stderr becomes a transcript notice the agent never
-  sees. The editable probe strips `""`/`"."`/cwd from `sys.path` before reading
+  and on every deliberate skip — including the pipx-missing skip, which the spec's
+  Non-goals described as "reports and stops"; that contradicted the silent-skip
+  rule and silence won, with `references/setup.md` carrying the compensating flow
+  (run the script → verify `tcw --version` → only then check `command -v pipx`
+  yourself and take the ladder). Only a failed install prints, one line to
+  **stdout with exit 0** — `SessionStart` adds stdout to the agent's context,
+  while an exit-2 stderr becomes a transcript notice the agent never sees:
+  `tcw: automatic install from <clone-root> failed — run /tcw-doctor (Codex: the
+  tcw-plugin skill) to diagnose.` The Codex parenthetical is deliberate; the line
+  is read by an agent under either harness and Codex has no slash commands. The
+  editable probe strips `""`/`"."`/cwd from `sys.path` before reading
   the distribution metadata: a session's cwd is usually the project, and a
   `tcw.egg-info` in a TCW checkout would otherwise answer instead of the real
   dist-info, inverting the guard into a force-install over the dev setup.
@@ -65,6 +72,10 @@ category.
 - `skills/tcw-plugin/SKILL.md` — frontmatter `description` and the
   "Installing & repairing" router describe an automatic install with the script
   as the manual entry point, and name only `/tcw-doctor`.
+- `commands/tcw-doctor.md` — the router's one-line summary said the procedure
+  ends in `pipx install --force`; it now names the bootstrap script, the silent-on-
+  skip re-check, and `--force` as the fallback when the script skipped on a
+  matching sentinel. Thin router still: the procedure stays in `doctor.md`.
 - `README.md` — the Claude install snippet drops `/tcw-init` and tells the user to
   start a new session (a hook installed mid-session does not fire until the next
   one); the command inventory, routing note, Codex paragraph, and skills list drop

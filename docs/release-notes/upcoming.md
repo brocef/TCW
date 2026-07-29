@@ -23,12 +23,15 @@ Two things follow from that:
 
 Working on TCW itself from a checkout you installed with `pip install -e .`? That
 is left alone on purpose: your development copy stays the one on your PATH, and
-nothing installs over it. A machine without `pipx` is left alone too — picking a
-Python environment for you is not something that should happen unasked while a
-session starts, so `/tcw-doctor` walks you through it instead.
+nothing installs over it. A machine without `pipx` is left alone too, quietly —
+picking a Python environment for you is not something that should happen unasked
+while a session starts. If `tcw` is missing and nothing seems to be installing
+it, that's the likely reason: ask for the **`tcw-plugin`** skill (or run
+`/tcw-doctor`) and it walks you through the options.
 
 If the automatic install ever fails, it says so at the start of the session and
-points you at `/tcw-doctor`, rather than leaving you to find out later.
+points you at `/tcw-doctor` — or, in Codex, at the `tcw-plugin` skill — rather
+than leaving you to find out later.
 
 ## Rename a work item from the command line
 
