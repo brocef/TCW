@@ -8,7 +8,9 @@ implementation has skipped its own job.
 ## Inputs
 
 `initial-request.md`, including its `## References` section when present — the
-starting set for research, not the limit of it.
+starting set for research, not the limit of it. With neither that section nor an
+"asked; none provided" note in `## Notes`, nobody asked: research from scratch
+rather than reading the silence as "there was nothing to point at".
 
 Repository discovery is unrestricted, and this stage depends on it: a spec
 written without reading the code it changes is a guess.
@@ -36,7 +38,7 @@ Claims recalled rather than checked are how a spec starts lying.
    check, then write the technical design. **REQUIRED SUB-SKILL: Use
    tcw-capabilities.** — agent `[judgment]`
 3. Read the request's references first, then the code the change touches, and
-   record what is actually true, with references. — agent `[judgment]`
+   record what is actually true, with file and line. — agent `[judgment]`
 4. Write acceptance criteria that are *checkable*. "Works correctly" is not a
    criterion; "an item in `review` still blocks its dependents" is.
    — agent `[judgment]`

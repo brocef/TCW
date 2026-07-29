@@ -43,9 +43,10 @@ stage is what shapes that into a proper request document.
    not exist. — agent `[gated]`
 6. Apply tags and estimates with `tcw work edit`. If the entry carried links or
    attachments, make sure they survived into the item — collect them under
-   `## References` rather than leaving them buried in pasted text. Do **not** ask
-   for more here: the requester is usually a GitHub issue reporter or another
-   node, and is not present. The `request` stage asks. — agent `[judgment]`
+   `## References`, one line of *why it matters* each, rather than leaving them
+   buried in pasted text. Do **not** ask for more here: the requester is usually
+   a GitHub issue reporter or another node, and is not present. The `request`
+   stage asks. — agent `[judgment]`
 7. Commit the new item. — agent `[judgment]`
 
 ## Exit
