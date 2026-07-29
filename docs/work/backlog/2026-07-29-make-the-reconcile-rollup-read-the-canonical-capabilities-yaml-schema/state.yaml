@@ -1,0 +1,12 @@
+slug: 2026-07-29-make-the-reconcile-rollup-read-the-canonical-capabilities-yaml-schema
+title: Make the reconcile rollup read the canonical capabilities.yaml schema
+created: '2026-07-29'
+resolution: null
+priority: 60
+effort: low
+complexity: low
+tags:
+- cli
+- bug
+- work
+- capabilities
