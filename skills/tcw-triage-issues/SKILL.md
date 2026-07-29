@@ -66,8 +66,26 @@ is the join key. Grep for it:
 grep -rl "<issue-url>" docs/work/
 ```
 
-A hit means the issue is already a work item. Report it as tracked, name the
-item, and move on — do not re-triage it.
+A hit means this issue has been triaged before. **It does not mean the issue is
+settled** — resolve the slug and ask what actually happened to it:
+
+```bash
+tcw work show <slug>
+```
+
+| Item status | What it means | What to do |
+| --- | --- | --- |
+| `backlog` / `active` / `review` | Genuinely tracked | Report it, name the item, move on |
+| `completed` | The change already shipped | No new item. Offer a reply saying so, and close. |
+| `discarded` | It was considered and **rejected** | No new item. This is the "not worth doing" outcome with the reason already on record — offer a closure that gives it. |
+
+The last two rows are the ones that bite. A discarded item means the project
+already decided against this issue and the reporter was never told: the issue is
+still open, still unanswered, and re-triaging it from scratch would relitigate a
+decision that has already been made. Read the discarded item's `state.yaml`
+`resolution` and its `initial-request.md` for the reason before drafting that
+reply — and if the resolution is `superseded`, find what superseded it, because
+"we're doing this differently" is a far better answer than "no".
 
 ## 4. Triage what is left
 
