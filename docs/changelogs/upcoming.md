@@ -72,6 +72,23 @@ category.
 - `skills/tcw-plugin/SKILL.md` — frontmatter `description` and the
   "Installing & repairing" router describe an automatic install with the script
   as the manual entry point, and name only `/tcw-doctor`.
+- `skills/tcw-plugin/SKILL.md` and `commands/tcw-doctor.md` now carry the **same**
+  `allowed-tools` list, covering every command their procedures instruct:
+  `Bash(tcw *), Bash(command -v *), Bash(realpath *), Bash(ls *), Bash(sort *),
+  Bash(pipx *), Bash(python3 *), Bash(node --version),
+  Bash(*/scripts/session_bootstrap.sh *), Read`. The skill previously granted only
+  `Bash(pipx list *)`, so `setup.md`'s `pipx install` had been outside its grant
+  since before the bootstrap script existed, and neither file permitted the script
+  itself. The script pattern is a leading wildcard on purpose: it is invoked as
+  `"<clone-root>"/scripts/session_bootstrap.sh "<clone-root>"`, and the clone root
+  is a version-namespaced cache dir that moves on every plugin update, so the only
+  stable anchor is the path tail — with wildcards on both sides the embedded quote
+  characters fall inside the wildcards and never have to be matched. Verified
+  end-to-end against a fixture script at a cache-shaped path (`claude -p` with the
+  rule → ran; the same invocation without it → "This command requires approval").
+  `allowed-tools` is Claude-only frontmatter that Codex ignores, so this is an
+  ergonomics fix for one harness and carries no requirement: nothing either
+  harness *does* changed.
 - `commands/tcw-doctor.md` — the router's one-line summary said the procedure
   ends in `pipx install --force`; it now names the bootstrap script, the silent-on-
   skip re-check, and `--force` as the fallback when the script skipped on a

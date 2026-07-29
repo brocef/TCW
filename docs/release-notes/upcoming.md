@@ -20,6 +20,9 @@ Two things follow from that:
 - **`/tcw-doctor` is still there.** The automatic install only handles "missing"
   and "out of date". Anything stranger — a second copy of `tcw` shadowing the
   first, a half-broken install, `tcw serve` refusing to start — is still its job.
+  It also interrupts less than it used to: the steps it and the **`tcw-plugin`**
+  skill run to find and reinstall `tcw` are approved up front, so it stops asking
+  you to confirm each one.
 
 Working on TCW itself from a checkout you installed with `pip install -e .`? That
 is left alone on purpose: your development copy stays the one on your PATH, and

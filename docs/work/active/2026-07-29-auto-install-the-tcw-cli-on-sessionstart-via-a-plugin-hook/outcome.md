@@ -102,6 +102,64 @@ Also unstated and now defined: if neither `$2` nor `$CLAUDE_PLUGIN_DATA` resolve
 the comparison and the write — i.e. it installs. Correct there, since the skill is
 invoked exactly when `tcw` is missing or stale.
 
+## Rework pass (rejected at `verify`)
+
+`rework.md` sent two defects back. Both fixed; nothing else touched.
+
+**1. `allowed-tools` now covers what the procedures instruct.** Both
+`skills/tcw-plugin/SKILL.md:5` and `commands/tcw-doctor.md:3` carry the identical
+list: `Bash(tcw *), Bash(command -v *), Bash(realpath *), Bash(ls *),
+Bash(sort *), Bash(pipx *), Bash(python3 *), Bash(node --version),
+Bash(*/scripts/session_bootstrap.sh *), Read`. That covers `setup.md` steps 2–5
+(script, `tcw --version`, `command -v pipx`, the `pip`/`pipx` ladder, `node`) and
+`doctor.md` steps 1–5 (`command -v`/realpath, `pipx list --json`, `python3 -c`,
+the `ls | sort -V` sibling scan, the script, `pipx install --force`, `node`).
+`Read` was missing from the command file, which opens by telling the agent to
+read `references/doctor.md`.
+
+**The script pattern was verified, not assumed.** The rework flagged that a
+leading wildcard might not be supported and that the clone root moves on every
+plugin update. Claude's permission docs state wildcards may appear at any
+position, and an end-to-end check confirms it: a fixture
+`session_bootstrap.sh` under a cache-shaped path, invoked exactly as the docs
+write it (`"<root>"/scripts/session_bootstrap.sh "<root>"`, quotes and all), ran
+under `claude -p … --allowedTools 'Bash(*/scripts/session_bootstrap.sh *)'
+--permission-mode default`, and the identical invocation under a deliberately
+non-matching rule came back "This command requires approval". So the fallback the
+rework asked for was not needed. Anchoring on the path *tail* rather than the
+clone root is what survives the update; putting wildcards on both sides is what
+makes the embedded quotes irrelevant, since they fall inside the wildcards under
+either raw-string or shell-lexed matching.
+
+The pipx-missing ladder's last rung ("a dedicated venv") names no fixed command
+and is deliberately left ungranted — a prompt there is the right outcome.
+
+**2. Backlog cross-reference corrected.**
+`docs/work/backlog/2026-07-28-make-the-consolidate-plans-workflow-reachable-from-codex/initial-request.md:60`
+now reads "Only two command files carry it: this one and `tcw-doctor`."
+`grep -rn "disable-model-invocation" commands/ skills/` returns exactly two hits,
+`tcw-consolidate-plans.md:3` and `tcw-doctor.md:4`. Nothing else in that item was
+edited.
+
+**Re-checked rather than assumed:** `python -m pytest -q` → `1088 passed in
+162.04s`; `pytest tests/test_session_bootstrap.py -v` → 7 passed with
+`test_real_editable_checkout_is_left_alone` **PASSED**, not skipped;
+`grep -rn "tcw-init" README.md skills/ commands/` → no matches (exit 1).
+
+**Documentation sync, second pass.** `README.md` did not fire — no `tcw` CLI
+surface or user-facing behavior changed. `[Skill-Driven-Component]` did not fire
+— the component the skill drives is unchanged; only the skill's own grant moved,
+and its procedures already match the tool. `docs/changelogs/upcoming.md`
+(`[Any-Code-Change]`) fired: a Changed entry with the full list, the pattern
+rationale, and the verification. `docs/release-notes/upcoming.md` (`[Public-API]`)
+**did** fire, on the merits rather than by reflex: the previously shipped
+`/tcw-doctor` grant already failed to cover its own steps 1–3, so a user
+upgrading from v0.16 sees a real difference — fewer approval prompts during
+install and repair. One plain-language sentence went onto the existing
+`/tcw-doctor` bullet. What was *not* written: anything about permission grants or
+frontmatter, which is internal vocabulary that file's brief forbids, and any
+claim of a fixed regression — the prompt-y intermediate state never shipped.
+
 ## Notes
 
 **Plan Verification items 2 and 4 were not attempted** — the real update round
