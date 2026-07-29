@@ -1,0 +1,17 @@
+# The node's Definition of Done — printed by `tcw work complete --resolution done`
+# before it will accept `--confirm`.
+#
+# This file REPLACES the built-in defaults; it does not extend them. The five
+# entries below are `DEFAULT_DOD` verbatim (tcw/store/base.py) — drop one and it
+# is gone from every completion in this repo, with no error and no failing test.
+#
+# A discard (`--resolution wontfix|duplicate|superseded`) prints no checklist at
+# all, so nothing here reaches those paths; their guidance lives in
+# skills/tcw-work/references/transitions.md.
+
+- tests pass
+- docs synced
+- capabilities reconciled
+- reviewed
+- version offered
+- originating GitHub issue answered and closed, if the item came from one
