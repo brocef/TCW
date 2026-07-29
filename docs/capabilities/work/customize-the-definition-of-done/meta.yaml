@@ -1,6 +1,6 @@
 id: cap-73460f
 name: Customize the Definition of Done
-Status: Missing
+Status: Supported
 Planning doc: 2026-07-29-close-the-originating-github-issue-when-a-work-item-completes
 Subject:
 - work-item/definition-of-done
