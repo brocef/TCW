@@ -25,6 +25,10 @@ managed target for `tcw work reconcile`'s rollup.
 Optional `## Notes`: anything worth keeping that has no home in the request
 itself.
 
+Optional `## References`: material the requester considers relevant — a link, a
+repo path, or another work item — each with a one-line *why it matters*. The
+`spec` stage reads it; bare URLs with no reason attached save it nothing.
+
 ## Steps
 
 1. Run `tcw work lifecycle --stage request` and honor any binding it reports.
@@ -32,17 +36,23 @@ itself.
 2. **Ask the user what is unclear.** This stage is not delegable to a subagent
    for exactly this reason: it exists to obtain input only the user has.
    — agent `[judgment]`
-3. Write the request in the requester's terms. Resist specifying a solution;
+3. **Ask the requester for reference material.** Docs, a spec, an issue, prior
+   art, an in-repo file, a related item — record each with a one-line reason. Do
+   not fetch, validate, or summarize here; a link is context for `spec`, not a
+   decision it must accept. If they have none, note "asked; none provided" in
+   `## Notes`, so `spec` can tell that apart from a stage that never asked.
+   — agent `[judgment]`
+4. Write the request in the requester's terms. Resist specifying a solution;
    that is the `spec` stage's job and pre-empting it here hides the alternatives.
    — agent `[judgment]`
-4. Record constraints, deadlines, and anything explicitly out of scope.
+5. Record constraints, deadlines, and anything explicitly out of scope.
    — agent `[judgment]`
-5. Commit `initial-request.md` on its own. — agent `[judgment]`
+6. Commit `initial-request.md` on its own. — agent `[judgment]`
 
 ## Exit
 
 **Well:** the request states a problem and its constraints, and `spec` can start
-without re-interviewing anyone.
+without re-interviewing anyone or re-finding the requester's sources.
 
 **Badly:**
 
