@@ -995,6 +995,20 @@ def test_update_work_body_failure_leaves_state_and_body_unchanged(tmp_path,
     assert list(root.rglob("*.tmp")) == []
 
 
+def test_create_work_failure_leaves_no_directory(tmp_path, monkeypatch):
+    """AC 1 — a failed second write rolls the whole item directory back."""
+    root = _work_node(tmp_path)
+    st = FsWorkStore.open(root)
+    d = root / "docs/work/backlog" / st._unique_slug("2026-01-01", "Task")
+
+    _fail_writing(monkeypatch, "initial-request.md")
+    with pytest.raises(OSError):
+        st.create_work("Task", created="2026-01-01")
+
+    assert not d.exists()
+    assert list(root.rglob("*.tmp")) == []
+
+
 def test_artifact_write_preserves_prior_on_replace_failure(tmp_path):
     """write_artifact with a stale revision must not overwrite the file."""
     st = FsWorkStore.open(_work_node(tmp_path))

@@ -2547,10 +2547,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
             f"{body}\n"
         )
 
-        # Write atomically (both files must succeed)
+        # Write atomically (both files must succeed). `mkdir` without
+        # `exist_ok` proves the directory did not exist, so the rollback is
+        # unconditional. `ignore_errors=True` is deliberate: if the rollback
+        # itself cannot proceed the caller still sees the real failure, at the
+        # price of a leftover directory. `parents=True` may also have created an
+        # intermediate `backlog/`; rollback removes only the leaf, and an empty
+        # `backlog/` is inert (git does not track it, every read path tolerates
+        # it). Staging stays outside — see `_write_node`.
         d.mkdir(parents=True)
-        _atomic_write(d / "state.yaml", state_text)
-        _atomic_write(d / "initial-request.md", body_content)
+        try:
+            _atomic_write(d / "state.yaml", state_text)
+            _atomic_write(d / "initial-request.md", body_content)
+        except BaseException:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
         self._stage(d / "state.yaml", d / "initial-request.md")
 
         return self.get_detail(slug)
