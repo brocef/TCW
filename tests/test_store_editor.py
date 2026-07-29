@@ -1009,6 +1009,28 @@ def test_create_work_failure_leaves_no_directory(tmp_path, monkeypatch):
     assert list(root.rglob("*.tmp")) == []
 
 
+def test_create_failure_leaves_no_directory(tmp_path, monkeypatch):
+    """AC 2 — `create` inherits `create_work`'s rollback via the delegation."""
+    root = _work_node(tmp_path)
+    st = FsWorkStore.open(root)
+    d = root / "docs/work/backlog" / st._unique_slug("2026-01-01", "Task")
+
+    _fail_writing(monkeypatch, "initial-request.md")
+    with pytest.raises(OSError):
+        st.create("Task", created="2026-01-01")
+
+    assert not d.exists()
+    assert list(root.rglob("*.tmp")) == []
+
+
+def test_create_rejects_empty_title(tmp_path):
+    """Accepted behavioral delta of the delegation: `create_work` rejects an
+    empty title, where the old duplicate create path produced a degenerate item."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    with pytest.raises(ValueError, match="title is required"):
+        st.create("")
+
+
 def test_artifact_write_preserves_prior_on_replace_failure(tmp_path):
     """write_artifact with a stale revision must not overwrite the file."""
     st = FsWorkStore.open(_work_node(tmp_path))

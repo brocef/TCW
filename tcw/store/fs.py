@@ -2327,24 +2327,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def create(self, title: str, created: str | None = None, body: str = "",
                priority: int | None = None, parent: str | None = None) -> WorkItem:
-        created = created or date.today().isoformat()
-        slug = self._unique_slug(created, title)
-        if parent:
-            pd = self._find(parent)
-            if pd is None:
-                raise ValueError(f"no such parent work item: {parent}")
-            d = pd / slug                          # child nests inside the parent
-        else:
-            d = self.root / "backlog" / slug
-        d.mkdir(parents=True)
-        (d / "initial-request.md").write_text(
-            f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
-            f"{body}\n", encoding="utf-8")
-        dump_yaml(d / "state.yaml", {
-            "slug": slug, "title": title, "created": created,
-            "resolution": None, "priority": priority})
-        self._stage(d / "initial-request.md", d / "state.yaml")
-        return self.get(slug)
+        """Create a work item — the `WorkItem`-returning face over `create_work`.
+
+        `get_detail(...).item` *is* the `self.get(slug)` this used to end with,
+        without a second read.
+
+        # ponytail: one create path. This used to be a second, weaker copy of
+        # `create_work`'s — same slug, parent resolution, directory and body
+        # template, but plain writes and no rollback. It stays as a thin face
+        # because `WorkStore.create` (base.py:931) declares it and the existing
+        # call sites use it; the upgrade path is retiring it once they move to
+        # `create_work`, not hardening a duplicate.
+        """
+        return self.create_work(title, created=created, body=body,
+                                priority=priority, parent=parent).item
 
     def set_field(self, slug: str, key: str, value) -> None:
         d = self._find(slug)
