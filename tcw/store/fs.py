@@ -652,10 +652,33 @@ class FsTreeStore:
 
     def _write_node(self, d: Path, meta: dict, description: str) -> None:
         """Create/overwrite a folder node's meta + description, atomically, staged."""
+        existed = d.exists()
         d.mkdir(parents=True, exist_ok=True)
-        _atomic_write(d / "meta.yaml",
-                      yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
-        _atomic_write(d / "description.md", description)
+        try:
+            _atomic_write_all([
+                (d / "meta.yaml",
+                 yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)),
+                (d / "description.md", description),
+            ])
+        except BaseException:
+            # Only roll back a directory we created; on an existing node the
+            # staging phase is the protection. `ignore_errors=True` so a
+            # rollback that cannot proceed never masks the real failure.
+            #
+            # ponytail: `existed` is TOCTOU-racy — a second writer creating the
+            # node between our check and our failure would get its directory
+            # removed here. Closing it needs an ownership signal that survives
+            # the check-to-write gap (a create-only `mkdir(exist_ok=False)`, or
+            # a lock), which is the design of the separate
+            # `2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos`
+            # item — building it here would be that item, half-done, in the
+            # wrong place.
+            if not existed:
+                shutil.rmtree(d, ignore_errors=True)
+            raise
+        # Staging stays outside the rollback: a git failure after both files
+        # landed leaves a fully valid object on disk, and deleting it would
+        # destroy content the caller just wrote.
         self._stage(d / "meta.yaml", d / "description.md")
 
 

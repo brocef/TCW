@@ -945,6 +945,37 @@ def test_atomic_write_all_promote_failure_is_the_recorded_ceiling(tmp_path,
     assert list(tmp_path.glob("*.tmp")) == []
 
 
+def test_write_node_failure_leaves_existing_node_untouched(tmp_path, monkeypatch):
+    """AC 3 — a failed update of an existing node keeps both files' prior bytes."""
+    root = _tax_node(tmp_path)
+    st = FsTaxonomyStore.open(root)
+    st.add("Admin", description="original body\n")
+    d = root / "docs" / "taxonomy" / "admin"
+    meta_before = (d / "meta.yaml").read_bytes()
+    desc_before = (d / "description.md").read_bytes()
+
+    _fail_writing(monkeypatch, "description.md")
+    with pytest.raises(OSError):
+        st.update_term("admin", name="Changed", description="new body\n")
+
+    assert (d / "meta.yaml").read_bytes() == meta_before
+    assert (d / "description.md").read_bytes() == desc_before
+    assert list(root.rglob("*.tmp")) == []
+
+
+def test_write_node_failure_removes_directory_it_created(tmp_path, monkeypatch):
+    """AC 4 — the same failure on a *new* node leaves no node directory."""
+    root = _tax_node(tmp_path)
+    st = FsTaxonomyStore.open(root)
+
+    _fail_writing(monkeypatch, "description.md")
+    with pytest.raises(OSError):
+        st.add("Admin", description="body\n")
+
+    assert not (root / "docs" / "taxonomy" / "admin").exists()
+    assert list(root.rglob("*.tmp")) == []
+
+
 def test_artifact_write_preserves_prior_on_replace_failure(tmp_path):
     """write_artifact with a stale revision must not overwrite the file."""
     st = FsWorkStore.open(_work_node(tmp_path))
