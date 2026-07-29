@@ -1,0 +1,4 @@
+As a user, I sweep my project's open GitHub issues and turn the ones worth acting on into `tcw work` items, so that the issues my users file and the backlog my agents work from stay in step.
+Triage decides the outcome before anything is created: an issue may be worth doing, a duplicate, not worth doing, or too ill-defined to act on — and only the first becomes a work item. An accepted issue's `initial-request.md` records the issue number and URL and preserves the reporter's own words, which is also how a later sweep recognizes it as already tracked.
+Each triaged issue gets an offered reply — a duplicate closed with a pointer, a closure with its reason, a request for the missing information, or an acknowledgement carrying the new item's slug — and nothing is posted to GitHub without approving the exact text.
+Under Claude it is launched with `/tcw-triage-issues`; Codex invokes the `tcw-triage-issues` skill directly.
