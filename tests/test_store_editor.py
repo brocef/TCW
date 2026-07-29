@@ -1021,6 +1021,41 @@ def test_update_capability_keeps_override_when_staging_fails(tmp_path, monkeypat
     assert (d / "meta.yaml").exists()
 
 
+def test_set_failure_removes_override_it_materialized(tmp_path, monkeypatch):
+    """`capabilities set` — the CLI path — materializes a fresh override too, and
+    writes only `meta.yaml`. A failed write must not leave the empty directory."""
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+
+    _fail_writing(monkeypatch, "meta.yaml")
+    with pytest.raises(OSError) as excinfo:
+        FsCapabilitiesStore.open(child).set(
+            "moderation/report-content", {"Status": "Missing"})
+
+    assert excinfo.value.errno == 28
+    assert not d.exists()
+    assert list(child.rglob("*.tmp")) == []
+
+
+def test_set_keeps_override_when_staging_fails(tmp_path, monkeypatch):
+    """The other side: `_write_meta` stages internally, so a failed `git add`
+    must not delete the `meta.yaml` it just wrote."""
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+
+    def boom(*a, **kw):
+        raise OSError("fatal: Unable to create '.git/index.lock': File exists")
+
+    monkeypatch.setattr("tcw.store.fs.git_stage", boom)
+    with pytest.raises(OSError):
+        FsCapabilitiesStore.open(child).set(
+            "moderation/report-content", {"Status": "Missing"})
+
+    assert (d / "meta.yaml").exists()
+
+
 def test_update_work_body_failure_leaves_state_and_body_unchanged(tmp_path,
                                                                   monkeypatch):
     """AC 5 — a failed body write leaves state.yaml byte-for-byte as it was."""

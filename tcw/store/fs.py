@@ -651,7 +651,14 @@ class FsTreeStore:
         return meta, description, attachments
 
     def _write_node(self, d: Path, meta: dict, description: str) -> None:
-        """Create/overwrite a folder node's meta + description, atomically, staged."""
+        """Create/overwrite a folder node's meta + description, atomically, staged.
+
+        **Callers wrapping this in a rollback:** it stages internally, so your
+        `except` also catches a `git add` failure that happened *after* both
+        files landed. Key the rollback on whether content landed (`meta.yaml`
+        exists) rather than on who created the directory, or you will delete
+        files that were written fine. Same applies to `_write_meta`.
+        """
         existed = d.exists()
         d.mkdir(parents=True, exist_ok=True)
         try:
@@ -1321,6 +1328,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return out
 
     def _write_meta(self, d: Path, meta: dict) -> None:
+        # Stages internally — see the rollback warning on `_write_node`.
         _atomic_write(d / "meta.yaml",
                       yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
         self._stage(d / "meta.yaml")
@@ -1375,8 +1383,19 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     def set(self, identifier: str, fields: dict) -> Capability:
         norm = self._validate_fields(fields)           # validate before touching disk
         d, meta, is_override = self._write_target(identifier)
+        existed = d.exists()
         d.mkdir(parents=True, exist_ok=True)           # _write_meta does not mkdir
-        self._write_meta(d, self._merge_meta(meta, norm, is_override))
+        try:
+            self._write_meta(d, self._merge_meta(meta, norm, is_override))
+        except BaseException:
+            # `_write_target` can materialize a *fresh* override directory, so a
+            # failed write would otherwise leave an empty one behind. Same guard
+            # as `update_capability`: roll back only a directory this call made,
+            # and only when nothing landed — `_write_meta` stages internally, so
+            # a failed `git add` must not delete a `meta.yaml` written fine.
+            if not existed and not (d / "meta.yaml").exists():
+                shutil.rmtree(d, ignore_errors=True)
+            raise
         return self.get(identifier)                    # the composed (post-merge) entry
 
     # -- federation config --
