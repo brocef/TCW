@@ -1671,7 +1671,14 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             # runs, and the two `_write_meta` branches roll nothing back at all.
             # Fresh-override materialization is the path this covers. Same
             # `ignore_errors=True` and TOCTOU caveats as `_write_node`.
-            if not existed:
+            #
+            # Keyed on whether content actually landed, not just on who made the
+            # directory: staging runs *inside* this guard (via `_write_node`),
+            # and a failed `git add` must not delete files that were written
+            # fine — the rest of this change is careful never to destroy content
+            # the caller just wrote. A content failure promotes nothing, so
+            # `meta.yaml` being absent is exactly "nothing landed".
+            if not existed and not (d / "meta.yaml").exists():
                 shutil.rmtree(d, ignore_errors=True)
             raise
         return self.get_capability_detail(identifier)

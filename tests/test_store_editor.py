@@ -1001,6 +1001,26 @@ def test_update_capability_failure_removes_override_it_materialized(tmp_path,
     assert list(child.rglob("*.tmp")) == []
 
 
+def test_update_capability_keeps_override_when_staging_fails(tmp_path, monkeypatch):
+    """The other side of that rollback: a failed `git add` must not delete files
+    that were written fine. Staging runs inside the guard, so the rollback keys
+    on whether content landed, not just on who created the directory."""
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+
+    def boom(*a, **kw):
+        raise OSError("fatal: Unable to create '.git/index.lock': File exists")
+
+    monkeypatch.setattr("tcw.store.fs.git_stage", boom)
+    with pytest.raises(OSError):
+        FsCapabilitiesStore.open(child).update_capability(
+            "moderation/report-content", body="override body\n")
+
+    assert (d / "description.md").read_text(encoding="utf-8") == "override body\n"
+    assert (d / "meta.yaml").exists()
+
+
 def test_update_work_body_failure_leaves_state_and_body_unchanged(tmp_path,
                                                                   monkeypatch):
     """AC 5 — a failed body write leaves state.yaml byte-for-byte as it was."""
