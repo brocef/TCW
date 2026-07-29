@@ -55,19 +55,25 @@ The four checks the plan flagged as un-testable were confirmed by reading:
    enforces this, so it was read rather than asserted.
 3. **`stage-spec.md` points at the section.** A cold reader learns from the first
    line of `Inputs` that references may exist.
-4. **Dogfooding.** This item's own `initial-request.md` `## References` — five
+4. **Dogfooding.** This item's own `initial-request.md` `## References` — four
    entries, each a repo-path link plus a one-line reason — matches the finished
    `Produce` wording without adjustment. The worked example and the instruction
-   did not drift.
+   did not drift. Note that all four are in-repo paths, so the example never
+   exercises the "bare URLs save it nothing" caution against an external link.
 
 ## Where the plan was wrong
 
-**The line budget.** The plan allotted `stage-request.md` "roughly six more
-lines" and instructed tightening rather than acceptance if the edit ran
-materially past it. The first draft came in at +10 (56 → 66). Tightening the
-`Produce` paragraph from four lines to three and the step from six long lines to
-six shorter ones brought it to **+9 (56 → 65)** — still three over the estimate,
-and that is where it stayed.
+**The line budget — and the baseline it was measured against.** The plan allotted
+`stage-request.md` "roughly six more lines" and instructed tightening rather than
+acceptance if the edit ran materially past it. Tightening the `Produce` paragraph
+from four lines to three, and the step from six long lines to six shorter ones,
+brought the edit to **+10 (55 → 65)**, and that is where it stayed — four over
+the estimate, not three.
+
+The "56 lines today" baseline in `spec.md:217` and `plan.md:42` was itself wrong:
+the document was **55** lines. Both planning artifacts inherited the same
+off-by-one, and this document initially repeated it as "+9". Corrected here
+rather than in the spec, which records what was believed at planning time.
 
 Correcting the estimate rather than the prose: the three clauses acceptance
 criterion 3 requires are not compressible below about five lines while staying
@@ -77,8 +83,31 @@ addition of this size would justify looking at the document's shape") is the
 right threshold and this change does not cross it — but the next one should be
 measured against 65 lines, not 56.
 
-No other plan claim failed. Every file, line reference, and guard test the plan
-named was accurate.
+No other plan claim failed. Every file and guard test the plan named was accurate.
+
+## Defects found in this item's own prose, and fixed (`eb9cd9a`)
+
+The `verify` assessment found three gaps in the prose committed above — all in
+new text, none caught by any test. Fixed before presenting the item for
+acceptance:
+
+1. **`stage-spec.md` step 3 used "references" twice with two different meanings.**
+   The step had always ended "record what is actually true, with references",
+   meaning file-and-line citations; prepending "read the request's references
+   first" made the trailing clause ambiguous. Now "with file and line", matching
+   `Produce`'s existing wording.
+2. **The empty-case marker had no reader.** `stage-request.md` instructs writing
+   "asked; none provided" in `## Notes` *specifically* so `spec` can distinguish
+   it from a stage that never asked — but nothing told a `spec`-stage agent the
+   marker exists, leaving that rationale inert as shipped. `Inputs` now states
+   what the absence of both signals means. This is the *reading* end of the risk
+   `spec.md:201-207` books at the *writing* end; the spec addressed only half of
+   it. Not a prompt, so the "no prompting at `spec`" non-goal holds.
+3. **The inbox carry-through path never inherited the annotation requirement.**
+   `stage-inbox.md` sent links to `## References` without saying each needs a
+   reason — and it is the one path that writes the section without reading
+   `stage-request.md`, so it would have produced exactly the bare link list that
+   section says is worthless.
 
 ## Notes
 
