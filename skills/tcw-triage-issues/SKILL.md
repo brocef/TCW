@@ -122,20 +122,30 @@ Per `stage-inbox.md` — retitle, pick tags, split if it is really several items
 tcw work new "<retitled as a change>" --tag <tag> [--priority N] [--effort M]
 ```
 
-Then write its `initial-request.md`, which **must** record two things:
+Then write its `initial-request.md`, opening with an **`## Origin`** section —
+the heading `docs/work/` items already use to say where a request came from —
+recording two things:
 
-1. **The issue's number, URL, and reporter, at the top.** The URL is what §3
-   reads on the next sweep; without it the issue resurfaces forever.
+1. **The issue's number, URL, and reporter.** The URL is what §3 reads on the
+   next sweep; without it the issue resurfaces forever.
 2. **The reporter's own words, attributed and quoted.** Do not rewrite them into
    first person. The maintainer did not ask for this — someone else did, and the
    distinction is what `verify` needs later to check the work against what was
    actually reported.
 
 ```markdown
-**Source:** [#42](https://github.com/owner/repo/issues/42) — reported by @octocat
+# <retitled as a change>
+
+## Origin
+
+GitHub issue [#42](https://github.com/owner/repo/issues/42), filed 2026-07-18
+by @octocat.
 
 > <the reporter's text, verbatim>
 ```
+
+If the project already has its own convention for recording provenance, follow
+that one instead — a second heading that means the same thing is drift.
 
 Then run the `request` stage (`tcw-work/references/stage-request.md`) over it to
 shape those words into an actual request, and commit the item.
