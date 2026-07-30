@@ -206,7 +206,9 @@ def test_cli_inbox_list_show_accept(tmp_path, monkeypatch, capsys):
     shown = capsys.readouterr().out
     assert "Do the thing" in shown and "request.md" in shown
     assert main(["work", "inbox", "accept", "request.md", "--title", "Chosen"]) == 0
-    slug = capsys.readouterr().out.strip()
+    accepted = capsys.readouterr()
+    slug = accepted.out.strip()                              # stdout stays a bare slug
+    assert f"→ now at docs/work/backlog/{slug}" in accepted.err   # location on stderr
     assert FsWorkStore.open(root).get(slug).title == "Chosen"
 
 
@@ -233,6 +235,20 @@ def test_artifacts_report_bounded_presence_and_locator(tmp_path):
     assert st.artifact_locator(item.slug, "plan") == str(d / "plan.md")
     assert st.artifact_locator(item.slug, "../plan") is None
     assert st.artifact_locator("no-such-slug", "plan") is None
+
+
+def test_locate_reports_repo_relative_home_and_degrades_gracefully(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Task", created="2026-01-01")
+    assert st.locate(item.slug) == f"docs/work/backlog/{item.slug}"
+    st.start(item.slug)
+    assert st.locate(item.slug) == f"docs/work/active/{item.slug}"
+    assert st.locate("no-such-slug") is None
+
+    outside = tmp_path / "elsewhere" / item.slug        # item outside node_root:
+    monkeypatch.setattr(st, "path", lambda slug: outside)   # absolute, never raises
+    assert st.locate(item.slug) == str(outside)
 
 
 def test_legacy_plan_has_no_declared_stages(tmp_path):
@@ -608,6 +624,8 @@ def test_cli_complete_requires_confirm(tmp_path, monkeypatch, capsys):
     assert "Definition of Done" in capsys.readouterr().out
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
     assert FsWorkStore.open(root).get(slug).status == "completed"
+    assert (f"completed {slug} (done) → docs/work/completed/{slug}"
+            in capsys.readouterr().out)
 
 
 # ── capabilities gate at complete (DoD teeth) ────────────────────────────────
@@ -921,10 +939,11 @@ def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):
     slug = new_out.out.strip()
     assert "\n" not in slug                                  # stdout is just the slug…
     assert "tcw work start" in new_out.err and slug in new_out.err   # …hint is on stderr
+    assert f"→ created at docs/work/backlog/{slug}" in new_out.err   # …and its new home
 
     assert main(["work", "start", slug]) == 0
     start_out = capsys.readouterr()
-    assert start_out.out.strip() == f"started {slug}"        # stdout unchanged
+    assert start_out.out.strip() == f"started {slug} → docs/work/active/{slug}"
     assert "tcw work complete" in start_out.err and slug in start_out.err
 
 
