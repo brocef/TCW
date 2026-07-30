@@ -87,19 +87,41 @@ def _blocker_labels(item: WorkItem) -> str:
 
 
 def _capability_deltas(tasks: list[tuple[str, WorkItem]]) -> list[str]:
-    """Read-only surface of each task's capabilities.yaml. Expects an optional
-    top-level list of {file, heading, from, to} mappings; tolerantly notes
-    anything else (the _safe_yaml degrade-don't-crash idiom)."""
+    """Read-only surface of each task's capabilities.yaml.
+
+    `declared_capabilities` is the ONLY reader of the canonical `new:`/`changed:`
+    mapping here — the same one `capability_gate` uses, so the rollup and the gate
+    cannot disagree about a sidecar again. They differ only in how they fail: the
+    gate lets SidecarError propagate and fails closed, while this is a display
+    surface spanning a whole epic, so one child node's broken sidecar degrades to
+    a row instead of taking the rollup down (the _safe_yaml degrade-don't-crash
+    idiom).
+
+    The older reconcile-display list of {file, heading, from, to} mappings stays
+    as a fallback. No sidecar in this repo still uses it, but `_tasks_for` reads
+    items out of child nodes — separate repositories this one cannot inspect — so
+    "no producer here" is not evidence of "no producer".
+    """
     out: list[str] = []
     for rel, item in tasks:
         caps = item.capabilities
-        if isinstance(caps, list):
+        try:
+            deltas = declared_capabilities(caps)
+        except SidecarError as e:
+            out.append(f"- {rel}/{item.slug}: capabilities.yaml is unreadable: {e} — skipped")
+            continue
+        if deltas["new"] or deltas["changed"]:
+            for kind in ("new", "changed"):
+                for path in deltas[kind]:
+                    out.append(f"- {rel}/{item.slug}: {kind} {path}")
+        elif isinstance(caps, list):
             for e in caps:
                 if isinstance(e, dict) and e.get("file"):
                     out.append(f"- {rel}/{item.slug}: {e.get('file')}#{e.get('heading', '')} "
                                f"{e.get('from', '?')} → {e.get('to', '?')}")
         elif caps:
-            out.append(f"- {rel}/{item.slug}: capabilities.yaml present but not a list — skipped")
+            out.append(f"- {rel}/{item.slug}: "
+                       f"capabilities.yaml has no new:/changed: entries — skipped")
     return out
 
 
