@@ -911,6 +911,15 @@ def _drop(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
+    # `drop` is the only destructive verb with no record behind it — `complete`
+    # preserves the item, `discard` preserves the item. Gate it the way `complete`
+    # gates a discard, and name what goes so the refusal is informative.
+    if not args.confirm:
+        loc = st.locate(bare)
+        print(f"Would delete {args.slug}" + (f" ({loc})" if loc else ""))
+        print(f"Refused: dropping {args.slug} erases it outright and leaves no "
+              f"record. Re-run with --confirm.", file=sys.stderr)
+        return 1
     try:
         st.drop(bare)
     except _ERRORS as e:
@@ -1061,4 +1070,5 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pd = g.add_parser("drop", help="backlog → deleted")
     pd.add_argument("slug")
+    pd.add_argument("--confirm", action="store_true")
     pd.set_defaults(func=_drop)

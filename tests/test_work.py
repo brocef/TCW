@@ -1592,8 +1592,21 @@ def test_drop_via_qualified_slug(tmp_path, monkeypatch, capsys):
     sub = subnode(root, "project-a")
     slug = FsWorkStore.open(sub).create("a feature", created="2026-01-01").slug
     monkeypatch.chdir(root)
-    assert main(["work", "drop", f"project-a/{slug}"]) == 0
+    assert main(["work", "drop", f"project-a/{slug}", "--confirm"]) == 0
     assert FsWorkStore.open(sub).get(slug) is None
+
+
+def test_drop_refuses_without_confirm(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = FsWorkStore.open(root).create("a feature", created="2026-01-01").slug
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", slug]) == 1
+    out = capsys.readouterr()
+    assert "--confirm" in out.err and slug in out.out       # names what would go
+    assert FsWorkStore.open(root).get(slug) is not None     # and deleted nothing
+    assert main(["work", "drop", slug, "--confirm"]) == 0
+    assert FsWorkStore.open(root).get(slug) is None
 
 
 def test_edit_blocks_reverse_stores_bare_ref(tmp_path, monkeypatch, capsys):

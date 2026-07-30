@@ -107,9 +107,10 @@ instance in the repo.**
 - **No change to what the procedure does** — same discovery heuristics, same
   document classification, same artifact mapping. This item relocates and gates
   it; it does not redesign it.
-- **`tcw work drop` has no `--confirm` gate** (`tcw work drop --help` shows only
-  `slug`), unlike `complete`. That is an adjacent destructive-operation
-  observation, deliberately out of scope, and belongs to no item.
+- ~~**`tcw work drop` has no `--confirm` gate**~~ — **no longer a non-goal.** The
+  user folded it in on 2026-07-30 and it is `plan.md` task 4: same subject as the
+  rest of the item (guarding a destructive operation), and leaving it unowned is
+  how it gets forgotten. It is the item's only breaking CLI change.
 - No version bump decision; that is a closeout call.
 
 ## Design

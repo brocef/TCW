@@ -655,7 +655,7 @@ tcw work complete "$slug" --resolution done --confirm --already-integrated
                                        # the work branch was merged outside TCW (a merged PR):
                                        # skip the merge-back, keep every other gate
 tcw work complete "$slug" --resolution wontfix --confirm        # → discarded/ (no Definition of Done; legal from backlog)
-tcw work drop some-slug                # erase a mis-created item, leaving no record
+tcw work drop some-slug --confirm      # erase a mis-created item, leaving no record
 ```
 
 `complete` **enforces capability reconciliation**: if the item's `capabilities.yaml`

@@ -114,5 +114,6 @@ its own.
   instead, reply and leave the issue open, because closing it would tell the
   reporter their request was refused when it was postponed.
 
-`tcw work drop <slug>` deletes a backlog item outright. That is not a transition
-and leaves no record.
+`tcw work drop <slug> --confirm` deletes a backlog item outright. That is not a
+transition and leaves no record, which is why `--confirm` is required: without it
+the command names what would go and refuses. `[gated]`
