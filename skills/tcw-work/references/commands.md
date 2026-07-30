@@ -30,7 +30,7 @@ behind them — the CLI cannot run them, and asking it to is an argparse error:
 | Goal | How to reach it |
 |---|---|
 | audit the backlog | [`audit-backlog.md`](audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude |
-| migrate external plans | `/tcw-consolidate-plans` — Claude only, not yet reachable from Codex |
+| migrate external plans | [`consolidate-plans.md`](consolidate-plans.md) — any harness · `/tcw-consolidate-plans` in Claude |
 
 ## Addressing
 

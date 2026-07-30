@@ -64,6 +64,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
 - [`decompose.md`](references/decompose.md) — splitting one item into nested pieces
 - [`audit-backlog.md`](references/audit-backlog.md) — reviewing the whole backlog for stale, duplicate, or misplaced items
+- [`consolidate-plans.md`](references/consolidate-plans.md) — **only when the user asks for it**: migrating planning documents that live outside `docs/work/` into work items, and deleting the sources
 
 > **Web editing:** items, artifacts, and the `capabilities.yaml` sidecar can also
 > be edited through `tcw serve`. It commits transitions but runs **no** hooks.

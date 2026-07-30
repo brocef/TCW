@@ -771,8 +771,12 @@ the `tcw-work` skill, so it works under either harness.
 **Consolidating external plans** finds Markdown planning documents outside
 `docs/work/` and migrates them into backlog items, writing `initial-request.md`
 with the source content and provenance and copying obvious spec/plan sections
-into `spec.md` and `plan.md`. Run `/tcw-consolidate-plans` in Claude Code. (This
-one is not yet reachable from Codex.)
+into `spec.md` and `plan.md`. It runs only when you ask for it, lists every
+source file it proposes to delete before deleting any, and deletes only files git
+has already committed — anything untracked or with uncommitted changes is
+reported and left alone. Ask the assistant to consolidate external plans, or run
+`/tcw-consolidate-plans` in Claude Code; the procedure lives in the `tcw-work`
+skill, so it works under either harness.
 
 A large item can be **decomposed into child items** with `tcw work new
 "<title>" --parent <slug>`: the child's folder is created inside the parent's,
