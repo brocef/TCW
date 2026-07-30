@@ -32,6 +32,25 @@ category.
   the failure mode where a scope is inherited from the report or the previous
   stage rather than re-derived.
 
+## Fixed
+
+- `_capability_deltas` (`tcw/work/recursion.py`) — the `tcw work reconcile`
+  rollup read only the legacy `{file, heading, from, to}` display list, so a
+  sidecar in the canonical `new:`/`changed:` mapping schema always rendered as
+  `capabilities.yaml present but not a list — skipped`. Two readers of one file:
+  `capability_gate` used `declared_capabilities` while the rollup hand-rolled an
+  `isinstance(caps, list)` check, so a sidecar the completion gate accepted was
+  reported malformed by the rollup (GitHub #8). The rollup now calls
+  `declared_capabilities` too — one reader, `added:` alias inherited for free —
+  and renders `<kind> <path>` per declared entry. Three follow-on changes: the
+  legacy list is kept as an explicit fallback branch (no producer remains in this
+  repo, but `_tasks_for` reads items out of child nodes in other repositories);
+  `SidecarError` is caught and rendered as `capabilities.yaml is unreadable: … —
+  skipped`, since the rollup spans a whole epic and must not die on one child's
+  broken file, while the gate still lets it propagate and fail closed; and the
+  no-recognized-keys note no longer claims the file is "not a list", which was a
+  false diagnosis once a mapping became the expected shape.
+
 ## Internal
 
 - `tests/test_documented_cli_surface.py` — `DOC_FILES` is now derived by
