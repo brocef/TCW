@@ -673,6 +673,11 @@ run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") s
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
 `tcw work new` also prints an "→ edit: …/initial-request.md" line (stderr) pointing
 at the new item's body so you can open it for editing right away.
+Every command that moves an item also names where it now lives, as a path
+relative to the project root — `tcw work start` and `tcw work complete` on
+stdout ("started my-item → docs/work/active/my-item"), `tcw work new` and
+`tcw work inbox accept` on stderr beside their other hints, leaving their stdout
+the bare slug.
 Inbox entries are deliberately permissive. A direct child of `docs/work/inbox/`
 may be any standalone file, or a folder with exactly one `INDEX.md` or
 `INDEX.txt`; other folder files become bounded `attachments/` on acceptance.
