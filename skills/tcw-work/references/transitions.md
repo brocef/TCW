@@ -69,6 +69,12 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   `outcome.md`. `[gated]` **REQUIRED SUB-SKILL: Use tcw-capabilities.**
 - For a `--worktree` item, the work branch is merged back before teardown, and a
   merge conflict fails closed — resolve and re-run rather than forcing. `[gated]`
+- **Run it from the primary checkout, not from inside the item's own worktree.**
+  Both the merge-back and the teardown act on the primary checkout, so from
+  inside it refuses and names where to re-run. `[gated]` Completing from an
+  unrelated worktree is fine. Everything else — `submit`, `rework`, the reads —
+  works from either. If you took the item into a worktree, `cd` back out before
+  `complete`.
 - From `active` it prints that the verify stage was skipped. `[prompted]` —
   advisory only: no second confirmation, and the exit status is unchanged.
 - `--already-integrated` skips the merge-back when the branch was merged outside

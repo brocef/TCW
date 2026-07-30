@@ -3,6 +3,49 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## TCW now works from inside a git worktree
+
+If your project registers a parent or a child in `tcw-config.yaml` using a
+relative path, and you checked the project out into a git worktree, nothing
+worked. Not `tcw work list`, not `tcw validate`, not even commands that only
+read:
+
+```
+tcw: .../example-server/.worktrees/tcw-config.yaml: registered target has no tcw-config.yaml
+```
+
+The path in your config was written from where the project normally sits. A
+worktree puts it somewhere else, so the path pointed at a directory that isn't
+there. TCW now works out where the path was written from and follows it to the
+right place. All of it works from a worktree now, and you get the same project
+graph you'd get from the normal checkout.
+
+The project you're working on is still the **worktree** — your work items,
+capabilities and taxonomy are the ones you have checked out, and a new item
+lands there, not in the other copy.
+
+If you keep several projects inside one repository, that keeps working exactly
+as before: a project sitting next to yours in the same checkout is still the
+copy on your branch, not the one on the main checkout's branch. And if your
+project isn't in a git repository at all, nothing about it changes.
+
+## Completing a worktree item from inside that worktree now refuses
+
+`tcw work complete` on an item you started with `--worktree` used to report
+success when run from inside the worktree — while doing nothing. The branch was
+never merged into your main checkout and the worktree was never removed. Nothing
+was lost, but you were told the item was finished when it wasn't.
+
+It now refuses and tells you where to run it:
+
+```
+tcw work complete: my-item cannot be completed from inside its own worktree —
+the merge-back and teardown act on the primary checkout. Re-run from /path/to/project.
+```
+
+Running it from the main checkout is unchanged. So is completing from some other
+worktree that isn't the item's own.
+
 ## Commands that move a work item now tell you where it went
 
 Starting, completing, accepting, or creating an item moves it into a different

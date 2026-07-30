@@ -5,6 +5,18 @@ category.
 
 ## Added
 
+- `worktree_anchors(directory)` (`tcw/store/project.py`) — returns
+  `(current worktree top, main worktree root)` when `directory` sits in a
+  *linked* git worktree, else `None`: git absent, not a repository, the primary
+  checkout, a **bare** main repo, or any git failure. Never raises. One
+  `git rev-parse --path-format=absolute --show-toplevel --git-common-dir` yields
+  both values; the bare case is discriminated by the common dir not being named
+  `.git`, whose parent is not a worktree at all. Cached in an unbounded
+  module-level dict keyed by resolved directory — a CLI invocation never outlives
+  the process, and the probe is ~8 ms against six registry opens for
+  `tcw work list -i` on a three-node graph. It lives in `project.py` rather than
+  beside `git_root` in `fs.py` because `fs.py` imports `project.py`, so the
+  reverse import would be circular.
 - `WorkStore.locate(slug) -> str | None` (`tcw/store/base.py`) — abstract
   locator for an item's current home, mirroring `artifact_locator`. Adapters
   realize it however fits their backing store (a filesystem: the repo-relative
@@ -34,6 +46,47 @@ category.
 
 ## Fixed
 
+- `FsProjectRegistry._target_path` (`tcw/store/project.py`) — a relative
+  `connected-projects` locator was resolved against `source_config.parent`, the
+  directory of the config declaring it. Inside a linked git worktree that
+  directory is the worktree, not the checkout the locator was authored against,
+  so every relative locator was off by the worktree's nesting depth and *every*
+  command failed — including read-only ones, because `find_node`
+  (`tcw/store/fs.py`) calls `require_valid()` before returning anything.
+  Two rules, both private to the filesystem adapter (`ProjectRegistry` exposes no
+  path-resolution operation, so there is nothing here for a remote adapter to
+  implement):
+    - **Rule 1, re-anchor only on escape.** For a relative locator whose source
+      config is inside the current worktree: compute the naive target; keep it if
+      it still lies inside the worktree; otherwise re-resolve against
+      `main_root / source_dir.relative_to(current_toplevel)`. The narrowness is
+      load-bearing — the originally proposed fix (re-anchor *every* relative
+      locator) regresses multi-project-in-one-repo, which works today, into
+      `duplicate project id 'sub-a'` plus a non-reciprocal root.
+    - **Rule 2, collapse the worktree's own identity.** The current node has two
+      config paths on disk, `<worktree>/tcw-config.yaml` and its counterpart
+      `<main>/<rel>/tcw-config.yaml`; the parent's locator names the second, so
+      the graph would hold two configs under one ID and fail reciprocity. That
+      one path is aliased onto the worktree copy. Exactly one pair, only while
+      the probe reports a linked worktree — a wider alias would mask genuine
+      duplicate-ID errors. Applies to **absolute** locators too: an absolute
+      parent locator names the counterpart just as readily, and a fully-absolute
+      two-node graph was broken inside a worktree at HEAD for that reason.
+  `_target_path` becomes an instance method (five call sites) so the probe runs
+  once per registry. Unchanged outside a worktree and unchanged for a node in no
+  git repository at all — verified as byte-identical output, measured before and
+  after.
+- `_complete` (`tcw/work/cli.py`) — completing a `--worktree` item from inside
+  that item's own worktree exited 0 having done nothing. `st.node_root` is the
+  worktree, so `merge_worktree(st.node_root, branch)` merged the work branch into
+  itself and `remove_worktree` looked for `<worktree>/.worktrees/<slug>`, missed,
+  and swallowed the miss as "already absent" (`tcw/store/fs.py`) — the command
+  claimed a completion that never happened, leaving the primary checkout
+  unmerged and the worktree standing. It now refuses with a non-zero exit naming
+  the primary checkout. Refusing rather than supporting it is the whole fix:
+  `git worktree remove` deletes the worktree you are standing in. Detection
+  compares the probe's worktree top against *this* item's own worktree path, so
+  completing from an unrelated worktree is untouched.
 - `_list` (`tcw/taxonomy/cli.py`) — `tcw taxonomy list` sorted on the joined path
   string (`t.qualified`) while deriving indentation independently from
   `t.slug.count("/")`, so the two disagreed. `-` (0x2D) sorts before `/` (0x2F),
@@ -68,6 +121,16 @@ category.
 
 ## Internal
 
+- `tests/test_environment_hardness.py` — a fourth environment, **linked git
+  worktree**, alongside the three the module docstring already described. New
+  factories `two_node_graph` / `worktree_node` / `monorepo_worktree`; ten tests
+  covering every command exiting 0 inside the worktree, the registered parent,
+  an empty `check()`, the current node being the worktree (and writes landing
+  there), the absolute-locator graph, the monorepo-inside-a-worktree layout that
+  must *not* be re-anchored, the non-git graph that must not change, and both
+  sides of the `complete` refusal. `tests/test_project_registry.py` gains five
+  `worktree_anchors` cases including the bare main repo and a forced
+  `FileNotFoundError`. No existing test body was modified.
 - `tests/test_documented_cli_surface.py` — `DOC_FILES` is now derived by
   *exclusion* rather than from a five-root inclusion list. The set comes from
   `git ls-files --cached --others --exclude-standard -- '*.md'` minus the

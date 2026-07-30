@@ -200,9 +200,19 @@ connected-projects:
 Relative locators resolve from the declaring config; absolute locators are also
 allowed. `children` contains direct children only and `parent` has at most one
 entry. TCW derives deeper descendants and ancestors transitively, never by
-scanning directories or git metadata. `tcw work list --include-descendants`
+scanning directories to discover a project. `tcw work list --include-descendants`
 groups registered boards by project ID, and any work command accepts
 `<descendant-project-id>/<slug>`.
+
+Inside a **linked git worktree** a relative locator would otherwise be off by the
+worktree's nesting depth, because it was written against the project's position
+in its primary checkout. TCW re-anchors it against the main worktree root — but
+only when the target leaves the worktree. A target that stays inside is a sibling
+on the same branch and stays with the worktree, so several projects in one repo
+behave the same inside a worktree as outside it. This is the one place git
+metadata is consulted, and it only re-points a locator: it never discovers a
+project or infers a relation. Projects outside a worktree, and projects not in a
+git repository at all, are unaffected.
 
 Connections do not imply component inheritance. Each axis opts in explicitly:
 
@@ -841,6 +851,12 @@ Status transitions stay on the node's primary checkout (the board is always
 branch back into the primary checkout, then tears the worktree down — and if the
 merge conflicts it stops with the branch and worktree left intact, so committed
 work is never silently dropped.
+
+Run `complete` **from the primary checkout**, not from inside the item's own
+worktree: both the merge-back and the teardown act on the primary checkout, and
+`git worktree remove` would be deleting the directory you are standing in. From
+inside, TCW refuses and names where to re-run it. Every other command works from
+either place.
 
 ---
 
