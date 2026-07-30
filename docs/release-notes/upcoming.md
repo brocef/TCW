@@ -23,6 +23,28 @@ the side channel, alongside the hints they already print. Starting with
 `--worktree` still reports the worktree, now with the folder as well. Nothing
 else about these commands changed.
 
+## `tcw taxonomy list` no longer shows terms under the wrong parent
+
+If one of your top-level terms was a longer version of another — a feature named
+`Event Reporting` sitting alongside a term named `Event` — the listing put it
+between `Event` and `Event`'s children, and indented those children underneath
+it. They looked like they belonged to `Event Reporting`. They never did.
+
+Before, and after:
+
+```
+event  [V] (local)                    event  [V] (local)
+event-reporting  [F] (local)            log-batch  [V] (local)
+  log-batch  [V] (local)                stat  [V] (local)
+  stat  [V] (local)                   event-reporting  [F] (local)
+```
+
+Only the listing was wrong — the stored taxonomy was always correct, which is
+why `tcw taxonomy check` never complained. Naming a feature after the term it
+operates on is a pattern TCW actively encourages, so this was easy to hit; TCW's
+own taxonomy had it. Terms inherited from another project are still listed after
+your own, now grouped by the project they come from.
+
 ## Epic summaries now list the capabilities an item declares
 
 When you ran `tcw work reconcile` on an epic, its **Capability deltas** section

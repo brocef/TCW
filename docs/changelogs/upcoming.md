@@ -34,6 +34,21 @@ category.
 
 ## Fixed
 
+- `_list` (`tcw/taxonomy/cli.py`) — `tcw taxonomy list` sorted on the joined path
+  string (`t.qualified`) while deriving indentation independently from
+  `t.slug.count("/")`, so the two disagreed. `-` (0x2D) sorts before `/` (0x2F),
+  which put any root slug that is a hyphen-extension of another root
+  (`event-reporting` vs `event`) *between* that root and its children, where it
+  inherited their indentation and appeared to own them (GitHub #11). The sort key
+  is now `(origin != "local", origin, tuple(slug.split("/")))`: comparing segment
+  tuples makes a parent's key a strict prefix of its children's, so the traversal
+  is a true depth-first pre-order and the existing depth expression is correct
+  for every row. `origin` is a distinct key component because each `extends`
+  alias is a separate store with its own slug namespace, so inherited trees group
+  per origin instead of splicing into the local one. Data was never affected —
+  `taxonomy check` and `validate` both passed throughout — only the rendering.
+  **This repo's own taxonomy exhibited it**: `status` and `subject` rendered
+  under `capability-feature-association` instead of `capability`.
 - `_capability_deltas` (`tcw/work/recursion.py`) — the `tcw work reconcile`
   rollup read only the legacy `{file, heading, from, to}` display list, so a
   sidecar in the canonical `new:`/`changed:` mapping schema always rendered as
