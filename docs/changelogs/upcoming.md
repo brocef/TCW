@@ -46,6 +46,39 @@ category.
 
 ## Changed
 
+- **Breaking:** `_drop` (`tcw/work/cli.py`) — `tcw work drop <slug>` now requires
+  `--confirm`. Without it the command prints
+  `Would delete <slug> (<locate()>)` on stdout, refuses on stderr, and exits 1
+  having touched nothing. `drop` was the only destructive verb with no
+  confirmation while `complete` — which *preserves* the item under `discarded/` —
+  has required one all along, and `drop` leaves no record at all. The gate lives
+  in the CLI, not the store, matching `complete`'s shape. `tcw serve`'s
+  `DELETE /api/work/<slug>` is unchanged and needs no flag: the web client
+  already puts an `AlertDialog` confirmation in front of it
+  (`web/client/src/ui/app.tsx`, covered by `web/e2e/parity.spec.ts`), so the
+  confirmation exists on both surfaces at the layer that faces the user.
+- The plan-consolidation procedure moved from `commands/tcw-consolidate-plans.md`
+  to `skills/tcw-work/references/consolidate-plans.md`. `.codex-plugin/plugin.json`
+  exposes `skills/` and carries no `commands` key, so the whole workflow was
+  unreachable from Codex; `commands/` was its only home and it was the last
+  command file in the repo containing no `references/` link. The command file is
+  reduced to frontmatter plus a pointer (the `tcw-audit-work-backlog` shape) and
+  **keeps `disable-model-invocation: true`** — that flag gates discovery of one
+  command file, not the destructive act (`git rm` is reachable from any session
+  with Bash), so it was never the guard it looked like, but dropping it would
+  shrink Claude's surface for no gain.
+- The relocated procedure gains two rules it never had: run only on explicit user
+  request, and delete no source without one grouped approval naming every file by
+  path. Deletion is further restricted to files git has already committed, removed
+  with `git rm` — untracked or uncommitted-modified sources are reported and left
+  in place, checkable with `git ls-files --error-unmatch <path>` and
+  `git status --porcelain <path>`. The previous text said "use `git rm` for tracked
+  files", implying plain deletion for untracked ones, which is the unrecoverable
+  case.
+- `skills/tcw-work/SKILL.md` — the two AI-driven workflows now share one
+  "read on demand" bullet under a single gate (*only when the user asks for it*)
+  rather than one bullet each; a second line would have breached the router's
+  60-line budget (`tests/test_skill_lifecycle_parity.py`).
 - `tcw work start`, `complete`, `inbox accept`, and `new` (`tcw/work/cli.py`)
   now name the item's new location, resolved through `st.locate()`; the CLI
   holds no `node_root`/`relative_to` knowledge for this. `start` prints

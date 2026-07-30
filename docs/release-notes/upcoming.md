@@ -3,6 +3,49 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## `tcw work drop` now asks before deleting
+
+`tcw work drop` erases a work item outright — no folder survives, no record
+remains. It was the only command that did something irreversible without asking,
+while `tcw work complete`, which *keeps* the item on file under `discarded/`, has
+always wanted `--confirm`.
+
+It now names what would go, and refuses:
+
+```
+$ tcw work drop my-item
+Would delete my-item (docs/work/backlog/my-item)
+Refused: dropping my-item erases it outright and leaves no record. Re-run with --confirm.
+```
+
+**If you script TCW, this will break that script** — add `--confirm` to any
+`tcw work drop` call. With the flag the command behaves exactly as it did before.
+Dropping an item in the web app is unchanged: it already asked you to confirm in
+a dialog.
+
+## Consolidating external plans now works in Codex — and asks before deleting
+
+Consolidating external plans finds Markdown planning documents outside
+`docs/work/`, turns them into work items, and then offers to remove the
+originals. The whole procedure lived in a Claude slash command, and Codex doesn't
+load those, so Codex users couldn't run it at all. It now lives in the `tcw-work`
+skill, which both harnesses read — ask the assistant to consolidate external
+plans, or keep using `/tcw-consolidate-plans` in Claude Code.
+
+Moving it was also the moment to make good on something the workflow already
+promised. Two things are now written into the procedure itself:
+
+- **It runs only when you ask for it** — never on the assistant's own initiative
+  while it happens to be working in `docs/`.
+- **It shows you every file it wants to delete, by path, in one list, before
+  deleting any of them** — not one question per file, and not a single blanket
+  "shall I tidy up?".
+
+And deletion is now limited to what you can get back: only files git has already
+committed are removed, and only with `git rm`. A document that was never
+committed — or has edits you haven't committed — is reported and left exactly
+where it is, because its content exists nowhere else.
+
 ## TCW now works from inside a git worktree
 
 If your project registers a parent or a child in `tcw-config.yaml` using a
