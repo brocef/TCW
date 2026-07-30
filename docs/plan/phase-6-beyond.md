@@ -27,7 +27,7 @@ The whole point of the abstract store interfaces. All purely additive — the in
 
 ## Consumer migration (work "Spec 4" — downstream, not work in this repo)
 
-Retiring `skill-cefailures`'s `FOLLOWUPS.md`, `process-inbox` commands, and standalone `capabilities-sdlc` skill in favor of `tcw`; redirecting Proposit's doc-sync entries and reconciling its `AGENTS.md`/`ORCHESTRATOR-AGENTS.md`. **This is work for `tcw`'s consumers**, tracked in those repos. _(phase-5-work Part C #4.)_
+Retiring `skill-cefailures`'s `FOLLOWUPS.md`, `process-inbox` commands, and standalone `capabilities-sdlc` skill in favor of `tcw`; redirecting a downstream consumer's doc-sync entries and reconciling its `AGENTS.md`/`ORCHESTRATOR-AGENTS.md`. **This is work for `tcw`'s consumers**, tracked in those repos. _(phase-5-work Part C #4.)_
 
 ## Deferred hooks (recorded, not scheduled)
 

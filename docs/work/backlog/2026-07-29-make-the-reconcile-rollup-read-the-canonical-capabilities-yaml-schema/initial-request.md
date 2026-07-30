@@ -14,9 +14,9 @@ Reported against `tcw 0.16.0` on macOS 26.5.2, editable checkout.
 >
 >     ```yaml
 >     new:
->         - proposit-shared/auth/deactivate-account
+>         - example-shared/auth/deactivate-account
 >     changed:
->         - proposit-shared/auth/delete-account
+>         - example-shared/auth/delete-account
 >     ```
 >
 > 2. Run `tcw capabilities check` — passes (`capabilities OK`).
@@ -78,4 +78,5 @@ The `spec` stage should establish whether the legacy
 remediation's fallback branch is only worth keeping if it does.
 
 This is TCW's own repo, so reporter and maintainer are the same person. The
-quoted text is the report as filed.
+quoted text is the report as filed, except that the reporter's private project
+names were replaced with `example-*` placeholders.

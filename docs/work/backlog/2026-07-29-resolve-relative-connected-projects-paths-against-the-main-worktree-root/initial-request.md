@@ -10,19 +10,19 @@ checkout.
 
 > ### Steps to reproduce
 >
-> A multi-node graph: a workspace root (`proposit-app`) with child project nodes
-> beside it (`proposit-server`, `proposit-shared`, `proposit-mobile`). Each
+> A multi-node graph: a workspace root (`example-app`) with child project nodes
+> beside it (`example-server`, `example-shared`, `example-mobile`). Each
 > child's `tcw-config.yaml` points back at the root with a **relative** path:
 >
 > ```yaml
-> # proposit-server/tcw-config.yaml
-> id: proposit-server
+> # example-server/tcw-config.yaml
+> id: example-server
 > connected-projects:
 >     parent:
->         proposit-app: ..
+>         example-app: ..
 > ```
 >
-> 1. `cd proposit-server`
+> 1. `cd example-server`
 > 2. `git worktree add .worktrees/my-feature my-feature-branch`
 > 3. `cd .worktrees/my-feature`
 > 4. Run **any** `tcw` command.
@@ -36,7 +36,7 @@ checkout.
 >
 >     ```
 >     $ tcw work list
->     tcw: /Users/.../proposit-server/.worktrees/tcw-config.yaml: registered target has no tcw-config.yaml
+>     tcw: /Users/.../example-server/.worktrees/tcw-config.yaml: registered target has no tcw-config.yaml
 >     ```
 >
 > ### Cause
@@ -92,4 +92,5 @@ git common dir is right for a node that is not a git repository at all, which
 the issue does not address.
 
 This is TCW's own repo, so reporter and maintainer are the same person. The
-quoted text is still the report as filed and has not been rewritten.
+quoted text is the report as filed, except that the reporter's private project
+names were replaced with `example-*` placeholders; nothing else was rewritten.
