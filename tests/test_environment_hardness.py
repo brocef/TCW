@@ -1,6 +1,6 @@
 """Test TCW capabilities across different folder-structure environments.
 
-Three environments are scaffolded on ``tmp_path``:
+Four environments are scaffolded on ``tmp_path``:
 
 1. **Lone project** — one TCW node at the git-repo root (the current
    canonical layout).  No inheritance, no children.
@@ -13,6 +13,15 @@ Three environments are scaffolded on ``tmp_path``:
    git repos under a common parent directory.  Inheritance is declared with
    *absolute* paths.  Parent-child relations derive from the enclosing git
    worktree.
+
+4. **Linked git worktree** — a node checked out in a linked worktree
+   (``git worktree add``) rather than its primary checkout.  A relative
+   ``connected-projects`` locator was authored against the node's primary
+   position on disk, so inside the worktree it is off by the worktree's nesting
+   depth; the registry re-anchors it against the main worktree root and folds
+   the two on-disk copies of the current node into one graph entry.  The
+   monorepo-inside-a-worktree and non-git shapes ride along here as the two
+   layouts that must **not** change.
 
 Every environment is exercised against all three components (taxonomy,
 capabilities, work) plus the node-relation operations (``nodes``,
@@ -29,12 +38,14 @@ from tcw.store.fs import (
     FsCapabilitiesStore,
     FsTaxonomyStore,
     FsWorkStore,
+    WORKTREES_DIR,
     child_nodes,
     descendant_nodes,
     init,
     parent_node,
     write_sentinel,
 )
+from tcw.store.project import FsProjectRegistry
 from tcw.work.recursion import delegate, escalate, reconcile
 
 
@@ -164,6 +175,74 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
         yaml.safe_dump({"extends": ["parent"]}))
 
     return parent, left, right
+
+
+def two_node_graph(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path]:
+    """Return (workspace, server) — a workspace-root node holding a child node.
+
+    Only the child is a git repo, so the child's ``..`` locator points at a
+    directory outside its own repo: the shape a linked worktree displaces.
+    Pass ``absolute=True`` to declare both sides of the connection by absolute
+    path instead.
+    """
+    workspace = tmp_path / "example-app"
+    server = workspace / "example-server"
+    workspace.mkdir()
+    server.mkdir()
+    init(["taxonomy", "capabilities", "work"], workspace, "example-app")
+    init(["taxonomy", "capabilities", "work"], server, "example-server")
+    up = str(workspace.resolve()) if absolute else ".."
+    down = str(server.resolve()) if absolute else "example-server"
+    (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "example-app",
+        "connected-projects": {"children": {"example-server": down}},
+    }, sort_keys=False))
+    (server / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "example-server",
+        "connected-projects": {"parent": {"example-app": up}},
+    }, sort_keys=False))
+    return workspace, server
+
+
+def worktree_node(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path, Path]:
+    """Return (workspace, server, worktree) for the two-node graph above with a
+    linked worktree of the child at ``<server>/.worktrees/feature``."""
+    workspace, server = two_node_graph(tmp_path, absolute)
+    _git_init(server)
+    _commit_all(server, "seed")
+    wt = server / WORKTREES_DIR / "feature"
+    subprocess.run(["git", "-C", str(server), "worktree", "add", "-q",
+                    "-b", "feature", str(wt)], check=True)
+    return workspace, server, wt
+
+
+def monorepo_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    """Return (repo, worktree) for ``mono-root`` + ``sub-a``/``sub-b`` in one git
+    repo, with a linked worktree of the whole repo at ``<repo>/.worktrees/f``.
+
+    Every locator here stays *inside* the checkout, so nothing may be
+    re-anchored — this is the layout the naive "always re-anchor" fix breaks.
+    """
+    repo = tmp_path / "mono"
+    repo.mkdir()
+    _git_init(repo)
+    init(["taxonomy", "capabilities", "work"], repo, "mono-root")
+    for name in ("sub-a", "sub-b"):
+        (repo / name).mkdir()
+        init(["taxonomy", "capabilities", "work"], repo / name, name)
+        (repo / name / "tcw-config.yaml").write_text(yaml.safe_dump({
+            "id": name,
+            "connected-projects": {"parent": {"mono-root": ".."}},
+        }, sort_keys=False))
+    (repo / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "mono-root",
+        "connected-projects": {"children": {"sub-a": "sub-a", "sub-b": "sub-b"}},
+    }, sort_keys=False))
+    _commit_all(repo, "seed")
+    wt = repo / WORKTREES_DIR / "f"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "f", str(wt)],
+                   check=True)
+    return repo, wt
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -519,7 +598,115 @@ class TestSiblingNodes:
 
 
 # ────────────────────────────────────────────────────────────────────────
-# 4. CLI Smoke in Each Environment
+# 4. Linked Git Worktree
+# ────────────────────────────────────────────────────────────────────────
+
+
+class TestWorktreeNode:
+    """A node operated from a linked worktree rather than its primary checkout."""
+
+    def test_every_command_exits_zero_inside_the_worktree(self, tmp_path, monkeypatch,
+                                                          capsys):
+        from tcw.cli import main
+        _, _, wt = worktree_node(tmp_path)
+        monkeypatch.chdir(wt)
+        for argv in (["work", "list"], ["work", "nodes"], ["capabilities", "list"],
+                     ["taxonomy", "list"], ["validate"]):
+            assert main(argv) == 0, argv
+        assert "validate OK" in capsys.readouterr().out
+
+    def test_work_nodes_reports_the_registered_parent(self, tmp_path, monkeypatch,
+                                                      capsys):
+        from tcw.cli import main
+        _, _, wt = worktree_node(tmp_path)
+        monkeypatch.chdir(wt)
+        assert main(["work", "nodes"]) == 0
+        assert "parent: example-app" in capsys.readouterr().out
+
+    def test_registry_reports_no_problems(self, tmp_path):
+        _, _, wt = worktree_node(tmp_path)
+        registry = FsProjectRegistry.open(wt)
+        # Specifically not a duplicate ID and not a broken back-reference: those
+        # are what a re-anchor produces if the worktree's own identity is left
+        # standing alongside its main-worktree counterpart.
+        assert registry.check() == []
+
+    def test_current_node_is_the_worktree_not_the_primary_checkout(self, tmp_path):
+        _, server, wt = worktree_node(tmp_path)
+        registry = FsProjectRegistry.open(wt)
+        assert Path(registry.current.locator) == wt.resolve()
+        assert Path(registry.current.locator) != server.resolve()
+
+    def test_work_created_inside_the_worktree_lands_there(self, tmp_path):
+        _, server, wt = worktree_node(tmp_path)
+        item = FsWorkStore.open(wt).create("Inside", created="2026-01-01")
+        assert (wt / "docs" / "work" / "backlog" / item.slug).is_dir()
+        assert not (server / "docs" / "work" / "backlog" / item.slug).exists()
+
+    def test_absolute_locators_resolve_the_same_graph(self, tmp_path):
+        _, server, wt = worktree_node(tmp_path, absolute=True)
+        inside = FsProjectRegistry.open(wt)
+        outside = FsProjectRegistry.open(server)
+        assert inside.check() == []
+        assert inside.parent().id == outside.parent().id == "example-app"
+        assert Path(inside.parent().locator) == Path(outside.parent().locator)
+
+    def test_monorepo_inside_a_worktree_is_not_re_anchored(self, tmp_path):
+        repo, wt = monorepo_worktree(tmp_path)
+        registry = FsProjectRegistry.open(wt / "sub-a")
+        assert registry.check() == []
+        parent = registry.parent()
+        assert parent.id == "mono-root"
+        # The parent is the *worktree's* repo top: a target that never leaves the
+        # checkout is a sibling on the same branch and belongs to the worktree.
+        assert Path(parent.locator) == wt.resolve()
+        assert Path(parent.locator) != repo.resolve()
+
+    def test_non_git_graph_is_unaffected(self, tmp_path, monkeypatch):
+        from tcw.cli import main
+        _, server = two_node_graph(tmp_path)          # no _git_init anywhere
+        monkeypatch.chdir(server)
+        for argv in (["work", "list"], ["validate"], ["work", "nodes"]):
+            assert main(argv) == 0, argv
+
+    def test_complete_refuses_from_inside_the_items_own_worktree(self, tmp_path,
+                                                                 monkeypatch, capsys):
+        from tcw.cli import main
+        root = lone_project(tmp_path)
+        _commit_all(root)
+        monkeypatch.chdir(root)
+        assert main(["work", "new", "Isolated"]) == 0
+        slug = capsys.readouterr().out.strip().splitlines()[-1]
+        assert main(["work", "start", slug, "--worktree"]) == 0
+        capsys.readouterr()
+        monkeypatch.chdir(root / WORKTREES_DIR / slug)
+        # Left alone this exits 0 having merged the branch into itself and
+        # silently missed the teardown — a completion that did not happen.
+        assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+        assert "own worktree" in capsys.readouterr().err
+        assert (root / "docs" / "work" / "active" / slug).is_dir()
+
+    def test_complete_from_the_primary_checkout_still_merges_and_tears_down(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from tcw.cli import main
+        root = lone_project(tmp_path)
+        _commit_all(root)
+        monkeypatch.chdir(root)
+        assert main(["work", "new", "Isolated"]) == 0
+        slug = capsys.readouterr().out.strip().splitlines()[-1]
+        assert main(["work", "start", slug, "--worktree"]) == 0
+        wt = root / WORKTREES_DIR / slug
+        (wt / "feature.txt").write_text("branch work\n")
+        subprocess.run(["git", "-C", str(wt), "add", "feature.txt"], check=True)
+        subprocess.run(["git", "-C", str(wt), "commit", "-qm", "branch work"], check=True)
+        assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+        assert (root / "feature.txt").is_file()       # merged back
+        assert not wt.exists()                        # torn down
+
+
+# ────────────────────────────────────────────────────────────────────────
+# 5. CLI Smoke in Each Environment
 # ────────────────────────────────────────────────────────────────────────
 
 
@@ -611,7 +798,7 @@ class TestCLISmoke:
 
 
 # ────────────────────────────────────────────────────────────────────────
-# 5. Cross-Environment Property Tests
+# 6. Cross-Environment Property Tests
 # ────────────────────────────────────────────────────────────────────────
 
 
