@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,48 @@ def validate_project_id(project_id: str) -> str:
     if value in RESERVED_PROJECT_IDS:
         raise ValueError(f"project ID is reserved: {value}")
     return value
+
+
+# A CLI invocation never outlives the process, and a graph walk re-probes the
+# same handful of directories, so an unbounded module-level dict is the right
+# cache here — don't "fix" it into an LRU.
+_ANCHOR_CACHE: dict[Path, tuple[Path, Path] | None] = {}
+
+
+def worktree_anchors(directory: Path) -> tuple[Path, Path] | None:
+    """`(current worktree top, main worktree root)` when `directory` sits inside a
+    *linked* git worktree, else None — None for git absent, not a repository, the
+    primary checkout, a bare main repo, or any git failure. Never raises.
+
+    Lives here rather than beside `git_root` in `fs.py`: `fs.py` imports this
+    module, so the reverse import would be circular. It is a filesystem-adapter
+    private detail — `ProjectRegistry` exposes no path-resolution operation.
+    """
+    key = directory.resolve()
+    if key not in _ANCHOR_CACHE:
+        _ANCHOR_CACHE[key] = _probe_worktree(key)
+    return _ANCHOR_CACHE[key]
+
+
+def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(directory), "rev-parse", "--path-format=absolute",
+             "--show-toplevel", "--git-common-dir"],
+            capture_output=True, text=True, check=True,
+        ).stdout.split()
+    except (subprocess.CalledProcessError, OSError):   # OSError covers git absent
+        return None
+    if len(out) != 2:
+        return None
+    top, common = Path(out[0]).resolve(), Path(out[1]).resolve()
+    # A normal repo's common dir is `<main>/.git`; a *bare* main repo's is the
+    # bare directory itself, whose parent is not a worktree at all. Re-anchoring
+    # against that parent would be nonsense, so treat bare as "no anchors".
+    if common.name != ".git":
+        return None
+    main = common.parent
+    return None if main == top else (top, main)
 
 
 @dataclass(frozen=True)

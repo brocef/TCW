@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from tcw.store.fs import init, write_sentinel
-from tcw.store.project import FsProjectRegistry, validate_project_id
+from tcw.store.project import (
+    FsProjectRegistry,
+    validate_project_id,
+    worktree_anchors,
+)
 
 
 def config(root: Path, text: str) -> None:
@@ -152,3 +156,60 @@ def test_conflicting_init_id_rejected(tmp_path):
     write_sentinel(tmp_path, "first-project")
     with pytest.raises(ValueError, match="conflicting"):
         init(["work"], tmp_path, "second-project")
+
+
+# ── worktree anchors probe ───────────────────────────────────────────────
+
+
+def _repo(path: Path) -> Path:
+    import subprocess
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", "--initial-branch=main", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True)
+    (path / "seed.txt").write_text("seed\n")
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-qm", "seed"], check=True)
+    return path
+
+
+def test_worktree_anchors_inside_linked_worktree(tmp_path):
+    import subprocess
+    main = _repo(tmp_path / "main")
+    wt = tmp_path / "wt"
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", "-b", "f", str(wt)],
+                   check=True)
+    assert worktree_anchors(wt) == (wt.resolve(), main.resolve())
+
+
+def test_worktree_anchors_primary_checkout_is_none(tmp_path):
+    assert worktree_anchors(_repo(tmp_path / "main")) is None
+
+
+def test_worktree_anchors_non_git_is_none(tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert worktree_anchors(plain) is None
+
+
+def test_worktree_anchors_bare_main_repo_is_none(tmp_path):
+    import subprocess
+    main = _repo(tmp_path / "main")
+    bare = tmp_path / "bare.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(main), str(bare)], check=True)
+    wt = tmp_path / "bare-wt"
+    subprocess.run(["git", "-C", str(bare), "worktree", "add", "-q", str(wt), "main"],
+                   check=True)
+    assert worktree_anchors(wt) is None
+
+
+def test_worktree_anchors_survives_missing_git(tmp_path, monkeypatch):
+    import tcw.store.project as project_module
+
+    def boom(*a, **k):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(project_module.subprocess, "run", boom)
+    nowhere = tmp_path / "nowhere"
+    nowhere.mkdir()
+    assert worktree_anchors(nowhere) is None
