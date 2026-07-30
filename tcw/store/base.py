@@ -949,6 +949,13 @@ class WorkStore(ABC):
         """Resolve an artifact to an openable handle, or None if unavailable."""
 
     @abstractmethod
+    def locate(self, slug: str) -> str | None:
+        """A short, human-readable location for the item's current home, or None
+        if the item does not exist. Adapters realize it however fits their backing
+        store (a filesystem: the repo-relative folder path; a remote tracker: an
+        issue URL or status label). Presentation only — do not parse it."""
+
+    @abstractmethod
     def plan_stages(self, slug: str) -> list[PlanStage]:
         """Return the ordered, bounded stages declared by the item's plan."""
 

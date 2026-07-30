@@ -1776,6 +1776,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def path(self, slug: str) -> Path | None:
         return self._find(slug)
 
+    def locate(self, slug: str) -> str | None:
+        p = self.path(slug)
+        if p is None:
+            return None
+        try:
+            return str(p.relative_to(self.node_root))
+        except ValueError:
+            return str(p)                             # outside node_root: absolute, don't crash
+
     def body_path(self, slug: str) -> Path | None:
         d = self._find(slug)                          # initial-request.md: FS realization of body surface
         return d / "initial-request.md" if d is not None else None
