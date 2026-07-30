@@ -726,6 +726,11 @@ def _normalize_taxonomy_kind(kind: str | None) -> str:
     return by_lower.get(str(kind).lower(), str(kind))
 
 
+def _wrong_kind_ref(ref: str, kind: str) -> str:
+    """The one wording for "this vocabulary ref points at the wrong kind"."""
+    return f"vocabulary ref '{ref}' points to {kind}, expected Vocabulary"
+
+
 class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     """`TaxonomyStore` over nested dirs under `docs/taxonomy/` (Phase 2 B.3).
 
@@ -889,6 +894,36 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
     # -- validation --
 
+    def _ref_problem(self, ref: str, expect_vocabulary: bool = False
+                     ) -> tuple[Term | None, str | None]:
+        """Resolve one taxonomy ref: `(term, problem)`.
+
+        `problem` is None when the ref resolves (and, with `expect_vocabulary`,
+        points at a Vocabulary), else one of `"dangling"`, `"ambiguous"`,
+        `"kind"`. The three callers — `check`, `update_term`, `add` — each render
+        those codes in their own wording; only `_wrong_kind_ref` is shared.
+        """
+        try:
+            term = self.get(ref)
+        except AmbiguousRef:
+            return None, "ambiguous"
+        if term is None:
+            return None, "dangling"
+        if expect_vocabulary and term.kind != "Vocabulary":
+            return term, "kind"
+        return term, None
+
+    def _require_ref(self, ref: str, label: str, expect_vocabulary: bool = False) -> Term:
+        """`_ref_problem` in raising form — the write paths (`add`, `update_term`)."""
+        term, problem = self._ref_problem(ref, expect_vocabulary)
+        if problem == "dangling":
+            raise ValueError(f"{label} ref '{ref}' does not resolve")
+        if problem == "ambiguous":
+            raise ValueError(f"{label} ref '{ref}' is ambiguous")
+        if problem == "kind":
+            raise ValueError(_wrong_kind_ref(ref, term.kind))
+        return term
+
     def check(self, identifier: str | None = None) -> list[str]:
         problems: list[str] = []
         cfg_path = self.root / "config.yaml"
@@ -917,25 +952,17 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             if term.kind not in TAXONOMY_KINDS:
                 problems.append(f"{term.slug}: unknown kind '{term.kind}'")
             for ref in term.relates_to:
-                try:
-                    if self.get(ref) is None:
-                        problems.append(f"{term.slug}: dangling relatesTo ref '{ref}'")
-                except AmbiguousRef:
-                    problems.append(f"{term.slug}: ambiguous relatesTo ref '{ref}'")
+                if (problem := self._ref_problem(ref)[1]):
+                    problems.append(f"{term.slug}: {problem} relatesTo ref '{ref}'")
             if term.kind == "Feature":
                 if not term.vocabulary:
                     problems.append(f"{term.slug}: Feature requires at least one vocabulary ref")
                 for ref in term.vocabulary:
-                    try:
-                        target = self.get(ref)
-                    except AmbiguousRef:
-                        problems.append(f"{term.slug}: ambiguous vocabulary ref '{ref}'")
-                        continue
-                    if target is None:
-                        problems.append(f"{term.slug}: dangling vocabulary ref '{ref}'")
-                    elif target.kind != "Vocabulary":
-                        problems.append(f"{term.slug}: vocabulary ref '{ref}' "
-                                        f"points to {target.kind}, expected Vocabulary")
+                    target, problem = self._ref_problem(ref, expect_vocabulary=True)
+                    if problem == "kind":
+                        problems.append(f"{term.slug}: {_wrong_kind_ref(ref, target.kind)}")
+                    elif problem:
+                        problems.append(f"{term.slug}: {problem} vocabulary ref '{ref}'")
         return problems
 
     def _validation_resources(self, identifier: str) -> list[Path]:
@@ -1042,27 +1069,13 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
         # Validate taxonomy refs (relatesTo, vocabulary)
         for r in meta.get("relatesTo", []):
-            try:
-                if self.get(r) is None:
-                    raise ValueError(
-                        f"relatesTo ref '{r}' does not resolve")
-            except AmbiguousRef:
-                raise ValueError(f"relatesTo ref '{r}' is ambiguous")
+            self._require_ref(r, "relatesTo")
         if meta.get("kind", "Vocabulary") == "Feature":
             vocs = meta.get("vocabulary", [])
             if not vocs:
                 raise ValueError("Feature requires at least one vocabulary ref")
             for r in vocs:
-                try:
-                    target = self.get(r)
-                except AmbiguousRef:
-                    raise ValueError(f"vocabulary ref '{r}' is ambiguous")
-                if target is None:
-                    raise ValueError(f"vocabulary ref '{r}' does not resolve")
-                if target.kind != "Vocabulary":
-                    raise ValueError(
-                        f"vocabulary ref '{r}' points to {target.kind}, "
-                        f"expected Vocabulary")
+                self._require_ref(r, "vocabulary", expect_vocabulary=True)
 
         # Write atomically
         self._write_node(d, meta, desc_text)
