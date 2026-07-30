@@ -916,9 +916,16 @@ def _drop(args: argparse.Namespace) -> int:
     # gates a discard, and name what goes so the refusal is informative.
     if not args.confirm:
         loc = st.locate(bare)
-        print(f"Would delete {args.slug}" + (f" ({loc})" if loc else ""))
+        # Resolve existence BEFORE gating: advising `--confirm` on an item that
+        # does not exist sends the user to a second, different error.
+        if loc is None:
+            print(f"tcw work drop: no such work item: {args.slug}", file=sys.stderr)
+            return 1
+        # Both lines on stderr: nothing succeeded, and splitting a refusal across
+        # two streams lets a terminal interleave them out of order.
         print(f"Refused: dropping {args.slug} erases it outright and leaves no "
               f"record. Re-run with --confirm.", file=sys.stderr)
+        print(f"Would delete {args.slug} ({loc})", file=sys.stderr)
         return 1
     try:
         st.drop(bare)

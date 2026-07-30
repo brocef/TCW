@@ -1603,10 +1603,27 @@ def test_drop_refuses_without_confirm(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(root)
     assert main(["work", "drop", slug]) == 1
     out = capsys.readouterr()
-    assert "--confirm" in out.err and slug in out.out       # names what would go
+    # Both lines on stderr: nothing succeeded, and two streams can interleave.
+    assert "--confirm" in out.err and slug in out.err       # names what would go
+    assert "Would delete" in out.err and out.out == ""
     assert FsWorkStore.open(root).get(slug) is not None     # and deleted nothing
     assert main(["work", "drop", slug, "--confirm"]) == 0
     assert FsWorkStore.open(root).get(slug) is None
+
+
+def test_drop_of_a_missing_item_does_not_advise_confirm(tmp_path, monkeypatch, capsys):
+    """The gate must resolve existence first.
+
+    Advising `--confirm` on an item that does not exist sends the user to a
+    second, different error when they take the advice.
+    """
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", "2026-01-01-no-such-thing"]) == 1
+    err = capsys.readouterr().err
+    assert "no such work item" in err
+    assert "--confirm" not in err
 
 
 def test_edit_blocks_reverse_stores_bare_ref(tmp_path, monkeypatch, capsys):
