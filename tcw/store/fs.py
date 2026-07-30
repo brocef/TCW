@@ -924,6 +924,28 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             raise ValueError(_wrong_kind_ref(ref, term.kind))
         return term
 
+    def _resolve_vocab_ref(self, ref: str) -> str:
+        """A `--vocab` ref as it will be stored — or `ValueError`.
+
+        A ref that already resolves is stored verbatim (nothing is qualified).
+        One that does not is retried as a *leaf slug* against the local tree,
+        and the full path it matched is what gets stored. The asymmetry is
+        deliberate: a leaf slug is an input convenience at the write boundary,
+        not a stored identity, so no read path widens (`get()` is unchanged and
+        `tcw taxonomy show zeta` still fails) while a stored ref always
+        resolves for `check`. Local terms only — an inherited tree stays
+        addressable as `alias/path`, like `get_inherited`.
+        """
+        if self._ref_problem(ref, expect_vocabulary=True)[1] == "dangling":
+            matches = [s for s in self._local_slugs() if s.rsplit("/", 1)[-1] == ref]
+            if len(matches) > 1:
+                raise ValueError(f"vocabulary ref '{ref}' is ambiguous: "
+                                 f"{', '.join(matches)}")
+            if matches:
+                ref = matches[0]
+        self._require_ref(ref, "vocabulary", expect_vocabulary=True)
+        return ref
+
     def check(self, identifier: str | None = None) -> list[str]:
         problems: list[str] = []
         cfg_path = self.root / "config.yaml"
