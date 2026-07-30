@@ -111,6 +111,13 @@ class FsProjectRegistry(ProjectRegistry):
         self._current_path = self.node_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
         self._anchors = worktree_anchors(self.node_root)
+        # The current node's config as the *main* worktree spells it — the one
+        # path Rule 2 aliases onto the worktree copy. None outside a worktree.
+        self._counterpart_path = (
+            None if self._anchors is None
+            else (self._anchors[1] / self.node_root.relative_to(self._anchors[0])
+                  / SENTINEL).resolve()
+        )
 
     @classmethod
     def open(cls, node_root: Path) -> "FsProjectRegistry":
@@ -300,23 +307,39 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _target_path(self, source_config: Path, locator: str) -> Path:
         target = Path(locator)
-        if target.is_absolute():
-            return (target / SENTINEL).resolve()
         source_dir = source_config.parent.resolve()
-        naive = (source_dir / target / SENTINEL).resolve()
+        resolved = (
+            (target if target.is_absolute() else source_dir / target) / SENTINEL
+        ).resolve()
         if self._anchors is None:
-            return naive
+            return resolved
         top, main = self._anchors
-        # Rule 1 — re-anchor only on escape. A target that stays inside the
-        # worktree is a sibling node on the same branch and belongs to the
-        # worktree (this is what keeps multi-project-in-one-repo working). Only a
-        # target that leaves the checkout was authored against the primary
-        # checkout's position on disk, so resolve it against the source
-        # directory's counterpart under the main worktree root instead.
-        if source_dir.is_relative_to(top) and not naive.parent.is_relative_to(top):
+        # Rule 1 — re-anchor only on escape, and only a *relative* locator: an
+        # absolute one names a place, not an offset from the config. A target
+        # that stays inside the worktree is a sibling node on the same branch and
+        # belongs to the worktree (this is what keeps multi-project-in-one-repo
+        # working). Only a target that leaves the checkout was authored against
+        # the primary checkout's position on disk, so resolve it against the
+        # source directory's counterpart under the main worktree root instead.
+        if (
+            not target.is_absolute()
+            and source_dir.is_relative_to(top)
+            and not resolved.parent.is_relative_to(top)
+        ):
             counterpart = main / source_dir.relative_to(top)
-            naive = (counterpart / target / SENTINEL).resolve()
-        return naive
+            resolved = (counterpart / target / SENTINEL).resolve()
+        # Rule 2 — collapse the worktree's own identity. Once the parent is
+        # reachable it points back at the current node as the *main* worktree
+        # spells it, so the graph would hold two configs under one ID and fail
+        # reciprocity. Alias that one path onto the worktree copy, so the graph
+        # holds exactly one node for the current project — the checked-out one.
+        # Exactly one pair, only under a linked worktree: a wider alias would
+        # mask genuine duplicate-ID errors, which is a real validation here.
+        # Applies to absolute locators too — the parent may name the current node
+        # by absolute path, and that path is the counterpart just the same.
+        if resolved == self._counterpart_path:
+            return self._current_path.resolve()
+        return resolved
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():

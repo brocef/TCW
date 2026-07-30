@@ -67,7 +67,8 @@ the source config lies inside the current worktree:
 3. If it escapes → re-resolve against the source directory's counterpart under
    the main worktree root: `main_root / source_dir.relative_to(current_toplevel)`.
 
-Absolute locators are returned untouched, exactly as today (`:258-260`).
+Absolute locators are returned untouched **by Rule 1**, exactly as today
+(`:258-260`). Rule 2 (task 3) does apply to them — see the correction in task 3.
 
 The narrowness is the point: a target that stays inside the worktree is a sibling
 node on the same branch and belongs to the worktree. Only a target that leaves
@@ -94,6 +95,16 @@ exactly one node for the current project — the worktree copy (spec Goal 2).
 Keep the alias **exactly this narrow**: one pair, only while the probe reports a
 linked worktree. A wider alias risks masking a genuine duplicate-ID error, which
 is a real validation the registry performs.
+
+**Correction made during implementation: Rule 2 must run for absolute locators
+too.** Task 2 returns absolute locators early, before Rule 1; leaving Rule 2
+inside that same relative-only branch left the absolute-locator fixture failing
+with `duplicate project id` (criterion 8). Rule 2 is not a re-anchoring rule —
+it aliases one resolved path onto another, and the parent may spell the current
+node absolutely. `_target_path` therefore resolves the locator first (absolute
+or relative), applies Rule 1 to the relative case only, then applies Rule 2 to
+whatever came out. See spec Problem point 1 for the measurement that showed the
+absolute-locator graph was already broken inside a worktree at HEAD.
 
 **Verified by:** `FsProjectRegistry.open(<worktree>).check()` returns `[]` on the
 two-node fixture (criterion 3); `.current.locator` is the worktree (criterion 4);

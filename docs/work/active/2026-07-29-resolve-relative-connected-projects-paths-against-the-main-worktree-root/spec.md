@@ -78,11 +78,31 @@ exit=1
 Two facts the report does not state, both established by experiment and both
 load-bearing for the design:
 
-1. **The bug needs a relative locator.** A standalone node with no
+1. **The *reported* bug needs a relative locator.** A standalone node with no
    `connected-projects` runs fine from inside its own `--worktree` checkout
    (`work list`, `work show`, `work submit` all exit 0). Absolute locators are
-   likewise unaffected — `_target_path` returns them untouched
+   unaffected *by this code path* — `_target_path` returns them untouched
    (`tcw/store/project.py:258-260`).
+
+   **Corrected during implementation.** "Absolute locators are unaffected" is
+   true of the function and **false of the graph**. A two-node graph declared
+   entirely with absolute locators is *also* broken from inside a worktree at
+   HEAD, by a different route: the parent's absolute child locator names the
+   primary checkout, so the registry loads that config alongside the worktree's
+   own and reports the same `duplicate project id` + `does not point back` pair
+   the relative case produces after Rule 1. Measured at `d795ac9` on the
+   absolute-locator fixture:
+
+    ```
+    HEAD check(): [".../example-server/tcw-config.yaml: duplicate project id
+        'example-server' also used by .../my-feature/tcw-config.yaml",
+     ".../example-app/tcw-config.yaml: child locator for 'example-server' does
+        not point back to .../my-feature"]
+    ```
+
+   Consequence for the design: **Rule 2 must apply to absolute locators too.**
+   Scoping it to the relative branch leaves criterion 8 failing. Rule 1 remains
+   relative-only.
 2. **The report's remediation, applied literally, does not fix it.** Resolving
    *every* relative locator against the main worktree root was prototyped against
    the fixture above. It clears the reported error and produces two new ones:
@@ -177,6 +197,13 @@ locator points at the second one, and the registry would register both as one ID
 `_target_path` therefore maps that one main-worktree path onto the worktree path,
 so the graph holds exactly one node for the current project — the worktree copy,
 satisfying Goal 2.
+
+**Rule 2 applies to absolute locators as well as relative ones** (corrected
+during implementation — see Problem, point 1). Unlike Rule 1, it does not
+re-anchor anything: it aliases one already-resolved path onto another, and the
+parent may name the current node by absolute path just as readily as by relative
+one. Restricting it to the relative branch leaves the absolute-locator graph
+failing inside a worktree, which is criterion 8.
 
 Rule 2 also keeps `_validate_reciprocity` (`tcw/store/project.py:263-306`)
 consistent, because it compares `_target_path` outputs against `cfg.path` and both
@@ -281,8 +308,11 @@ Fixtures are throwaway git repos; "worktree" means one created with
    0 exactly as they do at HEAD.
 7. Primary-checkout behavior is byte-identical: the full `python -m pytest -q`
    suite passes with no test modified to accommodate the change.
-8. Absolute locators are untouched: a fixture declaring the parent with an
-   absolute path resolves identically inside and outside a worktree.
+8. A fixture declaring the connection with absolute paths resolves the same
+   graph inside and outside a worktree. (Restated during implementation: the
+   original wording, "absolute locators are untouched", was built on the false
+   premise corrected in Problem point 1. Absolute locators are untouched *by
+   Rule 1*; Rule 2 does apply to them, and must, or this criterion fails.)
 9. `tcw work complete <slug> --resolution done --confirm`, run from inside the
    worktree of an item started with `--worktree`, does not exit 0 while leaving
    the primary checkout unmerged and the worktree present. Either the primary
