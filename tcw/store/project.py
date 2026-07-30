@@ -74,7 +74,11 @@ def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
             ["git", "-C", str(directory), "rev-parse", "--path-format=absolute",
              "--show-toplevel", "--git-common-dir"],
             capture_output=True, text=True, check=True,
-        ).stdout.split()
+            # splitlines(), NOT split(): git emits one path per line, and a repo
+            # path containing a space (`~/My Drive`, `~/Google Drive`) would split
+            # into more than two tokens, trip the guard below, and silently
+            # disable worktree resolution for that user.
+        ).stdout.splitlines()
     except (subprocess.CalledProcessError, OSError):   # OSError covers git absent
         return None
     if len(out) != 2:

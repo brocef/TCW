@@ -182,6 +182,24 @@ def test_worktree_anchors_inside_linked_worktree(tmp_path):
     assert worktree_anchors(wt) == (wt.resolve(), main.resolve())
 
 
+def test_worktree_anchors_handles_a_space_in_the_repo_path(tmp_path):
+    """A path containing a space must not disable worktree resolution.
+
+    `git rev-parse` emits one path per line, so the two lines must be split on
+    newlines. Splitting on whitespace yields four tokens for `my repo`, trips the
+    two-value guard, and returns None — silently reverting every command inside
+    that worktree to the pre-fix failure. `~/My Drive`, `~/Google Drive` and
+    `~/Library/Mobile Documents` all hit this, and no `tmp_path` fixture can see
+    it because pytest's temp dirs never contain spaces.
+    """
+    import subprocess
+    main = _repo(tmp_path / "my repo")
+    wt = tmp_path / "my repo" / "a worktree"
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", "-b", "f", str(wt)],
+                   check=True)
+    assert worktree_anchors(wt) == (wt.resolve(), main.resolve())
+
+
 def test_worktree_anchors_primary_checkout_is_none(tmp_path):
     assert worktree_anchors(_repo(tmp_path / "main")) is None
 
