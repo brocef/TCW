@@ -17,6 +17,7 @@ from tcw.store.fs import (
     merge_worktree, parent_node, qualified_work_ref_problem, registered_project_id,
     remove_worktree, resolve_qualified_work_ref,
 )
+from tcw.store.project import worktree_anchors
 from tcw.work.hooks import run_post, run_pre
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
@@ -789,6 +790,22 @@ def _complete(args: argparse.Namespace) -> int:
         return 1
     branch = item.branch or None              # capture before complete moves the folder
     has_worktree = bool(item.worktree)
+    # Refuse a completion run from inside the item's *own* worktree. Left alone
+    # it exits 0 having done nothing: `merge_worktree` merges the work branch
+    # into itself, and `remove_worktree` looks for `<worktree>/.worktrees/<slug>`,
+    # misses, and swallows the miss as "already absent" — so the command claims a
+    # completion that did not happen. Refusing is the whole fix: `git worktree
+    # remove` deletes the worktree you are standing in, so completing from inside
+    # is not a flow worth engineering. Completing from an *unrelated* worktree is
+    # not this defect, hence the equality against this item's own path.
+    if has_worktree and (anchors := worktree_anchors(st.node_root)):
+        top, main = anchors
+        own = (main / st.node_root.resolve().relative_to(top) / item.worktree).resolve()
+        if top == own:
+            print(f"tcw work complete: {args.slug} cannot be completed from inside its "
+                  f"own worktree — the merge-back and teardown act on the primary "
+                  f"checkout. Re-run from {main}.", file=sys.stderr)
+            return 1
     # `[prompted]`: an obligation on the CLI to say something, not a gate and not
     # an interactive prompt. Completing straight from `active` skips the verify
     # stage, which is legal and often right for a small change — the point is
