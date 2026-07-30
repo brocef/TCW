@@ -53,7 +53,16 @@ def _list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    for t in sorted(st.list_all(local_only=args.local), key=lambda t: (t.origin != "local", t.qualified)):
+    # Sort on the SEGMENT TUPLE, never the joined path: `-` (0x2D) sorts before
+    # `/` (0x2F), so keying on `qualified` puts a hyphen-extended root slug
+    # (`event-reporting`) between `event` and `event/log-batch` — inheriting an
+    # indentation that claims a parent it does not have. A parent's tuple is a
+    # strict prefix of its children's, so this is a true depth-first pre-order
+    # and the `count("/")` depth below is correct for every row.
+    # `origin` groups each inherited tree separately: every `extends` alias is a
+    # distinct store with its own slug namespace, so their trees must not splice.
+    for t in sorted(st.list_all(local_only=args.local),
+                    key=lambda t: (t.origin != "local", t.origin, tuple(t.slug.split("/")))):
         indent = "  " * t.slug.count("/")
         marker = {"Feature": "F", "Vocabulary": "V"}.get(t.kind, "?")
         print(f"{indent}{t.slug.rsplit('/', 1)[-1]}  [{marker}] ({t.origin})")
