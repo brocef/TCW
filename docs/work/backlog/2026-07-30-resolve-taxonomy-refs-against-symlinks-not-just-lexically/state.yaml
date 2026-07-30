@@ -1,0 +1,8 @@
+slug: 2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically
+title: Resolve taxonomy refs against symlinks, not just lexically
+created: '2026-07-30'
+resolution: null
+tags:
+- taxonomy
+- bug
+- cli
