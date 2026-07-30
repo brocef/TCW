@@ -765,7 +765,16 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         )
 
     def get_local(self, slug: str) -> Term | None:
-        return self._term(slug) if slug and (self.root / slug).is_dir() else None
+        # A ref is joined onto the store root, so it is bounded input like any
+        # other store id: one that escapes (`../capabilities/thing`) resolves to
+        # nothing rather than raising — `get()` is documented to return None for
+        # a ref that resolves to nothing, and `check()` catches only AmbiguousRef,
+        # so a raise here would crash `check` on a taxonomy that already holds one.
+        try:
+            slug = _safe_store_id(slug, "term ref")
+        except ValueError:
+            return None
+        return self._term(slug) if (self.root / slug).is_dir() else None
 
     def _local_slugs(self) -> list[str]:
         return sorted(

@@ -176,6 +176,30 @@ def test_rm_local(tmp_path):
     assert not (root / "docs/taxonomy/admin").exists()
 
 
+def test_rm_refuses_ref_escaping_the_store(tmp_path):
+    # Regression: `rm ../capabilities/thing` resolved through get_local's
+    # unguarded root-join and DELETED the folder outside docs/taxonomy/.
+    root = node(tmp_path, "repo")
+    outside = root / "docs" / "capabilities" / "thing"
+    outside.mkdir(parents=True)
+    (outside / "meta.yaml").write_text("name: Thing\n")
+    st = FsTaxonomyStore.open(root)
+    assert st.get("../capabilities/thing") is None
+    with pytest.raises(ValueError, match="no such term"):
+        st.remove("../capabilities/thing")
+    assert outside.is_dir()
+
+
+def test_check_reports_escaping_ref_as_dangling(tmp_path):
+    # A `..` ref already stored in a meta.yaml must be reported, not raised.
+    root = node(tmp_path, "repo")
+    write_term(root, "user", name="User")
+    write_term(root, "feature", name="Feature", kind="Feature",
+               vocabulary=["../../capabilities/thing"])
+    problems = FsTaxonomyStore.open(root).check()
+    assert any("dangling vocabulary" in p for p in problems)
+
+
 def test_rm_refuses_inherited(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
