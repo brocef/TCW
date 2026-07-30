@@ -1,0 +1,11 @@
+slug: 2026-07-30-validate-taxonomy-vocab-refs-at-write-time-and-define-bare-slug-resolution
+title: Validate taxonomy --vocab refs at write time and define bare-slug resolution
+created: '2026-07-30'
+resolution: null
+priority: 60
+effort: low
+tags:
+- taxonomy
+- bug
+- cli
+- skills
