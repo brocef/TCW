@@ -85,7 +85,44 @@ Four edits, all named with line numbers in the spec:
    harness, mirroring `README.md:762-763`. `README.md:114` lists
    `/tcw-consolidate-plans` among shipped commands and stays correct.
 
-## Task 4 — capabilities axis and documentation sync
+## Task 4 — add a `--confirm` gate to `tcw work drop`
+
+**Folded in by the user's decision on 2026-07-30.** The spec listed this under
+Non-goals as an adjacent observation belonging to no item; it is now in scope,
+because it is the same subject as tasks 1-2 — guarding a destructive operation —
+and leaving it unowned is how it gets forgotten.
+
+**Changes:** `tcw/work/cli.py`, the `drop` verb and its subparser.
+
+`tcw work drop <slug>` deletes a backlog item outright and, per
+`skills/tcw-work/references/transitions.md:111-113`, "is not a transition and
+leaves no record". That is the most destructive verb in the CLI and the only one
+with no confirmation, while `complete` — which *preserves* the item — requires
+`--confirm`. Verify that asymmetry still holds before changing anything
+(`tcw work drop --help`).
+
+Add `--confirm`, refusing without it, matching `complete`'s shape and error
+wording so the two read alike. Print what will be deleted before refusing, so the
+refusal is informative rather than merely obstructive.
+
+**Check the sibling surfaces**, do not assume the CLI is the only caller: grep for
+`drop` in `tcw/serve/` (the web editor commits transitions and may expose it) and
+in `skills/`. If the web path can delete an item without confirmation, say so in
+`outcome.md` — fixing it may belong here or may be a follow-up, but it must not go
+unrecorded.
+
+**Verified by:** `tcw work drop <slug>` without `--confirm` exits non-zero and
+deletes nothing; with `--confirm` it behaves exactly as before. A test pins both
+directions. Existing tests that call `drop` will need `--confirm` added — that is
+a genuine interface change, not the "no test may be modified" violation the other
+items guard against, so update them and say so.
+
+**Documentation:** this is a breaking CLI change. It needs a `Changed` changelog
+entry, a release note written as a behavior change, and an edit to
+`skills/tcw-work/references/transitions.md:111-113`, whose current text describes
+`drop` without a confirmation flag.
+
+## Task 5 — capabilities axis and documentation sync
 
 **REQUIRED SUB-SKILL: use `tcw-capabilities`.**
 
@@ -154,7 +191,11 @@ that the new rules supersede it — they cover different moments.
 files in `commands/`; every one except `tcw-consolidate-plans.md` already links
 into `skills/`, and every link target exists.
 
-**Adjacent, deliberately out of scope and belonging to no item:** `tcw work drop`
-has no `--confirm` gate, unlike `complete`. Recorded in the spec's Non-goals. Do
-not fix it here; raise it at verify so it can be filed or dismissed on purpose
-rather than forgotten.
+**`tcw work drop`'s missing `--confirm` gate is now task 4**, folded in by the
+user on 2026-07-30. The spec's Non-goals section still lists it as out of scope;
+that section is stale and the implementation should correct it in place rather
+than leave the spec and plan disagreeing.
+
+It is a **breaking CLI change** and the only one in this item — everything else
+here is documentation motion. If the batch needs to ship without it, task 4 is
+the separable piece.
