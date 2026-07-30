@@ -1442,11 +1442,22 @@ class TestTargetedPostWriteWarnings:
 
     def test_saved_object_problem_is_a_warning(self, seeded):
         root, base, slug = seeded
-        status, body = _req(base, "POST", "/api/taxonomy", {
-            "name": "Broken feature", "slug": "broken-feature", "kind": "Feature",
+        # A vocabulary-less Feature is refused at write time now, so the warning
+        # path is exercised with a capability that saves but does not check out.
+        status, body = _req(base, "POST", "/api/capabilities", {
+            "path": "broken-cap", "name": "Broken cap", "status": "Partial",
         })
         assert status == HTTPStatus.CREATED
-        assert any("Feature requires" in warning for warning in body["warnings"])
+        assert any("Partial requires Gaps" in warning for warning in body["warnings"])
+
+    def test_unresolvable_vocab_ref_is_refused_not_warned(self, seeded):
+        root, base, slug = seeded
+        status, body = _req(base, "POST", "/api/taxonomy", {
+            "name": "Broken feature", "slug": "broken-feature", "kind": "Feature",
+            "vocabulary": ["no-such-term"],
+        })
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert not (root / "docs" / "taxonomy" / "broken-feature").exists()
 
     def test_work_and_resource_saves_receive_targeted_warnings(self, seeded):
         root, base, slug = seeded

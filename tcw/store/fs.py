@@ -838,9 +838,14 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         d = self.root / full
         if d.exists():
             raise ValueError(f"term already exists: {full}")
+        # Fail closed on refs *before* the first mkdir: a rejected write must
+        # leave no partial folder behind. The same rules `check` applies, so a
+        # term that `add` accepted never fails the very next `check`.
+        if kind == "Feature" and not vocabulary:
+            raise ValueError("Feature requires at least one vocabulary ref")
         meta = {"name": name, "kind": kind, "relatesTo": []}
         if vocabulary:
-            meta["vocabulary"] = list(vocabulary)
+            meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
         self._write_node(d, meta, description)
         return self._term(full)
 

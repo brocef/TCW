@@ -89,6 +89,71 @@ def test_add_feature_with_vocabulary_refs(tmp_path):
     assert st.check() == []
 
 
+def test_add_refuses_unresolvable_vocab_ref(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    with pytest.raises(ValueError, match="'this-does-not-exist' does not resolve"):
+        st.add("F", kind="Feature", vocabulary=["this-does-not-exist"])
+    assert not (root / "docs/taxonomy/f").exists()      # no partial folder
+
+
+def test_add_requires_a_vocabulary_ref_on_a_feature(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    with pytest.raises(ValueError, match="Feature requires at least one vocabulary ref"):
+        st.add("F", kind="Feature")
+    assert not (root / "docs/taxonomy/f").exists()
+
+
+def test_add_refuses_vocab_ref_pointing_at_a_feature(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("User")
+    st.add("User Authentication", kind="Feature", vocabulary=["user"])
+    with pytest.raises(ValueError, match="expected Vocabulary"):
+        st.add("Password Reset", kind="Feature", vocabulary=["user-authentication"])
+    assert not (root / "docs/taxonomy/password-reset").exists()
+
+
+def test_add_resolves_a_unique_leaf_slug_to_its_path(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("Alpha")
+    st.add("Zeta", parent="alpha")
+    feature = st.add("F", kind="Feature", vocabulary=["zeta"])
+    assert feature.vocabulary == ["alpha/zeta"]        # the path, not the leaf
+    assert st.check() == []                            # what add wrote, check accepts
+
+
+def test_add_ambiguous_leaf_slug_names_both_candidates(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    for parent in ("alpha", "beta"):
+        st.add(parent.title())
+        st.add("Zeta", parent=parent)
+    with pytest.raises(ValueError) as excinfo:
+        st.add("F", kind="Feature", vocabulary=["zeta"])
+    message = str(excinfo.value)
+    assert "ambiguous" in message
+    assert "alpha/zeta" in message and "beta/zeta" in message
+    assert not (root / "docs/taxonomy/f").exists()
+
+
+def test_add_stores_a_resolving_ref_verbatim(tmp_path):
+    # A ref that already resolves is never rewritten — not a full local path,
+    # and not an inherited term reached through an extends alias.
+    cons, _ = consumer_with_shared(tmp_path)
+    st = FsTaxonomyStore.open(cons)
+    st.add("Alpha")
+    st.add("Zeta", parent="alpha")
+    assert st.add("F", kind="Feature",
+                  vocabulary=["alpha/zeta"]).vocabulary == ["alpha/zeta"]
+    assert st.add("G", kind="Feature",
+                  vocabulary=["Argument"]).vocabulary == ["Argument"]
+    assert st.add("H", kind="Feature",
+                  vocabulary=["shared/Argument"]).vocabulary == ["shared/Argument"]
+
+
 def test_missing_kind_defaults_to_vocabulary(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "user", name="User")

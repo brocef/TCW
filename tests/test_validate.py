@@ -18,6 +18,15 @@ def node(tmp_path: Path, name: str = "repo", project_id: str | None = None) -> P
     return root
 
 
+def _vocabless_feature(root: Path, slug: str) -> None:
+    """A Feature carrying no vocabulary ref. `add` refuses it now, so write the
+    node directly — the point of these tests is that `check` still reports it."""
+    d = root / "docs" / "taxonomy" / slug
+    d.mkdir(parents=True)
+    (d / "meta.yaml").write_text(f"name: {slug.title()}\nkind: Feature\nrelatesTo: []\n")
+    (d / "description.md").write_text("")
+
+
 def _body(root: Path, path: str, text: str) -> None:
     """Write a capability description body (a scanned *.md file)."""
     FsCapabilitiesStore.open(root).add(path, name=path.rsplit("/", 1)[-1].title())
@@ -120,7 +129,7 @@ def test_adjacent_backtick_runs_do_not_leak(tmp_path):
 def test_component_check_failure_surfaces(tmp_path):
     root = node(tmp_path)
     # A Feature with no vocabulary ref -> taxonomy check() flags it.
-    FsTaxonomyStore.open(root).add("Search", slug="search", kind="Feature")
+    _vocabless_feature(root, "search")
     problems = validate(root)
     assert any(p.startswith("taxonomy check:") for p in problems)
 
@@ -128,7 +137,7 @@ def test_component_check_failure_surfaces(tmp_path):
 def test_path_narrows_scan_and_runs_that_check(tmp_path):
     root = node(tmp_path)
     # Break taxonomy, but scan only docs/capabilities -> taxonomy check not run.
-    FsTaxonomyStore.open(root).add("Search", slug="search", kind="Feature")
+    _vocabless_feature(root, "search")
     problems = validate(root, root / "docs" / "capabilities")
     assert not any(p.startswith("taxonomy check:") for p in problems)
 

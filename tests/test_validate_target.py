@@ -66,9 +66,13 @@ def test_target_reports_its_own_malformed_yaml(tmp_path):
 
 def test_axis_semantics_are_object_local(tmp_path):
     root = _node(tmp_path)
-    taxonomy = FsTaxonomyStore.open(root)
-    taxonomy.add("Feature", slug="feature", kind="Feature")
-    taxonomy.add("Other feature", slug="other", kind="Feature")
+    # Features carrying no vocabulary ref: `add` refuses them now, so write the
+    # nodes directly — the point here is that `check` reports only the target.
+    for slug in ("feature", "other"):
+        d = root / "docs" / "taxonomy" / slug
+        d.mkdir(parents=True)
+        (d / "meta.yaml").write_text(f"name: {slug}\nkind: Feature\nrelatesTo: []\n")
+        (d / "description.md").write_text("")
     capability = FsCapabilitiesStore.open(root)
     capability.add("bad", status="Partial")
     capability.add("other", status="Blocked")
