@@ -25,3 +25,27 @@ category.
   and `new` keep their bare-slug stdout and carry the location on stderr
   (`→ now at <loc>` / `→ created at <loc>`). The suffix is omitted when
   `locate` returns `None`; exit codes and gate behavior are unchanged.
+- `skills/tcw-work/references/stage-spec.md` — new `Steps` entry: a sweep for
+  defects sibling to the reported one is repo-wide by default, or the spec
+  states why it was narrowed. Covers the residue the doc guard structurally
+  cannot parse (a stale factual claim, a flag named only in prose), and closes
+  the failure mode where a scope is inherited from the report or the previous
+  stage rather than re-derived.
+
+## Internal
+
+- `tests/test_documented_cli_surface.py` — `DOC_FILES` is now derived by
+  *exclusion* rather than from a five-root inclusion list. The set comes from
+  `git ls-files --cached --others --exclude-standard -- '*.md'` minus the
+  `ARCHIVAL` prefixes (`docs/{work,plan,superpowers,changelogs,release-notes}/`,
+  each carrying its reason in the source). Coverage goes from 104 files to 133 —
+  newly including `AGENTS.md`/`CLAUDE.md`, the 22 `docs/taxonomy/**` bodies, the
+  migration guides, and the inbox template — with zero new failures. A new
+  documentation tree is now covered the moment the file exists, with no test
+  edit. Going through git means `.gitignore` supplies the junk exclusions
+  (`node_modules/`, `.venv/`, build output, the gitignored
+  `docs/work/completed/`) instead of a second hand-maintained list, and the
+  `plugins/tcw` self-symlink stays a single index entry rather than an infinite
+  tree. Note `--others`: an untracked, not-yet-staged Markdown draft **is** in
+  scope, so a work-in-progress doc naming a nonexistent verb reddens the suite
+  before it is committed.
