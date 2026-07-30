@@ -1,1 +1,1 @@
-As a user, I run `tcw taxonomy rm <path>` to delete a local term. The tool refuses to remove an inherited term and warns if other terms still relate to it.
+As a user, I run `tcw taxonomy rm <path>` to delete a local term. The path addresses a term inside the taxonomy tree and nothing outside it — one that tries to escape (`../capabilities/…`) matches no term and deletes nothing. The tool refuses to remove an inherited term and warns if other terms still relate to it.
