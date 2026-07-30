@@ -1,3 +1,0 @@
-# Capability deltas this work item lands (work→capability back-pointers).
-changed:
-  - work#view-the-board   # list row is now | -delimited (was tab)

@@ -1,7 +1,0 @@
-new:
-    - work/discard-a-work-item
-changed:
-    - work/complete-a-work-item
-    - work/drop-a-work-item
-    - work/view-the-board
-    - web/editing

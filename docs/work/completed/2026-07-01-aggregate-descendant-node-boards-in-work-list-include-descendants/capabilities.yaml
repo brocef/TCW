@@ -1,3 +1,0 @@
-# Capability deltas this work item lands (work->capability back-pointers).
-changed:
-  - work#view-the-board   # `tcw work list` gains --include-descendants (aggregate descendant node boards)
