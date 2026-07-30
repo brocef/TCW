@@ -299,9 +299,16 @@ presupposing a fix.
 ## Notes
 
 - **Criterion 7 held precisely.** The only deletions anywhere under `tests/` are
-  three lines: the module docstring's "Three environments are scaffolded" and two
-  section-header comments renumbered 4→5 and 5→6. No test body, assertion, or
-  fixture was touched. `git diff -U0 -- tests/ | grep '^-'` is the check.
+  **four** lines: the module docstring's "Three environments are scaffolded", two
+  section-header comments renumbered 4→5 and 5→6, and one single-line
+  `from tcw.store.project import …` reformatted into a parenthesized three-line
+  import to add `worktree_anchors`. No test body, assertion, or fixture was
+  touched. `git diff -U0 -- tests/ | grep '^-'` is the check — note it also
+  matches `--- a/…` diff headers, which must be netted out.
+
+  *(Corrected during verification: this originally said "three lines" and omitted
+  the reformatted import. The substance of criterion 7 was unaffected; the count
+  was wrong because the header lines were netted out by hand.)*
 - **The `.git`-name discriminator for bare repos is a heuristic with one known
   hole**: a bare repository literally named `.git`. Returning `None` in the wrong
   direction there means "behave as HEAD does", which is the failure mode you

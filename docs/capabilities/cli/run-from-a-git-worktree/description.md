@@ -7,8 +7,10 @@ re-anchors such a locator against the main worktree root, but only when the
 target leaves the worktree: a target that stays inside is a sibling node on the
 same branch and stays with the worktree, so hosting
 [multiple projects in one repo](tcw://C/cli/host-multiple-projects-in-one-repo)
-behaves the same inside a worktree as outside it. Absolute locators are followed
-as written.
+behaves the same inside a worktree as outside it. An absolute locator is never
+re-anchored — but if it names the current project's counterpart in the primary
+checkout, it still resolves to the worktree copy, so the project appears once
+rather than twice.
 
 The node I operate on is the **worktree**: its `docs/work/`,
 `docs/capabilities/` and `docs/taxonomy/` are the checked-out ones, and a work
