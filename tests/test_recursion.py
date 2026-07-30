@@ -260,6 +260,48 @@ def test_reconcile_tolerates_malformed_capabilities(tmp_path):
     assert "skipped" in block.lower()
 
 
+def test_reconcile_surfaces_canonical_capability_deltas(tmp_path):
+    """The rollup reads the same schema the gate does.
+
+    The defect this pins: a sidecar written per the documented canonical shape —
+    which `capabilities check` and the `complete` gate both accept — used to be
+    reported as "present but not a list", i.e. malformed when it was correct.
+    """
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("E", created="2026-01-01")
+    a = mk_node(parent, "child-a")
+    _child_task(a, epic.slug, caps="new:\n  - a/b\nchanged:\n  - c/d\n")
+    block = reconcile(parent, epic.slug)
+    assert "a/b" in block and "c/d" in block
+    assert "skipped" not in block.lower()
+
+
+def test_reconcile_honors_added_alias(tmp_path):
+    """`added:` is a deprecated alias of `new:` in declared_capabilities, so the
+    rollup inherits it for free — which is the point of sharing one reader."""
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("E", created="2026-01-01")
+    a = mk_node(parent, "child-a")
+    _child_task(a, epic.slug, caps="added:\n  - a/b\n")
+    block = reconcile(parent, epic.slug)
+    assert "new a/b" in block
+    assert "skipped" not in block.lower()
+
+
+def test_reconcile_tolerates_unreadable_capabilities(tmp_path):
+    """One child node's broken sidecar must not take down an epic-wide rollup.
+
+    The gate wants SidecarError to propagate and fail closed; this is a display
+    surface, so it degrades to a row instead.
+    """
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("E", created="2026-01-01")
+    a = mk_node(parent, "child-a")
+    _child_task(a, epic.slug, caps="new:\n  - [unclosed\n")   # invalid YAML
+    block = reconcile(parent, epic.slug)                      # must not raise
+    assert "unreadable" in block.lower() and "skipped" in block.lower()
+
+
 # ── Task 4: inbox channel ────────────────────────────────────────────────────
 
 def _no_items(node: Path) -> bool:
