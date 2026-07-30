@@ -49,6 +49,12 @@ wrong-kind. `FsCapabilitiesStore._ref_error(identifier) -> str | None`
 The two callers differ only in output: `check` appends the string,
 `update_term` raises `ValueError`. Keep that difference at the call sites.
 
+> **Correction (implement).** They differ in wording too, and both wordings are
+> test-asserted, so the helper returns a **code** (`"dangling"` / `"ambiguous"`
+> / `"kind"`) rather than a message; each caller renders it. Only the wrong-kind
+> sentence is identical in both, and it is the one thing shared verbatim
+> (`_wrong_kind_ref`). See the matching correction in `spec.md` Design §1.
+
 **Message strings must be preserved verbatim** — they are asserted by tests and
 quoted in the spec (spec Risks, last bullet). This task is pure motion: the
 suite must pass with **no test modified**. If a test needs editing, the
@@ -87,6 +93,12 @@ tests (`tests/test_taxonomy.py:129-166`) pass **unchanged**, which is the proof
 
 **Changes:** `tcw/store/fs.py`, `FsTaxonomyStore.add()` (`:811-831`); possibly
 `tcw/taxonomy/cli.py` error rendering.
+
+> **Correction (implement).** No CLI change was needed — `_add`
+> (`tcw/taxonomy/cli.py:80`) already catches `ValueError` and prints
+> `tcw taxonomy add: <message>` to stderr with exit 1. Unlisted fallout instead:
+> four tests built a deliberately invalid Feature *through* `add`, which this
+> task makes unbuildable, so they had to construct the node another way.
 
 Between the kind check (`:820-823`) and the write (`:830`), validate every
 `--vocab` ref through the helper. On any problem: raise `ValueError` with a

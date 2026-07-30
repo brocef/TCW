@@ -23,6 +23,12 @@ touched by the sweep.
 Record both as `changed:` in the item's `capabilities.yaml` at plan time. No
 capability records are written by this stage.
 
+> **Correction (implement).** Planning never wrote that sidecar — the folder
+> held `initial-request.md`, `spec.md`, `plan.md`, `state.yaml` and nothing
+> else. Implementation created it (commit `f9fcdcd`) with both entries under
+> `changed:`; without it the `complete` gate has no record of this item's
+> product delta.
+
 ## Problem
 
 Three write-time gaps and one resolver gap, all on the same call path.
@@ -156,7 +162,18 @@ taxonomy looks clean and the breakage surfaces only at the closing `check`.
 
 `check()` (`fs.py:916-929`) and `update_term()` (`fs.py:1042-1056`) already
 encode the identical three-way distinction, differing only in output shape —
-`check` appends a string, `update_term` raises `ValueError`. `add` needs the same
+`check` appends a string, `update_term` raises `ValueError`.
+
+> **Correction (implement).** They differ in **wording** as well as in shape:
+> `check` says `dangling vocabulary ref '<r>'` / `ambiguous vocabulary ref
+> '<r>'`, `update_term` says `vocabulary ref '<r>' does not resolve` /
+> `vocabulary ref '<r>' is ambiguous`, and both wordings are asserted by tests
+> (`tests/test_taxonomy.py:211`, `tests/test_store_editor.py:564`). So the
+> helper cannot return a ready-made message: it returns a **classification
+> code** (`"dangling"` / `"ambiguous"` / `"kind"`) that each caller renders.
+> Only the wrong-kind sentence is byte-identical in both callers, so that one
+> is shared verbatim as `_wrong_kind_ref` — which is what keeps `points to` to
+> a single occurrence. `add` needs the same
 logic plus the resolved slug. That is the third copy, which is where extraction
 earns itself: a private `FsTaxonomyStore` method taking a ref and returning the
 resolved `Term` (or `None`) together with a problem string (or `None`).
