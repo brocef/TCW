@@ -1,0 +1,7 @@
+slug: 2026-07-30-fix-non-git-write-paths-work-new-and-init-fail-outside-a-git-repository
+title: 'Fix non-git write paths: work new and init fail outside a git repository'
+created: '2026-07-30'
+resolution: null
+tags:
+- cli
+- bug
