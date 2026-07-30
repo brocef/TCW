@@ -230,6 +230,8 @@ def _new(args: argparse.Namespace) -> int:
         print(f"tcw work new: {e}", file=sys.stderr)
         return 1
     print(item.slug)
+    if loc := st.locate(item.slug):
+        print(f"→ created at {loc}", file=sys.stderr)
     body = st.body_path(item.slug)
     if body is not None:
         print(f"→ edit: {body}", file=sys.stderr)
@@ -279,6 +281,8 @@ def _inbox_accept(args: argparse.Namespace) -> int:
         print(f"tcw work inbox accept: {e}", file=sys.stderr)
         return 1
     print(item.slug)
+    if loc := st.locate(item.slug):
+        print(f"→ now at {loc}", file=sys.stderr)
     return 0
 
 
@@ -490,7 +494,8 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active")
     if not args.worktree:
-        print(f"started {args.slug}")
+        loc = st.locate(bare)
+        print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
         _complete_hint(args.slug)
         return _post_result(post_err, "start", args.slug)
     node = st.node_root
@@ -522,7 +527,9 @@ def _start(args: argparse.Namespace) -> int:
     except subprocess.CalledProcessError as e:
         print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
         return 1
-    print(f"started {args.slug} → worktree {wt}")
+    loc = st.locate(bare)
+    print(f"started {args.slug} → {loc} (worktree {wt})" if loc
+          else f"started {args.slug} → worktree {wt}")
     _complete_hint(args.slug)
     return _post_result(post_err, "start", args.slug)
 
@@ -865,7 +872,9 @@ def _complete(args: argparse.Namespace) -> int:
         return 1
     post_err = run_post(policy, transition_id, st.node_root, bare,
                         "completed" if shipping else "discarded")
-    print(f"{'completed' if shipping else 'discarded'} {args.slug} ({args.resolution})")
+    loc = st.locate(bare)
+    print(f"{'completed' if shipping else 'discarded'} {args.slug} "
+          f"({args.resolution})" + (f" → {loc}" if loc else ""))
     if has_worktree:
         if not shipping and branch and not args.already_integrated:
             # The branch is deliberately kept: a discard decides the work isn't
