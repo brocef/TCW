@@ -44,7 +44,11 @@ Claims recalled rather than checked are how a spec starts lying.
    — agent `[judgment]`
 5. State what is out of scope, especially anything adjacent enough to drift in.
    — agent `[judgment]`
-6. Commit `spec.md` on its own, before planning. — agent `[judgment]`
+6. **A sweep for defects sibling to the reported one is repo-wide by default**,
+   or the spec says why it was narrowed. A scope inherited from the report — or
+   from the previous stage — is a scope nobody chose; re-derive it from the
+   criterion the fix is meant to satisfy. — agent `[judgment]`
+7. Commit `spec.md` on its own, before planning. — agent `[judgment]`
 
 This stage is **delegable** to a subagent. `Inputs` above is its context brief
 and `Produce` is its return contract; the coordinating session re-reads the
