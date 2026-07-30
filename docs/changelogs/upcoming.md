@@ -26,6 +26,24 @@ category.
   absolute path — rather than raising `ValueError` — for an item outside
   `node_root`.
 
+- `FsTaxonomyStore._resolve_vocab_ref` (`tcw/store/fs.py`) — the form a `--vocab`
+  ref takes when stored. A ref that already resolves is stored **verbatim** (an
+  `extends`-alias ref keeps its short form; nothing is qualified). One that does
+  not is retried as a **leaf slug** against `_local_slugs()`: exactly one match
+  resolves to that term's full path, more than one raises
+  `vocabulary ref '<ref>' is ambiguous: <candidates>` naming every candidate,
+  none keeps the existing "does not resolve". Local terms only — an inherited
+  tree stays addressable as `alias/path`, matching `get_inherited`.
+  **`get()` is deliberately untouched**: nine callers route through it and two
+  would change meaning rather than merely widen (in a federated repo a bare ref
+  resolves to the *inherited* term today, and a local-vs-local leaf collision
+  would be a new `AmbiguousRef` raise site inside `get()` that
+  `tcw/taxonomy/cli.py:80` does not catch — it catches `ValueError` only). So a
+  leaf slug is an input convenience at the write boundary, not a stored identity:
+  `show`/`rm`/`check`/`tcw://T/…` stay path-addressed, and because the resolved
+  *path* is what gets stored, a ref `add` accepted can never be one the next
+  `check` calls dangling.
+
 ## Changed
 
 - `tcw work start`, `complete`, `inbox accept`, and `new` (`tcw/work/cli.py`)
@@ -119,6 +137,33 @@ category.
   no-recognized-keys note no longer claims the file is "not a list", which was a
   false diagnosis once a mapping became the expected shape.
 
+- `FsTaxonomyStore.get_local` (`tcw/store/fs.py`) — joined a caller-supplied ref
+  onto `self.root` with no guard, so a ref containing `..` addressed anything on
+  disk: `tcw taxonomy show ../capabilities/thing/do-it` read it, and
+  `remove()` → `self._rm(self.root / term.slug)` **deleted** it —
+  `tcw taxonomy rm ../capabilities/thing/do-it` removed `docs/capabilities/thing/`
+  outright. `tcw serve` reached the same resolver with request input
+  (`PATCH /api/taxonomy/<ref>`). The ref now goes through `_safe_store_id`, the
+  same guard `add` already applied to `slug`/`parent`. A rejected ref returns
+  **`None` rather than raising**, which is load-bearing: `get()` is documented to
+  return `None` for a ref resolving to nothing (`tcw/store/base.py`) and
+  `check()` catches only `AmbiguousRef`, so a raise would turn a reportable
+  problem into a traceback on any taxonomy already containing such a ref. Net
+  effect: `check` reports it dangling, `show`/`rm` say "no such term", `add`
+  refuses it, and no caller learns a new exception.
+- `FsTaxonomyStore.add` (`tcw/store/fs.py`) — copied `vocabulary` into `meta`
+  verbatim and wrote; nothing between the kind check and the write consulted the
+  store, so a dangling, ambiguous or wrong-kind ref was persisted and `add` still
+  exited 0. It now applies the same three rules `check` does, plus the
+  Feature-requires-a-ref rule, **before the first `mkdir`** — a refused write
+  leaves no partial folder — and stores the resolved path for a ref that matched
+  only by leaf slug. Fixed in the store rather than in `tcw/taxonomy/cli.py`, so
+  `POST /api/taxonomy` (`tcw/serve/__init__.py`) inherits it: an unresolvable
+  `vocabulary` entry is now 422 with no folder created, where it was 201 plus a
+  warning. **Behavior change:** a scripted bootstrap that piped many `add` calls
+  and only checked at the end now stops at the first bad ref, and vocabulary must
+  be registered before the features naming it.
+
 ## Internal
 
 - `tests/test_environment_hardness.py` — a fourth environment, **linked git
@@ -146,3 +191,27 @@ category.
   tree. Note `--others`: an untracked, not-yet-staged Markdown draft **is** in
   scope, so a work-in-progress doc naming a nonexistent verb reddens the suite
   before it is committed.
+- `FsTaxonomyStore._ref_problem` / `_require_ref` + module-level
+  `_wrong_kind_ref` (`tcw/store/fs.py`) — `check()` and `update_term()` carried
+  two copies of the same three-way ref distinction (dangling / ambiguous /
+  wrong-kind), differing only in output shape, and `add` needed a third.
+  `_ref_problem(ref, expect_vocabulary=False) -> (Term | None, code | None)`
+  returns the classification as a code; `_require_ref` is its raising form for
+  the write paths. The codes exist because the two callers' *wording* also
+  differs and is asserted by tests (`check`: `dangling vocabulary ref '<r>'`;
+  `update_term`: `vocabulary ref '<r>' does not resolve`) — only the wrong-kind
+  sentence is identical, so that one lives in `_wrong_kind_ref` and `points to`
+  appears once. `FsCapabilitiesStore._ref_error` is the naming precedent. The
+  extraction landed as its own commit with **no test modified** and every message
+  byte-identical.
+- `tests/` — four fixtures built a deliberately invalid taxonomy through
+  `add(kind="Feature")` with no vocabulary ref, a write `add` now refuses. Three
+  (`test_validate.py` ×2 via a new `_vocabless_feature` helper,
+  `test_validate_target.py`) write the node directly, which is what they were
+  really testing (`check` reports it). The fourth,
+  `test_serve_write.py::test_saved_object_problem_is_a_warning`, needed an object
+  that *saves* but does not check out — now a `Partial` capability with no
+  `Gaps` — since a broken Feature is no longer savable; it gains a sibling
+  asserting the 422-and-no-folder path. New taxonomy tests cover the `rm`
+  traversal escape, a `..` ref already stored in a `meta.yaml`, and each
+  `add` refusal and leaf-slug case.

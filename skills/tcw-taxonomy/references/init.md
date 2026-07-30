@@ -46,9 +46,16 @@ Present the draft. Run a lightweight loop with the user — add / cut / rename /
 merge / re-nest / split vocabulary from feature — until they're satisfied. Then
 write the agreed entries:
 
+**Write all vocabulary first, then the features.** This ordering is a
+requirement, not a convention: `add` refuses a `--vocab` ref that does not
+resolve yet, so a feature written before the vocabulary it names fails and
+writes nothing.
+
 - Vocabulary: `tcw taxonomy add "<Name>" [--parent <path>]` (pipe the
   description on stdin).
-- Features: `tcw taxonomy add "<Name>" --kind feature --vocab <term> [--vocab <term>...]`
-  (pipe the description on stdin).
+- Features: `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]`
+  (pipe the description on stdin). A `<ref>` is a term path, an
+  `<alias>/<path>`, or a leaf slug unique across the local tree; a unique leaf
+  slug is stored as its full path.
 
 Finish with `tcw taxonomy check` and show the resulting `tcw taxonomy list`.

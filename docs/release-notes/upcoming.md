@@ -106,3 +106,66 @@ It now lists what each item actually declares:
 If a capability file genuinely cannot be read, the summary now says so and names
 the problem, instead of describing it as the wrong shape — and one unreadable
 file no longer stops the rest of the summary from being produced.
+
+## Adding a feature now checks its `--vocab` links straight away
+
+`tcw taxonomy add … --kind feature --vocab <ref>` used to accept whatever you
+gave it. A misspelled term, a term that didn't exist yet, or a ref that pointed
+at another feature was written into the entry and reported back as success — you
+only found out at the next `tcw taxonomy check`, possibly hundreds of entries
+later.
+
+It now checks the link as you add it, and refuses the entry rather than storing
+a broken one:
+
+```
+$ tcw taxonomy add "Search" --kind feature --vocab quesry
+tcw taxonomy add: vocabulary ref 'quesry' does not resolve
+```
+
+The same applies to a feature added with no `--vocab` at all, and to one whose
+ref names a feature where a vocabulary term belongs. Nothing is written when the
+command refuses — no half-created folder to clean up.
+
+**This is a behavior change worth knowing about if you script TCW.** A bootstrap
+that piped a batch of `add` commands and only checked at the end used to run to
+completion and report the problems afterwards; it now stops at the first bad
+ref. The practical consequence: **add your vocabulary before the features that
+name it.**
+
+## `--vocab` accepts a term's short name when it's unambiguous
+
+If you have exactly one term whose last path segment is `invoice`, you can now
+write `--vocab invoice` instead of `--vocab billing/invoice`. TCW stores the full
+path for you, so the entry reads the same as if you had typed it out.
+
+If two terms share that last segment, it tells you which ones and asks you to
+pick:
+
+```
+$ tcw taxonomy add "Search" --kind feature --vocab zeta
+tcw taxonomy add: vocabulary ref 'zeta' is ambiguous: alpha/zeta, beta/zeta
+```
+
+This shorthand is for `--vocab` only. `tcw taxonomy show` and `tcw taxonomy rm`
+still want the full path — which is exactly why what gets stored is the path.
+
+## Taxonomy paths can no longer reach outside your taxonomy
+
+`tcw taxonomy rm ../capabilities/thing/do-it` used to do what it says: delete
+`docs/capabilities/thing/` — a folder that is not a term and not part of your
+taxonomy at all. `tcw taxonomy show` would likewise read files from anywhere
+under your project. The local web app reached the same code with whatever a
+request contained.
+
+A taxonomy path now addresses a term inside `docs/taxonomy/` and nothing else.
+One that tries to climb out simply matches no term:
+
+```
+$ tcw taxonomy rm ../capabilities/thing/do-it
+tcw taxonomy rm: no such term: ../capabilities/thing/do-it
+```
+
+If a ref like that is already sitting in one of your entries, `tcw taxonomy
+check` reports it as a dangling ref, the same as any other ref that goes
+nowhere.

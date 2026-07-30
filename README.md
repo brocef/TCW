@@ -404,7 +404,13 @@ tcw taxonomy extends rm acme-shared    # drop the import
 
 A taxonomy entry's body comes from the argument or from **stdin** (`echo "..." | tcw
 taxonomy add Foo`). Feature entries can carry repeatable `--vocab <ref>` links
-to the vocabulary they involve; `tcw taxonomy check` validates those refs.
+to the vocabulary they involve. A ref is a term path (`admin/permission`), an
+`<alias>/<path>` into an inherited taxonomy, or a leaf slug that is unique
+across your own terms — which is stored as its full path. `tcw taxonomy add`
+refuses a ref that does not resolve, is ambiguous, or names a feature where a
+vocabulary entry is expected, and writes nothing when it refuses; so register
+vocabulary before the features that name it. `tcw taxonomy check` validates the
+same refs across the whole tree.
 Taxonomies can **federate**: `tcw taxonomy extends add <project-id>` writes the
 registered source ID to the `extends` list in `config.yaml`. Each project ID is
 its own namespace, and there

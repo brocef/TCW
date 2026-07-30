@@ -44,6 +44,15 @@ viewers; it is not an editable taxonomy field.
   features.
 - **Features list vocabulary.** Create feature entries with `--kind feature` and
   repeat `--vocab <ref>` for each vocabulary term they operate on or involve.
+  A `<ref>` is a term path (`admin/permission`), an `<alias>/<path>` into an
+  inherited taxonomy, or a **leaf slug unique across the local tree** — a unique
+  leaf slug is accepted and stored as its full path. `add` **refuses** a ref that
+  does not resolve, one that is ambiguous, and one that points at a Feature, and
+  it refuses a Feature carrying no `--vocab` at all; a refused `add` writes
+  nothing and exits non-zero. **So register vocabulary before the features that
+  name it** — the ordering is now load-bearing. The leaf-slug convenience is
+  write-time only: `tcw taxonomy show <ref>` and `rm <ref>` stay path-addressed,
+  which is why what gets stored is the path.
 - **Stop at the registry boundary.** A taxonomy Feature names the interaction
   area; it does not describe behavior, acceptance criteria, support status, or
   user stories. Put those details in capabilities.
@@ -76,7 +85,7 @@ refine with the user → write) → read [`references/init.md`](references/init.
 | Goal                            | Command                                                                                                      |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]`                                                    |
-| add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <term> [--vocab <term>...]`                                |
+| add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]` — a path, an `<alias>/<path>`, or a unique leaf slug; refused if it does not resolve |
 | nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                  |
 | link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                     |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                 |
