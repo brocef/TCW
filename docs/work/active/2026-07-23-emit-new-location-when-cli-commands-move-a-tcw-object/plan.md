@@ -9,7 +9,7 @@ docs. Single context; no staged plan. Verification: `pytest tests/test_work.py -
 ## Phase 1 — Store interface + FS adapter
 
 1. `tcw/store/base.py`, class `WorkStore` — add the abstract method next to
-   `artifact_locator` (`:633`):
+   `artifact_locator` (`:948` — the spec's `:633` was stale):
 
     ```python
     @abstractmethod
@@ -20,7 +20,8 @@ docs. Single context; no staged plan. Verification: `pytest tests/test_work.py -
         issue URL or status label). Presentation only — do not parse it."""
     ```
 
-2. `tcw/store/fs.py`, class `FsWorkStore` — implement it near `path` (`:1583`):
+2. `tcw/store/fs.py`, class `FsWorkStore` — implement it near `path` (`:1776` —
+   the spec's `:1583` was stale):
 
     ```python
     def locate(self, slug: str) -> str | None:
@@ -42,19 +43,26 @@ File: `tcw/work/cli.py`. Each site resolves `loc = st.locate(bare)` (or
 The CLI must **not** import/compute `node_root`/`relative_to` for this — it's all
 in the adapter now.
 
-1. `_start` (`:444`):
-    - non-worktree (`:455`): `started {args.slug}` → `started {args.slug} → {loc}`.
-    - worktree (`:468`): `started {args.slug} → {loc} (worktree {wt})`; if `loc`
+(All `cli.py` line numbers below were stale in the spec; the corrected ones are
+given.)
+
+1. `_start` (`:473`):
+    - non-worktree (`:496`): `started {args.slug}` → `started {args.slug} → {loc}`.
+    - worktree (`:530`): `started {args.slug} → {loc} (worktree {wt})`; if `loc`
       is None keep today's `started {args.slug} → worktree {wt}`.
     - Keep `_complete_hint` on stderr unchanged. Use resolved `bare` for
       `locate`, `args.slug` in the verb (qualified slugs read correctly — matches
-      `:1497`).
-2. `_complete` (`:613`): `completed {args.slug} ({args.resolution})` →
+      `test_work.py:1544`).
+2. `_complete` (`:875`): `completed {args.slug} ({args.resolution})` →
    append ` → {loc}` (folder already moved to `completed/` by `st.complete`).
-3. `_inbox_accept` (`:268`): keep `print(item.slug)` on stdout; add
+   **Correction:** this one `print` serves both resolutions, so a discard
+   reports its `discarded/` home too. Suppressing it there would cost code to
+   make the output *less* informative; the spec only ever mentioned `completed`
+   because it read the line as completion-only.
+3. `_inbox_accept` (`:284`): keep `print(item.slug)` on stdout; add
    `print(f"→ now at {loc}", file=sys.stderr)` when `loc`, with
    `loc = st.locate(item.slug)`.
-4. `_new` (`:219`): keep `print(item.slug)` on stdout; add
+4. `_new` (`:233`): keep `print(item.slug)` on stdout; add
    `print(f"→ created at {loc}", file=sys.stderr)` when `loc`, alongside the
    existing `→ edit:` / `→ next:` hints. `locate` reports the real folder,
    including `--parent`-nested placement.
@@ -70,12 +78,12 @@ case proves confusing in practice, add CWD-relative rendering later.
 
 ## Phase 3 — Tests
 
-1. `tests/test_fs_*` / `tests/test_work.py` — add a unit test for
+1. `tests/test_work.py` (there is no `tests/test_fs_*`) — add a unit test for
    `FsWorkStore.locate`: repo-relative path for a backlog/active/completed item;
    `None` for a missing slug; and (monkeypatching `path` to return a `/tmp/...`
    path outside `node_root`) the absolute-string fallback with no raise. This is
    the one non-trivial branch.
-2. `test_work.py:880` (`test_cli_new_and_start_emit_next_step_hints`): replace the
+2. `test_work.py:927` (`test_cli_new_and_start_emit_next_step_hints`): replace the
    exact `== f"started {slug}"` with: stdout starts with `started {slug}` and
    contains `docs/work/active/{slug}`. Also assert `new`'s stderr now contains
    `docs/work/backlog/{slug}` (the `→ created at` line) — extends the existing
@@ -83,7 +91,7 @@ case proves confusing in practice, add CWD-relative rendering later.
 3. Add/extend a test asserting `complete` stdout contains
    `docs/work/completed/{slug}`, and `inbox accept` stdout is the bare slug while
    **stderr** contains `docs/work/backlog/{slug}`.
-4. `:1497` uses `in` and survives augmentation — leave as-is.
+4. `test_work.py:1544` uses `in` and survives augmentation — leave as-is.
 
 ## Phase 4 — Documentation sync
 
@@ -95,9 +103,13 @@ Run the `documentation-sync` skill; expected:
 - `docs/release-notes/upcoming.md` [Public-API] — **fires.** Plain-language note
   that these commands now tell you where the item is.
 - `skills/tcw-work/SKILL.md` [Skill-Driven-Component] — grep for quoted
-  transition output; update only if it drifts (likely no change).
+  transition output; update only if it drifts. **Did not fire:** the skill never
+  quotes transition output or folder paths.
 - `README.md` [Public-API] — grep for quoted transition output; update only if it
-  shows the old form (likely no change).
+  shows the old form. **Correction: it fired.** The plan guessed "likely no
+  change", but README documents this exact output surface (the `→ next:` /
+  `→ edit:` hints), so leaving it silent about the location line would have made
+  the description incomplete.
 
 ## Parallelization / dependencies
 
