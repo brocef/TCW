@@ -1,0 +1,11 @@
+slug: 2026-07-30-untrack-completed-and-discarded-work-and-scrub-private-repository-references
+title: Untrack completed and discarded work, and scrub private repository references
+created: '2026-07-30'
+resolution: null
+priority: 75
+effort: low
+complexity: low
+tags:
+- work
+- cli
+- docs
