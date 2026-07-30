@@ -568,3 +568,35 @@ def test_already_integrated_is_rejected_without_a_worktree(tmp_path, monkeypatch
                  "--already-integrated"]) == 1
     assert "--already-integrated" in capsys.readouterr().err
     assert FsWorkStore.open(root).get(slug).status == "active"
+
+
+# ── a gitignored destination status folder ───────────────────────────────────
+
+def test_a_transition_into_an_ignored_destination_untracks_instead_of_moving(tmp_path):
+    """A node that gitignores `completed/` wants resolved work out of the tracked
+    tree. `git mv` does not honor `.gitignore` for its destination, so a plain
+    ignore would look like it worked while every completion re-added the item.
+    """
+    root = node(tmp_path)
+    # What a node actually does when it adopts the ignore: write it, then drop
+    # what git already tracks there (`init`'s `.gitkeep`).
+    (root / ".gitignore").write_text("docs/work/completed/\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "rm", "-rq", "--cached",
+                    "--", "docs/work/completed"], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "ignore completed"],
+                   check=True)
+    slug = make_item(root)
+    before = log_count(root)
+    st = committed(root)
+
+    st.start(slug)
+    assert st.complete(slug, "done", []).status == "completed"
+
+    assert (root / "docs" / "work" / "completed" / slug).is_dir()   # still on disk
+    tracked = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "docs/work/completed"],
+        capture_output=True, text=True, check=True).stdout
+    assert tracked == ""                               # but out of the index
+    assert porcelain(root) == ""                       # and nothing left dirty
+    assert log_count(root) == before + 2               # start + complete committed

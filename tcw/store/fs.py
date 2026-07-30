@@ -267,9 +267,33 @@ def git_rm(node_root: Path, path: Path) -> None:
     subprocess.run(["git", "-C", str(node_root), "rm", "-rfq", "--", str(path)], check=True)
 
 
+def git_ignored(node_root: Path, path: Path) -> bool:
+    """Whether `.gitignore` excludes `path`. False outside a repository."""
+    return subprocess.run(
+        ["git", "-C", str(node_root), "check-ignore", "-q", "--", str(path)],
+        capture_output=True).returncode == 0
+
+
 def git_mv(node_root: Path, src: Path, dst: Path) -> None:
     """Move a tracked path, staging the rename. Untracked contents are staged
-    first so `git mv` doesn't orphan them (the transition mechanic — Phase 5)."""
+    first so `git mv` doesn't orphan them (the transition mechanic — Phase 5).
+
+    **An ignored destination is untracked rather than moved.** `git mv` does not
+    consult `.gitignore` for its destination: it stages the rename happily, so a
+    node that gitignores `completed/` to keep resolved work out of the tracked
+    tree would have every completion re-add the item it just ignored. So when the
+    destination is ignored we drop the source from the index and move it outside
+    git, which makes the scoped transition commit record a deletion. The
+    destination pathspec then holds nothing committable and `git_commit_result`
+    filters it out — the reason that filter exists.
+    """
+    if git_ignored(node_root, dst):
+        # --ignore-unmatch: an item created but never committed is not in the
+        # index at all, and that is not an error here.
+        subprocess.run(["git", "-C", str(node_root), "rm", "-rq", "--cached",
+                        "--ignore-unmatch", "--", str(src)], check=True)
+        shutil.move(str(src), str(dst))
+        return
     subprocess.run(["git", "-C", str(node_root), "add", "--", str(src)], check=True)
     subprocess.run(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
 
