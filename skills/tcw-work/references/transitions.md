@@ -13,6 +13,12 @@ true), scoped to the item's own folders so unrelated edits are never swept in.
 Do not commit a status move by hand. If a commit is refused, the item still
 moved and the tool says so — commit it yourself, do not re-run the transition.
 
+**A gitignored destination is untracked rather than moved.** A node that
+gitignores a status folder — `completed/`, say, to keep resolved work off the
+tracked tree — gets a transition commit that *removes* the item from git and
+leaves the files on disk. Nothing else changes: the item still moves, still
+lists, still reads.
+
 Transitions are **never delegated to a subagent**. They carry the gates, and
 those are evaluated once, by the session holding the user relationship.
 
