@@ -10,9 +10,15 @@ subcommands; the third was pure invention.
 Agent-facing docs are the worst place for this: an agent reads `commands.md`,
 runs the verb, and gets an argparse error instead of the workflow.
 
-Scope: this parses `tcw`-prefixed invocations out of backtick spans and fenced
-blocks. Prose that describes a command without writing it out slips past, so a
-green run means "names no nonexistent verb", not "the docs are correct".
+Scope, files: every Markdown file git knows about — tracked or merely untracked
+and not ignored — except the archival trees named in `ARCHIVAL`. Derived by
+exclusion on purpose: an inclusion list is a scope that can be got wrong, and
+this one was, twice. A new documentation tree is covered the moment the file
+exists, with no edit here.
+
+Scope, parsing: this parses `tcw`-prefixed invocations out of backtick spans and
+fenced blocks. Prose that describes a command without writing it out slips past,
+so a green run means "names no nonexistent verb", not "the docs are correct".
 """
 import re
 import subprocess
@@ -22,17 +28,41 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 
-DOC_FILES = sorted(
-    [REPO / "README.md"]
-    + list((REPO / "skills").rglob("*.md"))
-    + list((REPO / "commands").glob("*.md"))
-    + list((REPO / "agents").glob("*.md"))
-    # The capability ledger describes what a user can do, so it names commands
-    # too — and it was the one place a phantom verb survived the first sweep,
-    # because the sweep did not look here. Capability bodies are user-facing
-    # documentation; treat them as such.
-    + list((REPO / "docs" / "capabilities").rglob("*.md"))
+# Documents that record what was true at a point in time, and are therefore
+# expected to name commands that no longer exist. Trailing slashes are
+# load-bearing: without one, `docs/work/` would also swallow the live
+# `docs/work-inbox-template.md`.
+ARCHIVAL = (
+    "docs/work/",           # lifecycle artifacts, frozen once written
+    "docs/plan/",           # the retired build-phase specs
+    "docs/superpowers/",    # archived specs and plans from a prior workflow
+    "docs/changelogs/",     # historical entries, correct as of their version
+    "docs/release-notes/",  # same
 )
+
+
+def _doc_files() -> list[Path]:
+    """Every non-archival Markdown file, per git.
+
+    git rather than `rglob` for three reasons: `.gitignore` already declares what
+    is not source (`node_modules/`, `.venv/`, build output, the gitignored
+    `docs/work/completed/`), so the exclusions above stay a short list of
+    *archives* rather than growing a second list of *junk*; `--others` keeps a
+    brand-new unstaged doc in scope, which is what makes "a new tree is covered
+    immediately" literally true; and the `plugins/tcw` symlink back to the repo
+    root is one index entry to git rather than an infinite tree.
+    """
+    out = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files",
+         "--cached", "--others", "--exclude-standard", "-z", "--", "*.md"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    # Repo-relative POSIX paths, so matching does not depend on the invoking cwd.
+    return sorted(REPO / p for p in out.split("\0")
+                  if p and not p.startswith(ARCHIVAL))
+
+
+DOC_FILES = _doc_files()
 
 BACKTICKED = re.compile(r"`([^`\n]*\btcw\b[^`\n]*)`")
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
