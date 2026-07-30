@@ -109,6 +109,8 @@ class FsProjectRegistry(ProjectRegistry):
         self._visiting: set[Path] = set()
         self._loaded = False
         self._current_path = self.node_root / SENTINEL
+        # Probed once per registry, not once per locator (~8 ms a call).
+        self._anchors = worktree_anchors(self.node_root)
 
     @classmethod
     def open(cls, node_root: Path) -> "FsProjectRegistry":
@@ -296,12 +298,25 @@ class FsProjectRegistry(ProjectRegistry):
             result[valid_id] = locator
         return result
 
-    @staticmethod
-    def _target_path(source_config: Path, locator: str) -> Path:
+    def _target_path(self, source_config: Path, locator: str) -> Path:
         target = Path(locator)
-        if not target.is_absolute():
-            target = source_config.parent / target
-        return (target / SENTINEL).resolve()
+        if target.is_absolute():
+            return (target / SENTINEL).resolve()
+        source_dir = source_config.parent.resolve()
+        naive = (source_dir / target / SENTINEL).resolve()
+        if self._anchors is None:
+            return naive
+        top, main = self._anchors
+        # Rule 1 — re-anchor only on escape. A target that stays inside the
+        # worktree is a sibling node on the same branch and belongs to the
+        # worktree (this is what keeps multi-project-in-one-repo working). Only a
+        # target that leaves the checkout was authored against the primary
+        # checkout's position on disk, so resolve it against the source
+        # directory's counterpart under the main worktree root instead.
+        if source_dir.is_relative_to(top) and not naive.parent.is_relative_to(top):
+            counterpart = main / source_dir.relative_to(top)
+            naive = (counterpart / target / SENTINEL).resolve()
+        return naive
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():
