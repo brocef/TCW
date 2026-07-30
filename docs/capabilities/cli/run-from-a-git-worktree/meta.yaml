@@ -1,0 +1,7 @@
+id: cap-b47597
+name: Run TCW from inside a git worktree
+Status: Supported
+Planning doc: 2026-07-29-resolve-relative-connected-projects-paths-against-the-main-worktree-root
+Feature: connected-project-registry
+Subject:
+- node
