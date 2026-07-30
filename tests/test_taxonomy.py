@@ -294,6 +294,68 @@ def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
     assert "vocabulary: user, password" in out
 
 
+def test_cli_list_does_not_interleave_hyphen_sibling_with_subtree(tmp_path, monkeypatch, capsys):
+    """A hyphen-extended root slug must not capture another root's children.
+
+    `-` (0x2D) sorts before `/` (0x2F), so keying the sort on the joined path put
+    `event-reporting` between `event` and `event/log-batch` while indentation was
+    derived independently from the segment count — rendering `event`'s children
+    as though they belonged to `event-reporting`. The full ordered output is
+    asserted, not mere membership: this was an ordering defect, so a membership
+    assertion passes against the broken code.
+    """
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    write_term(root, "event", name="Event")
+    write_term(root, "event/log-batch", name="Log Batch")
+    write_term(root, "event/stat", name="Stat")
+    write_term(root, "event-reporting", name="Event Reporting", kind="Feature")
+    monkeypatch.chdir(root)
+    assert main(["taxonomy", "list"]) == 0
+    assert capsys.readouterr().out == (
+        "event  [V] (local)\n"
+        "  log-batch  [V] (local)\n"
+        "  stat  [V] (local)\n"
+        "event-reporting  [F] (local)\n"
+    )
+
+
+def test_cli_list_is_depth_first_preorder_at_three_levels(tmp_path, monkeypatch, capsys):
+    """Every term renders immediately after its parent, before the parent's next
+    sibling, at any depth — and siblings stay alphabetical within a level."""
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    for slug in ("a", "a/b", "a/b/c", "a/b/c2", "a/d", "a-sibling"):
+        write_term(root, slug, name=slug)
+    monkeypatch.chdir(root)
+    assert main(["taxonomy", "list"]) == 0
+    assert capsys.readouterr().out == (
+        "a  [V] (local)\n"
+        "  b  [V] (local)\n"
+        "    c  [V] (local)\n"
+        "    c2  [V] (local)\n"
+        "  d  [V] (local)\n"
+        "a-sibling  [V] (local)\n"
+    )
+
+
+def test_cli_list_never_splices_an_inherited_tree_into_the_local_one(tmp_path, monkeypatch, capsys):
+    """Each `extends` alias is a separate store with its own slug namespace, so
+    an inherited tree groups after the local one rather than sorting into it."""
+    from tcw.cli import main
+    cons, shared = consumer_with_shared(tmp_path)
+    write_term(shared, "Argument/nested", name="Nested")
+    write_term(cons, "argument-local", name="Argument Local")
+    monkeypatch.chdir(cons)
+    assert main(["taxonomy", "list"]) == 0
+    out = capsys.readouterr().out
+    assert out == (
+        "argument-local  [V] (local)\n"
+        "Argument  [V] (shared)\n"
+        "  nested  [V] (shared)\n"
+    )
+
+
 def test_cli_list_unknown_kind_uses_unknown_marker(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path, "repo")
