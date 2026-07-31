@@ -73,7 +73,10 @@ Import another registered project's taxonomy explicitly:
 `tcw taxonomy extends add <project-id>` (`rm <project-id>` drops it). The ID must
 be reachable through the validated project graph; a connection alone does not
 imply inheritance. `extends` is a list and the source project ID is the inherited
-namespace (`<project-id>/<slug>`). Legacy alias/path maps fail closed.
+namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
+B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning
+project IDs. A source reached through multiple paths appears once. Legacy
+alias/path maps fail closed.
 
 ## Bootstrap (read on demand)
 
