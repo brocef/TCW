@@ -182,6 +182,28 @@ def consumer_with_shared(tmp_path, alias="shared", local_dup=False):
     return cons, shared
 
 
+def transitive_taxonomy(tmp_path):
+    a = node(tmp_path, "alpha")
+    b = node(tmp_path, "bravo")
+    c = node(tmp_path, "charlie")
+    (a / "tcw-config.yaml").write_text(
+        "id: alpha\nconnected-projects:\n  children:\n    bravo: ../bravo\n"
+    )
+    (b / "tcw-config.yaml").write_text(
+        "id: bravo\nconnected-projects:\n  parent:\n    alpha: ../alpha\n"
+        "  children:\n    charlie: ../charlie\n"
+    )
+    (c / "tcw-config.yaml").write_text(
+        "id: charlie\nconnected-projects:\n  parent:\n    bravo: ../bravo\n"
+    )
+    write_config(a, "extends:\n  - bravo\n")
+    write_config(b, "extends:\n  - charlie\n")
+    write_term(b, "shared", name="B Shared", description="from project b")
+    write_term(c, "shared", name="C Shared", description="from project c")
+    write_term(c, "deep", name="Deep", description="transitive needle")
+    return a, b, c
+
+
 def test_list_flags_inherited_origin(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
@@ -189,6 +211,59 @@ def test_list_flags_inherited_origin(tmp_path):
     assert by_slug["Argument"].origin == "shared"
     assert st.get("shared/Argument").qualified == "shared/Argument"
     assert FsTaxonomyStore.open(cons).list_all(local_only=True) == []
+
+
+def test_transitive_extends_flattens_terms_by_owning_project(tmp_path):
+    a, _, c = transitive_taxonomy(tmp_path)
+    st = FsTaxonomyStore.open(a)
+
+    assert {(term.qualified, term.origin) for term in st.list_all()} == {
+        ("bravo/shared", "bravo"),
+        ("charlie/deep", "charlie"),
+        ("charlie/shared", "charlie"),
+    }
+    assert st.get("charlie/deep").qualified == "charlie/deep"
+    assert st.get("deep").origin == "charlie"
+    assert [term.qualified for term in st.search("transitive needle")] == ["charlie/deep"]
+
+    detail = st.get_term_detail("charlie/deep")
+    assert detail is not None
+    assert detail.term.origin == "charlie"
+    assert st._validation_resources("charlie/deep") == [
+        c / "docs/taxonomy/deep/meta.yaml",
+        c / "docs/taxonomy/deep/description.md",
+    ]
+
+
+def test_transitive_extends_preserves_shadowing_and_ambiguity(tmp_path):
+    a, _, _ = transitive_taxonomy(tmp_path)
+    st = FsTaxonomyStore.open(a)
+    with pytest.raises(AmbiguousRef):
+        st.get("shared")
+
+    write_term(a, "shared", name="A Shared")
+    assert FsTaxonomyStore.open(a).get("shared").origin == "local"
+
+
+def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
+    a, _, c = transitive_taxonomy(tmp_path)
+    d = node(tmp_path, "delta")
+    (a / "tcw-config.yaml").write_text(
+        "id: alpha\nconnected-projects:\n  children:\n"
+        "    bravo: ../bravo\n    delta: ../delta\n"
+    )
+    (d / "tcw-config.yaml").write_text(
+        "id: delta\nconnected-projects:\n  parent:\n    alpha: ../alpha\n"
+    )
+    (c / "tcw-config.yaml").write_text(
+        "id: charlie\nconnected-projects:\n  parent:\n    bravo: ../bravo\n"
+    )
+    write_config(a, "extends:\n  - bravo\n  - delta\n")
+    write_config(d, "extends:\n  - charlie\n")
+
+    qualified = [term.qualified for term in FsTaxonomyStore.open(a).list_all()]
+    assert qualified.count("charlie/deep") == 1
+    assert qualified.count("charlie/shared") == 1
 
 
 def test_resolution_unique_extended(tmp_path):

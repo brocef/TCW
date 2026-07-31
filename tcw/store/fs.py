@@ -785,11 +785,28 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         return sorted(
             str(p.relative_to(self.root)) for p in self.root.rglob("*") if p.is_dir())
 
+    def _inherited_stores(self) -> dict[str, "FsTaxonomyStore"]:
+        """Every inherited taxonomy keyed by its owning project ID.
+
+        ``self.extends`` remains the direct declarations used by writes and cycle
+        checks.  Reads flatten their nested stores so a source keeps the same
+        canonical namespace regardless of the route that reaches it.
+        """
+        stores: dict[str, FsTaxonomyStore] = {}
+        for project_id, store in self.extends.items():
+            stores.setdefault(project_id, store)
+            for inherited_id, inherited_store in store._inherited_stores().items():
+                stores.setdefault(inherited_id, inherited_store)
+        return stores
+
     def list_all(self, local_only: bool = False) -> list[Term]:
         terms = [self._term(s) for s in self._local_slugs()]
         if not local_only:
-            for alias, st in self.extends.items():
-                terms += [self._term_via(st, s, alias) for s in st._local_slugs()]
+            for project_id, store in self._inherited_stores().items():
+                terms += [
+                    self._term_via(store, slug, project_id)
+                    for slug in store._local_slugs()
+                ]
         return terms
 
     @staticmethod
@@ -797,22 +814,27 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         return store._term(slug, origin=alias)
 
     def get(self, ref: str) -> Term | None:
+        inherited_stores = self._inherited_stores()
         head, _, rest = ref.partition("/")
-        if head in self.extends:                       # prefixed (B.6.1)
+        if head in inherited_stores:                   # prefixed (B.6.1)
             return self.get_inherited(head, rest)
         local = self.get_local(ref)                    # bare-wins-local (B.6.2)
         if local is not None:
             return local
-        matches = [(a, t) for a, st in self.extends.items()
-                   if (t := st.get_local(ref)) is not None]
+        matches = [
+            (project_id, term)
+            for project_id, store in inherited_stores.items()
+            if (term := store.get_local(ref)) is not None
+        ]
         if len(matches) == 1:
-            return self._term_via(self.extends[matches[0][0]], ref, matches[0][0])
+            project_id = matches[0][0]
+            return self._term_via(inherited_stores[project_id], ref, project_id)
         if len(matches) > 1:
             raise AmbiguousRef(ref)
         return None
 
     def get_inherited(self, alias: str, slug: str) -> Term | None:
-        st = self.extends.get(alias)
+        st = self._inherited_stores().get(alias)
         return self._term_via(st, slug, alias) if st and st.get_local(slug) else None
 
     def search(self, query: str) -> list[Term]:
@@ -963,6 +985,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         for project_id, store in self.extends.items():
             if self._cycles(store.root.resolve(), {self.root.resolve()}):
                 problems.append(f"extends '{project_id}': cycle in taxonomy federation")
+        for project_id in self._inherited_stores():
             if project_id in top_level:
                 problems.append(
                     f"project ID '{project_id}' collides with local top-level term"
@@ -1005,7 +1028,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             term = self.get(identifier)
             if term is None:
                 return []
-            owner = self if term.origin == "local" else self.extends[term.origin]
+            owner = (
+                self if term.origin == "local"
+                else self._inherited_stores()[term.origin]
+            )
             folder = owner.root / term.slug
         return [path for path in (folder / "meta.yaml", folder / "description.md")
                 if path.is_file()]
@@ -1035,7 +1061,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         if term is None:
             return None
         # Inherited terms' files live under the source store's root, not ours.
-        owner = self if term.origin == "local" else self.extends[term.origin]
+        owner = (
+            self if term.origin == "local"
+            else self._inherited_stores()[term.origin]
+        )
         d = owner.root / term.slug
         meta_text = (d / "meta.yaml").read_text(encoding="utf-8")
         desc_text = (d / "description.md").read_text(encoding="utf-8")
