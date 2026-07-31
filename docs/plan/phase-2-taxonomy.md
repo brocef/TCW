@@ -172,7 +172,9 @@ Shared FS helpers added to `fs.py` (`find_node`, `load_yaml`/`dump_yaml`, `git_s
 **Deliberate simplifications (recorded so they don't read as bugs):**
 
 - **Bare-_leaf_-anywhere sugar not implemented.** Addressing is by path; `get("permission")` resolves a top-level term, not a deep `admin/permission`. The path _is_ the address (A.2); B.6's three namespace-resolution branches (local-wins / unique-extended / ambiguous) are fully implemented.
-- **Prefixed-ref + `list` go one `extends` level deep.** Deep transitive federation (an alias's own `extends`) is the deferred remote-`extends` transitivity (B.9 / Phase 6); local-path single-level works.
+- **Remote sources and version pinning remain deferred.** Local registered-project
+  inheritance is transitive: an extended project's own `extends` declarations
+  are flattened under each source project's canonical ID.
 
 ## Part C — Place in the roadmap
 
