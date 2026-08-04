@@ -269,6 +269,17 @@ p {
     gap: var(--space-2);
     margin: var(--space-3) 0 var(--space-4);
 }
+.work-document-tabs {
+    margin-top: var(--space-4);
+}
+.work-document-panel {
+    min-height: 220px;
+    max-width: 900px;
+    padding: var(--space-3) 0;
+}
+.work-document-panel > .rt-Flex:first-child {
+    margin-bottom: var(--space-2);
+}
 .plan-stages,
 .sidecars-section {
     margin: var(--space-4) 0;

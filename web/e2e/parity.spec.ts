@@ -483,7 +483,18 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
     await expect(
         page.getByRole("heading", { name: "Browser parity fixture", level: 2 })
     ).toBeVisible()
-    await page.getByRole("button", { name: "Edit spec" }).click()
+    const workTabs = page.getByRole("tablist", { name: "Work content" })
+    await expect(workTabs.getByRole("tab")).toHaveText([
+        /Initial Request/,
+        /Spec/,
+        /Implementation Plan/,
+    ])
+    await expect(
+        workTabs.getByRole("tab", { name: "Initial Request" })
+    ).toHaveAttribute("aria-selected", "true")
+    await workTabs.getByRole("tab", { name: "Spec" }).click()
+    await expect(page.getByRole("heading", { name: "spec" })).toBeVisible()
+    await page.getByRole("button", { name: "Edit Spec" }).click()
     await page
         .getByLabel("Markdown", { exact: true })
         .fill("# Updated specification\n")
@@ -492,6 +503,9 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
         `${baseUrl}/api/work/${fixture.slug}/artifacts/spec`
     )
     expect((await savedSpec.json()).content).toContain("Updated specification")
+
+    await workTabs.getByRole("tab", { name: "Implementation Plan" }).click()
+    await expect(page.getByRole("heading", { name: "plan" })).toBeVisible()
 
     await page.locator(".sidecar-edit-btn").click()
     await page.getByLabel("Markdown", { exact: true }).fill("changed:\n- web\n")

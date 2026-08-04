@@ -45,6 +45,8 @@ import type {
     TLifecycleAction,
 } from "./ui-types"
 import { WORK_STATUSES } from "../model/types"
+import type { ResourceDetail } from "../model/types"
+import { WorkDocumentTabs } from "./work-document-tabs"
 const CAPABILITY_FIELDS = [
     ["Status", ["", "Supported", "Partial", "Missing", "Blocked", "Omitted"]],
     ["Priority", ["", "P0", "P1", "P2", "P3"]],
@@ -257,6 +259,7 @@ export function DetailView({
     onEdit,
     onResource,
     onOpen,
+    onReadArtifact,
     onDeletePlanStage,
     onAction,
 }: {
@@ -273,6 +276,10 @@ export function DetailView({
         name: string,
         kind?: "artifacts" | "plan-stages"
     ) => void
+    onReadArtifact: (
+        slug: string,
+        name: "spec" | "plan"
+    ) => Promise<ResourceDetail>
     onDeletePlanStage: (slug: string, name: string, revision?: string) => void
     onAction: (action: TLifecycleAction) => void
 }) {
@@ -366,12 +373,31 @@ export function DetailView({
                         <Field name="Initiative" value={item.initiative} />
                     )}
                 </Fields>
+                <WorkDocumentTabs
+                    key={`${item.slug}:${payload.coreRevision}:${payload.artifacts
+                        .filter((artifact) =>
+                            ["initial-request", "spec", "plan"].includes(
+                                artifact.name
+                            )
+                        )
+                        .map((artifact) => artifact.revision ?? "missing")
+                        .join(":")}`}
+                    item={item}
+                    artifacts={payload.artifacts}
+                    onEditInitialRequest={onEdit}
+                    onEditArtifact={(slug, name) =>
+                        onResource("artifacts", slug, name)
+                    }
+                    onReadArtifact={onReadArtifact}
+                />
                 <div className="artifacts">
                     {payload.artifacts
                         .filter(
                             (resource) =>
                                 resource.present &&
-                                resource.name !== "initial-request"
+                                !["initial-request", "spec", "plan"].includes(
+                                    resource.name
+                                )
                         )
                         .map((resource) => (
                             <Flex
@@ -559,7 +585,6 @@ export function DetailView({
                             ))}
                     </div>
                 )}
-                <Markdown source={item.body ?? ""} resolveLinks />
             </>
         )
     }
@@ -1211,11 +1236,13 @@ export function CompleteModal({
                 <Callout.Text>
                     <strong>Configured hooks do not run here</strong>
                     <br />
-                    The web app performs and commits the transition, but does not
-                    run any commands bound to it in <code>tcw-config.yaml</code>.
-                    Use <code>tcw work complete</code> if you need them. If the
-                    commit itself is refused, the item still moves and the reason
-                    is printed by <code>tcw serve</code> in your terminal.
+                    The web app performs and commits the transition, but does
+                    not run any commands bound to it in{" "}
+                    <code>tcw-config.yaml</code>. Use{" "}
+                    <code>tcw work complete</code> if you need them. If the
+                    commit itself is refused, the item still moves and the
+                    reason is printed by <code>tcw serve</code> in your
+                    terminal.
                 </Callout.Text>
             </Callout.Root>
             {shipping ? (

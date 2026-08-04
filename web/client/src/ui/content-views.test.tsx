@@ -119,6 +119,11 @@ test("renders modified subtext in every detail view", () => {
             onEdit={() => undefined}
             onResource={() => undefined}
             onOpen={() => undefined}
+            onReadArtifact={async (_slug, name) => ({
+                name,
+                content: "",
+                revision: "",
+            })}
             onDeletePlanStage={() => undefined}
             onAction={() => undefined}
         />

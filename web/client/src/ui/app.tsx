@@ -943,6 +943,11 @@ export function App() {
                                     showToast
                                 )
                             }
+                            onReadArtifact={(slug, name) =>
+                                fetchJson<ResourceDetail>(
+                                    `/api/work/${encodeRef(slug)}/artifacts/${encodeRef(name)}`
+                                )
+                            }
                             onDeletePlanStage={(slug, name, revision) =>
                                 void deletePlanStage(slug, name, revision)
                             }
