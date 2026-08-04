@@ -5,6 +5,11 @@ editor while preserving canonical identifiers and free-form entry. Every saved
 object is immediately checked with TCW's standard validation rules, with any
 findings shown as post-save warnings.
 
+The Work detail presents Initial Request, Spec, and Implementation Plan as
+first-class tabs. Present documents render and can be edited without leaving
+the browser; missing later-stage documents remain visible as not-yet-present
+tabs so lifecycle progress is clear.
+
 The complete dialog mirrors the CLI's closeout gates. Choosing `done` shows the
 Definition-of-Done checklist and the capabilities-reconciliation reminder;
 choosing a non-`done` resolution replaces both with a discard warning and

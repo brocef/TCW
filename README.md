@@ -303,9 +303,11 @@ button to copy its slug to the clipboard. Beyond browsing, you can **create and
 edit** any object directly from the browser:
 
 - **Work items** — create new items with all fields (title, priority, effort,
-  complexity, tags, blockers, parent, initiative); edit body and metadata; edit
-  lifecycle artifacts and the `capabilities.yaml` sidecar using a Markdown
-  editor with live preview; and run lifecycle actions (start, complete, drop).
+  complexity, tags, blockers, parent, initiative); view and edit Initial
+  Request, Spec, and Implementation Plan in first-class content tabs; edit
+  other lifecycle artifacts and the `capabilities.yaml` sidecar using a
+  Markdown editor with live preview; and run lifecycle actions (start,
+  complete, drop).
   Completing as `done` requires resolving blockers and acknowledging every
   Definition-of-Done item, plus a capabilities reconciliation reminder;
   discarding drops all three for a single confirmation.

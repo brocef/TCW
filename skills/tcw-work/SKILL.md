@@ -66,4 +66,6 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - **Only when the user asks for it** — [`audit-backlog.md`](references/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources
 
 > **Web editing:** items, artifacts, and the `capabilities.yaml` sidecar can also
-> be edited through `tcw serve`. It commits transitions but runs **no** hooks.
+> be edited through `tcw serve`. Initial Request, Spec, and Implementation Plan
+> are first-class tabs in the Work detail. The web app commits transitions but
+> runs **no** hooks.
