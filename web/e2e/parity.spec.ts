@@ -446,6 +446,74 @@ test("applies axis-specific facets and browser history navigation", async ({
     await expect(page).toHaveURL(`${baseUrl}/capabilities`)
 })
 
+test("handles missing lifecycle document tabs and resets them across work items", async ({
+    page,
+    request,
+}) => {
+    const work = await request.get(`${baseUrl}/api/work`)
+    const fixture = (
+        (await work.json()) as Array<{ slug: string; title: string }>
+    ).find((item) => item.title === "Browser parity fixture")!
+    const resetTargetResponse = await request.post(`${baseUrl}/api/work`, {
+        data: {
+            title: "Tab reset fixture",
+            body: "# Reset target request\n",
+        },
+    })
+    expect(resetTargetResponse.ok()).toBeTruthy()
+
+    await page.goto(`${baseUrl}/work/${fixture.slug}`)
+    const workTabs = page.getByRole("tablist", { name: "Work content" })
+    await expect(workTabs.getByRole("tab")).toHaveText([
+        /Initial Request/,
+        /Spec/,
+        /Implementation Plan/,
+    ])
+
+    await workTabs.getByRole("tab", { name: "Spec" }).click()
+    await expect(page.getByText("Spec is not yet present.")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Edit Spec" })).toHaveCount(0)
+
+    await workTabs.getByRole("tab", { name: "Implementation Plan" }).click()
+    await expect(
+        page.getByText("Implementation Plan is not yet present.")
+    ).toBeVisible()
+    await expect(
+        page.getByRole("button", { name: "Edit Implementation Plan" })
+    ).toHaveCount(0)
+
+    await workTabs.getByRole("tab", { name: "Initial Request" }).click()
+    await page.getByRole("button", { name: "Edit Initial Request" }).click()
+    await page
+        .getByLabel("Markdown", { exact: true })
+        .fill("# Updated initial request\n")
+    await page.getByRole("button", { name: "Save" }).click()
+    const updatedFixture = await (
+        await request.get(`${baseUrl}/api/work/${fixture.slug}`)
+    ).json()
+    expect(updatedFixture.item.body).toContain("Updated initial request")
+
+    await workTabs.getByRole("tab", { name: "Spec" }).click()
+    await expect(page.getByText("Spec is not yet present.")).toBeVisible()
+    await page.reload()
+    await page
+        .getByRole("treeitem", { name: /Tab reset fixture/ })
+        .getByRole("button", { name: /Tab reset fixture/ })
+        .click()
+    await expect(
+        page.getByRole("heading", { name: "Tab reset fixture", level: 2 })
+    ).toBeVisible()
+    await expect(
+        page
+            .getByRole("tablist", { name: "Work content" })
+            .getByRole("tab", { name: "Initial Request" })
+    ).toHaveAttribute("aria-selected", "true")
+    await expect(
+        page.getByRole("heading", { name: "Reset target request" })
+    ).toBeVisible()
+    await expect(page.getByText("Spec is not yet present.")).toHaveCount(0)
+})
+
 test("edits lifecycle artifacts and preserves a draft across a stale write", async ({
     page,
     request,
@@ -506,6 +574,17 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
 
     await workTabs.getByRole("tab", { name: "Implementation Plan" }).click()
     await expect(page.getByRole("heading", { name: "plan" })).toBeVisible()
+    await page.getByRole("button", { name: "Edit Implementation Plan" }).click()
+    await page
+        .getByLabel("Markdown", { exact: true })
+        .fill("# Updated implementation plan\n")
+    await page.getByRole("button", { name: "Save" }).click()
+    const savedPlan = await request.get(
+        `${baseUrl}/api/work/${fixture.slug}/artifacts/plan`
+    )
+    expect((await savedPlan.json()).content).toContain(
+        "Updated implementation plan"
+    )
 
     await page.locator(".sidecar-edit-btn").click()
     await page.getByLabel("Markdown", { exact: true }).fill("changed:\n- web\n")
