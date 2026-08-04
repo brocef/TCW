@@ -156,7 +156,7 @@ tcw init --id my-project                    # scaffold all three components
 tcw init --id my-project taxonomy work      # …or just named components
 tcw work init --id my-project               # …or use a component mirror
 tcw serve --no-open          # browse Work, Taxonomy, and Capabilities locally
-tcw validate                # check YAML soundness, tcw:// links, and tree integrity
+tcw validate                # validate this project and all registered descendants
 tcw --help                  # top-level groups: init | serve | validate | taxonomy | capabilities | work
 ```
 
@@ -366,19 +366,23 @@ the structured pointers (a capability's `Subject`/`Feature`, a work item's
 
 ### `tcw validate` — one-pass soundness check
 
-`tcw validate [path]` checks a whole node (or a single file/directory) in one pass:
+Bare `tcw validate` checks the active TCW project and every registered descendant
+project recursively. Use `--no-recurse` to check only the active project, or pass
+a path to run a bounded active-project scan (which also disables recursion):
 
 ```sh
-tcw validate                 # the whole node: docs/{taxonomy,capabilities,work}/
-tcw validate docs/capabilities   # narrow the scan to one tree
+tcw validate                    # active project + all registered descendants
+tcw validate --no-recurse       # active project only
+tcw validate docs/capabilities  # one active-project tree only
 ```
 
-It reports, grouped by source, any of: malformed YAML (including duplicate keys),
-a `tcw://` link that doesn't resolve, and the problems surfaced by each
-component's own `check` (taxonomy + capabilities). It exits `0` with `validate OK`
-when clean, else prints the problems and exits `1`. `tcw://` examples inside
-Markdown code spans are ignored, so docs that teach the scheme don't fail
-themselves.
+For each selected project it reports malformed YAML (including duplicate keys),
+a `tcw://` link that doesn't resolve, and problems surfaced by each component's
+own `check` (taxonomy + capabilities + work). Recursive diagnostics include the
+project ID so matching relative paths remain distinguishable. It exits `0` with
+`validate OK` only when every selected project is clean; otherwise it prints the
+problems and exits `1`. `tcw://` examples inside Markdown code spans are ignored,
+so docs that teach the scheme don't fail themselves.
 
 ### `tcw taxonomy` — the nouns
 

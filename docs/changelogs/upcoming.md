@@ -3,6 +3,13 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category.
 
+## Changed
+
+- `tcw validate` now traverses `FsProjectRegistry.descendants()` by default,
+  prefixes recursive diagnostics with canonical project IDs, and accepts
+  `--no-recurse` for active-project-only validation. Explicit path validation
+  remains bounded to the active project.
+
 ## Added
 
 - `FsTaxonomyStore` now flattens transitive taxonomy sources by canonical
