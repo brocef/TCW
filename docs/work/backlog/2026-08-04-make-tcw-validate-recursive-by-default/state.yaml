@@ -1,0 +1,9 @@
+slug: 2026-08-04-make-tcw-validate-recursive-by-default
+title: Make tcw validate recursive by default
+created: '2026-08-04'
+resolution: null
+effort: medium
+complexity: medium
+tags:
+- cli
+- docs
