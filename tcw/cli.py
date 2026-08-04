@@ -78,14 +78,22 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         print("tcw validate: no tcw node here — run `tcw init` in the project folder.",
               file=sys.stderr)
         return 1
-    registry_problems = FsProjectRegistry.open(node_root).check()
+    registry = FsProjectRegistry.open(node_root)
+    registry_problems = registry.check()
     if registry_problems:
         for problem in registry_problems:
             print(problem, file=sys.stderr)
         print(f"{len(registry_problems)} project graph problem(s).", file=sys.stderr)
         return 1
     from tcw.validate import validate
-    problems = validate(node_root, args.path)
+    recurse = args.path is None and not args.no_recurse
+    projects = [registry.current, *registry.descendants()] if recurse else [registry.current]
+    problems: list[str] = []
+    for project in projects:
+        project_problems = validate(Path(project.locator), args.path)
+        if len(projects) > 1:
+            project_problems = [f"[{project.id}] {problem}" for problem in project_problems]
+        problems.extend(project_problems)
     for p in problems:
         print(p, file=sys.stderr)
     if problems:
@@ -122,7 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate = sub.add_parser(
         "validate", help="check YAML soundness, tcw:// links, and component integrity")
     p_validate.add_argument("path", nargs="?",
-                            help="narrow the scan to a single file or directory (default: whole node)")
+                            help="narrow the active project scan to one file or directory (disables recursion)")
+    p_validate.add_argument(
+        "--no-recurse", action="store_true",
+        help="validate only the active project, excluding registered descendants",
+    )
     p_validate.set_defaults(func=_cmd_validate)
 
     p_serve = sub.add_parser("serve", help="serve a local read-only web viewer")
