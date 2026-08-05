@@ -9,19 +9,19 @@ sites**, so the count is eight, not six:
 | Site | Reached from | Needs its own guard? |
 |---|---|---|
 | `FsTaxonomyStore._term` (`fs.py:756`) | `get_local`, `_local_slugs` | no — callers guarded |
-| `FsTaxonomyStore.get_local` (`fs.py:782`) | CLI, serve, every ref path | **yes** |
-| `FsTaxonomyStore.add` parent (`fs.py:832`) / target (`fs.py:838`) | CLI, serve | **yes** — one guard on `d` covers both |
-| `FsTaxonomyStore._local_slugs` (`fs.py:786`) | `list_all`, `relators`, `check` | **yes** |
+| `FsTaxonomyStore.get_local` (`fs.py:772`) | CLI, serve, every ref path | **yes** |
+| `FsTaxonomyStore.add` (`fs.py:847`) | CLI, serve | **yes** — one guard on `d` covers parent and target |
+| `FsTaxonomyStore._local_slugs` (`fs.py:784`) | `list_all`, `relators`, `check` | **yes** |
 | `FsTaxonomyStore.remove` (`fs.py:859`) | `get()` | no |
-| `FsTaxonomyStore._validation_resources` (`fs.py:1001`) | `tcw validate --target` | **yes — new** |
-| `FsTaxonomyStore.get_term_detail` (`fs.py:1039`), `update_term` (`fs.py:1055`), `_validation_resources` owner branch (`fs.py:1009`) | `get()` | no |
-| `FsCapabilitiesStore.get_local` (`fs.py:1276`) | CLI, serve, `set`, `remove` | **yes** |
-| `FsCapabilitiesStore.add` (`fs.py:1355`) | CLI, serve | **yes** |
-| `FsCapabilitiesStore._local_paths` (`fs.py:1184`) | `list_all`, `_override_index` (`:1188`, `:1194-1197`), `get_by_id`, `check` (`:1601`), `_local_paths` id scan (`:1554`) | **yes** |
-| `FsCapabilitiesStore._capability` (`fs.py:1216`) | `get_local`, `_local_paths` | no — callers guarded |
+| `FsTaxonomyStore._validation_resources` (`fs.py:1018`) | targeted validation | **yes** |
+| `FsCapabilitiesStore._all_meta_dirs` (`fs.py:1200`) | local paths, override and ID indexes | **yes** — filter before consumers see escaped metadata |
+| `FsCapabilitiesStore._local_paths` (`fs.py:1213`) | `list_all`, override index, ID lookup, `check` | no additional guard after `_all_meta_dirs` |
+| `FsCapabilitiesStore._capability` (`fs.py:1244`) | `get_local`, local-path consumers | no — callers guarded |
+| `FsCapabilitiesStore.get_local` (`fs.py:1304`) | CLI, serve, `set`, `remove` | **yes** |
+| `FsCapabilitiesStore.add` (`fs.py:1379`) | CLI, serve | **yes** |
 | `FsCapabilitiesStore.remove` (`fs.py:1370`), `set` (`fs.py:1421`), override writes (`fs.py:1430`, `:1435`) | `get()` | no |
-| `FsCapabilitiesStore._validation_resources` (`fs.py:1622`) | `tcw validate --target` | **yes — new** |
-| `FsWorkStore._validation_resources` (`fs.py:2285`) | `_find` (rglob) | no — verified unaffected |
+| `FsCapabilitiesStore._validation_resources` (`fs.py:1645`) | targeted validation | **yes** |
+| `FsWorkStore._validation_resources` (`fs.py:2314`) | `_find` (rglob) | no — verified unaffected |
 
 Both `_validation_resources` take a `self.root / identifier` shortcut *before*
 consulting `get()`, so `get_local`'s guard does not cover them. Verified against
@@ -43,11 +43,11 @@ must return no resources, which is the existing `return []` miss path).
 Every task leaves `pytest` green: each guard ships **with** its regression tests
 in the same commit, rather than a red test-only commit. The helper lands first so
 the two store tasks are pure call-site edits. The riskiest change is the
-`_local_slugs`/`_local_paths` filtering — it feeds `check`, `relators` and the
+`_local_slugs`/`_all_meta_dirs` filtering — it feeds `check`, `relators` and the
 capabilities override index, so it is isolated inside its own store's task with
 those consumers' existing tests as the blast-radius check, and the two stores are
-separate commits so a bisect names one. The CLI error-handling change is last
-because it is orthogonal to the guard and must not be entangled with it.
+separate commits so a bisect names one. The separate CLI error-boundary work
+must not be entangled with these containment commits.
 
 ## Tasks
 
@@ -82,17 +82,17 @@ whose root is itself reached through a symlink says `True` for its own children
 
 **Changes** `tcw/store/fs.py`:
 
-- `get_local` (`:782`) — `return self._term(slug) if (self.root / slug).is_dir()
+- `get_local` (`:772`) — `return self._term(slug) if (self.root / slug).is_dir()
   and self._within_store(self.root / slug) else None`. Order matters: the guard
   sits behind the existence check so a miss pays nothing. Still returns `None`,
   never raises — `check` catches only `AmbiguousRef`.
-- `add` (`:838`) — after computing `d`, before `d.exists()`: not
+- `add` (`:847`) — after computing `d`, before `d.exists()`: not
   `_within_store(d)` → `raise ValueError(f"parent term does not exist: {parent}")`
   (the existing wording; one guard covers both the `--parent` symlink and a
   symlinked leaf). Placed before the first `mkdir`, honoring the fail-closed
   contract documented at `:841`.
 - `_local_slugs` (`:784`) — add `and self._within_store(p)` to the comprehension.
-- `_validation_resources` (`:1001`) — take the `local_folder` fast path only when
+- `_validation_resources` (`:1018`) — take the `local_folder` fast path only when
   `_within_store(local_folder)`; otherwise fall through to the `get()` branch,
   which now returns `None` → `return []`.
 
@@ -112,12 +112,13 @@ creates `docs/capabilities/secret/victim` and links it in:
 
 **Changes** `tcw/store/fs.py`:
 
-- `get_local` (`:1276`) — add `self._within_store(self.root / path)` to the
+- `get_local` (`:1304`) — add `self._within_store(self.root / path)` to the
   condition.
-- `add` (`:1355`) — refuse before `_write_node` with the existing-style
+- `add` (`:1379`) — refuse before `_write_node` with the existing-style
   `ValueError`.
-- `_local_paths` (`:1184`) — filter as in task 2.
-- `_validation_resources` (`:1622`) — gate the `local_folder` fast path the same
+- `_all_meta_dirs` (`:1200`) — filter before paths feed local listings, opaque-ID
+  lookup, overrides, and attachment composition.
+- `_validation_resources` (`:1645`) — gate the `local_folder` fast path the same
   way.
 
 **Verified by** new tests in `tests/test_capabilities.py`, symmetric to task 2,
@@ -125,8 +126,8 @@ plus the one the spec's criterion 5 turns on: after
 `set("link/thing", {"Status": "Supported"})` raises, `docs/outside/thing/meta.yaml`
 is **byte-identical** to before — the current code mutates it. Existing
 federation/override tests (`test_capabilities_federation.py`,
-`test_capabilities_reset.py`) are the blast-radius check for the `_local_paths`
-filter.
+`test_capabilities_reset.py`) are the blast-radius check for the
+`_all_meta_dirs` filter.
 
 ### 4. Work-store negative control
 
@@ -136,30 +137,15 @@ in the `rglob`-does-not-follow-symlinks property the spec relied on, so a future
 switch to `os.walk(followlinks=True)` fails loudly instead of silently opening a
 third escape.
 
-### 5. `CalledProcessError` at the CLI boundary
+### 5. Preserve the CLI error-boundary ownership split
 
-**Changes** `tcw/cli.py` `main()` (`:157-160`) — a second handler beside the
-`ValueError` one:
-
-```python
-except subprocess.CalledProcessError as error:
-    print(f"tcw: git command failed: {error.cmd[1] if …}", file=sys.stderr)
-    return 1
-```
-
-git already writes its own `fatal:` line to stderr (`git_stage`/`git_rm` do not
-capture), so the handler adds one short line and exits 1 rather than re-printing.
-One place covers taxonomy, capabilities and work.
-
-**Verified by** a test in `tests/test_smoke.py` (or `tests/test_validate.py`,
-whichever already drives `main()` end-to-end): in a repo whose `docs/taxonomy` is
-a symlink to a sibling directory, `main(["taxonomy", "add", "X"])` returns 1 and
-raises nothing. Reproduced by hand at spec time — this is the pre-existing leak,
-not one this change introduces.
+**Changes** none. The non-Git-writes item owns the generic
+`CalledProcessError` handler. Keep containment regressions independent of that
+handler so either item can land first; note the relationship in `outcome.md`.
 
 ### 6. Suite + measurement pass
 
-Run `pytest` in full (criteria 6 and 8 — the whole suite already runs under
+Run `pytest` in full (criteria 6 and 7 — the whole suite already runs under
 macOS `tmp_path`, i.e. a symlinked `/tmp`, so a green suite *is* the
 resolve-both-sides check). Then sanity-check `list_all` on this repo's own
 taxonomy against the spec's ≈ +6%-per-hit measurement; if the tree walk shows
@@ -176,30 +162,26 @@ longer resolve through a symlink planted inside the store — one
 `FsTreeStore._within_store` guard applied at `get_local`, `add`, the local-path
 listings and `_validation_resources` in both stores; note that the escape
 affected writes (`taxonomy add --parent`, `capabilities set`), not only reads,
-and that `FsWorkStore` was verified unaffected. Second entry: `main()` now
-renders a failed git invocation as an error instead of a traceback.
+and that `FsWorkStore` was verified unaffected.
 
 ### 8. `docs/release-notes/upcoming.md` — `[Public-API]` **fires**
 
 User-visible, so it gets one plain-language line: a term or capability reached
 through a symlink inside `docs/taxonomy/` or `docs/capabilities/` is no longer
 found or written — refs stay inside their own store, and such an entry stops
-appearing in `list`. Plus: commands that fail because git cannot record the
-change now say so instead of printing a Python traceback. No module names.
+appearing in `list`. No module names.
 
 ### `README.md` — `[Public-API]` **does not fire**
 
 No CLI surface change: no new command, flag, or argument, and README documents
 neither ref resolution internals nor symlink behavior.
 
-### `skills/<component>/SKILL.md` — `[Skill-Driven-Component]` **does not fire**
+### `skills/<component>/SKILL.md` — `[Skill-Driven-Component]` **fires**
 
-Checked `skills/tcw-taxonomy/` and `skills/tcw-capabilities/`: neither states a
-ref-bounding guardrail that this change would contradict, and the CLI surface,
-model and lifecycle are untouched. Re-confirm against the finished diff during
-the implement-stage documentation pass — if a guard's error wording ends up
-being something an agent must recognize, a line in `tcw-taxonomy` is the cheapest
-place for it.
+Update `skills/tcw-taxonomy/SKILL.md` and `skills/tcw-capabilities/SKILL.md` with
+the resolved-containment guardrail and its fail-closed behavior. This changes a
+filesystem-adapter guardrail driven by both skills even though the abstract
+store interfaces remain unchanged.
 
 ## Verification
 
@@ -211,8 +193,6 @@ Beyond `pytest`:
   `taxonomy show`/`add --parent`/`list`/`check`, `capabilities show`/`set`/`list`,
   and `tcw validate`. Criterion 2 and 5 are the ones that need eyes — the
   assertion is about a file **outside** the store being untouched.
-- **No traceback on stderr** (criterion 7) — assert on captured stderr, not on
-  the exit code alone; the current failure also exits non-zero.
 - **Perf** (task 6) — not a suite check; a number in `outcome.md`.
 - **Not verifiable here, stated instead:** whether any real user has a working
   symlink inside a store. The spec accepts the break because writes through one
