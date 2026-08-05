@@ -12,6 +12,13 @@ Split out of `2026-07-02-interactive-local-web-editor-for-tcw-objects` (now
 completed), which made `tcw serve` write-capable and shipped Markdown editing as
 a raw textarea with live preview.
 
+## Capability changes
+
+This refines the existing `web/editing` capability; it does not create a new
+capability by default. During specification, confirm the selected editor stays
+inside that boundary. Record any genuinely distinct user outcome separately
+rather than treating toolbar controls or syntax highlighting as capabilities.
+
 `2026-07-22-modularize-and-standardize-the-tcw-web-client` (completed) then
 replaced the hand-vendored client with a Vite + TypeScript + React app under
 `web/`, built into `tcw/serve/dist/client/`. That rewrite invalidated every
@@ -38,6 +45,8 @@ local web app, without regressing packaging or security.
   this was deferred, and that cost is now already paid by the client rewrite.
   Evaluate it against alternatives on bundle size, CSP fit, and Radix/theme
   integration rather than on "does it need a build".
+- Vendor selection must document license compatibility, production bundle-size
+  impact, keyboard and screen-reader behavior, and offline/CSP compatibility.
 - Swap the widget, not the plumbing: reuse the existing write API, revision
   tokens, dirty-state guard, and validation surfaces. `MarkdownEditor` already
   has a `value`/`onChange` contract every call site goes through — replace its
