@@ -23,6 +23,16 @@ deterministic packaged client assets.
 Commit `69eeb0a` updated `web/editing`, the README, upcoming user release notes,
 the developer changelog, and the `tcw-work` skill's web-editing guidance.
 
+### Browser regression hardening
+
+Following review feedback, commit `259d84c` expanded the Playwright coverage
+with a dedicated missing-document and cross-item-reset scenario and additional
+editing assertions. The browser suite now directly protects Initial Request
+editing, Implementation Plan editing, missing Spec/Plan states without edit
+actions, and resetting to Initial Request without stale content when a different
+work item is selected. The existing Spec edit, sidecar edit, and stale-write
+coverage remains in place.
+
 ## Verification
 
 - Vitest: 11 files, 50 tests passed.
@@ -30,9 +40,10 @@ the developer changelog, and the `tcw-work` skill's web-editing guidance.
 - ESLint: `pnpm lint` passed with zero warnings.
 - Production client: `pnpm build` passed; `pnpm check:build` passed after the
   generated assets were committed.
-- Focused Playwright lifecycle-artifact flow passed, including tab order,
-  in-browser Spec/Plan rendering, Spec editing, sidecar editing, and stale-write
-  behavior.
+- Two focused Playwright lifecycle-document scenarios passed. Together they
+  cover tab order and default selection; missing Spec/Plan states; Initial
+  Request, Spec, and Implementation Plan editing and persistence; cross-item
+  reset without stale content; sidecar editing; and stale-write behavior.
 - `tcw capabilities check`, `tcw taxonomy check`, `tcw validate`, and
   `git diff --check` passed.
 
