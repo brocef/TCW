@@ -12,14 +12,14 @@ agent to do rather than how reliably it does it, the affected `plugin/*` or
 
 ## Problem
 
-> **Count note (refreshed 2026-07-28):** this spec was written when the plugin
-> shipped 5 skills and 8 commands. It now ships **7 skills** (`tcw-work`,
+> **Count note (refreshed 2026-08-05):** this spec was written when the plugin
+> shipped 5 skills and 8 commands. It now ships **8 skills** (`tcw-work`,
 > `tcw-capabilities`, `tcw-taxonomy`, `tcw-plugin`, `tcw-report`,
-> `tcw-post-mortem`, `documentation-sync`) and **13 commands**. Every "five" /
-> "eight" below has been corrected; the one substantive consequence is that the
-> test set covers 5 of 7 skills — see the note under **Test set**.
+> `tcw-post-mortem`, `tcw-triage-issues`, `documentation-sync`) and **13
+> commands**. The test set covers 6 of 8 skills; the other two are explicit
+> exclusions rather than silent gaps — see **Test set**.
 
-The seven skills are the plugin's judgment layer — the thing the README calls the
+The eight skills are the plugin's judgment layer — the thing the README calls the
 counterpart to the CLI's mechanism. Their quality has only ever been established
 by reading them. Nobody knows whether an agent holding `tcw-work` actually
 outperforms one holding only `tcw --help`, which parts of the prose carry the
@@ -83,6 +83,13 @@ built-in skills (`deep-research`, `dataviz`, `run`, …), the user's own
 identically in both arms — constants, not confounds. Documented, not fixed;
 removing them would need `--bare` and an API key, which buys little here.
 
+These probes establish only the Claude runner. They do not establish harness
+portability. Codex is a first-class TCW target and needs its own isolation probe
+and invocation adapter. The two harnesses share fixtures, prompts, assertions,
+grading, and result schema; runner-specific settings stay behind adapters. A
+runner may be explicitly excluded from an individual case only when the skill
+cannot be invoked meaningfully there, with the reason recorded in results.
+
 ### Fixture machinery already exists
 
 `tests/test_skill_flow.py` already builds a throwaway git repo (`repo()`), calls
@@ -135,16 +142,16 @@ declares an unflipped `Missing` capability, an untriaged inbox request, and a
 registered tag set. Rich enough that every skill has something real to act on,
 and deliberately primed so the completion gate has something to fail closed on.
 
-### Test set — thin across the five tcw-* skills
+### Test set — thin across six of eight skills
 
-> **Coverage note (refreshed 2026-07-28):** the plugin now ships 7 skills, and
-> this table covers 5. `tcw-post-mortem` and `documentation-sync` are
+> **Coverage note (refreshed 2026-08-05):** the plugin now ships 8 skills, and
+> this table covers 6. `tcw-post-mortem` and `documentation-sync` are
 > **uncovered**. Decide before the harness is built: add a case each, or exclude
 > them explicitly and say so in the findings report — the same way case 5 already
 > handles `tcw-plugin`'s untested repair half. Silent partial coverage is the one
 > outcome this item exists to prevent.
 
-Seven cases. One integration case matters more than any single-skill case,
+Eight cases. One integration case matters more than any single-skill case,
 because the chain `Vocabulary → Features → Capabilities → Work` is the thing the
 skills coordinate and the thing most likely to be dropped.
 
@@ -156,7 +163,8 @@ skills coordinate and the thing most likely to be dropped.
 | 4   | tcw-taxonomy     | Register loose domain language → correct Vocabulary vs Feature split, `--vocab` links, `check` clean     |
 | 5   | tcw-plugin       | Orientation: "which axis does this belong in, and where do I start?"                                     |
 | 6   | tcw-report       | "`tcw work complete` threw a traceback" → GitHub issue skeleton, **not** a local work item               |
-| 7   | cross-axis       | Product change requiring a new term, a new capability, and a work item, in the right order               |
+| 7   | tcw-triage-issues | Triage a mixed project issue set → convert only actionable issues and offer a reply for every issue      |
+| 8   | cross-axis       | Product change requiring a new term, a new capability, and a work item, in the right order               |
 
 Case 6 is the sharpest negative test in the set: the natural wrong answer
 (logging it as local work) is exactly what `tcw-report` exists to prevent.
@@ -193,7 +201,7 @@ broken before iteration 2.
 
 ## Risks
 
-- **Overfitting to seven prompts.** The stated mitigation is a rule, not a hope:
+- **Overfitting to eight prompts.** The stated mitigation is a rule, not a hope:
   a refinement must be justifiable from the skill's purpose, not merely from a
   failing case. Fixes that only satisfy these prompts get rejected.
 - **Non-discriminating assertions inflating the delta.** Anything passing in both
@@ -202,8 +210,9 @@ broken before iteration 2.
   fields are meaningless; report raw counts and the delta, and treat a
   single-case swing as a lead rather than a finding.
 - **Seeder rots on CLI drift.** Guarded by a pytest case (below).
-- **Cost.** 14 `claude -p` runs, each driving a real lifecycle. Bounded by
-  `--max-turns` and by keeping the fixture small.
+- **Cost.** Each supported harness runs eight cases in two arms. Bound turns and
+  keep fixtures small; record unsupported case/harness pairs rather than
+  silently dropping them.
 
 ## Dependencies and related work
 
