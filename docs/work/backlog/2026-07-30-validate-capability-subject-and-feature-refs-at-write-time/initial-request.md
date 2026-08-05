@@ -38,6 +38,14 @@ store-composition design question (and an abstraction-litmus question: whatever
 the answer is, a non-filesystem adapter has to be able to honor it), not a
 missing call.
 
+The behavior must cover both public write surfaces: `tcw capabilities set` and
+capability edits through `tcw serve`. They must share one storage-neutral
+validation/composition seam so their diagnostics cannot drift. The write must
+be rejected before persistence with the same dangling, ambiguous, and
+wrong-kind result that `tcw capabilities check` would report. Existing invalid
+data remains reportable by `check`; migrating or quarantining it is outside this
+item unless the specification finds current repository data that requires it.
+
 The taxonomy item's shape is the precedent worth reusing: one private
 ref-problem helper with a raising wrapper, called by both `check` and the write
 path so the two can never disagree.
