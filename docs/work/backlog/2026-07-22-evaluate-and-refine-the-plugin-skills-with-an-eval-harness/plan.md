@@ -50,7 +50,7 @@ what stops CLI drift from silently rotting the harness; it reuses the existing
 
 **Touch:** `evals/evals.json` (new)
 
-Seven cases per the spec table. Each entry: `id`, `skill`, `prompt`,
+Eight cases per the spec table. Each entry: `id`, `skill`, `prompt`,
 `expected_output`, `assertions`.
 
 Write prompts the way a real user types — file paths, product nouns from the
@@ -66,15 +66,16 @@ to revise them after phase 3 and before grading.
 Case 6 (`tcw-report`) needs its negative assertion stated positively: _no new
 item appears under `docs/work/`_. That is the failure mode worth catching.
 
-## Phase 3 — Runner
+## Phase 3 — Harness-neutral runner with Claude and Codex adapters
 
 **Touch:** `evals/run_evals.py` (new)
 
-For each eval × arm: seed a fresh fixture, invoke `claude -p` with cwd set to
-the fixture, capture stdout/transcript/timing, leave the mutated fixture in
-place for grading.
+For each eval × harness × arm: seed a fresh fixture, invoke the selected harness
+with cwd set to the fixture, capture stdout/transcript/timing, and leave the
+mutated fixture in place for grading. Keep fixture creation, result paths, and
+grading independent of harness-specific command lines.
 
-The isolation map is the load-bearing detail — build it by reading the current
+For Claude, the isolation map is load-bearing — build it by reading the current
 `enabledPlugins` from `~/.claude/settings.json` and forcing every key `false`,
 then setting `tcw@tcw` per arm. Deriving it rather than hardcoding means a newly
 installed plugin can't silently leak into future runs.
@@ -94,8 +95,18 @@ Assert isolation once at startup rather than trusting it: a probe run in each
 arm confirming no foreign plugin skills and no injected SessionStart directives.
 Fail loudly if that ever regresses.
 
-Runs are independent — parallelize across evals, but cap concurrency so 14
-concurrent agents don't thrash the machine or trip rate limits.
+Add a Codex adapter only after a probe establishes how to make the TCW skill
+available in one arm and unavailable in the baseline while keeping model,
+workspace, permissions, and other instructions constant. Record the exact
+invocation and known residue beside the Claude probe. If current Codex cannot
+provide a clean matched pair, fail that adapter with an explicit unsupported
+result rather than reporting Claude-only measurements as cross-harness evidence.
+
+Both adapters emit the same transcript, timing, token, exit-status, and fixture
+location fields. Runner-specific fields live under a namespaced metadata key.
+
+Runs are independent. Default to sequential execution for reproducibility and
+resource safety; bounded concurrency may be an opt-in after isolation works.
 
 ## Phase 4 — Grade and aggregate
 
@@ -131,7 +142,7 @@ the numbers say _what_ failed, the transcripts and your judgment say _why_.
 Then refine, under three standing constraints:
 
 - **Generalize.** A fix must be justifiable from the skill's purpose, not merely
-  from a failing case. Reject anything that only satisfies these seven prompts.
+  from a failing case. Reject anything that only satisfies these eight prompts.
 - **Lean over exhaustive.** If a transcript shows wasted work, the instruction
   causing it is a candidate for deletion, not elaboration. Removing text is a
   legitimate outcome.
@@ -154,7 +165,8 @@ Independent of phases 1–5; can run any time.
 
 - ~~**`README.md`** [Public-API] — list all eight commands in the install
   section.~~ **Done 2026-07-28, outside this item.** The install section now
-  lists all 13 commands and all 7 skills. Only re-touch `README.md` here if a
+  lists all 13 commands but currently omits `tcw-post-mortem` from its eight-skill
+  catalog. Restore that entry during this item, and re-touch README again if a
   refinement in phase 5 changes documented skill behavior.
 - **`docs/changelogs/upcoming.md`** [Any-Code-Change] — Added: the eval harness
   and its fixture guard. Changed: any skill refinements. Include the commit hash
