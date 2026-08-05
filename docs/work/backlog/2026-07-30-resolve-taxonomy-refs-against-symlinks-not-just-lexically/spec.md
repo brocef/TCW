@@ -13,7 +13,7 @@ Feature entry changes either — "term ref" and "store" are already registered.
 `_safe_store_id` (`tcw/store/fs.py:553-567`) is a purely lexical guard: it
 rejects `..`, absolute paths, backslashes, empty segments and NUL, and never
 touches the filesystem. Every store id is then joined onto the store root
-(`self.root / slug`, e.g. `tcw/store/fs.py:782`). A **directory symlink planted
+(`self.root / slug`, e.g. `tcw/store/fs.py:772`). A **directory symlink planted
 inside the store** is lexically clean, so the join lands outside the store.
 
 Reproduced in a scratch repo (`tcw` 0.18.0, all output below is real):
@@ -38,7 +38,7 @@ taxonomy OK
 store passes write-time validation and `check` reports clean.
 
 **2. Taxonomy _write_ escapes too — the request did not test this.** `add`
-checks its parent with `(self.root / parent).is_dir()` (`fs.py:832`), which the
+checks its parent with `(self.root / parent).is_dir()` (`fs.py:854`), which the
 symlink satisfies, so the node is written outside the store:
 
 ```
@@ -49,7 +49,7 @@ planted   victim          # created outside docs/taxonomy/, and left behind
 ```
 
 The files land; only the `git add` fails. This also contradicts the "fail closed
-… a rejected write must leave no partial folder behind" contract at `fs.py:841`.
+… a rejected write must leave no partial folder behind" contract at `fs.py:863`.
 
 **3. The capabilities store has the same defect, read and write.**
 `FsCapabilityStore.get_local` (`fs.py:1275-1277`) joins the same way, and
@@ -65,7 +65,7 @@ Status: Supported                            # mutated outside the store
 ```
 
 **4. The work store is _not_ affected** — verified. It discovers items with
-`(self.root / status).rglob("state.yaml")` (`fs.py:1799`), and `rglob` does not
+`(self.root / status).rglob("state.yaml")` (`fs.py:1828`), and `rglob` does not
 descend into symlinked directories; `tcw work show sneaky` and
 `tcw work show wlink/sneaky` both fail as they should.
 
@@ -75,7 +75,7 @@ target survives.
 
 **6. Stack-trace leak.** `git` refuses to stage *anything* beyond a symlink, so
 every write path above dies at `git_stage`/`git_rm` (`fs.py:262`, `fs.py:267`)
-with a raw `CalledProcessError` traceback: `main()` (`tcw/cli.py:157-160`)
+with a raw `CalledProcessError` traceback: `main()` (`tcw/cli.py:166-173`)
 catches only `ValueError`. Pre-existing, and reproducible without any planted
 symlink — a symlinked store root (`docs/taxonomy -> ../real/taxonomy`) fails
 identically on `tcw taxonomy add`.
@@ -93,16 +93,15 @@ mutates — and "refs are bounded to the store" is a stated property of the syst
 2. The same ids are refused on the **write** paths before any file is written —
    no partial node outside the store, no mutated file outside the store.
 3. `list` does not advertise an entry that `show`/`rm` refuse.
-4. A git failure at the store boundary renders as an error message, not a
-   traceback.
-5. Fix it once at the shared chokepoint, not per caller.
+4. Fix containment once at shared filesystem-store chokepoints, not per CLI or
+   HTTP caller.
 
 ## Non-goals
 
 - **Making symlinked store roots work** (`docs/` or `docs/taxonomy` itself a
   symlink). Verified broken today at `git add`, independently of this fix, and
   it stays broken — this change neither fixes nor worsens it. If it is wanted as
-  a deployment shape it is its own item; goal 4 at least makes it fail legibly.
+  a deployment shape it is its own item.
 - **Supporting symlinks inside a store as a feature.** Federation (`extends`) is
   the sanctioned way to reference another project's taxonomy, and git cannot
   track through a symlink anyway, so nothing that currently works is lost.
@@ -142,11 +141,12 @@ Six call sites, three per store:
 | Site | Behavior |
 |---|---|
 | `FsTaxonomyStore.get_local` (`fs.py:772`) | after the existing lexical guard and the `is_dir()` hit, return `None` if not `_within_store` |
-| `FsTaxonomyStore.add` (`fs.py:838`) | check the target dir `d` **before** `d.exists()`; not within → the existing "parent term does not exist" `ValueError` (checking `d` covers the `--parent` case, since a non-existent leaf resolves through its parent) |
+| `FsTaxonomyStore.add` (`fs.py:847`) | check the target dir `d` **before** `d.exists()`; not within → the existing "parent term does not exist" `ValueError` (checking `d` covers the `--parent` case, since a non-existent leaf resolves through its parent) |
 | `FsTaxonomyStore._local_slugs` (`fs.py:784`) | drop paths that are not `_within_store` |
-| `FsCapabilityStore.get_local` (`fs.py:1275`) | return `None` if not `_within_store` |
-| `FsCapabilityStore.add` (`fs.py:1355`) | refuse with `ValueError` before `_write_node` |
-| `FsCapabilityStore._local_paths` (`fs.py:1184`) | drop paths that are not `_within_store` |
+| `FsCapabilitiesStore.get_local` (`fs.py:1304`) | return `None` if not `_within_store` |
+| `FsCapabilitiesStore.add` (`fs.py:1379`) | refuse with `ValueError` before `_write_node` |
+| `FsCapabilitiesStore._all_meta_dirs` (`fs.py:1200`) | drop paths that are not `_within_store` before listings, opaque-ID lookup, overrides, or attachment composition consume them |
+| Both `_validation_resources` methods (`fs.py:1018`, `:1645`) | refuse the local-folder fast path when it escapes the store |
 
 Guarding `get_local` is what makes this a one-place fix on the read side:
 `get`, `get_inherited`, `search`, `remove`, `update_term`, `set`, `_ref_problem`,
@@ -157,11 +157,10 @@ catches only `AmbiguousRef`, so a raise would crash `check` on an affected
 taxonomy. Consequence: an already-stored ref of this shape reports **dangling**,
 matching how the lexical fix treats syntactic escapes.
 
-**Stack-trace leak:** add `except subprocess.CalledProcessError` beside the
-existing `ValueError` handler in `main()` (`tcw/cli.py:157`) — one place covering
-all three components, rather than per-handler `try` blocks. git already prints
-its own `fatal:` line to stderr, so the handler prints a short
-`tcw: git command failed` line and returns 1.
+**CLI error-boundary ownership:** the separate non-Git-writes item owns the
+generic `subprocess.CalledProcessError` handler. This item neither implements nor
+blocks on it; containment tests assert the store behavior directly and CLI
+tests assert only errors produced by the containment guard itself.
 
 **Cost.** Measured on this repo: `Path.resolve()` ≈ 8.4 µs vs `is_dir()` ≈
 0.85 µs, against a `get_local()` hit of ≈ 138 µs (YAML parse + two file reads) —
@@ -186,10 +185,7 @@ existence check.
    byte-identical to before; `tcw capabilities list` does not list `link/thing`.
 6. A store whose root is itself reached through a symlink (`tmp_path` on macOS)
    still passes the full existing suite — no ordinary operation regresses.
-7. `tcw taxonomy add "X"` in a repo whose `docs/taxonomy` is a symlink prints a
-   one-line `tcw: git command failed…` error and exits 1, with no traceback on
-   stderr.
-8. `pytest` is green, including the existing lexical-escape regressions
+7. `pytest` is green, including the existing lexical-escape regressions
    (`tests/test_taxonomy.py:244`, `:257`).
 
 ## Risks
@@ -207,10 +203,10 @@ existence check.
 - **Perf on large taxonomies.** `_local_slugs`/`_local_paths` add one `resolve()`
   per entry, on a path already `rglob`'d. Measured cost above says this is noise,
   but `list_all` on a big tree is the place to sanity-check it.
-- **Scope creep into the CLI error handling.** The `CalledProcessError` catch is
-  included because it is the *only* remaining bad behavior on the symlink theme
-  after the guard lands, and it is a three-line diff in one function. It must not
-  grow into a general error-taxonomy rework.
+- **Resolver edge cases.** Broken and looping symlinks must fail containment
+  without crashing; non-strict resolution must also contain not-yet-created
+  write targets. The tests distinguish symlinks from ordinary lexical paths and
+  confirm hardlinks remain outside this item's threat model.
 
 ## Notes
 
