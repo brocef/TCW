@@ -1,4 +1,4 @@
-# Fix non-git write paths: work new and init fail outside a git repository
+# Fail fast with clear errors on non-Git writes
 
 ## Origin
 
@@ -13,30 +13,38 @@ TCW's **reads** already work without git. In a tree with no repository anywhere,
 `tcw work list`, `tcw validate` and `tcw work nodes` all exit 0 — measured at
 `d795ac9` and again after the worktree fix, byte-identical output both times.
 
-TCW's **writes** do not, and they fail in two different, both-unhelpful ways:
+TCW's documented and tested contract requires Git for **writes**, but the
+failure behavior is inconsistent:
 
 - `tcw work new` dies with an unhandled `CalledProcessError` from `git_stage`
   (`tcw/store/fs.py:640` → `:262`) — a traceback, not a message.
 - `tcw init` refuses outright (`tcw/cli.py:30`): "not inside a git repository.
   Run `git init` first."
 
-So a user can read a TCW node that is not in a repository but cannot create one
-or add to it. Either git is a requirement — in which case the reads should say
-so consistently and `work new` should refuse with a message rather than a
-traceback — or it is not, in which case auto-commit should degrade to a no-op
-when there is no repository. Pick one and make the whole surface agree.
+Read-only commands remain supported outside Git. Write commands must fail before
+creating or modifying TCW files and explain that a repository is required.
 
 ## Technical changes
 
-Decide the contract first; the code change follows from it. The narrow reading
-is that git-backed auto-commit is an *enhancement*, not a precondition, and
-`git_stage` / `git_commit_result` should no-op when `git_root` is None — the
-same way they already tolerate other git failures. `tcw init`'s refusal would
-then become conditional too.
+Preserve the Git-required write contract pinned by README and tests. Enumerate
+all filesystem-backed write entry points during specification, then centralize
+an early repository precondition where possible. Acceptance requires:
+
+- `tcw init` and `tcw work new` refuse before any partial files are written;
+- their CLI diagnostics are concise and consistent, with no Python traceback;
+- read-only commands continue to work outside Git;
+- tests cover both clean refusal and absence of filesystem mutations.
+
+This item owns the generic `subprocess.CalledProcessError` handling contract at
+the top-level CLI boundary: unexpected Git subprocess failures render a concise
+message and exit nonzero. The handler must remain generic rather than embedding
+work-command-specific policy. The symlink-containment item may benefit from that
+boundary but does not block on it.
 
 ## Meta changes
 
-Nothing user-facing until the contract is chosen. Whatever lands, the
+This is user-facing error behavior. Update `docs/changelogs/upcoming.md`,
+`docs/release-notes/upcoming.md`, and the driving `tcw-work` skill. The
 non-git-graph assertions in `tests/test_environment_hardness.py`
 (`TestWorktreeNode.test_non_git_graph_is_unaffected`) pin today's read
 behavior and should keep passing.
