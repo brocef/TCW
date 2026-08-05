@@ -6,8 +6,8 @@
 
 ## Meta changes
 
-Remote `extends` source types (git / URL) with version-pinning + fetch/cache, and
-the source-relative resolution transitivity rules.
+Remote `extends` locator types (Git / URL) with version pinning and a bounded
+fetch/cache lifecycle.
 
 **Model note (refreshed 2026-07-23):** the original "purely additive on the
 existing local-path federation model" framing is stale. Federation no longer
@@ -19,8 +19,17 @@ git/URL as new **locator kinds** backing a registered project ID", with the
 fetch/cache layer sitting between the graph lookup and the `FsTaxonomyStore`
 construction.
 
-Related: `2026-07-01-transitive-taxonomy-inheritance` covers the transitivity
-rules for the local case; that behavior should land first (or together), since
-remote sources only make the depth problem more visible.
+`2026-07-01-transitive-taxonomy-inheritance` completed the transitive read
+behavior. It is prior art, not remaining scope for this item.
+
+Before implementation, specify:
+
+- the locator schema attached to a registered project ID and compatibility with
+  existing local locators;
+- immutable pinning and explicit update semantics;
+- fetch, cache, invalidation, and offline fallback behavior;
+- authentication without credentials entering tracked configuration;
+- trust boundaries and integrity verification for fetched content;
+- deterministic errors for unavailable, untrusted, or invalid sources.
 
 Spec: docs/plan/phase-6-beyond.md; phase-2-taxonomy A.5, B.9.
