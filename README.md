@@ -170,6 +170,14 @@ mirror — `tcw taxonomy init`, `tcw capabilities init`, `tcw work init` —
 identical to `tcw init --id <project-id> <component>`. Existing configured nodes
 may omit `--id`; legacy ID-less markers use it once to backfill their identity.
 
+Scaffolding `work` also adds `.gitignore` rules for `docs/work/completed/` and
+`docs/work/discarded/`, keeping each folder's `.gitkeep` tracked. Resolved items
+therefore stay on your disk and in the history that tracked them while they were
+live, without piling up in the tree forever. Delete the rules to track resolved
+work instead; on a node that predates them, re-run `tcw work init` to add them
+and `git rm -r --cached docs/work/completed docs/work/discarded` to drop what git
+already tracks.
+
 ### Connected projects
 
 Projects may be nested, siblings, or anywhere else on the filesystem. Their

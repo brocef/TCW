@@ -4,10 +4,14 @@ while the tracked tree carries only work that is still live — which matters fo
 a project whose `docs/work/` history is internal detail rather than part of what
 it ships.
 
-I set it up once: add `docs/work/completed/` and `docs/work/discarded/` to
-`.gitignore`, then run `git rm -r --cached` on both to drop what git already
-tracks there — a `.gitignore` alone does not untrack a file git has already
-seen, including the `.gitkeep` that `tcw work init` leaves behind.
+This is the default: [scaffolding the work
+component](tcw://C/cli/scaffold-the-doc-trees) writes the `.gitignore` rules for
+me, keeping each folder's `.gitkeep` tracked so the folder itself still arrives
+in a fresh clone. On a node scaffolded before that default existed, re-running
+`tcw work init` adds the rules, and I then run `git rm -r --cached` on both
+folders to drop what git already tracks there — a `.gitignore` alone does not
+untrack a file git has already seen. If I would rather track my resolved work, I
+delete the rules.
 
 After that, [completing](tcw://C/work/complete-a-work-item) or
 [discarding](tcw://C/work/discard-a-work-item) an item works as it always did,
