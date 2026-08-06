@@ -38,10 +38,11 @@ and both fixed at the shared helper rather than at the caller:
    (`test_serve_write.py`). `git_mv`'s untrack branch now passes `-f`;
    `--cached` still means the files stay on disk.
 
-## Not done
+## Out of scope, fixed anyway
 
 `tests/test_skill_lifecycle_parity.py::test_the_router_stays_within_its_line_budget`
-fails on `main` and still fails: `skills/tcw-work/SKILL.md` is 62 body lines
-against a budget of 60, introduced by `69eeb0a` (lifecycle document tabs). Out
-of scope for this item and untouched by it — the edit here went into
-`references/transitions.md`, which the budget does not cover.
+was already failing on `main`: `skills/tcw-work/SKILL.md` was 62 body lines
+against a budget of 60, grown by `69eeb0a` (lifecycle document tabs). Unrelated
+to this item — the edit here went into `references/transitions.md`, which the
+budget does not cover — but it blocks the version cut, so the web-editing note
+was condensed back to two lines in its own commit.
