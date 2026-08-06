@@ -259,7 +259,13 @@ def qualified_work_ref_problem(anchor: Path, ref: str) -> str:
 
 
 def git_stage(node_root: Path, *paths: Path) -> None:
-    subprocess.run(["git", "-C", str(node_root), "add", "--", *map(str, paths)], check=True)
+    """Stage paths, dropping any git ignores. Ignored status folders are the
+    default (see `resolved_ignore_rules`), so a write into `completed/` has
+    nothing to stage — and `git add` on an ignored path fails outright rather
+    than no-opping."""
+    live = [str(p) for p in paths if not git_ignored(node_root, p)]
+    if live:
+        subprocess.run(["git", "-C", str(node_root), "add", "--", *live], check=True)
 
 
 def git_rm(node_root: Path, path: Path) -> None:
@@ -289,8 +295,11 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
     """
     if git_ignored(node_root, dst):
         # --ignore-unmatch: an item created but never committed is not in the
-        # index at all, and that is not an error here.
-        subprocess.run(["git", "-C", str(node_root), "rm", "-rq", "--cached",
+        # index at all, and that is not an error here. -f: the transition stages
+        # the item's own state before moving it, so the index legitimately
+        # differs from both HEAD and the worktree, which `rm` otherwise refuses.
+        # With --cached it still only touches the index; the files stay on disk.
+        subprocess.run(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
                         "--ignore-unmatch", "--", str(src)], check=True)
         shutil.move(str(src), str(dst))
         return
@@ -387,16 +396,25 @@ def git_current_branch(node_root: Path) -> str | None:
     return None if not name or name == "HEAD" else name
 
 
+def ensure_ignored(node_root: Path, *lines: str) -> bool:
+    """Append whichever `lines` the node's .gitignore lacks. Returns whether it
+    wrote (so a caller that must stage the file knows to). Line-wise, so a rule
+    the user deleted on purpose only comes back if the caller runs again."""
+    gi = node_root / ".gitignore"
+    existing = gi.read_text(encoding="utf-8") if gi.exists() else ""
+    missing = [ln for ln in lines if ln not in existing.splitlines()]
+    if not missing:
+        return False
+    gi.write_text((existing.rstrip("\n") + "\n" if existing else "")
+                  + "\n".join(missing) + "\n", encoding="utf-8")
+    return True
+
+
 def ensure_worktree_ignored(node_root: Path) -> None:
     """Add `.worktrees/` to the node's .gitignore (a linked worktree dir is
     untracked otherwise and would clutter/be staged). Idempotent; stages it."""
-    gi = node_root / ".gitignore"
-    line = f"{WORKTREES_DIR}/"
-    existing = gi.read_text(encoding="utf-8") if gi.exists() else ""
-    if line not in existing.splitlines():
-        gi.write_text((existing.rstrip("\n") + "\n" if existing else "") + line + "\n",
-                      encoding="utf-8")
-        git_stage(node_root, gi)
+    if ensure_ignored(node_root, f"{WORKTREES_DIR}/"):
+        git_stage(node_root, node_root / ".gitignore")
 
 
 def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
@@ -448,10 +466,29 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
     return warns
 
 
+RESOLVED_IGNORE_COMMENT = "# Resolved work: kept on disk and in history, out of the tracked tree."
+
+
+def resolved_ignore_rules() -> list[str]:
+    """The .gitignore rules that make the end-state work folders untracked while
+    keeping the folders themselves. `<dir>/*` rather than `<dir>/`: git cannot
+    re-include a file whose *parent directory* is excluded, which would make the
+    `.gitkeep` negation inert."""
+    return [RESOLVED_IGNORE_COMMENT,
+            *(rule for s in RESOLVED_STATUSES
+              for rule in (f"docs/work/{s}/*", f"!docs/work/{s}/.gitkeep"))]
+
+
 def init(components: list[str], root: Path, project_id: str | None = None) -> list[Path]:
     """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
     Returns leaf dirs made. A `.gitkeep` lands in each leaf so the empty skeleton
-    survives a commit (git doesn't track empty directories)."""
+    survives a commit (git doesn't track empty directories).
+
+    Scaffolding `work` also gitignores the resolved status folders, so completing
+    or discarding an item takes it *out* of the tracked tree instead of
+    accumulating it there — `git_mv` untracks rather than moves when the
+    destination is ignored. Unstaged, like everything else init writes.
+    """
     write_sentinel(root, project_id)
     created: list[Path] = []
     for c in components:
@@ -461,6 +498,8 @@ def init(components: list[str], root: Path, project_id: str | None = None) -> li
             leaf.mkdir(parents=True, exist_ok=True)
             (leaf / ".gitkeep").touch()
             created.append(leaf)
+        if c == "work":
+            ensure_ignored(root, *resolved_ignore_rules())
     return created
 
 

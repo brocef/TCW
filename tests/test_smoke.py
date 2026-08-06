@@ -11,6 +11,10 @@ def _git_init(path: Path) -> None:
     subprocess.run(["git", "init", "-q", str(path)], check=True)
 
 
+def _ignored(repo: Path, rel: str) -> bool:
+    return subprocess.run(["git", "-C", str(repo), "check-ignore", "-q", "--", rel]).returncode == 0
+
+
 def test_init_scaffolds_all_components(tmp_path, monkeypatch):
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -27,6 +31,29 @@ def test_init_named_subset_only(tmp_path, monkeypatch):
     assert main(["init", "--id", "test-project", "taxonomy"]) == 0
     assert (tmp_path / "docs" / "taxonomy").is_dir()
     assert not (tmp_path / "docs" / "work").exists()
+
+
+def test_init_ignores_resolved_work_folders(tmp_path, monkeypatch):
+    _git_init(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    assert main(["init", "--id", "test-project", "work"]) == 0
+    assert main(["init", "--id", "test-project", "work"]) == 0        # idempotent
+
+    lines = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "__pycache__/"                                 # pre-existing kept
+    for s in ("completed", "discarded"):
+        assert lines.count(f"docs/work/{s}/*") == 1
+        assert _ignored(tmp_path, f"docs/work/{s}/some-item")
+        assert not _ignored(tmp_path, f"docs/work/{s}/.gitkeep")      # folder survives a clone
+    assert not _ignored(tmp_path, "docs/work/backlog/some-item")
+
+
+def test_init_without_work_writes_no_gitignore(tmp_path, monkeypatch):
+    _git_init(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert main(["init", "--id", "test-project", "taxonomy"]) == 0
+    assert not (tmp_path / ".gitignore").exists()
 
 
 def test_init_refuses_outside_git(tmp_path, monkeypatch):

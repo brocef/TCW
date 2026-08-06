@@ -25,7 +25,8 @@ venv/
 logs/
 .worktrees/
 
-# Resolved work items: this repo's own dogfooding history, not what the plugin
-# ships. Kept on disk, out of the tracked tree.
-docs/work/completed/
-docs/work/discarded/
+# Resolved work: kept on disk and in history, out of the tracked tree.
+docs/work/completed/*
+!docs/work/completed/.gitkeep
+docs/work/discarded/*
+!docs/work/discarded/.gitkeep

@@ -58,6 +58,9 @@ def run_init(components: list[str], project_id: str | None = None) -> int:
     for p in created:
         print(f"  {p.relative_to(root)}")
     print(f"Node marker: {SENTINEL}")          # deterministic across runs
+    if "work" in components:
+        print(".gitignore: resolved work (completed/, discarded/) stays on disk, "
+              "out of the tracked tree")
     return 0
 
 
