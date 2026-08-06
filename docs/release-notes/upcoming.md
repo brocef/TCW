@@ -2,15 +2,3 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
-
-- Work items now show Initial Request, Spec, and Implementation Plan in tabs,
-  where available documents can be read and edited without leaving the browser.
-
-- Setting up work tracking now keeps finished work out of your repository by
-  default. The `completed` and `discarded` folders are still created and still
-  committed, but the items that land in them are not: completing or discarding
-  an item removes its documents from the repository while leaving them on your
-  disk, and the history from while the item was live still has them. Projects
-  set up before this change get the same treatment by re-running
-  `tcw work init`. If you would rather keep tracking finished work, delete the
-  new lines from your `.gitignore`.
