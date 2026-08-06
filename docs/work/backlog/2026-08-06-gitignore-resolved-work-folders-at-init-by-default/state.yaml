@@ -1,0 +1,10 @@
+slug: 2026-08-06-gitignore-resolved-work-folders-at-init-by-default
+title: Gitignore resolved work folders at init by default
+created: '2026-08-06'
+resolution: null
+priority: 40
+effort: low
+complexity: low
+tags:
+- cli
+- work
