@@ -118,3 +118,17 @@ def test_takeover_replaces_claim_and_submit_clears_it(tmp_path):
     submitted = store.submit(item.slug)
     assert submitted.owner == ""
     assert submitted.started == ""
+
+
+def test_takeover_recovers_interrupted_private_claim(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Interrupted", created="2026-08-08")
+    private = store.root / ".claiming" / f"{item.slug}-dead-process"
+    private.parent.mkdir()
+    store.path(item.slug).replace(private)
+    recovered = store.start(item.slug, owner="recovery@example.com", take_over=True)
+    assert recovered.status == "active"
+    assert recovered.owner == "recovery@example.com"
+    assert not private.exists()

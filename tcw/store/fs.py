@@ -1973,8 +1973,27 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def start(self, slug: str, force: bool = False, *, owner: str = "",
               take_over: bool = False) -> WorkItem:
         """Publish a stamped backlog claim with a single atomic source rename."""
-        item = self._require(slug)
         started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        item = self.get(slug)
+        if item is None and take_over:
+            interrupted = sorted((self.root / ".claiming").glob(f"{slug}-*"))
+            if len(interrupted) != 1:
+                raise ValueError(f"no recoverable interrupted claim for {slug}")
+            if not owner:
+                raise ValueError("takeover requires an owner")
+            state_path = interrupted[0] / "state.yaml"
+            state = load_yaml(state_path)
+            state["owner"], state["started"] = owner, started
+            dump_yaml(state_path, state)
+            dst = self.root / "active" / slug
+            os.replace(interrupted[0], dst)
+            src = self.root / "backlog" / slug
+            git_stage(self.store_git_root, src, dst)
+            if self.auto_commit_transitions():
+                self._commit_transition(slug, src, dst, "active", None)
+            return self._require(slug)
+        if item is None:
+            raise ValueError(f"no such work item: {slug}")
         if item.status == "active":
             if not take_over:
                 raise AlreadyClaimed(slug, item.owner, item.started)
