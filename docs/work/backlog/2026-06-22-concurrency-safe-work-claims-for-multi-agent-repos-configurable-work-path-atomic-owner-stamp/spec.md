@@ -1,7 +1,13 @@
-# Specification: concurrency-safe work claims
+# Specification: concurrency-safe work claims and external per-project work stores
 
 ## Capability changes
 
+- Add `work/configure-the-work-store-location`, backed by the
+  `configurable-work-store-location` taxonomy Feature and the existing `store`,
+  `node`, and `namespace` vocabulary.
+- Change `cli/scaffold-the-doc-trees`, `cli/host-multiple-projects-in-one-repo`,
+  and `work/keep-resolved-work-out-of-git` for external initialization,
+  multi-project shared repositories, and target-relative ignore rules.
 - Change `work/start-a-work-item`: a user can identify the claimant when starting
   work, receives a contention-specific result when another claimant won, and can
   deliberately take over an existing claim without overloading the blocker
@@ -12,6 +18,48 @@
   `configurable-work-lifecycle` Feature is about lifecycle hook bindings rather
   than storage placement or claims, so these capability changes remain linked to
   their current taxonomy entries.
+
+## External-store amendment
+
+The code project remains the logical owner and namespace of its work. A
+configured filesystem path is only an adapter locator:
+
+```yaml
+id: corelib
+work:
+  path: ../docs/CoreLib/work
+```
+
+`corelib/<slug>` remains the qualified reference. The directory containing the
+work store does not become a TCW project or introduce another ownership layer.
+
+`FsWorkStore` therefore retains three distinct locations: the owning code-node
+root, the configured work root, and the Git root containing the work store.
+Storage placement remains an adapter concern and does not change the abstract
+`WorkStore` interface. Absent configuration resolves to `docs/work`; relative
+and absolute paths are supported. Symlinks, including a symlinked default, are
+followed transparently, while broken links and non-directory targets fail with
+an actionable `work.path` diagnostic. When opened from a linked code worktree,
+relative external paths are anchored to the primary checkout, matching
+registered-project locator behavior.
+
+Every work read and effect uses the configured store: item lookup, boards,
+qualified references, lifecycle gates, reconciliation, validation, web access,
+staging, and transitions. Lifecycle configuration, hooks, capabilities,
+registry identity, and code worktrees remain attached to the owning code node.
+Work artifacts are committed in the repository containing the work store;
+code-worktree setup is committed in the code repository. Registered projects
+that resolve to the same physical work root are rejected.
+
+`tcw work init --path <path>` and top-level `tcw init --work-path <path>` create
+an external store, write `work.path`, scaffold statuses, and install
+target-relative completed/discarded ignore rules in the target Git repository.
+Initialization is non-committing and reports changes in both repositories. It
+may replace an exactly pristine generated default scaffold. If that scaffold
+contains items, inbox entries, or custom files, initialization refuses and
+points to documented manual migration steps; TCW never moves existing work.
+Non-Git targets and duplicate physical roots are invalid. Resolved items keep
+the current policy: they remain locally present but leave tracked Git state.
 
 ## Problem
 

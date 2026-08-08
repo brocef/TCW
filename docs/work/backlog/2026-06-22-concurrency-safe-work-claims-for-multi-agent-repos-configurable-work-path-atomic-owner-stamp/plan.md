@@ -1,7 +1,11 @@
-# Implementation plan: concurrency-safe work claims
+# Implementation plan: concurrency-safe work claims and external per-project work stores
 
 ## Capability changes
 
+- Add `work/configure-the-work-store-location` and its
+  `configurable-work-store-location` Feature.
+- Update `cli/scaffold-the-doc-trees`, `cli/host-multiple-projects-in-one-repo`,
+  and `work/keep-resolved-work-out-of-git`.
 - Update `work/start-a-work-item` to document claimant identity, atomic
   single-winner start behavior, contention diagnostics, and the distinct
   `--take-over` path while preserving `--force` for blocker/initiative bypass.
@@ -10,6 +14,24 @@
 - No capability is added or removed, and no taxonomy entry changes.
 
 ## Tasks
+
+0. **Implement external per-project work-store placement.** Separate the owning
+   code node, configured work root, and work-store Git root in `FsWorkStore`;
+   keep placement out of `WorkStore`. Resolve default, relative, absolute,
+   symlinked, broken, and linked-worktree cases through one factory. Route all
+   CLI, web, validation, reconciliation, reference, staging, transition, and
+   resolved-ignore behavior through it. Reject duplicate physical roots across
+   registered projects.
+
+   Add `tcw work init --path` and top-level `tcw init --work-path`. External init
+   writes configuration, scaffolds the target, installs target-relative ignore
+   rules in its Git repository, remains non-committing, and reports both roots.
+   Permit replacement only of an exactly pristine generated default scaffold;
+   refuse existing items, inbox entries, custom files, invalid/non-Git targets,
+   and document manual migration. Verify with default/relative/absolute/symlink/
+   broken-link/linked-worktree tests and two-repository integration coverage,
+   including qualified commands, boards, hooks, code worktrees, web editing,
+   validation, unrelated changes, and store-root collisions.
 
 1. **Separate the code node, work root, and work-store Git root.** Refactor
    `FsWorkStore` construction without changing `FsTreeStore` for the other axes:
