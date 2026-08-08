@@ -1,6 +1,7 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,7 +9,7 @@ from pathlib import Path
 from tcw.store.base import (
     RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
-    TransitionCommitError, WorkItem, normalize_tag,
+    TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
@@ -30,7 +31,7 @@ DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree pat
 # TransitionCommitError is included deliberately: the item *did* move, and its
 # message says so. The non-zero exit is the point — a refused commit must not
 # read as success — but nothing here should imply the transition failed.
-_ERRORS = (ValueError, IllegalTransition, MultipleMatch, TransitionCommitError)
+_ERRORS = (ValueError, IllegalTransition, MultipleMatch, TransitionCommitError, AlreadyClaimed)
 
 
 def _work_level(value: str) -> str:
@@ -119,6 +120,10 @@ def _print_item(item: WorkItem) -> None:
         print(f"tags: {', '.join(item.tags)}")
     if item.resolution:
         print(f"resolution: {item.resolution}")
+    if item.owner:
+        print(f"owner: {item.owner}")
+    if item.started:
+        print(f"started: {item.started}")
     if item.blocked_by:
         labels = []
         for b in item.blocked_by:
@@ -200,7 +205,7 @@ def _escalate(args: argparse.Namespace) -> int:
 
 def _init(args: argparse.Namespace) -> int:
     from tcw.cli import run_init      # function-local: top-level cli imports this module
-    return run_init([NAME], args.id)
+    return run_init([NAME], args.id, args.path)
 
 
 def _provided(value):
@@ -319,8 +324,12 @@ def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -
     ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""
     tag_seg = f" | [{', '.join(it.tags)}]" if it.tags else ""
     pri = it.priority if it.priority is not None else "-"
+    claim = ""
+    if it.status == "active":
+        claim = (f" | owner: {it.owner} | started: {it.started}"
+                 if it.owner else " | owner: unclaimed")
     print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages or '-'} | "
-          f"{pri} | {it.title}{tag_seg}{ready}{suffix}")
+          f"{pri} | {it.title}{tag_seg}{ready}{suffix}{claim}")
 
 
 def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
@@ -488,8 +497,20 @@ def _start(args: argparse.Namespace) -> int:
     if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog")):
         print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
         return 1
+    owner = (args.owner or os.environ.get("TCW_WORK_OWNER", "")).strip()
+    if not owner:
+        for key in ("user.email", "user.name"):
+            probe = subprocess.run(["git", "-C", str(st.node_root), "config", "--get", key],
+                                   capture_output=True, text=True)
+            if probe.returncode == 0 and probe.stdout.strip():
+                owner = probe.stdout.strip()
+                break
+    if not owner:
+        print("tcw work start: claimant identity required; pass --owner or set TCW_WORK_OWNER",
+              file=sys.stderr)
+        return 1
     try:
-        st.start(bare, force=args.force)
+        st.start(bare, force=args.force, owner=owner, take_over=args.take_over)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
@@ -942,6 +963,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed/discarded work storage")
     pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
+    pi.add_argument("--path", help="filesystem location for the work store")
     pi.set_defaults(func=_init)
 
     pin = g.add_parser("inbox", help="inspect and accept raw work intake")
@@ -1022,6 +1044,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pst = g.add_parser("start", help="backlog → active")
     pst.add_argument("slug")
     pst.add_argument("--force", action="store_true", help="start despite unresolved blockers")
+    pst.add_argument("--owner", help="claimant identity (then TCW_WORK_OWNER, Git email/name)")
+    pst.add_argument("--take-over", action="store_true", help="replace an existing active claim")
     pst.add_argument("--worktree", action="store_true",
                      help="isolate the item in its own git worktree + branch")
     pst.set_defaults(func=_start)

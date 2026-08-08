@@ -13,6 +13,10 @@ folders to drop what git already tracks there — a `.gitignore` alone does not
 untrack a file git has already seen. If I would rather track my resolved work, I
 delete the rules.
 
+When `work.path` points into another repository, the same rules are written
+relative to that repository's root and resolution commits remove tracked work
+there. The owning code repository is not modified by those transitions.
+
 After that, [completing](tcw://C/work/complete-a-work-item) or
 [discarding](tcw://C/work/discard-a-work-item) an item works as it always did,
 except that the transition commit **removes** the item from the repository

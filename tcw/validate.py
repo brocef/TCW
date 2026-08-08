@@ -62,7 +62,12 @@ def _iter(root: Path, pattern: str):
 def _scan_roots(node_root: Path, path) -> list[Path]:
     if path is not None:
         return [Path(path)]
-    return [node_root / "docs" / c for c in _COMPONENTS]
+    roots = [node_root / "docs" / c for c in ("taxonomy", "capabilities")]
+    try:
+        roots.append(FsWorkStore.open(node_root).root)
+    except ValueError:
+        roots.append(node_root / "docs" / "work")
+    return roots
 
 
 def _under(p: Path, d: Path) -> bool:
@@ -74,12 +79,24 @@ def _components_to_check(node_root: Path, path) -> list[str]:
     the one whose tree the path falls under (a path under docs/work — or spanning
     several trees — runs none)."""
     if path is None:
-        return [c for c in ("taxonomy", "capabilities", "work")
-                if (node_root / "docs" / c).is_dir()]
+        present = [c for c in ("taxonomy", "capabilities")
+                   if (node_root / "docs" / c).is_dir()]
+        try:
+            FsWorkStore.open(node_root)
+            present.append("work")
+        except ValueError:
+            if (node_root / "docs" / "work").exists() or (node_root / "tcw-config.yaml").exists():
+                present.append("work")
+        return present
     p = Path(path).resolve()
-    for c in ("taxonomy", "capabilities", "work"):
+    for c in ("taxonomy", "capabilities"):
         if _under(p, (node_root / "docs" / c).resolve()):
             return [c]
+    try:
+        if _under(p, FsWorkStore.open(node_root).root):
+            return ["work"]
+    except ValueError:
+        pass
     return []
 
 
@@ -125,6 +142,17 @@ def validate(node_root: Path, path: Path | None = None, *,
     ]
     if graph_problems:
         return graph_problems
+    registry = FsProjectRegistry.open(node_root).require_valid()
+    work_roots: dict[Path, str] = {}
+    for project in [registry.current, *registry.ancestors(), *registry.descendants()]:
+        try:
+            root = FsWorkStore.open(Path(project.locator)).root
+        except ValueError:
+            continue
+        previous = work_roots.get(root)
+        if previous is not None and previous != project.id:
+            return [f"project graph: projects '{previous}' and '{project.id}' resolve to the same work.path: {root}"]
+        work_roots[root] = project.id
     if target is not None:
         roots = _target_roots(node_root, target)
         if not roots:

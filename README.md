@@ -155,6 +155,7 @@ cd your-git-repo
 tcw init --id my-project                    # scaffold all three components
 tcw init --id my-project taxonomy work      # …or just named components
 tcw work init --id my-project               # …or use a component mirror
+tcw work init --id my-project --path ../orchestrator/CoreLib/work
 tcw serve --no-open          # browse Work, Taxonomy, and Capabilities locally
 tcw validate                # validate this project and all registered descendants
 tcw --help                  # top-level groups: init | serve | validate | taxonomy | capabilities | work
@@ -177,6 +178,14 @@ live, without piling up in the tree forever. Delete the rules to track resolved
 work instead; on a node that predates them, re-run `tcw work init` to add them
 and `git rm -r --cached docs/work/completed docs/work/discarded` to drop what git
 already tracks.
+
+To keep a project's work in another Git repository while preserving its own ID
+and lifecycle configuration, set `work.path` in its `tcw-config.yaml` or pass
+`tcw work init --path <path>` (`tcw init --work-path <path> work`). Relative
+paths are anchored to the owning project's primary checkout; absolute paths and
+symlinks are supported. TCW commits work-item changes in the target repository,
+while hooks and `--worktree` continue to use the owning code repository. Existing
+non-pristine stores are never moved automatically.
 
 ### Connected projects
 

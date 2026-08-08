@@ -66,4 +66,4 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - **Only when the user asks for it** — [`audit-backlog.md`](references/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources
 
 > **Web editing:** items, artifacts (Request/Spec/Plan as tabs), and the `capabilities.yaml`
-> sidecar are editable through `tcw serve`; it commits transitions but runs **no** hooks.
+> sidecar use the configured store through `tcw serve`; it commits transitions but runs **no** hooks.

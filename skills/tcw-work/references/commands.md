@@ -48,3 +48,11 @@ Reference another object in prose with `[text](tcw://W/<slug>)`, or
 `/tcw-verify-work`. **Codex has no slash commands**, so every one of these
 workflows is also reachable by invoking the `tcw-work` skill and following the
 stage documents directly. Nothing is only available through a command.
+
+# Claims and external work stores
+
+Treat `start` as a claim: supply a stable owner (flag, environment, or Git
+identity), choose another item after contention, and use `--take-over` only as a
+deliberate ownership replacement. A configured `work.path` changes only the
+filesystem adapter location; project identity, hooks, and code worktrees stay
+with the owning node.

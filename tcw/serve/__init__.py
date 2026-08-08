@@ -1282,6 +1282,9 @@ class TcwHandler(BaseHTTPRequestHandler):
         slug_q, _, name_q = middle.partition(marker)
         slug = _decode_path_param(slug_q)
         name = _decode_path_param(name_q)
+        if not slug or "/" in slug or "\\" in slug or slug in {".", ".."}:
+            self._send(HTTPStatus.NOT_FOUND, b"no such work item")
+            return
         if name not in WORK_ARTIFACTS:
             self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
             return

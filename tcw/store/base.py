@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -814,6 +815,16 @@ class MultipleMatch(Exception):
     """A slug resolves to more than one item folder (slug integrity broken)."""
 
 
+class AlreadyClaimed(IllegalTransition):
+    """A single-winner start lost to an existing active claim."""
+
+    def __init__(self, slug: str, owner: str = "", started: str = ""):
+        self.slug, self.owner, self.started = slug, owner, started
+        who = owner or "an unknown owner"
+        when = started or "an unknown time"
+        super().__init__(f"{slug} is already claimed by {who} since {when}")
+
+
 @dataclass
 class WorkItem:
     """A unit of work; status is *where it lives*, not a stored field (A.3)."""
@@ -835,6 +846,8 @@ class WorkItem:
     worktree: str = ""              # node-relative worktree path (start --worktree)
     branch: str = ""                # work branch name (start --worktree)
     parent: str = ""                # slug of the parent item; "" == top-level (node relation)
+    owner: str = ""                 # claimant identity; empty for legacy/unclaimed active work
+    started: str = ""               # UTC claim timestamp
 
 
 @dataclass
@@ -1256,6 +1269,9 @@ class WorkStore(ABC):
         item = self._require(slug)
         if (item.status, to_status) not in self.LEGAL_TRANSITIONS:
             raise IllegalTransition(f"{item.status} → {to_status} is not a legal transition")
+        if item.status == "active" or to_status == "active":
+            self.set_field(slug, "owner", "")
+            self.set_field(slug, "started", "")
         self._effect_transition(slug, to_status)
         return self._require(slug)
 
@@ -1275,8 +1291,17 @@ class WorkStore(ABC):
             # else: structurally malformed entry — skip (degrade, don't crash)
         return out
 
-    def start(self, slug: str, force: bool = False) -> WorkItem:
+    def start(self, slug: str, force: bool = False, *, owner: str = "",
+              take_over: bool = False) -> WorkItem:
         item = self._require(slug)
+        if item.status == "active":
+            if not take_over:
+                raise AlreadyClaimed(slug, item.owner, item.started)
+            if not owner:
+                raise ValueError("takeover requires an owner")
+            self.set_field(slug, "owner", owner)
+            self.set_field(slug, "started", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+            return self._require(slug)
         if not force:
             if item.initiative:
                 epic = self.initiative_epic(item)
@@ -1291,7 +1316,12 @@ class WorkStore(ABC):
             if blockers:
                 raise ValueError("blocked by: " + ", ".join(blockers)
                                  + " (use --force to override)")
-        return self.transition(slug, "active")
+        result = self.transition(slug, "active")
+        if owner:
+            self.set_field(slug, "owner", owner)
+            self.set_field(slug, "started", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+            result = self._require(slug)
+        return result
 
     def submit(self, slug: str) -> WorkItem:
         """`active` → `review`: implementation is done, acceptance is pending.

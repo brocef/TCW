@@ -11,3 +11,5 @@ never visited. The shorter `-i` and `--incl-desc` spellings are aliases for
 `--include-descendants`. In the aggregate view, initiative tasks are indented
 beneath their visible owning epic even when a task lives in a descendant node;
 the qualified task address is preserved and each task is printed once.
+Active board rows show the claimant and UTC start time. Legacy or reworked
+active items without claim metadata are shown as unclaimed.

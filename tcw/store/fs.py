@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -29,14 +30,14 @@ from tcw.store.base import (
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
     WORK_STATUSES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
-    CapabilityDetail, MultipleMatch, RefError,
+    CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     parse_lifecycle_policy,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
-from tcw.store.project import FsProjectRegistry, validate_project_id
+from tcw.store.project import FsProjectRegistry, validate_project_id, worktree_anchors
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
@@ -128,7 +129,13 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     if nr is None:
         return None
     FsProjectRegistry.open(nr).require_valid()
-    return nr if (nr / "docs" / component).is_dir() else None
+    if component != "work":
+        return nr if (nr / "docs" / component).is_dir() else None
+    try:
+        FsWorkStore.open(nr)
+    except ValueError:
+        return None
+    return nr
 
 
 def child_nodes(root: Path) -> list[Path]:
@@ -137,7 +144,7 @@ def child_nodes(root: Path) -> list[Path]:
     return [
         Path(project.locator)
         for project in registry.children()
-        if (Path(project.locator) / "docs" / "work").is_dir()
+        if _has_work_store(Path(project.locator))
     ]
 
 
@@ -148,7 +155,7 @@ def parent_node(root: Path) -> Path | None:
     if parent is None:
         return None
     path = Path(parent.locator)
-    return path if (path / "docs" / "work").is_dir() else None
+    return path if _has_work_store(path) else None
 
 
 def descendant_nodes(root: Path) -> list[Path]:
@@ -157,8 +164,18 @@ def descendant_nodes(root: Path) -> list[Path]:
     return [
         Path(project.locator)
         for project in registry.descendants()
-        if (Path(project.locator) / "docs" / "work").is_dir()
+        if _has_work_store(Path(project.locator))
     ]
+
+
+def _has_work_store(node_root: Path) -> bool:
+    if (node_root / "docs" / "work").is_dir():
+        return True
+    try:
+        FsWorkStore.open(node_root)
+        return True
+    except ValueError:
+        return False
 
 
 def registered_project_id(anchor: Path, target: Path) -> str:
@@ -228,7 +245,7 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
     if target_project is None:
         return None
     target = Path(target_project.locator)
-    if not (target / "docs" / "work").is_dir():
+    if not _has_work_store(target):
         return None
     return FsWorkStore.open(target), bare
 
@@ -253,7 +270,7 @@ def qualified_work_ref_problem(anchor: Path, ref: str) -> str:
         return generic
     if project is None:
         return f"no such project in this graph: {qualifier}"
-    if not (Path(project.locator) / "docs" / "work").is_dir():
+    if not _has_work_store(Path(project.locator)):
         return f"{qualifier} has no work component"
     return generic                                 # project resolved; the slug didn't
 
@@ -469,17 +486,21 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
 RESOLVED_IGNORE_COMMENT = "# Resolved work: kept on disk and in history, out of the tracked tree."
 
 
-def resolved_ignore_rules() -> list[str]:
+def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None) -> list[str]:
     """The .gitignore rules that make the end-state work folders untracked while
     keeping the folders themselves. `<dir>/*` rather than `<dir>/`: git cannot
     re-include a file whose *parent directory* is excluded, which would make the
     `.gitkeep` negation inert."""
+    prefix = "docs/work"
+    if work_root is not None and repository is not None:
+        prefix = work_root.resolve().relative_to(repository.resolve()).as_posix()
     return [RESOLVED_IGNORE_COMMENT,
             *(rule for s in RESOLVED_STATUSES
-              for rule in (f"docs/work/{s}/*", f"!docs/work/{s}/.gitkeep"))]
+              for rule in (f"{prefix}/{s}/*", f"!{prefix}/{s}/.gitkeep"))]
 
 
-def init(components: list[str], root: Path, project_id: str | None = None) -> list[Path]:
+def init(components: list[str], root: Path, project_id: str | None = None,
+         work_path: Path | None = None) -> list[Path]:
     """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
     Returns leaf dirs made. A `.gitkeep` lands in each leaf so the empty skeleton
     survives a commit (git doesn't track empty directories).
@@ -490,16 +511,49 @@ def init(components: list[str], root: Path, project_id: str | None = None) -> li
     destination is ignored. Unstaged, like everything else init writes.
     """
     write_sentinel(root, project_id)
+    existing_config = load_yaml(root / SENTINEL, unique=True)
+    if work_path is None and "work" in components:
+        configured_work = existing_config.get("work") or {}
+        if isinstance(configured_work, dict) and configured_work.get("path"):
+            work_path = Path(configured_work["path"]).expanduser()
+    if work_path is not None and "work" in components:
+        default_root = root / "docs" / "work"
+        target = work_path if work_path.is_absolute() else root / work_path
+        if default_root.exists() and default_root.resolve() != target.resolve():
+            expected = {"inbox", *WORK_STATUSES}
+            actual = {entry.name for entry in default_root.iterdir()}
+            pristine = actual == expected and all(
+                child.is_dir() and {entry.name for entry in child.iterdir()} <= {".gitkeep"}
+                for child in default_root.iterdir()
+            )
+            if not pristine:
+                raise ValueError(
+                    f"refusing to replace non-pristine {default_root}; move existing work "
+                    "manually, update work.path, then re-run init"
+                )
+            shutil.rmtree(default_root)
+        config_path = root / SENTINEL
+        config = load_yaml(config_path, unique=True)
+        work_config = config.get("work") if isinstance(config.get("work"), dict) else {}
+        config["work"] = {**work_config, "path": str(work_path)}
+        dump_yaml(config_path, config)
     created: list[Path] = []
     for c in components:
-        base = root / "docs" / c
+        base = ((work_path if work_path.is_absolute() else root / work_path)
+                if c == "work" and work_path is not None else root / "docs" / c)
         leaves = [base / "inbox", *(base / s for s in WORK_STATUSES)] if c == "work" else [base]
         for leaf in leaves:
             leaf.mkdir(parents=True, exist_ok=True)
             (leaf / ".gitkeep").touch()
             created.append(leaf)
         if c == "work":
-            ensure_ignored(root, *resolved_ignore_rules())
+            target_git = git_root(base)
+            if target_git is None and work_path is not None:
+                raise ValueError(f"work.path target is not inside a Git repository: {base}")
+            if target_git is None:
+                ensure_ignored(root, *resolved_ignore_rules())
+            else:
+                ensure_ignored(target_git, *resolved_ignore_rules(base, target_git))
     return created
 
 
@@ -1856,6 +1910,55 @@ class FsWorkStore(FsTreeStore, WorkStore):
     """
     COMPONENT = "work"
 
+    def __init__(self, root: Path, *, node_root: Path | None = None,
+                 store_git_root: Path | None = None):
+        self.root = root.resolve()
+        self.node_root = (node_root or root.parent.parent).resolve()
+        self.store_git_root = (store_git_root or git_root(self.root) or self.node_root).resolve()
+        self.config = {}
+
+    @classmethod
+    def open(cls, node_root: Path) -> "FsWorkStore":
+        node_root = node_root.resolve()
+        config_path = node_root / SENTINEL
+        config = load_yaml(config_path, unique=True)
+        work = config.get("work") or {} if isinstance(config, dict) else {}
+        if not isinstance(work, dict):
+            work = {}
+        configured = work.get("path")
+        if configured is not None and (not isinstance(configured, str) or not configured.strip()):
+            raise ValueError(f"{config_path}: work.path must be a non-empty path string")
+        if configured is None:
+            raw_root = node_root / "docs" / "work"
+        else:
+            value = Path(configured).expanduser()
+            base = node_root
+            anchors = worktree_anchors(node_root)
+            if not value.is_absolute() and anchors is not None:
+                base = anchors[1]
+            raw_root = value if value.is_absolute() else base / value
+        if raw_root.is_symlink() and not raw_root.exists():
+            raise ValueError(f"{config_path}: work.path is a broken symlink: {raw_root}")
+        if not raw_root.is_dir():
+            raise ValueError(f"{config_path}: work.path is not a directory: {raw_root}")
+        root = raw_root.resolve()
+        missing = [name for name in ("inbox", *WORK_STATUSES) if not (root / name).is_dir()]
+        if missing:
+            raise ValueError(f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
+        repository = node_root if configured is None else git_root(root)
+        if repository is None and configured is not None:
+            raise ValueError(f"{config_path}: work.path is not inside a Git repository: {root}")
+        return cls(root, node_root=node_root, store_git_root=repository or node_root)
+
+    def _stage(self, *paths: Path) -> None:
+        git_stage(self.store_git_root, *paths)
+
+    def _rm(self, path: Path) -> None:
+        git_rm(self.store_git_root, path)
+
+    def _mv(self, src: Path, dst: Path) -> None:
+        git_mv(self.store_git_root, src, dst)
+
     # -- discovery (state.yaml-keyed, depth-agnostic) --
 
     def _item_dirs(self) -> list[Path]:
@@ -1866,6 +1969,62 @@ class FsWorkStore(FsTreeStore, WorkStore):
             for status in WORK_STATUSES
             for p in (self.root / status).rglob("state.yaml")
         )
+
+    def start(self, slug: str, force: bool = False, *, owner: str = "",
+              take_over: bool = False) -> WorkItem:
+        """Publish a stamped backlog claim with a single atomic source rename."""
+        item = self._require(slug)
+        started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        if item.status == "active":
+            if not take_over:
+                raise AlreadyClaimed(slug, item.owner, item.started)
+            if not owner:
+                raise ValueError("takeover requires an owner")
+            self.set_field(slug, "owner", owner)
+            self.set_field(slug, "started", started)
+            if self.auto_commit_transitions():
+                rel = str(self._find(slug).relative_to(self.store_git_root))
+                err = git_commit_result(self.store_git_root, f"tcw work: take over {slug}", rel)
+                if err:
+                    raise TransitionCommitError(f"{slug} was taken over, but committing it failed:\n{err}")
+            return self._require(slug)
+        if item.status != "backlog":
+            raise IllegalTransition(f"{item.status} → active is not a legal transition")
+        if not force:
+            if item.initiative:
+                epic = self.initiative_epic(item)
+                if epic is None or epic.status != "active":
+                    raise ValueError(f"Cannot start work item {slug} before epic {item.initiative} is active")
+            blockers = self.unresolved_blockers(item)
+            if blockers:
+                raise ValueError("blocked by: " + ", ".join(blockers) + " (use --force to override)")
+        src = self._find(slug)
+        claiming = self.root / ".claiming"
+        claiming.mkdir(exist_ok=True)
+        private = claiming / f"{slug}-{uuid.uuid4().hex}"
+        try:
+            os.replace(src, private)
+        except FileNotFoundError:
+            for _ in range(50):
+                current = self.get(slug)
+                if current is not None and current.status == "active":
+                    raise AlreadyClaimed(slug, current.owner, current.started)
+                time.sleep(0.01)
+            raise ValueError(f"{slug} has an interrupted claim; use --take-over --owner <identity>")
+        state_path = private / "state.yaml"
+        state = load_yaml(state_path)
+        state["owner"], state["started"] = owner, started
+        dump_yaml(state_path, state)
+        dst = self.root / "active" / slug
+        try:
+            os.replace(private, dst)
+        except BaseException:
+            os.replace(private, src)
+            raise
+        git_stage(self.store_git_root, src, dst)
+        if self.auto_commit_transitions():
+            self._commit_transition(slug, src, dst, "active", item)
+        return self._require(slug)
 
     def _status_of(self, d: Path) -> str:
         """Status = the first path component under the work root (`backlog/p/c`
@@ -2115,6 +2274,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             worktree=state.get("worktree", ""),
             branch=state.get("branch", ""),
             parent=self._parent_slug(d),
+            owner=state.get("owner", ""),
+            started=state.get("started", ""),
         )
 
     @staticmethod
@@ -2494,7 +2655,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             os.replace(temp, destination)
             self._stage(destination)
             tracked = subprocess.run(
-                ["git", "-C", str(self.node_root), "ls-files", "--error-unmatch", "--", str(source)],
+                ["git", "-C", str(self.store_git_root), "ls-files", "--error-unmatch", "--", str(source)],
                 capture_output=True,
             ).returncode == 0
             if tracked:
@@ -2570,8 +2731,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         moved and the commit did not.
         """
         self._warn_off_trunk(item)
-        rel = [str(p.relative_to(self.node_root)) for p in (src, dst)]
-        err = git_commit_result(self.node_root,
+        rel = [str(p.relative_to(self.store_git_root)) for p in (src, dst)]
+        err = git_commit_result(self.store_git_root,
                                 f"tcw work: {slug} → {to_status}", *rel)
         if err:
             raise TransitionCommitError(
@@ -2593,7 +2754,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         trunk = self.trunk_branch()
         if not trunk:
             return
-        current = git_current_branch(self.node_root)
+        current = git_current_branch(self.store_git_root)
         if current is None or current == trunk:
             return
         if item is not None and item.branch and item.branch == current:

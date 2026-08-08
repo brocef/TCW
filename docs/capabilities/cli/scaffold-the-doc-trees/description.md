@@ -10,3 +10,9 @@ Scaffolding the `work` component also writes `.gitignore` rules that
 the `completed/` and `discarded/` folders stay in the tracked tree, but what
 lands in them does not. Re-running init on an older node adds any rule it lacks;
 deleting the rules opts out.
+
+For the work component I may instead pass `--work-path <path>` at top level or
+`--path <path>` to `tcw work init`. TCW records that locator on the owning node,
+scaffolds the target repository, and writes ignore rules relative to the target
+repository. It replaces only an exactly pristine generated default scaffold;
+existing work requires a manual migration.

@@ -23,7 +23,8 @@ _BUILT = [taxonomy_cli, capabilities_cli, work_cli]
 _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 
-def run_init(components: list[str], project_id: str | None = None) -> int:
+def run_init(components: list[str], project_id: str | None = None,
+             work_path: str | None = None) -> int:
     """Scaffold `docs/<component>/` trees under the current directory, mark it a
     node, and report. Shared by `tcw init` and each `tcw <component> init`."""
     root = Path.cwd()
@@ -50,13 +51,18 @@ def run_init(components: list[str], project_id: str | None = None) -> int:
             )
             return 1
     try:
-        created = init(components, root, project_id)
+        created = init(components, root, project_id,
+                       Path(work_path).expanduser() if work_path is not None else None)
     except (ValueError, OSError) as error:
         print(f"tcw init: {error}", file=sys.stderr)
         return 1
-    print(f"Scaffolded {len(created)} dir(s) under {root / 'docs'}:")
+    print(f"Scaffolded {len(created)} dir(s):")
     for p in created:
-        print(f"  {p.relative_to(root)}")
+        try:
+            shown = p.relative_to(root)
+        except ValueError:
+            shown = p
+        print(f"  {shown}")
     print(f"Node marker: {SENTINEL}")          # deterministic across runs
     if "work" in components:
         print(".gitignore: resolved work (completed/, discarded/) stays on disk, "
@@ -65,7 +71,7 @@ def run_init(components: list[str], project_id: str | None = None) -> int:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
-    return run_init(args.components or list(COMPONENTS), args.id)
+    return run_init(args.components or list(COMPONENTS), args.id, args.work_path)
 
 
 def _not_yet(name: str):
@@ -128,6 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("components", nargs="*",
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")
     p_init.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
+    p_init.add_argument("--work-path", help="filesystem location for the work store")
     p_init.set_defaults(func=_cmd_init)
 
     p_validate = sub.add_parser(

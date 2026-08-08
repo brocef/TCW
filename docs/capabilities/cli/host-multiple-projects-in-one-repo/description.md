@@ -11,3 +11,8 @@ git worktree TCW does read git metadata, for one narrow purpose — working out
 where a relative locator was written from, so it still points where it was meant
 to (see [Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree)).
 That never adds, removes, or re-parents a project.
+
+Several registered projects may place independent work stores in one
+orchestrator repository. Their canonical project IDs, not the containing folder
+names, remain the namespaces; TCW rejects two projects that resolve to the same
+physical work-store root.
