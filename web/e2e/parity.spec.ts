@@ -338,6 +338,7 @@ test("searches references and surfaces targeted validation warnings", async ({
                 name: `Useful scrolling feature ${index}`,
                 slug: `use-scrolling-feature-${index}`,
                 kind: "Feature",
+                vocabulary: ["react-vocabulary"],
             },
         })
         expect(result.ok()).toBeTruthy()
