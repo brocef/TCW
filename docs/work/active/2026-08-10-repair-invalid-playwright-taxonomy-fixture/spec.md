@@ -27,14 +27,15 @@ suite skips all later scenarios.
 
 ## Design
 
-Supply the existing `react-vocabulary` reference when creating each generated
-Feature, matching the valid Feature created immediately afterward
-(`web/e2e/parity.spec.ts:345-351`). Keep the generated names, slugs, kind, count,
-and assertions unchanged.
+Create a scenario-local Vocabulary and supply its reference when creating each
+generated Feature and the final `use-feature` fixture. Keep the generated names,
+slugs, kind, count, and assertions unchanged. This makes the scenario valid both
+in the serial suite and when selected independently.
 
 The sibling-defect sweep is narrowed to taxonomy Feature creation in the same
 end-to-end file because this failure is a fixture-contract mismatch; the only
-other explicit Feature creation in that scenario already supplies a vocabulary.
+other explicit Feature creation in that scenario already supplies a vocabulary,
+although its original vocabulary came from an earlier serial scenario.
 
 ## Acceptance criteria
 

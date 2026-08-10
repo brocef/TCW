@@ -1,8 +1,8 @@
 # Implementation plan
 
-1. Update the generated Feature requests in `web/e2e/parity.spec.ts` to include
-   the existing `react-vocabulary` reference. Verify the focused reference-search
-   scenario passes and reaches its assertions.
+1. Make the reference-search scenario create a local Vocabulary and update its
+   Feature requests in `web/e2e/parity.spec.ts` to reference it. Verify the
+   focused scenario passes independently and reaches its assertions.
 2. Run `python -m pytest -q`, `pnpm test`, `pnpm test:e2e`, and `pnpm lint`.
    Confirm every Playwright scenario executes rather than being skipped after a
    serial-suite failure.
