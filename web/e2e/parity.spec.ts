@@ -497,10 +497,7 @@ test("handles missing lifecycle document tabs and resets them across work items"
     await workTabs.getByRole("tab", { name: "Spec" }).click()
     await expect(page.getByText("Spec is not yet present.")).toBeVisible()
     await page.reload()
-    await page
-        .getByRole("treeitem", { name: /Tab reset fixture/ })
-        .getByRole("button", { name: /Tab reset fixture/ })
-        .click()
+    await page.getByRole("treeitem", { name: /Tab reset fixture/ }).click()
     await expect(
         page.getByRole("heading", { name: "Tab reset fixture", level: 2 })
     ).toBeVisible()
