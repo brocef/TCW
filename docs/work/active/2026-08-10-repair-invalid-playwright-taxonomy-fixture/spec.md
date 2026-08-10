@@ -15,6 +15,8 @@ suite skips all later scenarios.
 ## Goals
 
 - Make the fixture's scrolling entries valid under the current taxonomy model.
+- Align stale Playwright expectations with the current Review status and tree
+  item interaction exposed after the serial suite advances.
 - Preserve the reference-search scenario's intended result volume and matching
   behavior.
 - Run the complete Python, web unit, and Playwright suites plus ESLint.
@@ -22,8 +24,7 @@ suite skips all later scenarios.
 ## Non-goals
 
 - Change taxonomy validation or API behavior.
-- Change product behavior or test assertions.
-- Refactor unrelated end-to-end fixtures.
+- Change taxonomy validation, API behavior, or unrelated product behavior.
 
 ## Design
 
@@ -31,9 +32,13 @@ Supply the existing `react-vocabulary` reference when creating each generated
 Feature, matching the valid Feature created immediately afterward. Keep the
 generated names, slugs, kind, count, and assertions unchanged.
 
-The sibling-defect sweep is narrowed to taxonomy Feature creation in the same
-end-to-end file because this failure is a fixture-contract mismatch; the only
-other explicit Feature creation in that scenario already supplies a vocabulary.
+Refresh the status-filter snapshot so it includes the registered Review status,
+and click the tab-reset target through its `treeitem` role, matching the current
+DOM and the suite's established tree interaction.
+
+The sibling-defect sweep covers stale expected artifacts subsequently exposed
+in the same serial end-to-end file. Each correction must be grounded in current
+model or DOM evidence rather than accepting new output blindly.
 
 ## Acceptance criteria
 
