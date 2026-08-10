@@ -15,7 +15,7 @@ Repository discovery is unrestricted.
 
 ## Produce
 
-**One of two, and which one *is* the verdict:**
+**One of two, and which one _is_ the verdict:**
 
 - `refined-outcome.md` — accepted. Records the decision, the evidence, deferred
   follow-ups, and the closeout choices.
@@ -69,9 +69,9 @@ moves to `complete` or back to `active`.
 
 **Badly:**
 
-- *The user is unavailable.* Do not complete on their behalf. Leave the item in
+- _The user is unavailable._ Do not complete on their behalf. Leave the item in
   `review`; that status exists precisely so waiting is a visible state.
-- *Acceptance criteria are unverifiable as written.* Say so plainly and record it
+- _Acceptance criteria are unverifiable as written._ Say so plainly and record it
   — that is a `spec` defect worth a post-mortem, not something to wave through.
-- *Verification finds the spec solved the wrong problem.* `rework.md` is the
+- _Verification finds the spec solved the wrong problem._ `rework.md` is the
   wrong instrument. Return to `spec`, or discard and re-request.

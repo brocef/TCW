@@ -13,7 +13,7 @@ That item bounded taxonomy refs to the store root by routing them through
 absolute paths, backslashes, empty segments, URL- and double-encoded variants,
 and the `extends` alias branch — on both the read and delete paths, via CLI and
 HTTP. This is the residue it did not cover, and deliberately did not claim to:
-its Design §3 is about ref *syntax*.
+its Design §3 is about ref _syntax_.
 
 ## Problem
 

@@ -85,13 +85,13 @@ refine with the user → write) → read [`references/init.md`](references/init.
 
 ## Quick reference
 
-| Goal                            | Command                                                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]`                                                    |
+| Goal                            | Command                                                                                                                                                          |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]`                                                                                                        |
 | add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]` — a path, an `<alias>/<path>`, or a unique leaf slug; refused if it does not resolve |
-| nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                  |
-| link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                     |
-| browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                 |
-| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>`                                        |
-| validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks) |
-| remove a local term             | `tcw taxonomy rm <path>`                                                                                     |
+| nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                                                                      |
+| link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                                                                         |
+| browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
+| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>`                                                                                            |
+| validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                                                     |
+| remove a local term             | `tcw taxonomy rm <path>`                                                                                                                                         |

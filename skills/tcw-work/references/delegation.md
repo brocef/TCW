@@ -4,15 +4,15 @@
 carries the gates, and those are evaluated once, by the session that holds the
 user relationship and the primary checkout.
 
-| Stage | Delegable |
-|---|---|
-| `inbox`, `request`, `verify` | no — interactive |
-| `spec`, `plan`, `implement`, `postmortem` | yes |
+| Stage                                     | Delegable        |
+| ----------------------------------------- | ---------------- |
+| `inbox`, `request`, `verify`              | no — interactive |
+| `spec`, `plan`, `implement`, `postmortem` | yes              |
 
 `request` and `verify` are excluded for a different reason than transitions: a
 subagent cannot ask the user, and both stages exist to obtain user input.
 
-`verify` is non-delegable because it *ends* in a user decision, not because all
+`verify` is non-delegable because it _ends_ in a user decision, not because all
 of its work is interactive. Its **assessment** — reading the diff, running
 checks, forming an opinion — is delegable read-only work; its **approval** is
 not. Dispatch the assessment, present the result, hold the answer yourself.

@@ -27,7 +27,7 @@ configured filesystem path is only an adapter locator:
 ```yaml
 id: corelib
 work:
-  path: ../docs/CoreLib/work
+    path: ../docs/CoreLib/work
 ```
 
 `corelib/<slug>` remains the qualified reference. The directory containing the
@@ -193,7 +193,7 @@ The existing sentinel accepts:
 
 ```yaml
 work:
-  path: /srv/shared/team-work/docs/work
+    path: /srv/shared/team-work/docs/work
 ```
 
 An absent or blank key resolves to `<code-node>/docs/work`. A relative value is

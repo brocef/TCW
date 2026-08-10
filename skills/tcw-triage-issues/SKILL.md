@@ -73,11 +73,11 @@ settled** — resolve the slug and ask what actually happened to it:
 tcw work show <slug>
 ```
 
-| Item status | What it means | What to do |
-| --- | --- | --- |
-| `backlog` / `active` / `review` | Genuinely tracked | Report it, name the item, move on |
-| `completed` | The change already shipped | No new item. Offer a reply saying so, and close. |
-| `discarded` | It was closed **without being done** | Depends entirely on *why* — read `resolution` first. |
+| Item status                     | What it means                        | What to do                                           |
+| ------------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| `backlog` / `active` / `review` | Genuinely tracked                    | Report it, name the item, move on                    |
+| `completed`                     | The change already shipped           | No new item. Offer a reply saying so, and close.     |
+| `discarded`                     | It was closed **without being done** | Depends entirely on _why_ — read `resolution` first. |
 
 The last two rows are the ones that bite. A discarded item means the project
 already decided something about this issue and the reporter was never told: the
@@ -87,14 +87,14 @@ relitigate a decision that has already been made.
 **`discarded` is not a verdict — it is three verdicts.** Read the item's
 `state.yaml` `resolution` before drafting anything:
 
-| `resolution` | What it actually means | Reply |
-| --- | --- | --- |
-| `wontfix` | Genuinely rejected | The "not worth doing" outcome, reason on record. Close. |
-| `duplicate` | Folded into another item | Point at that item. Close. |
+| `resolution` | What it actually means                | Reply                                                                                         |
+| ------------ | ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `wontfix`    | Genuinely rejected                    | The "not worth doing" outcome, reason on record. Close.                                       |
+| `duplicate`  | Folded into another item              | Point at that item. Close.                                                                    |
 | `superseded` | **Still wanted, tracked differently** | Find what superseded it and read what that item did with the request — absorbed, or deferred? |
 
 `superseded` is the trap. It does not mean no. The superseding item may have
-absorbed the request, or it may have *deferred* it and written it down so it
+absorbed the request, or it may have _deferred_ it and written it down so it
 would not be lost — in which case the honest answer is that nothing tracks it
 today and it likely needs recreating as a follow-up item. Saying "we decided
 against this" to a reporter whose request was merely postponed is the worst reply
@@ -105,12 +105,12 @@ this skill can produce, and it is the one the folder name alone would lead you t
 Read each issue in full (`gh issue view <n> --comments` when the thread matters).
 Then decide, before creating anything:
 
-| Outcome | Meaning | Result |
-| --- | --- | --- |
-| **Worth doing** | A real change this project should make | → §5, becomes a work item |
-| **Duplicate** | Of another open issue, or of an item already in `docs/work/` | No item. Close with a pointer. |
-| **Not worth doing** | Out of scope, contrary to the design, or simply not wanted | No item. Close with the reason. |
-| **Ill-defined** | May be real, but there is not enough here to act on | No item. Ask for what is missing. |
+| Outcome             | Meaning                                                      | Result                            |
+| ------------------- | ------------------------------------------------------------ | --------------------------------- |
+| **Worth doing**     | A real change this project should make                       | → §5, becomes a work item         |
+| **Duplicate**       | Of another open issue, or of an item already in `docs/work/` | No item. Close with a pointer.    |
+| **Not worth doing** | Out of scope, contrary to the design, or simply not wanted   | No item. Close with the reason.   |
+| **Ill-defined**     | May be real, but there is not enough here to act on          | No item. Ask for what is missing. |
 
 Only the first creates a work item.
 
@@ -168,12 +168,12 @@ shape those words into an actual request, and commit the item.
 **An issue that is triaged and then left silent is a worse experience than one
 nobody read.** Offer a reply for every issue, matched to its outcome:
 
-| Outcome | Reply |
-| --- | --- |
-| Worth doing | Acknowledge, and name the work item now tracking it |
-| Duplicate | Point at the original, close |
-| Not worth doing | Give the actual reason, close |
-| Ill-defined | Ask for the **specific** missing detail — not "please clarify" |
+| Outcome         | Reply                                                          |
+| --------------- | -------------------------------------------------------------- |
+| Worth doing     | Acknowledge, and name the work item now tracking it            |
+| Duplicate       | Point at the original, close                                   |
+| Not worth doing | Give the actual reason, close                                  |
+| Ill-defined     | Ask for the **specific** missing detail — not "please clarify" |
 
 ```bash
 gh issue comment <n> --body "<text>"
@@ -188,7 +188,7 @@ attributed, permanent, and on someone else's report.
 A declined reply leaves the issue untouched. That is a valid end state.
 
 **Why closing matters mechanically:** §2 lists only open issues, so a closed
-issue never resurfaces. The reply *is* the record of the rejection — which is
+issue never resurfaces. The reply _is_ the record of the rejection — which is
 why an ill-defined issue deliberately stays **open**: it is waiting on the
 reporter, and seeing it again next sweep is the correct prompt to chase it. When
 you meet an issue where you already asked for detail and the reporter has not
@@ -220,15 +220,15 @@ there is nothing to do here.
 **What to say depends on how the item closed**, and the four resolutions do not
 mean the same thing to a reporter:
 
-| `--resolution` | Reply | Close the issue? |
-| --- | --- | --- |
-| `done` | It shipped — say in which version | **Yes** |
-| `duplicate` | Name the item that absorbed it | **Yes** |
-| `wontfix` | The actual reason it was not taken on | **Yes** |
-| `superseded` | What replaced it — **and whether the ask was absorbed or deferred** | **Only if absorbed** |
+| `--resolution` | Reply                                                               | Close the issue?     |
+| -------------- | ------------------------------------------------------------------- | -------------------- |
+| `done`         | It shipped — say in which version                                   | **Yes**              |
+| `duplicate`    | Name the item that absorbed it                                      | **Yes**              |
+| `wontfix`      | The actual reason it was not taken on                               | **Yes**              |
+| `superseded`   | What replaced it — **and whether the ask was absorbed or deferred** | **Only if absorbed** |
 
 **`superseded` is the one to slow down on.** It does not mean the request was
-refused. The superseding item may have absorbed it, or may have *deferred* it and
+refused. The superseding item may have absorbed it, or may have _deferred_ it and
 written it down so it would not be lost. Closing the issue in the second case
 tells someone their request was declined when it was merely postponed — the same
 mistake §3 warns about, except here it is irreversible and public rather than
@@ -237,7 +237,7 @@ before drafting anything, and leave the issue open when it was deferred.
 
 **Nothing is posted without the user approving the exact text** — the same rule
 as §6, restated because you may have arrived here without reading it. Show the
-message verbatim, one at a time, and get approval for *that* message.
+message verbatim, one at a time, and get approval for _that_ message.
 
 ```bash
 gh issue close <n> --comment "<text>"    # done / duplicate / wontfix

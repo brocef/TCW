@@ -73,7 +73,7 @@ descend into symlinked directories; `tcw work show sneaky` and
 refuses to cross a symlink, so `tcw taxonomy rm alpha/link/victim` fails and the
 target survives.
 
-**6. Stack-trace leak.** `git` refuses to stage *anything* beyond a symlink, so
+**6. Stack-trace leak.** `git` refuses to stage _anything_ beyond a symlink, so
 every write path above dies at `git_stage`/`git_rm` (`fs.py:262`, `fs.py:267`)
 with a raw `CalledProcessError` traceback: `main()` (`tcw/cli.py:166-173`)
 catches only `ValueError`. Pre-existing, and reproducible without any planted
@@ -132,21 +132,21 @@ def _within_store(self, path: Path) -> bool:
   path (macOS `/tmp` → `/private/tmp`, the default for `tmp_path` tests) would
   otherwise fail every check.
 - **Non-strict `resolve()`** resolves the existing prefix and appends the rest,
-  so it works for a path being *created* as well as one being read.
+  so it works for a path being _created_ as well as one being read.
 - It stays out of `_safe_store_id`, which is a pure string function shared with
   callers that have no root in hand.
 
 Six call sites, three per store:
 
-| Site | Behavior |
-|---|---|
-| `FsTaxonomyStore.get_local` (`fs.py:772`) | after the existing lexical guard and the `is_dir()` hit, return `None` if not `_within_store` |
-| `FsTaxonomyStore.add` (`fs.py:847`) | check the target dir `d` **before** `d.exists()`; not within → the existing "parent term does not exist" `ValueError` (checking `d` covers the `--parent` case, since a non-existent leaf resolves through its parent) |
-| `FsTaxonomyStore._local_slugs` (`fs.py:784`) | drop paths that are not `_within_store` |
-| `FsCapabilitiesStore.get_local` (`fs.py:1304`) | return `None` if not `_within_store` |
-| `FsCapabilitiesStore.add` (`fs.py:1379`) | refuse with `ValueError` before `_write_node` |
-| `FsCapabilitiesStore._all_meta_dirs` (`fs.py:1200`) | drop paths that are not `_within_store` before listings, opaque-ID lookup, overrides, or attachment composition consume them |
-| Both `_validation_resources` methods (`fs.py:1018`, `:1645`) | refuse the local-folder fast path when it escapes the store |
+| Site                                                         | Behavior                                                                                                                                                                                                               |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FsTaxonomyStore.get_local` (`fs.py:772`)                    | after the existing lexical guard and the `is_dir()` hit, return `None` if not `_within_store`                                                                                                                          |
+| `FsTaxonomyStore.add` (`fs.py:847`)                          | check the target dir `d` **before** `d.exists()`; not within → the existing "parent term does not exist" `ValueError` (checking `d` covers the `--parent` case, since a non-existent leaf resolves through its parent) |
+| `FsTaxonomyStore._local_slugs` (`fs.py:784`)                 | drop paths that are not `_within_store`                                                                                                                                                                                |
+| `FsCapabilitiesStore.get_local` (`fs.py:1304`)               | return `None` if not `_within_store`                                                                                                                                                                                   |
+| `FsCapabilitiesStore.add` (`fs.py:1379`)                     | refuse with `ValueError` before `_write_node`                                                                                                                                                                          |
+| `FsCapabilitiesStore._all_meta_dirs` (`fs.py:1200`)          | drop paths that are not `_within_store` before listings, opaque-ID lookup, overrides, or attachment composition consume them                                                                                           |
+| Both `_validation_resources` methods (`fs.py:1018`, `:1645`) | refuse the local-folder fast path when it escapes the store                                                                                                                                                            |
 
 Guarding `get_local` is what makes this a one-place fix on the read side:
 `get`, `get_inherited`, `search`, `remove`, `update_term`, `set`, `_ref_problem`,
@@ -181,7 +181,7 @@ existence check.
    than raising.
 5. With `ln -s ../outside docs/capabilities/link` planted:
    `tcw capabilities show link/thing` exits 1; `tcw capabilities set link/thing
-   --status Supported` exits 1 **and** `docs/outside/thing/meta.yaml` is
+--status Supported` exits 1 **and** `docs/outside/thing/meta.yaml` is
    byte-identical to before; `tcw capabilities list` does not list `link/thing`.
 6. A store whose root is itself reached through a symlink (`tmp_path` on macOS)
    still passes the full existing suite — no ordinary operation regresses.

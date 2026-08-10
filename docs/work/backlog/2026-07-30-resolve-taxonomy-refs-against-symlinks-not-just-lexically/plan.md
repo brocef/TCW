@@ -6,24 +6,24 @@ The spec's Risks section required walking every `self.root / <id>` join rather
 than asserting that six guards cover them. Done — and the walk found **two more
 sites**, so the count is eight, not six:
 
-| Site | Reached from | Needs its own guard? |
-|---|---|---|
-| `FsTaxonomyStore._term` (`fs.py:756`) | `get_local`, `_local_slugs` | no — callers guarded |
-| `FsTaxonomyStore.get_local` (`fs.py:772`) | CLI, serve, every ref path | **yes** |
-| `FsTaxonomyStore.add` (`fs.py:847`) | CLI, serve | **yes** — one guard on `d` covers parent and target |
-| `FsTaxonomyStore._local_slugs` (`fs.py:784`) | `list_all`, `relators`, `check` | **yes** |
-| `FsTaxonomyStore.remove` (`fs.py:859`) | `get()` | no |
-| `FsTaxonomyStore._validation_resources` (`fs.py:1018`) | targeted validation | **yes** |
-| `FsCapabilitiesStore._all_meta_dirs` (`fs.py:1200`) | local paths, override and ID indexes | **yes** — filter before consumers see escaped metadata |
-| `FsCapabilitiesStore._local_paths` (`fs.py:1213`) | `list_all`, override index, ID lookup, `check` | no additional guard after `_all_meta_dirs` |
-| `FsCapabilitiesStore._capability` (`fs.py:1244`) | `get_local`, local-path consumers | no — callers guarded |
-| `FsCapabilitiesStore.get_local` (`fs.py:1304`) | CLI, serve, `set`, `remove` | **yes** |
-| `FsCapabilitiesStore.add` (`fs.py:1379`) | CLI, serve | **yes** |
-| `FsCapabilitiesStore.remove` (`fs.py:1370`), `set` (`fs.py:1421`), override writes (`fs.py:1430`, `:1435`) | `get()` | no |
-| `FsCapabilitiesStore._validation_resources` (`fs.py:1645`) | targeted validation | **yes** |
-| `FsWorkStore._validation_resources` (`fs.py:2314`) | `_find` (rglob) | no — verified unaffected |
+| Site                                                                                                       | Reached from                                   | Needs its own guard?                                   |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------ |
+| `FsTaxonomyStore._term` (`fs.py:756`)                                                                      | `get_local`, `_local_slugs`                    | no — callers guarded                                   |
+| `FsTaxonomyStore.get_local` (`fs.py:772`)                                                                  | CLI, serve, every ref path                     | **yes**                                                |
+| `FsTaxonomyStore.add` (`fs.py:847`)                                                                        | CLI, serve                                     | **yes** — one guard on `d` covers parent and target    |
+| `FsTaxonomyStore._local_slugs` (`fs.py:784`)                                                               | `list_all`, `relators`, `check`                | **yes**                                                |
+| `FsTaxonomyStore.remove` (`fs.py:859`)                                                                     | `get()`                                        | no                                                     |
+| `FsTaxonomyStore._validation_resources` (`fs.py:1018`)                                                     | targeted validation                            | **yes**                                                |
+| `FsCapabilitiesStore._all_meta_dirs` (`fs.py:1200`)                                                        | local paths, override and ID indexes           | **yes** — filter before consumers see escaped metadata |
+| `FsCapabilitiesStore._local_paths` (`fs.py:1213`)                                                          | `list_all`, override index, ID lookup, `check` | no additional guard after `_all_meta_dirs`             |
+| `FsCapabilitiesStore._capability` (`fs.py:1244`)                                                           | `get_local`, local-path consumers              | no — callers guarded                                   |
+| `FsCapabilitiesStore.get_local` (`fs.py:1304`)                                                             | CLI, serve, `set`, `remove`                    | **yes**                                                |
+| `FsCapabilitiesStore.add` (`fs.py:1379`)                                                                   | CLI, serve                                     | **yes**                                                |
+| `FsCapabilitiesStore.remove` (`fs.py:1370`), `set` (`fs.py:1421`), override writes (`fs.py:1430`, `:1435`) | `get()`                                        | no                                                     |
+| `FsCapabilitiesStore._validation_resources` (`fs.py:1645`)                                                 | targeted validation                            | **yes**                                                |
+| `FsWorkStore._validation_resources` (`fs.py:2314`)                                                         | `_find` (rglob)                                | no — verified unaffected                               |
 
-Both `_validation_resources` take a `self.root / identifier` shortcut *before*
+Both `_validation_resources` take a `self.root / identifier` shortcut _before_
 consulting `get()`, so `get_local`'s guard does not cover them. Verified against
 the scratch repo — both return paths outside their store today:
 
@@ -83,7 +83,7 @@ whose root is itself reached through a symlink says `True` for its own children
 **Changes** `tcw/store/fs.py`:
 
 - `get_local` (`:772`) — `return self._term(slug) if (self.root / slug).is_dir()
-  and self._within_store(self.root / slug) else None`. Order matters: the guard
+and self._within_store(self.root / slug) else None`. Order matters: the guard
   sits behind the existence check so a miss pays nothing. Still returns `None`,
   never raises — `check` catches only `AmbiguousRef`.
 - `add` (`:847`) — after computing `d`, before `d.exists()`: not
@@ -146,7 +146,7 @@ handler so either item can land first; note the relationship in `outcome.md`.
 ### 6. Suite + measurement pass
 
 Run `pytest` in full (criteria 6 and 7 — the whole suite already runs under
-macOS `tmp_path`, i.e. a symlinked `/tmp`, so a green suite *is* the
+macOS `tmp_path`, i.e. a symlinked `/tmp`, so a green suite _is_ the
 resolve-both-sides check). Then sanity-check `list_all` on this repo's own
 taxonomy against the spec's ≈ +6%-per-hit measurement; if the tree walk shows
 worse, record the number in `outcome.md` rather than silently accepting it.

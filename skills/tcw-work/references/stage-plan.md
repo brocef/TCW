@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Decide *how*, in ordered steps someone else could follow. The plan is where
+Decide _how_, in ordered steps someone else could follow. The plan is where
 sequencing risk is discovered — before it is discovered by a half-finished
 implementation.
 
@@ -35,7 +35,7 @@ stage. Dependency order there is guidance, not a lifecycle gate.
    — agent `[judgment]`
 2. Order tasks so the suite is green at every commit boundary. A task that leaves
    the tree broken for the next one is two tasks. — agent `[judgment]`
-3. Put the riskiest change where it is *isolated*, not where it is convenient —
+3. Put the riskiest change where it is _isolated_, not where it is convenient —
    typically after its infrastructure exists and with its tests already written.
    — agent `[judgment]`
 4. Before finalizing, invoke the `documentation-sync` skill to evaluate every
@@ -61,8 +61,8 @@ has a stated reason.
 
 **Badly:**
 
-- *Planning reveals the spec is wrong.* Return to `spec` and fix it. Do not plan
+- _Planning reveals the spec is wrong._ Return to `spec` and fix it. Do not plan
   around a spec you no longer believe.
-- *A task cannot be verified.* Say so in the task rather than inventing a test
+- _A task cannot be verified._ Say so in the task rather than inventing a test
   that would pass either way.
-- *The work is too large.* Better to find it here than at `implement`. Decompose.
+- _The work is too large._ Better to find it here than at `implement`. Decompose.

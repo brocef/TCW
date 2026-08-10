@@ -26,10 +26,10 @@ that is untracked, or tracked with uncommitted modifications, is **reported and
 left in place**: its content exists nowhere else, so removing it is
 unrecoverable. Two checks decide it, and anyone can re-run them:
 
-| Check | Meaning |
-|---|---|
-| `git ls-files --error-unmatch <path>` | exit 0 → tracked; non-zero → untracked, do not delete |
-| `git status --porcelain <path>` | empty → committed as-is, deletable; any output → uncommitted changes, do not delete |
+| Check                                 | Meaning                                                                             |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `git ls-files --error-unmatch <path>` | exit 0 → tracked; non-zero → untracked, do not delete                               |
+| `git status --porcelain <path>`       | empty → committed as-is, deletable; any output → uncommitted changes, do not delete |
 
 Report the skipped files with the reason. Committing someone else's stray file
 just to make it deletable is not your call.

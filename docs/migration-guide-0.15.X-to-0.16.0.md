@@ -57,7 +57,7 @@ Two reasonable positions, both defensible:
   also what TCW did to its own.
 
 If you strip them, remove the hash attributions and leave the entry prose alone —
-the wrapper and the `` (`hash`) `` suffixes are the change, not the sentences
+the wrapper and the ``(`hash`)`` suffixes are the change, not the sentences
 around them.
 
 ## If you copied the recommended Documentation Sync entry

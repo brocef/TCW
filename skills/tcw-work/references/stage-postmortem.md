@@ -3,7 +3,7 @@
 ## Purpose
 
 Find which stage first missed a problem. Not blame and not a summary — the
-question is always *where would this have been cheapest to catch*.
+question is always _where would this have been cheapest to catch_.
 
 ## Inputs
 
@@ -33,7 +33,7 @@ Optional `## Notes`.
    — agent `[judgment]`
 2. Read the spine backwards and locate the earliest artifact that could have
    surfaced the problem. — agent `[judgment]`
-3. Distinguish *nobody could have known* from *nobody checked*. Only the second
+3. Distinguish _nobody could have known_ from _nobody checked_. Only the second
    is actionable, and conflating them produces process nobody needs. — agent
    `[judgment]`
 4. Write `post-mortem.md` and commit it. — agent `[judgment]`
@@ -48,9 +48,9 @@ proposed or the conclusion is explicitly "this was not knowable".
 
 **Badly:**
 
-- *The artifacts needed are missing.* Say so — a spine with no `outcome.md` is
+- _The artifacts needed are missing._ Say so — a spine with no `outcome.md` is
   itself the finding.
-- *The problem is a one-off.* Record that and stop. Manufacturing a process
+- _The problem is a one-off._ Record that and stop. Manufacturing a process
   change for a non-recurring miss costs more than the miss.
 
 ## This stage is out-of-band

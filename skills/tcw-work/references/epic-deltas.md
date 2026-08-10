@@ -9,13 +9,13 @@ replaces were ~85% identical and had already drifted apart.
 
 ## What the artifacts mean
 
-| Artifact | For an epic |
-|---|---|
-| `initial-request.md` | The initiative request and coordination goal. Also the managed target for `reconcile`'s rollup. |
-| `spec.md` | An overview spec: affected nodes, child boundaries, ordering constraints, acceptance criteria for the whole initiative. Implementation detail belongs in each child's own spec. |
-| `plan.md` | A coordination plan: child tasks, delegation commands, dependency order, rollup checkpoints. |
-| `outcome.md` | Aggregate status reconciled from the children. |
-| `refined-outcome.md` | Aggregate verification and closeout decisions. |
+| Artifact             | For an epic                                                                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initial-request.md` | The initiative request and coordination goal. Also the managed target for `reconcile`'s rollup.                                                                                 |
+| `spec.md`            | An overview spec: affected nodes, child boundaries, ordering constraints, acceptance criteria for the whole initiative. Implementation detail belongs in each child's own spec. |
+| `plan.md`            | A coordination plan: child tasks, delegation commands, dependency order, rollup checkpoints.                                                                                    |
+| `outcome.md`         | Aggregate status reconciled from the children.                                                                                                                                  |
+| `refined-outcome.md` | Aggregate verification and closeout decisions.                                                                                                                                  |
 
 ## Choosing the child relation
 

@@ -23,15 +23,15 @@
    resolved-ignore behavior through it. Reject duplicate physical roots across
    registered projects.
 
-   Add `tcw work init --path` and top-level `tcw init --work-path`. External init
-   writes configuration, scaffolds the target, installs target-relative ignore
-   rules in its Git repository, remains non-committing, and reports both roots.
-   Permit replacement only of an exactly pristine generated default scaffold;
-   refuse existing items, inbox entries, custom files, invalid/non-Git targets,
-   and document manual migration. Verify with default/relative/absolute/symlink/
-   broken-link/linked-worktree tests and two-repository integration coverage,
-   including qualified commands, boards, hooks, code worktrees, web editing,
-   validation, unrelated changes, and store-root collisions.
+    Add `tcw work init --path` and top-level `tcw init --work-path`. External init
+    writes configuration, scaffolds the target, installs target-relative ignore
+    rules in its Git repository, remains non-committing, and reports both roots.
+    Permit replacement only of an exactly pristine generated default scaffold;
+    refuse existing items, inbox entries, custom files, invalid/non-Git targets,
+    and document manual migration. Verify with default/relative/absolute/symlink/
+    broken-link/linked-worktree tests and two-repository integration coverage,
+    including qualified commands, boards, hooks, code worktrees, web editing,
+    validation, unrelated changes, and store-root collisions.
 
 1. **Separate the code node, work root, and work-store Git root.** Refactor
    `FsWorkStore` construction without changing `FsTreeStore` for the other axes:
@@ -45,11 +45,11 @@
    factory so CLI, qualified references, recursive boards, validation,
    capabilities gates, and the web server cannot disagree.
 
-   Verify with focused store/config and validation tests covering absent/blank,
-   relative-inside-node, absolute-external, malformed, missing, wrong-shape, and
-   non-Git configurations; run the existing node discovery, project registry,
-   qualified-reference, recursion, serve, and environment-hardness suites to
-   prove the default path is unchanged.
+    Verify with focused store/config and validation tests covering absent/blank,
+    relative-inside-node, absolute-external, malformed, missing, wrong-shape, and
+    non-Git configurations; run the existing node discovery, project registry,
+    qualified-reference, recursion, serve, and environment-hardness suites to
+    prove the default path is unchanged.
 
 2. **Route filesystem and Git effects to the correct root.** Give
    `FsWorkStore` adapter methods an explicit work-state Git root while preserving
@@ -62,10 +62,10 @@
    auto-commit disabled behavior, and transition-commit failure reporting use
    the intended repository.
 
-   Verify with two-repository integration tests for ordinary transitions and
-   `start --worktree`, assertions on each repository's commits and untouched
-   unrelated changes, plus the existing worktree and transition-auto-commit test
-   modules.
+    Verify with two-repository integration tests for ordinary transitions and
+    `start --worktree`, assertions on each repository's commits and untouched
+    unrelated changes, plus the existing worktree and transition-auto-commit test
+    modules.
 
 3. **Add the storage-neutral atomic claim contract and metadata.** Extend
    `WorkItem` and filesystem serialization with optional `owner` and `started`
@@ -76,10 +76,10 @@
    claim metadata when leaving active; ensure rework yields an unowned active
    item and legacy state files remain readable.
 
-   Verify with model-level fake-store tests for backlog claim, active
-   contention, takeover, illegal statuses, blocker/initiative `force`, metadata
-   clearing, rework, and legacy items. Run the full abstract work-store tests so
-   no filesystem-only method leaks into caller behavior.
+    Verify with model-level fake-store tests for backlog claim, active
+    contention, takeover, illegal statuses, blocker/initiative `force`, metadata
+    clearing, rework, and legacy items. Run the full abstract work-store tests so
+    no filesystem-only method leaks into caller behavior.
 
 4. **Implement atomic filesystem publication and interrupted-claim recovery.**
    Realize ordinary claims by atomically moving the backlog item into an
@@ -92,12 +92,12 @@
    explicitly, and allow only an explicit takeover to recover and publish that
    directory.
 
-   Verify with deterministic barrier-controlled two-store races, repeated
-   process/thread stress tests, read-during-publication assertions, injected
-   failures at both rename boundaries, interrupted recovery/takeover cases, and
-   held-`index.lock` tests proving exactly one claimant wins even when the later
-   commit fails. Include nested work items and pre-existing active destination
-   cases in the sibling-defect sweep.
+    Verify with deterministic barrier-controlled two-store races, repeated
+    process/thread stress tests, read-during-publication assertions, injected
+    failures at both rename boundaries, interrupted recovery/takeover cases, and
+    held-`index.lock` tests proving exactly one claimant wins even when the later
+    commit fails. Include nested work items and pre-existing active destination
+    cases in the sibling-defect sweep.
 
 5. **Wire claimant identity, takeover, hooks, and worktree sequencing through
    the CLI.** Add `--owner` and `--take-over`; resolve identity from the flag,
@@ -108,11 +108,11 @@
    bindings for an explicit takeover and preserve the truthful "moved but commit
    failed" result.
 
-   Verify with CLI tests for identity precedence/whitespace, missing identity,
-   ordinary contention, legacy unknown ownership, active takeover, interrupted
-   takeover, `--force` non-takeover, hook invocation counts, and losing
-   `--worktree` contenders. Run existing blocker, initiative, lifecycle-hook,
-   recursion, and worktree tests.
+    Verify with CLI tests for identity precedence/whitespace, missing identity,
+    ordinary contention, legacy unknown ownership, active takeover, interrupted
+    takeover, `--force` non-takeover, hook invocation counts, and losing
+    `--worktree` contenders. Run existing blocker, initiative, lifecycle-hook,
+    recursion, and worktree tests.
 
 6. **Expose claim metadata in every read surface.** Append owner and UTC start
    time to active CLI board rows, render legacy active items as unclaimed, and
@@ -121,9 +121,9 @@
    takeover controls. Confirm descendant/qualified boards preserve the metadata
    when they clone or qualify `WorkItem` values.
 
-   Verify with CLI snapshot/assertion tests, serve API tests, client component
-   tests, and a production client build; run board ordering, descendant-board,
-   and serve parity suites.
+    Verify with CLI snapshot/assertion tests, serve API tests, client component
+    tests, and a production client build; run board ordering, descendant-board,
+    and serve parity suites.
 
 7. **Run the finished implementation through repository-wide verification.**
    Run the complete pytest suite, `tcw taxonomy check`, `tcw capabilities check`,
@@ -142,7 +142,7 @@
    contradiction check against the finished implementation; if implementation
    and intended capability differ, stop and surface the conflict rather than
    silently choosing one. Verify with `tcw capabilities check` and `tcw
-   validate`.
+validate`.
 
 9. **Update `README.md` [Public-API].** Document `work.path`, shared-store setup
    and validation expectations, claimant identity precedence, contention and
@@ -170,7 +170,7 @@
 
 13. **Repeat the complete verification after the documentation block.** Run the
     full pytest suite, `tcw taxonomy check`, `tcw capabilities check`, `tcw
-    validate`, and `git diff --check` so capability and skill documentation are
+validate`, and `git diff --check` so capability and skill documentation are
     reviewed with the implementation rather than as an unchecked follow-up.
 
 ## Verification

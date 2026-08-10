@@ -21,7 +21,7 @@ you understand the request well enough to title it.
 
 ## Produce
 
-**No lifecycle artifact.** This stage creates the *item*; `tcw work inbox accept`
+**No lifecycle artifact.** This stage creates the _item_; `tcw work inbox accept`
 writes its `initial-request.md` from the entry's own text, and the `request`
 stage is what shapes that into a proper request document.
 
@@ -43,7 +43,7 @@ stage is what shapes that into a proper request document.
    not exist. — agent `[gated]`
 6. Apply tags and estimates with `tcw work edit`. If the entry carried links or
    attachments, make sure they survived into the item — collect them under
-   `## References`, one line of *why it matters* each, rather than leaving them
+   `## References`, one line of _why it matters_ each, rather than leaving them
    buried in pasted text. Do **not** ask for more here: the requester is usually
    a GitHub issue reporter or another node, and is not present. The `request`
    stage asks. — agent `[judgment]`
@@ -56,11 +56,11 @@ that reads as a change rather than a symptom, and the `request` stage can begin.
 
 **Badly:**
 
-- *The entry is too vague to title.* Do not invent scope. Accept it with the
+- _The entry is too vague to title._ Do not invent scope. Accept it with the
   clearest title the text supports and let the `request` stage ask the user, or
   leave it in the inbox and say why.
-- *The entry duplicates an existing item.* Do not accept it. Note the overlap on
+- _The entry duplicates an existing item._ Do not accept it. Note the overlap on
   the existing item and remove the entry.
-- *The entry is really several items.* Accept the primary one and create the
+- _The entry is really several items._ Accept the primary one and create the
   others with `tcw work new`, linking them with `--blocked-by` where order
   matters.

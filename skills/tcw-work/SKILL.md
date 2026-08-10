@@ -24,15 +24,15 @@ skills.
 A **stage** produces one artifact. A **transition** moves status. Nothing is
 both. Stage detection is artifact presence; status is the folder.
 
-| Stage | Produces | Runs in | Document |
-|---|---|---|---|
-| `inbox` | — (creates the item) | pre-item | [`stage-inbox.md`](references/stage-inbox.md) |
-| `request` | `initial-request.md` | backlog | [`stage-request.md`](references/stage-request.md) |
-| `spec` | `spec.md` | backlog | [`stage-spec.md`](references/stage-spec.md) |
-| `plan` | `plan.md` | backlog | [`stage-plan.md`](references/stage-plan.md) |
-| `implement` | `outcome.md` | active | [`stage-implement.md`](references/stage-implement.md) |
-| `verify` | `refined-outcome.md` **or** `rework.md` | review | [`stage-verify.md`](references/stage-verify.md) |
-| `postmortem` | `post-mortem.md` | review, or after completed | [`stage-postmortem.md`](references/stage-postmortem.md) |
+| Stage        | Produces                                | Runs in                    | Document                                                |
+| ------------ | --------------------------------------- | -------------------------- | ------------------------------------------------------- |
+| `inbox`      | — (creates the item)                    | pre-item                   | [`stage-inbox.md`](references/stage-inbox.md)           |
+| `request`    | `initial-request.md`                    | backlog                    | [`stage-request.md`](references/stage-request.md)       |
+| `spec`       | `spec.md`                               | backlog                    | [`stage-spec.md`](references/stage-spec.md)             |
+| `plan`       | `plan.md`                               | backlog                    | [`stage-plan.md`](references/stage-plan.md)             |
+| `implement`  | `outcome.md`                            | active                     | [`stage-implement.md`](references/stage-implement.md)   |
+| `verify`     | `refined-outcome.md` **or** `rework.md` | review                     | [`stage-verify.md`](references/stage-verify.md)         |
+| `postmortem` | `post-mortem.md`                        | review, or after completed | [`stage-postmortem.md`](references/stage-postmortem.md) |
 
 `start` · `submit` · `rework` · `complete` · `discard` →
 [`transitions.md`](references/transitions.md)
@@ -48,7 +48,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 ## Always
 
 - **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
-  it. Never batch several stages into one commit. TCW commits the *transitions*
+  it. Never batch several stages into one commit. TCW commits the _transitions_
   itself; do not commit those by hand.
 - **Run `tcw work lifecycle --stage <id>`** before a stage and honor any binding
   it reports → [`hooks.md`](references/hooks.md)

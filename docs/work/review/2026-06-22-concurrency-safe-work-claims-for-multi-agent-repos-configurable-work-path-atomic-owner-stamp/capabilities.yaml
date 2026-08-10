@@ -1,8 +1,8 @@
 new:
-  - work/configure-the-work-store-location
+    - work/configure-the-work-store-location
 changed:
-  - cli/scaffold-the-doc-trees
-  - cli/host-multiple-projects-in-one-repo
-  - work/keep-resolved-work-out-of-git
-  - work/start-a-work-item
-  - work/view-the-board
+    - cli/scaffold-the-doc-trees
+    - cli/host-multiple-projects-in-one-repo
+    - work/keep-resolved-work-out-of-git
+    - work/start-a-work-item
+    - work/view-the-board

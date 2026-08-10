@@ -26,9 +26,9 @@ Use a pragmatic, size-of-change framing rather than strict SemVer — bumps scal
 to the magnitude of the change set, with reverse-incompatibility a contributing
 signal rather than the sole gate:
 
-| Bump    | Use for                                                                                                                                                                                        |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patch` | The default for routine work — bug fixes, internal refactors, small features, doc updates, dependency bumps, and anything that doesn't merit a higher bump.                                     |
+| Bump    | Use for                                                                                                                                                                                             |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `patch` | The default for routine work — bug fixes, internal refactors, small features, doc updates, dependency bumps, and anything that doesn't merit a higher bump.                                         |
 | `minor` | Medium-sized change sets — substantial feature work, notable refactors, or related groups of changes shipped together. May include _some_ reverse-incompatible changes when scoped and intentional. |
 | `major` | Extremely large change sets — sweeping rewrites, broad reverse-incompatible work, or dropping support for a previously-supported platform/version. **Only when explicitly instructed by the user.** |
 
@@ -114,9 +114,9 @@ touched. What changes is the tag's position and the release documents' contents.
 
 1. **Delete the local tag.**
 
-   ```bash
-   git tag -d v{version}
-   ```
+    ```bash
+    git tag -d v{version}
+    ```
 
 2. **Merge the newer content into the versioned files.** Anything written into
    `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md` since the
@@ -132,15 +132,15 @@ touched. What changes is the tag's position and the release documents' contents.
 
 5. **Commit**, matching the project's style:
 
-   ```bash
-   git commit -m "chore(release): fold <description> into v{version}"
-   ```
+    ```bash
+    git commit -m "chore(release): fold <description> into v{version}"
+    ```
 
 6. **Re-tag at HEAD.**
 
-   ```bash
-   git tag v{version}
-   ```
+    ```bash
+    git tag v{version}
+    ```
 
 Verify with `git tag --points-at HEAD` before reporting done — a fold that left
 the tag on the old commit looks identical in `git log` and is only discovered at
@@ -148,11 +148,11 @@ push time.
 
 ## Common Mistakes
 
-| Mistake                                                       | Fix                                                                          |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Cutting by hand when the project ships a version-cut script   | Run Step 0 first — the script exists because the file set is easy to miss    |
-| Forgetting one of multiple version-bearing files              | Grep for the old version string; bump all hits that are version declarations |
-| Tagging an earlier or later commit                            | Tag the version-bump commit itself                                           |
-| Pushing the tag without asking                                | Pushing a tag is publishing — confirm first                                  |
-| Bumping when the user chose "keep the current version"        | That choice touches changelog files only                                     |
-| Folding into a tag that was already pushed                    | Both checks must pass first; otherwise cut a new version                     |
+| Mistake                                                     | Fix                                                                          |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Cutting by hand when the project ships a version-cut script | Run Step 0 first — the script exists because the file set is easy to miss    |
+| Forgetting one of multiple version-bearing files            | Grep for the old version string; bump all hits that are version declarations |
+| Tagging an earlier or later commit                          | Tag the version-bump commit itself                                           |
+| Pushing the tag without asking                              | Pushing a tag is publishing — confirm first                                  |
+| Bumping when the user chose "keep the current version"      | That choice touches changelog files only                                     |
+| Folding into a tag that was already pushed                  | Both checks must pass first; otherwise cut a new version                     |

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Decide *what* to build and why, before deciding how. A spec that describes an
+Decide _what_ to build and why, before deciding how. A spec that describes an
 implementation has skipped its own job.
 
 ## Inputs
@@ -39,7 +39,7 @@ Claims recalled rather than checked are how a spec starts lying.
    tcw-capabilities.** — agent `[judgment]`
 3. Read the request's references first, then the code the change touches, and
    record what is actually true, with file and line. — agent `[judgment]`
-4. Write acceptance criteria that are *checkable*. "Works correctly" is not a
+4. Write acceptance criteria that are _checkable_. "Works correctly" is not a
    criterion; "an item in `review` still blocks its dependents" is.
    — agent `[judgment]`
 5. State what is out of scope, especially anything adjacent enough to drift in.
@@ -61,10 +61,10 @@ without asking you what you meant.
 
 **Badly:**
 
-- *Reading the code contradicts the request.* Stop and return to `request`. A
+- _Reading the code contradicts the request._ Stop and return to `request`. A
   spec that quietly reinterprets the request is worse than one that refuses.
-- *The change is too large for one item.* Say so and decompose — see
+- _The change is too large for one item._ Say so and decompose — see
   `decompose.md` for nested pieces, `epic-deltas.md` for independently scheduled
   ones.
-- *You cannot ground a claim.* Mark it as an assumption in `## Notes` rather than
+- _You cannot ground a claim._ Mark it as an assumption in `## Notes` rather than
   stating it as fact.

@@ -2,5 +2,5 @@ name: Configurable Work Lifecycle
 kind: Feature
 relatesTo: []
 vocabulary:
-- work-item/lifecycle-stage
-- work-item/transition
+    - work-item/lifecycle-stage
+    - work-item/transition

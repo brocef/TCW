@@ -2,8 +2,9 @@ id: cap-24da21
 name: Federate shared vocabulary
 Status: Partial
 Priority: P2
-Gaps: remote git/URL sources and version-pinning remain deferred; local registered-project
-  inheritance is transitive.
+Gaps:
+    remote git/URL sources and version-pinning remain deferred; local registered-project
+    inheritance is transitive.
 Subject:
-- namespace
+    - namespace
 Feature: connected-project-registry

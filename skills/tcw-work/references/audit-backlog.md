@@ -63,7 +63,7 @@ subagent** for the inter-item list. Both harnesses support this; see
 two checklists in one session — the result is identical, only slower.
 
 **Pipeline them; do not run both from zero.** The duplicate check needs to know
-what each item is *about*, which means reading every folder — the work the
+what each item is _about_, which means reading every folder — the work the
 per-item agents just did. So each per-item agent returns its findings **plus** a
 two-line "what this item is about", and the inter-item agent consumes those
 summaries instead of re-reading the backlog. It additionally reads the one-line
@@ -105,7 +105,7 @@ Per item:
 ```
 
 **Severity** is one of `critical` · `high` · `medium` · `low`, scored on the cost
-of acting on the item *as it currently stands* — not on how interesting the
+of acting on the item _as it currently stands_ — not on how interesting the
 finding is. `high` means starting it now would waste real work (a plan whose
 every anchor has moved). `low` means it needs a touch-up someone will absorb in
 passing. Without a fixed scale two audits are not comparable.

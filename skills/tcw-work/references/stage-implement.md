@@ -68,10 +68,10 @@ answered, `outcome.md` records what shipped and what the plan got wrong, and
 
 **Badly:**
 
-- *The plan is unworkable.* Return to `plan`. Do not improvise a different design
+- _The plan is unworkable._ Return to `plan`. Do not improvise a different design
   and leave the plan describing the abandoned one.
-- *A task is blocked externally.* Record the blocker on the item
+- _A task is blocked externally._ Record the blocker on the item
   (`tcw work edit --blocked-by`), finish everything that does not depend on it,
   and say explicitly what was left out.
-- *Scope grew.* Ship what was specified, and create a follow-up item. Widening
+- _Scope grew._ Ship what was specified, and create a follow-up item. Widening
   scope mid-implementation is how an item stops being reviewable.

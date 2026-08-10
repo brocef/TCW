@@ -9,11 +9,11 @@ After completing code changes, check the project's `CLAUDE.md` for a `## Documen
 
 This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `tcw-work` lifecycle invokes it at three points:
 
-| Lifecycle point | What this skill does | Reference |
-| --- | --- | --- |
-| **`plan`** | Predict which triggers will fire and name a doc task for each — scheduled as one block at the *end* of the plan. | `tcw-work` → `references/stage-plan.md` step 4 |
+| Lifecycle point        | What this skill does                                                                                                                                                                                       | Reference                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `tcw-work` → `references/stage-plan.md` step 4      |
 | **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `tcw-work` → `references/stage-implement.md` step 6 |
-| **After `complete`** | Offer the version options; run the cut if the user picks a bump. | `tcw-work` → `references/stage-verify.md` step 9 |
+| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `tcw-work` → `references/stage-verify.md` step 9    |
 
 One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
@@ -83,10 +83,10 @@ The point is to keep doc work visible — either as named-file tasks upfront, or
 
 These workflows are deeper than the core trigger-evaluation loop and live as references so they only load when actually needed:
 
-| Reference                                    | Load when                                                                                                                                                                                                      |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`. |
-| `references/setup.md`                        | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                      |
+| Reference                                    | Load when                                                                                                                                                                                                        |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`.   |
+| `references/setup.md`                        | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                        |
 | `references/cut-version.md`                  | The user picked a `patch`/`minor`/`major` bump from the completion options below and you're running the version cut — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. |
 
 ## When to offer version and changelog options
@@ -112,7 +112,7 @@ On `0`, that release exists nowhere but this machine, so the work since it can s
 
 5. Fold the changes since `{tag}` into `{tag}` itself — re-dating the release rather than cutting a second one on top of it
 
-Read `references/cut-version.md` → "Folding into an unpushed version" to run it. Don't offer the fold when the intervening work is larger than the version it would be folded into can honestly carry — a feature folded into a patch is a mislabeled release; recommend a fresh bump instead. Never fold into a published tag: rewriting a tag other people may have fetched is off the table, which is what the gate exists to prevent. That judgment is yours; the script only answers *whether the tag is still local*.
+Read `references/cut-version.md` → "Folding into an unpushed version" to run it. Don't offer the fold when the intervening work is larger than the version it would be folded into can honestly carry — a feature folded into a patch is a mislabeled release; recommend a fresh bump instead. Never fold into a published tag: rewriting a tag other people may have fetched is off the table, which is what the gate exists to prevent. That judgment is yours; the script only answers _whether the tag is still local_.
 
 Don't offer mid-flow, and don't offer for trivial in-isolation edits. Don't change the version unless the user selects `major`, `minor`, or `patch`. For those three choices, read `references/cut-version.md` — it starts by deferring to **the project's own version-cut process** (every project bumps differently; its `CLAUDE.md` / Versioning section names the files and the script) and falls back to the manual ritual only when the project has none. For the keep-current-version choice, leave version-bearing metadata, tags, and working-file names unchanged and update the applicable changelog files in place.
 

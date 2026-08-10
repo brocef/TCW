@@ -4,6 +4,6 @@ Status: Missing
 Planning doc: 2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos-configurable-work-path-atomic-owner-stamp
 Feature: configurable-work-store-location
 Subject:
-- store
-- node
-- namespace
+    - store
+    - node
+    - namespace

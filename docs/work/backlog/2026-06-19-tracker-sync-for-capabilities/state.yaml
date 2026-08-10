@@ -1,9 +1,9 @@
 slug: 2026-06-19-tracker-sync-for-capabilities
 title: Tracker sync for capabilities
-phase: ''
-created: '2026-06-19'
+phase: ""
+created: "2026-06-19"
 resolution: null
 tags:
-- remote
-- capabilities
+    - remote
+    - capabilities
 priority: 10

@@ -155,16 +155,16 @@ Eight cases. One integration case matters more than any single-skill case,
 because the chain `Vocabulary → Features → Capabilities → Work` is the thing the
 skills coordinate and the thing most likely to be dropped.
 
-| #   | Skill            | Scenario                                                                                                 |
-| --- | ---------------- | -------------------------------------------------------------------------------------------------------- |
-| 1   | tcw-work         | Feature request in chat → item created, planned, `start` before first code edit, per-stage commits       |
-| 2   | tcw-work         | Inbox triage of the raw `slow-login.md` request → accepted with sensible title and tags                  |
-| 3   | tcw-capabilities | Close out the mid-flight item → ledger flipped `Missing → Supported`, then `complete`, without `--force` |
-| 4   | tcw-taxonomy     | Register loose domain language → correct Vocabulary vs Feature split, `--vocab` links, `check` clean     |
-| 5   | tcw-plugin       | Orientation: "which axis does this belong in, and where do I start?"                                     |
-| 6   | tcw-report       | "`tcw work complete` threw a traceback" → GitHub issue skeleton, **not** a local work item               |
+| #   | Skill             | Scenario                                                                                                 |
+| --- | ----------------- | -------------------------------------------------------------------------------------------------------- |
+| 1   | tcw-work          | Feature request in chat → item created, planned, `start` before first code edit, per-stage commits       |
+| 2   | tcw-work          | Inbox triage of the raw `slow-login.md` request → accepted with sensible title and tags                  |
+| 3   | tcw-capabilities  | Close out the mid-flight item → ledger flipped `Missing → Supported`, then `complete`, without `--force` |
+| 4   | tcw-taxonomy      | Register loose domain language → correct Vocabulary vs Feature split, `--vocab` links, `check` clean     |
+| 5   | tcw-plugin        | Orientation: "which axis does this belong in, and where do I start?"                                     |
+| 6   | tcw-report        | "`tcw work complete` threw a traceback" → GitHub issue skeleton, **not** a local work item               |
 | 7   | tcw-triage-issues | Triage a mixed project issue set → convert only actionable issues and offer a reply for every issue      |
-| 8   | cross-axis       | Product change requiring a new term, a new capability, and a work item, in the right order               |
+| 8   | cross-axis        | Product change requiring a new term, a new capability, and a work item, in the right order               |
 
 Case 6 is the sharpest negative test in the set: the natural wrong answer
 (logging it as local work) is exactly what `tcw-report` exists to prevent.

@@ -26,13 +26,13 @@ resolves before writing, and as of the taxonomy item so does `tcw taxonomy add
 ## Technical changes
 
 `_validate_fields` (`tcw/store/fs.py`, `FsCapabilitiesStore`) checks field
-*names* against `CAP_FIELDS` and `Status` values, never refs; the resolution
+_names_ against `CAP_FIELDS` and `Status` values, never refs; the resolution
 lives in `check` (`_check_subject` / `_check_feature`), which receives the
 taxonomy store as a parameter.
 
 **This is why it was not folded into the taxonomy item:** the fix is
 structurally different. `FsCapabilitiesStore` holds no taxonomy handle —
-`check(taxonomy=None)` is *given* one — so fixing it means deciding how a
+`check(taxonomy=None)` is _given_ one — so fixing it means deciding how a
 capabilities store obtains a taxonomy store at write time. That is a
 store-composition design question (and an abstraction-litmus question: whatever
 the answer is, a non-filesystem adapter has to be able to honor it), not a

@@ -16,7 +16,7 @@ Repository discovery is unrestricted.
 ## Produce
 
 `initial-request.md`, at the item's folder root. It is the always-present body
-and overview surface, so it is never absent — this stage makes it *say something*.
+and overview surface, so it is never absent — this stage makes it _say something_.
 
 Required: a title, and enough of the request that someone resuming cold knows
 what was wanted. For an epic it also carries the coordination goal and is the
@@ -26,7 +26,7 @@ Optional `## Notes`: anything worth keeping that has no home in the request
 itself.
 
 Optional `## References`: material the requester considers relevant — a link, a
-repo path, or another work item — each with a one-line *why it matters*. The
+repo path, or another work item — each with a one-line _why it matters_. The
 `spec` stage reads it; bare URLs with no reason attached save it nothing.
 
 ## Steps
@@ -56,10 +56,10 @@ without re-interviewing anyone or re-finding the requester's sources.
 
 **Badly:**
 
-- *The request contradicts something already true of the codebase.* Say so and
+- _The request contradicts something already true of the codebase._ Say so and
   ask, rather than writing down a request that cannot be satisfied.
-- *The work is larger than one item.* Say so now. Splitting after a spec is
+- _The work is larger than one item._ Say so now. Splitting after a spec is
   written wastes the spec.
-- *There is no user to ask.* Write the request from the available evidence and
+- _There is no user to ask._ Write the request from the available evidence and
   mark the assumptions in `## Notes`, so the `spec` stage knows which parts are
   inference.

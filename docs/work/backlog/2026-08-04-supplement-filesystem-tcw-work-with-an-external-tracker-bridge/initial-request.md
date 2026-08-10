@@ -65,7 +65,7 @@ continues to own the TCW item and every lifecycle artifact.
    assigns them through the tracker's normal workflow while they remain in a
    configured ready/backlog state.
 2. A developer or agent polls the configured tracker through `tcw work tracker
-   list` and inspects a candidate with `tracker show`.
+list` and inspects a candidate with `tracker show`.
 3. `tracker import` verifies that the ticket is assigned to the authenticated
    tracker identity and atomically transitions it from ready to claimed/in
    progress.
@@ -239,23 +239,23 @@ for example:
 
 ```yaml
 work:
-  tracker:
-    provider: jira-cloud
-    strict: true
-    base-url: https://example.atlassian.net
-    candidate-query: project = ENG AND assignee = currentUser() AND status = Backlog
-    credentials:
-      email-env: TCW_JIRA_EMAIL
-      token-env: TCW_JIRA_API_TOKEN
-    transitions:
-      claim: Start Progress
-      submit: Ready for Review
-      rework: Reopen
-      complete: Done
-      discard:
-        duplicate: Duplicate
-        superseded: Superseded
-        wontfix: Won't Do
+    tracker:
+        provider: jira-cloud
+        strict: true
+        base-url: https://example.atlassian.net
+        candidate-query: project = ENG AND assignee = currentUser() AND status = Backlog
+        credentials:
+            email-env: TCW_JIRA_EMAIL
+            token-env: TCW_JIRA_API_TOKEN
+        transitions:
+            claim: Start Progress
+            submit: Ready for Review
+            rework: Reopen
+            complete: Done
+            discard:
+                duplicate: Duplicate
+                superseded: Superseded
+                wontfix: Won't Do
 ```
 
 The exact parser belongs in the future spec, but these decisions are fixed:

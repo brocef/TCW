@@ -1,6 +1,6 @@
 {
-  "enabledPlugins": {
-    "tcw@tcw": true,
-    "skill-cefailures@skill-cefailures": true
-  }
+    "enabledPlugins": {
+        "tcw@tcw": true,
+        "skill-cefailures@skill-cefailures": true
+    }
 }

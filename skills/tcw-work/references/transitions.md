@@ -16,7 +16,7 @@ moved and the tool says so — commit it yourself, do not re-run the transition.
 **A gitignored destination is untracked rather than moved.** `tcw work init`
 gitignores `completed/` and `discarded/` by default (their `.gitkeep` stays
 tracked, so the folders survive a clone), so completing or discarding usually
-produces a transition commit that *removes* the item from git and leaves the
+produces a transition commit that _removes_ the item from git and leaves the
 files on disk. Nothing else changes: the item still moves, still lists, still
 reads. A node whose `.gitignore` lacks those rules gets a plain tracked rename.
 
@@ -108,8 +108,8 @@ its own.
 - A worktree is torn down but its **branch is kept**, and named in the warning —
   deciding work is unwanted is not authority to destroy an unmerged branch.
 - **No Definition-of-Done checklist is printed at all** — `complete` computes it
-  only when shipping. So if the item came from a GitHub issue, *nothing prompts
-  you*: this line is the only prompt there is. Read `tcw-triage-issues` §8 and
+  only when shipping. So if the item came from a GitHub issue, _nothing prompts
+  you_: this line is the only prompt there is. Read `tcw-triage-issues` §8 and
   answer the issue. `wontfix` and `duplicate` close it; **`superseded` closes it
   only if the superseding item absorbed the ask** — if it deferred the ask
   instead, reply and leave the issue open, because closing it would tell the

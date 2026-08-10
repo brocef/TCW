@@ -1,11 +1,11 @@
 slug: 2026-06-19-remote-adapter-jiraworkstore
 title: Full external TCW store adapters
-phase: ''
-created: '2026-06-19'
+phase: ""
+created: "2026-06-19"
 resolution: null
 tags:
-- remote
-- work
-- taxonomy
-- capabilities
+    - remote
+    - work
+    - taxonomy
+    - capabilities
 priority: 10

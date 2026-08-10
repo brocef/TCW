@@ -2,4 +2,4 @@ id: cap-95e225
 name: Inspect the lifecycle contract
 Status: Supported
 Subject:
-- work-item/lifecycle-stage
+    - work-item/lifecycle-stage

@@ -24,7 +24,7 @@ the earliest point it was already determined.
 What each layer tends to reveal:
 
 - **`## Notes` across every artifact is the primary trail.** It is where each
-  stage recorded what it knew *at the time* — including things that looked
+  stage recorded what it knew _at the time_ — including things that looked
   unimportant then. A miss is often visible there as a noticed-but-unpursued
   detail.
 - **`outcome.md`'s corrections.** A stage that had to correct the plan is a stage
@@ -44,8 +44,8 @@ Only the second is actionable. Conflating them manufactures process for
 non-recurring events, which is how a lifecycle accumulates ceremony nobody
 believes in.
 
-Ask of the earliest candidate stage: *was the information available at that
-point?* If the code that disproved a spec claim existed and was readable, the
+Ask of the earliest candidate stage: _was the information available at that
+point?_ If the code that disproved a spec claim existed and was readable, the
 spec stage could have checked and did not — actionable. If the failure depended
 on something discovered only by building it, no earlier stage could have caught
 it, and the honest finding is that the process worked.

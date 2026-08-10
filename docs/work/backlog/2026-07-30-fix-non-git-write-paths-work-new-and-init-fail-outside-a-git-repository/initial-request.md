@@ -5,7 +5,7 @@
 Found by the repo-wide sweep in
 `2026-07-29-resolve-relative-connected-projects-paths-against-the-main-worktree-root`
 (see its `spec.md`, Non-goals, and its `plan.md`, Notes). Out of scope there —
-that item's Goal 4 was only that it must not make the git requirement *worse*.
+that item's Goal 4 was only that it must not make the git requirement _worse_.
 
 ## Product changes
 
