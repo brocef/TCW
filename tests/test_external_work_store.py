@@ -288,6 +288,51 @@ def test_cli_complete_losing_the_race_exits_1_without_a_traceback(tmp_path, monk
     assert "Traceback" not in err
 
 
+def test_cli_submit_losing_the_race_exits_1_without_a_traceback(tmp_path, monkeypatch,
+                                                                capsys):
+    """The other half of the CLI surface: `submit` and `rework` share one handler
+    that prints `tcw work:` with no subcommand (`work/cli.py:583`, `605`), where
+    `complete` prints `tcw work complete:` (`work/cli.py:923`). That prefix
+    inconsistency is pre-existing and deliberately not changed here, so this
+    asserts what the code does rather than what would be tidier. Only `submit` is
+    covered — `rework` reaches the identical handler by the identical route, so a
+    third test would assert the same branch twice.
+
+    Against the unfixed code this failed with `CalledProcessError` from
+    `git add -- None` (exit 128, `fatal: pathspec 'None' did not match any
+    files`) — the *other* `git_mv` branch from the one the `complete` tests hit.
+    `review/` is tracked while `completed/` is gitignored, so between them the
+    two tests pin both failure modes the guard replaces.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Race me", created="2026-08-08")
+    store.start(item.slug, owner="me@example.com")
+    monkeypatch.chdir(code)
+    real_find = FsWorkStore._find
+    real_effect = FsWorkStore._effect_transition
+
+    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+        calls = {"n": 0}
+
+        def missing_at_the_move(inner, inner_slug):
+            calls["n"] += 1
+            return None if calls["n"] == 2 else real_find(inner, inner_slug)
+
+        monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
+        return real_effect(self, item_slug, to_status)
+
+    monkeypatch.setattr(FsWorkStore, "_effect_transition",
+                        lose_the_race_inside_the_transition)
+
+    assert main(["work", "submit", item.slug]) == 1
+    err = capsys.readouterr().err
+    assert "tcw work: cannot move" in err
+    assert "tcw work submit:" not in err          # the prefix really is bare
+    assert "Traceback" not in err
+
+
 def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
     """A DOCUMENTED LIMITATION, pinned — not a behavior worth keeping.
 
