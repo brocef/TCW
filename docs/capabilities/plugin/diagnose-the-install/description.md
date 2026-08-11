@@ -1,1 +1,1 @@
-As a user, I run `/tcw-doctor` to check whether `tcw` is on PATH, how it was installed (pipx / editable / missing), and whether it matches the active plugin version — and to re-point it if a plugin update left it stale.
+As a user, I run `/tcw-doctor` to check whether `tcw` is on PATH, how it was installed (pipx / editable / missing), and whether it matches the active plugin version — and to re-point it if a plugin update left it stale. It also tells me when an older install has left a leftover package sitting beside the current one, so I can clear it if I want to.
