@@ -19,10 +19,6 @@ may change any earlier one. For a product delta, check those layers in order
 first. **REQUIRED SUB-SKILL: Use tcw-capabilities.** `tcw-plugin` maps the
 skills.
 
-Use `tcw work path` to print the absolute, configuration-aware filesystem work
-root, `tcw work inbox path` for its inbox, and `tcw work path <slug>` for an
-item's current folder. Each successful form prints only the resolved path.
-
 ## Two ladders
 
 A **stage** produces one artifact. A **transition** moves status. Nothing is
@@ -61,7 +57,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 
 ## Read on demand
 
-- [`commands.md`](references/commands.md) — every command, addressing, slash commands
+- [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, slash commands
 - [`delegation.md`](references/delegation.md) — dispatching stages to subagents
 - [`tags.md`](references/tags.md) — the node's tag vocabulary
 - [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences
