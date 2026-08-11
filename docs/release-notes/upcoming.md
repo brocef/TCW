@@ -7,3 +7,6 @@ internal module names.
   or the new init flags, without changing project IDs or qualified references.
 - Starting an item now records who claimed it and when, reports contention
   clearly, and supports deliberate takeover. Active boards show this ownership.
+- You can now print the exact folder used by taxonomy, capabilities, work, or
+  the work inbox. Work folder commands follow external storage configuration,
+  and each command emits only the resolved path for easy shell use.

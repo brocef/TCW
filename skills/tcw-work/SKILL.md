@@ -19,6 +19,10 @@ may change any earlier one. For a product delta, check those layers in order
 first. **REQUIRED SUB-SKILL: Use tcw-capabilities.** `tcw-plugin` maps the
 skills.
 
+Use `tcw work path` to print the absolute, configuration-aware filesystem work
+root, `tcw work inbox path` for its inbox, and `tcw work path <slug>` for an
+item's current folder. Each successful form prints only the resolved path.
+
 ## Two ladders
 
 A **stage** produces one artifact. A **transition** moves status. Nothing is

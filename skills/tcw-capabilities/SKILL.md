@@ -10,7 +10,7 @@ license: Apache-2.0
 
 # The capabilities process
 
-The standing ledger (`docs/capabilities/`) describes _what a user can currently do_. It is the third layer in the TCW chain: `Vocabulary -> Features -> Capabilities -> Work`. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`. Never hand-edit capability metadata when `set` applies.
+The standing ledger (`docs/capabilities/`) describes _what a user can currently do_. It is the third layer in the TCW chain: `Vocabulary -> Features -> Capabilities -> Work`. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`, and locate the absolute resolved filesystem store with `path`. Never hand-edit capability metadata when `set` applies. Because `path` is reserved as that command, read a capability literally named `path` with explicit `tcw capabilities show path`.
 
 `Capability.modified` is read-only, adapter-provided presentation metadata for
 viewers; it is not an editable capability field.
@@ -110,4 +110,5 @@ codebase → draft → refine with the user → write) → read [`references/ini
 | check the ledger                 | `tcw capabilities check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                  |
 | find drift                       | `tcw capabilities drift` — inherited-but-unreviewed + local-Missing whose Planning doc is a completed item (exit non-zero if any) |
 | find / read                      | `tcw capabilities search <term>` · `tcw capabilities show <path>`                                                                 |
+| locate the filesystem store      | `tcw capabilities path` — prints only the absolute, resolved store folder                                                         |
 | ask the orchestrator for wording | `tcw work escalate "capability wording: <name>"`                                                                                  |

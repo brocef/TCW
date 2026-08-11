@@ -247,8 +247,22 @@ under their own project IDs.
 
 ## Usage
 
-Every group has a `--help`, a `check` that validates the tree, and a bare-path
-shortcut (`tcw taxonomy <path>` == `tcw taxonomy show <path>`).
+Every group has a `--help` and a `check` that validates the tree. Taxonomy and
+capabilities also have a bare-path shortcut (`tcw taxonomy <path>` ==
+`tcw taxonomy show <path>`), except that `path` itself is reserved as the store-
+location command; use explicit `show path` to read an object with that name.
+
+Print the absolute, resolved folders used by the filesystem stores with:
+
+```sh
+tcw taxonomy path
+tcw capabilities path
+tcw work path
+tcw work inbox path
+```
+
+The work commands follow a configured `work.path`, so they report the physical
+external store and its inbox when work storage lives outside the project.
 
 ### `tcw serve` — the local web viewer
 
@@ -655,7 +669,9 @@ tcw work lifecycle --stage spec --directive
                                        # one instruction line for an agent, or nothing if unbound
 
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
+tcw work path                           # absolute, resolved work-store folder
 tcw work path "$slug"                  # current filesystem path of the slug
+tcw work inbox path                     # absolute, resolved inbox folder
 
 tcw work start "$slug"                 # backlog → active (refused if blocked/gated)
 tcw work start "$slug" --force         # override unresolved blockers or initiative gates

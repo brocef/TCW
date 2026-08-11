@@ -27,6 +27,9 @@ one-directional — **taxonomy never points back** at capabilities or work. See
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
 local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-capabilities**.
+Use `tcw taxonomy path` when an agent needs the absolute, resolved filesystem
+store folder. Because `path` is reserved as that command, read a term literally
+named `path` with explicit `tcw taxonomy show path`.
 
 `Term.modified` is read-only, adapter-provided presentation metadata for
 viewers; it is not an editable taxonomy field.
@@ -92,6 +95,7 @@ refine with the user → write) → read [`references/init.md`](references/init.
 | nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                                                                      |
 | link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                                                                         |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
+| locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
 | inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>`                                                                                            |
 | validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                                                     |
 | remove a local term             | `tcw taxonomy rm <path>`                                                                                                                                         |
