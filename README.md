@@ -103,6 +103,9 @@ In **Claude Code**:
 /plugin install tcw
 ```
 
+Or, in the Claude **web app** or **desktop app**, open the plugin directory, add
+`brocef/TCW` as a marketplace, and install `tcw` from it — no terminal needed.
+
 **Then start a new session** — the plugin installs the `tcw` CLI when a session
 begins, and one installed mid-session can't run until the next one starts.
 

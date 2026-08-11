@@ -1,0 +1,2 @@
+changed:
+    - plugin/install-as-a-plugin # already Supported; the web/desktop half of it now actually works

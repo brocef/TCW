@@ -1,1 +1,1 @@
-As a user, I add the tcw marketplace and run `/plugin install tcw` (Claude Code) or `codex plugin add tcw@tcw` (Codex) to install the tcw skills as a plugin.
+As a user, I add the tcw marketplace — from the command line, or from the plugin directory in the Claude web and desktop apps — and run `/plugin install tcw` (Claude Code) or `codex plugin add tcw@tcw` (Codex) to install the tcw skills as a plugin.
