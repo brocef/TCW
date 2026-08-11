@@ -92,6 +92,38 @@ def test_hooks_manifest_wires_one_executable_session_start_script():
     assert os.access(script, os.X_OK), f"hook command is not executable: {script}"
 
 
+def test_claude_marketplace_carries_publishable_metadata():
+    """The server-side marketplace validator behind claude.ai and the desktop
+    app is stricter than `claude plugin validate`, and reports every rejection
+    as one generic "sync failed" string. Marketplaces that sync carry these
+    fields; the ones that failed did not."""
+    data = _load(CLAUDE_MARKET)
+    assert data.get("description"), "marketplace needs a top-level description"
+    owner = data.get("owner", {})
+    assert owner.get("name") and owner.get("email"), f"owner needs name + email: {owner}"
+    entry = data["plugins"][0]
+    assert entry.get("author", {}).get("name"), f"plugin entry needs an author: {entry}"
+
+
+def test_claude_and_codex_plugin_manifests_agree():
+    """Two manifests describing one artifact. Version lockstep is covered above;
+    these are the fields that silently drift apart instead."""
+    claude, codex = _load(CLAUDE_PLUGIN), _load(CODEX_PLUGIN)
+    for field in ("homepage", "repository", "license"):
+        assert claude.get(field), f".claude-plugin/plugin.json lacks {field}"
+        assert claude[field] == codex.get(field), (
+            f"{field} disagrees: claude={claude.get(field)!r} codex={codex.get(field)!r}"
+        )
+
+
+def test_agents_marketplace_source_path_resolves():
+    """Codex addresses the plugin by a path relative to the marketplace root.
+    Layout-agnostic on purpose: it held for the old `./plugins/tcw` symlink and
+    holds for the root-relative `.` that replaced it."""
+    path = _load(AGENTS_MARKET)["plugins"][0]["source"]["path"]
+    assert (REPO / path).is_dir(), f"agents marketplace source path is not a directory: {path}"
+
+
 def test_symlink_points_at_repo_root():
     link = REPO / "plugins" / "tcw"
     assert link.is_symlink(), f"{link} must be a symlink"
