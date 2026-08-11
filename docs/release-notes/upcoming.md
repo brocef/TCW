@@ -2,36 +2,3 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
-
-## Install TCW from PyPI
-
-You can now install the `tcw` command on its own, without adding TCW as a plugin
-to an AI coding agent:
-
-```sh
-pipx install tcw-cli
-```
-
-The package is called **`tcw-cli`** rather than `tcw` because the name `tcw` on
-PyPI already belongs to an unrelated project. Everything else is unchanged: the
-command you run is `tcw`, and if you write Python against it, the package you
-import is `tcw`.
-
-This is an alternative to the plugin install, not a replacement for it. If you
-use TCW through the Claude or Codex plugin, it still manages its own copy of the
-command for you — installing this one as well means two copies that can drift
-apart. Pick one.
-
-## Releases now publish themselves
-
-Tagging a version and pushing it to GitHub now runs the test suite and publishes
-to PyPI automatically, instead of someone uploading a build by hand. Nothing
-about this changes how you use TCW; it means new versions reach PyPI sooner and
-with less that can go wrong on the way.
-
-## Fixed
-
-- A developer working from a local checkout of TCW (`pip install -e`) could have
-  had that checkout quietly replaced at the start of an agent session. The check
-  that was supposed to recognize such a checkout and leave it alone stopped
-  recognizing it once the package changed names. It now recognizes both names.
