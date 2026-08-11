@@ -123,6 +123,46 @@ def test_two_store_claim_has_one_winner_and_visible_metadata(tmp_path):
     assert active.started.endswith("Z")
 
 
+def test_claim_lost_at_find_takes_the_recovery_path_not_a_typeerror(tmp_path, monkeypatch):
+    """The other way to lose the claim race — the one that used to crash.
+
+    A loser finds out at one of two moments: `os.replace` raises
+    `FileNotFoundError`, or `_find` has already returned `None` because the
+    competitor's folder is sitting in `.claiming/`, where nothing looks. Only the
+    first reached the recovery block; the second hit `os.replace(None, ...)` and
+    raised `TypeError`.
+
+    No arrangement of files reproduces it, because whatever makes `get()` succeed
+    also makes `_find` succeed — the bug lives in the gap *between* those two
+    calls. So the gap is forced: `_find` is real for the status read and `None`
+    for the claim lookup that follows.
+
+    Asserting on the recovery path rather than on `AlreadyClaimed` keeps this
+    about the defect. Which error ends the recovery depends on whether the
+    competitor finishes, and the threaded test above already covers that.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    real_find = FsWorkStore._find
+    calls = {"n": 0}
+
+    def find_missing_at_the_claim(self, slug):
+        calls["n"] += 1
+        return None if calls["n"] == 2 else real_find(self, slug)
+
+    monkeypatch.setattr(FsWorkStore, "_find", find_missing_at_the_claim)
+
+    with pytest.raises(ValueError, match="interrupted claim") as caught:
+        FsWorkStore.open(code).start(item.slug, owner="loser@example.com")
+    assert not isinstance(caught.value, TypeError)
+    # If start() ever stops taking exactly two lookups before the claim, this
+    # test would silently stop exercising the window it was written for.
+    assert calls["n"] >= 2, "the claim lookup was never reached"
+
+
 def test_takeover_replaces_claim_and_submit_clears_it(tmp_path):
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
