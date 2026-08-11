@@ -255,10 +255,15 @@ follow-up item; this spec records the finding rather than smuggling the fix.
   at closeout is "the loser no longer crashes", not "the race is handled" — and
   the follow-up item must exist before this one completes, or the residual is
   lost with the session that found it.
-- **`fs.py:2485` changes a crash into a reported validation problem**, so
-  `tcw work validate` racing a transition now prints an extra line instead of
-  exiting badly. That is the intended behavior, but it is a visible output change
-  in a command whose output some caller may parse.
+- **`fs.py:2485` trades a crash for a *false* validation problem.** A `validate`
+  sweep that races a normal, healthy transition will report
+  `no such work item: <slug>` against an item with nothing wrong with it — the
+  item simply moved mid-scan. A spurious line beats a traceback, so this is the
+  right trade, but it is not a clean win: it is a visible output change in a
+  command whose output may be parsed, and the reported problem is untrue. If
+  false positives there ever matter, the fix is for the validation loop to skip
+  items that vanish mid-scan rather than report them — deliberately not done here,
+  since inventing that policy is beyond a `None` guard.
 
 ## Notes
 
