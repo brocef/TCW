@@ -1,0 +1,12 @@
+slug: 2026-08-11-install-the-plugin-s-cli-from-pypi-instead-of-its-own-clone
+title: Install the plugin's CLI from PyPI instead of its own clone
+created: '2026-08-11'
+resolution: null
+priority: 40
+effort: medium
+complexity: high
+tags:
+- cli
+- skills
+blocked_by:
+- slug: 2026-08-11-publish-tcw-to-pypi-with-automated-releases
