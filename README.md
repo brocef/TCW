@@ -120,7 +120,7 @@ commands; and the read-only `tcw-verifier` and
 `tcw-post-mortem` agents. There is nothing to run afterwards: the plugin puts
 `tcw` on your PATH from its _own clone_ (via pipx) at session start, and picks up
 a plugin update the same way, so there's one copy and it stays current —
-**don't also `pip install tcw` separately**, or the two can drift
+**don't also `pip install tcw-cli` separately**, or the two can drift
 (`/tcw-doctor` detects this and re-points). A development checkout installed with
 `pip install -e .` is left alone, and so is a machine without `pipx` — choosing a
 Python environment isn't something that should happen unasked at session start.
@@ -140,9 +140,13 @@ script Claude runs automatically.
 ### As a Python package
 
 ```sh
-pipx install tcw            # once published — recommended (isolated, on PATH)
+pipx install tcw-cli        # recommended (isolated, on PATH)
 pip install -e .            # development install from a clone
 ```
+
+The package is called **`tcw-cli`** on PyPI because `tcw` was already taken by
+an unrelated project. The command it installs is still `tcw`, and the importable
+package is still `tcw` — only the name you type after `pipx install` differs.
 
 `tcw` is a real Python package (entry point `tcw = tcw.cli:main`), not a
 symlink. Requires Python ≥ 3.11; the Python runtime dependency is PyYAML.
@@ -990,6 +994,35 @@ the capability ledger as work completes.
 
 **Still deferred (Phase 6):** remote (Jira/wiki/graph-DB) store adapters and
 tracker sync — additive on top of the interfaces that already exist.
+
+## Releasing
+
+Releases publish themselves. `scripts/cut_version.py` bumps every
+version-bearing file, rotates the changelog and release-note working files,
+commits, and tags; pushing that tag is what ships it:
+
+```sh
+python scripts/cut_version.py <patch|minor|major|X.Y.Z>
+git push origin main --tags
+```
+
+The `v*` tag triggers `.github/workflows/release.yml`, which runs the full test
+suite, checks that the tag matches the version in `pyproject.toml`, builds, and
+uploads to PyPI. There is no API token — PyPI mints a short-lived credential
+from GitHub's OIDC claim ("Trusted Publishing"), which is why the workflow
+declares `id-token: write` and `environment: pypi`.
+
+Two things are configured once, outside the repo, and must match the workflow
+exactly or the upload fails authentication:
+
+| Where | Setting |
+| --- | --- |
+| pypi.org → Publishing | project `tcw-cli`, owner `brocef`, repository `TCW`, workflow `release.yml`, environment `pypi` |
+| GitHub → Settings → Environments | an environment named `pypi` |
+
+**A version can only be uploaded to PyPI once.** If the workflow fails *after* a
+successful upload, that version number is spent — recover with a patch bump, not
+by re-running the job.
 
 ## Further reading
 

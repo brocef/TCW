@@ -18,7 +18,11 @@ deliberately does not touch (a shadowed, duplicated, or editable install).
    and is how a dev checkout gets clobbered.
 
 2. **Editable / dev install? Leave it alone.** In that environment's
-   site-packages, read `tcw-<ver>.dist-info/direct_url.json`; if
+   site-packages, read `tcw_cli-<ver>.dist-info/direct_url.json` — or
+   `tcw-<ver>.dist-info/` for a checkout predating the rename to the `tcw-cli`
+   distribution; check both names before concluding there is no install. A miss
+   here is not a benign "not found": it reads as "not editable" and is how a dev
+   checkout gets clobbered. If
    `dir_info.editable == true` this is a developer's `pip install -e` checkout —
    **report and don't touch it.** Warn that an editable shim on PATH can shadow
    the pipx-installed `tcw`. If step 1 could not identify the owning environment,
@@ -49,6 +53,14 @@ deliberately does not touch (a shadowed, duplicated, or editable install).
    incomplete and should be reinstalled. pnpm and `node_modules` are not part of
    installed-runtime diagnosis.
 
-6. **Report:** PATH status, install kind (pipx / editable / plain pip / missing),
+6. **Stale `tcw` pipx package alongside `tcw-cli`?** `pipx list` may show both,
+   left over from an install made before the distribution was renamed. It is
+   inert — pipx will not let it reclaim the `tcw` app link while `tcw-cli` owns
+   it ("Not modifying"), and its install spec is a local path, so an upgrade
+   resolves from that path rather than from PyPI's unrelated `tcw` project.
+   Report it as clutter the user may remove with `pipx uninstall tcw`; do not
+   remove it for them.
+
+7. **Report:** PATH status, install kind (pipx / editable / plain pip / missing),
    installed vs active version, the action taken, and (only for serve diagnosis)
    the Node prerequisite result.

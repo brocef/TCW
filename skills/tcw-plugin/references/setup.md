@@ -1,7 +1,9 @@
 # Setup — install `tcw` from the plugin clone
 
 Installs the CLI from the plugin's _own clone_ so there is one source of truth —
-**don't also `pip install tcw` separately.**
+**don't also `pip install tcw-cli` separately.** (The distribution is `tcw-cli`
+on PyPI; `tcw` there is an unrelated project. The command and the import package
+are both still `tcw`.)
 
 Under Claude the `SessionStart` hook already ran this same reconcile, so getting
 here means the automatic path did not finish the job. Under Codex there is no
@@ -39,5 +41,5 @@ hook, and this is the install path.
    released/plugin package data already contains the Fastify server and React
    client.
 
-6. **Warn:** if a separate `pip install tcw` also exists, the two can drift —
+6. **Warn:** if a separate `pip install tcw-cli` also exists, the two can drift —
    recommend keeping only the pipx install, then run `/tcw-doctor`.
