@@ -1,14 +1,29 @@
 {
     "name": "tcw",
+    "description": "The tcw plugin — Taxonomy · Capabilities · Work, a storage-abstracted framework for describing and evolving a software project along three axes.",
     "owner": {
-        "name": "Brian Cefali"
+        "name": "Brian Cefali",
+        "email": "brocef@users.noreply.github.com"
     },
     "plugins": [
         {
             "name": "tcw",
             "source": "./",
             "description": "Taxonomy · Capabilities · Work — skills + slash commands that drive the tcw workflow.",
-            "version": "0.18.2"
+            "version": "0.18.2",
+            "author": {
+                "name": "Brian Cefali",
+                "email": "brocef@users.noreply.github.com"
+            },
+            "category": "Developer Tools",
+            "keywords": [
+                "taxonomy",
+                "capabilities",
+                "work",
+                "tcw",
+                "sdlc",
+                "agent-sdlc"
+            ]
         }
     ]
 }

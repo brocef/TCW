@@ -3,10 +3,12 @@
     "version": "0.18.2",
     "description": "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project.",
     "author": {
-        "name": "Brian Cefali"
+        "name": "Brian Cefali",
+        "email": "brocef@users.noreply.github.com"
     },
     "homepage": "https://github.com/brocef/TCW",
     "repository": "https://github.com/brocef/TCW",
+    "license": "Apache-2.0",
     "keywords": [
         "taxonomy",
         "capabilities",

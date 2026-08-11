@@ -1,11 +1,13 @@
 {
   "name": "tcw",
+  "description": "The tcw plugin — Taxonomy · Capabilities · Work, a storage-abstracted framework for describing and evolving a software project along three axes.",
   "interface": {
     "displayName": "tcw"
   },
   "plugins": [
     {
       "name": "tcw",
+      "description": "Taxonomy · Capabilities · Work — skills that drive the tcw workflow.",
       "source": {
         "source": "local",
         "path": "./plugins/tcw"
