@@ -1,0 +1,9 @@
+slug: 2026-08-11-accept-comma-separated-tags-on-tcw-work-new
+title: Accept comma-separated --tags on tcw work new
+created: '2026-08-11'
+resolution: null
+priority: 20
+effort: low
+complexity: low
+tags:
+- cli
