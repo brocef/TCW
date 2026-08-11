@@ -1,0 +1,37 @@
+name: test
+
+# `branches: ['**']` rather than a bare `push:` — a bare one also fires on tag
+# pushes, which would run this suite twice for every release (once here, once as
+# the release workflow's gate).
+on:
+    push:
+        branches: ["**"]
+    pull_request:
+    workflow_call:
+
+jobs:
+    pytest:
+        runs-on: ubuntu-latest
+        strategy:
+            # Both legs always report. A failure on 3.13 that hides whether 3.11
+            # also broke costs a second push to find out.
+            fail-fast: false
+            matrix:
+                # The `requires-python` floor, and the version the maintainer
+                # actually develops on (3.14). 3.12 and 3.13 are omitted
+                # deliberately: the suite is ~1200 tests at ~3 minutes a leg, and
+                # floor + ceiling catches both back- and forward-compat
+                # breakage. Keep the ceiling at or above the local interpreter —
+                # a matrix that tops out below it tests a configuration nobody
+                # runs.
+                python-version: ["3.11", "3.14"]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ matrix.python-version }}
+            # No Node: pytest never shells out to it (`tcw serve`'s runtime
+            # tests monkeypatch `shutil.which`). The Node-dependent path is
+            # scripts/check_web_build.mjs, which is not part of the suite.
+            - run: pip install -e '.[dev]'
+            - run: pytest
