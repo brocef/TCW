@@ -2734,6 +2734,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # trunk-branch check needs.
         item = self.get(slug)
         src = self._find(slug)
+        if src is None:
+            current = self.get(slug)
+            where = (f"it is now in '{current.status}'" if current is not None
+                     else "it no longer exists")
+            raise ValueError(
+                f"cannot move {slug} to {to_status}: another process moved it first "
+                f"({where}). This process did not move it; re-read the item before "
+                f"retrying."
+            )
         # Nodes created before a status existed have no folder for it, and
         # `git mv` refuses when the destination's parent is missing. Creating it
         # here is an adapter detail with no abstract analog (the prime directive

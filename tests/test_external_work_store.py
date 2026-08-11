@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -216,3 +217,72 @@ def test_takeover_recovers_interrupted_private_claim(tmp_path):
     assert recovered.status == "active"
     assert recovered.owner == "recovery@example.com"
     assert not private.exists()
+
+
+def _reviewed(tmp_path: Path) -> tuple[Path, FsWorkStore, str]:
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Race me", created="2026-08-08")
+    store.start(item.slug, owner="me@example.com")
+    store.submit(item.slug)
+    return code, store, item.slug
+
+
+def test_effect_transition_lost_at_find_reports_where_the_item_went(tmp_path, monkeypatch):
+    """`_effect_transition` resolves the item twice and only tolerated a miss on
+    the first. Against the unfixed code this failed with `FileNotFoundError` from
+    `shutil.move("None", ...)` — *not* the `TypeError` the bug report assumed,
+    because `completed/` is gitignored by default so `_mv` takes its non-git
+    branch and `git_mv` stringifies `None` into the literal path "None".
+
+    The competitor moves the item to `backlog` so the reported status differs from
+    both ends of the attempted move, and the folder assertion pins the guard above
+    `_mv` (acceptance criterion 3).
+    """
+    code, store, slug = _reviewed(tmp_path)
+    real_find = FsWorkStore._find
+    calls = {"n": 0}
+    moved = store.root / "backlog" / slug
+
+    def competitor_wins_at_the_move(self, item_slug):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            shutil.move(str(store.root / "review" / item_slug), str(moved))
+            return None
+        return real_find(self, item_slug)
+
+    monkeypatch.setattr(FsWorkStore, "_find", competitor_wins_at_the_move)
+    with pytest.raises(ValueError) as caught:
+        store._effect_transition(slug, "completed")
+
+    assert slug in str(caught.value)
+    assert "is now in 'backlog'" in str(caught.value)
+    assert moved.is_dir()
+    assert not (store.root / "completed" / slug).exists()
+
+
+def test_cli_complete_losing_the_race_exits_1_without_a_traceback(tmp_path, monkeypatch,
+                                                                  capsys):
+    code, store, slug = _reviewed(tmp_path)
+    monkeypatch.chdir(code)
+    real_find = FsWorkStore._find
+    real_effect = FsWorkStore._effect_transition
+
+    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+        calls = {"n": 0}
+
+        def missing_at_the_move(inner, inner_slug):
+            calls["n"] += 1
+            return None if calls["n"] == 2 else real_find(inner, inner_slug)
+
+        monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
+        return real_effect(self, item_slug, to_status)
+
+    monkeypatch.setattr(FsWorkStore, "_effect_transition",
+                        lose_the_race_inside_the_transition)
+
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert "tcw work complete: cannot move" in err
+    assert "Traceback" not in err
