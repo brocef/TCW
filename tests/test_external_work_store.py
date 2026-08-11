@@ -176,6 +176,34 @@ def test_takeover_replaces_claim_and_submit_clears_it(tmp_path):
     assert submitted.started == ""
 
 
+def test_takeover_lost_at_the_commit_lookup_is_a_valueerror(tmp_path, monkeypatch):
+    """The take-over commit path resolves the item a third time (fs.py:2005).
+
+    Losing the item between the `started` write and that lookup used to hit
+    `None.relative_to(...)` and raise `AttributeError`, which the CLI does not
+    handle. Forced by patching `_find` away once the `started` write has landed —
+    deterministic regardless of how many lookups precede it.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+    store.start(item.slug, owner="first@example.com")
+
+    real_set_field = FsWorkStore.set_field
+
+    def vanish_after_started(self, slug, key, value):
+        real_set_field(self, slug, key, value)
+        if key == "started":
+            monkeypatch.setattr(FsWorkStore, "_find", lambda self, slug: None)
+
+    monkeypatch.setattr(FsWorkStore, "set_field", vanish_after_started)
+
+    with pytest.raises(ValueError, match="no such work item"):
+        FsWorkStore.open(code).start(item.slug, owner="second@example.com",
+                                     take_over=True)
+
+
 def test_takeover_recovers_interrupted_private_claim(tmp_path):
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")

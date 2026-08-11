@@ -87,6 +87,29 @@ def test_axis_semantics_are_object_local(tmp_path):
     assert any("unregistered tag" in problem for problem in validate(root, target=ValidationTarget("work", item.item.slug)))
 
 
+def test_work_target_reports_an_item_that_vanishes_mid_check(tmp_path, monkeypatch):
+    """`check` resolves the item again after reading its plan stages; losing it in
+    between used to be `None / "plan.md"` → `TypeError`. It is now absorbed by the
+    enclosing `except ValueError` and reported as a validation problem — a
+    spurious line when the item merely moved, which beats a traceback."""
+    root = _node(tmp_path)
+    work = FsWorkStore.open(root)
+    detail = work.create_work("Vanishing")
+    work.write_artifact(detail.item.slug, "plan",
+                        "---\nstages: [{id: model, title: Build, depends_on: []}]\n---\n")
+
+    real_stages = FsWorkStore._declared_plan_stages
+
+    def vanish_after_stages(self, slug):
+        stages = real_stages(self, slug)
+        monkeypatch.setattr(FsWorkStore, "_find", lambda self, slug: None)
+        return stages
+
+    monkeypatch.setattr(FsWorkStore, "_declared_plan_stages", vanish_after_stages)
+    problems = validate(root, target=ValidationTarget("work", detail.item.slug))
+    assert any("no such work item" in problem for problem in problems)
+
+
 def test_work_target_includes_bounded_resources(tmp_path):
     root = _node(tmp_path)
     work = FsWorkStore.open(root)

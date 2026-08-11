@@ -313,6 +313,26 @@ Run tests again.
     assert st.read_plan_stage(item.slug, "model") is None
 
 
+def test_plan_stage_path_lost_at_find_is_a_valueerror(tmp_path, monkeypatch):
+    """`_plan_stage_path` resolves the item after `_declared_plan_stages` already
+    did; losing it in between used to be `None / "plan"` → `TypeError`."""
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Staged", created="2026-01-01")
+    st.write_artifact(item.slug, "plan",
+                      "---\nstages: [{id: model, title: Build, depends_on: []}]\n---\n")
+
+    real_find = FsWorkStore._find
+    calls = {"n": 0}
+
+    def missing_on_the_second_lookup(self, slug):
+        calls["n"] += 1
+        return None if calls["n"] == 2 else real_find(self, slug)
+
+    monkeypatch.setattr(FsWorkStore, "_find", missing_on_the_second_lookup)
+    with pytest.raises(ValueError, match="no such work item"):
+        st.read_plan_stage(item.slug, "model")
+
+
 @pytest.mark.parametrize("manifest, message", [
     ("[{id: bad/id, title: Bad, depends_on: []}]", "unsafe id"),
     ("[{id: a, title: A, depends_on: [missing]}]", "unknown dependency"),

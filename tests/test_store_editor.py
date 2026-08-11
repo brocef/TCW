@@ -111,6 +111,24 @@ def test_get_detail_unknown_slug_returns_none(tmp_path):
     assert st.get_detail("no-such-slug") is None
 
 
+def test_get_detail_lost_at_find_returns_none(tmp_path, monkeypatch):
+    """`get_detail` resolves the item twice; losing it between the two used to be
+    `None / "state.yaml"` → `TypeError`. The function already returns
+    `WorkDetail | None`, so `None` is the honest answer."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+
+    real_find = FsWorkStore._find
+    calls = {"n": 0}
+
+    def missing_on_the_second_lookup(self, slug):
+        calls["n"] += 1
+        return None if calls["n"] == 2 else real_find(self, slug)
+
+    monkeypatch.setattr(FsWorkStore, "_find", missing_on_the_second_lookup)
+    assert st.get_detail(item.slug) is None
+
+
 def test_get_detail_core_changes_after_field_write(tmp_path):
     st = FsWorkStore.open(_work_node(tmp_path))
     item = st.create("Task", created="2026-01-01")

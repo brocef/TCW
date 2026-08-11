@@ -2002,7 +2002,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             self.set_field(slug, "owner", owner)
             self.set_field(slug, "started", started)
             if self.auto_commit_transitions():
-                rel = str(self._find(slug).relative_to(self.store_git_root))
+                rel = str(self._require_dir(slug).relative_to(self.store_git_root))
                 err = git_commit_result(self.store_git_root, f"tcw work: take over {slug}", rel)
                 if err:
                     raise TransitionCommitError(f"{slug} was taken over, but committing it failed:\n{err}")
@@ -2220,7 +2220,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         stages = {stage.id for stage in self._declared_plan_stages(slug)}
         if stage_id not in stages:
             raise ValueError(f"undeclared plan stage '{stage_id}'")
-        return self._find(slug) / "plan" / f"{stage_id}.md"
+        return self._require_dir(slug) / "plan" / f"{stage_id}.md"
 
     def read_plan_stage(self, slug: str, stage_id: str) -> PlanStageResource | None:
         path = self._plan_stage_path(slug, stage_id)
@@ -2486,7 +2486,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             try:
                 stages = self._declared_plan_stages(item.slug)
                 if stages:
-                    folder = self._find(item.slug)
+                    folder = self._require_dir(item.slug)
                     plan_content = (folder / "plan.md").read_text(encoding="utf-8")
                     for heading in ("Overview", "Stage ordering"):
                         if not self._nonempty_markdown_section(plan_content, heading):
@@ -2802,6 +2802,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if item is None:
             return None
         d = self._find(slug)
+        if d is None:                                  # moved out from under us
+            return None
         # Core revision = hash of state.yaml + body (initial-request.md)
         state_text = (d / "state.yaml").read_text(encoding="utf-8")
         body_path = d / "initial-request.md"
