@@ -19,3 +19,42 @@ category.
 - `tcw work path [<slug>]` now makes the slug optional while preserving existing
   item resolution; `path` is reserved in taxonomy and capabilities command
   dispatch, with explicit `show path` retained for same-named objects.
+- `.agents/plugins/marketplace.json` addresses the plugin root-relatively
+  (`"path": "."`) instead of through `./plugins/tcw`. Measured equivalent
+  against `codex-cli 0.147.0`: both layouts resolve to the repo root, install
+  the same 8 skills, and vendor an identical 29M / 34-entry tree — the symlink
+  only ever pointed where `"."` already points. Recorded so this is not
+  re-derived.
+- All four plugin manifests now carry complete metadata.
+  `.claude-plugin/marketplace.json` gains a top-level `description`, an
+  `owner.email`, and a per-plugin `author`, `category`, and `keywords`;
+  `.claude-plugin/plugin.json` gains `homepage`, `repository`, and `license`;
+  `.codex-plugin/plugin.json` gains `license` and an author email so the two
+  plugin manifests agree; `.agents/plugins/marketplace.json` gains descriptions
+  at both levels and stays deliberately version-free. `claude plugin validate .`
+  goes from one warning to clean.
+
+## Removed
+
+- The `plugins/tcw → ..` self-symlink and the `plugins/` directory. With the
+  plugin `source` set to `"./"`, that symlink made the plugin root contain
+  itself, so any tree walker following symlinks recursed without end.
+
+## Internal
+
+- Retired the workarounds the self-symlink required: `"plugins"` is gone from
+  `norecursedirs` along with its explaining comment, and
+  `exclude = ["plugins*"]` is gone from `packages.find` — redundant with
+  `include = ["tcw*"]`, confirmed by building a wheel that contains only `tcw`.
+  The `git ls-files` rationale in `tests/test_documented_cli_surface.py` drops
+  its third reason; the implementation is unchanged and its other two reasons
+  stand on their own.
+- `tests/test_plugin_manifests.py`: `test_symlink_points_at_repo_root` is
+  replaced by `test_no_tracked_symlink_resolves_to_its_own_ancestor`, which
+  walks `git ls-files -s` for mode-`120000` entries and asserts the **class**
+  rather than the instance, so the shape cannot return under another name.
+  Three tests added — marketplace metadata completeness, `homepage`/
+  `repository`/`license` agreement between the Claude and Codex plugin
+  manifests, and that the agents marketplace `source.path` resolves to a real
+  directory (written layout-agnostic, so it covered the transition rather than
+  matching its outcome).
