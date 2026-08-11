@@ -300,6 +300,42 @@ def test_probe_resolves_the_distribution_under_either_name(tmp_path, installed, 
     assert (_run_probe(site) == 0) is editable, why
 
 
+@pytest.mark.parametrize("editable, forced", [(True, False), (False, True)])
+def test_script_and_probe_together_decide_on_a_tcw_cli_install(tmp_path, editable, forced):
+    """The script, a real interpreter, and a real dist-info tree — end to end.
+
+    The fixtures above stub the interpreter's verdict; the probe cases above run
+    the probe with no script around it. Neither covers the seam, which is
+    precisely where the distribution rename bit: the script asked a question the
+    probe could no longer answer for `tcw-cli`.
+
+    The stand-in interpreter is a shell script *named* `python3.11` — the
+    shebang guard matches on the path pattern, not on the file being a real
+    binary — so the script's own code path runs the real probe against a
+    synthetic site-packages. The non-editable case is what proves the test
+    discriminates rather than passing for free.
+    """
+    root = _clone(tmp_path)
+    sentinel = tmp_path / "installed-version"
+    bindir = tmp_path / "bin"
+    site = tmp_path / "site-packages"
+    site.mkdir()
+    _dist_info(site, "tcw-cli", editable)
+
+    owner = _stub(bindir, "python3.11", f'PYTHONPATH={site} exec {sys.executable} -S "$@"\n')
+    _stub(bindir, "tcw", "exit 0\n", shebang=f"#!{owner}")
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log)
+
+    r = _run(root, sentinel, bindir)
+
+    assert r.returncode == 0
+    assert log.exists() is forced, (
+        "an editable tcw-cli was force-installed over" if editable
+        else "a plain tcw-cli install should have been replaced"
+    )
+
+
 # --- the real thing ----------------------------------------------------------
 
 
