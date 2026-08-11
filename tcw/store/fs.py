@@ -2076,6 +2076,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise MultipleMatch(f"slug resolves to {len(matches)} items: {slug}")
         return matches[0] if matches else None
 
+    def _require_dir(self, slug: str) -> Path:
+        d = self._find(slug)
+        if d is None:
+            raise ValueError(f"no such work item: {slug}")
+        return d
+
     def path(self, slug: str) -> Path | None:
         return self._find(slug)
 
@@ -2140,9 +2146,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return stages
 
     def _declared_plan_stages(self, slug: str) -> list[PlanStage]:
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
         plan = d / "plan.md"
         if not plan.is_file():
             return []
@@ -2718,9 +2722,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                 priority=priority, parent=parent).item
 
     def set_field(self, slug: str, key: str, value) -> None:
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
         state = load_yaml(d / "state.yaml")
         state[key] = value
         dump_yaml(d / "state.yaml", state)
@@ -2790,9 +2792,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
               f"'{trunk}'; committing the transition here.", file=sys.stderr)
 
     def _delete(self, slug: str) -> None:
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
         self._rm(d)
 
     # -- revision-bearing detail + composite create/update --
@@ -2943,9 +2943,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     initiative=_UNSET, parent=_UNSET, tags=_UNSET,
                     core_revision: str | None = None) -> "WorkDetail":
         """Partial-merge update with revision guard."""
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
 
         # Stale revision check
         if core_revision is not None:
@@ -3081,9 +3079,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(
                 f"unknown artifact '{name}' "
                 f"(choose from {', '.join(WORK_ARTIFACTS)})")
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
         p = d / self._artifact_filename(name)
         if not p.is_file():
             return None
@@ -3101,9 +3097,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(
                 f"unknown artifact '{name}' "
                 f"(choose from {', '.join(WORK_ARTIFACTS)})")
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
         p = d / self._artifact_filename(name)
 
         # Stale revision check
@@ -3138,9 +3132,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(
                 f"unknown sidecar '{name}' "
                 f"(choose from {', '.join(WORK_SIDECARS.keys())})")
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
         p = d / name
         if not p.is_file():
             return None
@@ -3160,9 +3152,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(
                 f"unknown sidecar '{name}' "
                 f"(choose from {', '.join(WORK_SIDECARS.keys())})")
-        d = self._find(slug)
-        if d is None:
-            raise ValueError(f"no such work item: {slug}")
+        d = self._require_dir(slug)
         p = d / name
 
         # Resolve media type
