@@ -353,6 +353,34 @@ def test_cli_path_prints_current_item_folder(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out.strip() == str(root / "docs/work/active" / item.slug)
 
 
+def test_cli_path_and_inbox_path_print_resolved_store_roots(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "path"]) == 0
+    output = capsys.readouterr()
+    assert output.out == f"{(root / 'docs/work').resolve()}\n"
+    assert output.err == ""
+
+    assert main(["work", "inbox", "path"]) == 0
+    output = capsys.readouterr()
+    assert output.out == f"{(root / 'docs/work/inbox').resolve()}\n"
+    assert output.err == ""
+
+
+@pytest.mark.parametrize("command", [["work", "path"], ["work", "inbox", "path"]])
+def test_cli_root_paths_outside_work_node_print_no_path(tmp_path, monkeypatch, capsys,
+                                                        command):
+    from tcw.cli import main
+    monkeypatch.chdir(tmp_path)
+
+    assert main(command) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "no tcw work node here" in output.err
+
+
 def test_cli_path_missing_slug_errors(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)

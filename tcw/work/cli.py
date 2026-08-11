@@ -277,6 +277,14 @@ def _inbox_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _inbox_path(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    print(st.inbox_root)
+    return 0
+
+
 def _inbox_accept(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -451,6 +459,12 @@ def _show(args: argparse.Namespace) -> int:
 
 
 def _path(args: argparse.Namespace) -> int:
+    if args.slug is None:
+        st = _store()
+        if st is None:
+            return 1
+        print(st.root)
+        return 0
     resolved = _resolve(args.slug, "path")
     if resolved is None:
         return 1
@@ -969,6 +983,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pin = g.add_parser("inbox", help="inspect and accept raw work intake")
     ing = pin.add_subparsers(dest="inbox_cmd", required=True)
     ing.add_parser("list", help="list raw inbox entries").set_defaults(func=_inbox_list)
+    ing.add_parser("path", help="print the work inbox folder path").set_defaults(
+        func=_inbox_path)
     pins = ing.add_parser("show", help="show one raw inbox entry")
     pins.add_argument("entry")
     pins.set_defaults(func=_inbox_show)
@@ -1037,8 +1053,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     psh.add_argument("slug")
     psh.set_defaults(func=_show)
 
-    pp = g.add_parser("path", help="print the current work item folder path")
-    pp.add_argument("slug")
+    pp = g.add_parser("path", help="print the work store or a work item folder path")
+    pp.add_argument("slug", nargs="?")
     pp.set_defaults(func=_path)
 
     pst = g.add_parser("start", help="backlog → active")

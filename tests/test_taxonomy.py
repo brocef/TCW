@@ -437,6 +437,32 @@ def test_cli_bare_path_is_show(tmp_path, monkeypatch, capsys):
     assert "Admin" in capsys.readouterr().out
 
 
+def test_cli_path_prints_resolved_store_root_and_reserves_command(tmp_path, monkeypatch,
+                                                                  capsys):
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    write_term(root, "path", name="Path term")
+    monkeypatch.chdir(root)
+
+    assert main(["taxonomy", "path"]) == 0
+    output = capsys.readouterr()
+    assert output.out == f"{(root / 'docs/taxonomy').resolve()}\n"
+    assert output.err == ""
+
+    assert main(["taxonomy", "show", "path"]) == 0
+    assert "Path term" in capsys.readouterr().out
+
+
+def test_cli_path_outside_taxonomy_node_prints_no_path(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["taxonomy", "path"]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "no tcw taxonomy node here" in output.err
+
+
 def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path, "repo")

@@ -50,6 +50,22 @@ def test_relative_external_store_routes_items_and_git_effects(tmp_path):
     assert store.path(item.slug).is_relative_to(work_root)
 
 
+def test_cli_path_commands_print_configured_external_store_roots(tmp_path, monkeypatch,
+                                                                  capsys):
+    code, work_root = _external_node(tmp_path, "../orchestrator/stores/corelib")
+    monkeypatch.chdir(code)
+
+    assert main(["work", "path"]) == 0
+    output = capsys.readouterr()
+    assert output.out == f"{work_root.resolve()}\n"
+    assert output.err == ""
+
+    assert main(["work", "inbox", "path"]) == 0
+    output = capsys.readouterr()
+    assert output.out == f"{(work_root / 'inbox').resolve()}\n"
+    assert output.err == ""
+
+
 def test_absolute_and_symlinked_default_store(tmp_path):
     code, work_root = _external_node(tmp_path, str(tmp_path / "orchestrator/stores/corelib"))
     assert FsWorkStore.open(code).root == work_root.resolve()

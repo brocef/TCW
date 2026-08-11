@@ -8,7 +8,7 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
 
 NAME = "capabilities"
-SUBCOMMANDS = {"init", "list", "show", "add", "search", "check", "set", "reset", "extends", "drift"}
+SUBCOMMANDS = {"init", "list", "show", "path", "add", "search", "check", "set", "reset", "extends", "drift"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <path>` == `tcw capabilities show <path>`
 
 
@@ -80,6 +80,14 @@ def _show(args: argparse.Namespace) -> int:
         print(f"tcw capabilities show: no such capability: {args.id}", file=sys.stderr)
         return 1
     _print_cap(cap)
+    return 0
+
+
+def _path(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    print(st.root)
     return 0
 
 
@@ -251,6 +259,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ps = g.add_parser("show", help="read a capability by path")
     ps.add_argument("id", metavar="path")
     ps.set_defaults(func=_show)
+
+    g.add_parser("path", help="print the capabilities store folder path").set_defaults(func=_path)
 
     pa = g.add_parser("add", help="scaffold a capability folder")
     pa.add_argument("path", metavar="namespace/path")

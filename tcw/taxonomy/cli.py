@@ -7,7 +7,7 @@ from tcw.store.base import AmbiguousRef, Term
 from tcw.store.fs import FsTaxonomyStore, find_node
 
 NAME = "taxonomy"
-SUBCOMMANDS = {"init", "list", "add", "show", "rm", "search", "check", "extends"}
+SUBCOMMANDS = {"init", "list", "add", "show", "path", "rm", "search", "check", "extends"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw taxonomy <path>` == `tcw taxonomy show <path>`
 
 
@@ -98,6 +98,14 @@ def _show(args: argparse.Namespace) -> int:
         print(f"tcw taxonomy show: no such term: {args.path}", file=sys.stderr)
         return 1
     _print_term(term)
+    return 0
+
+
+def _path(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    print(st.root)
     return 0
 
 
@@ -202,6 +210,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ps = g.add_parser("show", help="read an entry")
     ps.add_argument("path")
     ps.set_defaults(func=_show)
+
+    g.add_parser("path", help="print the taxonomy store folder path").set_defaults(func=_path)
 
     pr = g.add_parser("rm", help="remove a local entry")
     pr.add_argument("path")

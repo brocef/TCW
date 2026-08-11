@@ -63,6 +63,32 @@ class FeatureTax:
         return self.terms.get(ref)
 
 
+def test_cli_path_prints_resolved_store_root_and_reserves_command(tmp_path, monkeypatch,
+                                                                  capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    write_cap(root, "path", name="Path capability", Status="Supported")
+    monkeypatch.chdir(root)
+
+    assert main(["capabilities", "path"]) == 0
+    output = capsys.readouterr()
+    assert output.out == f"{(root / 'docs/capabilities').resolve()}\n"
+    assert output.err == ""
+
+    assert main(["capabilities", "show", "path"]) == 0
+    assert "Path capability" in capsys.readouterr().out
+
+
+def test_cli_path_outside_capabilities_node_prints_no_path(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["capabilities", "path"]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "no tcw capabilities node here" in output.err
+
+
 class AmbiguousFeatureTax(FeatureTax):
     def get(self, ref):
         if ref == "user-authentication":
