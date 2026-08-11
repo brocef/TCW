@@ -1,6 +1,6 @@
 id: cap-ebdc3f
 name: Locate TCW storage folders
-Status: Missing
+Status: Supported
 Planning doc: 2026-08-11-add-path-commands-for-tcw-storage-folders
 Subject:
 - cli
