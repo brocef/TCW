@@ -5,6 +5,7 @@ drift is `/tcw-doctor`'s job, not this test's).
 """
 import json
 import os
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -124,7 +125,24 @@ def test_agents_marketplace_source_path_resolves():
     assert (REPO / path).is_dir(), f"agents marketplace source path is not a directory: {path}"
 
 
-def test_symlink_points_at_repo_root():
-    link = REPO / "plugins" / "tcw"
-    assert link.is_symlink(), f"{link} must be a symlink"
-    assert link.resolve() == REPO, "plugins/tcw must resolve to the repo root"
+def test_no_tracked_symlink_resolves_to_its_own_ancestor():
+    """`plugins/tcw -> ..` used to make the plugin root contain itself. Every
+    tree walker that follows symlinks recurses forever on that, and a
+    server-side one cannot be configured around the way pytest and setuptools
+    were. Asserting the class, not the instance, so it cannot come back under
+    another name."""
+    out = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "-s", "-z"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    links = [
+        REPO / entry.split("\t", 1)[1]
+        for entry in out.split("\0")
+        if entry and entry.split(" ", 1)[0] == "120000"
+    ]
+    for link in links:
+        target = link.resolve()
+        assert target not in link.parents, (
+            f"{link.relative_to(REPO)} resolves to its own ancestor {target} — "
+            "a self-containing tree that breaks any walker following symlinks"
+        )
