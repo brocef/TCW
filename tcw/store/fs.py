@@ -2022,6 +2022,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         claiming.mkdir(exist_ok=True)
         private = claiming / f"{slug}-{uuid.uuid4().hex}"
         try:
+            # Losing the race has two tells a moment apart: `_find` already came
+            # back empty because the winner's folder is in `.claiming/` where
+            # nothing looks, or it was still there and `os.replace` lost. Same
+            # event, so normalize to one signal — otherwise the `None` slips past
+            # this handler into `os.replace` and raises TypeError, skipping the
+            # recovery entirely.
+            if src is None:
+                raise FileNotFoundError(slug)
             os.replace(src, private)
         except FileNotFoundError:
             for _ in range(50):
