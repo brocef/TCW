@@ -44,13 +44,24 @@ tcw_interpreter() {
 # session's cwd is usually the project, and a `tcw.egg-info` sitting in a TCW
 # checkout would otherwise answer this question instead of the real dist-info,
 # turning the guard into a force-install over the dev setup.
+#
+# Two names, newest first. The distribution is `tcw-cli` on PyPI (`tcw` was
+# taken); a checkout that predates that rename still reports `tcw`. Looking up
+# only one name means a miss reads as "not editable" — which is not a false
+# alarm, it force-installs over the developer's checkout, silently, every
+# session. First name found decides, so the current name always wins.
 tcw_is_editable() {
     "$1" - >/dev/null 2>&1 <<'PY'
 import json, os, sys
 sys.path = [p for p in sys.path if p not in ("", ".", os.getcwd())]
-from importlib.metadata import distribution
-raw = distribution("tcw").read_text("direct_url.json") or "{}"
-sys.exit(0 if json.loads(raw).get("dir_info", {}).get("editable") else 1)
+from importlib.metadata import PackageNotFoundError, distribution
+for name in ("tcw-cli", "tcw"):
+    try:
+        raw = distribution(name).read_text("direct_url.json") or "{}"
+    except PackageNotFoundError:
+        continue
+    sys.exit(0 if json.loads(raw).get("dir_info", {}).get("editable") else 1)
+sys.exit(1)
 PY
 }
 

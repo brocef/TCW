@@ -13,6 +13,7 @@ failure lands on the maintainer first.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -221,14 +222,85 @@ def test_successful_install_writes_the_sentinel_then_goes_quiet(tmp_path):
     assert len(log.read_text().splitlines()) == 1, "the second run must take the silent path"
 
 
-# --- the real thing ----------------------------------------------------------
+# --- the probe itself --------------------------------------------------------
+#
+# The fixture tests above stub the owning interpreter with `exit 0` / `exit 1`,
+# so they prove the script's *branches* without ever running the Python that
+# decides which branch is right. These run that Python, against synthetic
+# dist-info trees, so the decision is covered on any machine — including one
+# where `test_real_editable_checkout_is_left_alone` takes the shebang branch and
+# never reaches the probe at all.
 
-_EDITABLE_PROBE = """
-import json, sys
-from importlib.metadata import distribution
-raw = distribution("tcw").read_text("direct_url.json") or "{}"
-sys.exit(0 if json.loads(raw).get("dir_info", {}).get("editable") else 1)
-"""
+
+def _editable_probe() -> str:
+    """The probe, read out of the shell script rather than copied beside it.
+
+    A second copy would need a test policing the two for drift; extracting it
+    means the text these tests exercise is literally the text that ships.
+    """
+    blocks = re.findall(r"<<'PY'\n(.*?)\nPY\n", SCRIPT.read_text(encoding="utf-8"), re.DOTALL)
+    assert len(blocks) == 1, f"expected one PY heredoc in {SCRIPT.name}, found {len(blocks)}"
+    return blocks[0]
+
+
+_EDITABLE_PROBE = _editable_probe()
+
+
+def _dist_info(site: Path, dist: str, editable: bool | None) -> None:
+    """A minimal installed-distribution record `importlib.metadata` resolves.
+
+    `editable=None` writes no `direct_url.json` at all — a plain `pip install`,
+    which is the case the guard must *not* protect.
+    """
+    d = site / f"{dist.replace('-', '_')}-1.0.dist-info"
+    d.mkdir(parents=True)
+    (d / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {dist}\nVersion: 1.0\n")
+    if editable is not None:
+        (d / "direct_url.json").write_text(
+            json.dumps({"url": "file:///checkout", "dir_info": {"editable": editable}})
+        )
+
+
+def _run_probe(site: Path) -> int:
+    # `-S` keeps the real site-packages out: this interpreter has its own `tcw`
+    # installed, which would answer for every case below if it were visible.
+    return subprocess.run(
+        [sys.executable, "-S", "-c", _EDITABLE_PROBE],
+        cwd=tempfile.gettempdir(),
+        env={"PYTHONPATH": str(site), "PATH": SYSTEM_PATH},
+        capture_output=True,
+    ).returncode
+
+
+@pytest.mark.parametrize(
+    "installed, editable, why",
+    [
+        ([("tcw-cli", True)], True, "the post-rename checkout"),
+        ([("tcw", True)], True, "a checkout that predates the rename"),
+        ([("tcw-cli", False)], False, "dir_info says not editable"),
+        ([("tcw-cli", None)], False, "a plain pip install: no direct_url.json"),
+        ([], False, "nothing installed under either name"),
+        ([("tcw-cli", True), ("tcw", False)], True, "current name wins, and it is editable"),
+        ([("tcw-cli", False), ("tcw", True)], False, "current name wins, and it is not"),
+    ],
+)
+def test_probe_resolves_the_distribution_under_either_name(tmp_path, installed, editable, why):
+    """`tcw` was taken on PyPI, so the distribution ships as `tcw-cli`.
+
+    Looking up one name only is not a benign miss: `PackageNotFoundError` reads
+    as "not editable", and the caller force-installs over the checkout. The last
+    two cases pin the precedence — first name found decides, so the answer never
+    depends on `importlib.metadata` iteration order.
+    """
+    site = tmp_path / "site-packages"
+    site.mkdir()
+    for dist, ed in installed:
+        _dist_info(site, dist, ed)
+
+    assert (_run_probe(site) == 0) is editable, why
+
+
+# --- the real thing ----------------------------------------------------------
 
 
 def _this_machine_has_an_editable_tcw() -> bool:
