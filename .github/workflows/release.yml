@@ -1,0 +1,50 @@
+name: release
+
+# Publishing is `scripts/cut_version.py` followed by `git push --tags`. Nothing
+# else triggers an upload.
+on:
+    push:
+        tags: ["v*"]
+
+jobs:
+    test:
+        uses: ./.github/workflows/test.yml
+
+    publish:
+        needs: test
+        runs-on: ubuntu-latest
+        # Both lines are load-bearing for Trusted Publishing, and both must match
+        # the pending publisher configured on pypi.org for `tcw-cli` (owner
+        # brocef, repo TCW, workflow release.yml, environment pypi). A mismatch
+        # is invisible until the first real upload fails.
+        environment: pypi
+        permissions:
+            id-token: write
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            # One comparison, not five. That the five version-bearing files
+            # agree is already guarded by tests/test_plugin_manifests.py, which
+            # ran in the `test` job above; this only has to catch a tag that
+            # disagrees with them.
+            - name: Tag must match the declared version
+              run: |
+                  python - <<'PY'
+                  import os, sys, tomllib
+                  declared = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+                  tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+                  if declared != tag:
+                      sys.exit(f"tag {tag!r} does not match pyproject version {declared!r}")
+                  print(f"tag matches declared version {declared}")
+                  PY
+
+            - run: pip install build
+            - run: python -m build
+
+            # No `with:` block — Trusted Publishing mints the credential from
+            # the OIDC token, so there is no username or password to supply.
+            - uses: pypa/gh-action-pypi-publish@release/v1
