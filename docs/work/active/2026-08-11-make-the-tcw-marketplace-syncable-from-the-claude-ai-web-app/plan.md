@@ -110,7 +110,9 @@ CLAUDE_CONFIG_DIR=$(mktemp -d) claude plugin marketplace add https://github.com/
 
 # AC-6 — no stale references
 grep -rn "plugins/tcw" --include='*.py' --include='*.toml' --include='*.json' .
-# → nothing outside docs/changelogs/
+# → no functional hits; explanatory docstrings, the untracked
+#   .claude/settings.local.json, and docs/changelogs/ are excluded
+#   (criterion amended during implement — see spec.md AC-6)
 ```
 
 Separate from T3/T4 because it exercises the *published* shape through two real

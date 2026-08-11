@@ -229,8 +229,18 @@ result above makes it noise.
 5. `pytest tests/` passes, including D4's four test changes, and
    `test_plugin_manifests.py` still confirms the 5 version fields agree and the
    agents marketplace carries no version.
-6. `grep -rn "plugins/tcw" --include='*.py' --include='*.toml' --include='*.json' .`
-   returns nothing outside `docs/changelogs/` (archival history stays).
+6. No **functional** reference to `plugins/tcw` remains — nothing that resolves a
+   path, configures a tool, or is read at runtime. Explanatory prose in comments
+   and docstrings does not count, and neither does the untracked
+   `.claude/settings.local.json`; archival history under `docs/changelogs/`
+   stays.
+
+   > **Amended during `implement`.** This originally read "grep returns nothing
+   > outside `docs/changelogs/`". Satisfying that literally would have meant
+   > deleting the docstrings in `tests/test_plugin_manifests.py` that explain
+   > *why* the class-level symlink assertion exists — trading the documentation
+   > of a subtle constraint for a passing grep. The criterion was too literal;
+   > the intent was always "no live dependency".
 7. **Manual, user-only, and the verdict on the diagnosis:** at
    <https://claude.ai/code>, with any prior `tcw` marketplace entry removed
    first, adding `brocef/TCW` completes without "Marketplace sync failed" and
