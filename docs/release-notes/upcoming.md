@@ -2,3 +2,10 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
+
+## Fixed
+
+- When two people (or two agents) act on the same work item at once and one of
+  them moves it first, the other no longer crashes with a Python error. It now
+  says the move did not happen and where the item actually is, so you can re-read
+  it and decide whether to try again.
