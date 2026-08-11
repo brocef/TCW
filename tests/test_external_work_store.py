@@ -286,3 +286,46 @@ def test_cli_complete_losing_the_race_exits_1_without_a_traceback(tmp_path, monk
     err = capsys.readouterr().err
     assert "tcw work complete: cannot move" in err
     assert "Traceback" not in err
+
+
+def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
+    """A DOCUMENTED LIMITATION, pinned — not a behavior worth keeping.
+
+    `complete()` stamps `resolution` with `set_field` (`base.py:1397`) *before*
+    `_effect_transition` moves the item, so a transition that loses the race
+    reports the loss with the loser's resolution already on disk. Two agents
+    completing one `review` item with different resolutions can therefore leave
+    one's `resolution` on the item the other moved — exactly the
+    status/resolution disagreement `_status_resolution_problems` still describes
+    as something "no code path can produce". That docstring is now known to be
+    optimistic.
+
+    Fixing it means rolling back or reordering the pre-move writes, which
+    collides with the ordering deliberately documented at `work/cli.py:915-918`.
+    Tracked as
+    `2026-08-11-roll-back-or-reorder-the-pre-move-set-field-writes-on-a-lost-transition`.
+    When that lands, this test should be inverted, not deleted.
+    """
+    code, store, slug = _reviewed(tmp_path)
+    real_find = FsWorkStore._find
+    real_effect = FsWorkStore._effect_transition
+
+    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+        calls = {"n": 0}
+
+        def missing_at_the_move(inner, inner_slug):
+            calls["n"] += 1
+            return None if calls["n"] == 2 else real_find(inner, inner_slug)
+
+        monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
+        return real_effect(self, item_slug, to_status)
+
+    monkeypatch.setattr(FsWorkStore, "_effect_transition",
+                        lose_the_race_inside_the_transition)
+    with pytest.raises(ValueError, match="cannot move"):
+        store.complete(slug, "done", dod_ack=[])
+    monkeypatch.undo()
+
+    item = FsWorkStore.open(code).get(slug)
+    assert item.status == "review"          # the move did not happen...
+    assert item.resolution == "done"        # ...but the write before it did
