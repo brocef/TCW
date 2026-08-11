@@ -27,6 +27,20 @@ installs made either side of the rename. Keep the `sys.path` filter at line 50
 — it is load-bearing (a `tcw.egg-info` in the cwd would otherwise answer instead
 of the real dist-info).
 
+**Chosen deliberately over two alternatives** (decided 2026-08-11):
+
+- _One word_ — `distribution("tcw-cli")`. Covers the real case in a
+  one-character diff, but drops the pre-rename dist-info, so a contributor who
+  pulls without re-running `pip install -e .` gets pipx installed over their
+  editable checkout. Recoverable, but a silent clobber of a dev environment is
+  the category that earns three extra lines.
+- _Name-agnostic_ — find whichever distribution provides the `tcw`
+  console-script entry point. Answers the real question rather than the
+  name-proxy and survives any future rename, but `distributions()` iteration
+  order is undefined, so it loses the explicit "new name wins" precedence the
+  loop has. Its future-proofing is speculative: there is one rename planned, and
+  the follow-on item may delete this function outright.
+
 The two copies of this probe are a known duplication. Do **not** refactor them
 into one shared file in this task: the shell script must stay self-contained
 (it runs from a plugin cache with no repo around it). Change both, and add a
@@ -75,6 +89,12 @@ existing pipx package `tcw`, run `pipx install --force <clone>` after the rename
 and observe what happens to the `tcw` symlink in the pipx bin dir. Expected —
 but **not verified** — is that `--force` repoints it to the new `tcw-cli` venv,
 leaving the old `tcw` venv orphaned and harmless.
+
+**Prerequisite: `pipx` is not installed on the development machine** (verified
+2026-08-11 — `command -v pipx` fails). The requester elected to install it
+normally rather than sandbox it, so this task begins with that install. There is
+no shortcut: the whole question is what a real `pipx install --force` does to an
+existing same-named app link, and no amount of reading the docs settles it.
 
 - If it repoints: record the observation in `outcome.md` and change nothing.
 - If it refuses the link (leaving users on a stale `tcw`): add an explicit
@@ -227,7 +247,7 @@ present), and everything else in the existing 1193 tests.
 | --------------------------------------------------- | ------------------------------------------------------- | ---- |
 | Both CI matrix legs green                           | push the branch, read the GitHub checks                 | 4    |
 | Wheel installs and carries the prebuilt web app     | clean build → empty venv → `tcw --version` + file check | 6    |
-| pipx `--force` repoints an existing `tcw` symlink   | real pipx, `pipx list` before/after                     | 3    |
+| pipx `--force` repoints an existing `tcw` symlink   | install pipx first, then `pipx list` before/after        | 3    |
 | Trusted Publishing actually authenticates           | **only provable by the first real tag push**            | —    |
 
 The last row has no rehearsal. The first successful run of the release workflow
@@ -240,6 +260,21 @@ locally, Task 4's workflow must be green, and the requester must have created
 the pending publisher on pypi.org — the agent cannot do that step.
 
 ## Notes
+
+- **"Works on my machine" proves nothing about Tasks 1 and 3 here.** Measured on
+  the development machine 2026-08-11: `session_bootstrap.sh` is inert on it,
+  twice over. `tcw` on PATH is `/Users/brian/.pyenv/shims/tcw`, whose shebang is
+  `#!/usr/bin/env bash` — not the absolute Python shebang the `case` at lines
+  33-39 requires — so `tcw_interpreter()` returns 1 and the script exits at line
+  72 without ever reaching the editable probe. And `pipx` is absent, so line 78
+  would exit 0 regardless. There _is_ an editable install here (`tcw 0.10.3`,
+  `editable=True`), but the script cannot see it.
+
+  Consequence: the guard bug is real but **narrow** — it needs pipx, a
+  Python-shebang `tcw`, and an editable install of a post-rename checkout, all
+  on the same machine. None of that describes this one. Task 1's tests must
+  therefore construct the situation rather than observe it, and Task 3 cannot
+  begin until pipx is installed.
 
 - No blockers to record on this item. The reverse dependency is recorded:
   `2026-08-11-install-the-plugin-s-cli-from-pypi-instead-of-its-own-clone` is
