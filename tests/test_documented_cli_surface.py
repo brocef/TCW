@@ -44,13 +44,12 @@ ARCHIVAL = (
 def _doc_files() -> list[Path]:
     """Every non-archival Markdown file, per git.
 
-    git rather than `rglob` for three reasons: `.gitignore` already declares what
+    git rather than `rglob` for two reasons: `.gitignore` already declares what
     is not source (`node_modules/`, `.venv/`, build output, the gitignored
     `docs/work/completed/`), so the exclusions above stay a short list of
-    *archives* rather than growing a second list of *junk*; `--others` keeps a
-    brand-new unstaged doc in scope, which is what makes "a new tree is covered
-    immediately" literally true; and the `plugins/tcw` symlink back to the repo
-    root is one index entry to git rather than an infinite tree.
+    *archives* rather than growing a second list of *junk*; and `--others` keeps
+    a brand-new unstaged doc in scope, which is what makes "a new tree is
+    covered immediately" literally true.
     """
     out = subprocess.run(
         ["git", "-C", str(REPO), "ls-files",
