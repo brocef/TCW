@@ -213,9 +213,16 @@ So the factory is kept, and separated from the real artifact by **filename**:
 - `artifacts()` looks up `<name>.md` from `WORK_ARTIFACTS` and never sees a
   draft, so presence stays honest with no new machinery: no content hashing, no
   in-file marker, no adapter-visible draft state.
-- Drafts are a **bounded derived namespace** — exactly one per `WORK_ARTIFACTS`
-  entry — not an open folder glob. Any store can hold "the draft of artifact N"
-  as a named resource. ✓
+- Drafts are a **bounded derived namespace** — exactly one per **stage-produced**
+  artifact, i.e. per name appearing in some `LifecycleStep.produces` — not an
+  open folder glob. Any store can hold "the draft of artifact N" as a named
+  resource. ✓
+
+**`intake` is in `WORK_ARTIFACTS` but is not stage-produced**, so it has neither
+a template nor a draft. Scaffolding raw input would be incoherent — intake is
+what someone supplied, not a form to fill in. The template and draft sets derive
+from `produces`, not from the artifact registry, and this is the one place the
+two differ.
 - The agent authors `<artifact>.md` from the draft. C5 decides whether a landed
   artifact removes its draft, and states which.
 
@@ -495,12 +502,16 @@ only.
 12. `tcw work lifecycle` still executes nothing — a bound command writing a
     sentinel file, run for every stage and transition id, leaves no sentinel.
 13. `tcw work lifecycle --transition complete --phase pre --directive` reports
-    only the `pre` bindings.
+    only the `pre` bindings. `--phase` accepts `pre` and `post` for a transition
+    and `pre` only for a stage, since stages no longer have a `post`; `--phase
+    post` on a stage is an error naming the reason rather than empty output.
 14. With nothing configured, `tcw work stage <id>` prints built-in instructions
     for each of `request`, `spec`, `plan`, `implement`, `verify`, and
     `postmortem` — enumerated, and asserted as **exact set equality** against the
     shipped registry so neither an empty file nor a missing stage passes.
-    `inbox` ships none, because it runs before an item exists. `{builtin: true}`
+    `inbox` ships none, because it runs before an item exists — and
+    `tcw work stage inbox` therefore has no item to resolve against and is
+    rejected with that reason, rather than printing nothing. `{builtin: true}`
     composed with a node binding prints both in declaration order.
 15. `tcw validate` rejects, each naming the offending key: an unknown role key;
     `command` in a prompt position; `skill` in a check position; an unknown
@@ -510,9 +521,11 @@ only.
     unconditional match.
 16. `--no-exec` prints every command and `generate` script that would run and
     executes none — verified by the sentinel technique from criterion 12.
-17. A built-in template exists for **every** name in `WORK_ARTIFACTS`, asserted
-    as exact set equality rather than as "at least one", and each has exactly one
-    definition in the codebase.
+17. A built-in template exists for **every stage-produced artifact** — the union
+    of all `LifecycleStep.produces` — asserted as exact set equality rather than
+    as "at least one", and each has exactly one definition in the codebase.
+    `intake` is in `WORK_ARTIFACTS` but is not stage-produced, so it has no
+    template and `tcw work scaffold intake` is rejected.
 18. Every stage document in `skills/tcw-work/references/` routes to the CLI for
     its instructions rather than restating them — and **still carries** the
     TCW-specific judgment the CLI does not: the stage's delegability, its
