@@ -778,7 +778,7 @@ DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
 # stage-letter string in `tcw work list`, so inserting would shift every
 # existing item's display.
 WORK_ARTIFACTS = ("initial-request", "spec", "plan", "outcome", "refined-outcome",
-                  "rework", "post-mortem")
+                  "rework", "post-mortem", "intake")
 
 # Bounded sidecar registry — each entry declares the expected media type and
 # the validation rule applied before persistence.  New sidecars are added here.

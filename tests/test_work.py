@@ -231,6 +231,7 @@ def test_artifacts_report_bounded_presence_and_locator(tmp_path):
         "refined-outcome": False,
         "rework": False,
         "post-mortem": False,
+        "intake": False,
     }
     assert st.artifact_locator(item.slug, "plan") == str(d / "plan.md")
     assert st.artifact_locator(item.slug, "../plan") is None
