@@ -213,16 +213,19 @@ So the factory is kept, and separated from the real artifact by **filename**:
 - `artifacts()` looks up `<name>.md` from `WORK_ARTIFACTS` and never sees a
   draft, so presence stays honest with no new machinery: no content hashing, no
   in-file marker, no adapter-visible draft state.
-- Drafts are a **bounded derived namespace** — exactly one per **stage-produced**
-  artifact, i.e. per name appearing in some `LifecycleStep.produces` — not an
-  open folder glob. Any store can hold "the draft of artifact N" as a named
-  resource. ✓
+- Drafts are a **bounded derived namespace** — exactly one per `WORK_ARTIFACTS`
+  entry — not an open folder glob. Any store can hold "the draft of artifact N"
+  as a named resource. ✓
 
-**`intake` is in `WORK_ARTIFACTS` but is not stage-produced**, so it has neither
-a template nor a draft. Scaffolding raw input would be incoherent — intake is
-what someone supplied, not a form to fill in. The template and draft sets derive
-from `produces`, not from the artifact registry, and this is the one place the
-two differ.
+**`intake`'s built-in template is empty**, and deliberately so: intake has no
+prescribed structure, because it is whatever someone supplied. So
+`tcw work scaffold intake` produces an empty `intake.draft.md` — a file to type
+into — and every artifact keeps the same rule with no carve-out.
+
+That also answers C1's open question about what replaces `tcw work new`'s
+`→ edit:` hint. `tcw work new` no longer leaves a file behind, and
+`tcw work scaffold intake` is exactly the affordance that used to provide: give
+me a path to open and write my request into.
 - The agent authors `<artifact>.md` from the draft. C5 decides whether a landed
   artifact removes its draft, and states which.
 
@@ -521,11 +524,11 @@ only.
     unconditional match.
 16. `--no-exec` prints every command and `generate` script that would run and
     executes none — verified by the sentinel technique from criterion 12.
-17. A built-in template exists for **every stage-produced artifact** — the union
-    of all `LifecycleStep.produces` — asserted as exact set equality rather than
-    as "at least one", and each has exactly one definition in the codebase.
-    `intake` is in `WORK_ARTIFACTS` but is not stage-produced, so it has no
-    template and `tcw work scaffold intake` is rejected.
+17. A built-in template exists for **every** name in `WORK_ARTIFACTS`, asserted
+    as exact set equality rather than as "at least one", and each has exactly one
+    definition in the codebase. `intake`'s is **empty**, asserted explicitly so
+    nobody helpfully adds headings to it later, and `tcw work scaffold intake`
+    creates an empty `intake.draft.md` rather than refusing.
 18. Every stage document in `skills/tcw-work/references/` routes to the CLI for
     its instructions rather than restating them — and **still carries** the
     TCW-specific judgment the CLI does not: the stage's delegability, its

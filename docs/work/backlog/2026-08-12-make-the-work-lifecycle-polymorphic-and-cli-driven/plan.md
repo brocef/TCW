@@ -31,7 +31,11 @@ and `tcw work inbox accept` writing intake instead of synthesizing a request, th
 (exists and non-empty) shared by `_read_item`, `body_path`, `artifacts()`, the
 core revision, and `serve`; the body read-fallback and the write/promotion
 contract; the core revision hashing which file resolved; and the lowercase `i`
-board prefix. Also the replacement for `tcw work new`'s `→ edit:` hint.
+board prefix.
+
+`tcw work new`'s `→ edit:` hint points at `tcw work scaffold intake` (C5) once
+that exists. Until then C1 prints the item path — the hint degrades rather than
+creating a dependency on a parallel child.
 
 **Why first:** the epic's headline feature — a conditional template for a `bug`
 item's request — is impossible while both creation paths write
