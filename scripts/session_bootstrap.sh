@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or refresh the `tcw` CLI from the plugin clone.
+# Install or refresh the `tcw` CLI from PyPI (the `tcw-cli` distribution).
 #
 #   session_bootstrap.sh [clone-root] [sentinel-path]
 #
@@ -65,12 +65,16 @@ sys.exit(1)
 PY
 }
 
-# 1. Nothing to install from.
+# 1. No plugin root: nothing tells us which plugin version we would be
+#    installing for, so there is nothing to reconcile.
 [ -n "$root" ] && [ -f "$root/tcw/__init__.py" ] || exit 0
 
-# 2. Steady state: what we installed still matches the clone, and it is on PATH.
+# 2. Steady state: the plugin has not changed since we last installed, and `tcw`
+#    is on PATH. The sentinel is a trigger token for a plugin-version change and
+#    nothing more — it is *not* evidence about which `tcw-cli` PyPI resolved to,
+#    which floats. `pipx upgrade tcw-cli` is how a user moves ahead of this.
 #    Cheapest check first, so the every-session cost is one `cmp` and one
-#    `command -v` — no interpreter starts.
+#    `command -v` — no interpreter starts, and no network.
 if [ -n "$sentinel" ] && [ -f "$sentinel" ] &&
     cmp -s "$sentinel" "$root/tcw/__init__.py" &&
     command -v tcw >/dev/null 2>&1; then
@@ -88,14 +92,16 @@ fi
 #    environment; it does not happen silently at session start.
 command -v pipx >/dev/null 2>&1 || exit 0
 
-# 5. Install, then record what was installed. A failure leaves the sentinel
-#    stale, so the next session retries with no state to clean up.
-if pipx install --force "$root" >/dev/null 2>&1; then
+# 5. Install the published CLI, then record which plugin version asked for it. A
+#    failure leaves the sentinel stale, so the next session retries with no state
+#    to clean up. One line on failure, and it does not try to tell a network
+#    outage from a missing release — that is what the doctor is for.
+if pipx install --force tcw-cli >/dev/null 2>&1; then
     if [ -n "$sentinel" ]; then
         mkdir -p "$(dirname "$sentinel")" 2>/dev/null &&
             cp "$root/tcw/__init__.py" "$sentinel"
     fi
 else
-    echo "tcw: automatic install from $root failed — run /tcw-doctor (Codex: the tcw-plugin skill) to diagnose."
+    echo "tcw: automatic install of tcw-cli from PyPI failed (offline?) — run /tcw-doctor (Codex: the tcw-plugin skill) to diagnose."
 fi
 exit 0

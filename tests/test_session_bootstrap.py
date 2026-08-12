@@ -198,7 +198,7 @@ def test_failed_install_prints_one_line_and_retries_next_time(tmp_path):
     lines = r.stdout.splitlines()
     assert len(lines) == 1 and "/tcw-doctor" in lines[0], r.stdout
     assert sentinel.read_text() == '__version__ = "0.0.1"\n', "a stale sentinel is what forces the retry"
-    assert log.read_text().strip().endswith(str(root))
+    assert log.read_text().strip().endswith("tcw-cli")
 
 
 def test_successful_install_writes_the_sentinel_then_goes_quiet(tmp_path):
@@ -212,7 +212,7 @@ def test_successful_install_writes_the_sentinel_then_goes_quiet(tmp_path):
 
     assert first.returncode == 0
     assert first.stdout == ""
-    assert log.read_text().strip() == f"install --force {root}"
+    assert log.read_text().strip() == "install --force tcw-cli"
     assert sentinel.read_bytes() == (root / "tcw" / "__init__.py").read_bytes()
 
     second = _run(root, sentinel, bindir)
