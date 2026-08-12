@@ -2767,7 +2767,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         else:
             for name, path in self._folder_files(source):
                 if name == primary:
-                    manifest.append("initial-request.md")
+                    manifest.append("intake.md")
                 else:
                     manifest.append(f"attachments/{name}")
                     attachments.append((name, path))
@@ -2775,23 +2775,23 @@ class FsWorkStore(FsTreeStore, WorkStore):
         origin = primary or source.name
         manifest_lines = []
         for name in manifest:
-            suffix = f" — accepted from `{origin}`" if name == "initial-request.md" else ""
+            suffix = f" — accepted from `{origin}`" if name == "intake.md" else ""
             manifest_lines.append(f"- `{name}`{suffix}")
         body = detail.body if detail.body is not None else "Binary intake preserved as an attachment."
-        request = (
-            f"# {accepted_title}\n\n## Product changes\n\nTBD\n\n"
-            "## Technical changes\n\nTBD\n\n## Meta changes\n\nTBD\n\n"
-            "## Inbox contents\n\n### Inbox manifest\n\n"
-            + "\n".join(manifest_lines) + "\n\n### Inbox body\n\n" + body
-        )
-        if not request.endswith("\n"):
-            request += "\n"
+        # Intake, not a request: accepting an entry preserves what arrived and
+        # leaves the `request` stage still to run. The manifest and the binary
+        # fallback above are the parts worth keeping — this used to wrap them in
+        # a three-heading TBD skeleton that made the item look already written up.
+        intake = ("## Inbox manifest\n\n" + "\n".join(manifest_lines)
+                  + "\n\n## Inbox body\n\n" + body)
+        if not intake.endswith("\n"):
+            intake += "\n"
         temp = Path(tempfile.mkdtemp(prefix=f".{slug}-", dir=self.root / "backlog"))
         try:
             state = {"slug": slug, "title": accepted_title,
                      "created": created, "resolution": None}
             dump_yaml(temp / "state.yaml", state)
-            (temp / "initial-request.md").write_text(request, encoding="utf-8")
+            (temp / "intake.md").write_text(intake, encoding="utf-8")
             for name, path in attachments:
                 target = temp / "attachments" / name
                 target.parent.mkdir(parents=True, exist_ok=True)

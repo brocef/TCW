@@ -186,7 +186,21 @@ def test_inbox_list_and_show_standalone_text(tmp_path):
     assert detail.resources[0].readable is True
 
 
-def test_inbox_accept_folder_generates_request_and_attachments(tmp_path):
+def test_inbox_accept_text_file_writes_intake_only(tmp_path):
+    """The third entry shape. A standalone text file has no attachments, so the
+    whole record is the manifest naming the source plus the text that arrived."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/request.txt").write_text("please fix it\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+    item = st.inbox_accept("request.txt", title="Fix it")
+    created = st.path(item.slug)
+    assert {p.name for p in created.iterdir()} == {"state.yaml", "intake.md"}
+    intake = (created / "intake.md").read_text()
+    assert "- `request.txt`" in intake
+    assert intake.endswith("please fix it\n")
+
+
+def test_inbox_accept_folder_generates_intake_and_attachments(tmp_path):
     root = node(tmp_path)
     entry = root / "docs/work/inbox/big-request"
     (entry / "nested").mkdir(parents=True)
@@ -204,8 +218,9 @@ def test_inbox_accept_folder_generates_request_and_attachments(tmp_path):
     assert (created / "attachments/asset.bin").read_bytes() == b"\0\1"
     assert (created / "attachments/nested/notes.txt").read_text() == "notes\n"
     assert not (created / "attachments/.ignored").exists()
-    body = (created / "initial-request.md").read_text()
-    assert "- `initial-request.md` — accepted from `INDEX.md`" in body
+    assert not (created / "initial-request.md").exists()   # accept no longer writes one
+    body = (created / "intake.md").read_text()
+    assert "- `intake.md` — accepted from `INDEX.md`" in body
     assert "- `attachments/asset.bin`" in body
     assert "- `attachments/nested/notes.txt`" in body
     assert body.endswith("Original request\n")
@@ -220,7 +235,13 @@ def test_inbox_accept_binary_file_does_not_render_binary(tmp_path):
     item = st.inbox_accept("sample.dat")
     created = st.path(item.slug)
     assert (created / "attachments/sample.dat").read_bytes() == b"\0secret"
-    assert "secret" not in (created / "initial-request.md").read_text()
+    assert not (created / "initial-request.md").exists()
+    # An attachments-only entry still produces an intake: the manifest plus the
+    # fallback prose is the record of what arrived.
+    intake = (created / "intake.md").read_text()
+    assert "secret" not in intake
+    assert "- `attachments/sample.dat`" in intake
+    assert intake.endswith("Binary intake preserved as an attachment.\n")
 
 
 @pytest.mark.parametrize("indexes", [("INDEX.md",), ("INDEX.txt",)])
