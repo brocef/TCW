@@ -1,0 +1,10 @@
+slug: 2026-08-12-separate-the-agent-plugin-from-the-python-cli-source
+title: Separate the agent plugin from the Python CLI source
+created: '2026-08-12'
+resolution: null
+priority: 30
+effort: high
+complexity: high
+tags:
+- cli
+- skills
