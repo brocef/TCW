@@ -2,21 +2,3 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
-
-## Fixed
-
-When two agents start the same work item at the same moment, the one that loses
-now always gets the plain message naming who claimed it and when. Before, a few
-of the ways it could lose ended in an error dump instead — and one of them
-answered "no such work item", which was worse, because the item was there all
-along and someone else simply had it first.
-
-Starting a work item by a name that does not exist says so again. If another
-item whose name began with the same text was being claimed at that moment, you
-could instead be told there was an abandoned claim to take over — for an item
-that was never yours and, in some cases, for as long as the leftover claim sat
-there.
-
-Listing the board while another agent is claiming an item no longer fails.
-`tcw work list` could crash if a claim landed in the instant between it checking
-for an item's documents and reading them.
