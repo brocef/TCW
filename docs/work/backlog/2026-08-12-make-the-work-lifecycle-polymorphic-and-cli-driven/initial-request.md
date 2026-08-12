@@ -92,6 +92,36 @@ Put to the requester before this was written, and answered:
 - **This is an epic with child items**, not one large item. Rejected: a single
   phased item, and a two-item machinery/content split.
 
+## Added after adversarial review
+
+Review by `codex` and `bllm-review` found that the requested conditional artifact
+templates were impossible as first designed: both item-creation paths write
+`initial-request.md` unconditionally, so a create-if-absent hook could never fire
+for the `request` stage. Put to the requester, who identified the deeper problem
+and asked for a further change:
+
+> I'm realizing now that `tcw work new` with data piped into it is really
+> shorthand for: 1. That same data written down as the inbox artifact,
+> 2. Creation of a new TCW work item, 3. Immediate ingestion of that inbox
+> artifact into the TCW work item.
+
+So the epic also **unifies intake**. Raw input becomes an artifact, `intake.md`,
+written by whichever path supplied it; no path synthesizes a request document;
+and the `request` stage produces `initial-request.md` from intake like any other
+stage produces its artifact. `tcw work delegate` and `escalate` already work this
+way (`tcw/work/recursion.py:231-251`) — the change makes the other paths match.
+
+Decided with it:
+
+- **The body surface resolves to `initial-request.md`, falling back to
+  `intake.md`**, so a piped-in item is still readable before its `request` stage
+  runs. Rejected: an empty body until `request`, and binding the body to intake
+  permanently.
+- **The artifact is named `intake.md`.** Rejected: `init.md`, `raw.md`.
+- **Stage `post` hooks and `--done` are cut**, reversing step 6 of the ordering
+  above. Exit checks move to the next stage's `pre` — one check family instead of
+  two, and every check fires at a moment that actually happens.
+
 ## Constraints
 
 - **The two ladders are load-bearing.** A stage produces an artifact; a

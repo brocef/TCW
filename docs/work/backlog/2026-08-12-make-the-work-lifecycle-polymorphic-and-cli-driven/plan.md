@@ -2,149 +2,174 @@
 
 An epic's plan is a **coordination plan**: child boundaries, the commands that
 create them, the dependency order, and the checkpoints where the epic reconciles.
-No code is written against this item; every implementation task belongs to a
-child's own `plan.md`.
+No code is written against this item; implementation tasks belong to each child's
+own `plan.md`.
+
+> Rebuilt after the `codex` / `bllm-review` pass and the requester's intake
+> decision. Seven children, not six; C1 is new and everything shifted.
 
 ## Children
 
-Six children, all in this node (`tcw`), all `--initiative` rather than
-`--parent`: each starts and completes on its own schedule, and `reconcile`
-follows the `initiative` relation.
+All in this node (`tcw`), all `--initiative` rather than `--parent`: each starts
+and completes on its own schedule, and `reconcile` follows the `initiative`
+relation.
 
-### C1 — Work item JSON projection
+**Every child owns its own documentation and its own capability delta.** Each one
+updates its command documentation, release notes, changelog, driving-skill text,
+and ledger entries as it lands. C7 performs only the consolidation that cannot be
+expressed earlier.
 
-**Delivers** one projection function (`WorkItem` + `artifacts()` → dict) and
-`tcw work show --json`.
+### C1 — Unify intake
 
-**Why first:** it is the payload a `generate` hook receives, so C2 cannot define
-`generate` without it. It is also the only child that ships user-visible value
-with nothing else in place.
+**Delivers** `intake.md` as an artifact; `tcw work new` and `tcw work inbox
+accept` writing intake instead of synthesizing a request; the body surface
+resolving request-then-intake; `request` gaining `inputs=("intake.md",)`; and
+`fs.py:2755-2769` deleted outright. Decides and records the `WORK_ARTIFACTS`
+ordering question and the replacement for `tcw work new`'s `→ edit:` hint.
 
-**Verified by:** `tcw work show <ref> --json` parses as JSON and carries every
-`WorkItem` field plus an `artifacts` name→presence map; a test asserts the
-projection covers every field of the dataclass, so a field added later fails the
-test rather than silently vanishing from the payload.
+**Why first:** the epic's headline feature — a conditional template for a `bug`
+item's request — is impossible while both creation paths write
+`initial-request.md` unconditionally. It also has value entirely on its own: it
+removes a duplicated template and makes the board's `R` letter mean something.
+
+**Verified by:** acceptance criteria 2, 3, and 4 — a fresh item with no artifacts,
+a piped item with intake only, an accepted inbox entry with intake only, and the
+board letters and `show` output correct at each point. Plus a migration check
+that existing items, which all have `initial-request.md`, are untouched.
+
+**Capabilities:** new — `work/capture-raw-intake`; changed —
+`work/open-a-work-item`, `work/manage-the-work-inbox`.
+
+### C2 — Work item JSON projection
+
+**Delivers** a versioned DTO with explicitly typed fields and an `artifacts`
+map, plus `tcw work show --json`. Decides and documents the handling of
+`WorkItem.capabilities` — an opaque `object` filled from arbitrary YAML — and of
+`body`, which is unbounded.
+
+**Verified by:** criterion 5. The schema-validation test is the point: a test
+that merely enumerates dataclass fields would pass for an unusable payload, which
+is exactly what review flagged.
 
 **Capability:** changed — `work/read-a-work-item`.
 
-### C2 — Hook roles, kinds, and conditions
+**Blocked by:** C1 — the projection must describe the resolved body surface and
+the `intake` artifact, and doing that after C1 avoids versioning the DTO twice.
 
-**Delivers** the model change: `check` / `prompt` / `artifact` roles; the
-`blob`, `file`, `generate`, and `builtin` kinds; the `when:` matcher; parsing,
-validation, and back-compat in `parse_lifecycle_policy`; resolution as a library
-function the CLI calls. Also `tcw work lifecycle --transition <id> --phase
-pre|post` and the new Vocabulary term `work-item/lifecycle-hook`.
+### C3 — Hook roles, kinds, and conditions
 
-**No new command surface except `--phase`.** C2 makes resolution *possible*; C3
-makes it *reachable*. Splitting them keeps the parser/validator change reviewable
-on its own.
+**Delivers** the model change: `check` / `prompt` / `artifact` roles; the `blob`,
+`file`, `generate`, and `builtin` kinds with the `generate` resource contract and
+`file` node-root confinement; the `when:` matcher; parsing, validation, and the
+four-row back-compat table; resolution as a library function. Also
+`tcw work lifecycle --transition <id> --phase pre|post` and the Vocabulary term
+`work-item/lifecycle-hook`. Picks the concrete `generate` output cap.
 
-**Verified by:** round-trip tests per kind; a bare-list stage binding parsing as
-`prompt`; `tcw validate` rejecting each illegal shape by name (unknown role key,
-`command` in a prompt position, `skill` in a check position, unknown `when:` key,
-missing `file` path); and the inertness test from criterion 8 — bind a command
-that writes a sentinel, run `lifecycle` for every id, assert no sentinel.
+**No new command surface except `--phase`.** C3 makes resolution possible; C4
+makes it reachable. Splitting them keeps the parser and validator change
+reviewable on its own.
+
+**Verified by:** criteria 1, 6, 7, 12, 13, and 15 — the legacy-config corpus, the
+`generate` contract including the non-zero-exit discard, the exhaustive `when:`
+truth table, `lifecycle` inertness, and every validation rejection by name.
 
 **Capabilities:** changed — `work/configure-the-work-lifecycle`,
 `work/inspect-the-lifecycle-contract`.
 
-**Blocked by:** C1.
+**Blocked by:** C2.
 
-### C3 — The stage verb
+### C4 — The stage verb
 
-**Delivers** `tcw work stage <id> [ref]` running pre-checks → artifact hook →
-prompt hooks, and `tcw work stage <id> --done [ref]` running post-checks. Stdout
-carries prompt text and nothing else; every check's output goes to stderr.
+**Delivers** `tcw work stage <id> [ref]` running pre-checks → resolve everything
+→ write → print prompt, plus `--no-exec`. Stdout carries prompt text and nothing
+else.
 
-**Verified by:** a failing `pre` check exiting non-zero with neither the artifact
-hook nor any prompt hook having run; stdout containing exactly the resolved
-prompt with a check bound that writes to both streams; the tag-conditional case
-from acceptance criterion 4; and `--done` reporting itself as `[judgment]` for
-`request` / `spec` / `plan`.
+**Verified by:** criteria 8, 9, 10, and 16. Criterion 10 is the one worth
+building first — a prompt hook failing after an artifact hook resolved must leave
+nothing written, and the retry must then succeed.
 
 **Capability:** new — `work/run-a-lifecycle-stage`.
 
-**Blocked by:** C2.
+**Blocked by:** C3.
 
-### C4 — Artifact templates
+### C5 — Artifact templates
 
-**Delivers** `sections` on `LifecycleStep`, built-in templates rendered from it,
-the artifact hook wired into C3's sequence, and the two hardcoded
-`initial-request.md` templates (`fs.py:2757`, `fs.py:3016`) collapsed into one
-shared constant. Also decides, explicitly and in writing, whether `tcw serve`
-applies templates — they are pure text rendering rather than shell, so the
-"serve runs no hooks" rule does not settle it by itself.
+**Delivers** `LifecycleStep.produces` as a tuple of artifact names, `sections`,
+built-in templates keyed by artifact name, and the artifact hook wired into C4's
+sequence. Decides explicitly whether `tcw serve` applies templates, and whether a
+template needing hook context could render broken there.
 
-**Verified by:** exactly one definition of the request template in the tree, used
-by both `tcw work new` and `tcw work inbox accept`; the artifact hook refusing to
-overwrite an existing artifact; and a test that each stage document's stated
-required sections match `LifecycleStep.sections` — the drift guard acceptance
-criterion 13 asks for.
+**Verified by:** criteria 11 and 17 — creation with exact resolved content,
+existing artifacts left byte-identical, and exactly one definition of each
+built-in template.
 
 **Capability:** new — `work/customize-lifecycle-artifact-templates`.
 
-**Blocked by:** C3.
+**Blocked by:** C4. This dependency is **technical**, not sequencing: after C1
+the request artifact is created by the `request` stage, so the stage verb is the
+firing point.
 
-### C5 — Built-in stage prompts
+### C6 — Built-in stage prompts
 
-**Delivers** `tcw/work/prompts/<stage>.md` as package data, resolution of the
-`builtin` kind, and packaging so the files ship in the wheel. Content is
-condensed from [obra/superpowers] — the spirit, not the volume.
+**Delivers** `tcw/work/prompts/<stage>.md` as package data, `builtin` kind
+resolution, and wheel packaging. Content condensed from [obra/superpowers].
 
-**Verified by:** `tcw work stage spec` with nothing configured printing the
-built-in text; `{builtin: true}` composed with a node binding printing both in
-declaration order; and an installed-wheel test proving the prompt files are
-actually packaged rather than only present in the source tree.
+**Verified by:** criterion 14, tested **against C3's resolution library** rather
+than through `tcw work stage` — C6 lands before C4 may, and a child cannot verify
+itself with a command another child introduces. The end-to-end check belongs to
+checkpoint 3. Plus an installed-wheel test proving the prompts are packaged
+rather than merely present in the source tree.
 
-**Blocked by:** C2. **Parallel with C3** — do not chain them. C5 needs
-resolution, not the verb.
+**Blocked by:** C3. **Parallel with C4** — do not chain them.
 
-### C6 — Skill and documentation rewrite
+### C7 — Skill and documentation rewrite
 
-**Delivers** `skills/tcw-work/references/stage-*.md` reduced to routers pointing
-at `tcw work stage <id>`; `references/hooks.md` rewritten around roles, kinds,
-and conditions; `SKILL.md`'s "Always" section repointed from
-`tcw work lifecycle --stage` to the stage verb; README §"Binding your own skills
-and commands to the lifecycle" rewritten; and the capability ledger flipped for
-every delta the initiative declared.
+**Delivers** `skills/tcw-work/references/stage-*.md` reduced to routers;
+`references/hooks.md` rewritten around roles, kinds, and conditions; `SKILL.md`'s
+"Always" section repointed from `tcw work lifecycle --stage` to the stage verb;
+and README §"Binding your own skills and commands to the lifecycle"
+(`README.md:587-622`) rewritten as one coherent section.
 
-**The routers must not restate what the built-in prompts say.** A stale `tcw`
-serving old prompts to a fresh skill should read as an old-but-coherent answer,
-not a contradiction — that is the version-skew risk from the spec, and this is
-where it is either created or avoided.
+**Only consolidation.** Each of C1–C6 has already updated its own command docs,
+changelog, release notes, and ledger. C7 does not flip other children's
+capability deltas.
 
-**Verified by:** every stage document naming the CLI as the source of its
-instructions rather than carrying them; `tcw capabilities check` and
-`tcw capabilities drift` clean; `tcw validate` clean.
+**The routers must not restate what the built-in prompts say** — that is
+criterion 18, and it is what keeps CLI/plugin version skew readable as an old
+answer rather than a contradiction.
 
-**Blocked by:** C4, C5.
+**Verified by:** criterion 18; `tcw capabilities check`, `tcw capabilities
+drift`, and `tcw validate` all clean.
+
+**Blocked by:** C5, C6.
 
 ## Delegation commands
 
-Run at the start of coordination, after the epic is started. Written out rather
-than described so the boundaries survive the gap between this plan and the day
-they are created.
+Run at the start of coordination, after the epic is started.
 
 ```bash
 EPIC=2026-08-12-make-the-work-lifecycle-polymorphic-and-cli-driven
 
+tcw work new "Unify raw intake into a single artifact" \
+    --initiative "$EPIC" --priority 78 --effort medium --complexity high \
+    --tag work --tag cli
 tcw work new "Project a work item as JSON" \
-    --initiative "$EPIC" --priority 78 --effort low --complexity low \
+    --initiative "$EPIC" --priority 76 --effort low --complexity medium \
     --tag work --tag cli
 tcw work new "Give lifecycle hooks roles, kinds, and conditions" \
-    --initiative "$EPIC" --priority 76 --effort high --complexity very-high \
+    --initiative "$EPIC" --priority 74 --effort high --complexity very-high \
     --tag work --tag cli
 tcw work new "Add the stage-entry verb" \
-    --initiative "$EPIC" --priority 74 --effort medium --complexity high \
+    --initiative "$EPIC" --priority 72 --effort medium --complexity high \
     --tag work --tag cli
 tcw work new "Template the lifecycle artifacts" \
-    --initiative "$EPIC" --priority 70 --effort medium --complexity medium \
+    --initiative "$EPIC" --priority 68 --effort medium --complexity medium \
     --tag work --tag cli
 tcw work new "Ship built-in stage prompts with the CLI" \
-    --initiative "$EPIC" --priority 72 --effort medium --complexity medium \
+    --initiative "$EPIC" --priority 70 --effort medium --complexity medium \
     --tag work --tag cli --tag docs
 tcw work new "Repoint the work skill and docs at the CLI" \
-    --initiative "$EPIC" --priority 68 --effort medium --complexity medium \
+    --initiative "$EPIC" --priority 66 --effort medium --complexity medium \
     --tag work --tag skills --tag docs
 ```
 
@@ -154,96 +179,100 @@ relation, so without this every child reads as workable at once:
 ```bash
 tcw work edit <C2> --blocked-by <C1>
 tcw work edit <C3> --blocked-by <C2>
-tcw work edit <C5> --blocked-by <C2>
 tcw work edit <C4> --blocked-by <C3>
-tcw work edit <C6> --blocked-by <C4>
-tcw work edit <C6> --blocked-by <C5>
+tcw work edit <C6> --blocked-by <C3>
+tcw work edit <C5> --blocked-by <C4>
+tcw work edit <C7> --blocked-by <C5>
+tcw work edit <C7> --blocked-by <C6>
 ```
 
-C3 and C5 both hang off C2 and neither blocks the other. Chaining them would be a
+C4 and C6 both hang off C3 and neither blocks the other. Chaining them would be a
 false blocker the tool then enforces.
 
 ## Dependency order
 
 ```
-C1 ──▶ C2 ──┬──▶ C3 ──▶ C4 ──┬──▶ C6
-            └──▶ C5 ──────────┘
+C1 ──▶ C2 ──▶ C3 ──┬──▶ C4 ──▶ C5 ──┬──▶ C7
+                   └──▶ C6 ──────────┘
 ```
 
-The critical path is C1 → C2 → C3 → C4 → C6; C5 has slack equal to C3 + C4.
+Critical path: C1 → C2 → C3 → C4 → C5 → C7. C6 has slack equal to C4 + C5.
 
-Risk placement: C2 is the riskiest child — it rewrites the parser every existing
-`tcw-config.yaml` goes through — and it sits behind only C1 and in front of
-everything, which is where an isolated change with its own test suite belongs. It
-lands with no new command surface, so a regression there shows up in existing
-tests rather than in a new feature nobody is exercising yet.
+Risk placement: C3 is the riskiest child — it rewrites the parser every existing
+`tcw-config.yaml` goes through — and it lands with no new command surface, so a
+regression shows up in the existing suite rather than in a new feature nobody is
+exercising. C1 is the most user-visible and comes first, alone, where a bug
+report is easy to attribute.
 
 ## Rollup checkpoints
 
-`tcw work reconcile $EPIC` before each of these, per `epic-deltas.md`:
+`tcw work reconcile $EPIC` before each, per `epic-deltas.md`:
 
-1. **After C1** — confirm the projection shape is what C2 should build `generate`
-   around. Cheapest point to change the payload; after C2 it is a config-visible
+1. **After C1** — the only checkpoint that gates on user-visible behavior. Run a
+   real `tcw work new`, a real `inbox accept`, and check the board reads
+   correctly before anything is built on top.
+2. **After C2** — confirm the DTO is what C3 should build `generate` around.
+   Cheapest point to change the payload; after C3 it is a config-visible
    contract.
-2. **After C2** — the decision point for the epic. If the `when:` matcher or the
-   role/kind table came out different from the spec, C3/C4/C5's specs are stale
+3. **After C3** — the decision point for the epic. If the `when:` matcher or the
+   role/kind table came out different from the spec, C4/C5/C6's specs are stale
    and get revised before they start rather than during.
-3. **After C3 and C5 both land** — the first point where a user gets the whole
-   feature end to end with nothing configured. Exercise it against a real item
-   before C4 adds templates on top.
-4. **Before closeout** — final reconcile; every child resolved, capability ledger
-   flipped, `tcw validate` clean.
+4. **After C4 and C6 both land** — the first point where a user gets the whole
+   feature end to end with nothing configured. This is where C6's built-in
+   prompts get their real exercise, since C6 could only test them at library
+   level.
+5. **Before closeout** — final reconcile; every child resolved, every child's
+   ledger entries flipped by that child, `tcw validate` clean.
 
 ## Documentation Sync
 
 Evaluated for the initiative. Each child re-evaluates for its own diff at its
-`implement` gate; this is the epic-level prediction of which triggers fire and
-where the work lands.
+`implement` gate; this is the epic-level prediction.
 
-- **`docs/changelogs/upcoming.md` [Any-Code-Change]** — fires for C1–C5. Each
-  child writes its own entry as it lands; no epic-level task.
-- **`docs/release-notes/upcoming.md` [Public-API]** — fires for C1, C2, C3, C4,
-  C5. Same: per-child, as each lands.
-- **`README.md` [Public-API]** — fires for C1, C2, C3, C4. §"Binding your own
-  skills and commands to the lifecycle" (`README.md:587-622`) and the command
-  table (`README.md:684`) are **one coherent rewrite**, not four incremental
-  edits. Children C1–C4 add their commands to the table; **C6 owns the section
-  rewrite** so the README describes the finished model once rather than four
-  partial models in sequence.
-- **`skills/tcw-work/SKILL.md` [Skill-Driven-Component]** — fires. The lifecycle
-  it drives changes shape entirely. **C6 owns it**, including
-  `references/hooks.md` and every `references/stage-*.md`.
+- **`docs/changelogs/upcoming.md` [Any-Code-Change]** — fires for C1–C6, per
+  child as it lands.
+- **`docs/release-notes/upcoming.md` [Public-API]** — fires for C1–C6, per child.
+  **C1's entry needs the most care:** `tcw work new` no longer leaves a file to
+  edit, which is the change most likely to surprise an existing user.
+- **`README.md` [Public-API]** — fires for C1–C5. Each child adds its own
+  commands and flags to the command table as it lands; **C7 owns the §"Binding
+  your own skills and commands to the lifecycle" rewrite**, because that section
+  describes one coherent model and four partial rewrites would be worse than one
+  at the end.
+- **`skills/tcw-work/SKILL.md` [Skill-Driven-Component]** — fires for C1 and C4
+  in passing (the lifecycle they drive changes), and wholesale for C7. C1 updates
+  `references/stage-request.md`'s claim that `initial-request.md` "is never
+  absent" — which C1 makes false — rather than leaving it for C7.
 
-No epic-level documentation task: C6 *is* the documentation task, and it is
-already a child.
+No epic-level documentation task: C7 *is* one, and it is already a child.
 
 ## Verification
 
-What the suite cannot check, and what a human must:
+What the suite cannot check:
 
-- **That the built-in prompts are actually good instructions.** No test can
-  assert that. C5's `verify` stage needs a human reading them, and ideally a real
-  work item planned end to end against them before C5 completes.
-- **That the router docs and the built-in prompts do not contradict each other.**
-  A test can assert the CLI is *named* as the source; it cannot assert the
-  router's summary is faithful. C6's `verify` stage.
-- **That existing `tcw-config.yaml` files really are unaffected.** The compat
-  test covers the shapes we think of. Running C2's build against this repo's own
-  config, and against a config exercising every legacy shape, is the check that
-  covers the ones we did not.
+- **That the built-in prompts are good instructions.** No test asserts that. C6's
+  `verify` stage needs a human reading them, and ideally a real work item planned
+  end to end against them at checkpoint 4.
+- **That the routers and the built-in prompts do not contradict each other.** A
+  test asserts the CLI is named as the source; it cannot assert the router's
+  summary is faithful. C7's `verify` stage.
+- **That C1 does not break someone's muscle memory.** The regression tests cover
+  the store; they do not cover a user typing `tcw work new` and expecting a file.
+  Worth exercising by hand before C1 completes.
+- **That existing `tcw-config.yaml` files really are unaffected.** The corpus
+  covers the shapes we thought of. Running C3's build against this repo's own
+  config is the check that covers the ones we did not.
 
 ## Notes
 
-- **The children are not created yet, deliberately.** The boundaries are the main
-  thing this plan is asking the user to review, and six items created before that
-  review is six items to retitle or delete if the boundaries move. Create them at
-  the start of coordination, after `tcw work start` on the epic.
-- Priorities descend with dependency order (78 → 68) so the board reads in
-  workable order, and all sit just under the epic's 80.
-- C1's effort is `low` and its value is real on its own; if the epic stalls after
-  C1, `tcw work show --json` still shipped.
-- C4's `serve` decision is called out as a deliverable rather than left to
-  discovery, because "serve runs no hooks" answers a question about *shell* and
-  templates are not shell. Deciding it by default is how the two surfaces drift.
+- **The children are not created yet, deliberately.** The boundaries are what
+  this plan asks the user to review, and creating them before that review means
+  retitling or deleting them if the boundaries move.
+- Priorities descend with dependency order (78 → 66), all under the epic's 80.
+  C6 sits at 70, above C5 at 68, because it is unblocked earlier.
+- C1 and C2 both ship value alone. If the epic stalls after C2, unified intake
+  and `tcw work show --json` are still real improvements.
+- The first draft of this plan had six children and put intake handling nowhere.
+  Review found the headline feature impossible without it; C1 is the result.
 
 [obra/superpowers]: https://github.com/obra/superpowers
