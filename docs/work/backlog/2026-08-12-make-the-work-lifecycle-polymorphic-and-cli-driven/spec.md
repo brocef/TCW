@@ -115,27 +115,70 @@ What is welded is everything *inside* a stage:
 
 - `tcw work new "<title>"` with piped stdin writes `intake.md` and **no**
   `initial-request.md`. With no stdin, it writes neither.
-- `tcw work inbox accept <entry>` writes `intake.md` from the entry body, keeps
-  attachments where it already puts them, and **stops synthesizing a request**.
-  `fs.py:2755-2769` is deleted rather than refactored.
+- `tcw work inbox accept <entry>` writes `intake.md` and **stops synthesizing a
+  request**. It must keep everything it preserves today: attachments
+  (`fs.py:2770`), the `origin`-bearing manifest (`fs.py:2738-2753`), and the
+  binary fallback prose (`fs.py:2755`) for an entry whose primary resource is not
+  text. `intake.md` therefore carries the manifest and the entry body when there
+  is one, and the manifest plus the binary note when there is not — an
+  attachments-only entry still produces an `intake.md`. This is a **refactor of**
+  `fs.py:2755-2769`, not the deletion an earlier draft called for.
 - `delegate` / `escalate` are unchanged — they already deposit intake into an
   inbox and let `accept` ingest it. They are the pattern the other paths adopt.
-- `request` gains `inputs=("intake.md",)` and produces `initial-request.md` like
-  any other stage produces its artifact.
+- `request` reads `intake.md` when it exists. `LifecycleStep.inputs` is
+  **descriptive**, rendered by `tcw work lifecycle` and enforced nowhere
+  (`cli.py:621-622`), so listing it there does not make it required — but the
+  field must read as optional, because a fresh item has no intake and a legacy
+  item never will.
 
-**The body surface resolves** to `initial-request.md` when present, falling back
-to `intake.md`. So `tcw work new <<< "…"` stays immediately useful, `show` and
-the board still work for triage, and once `request` runs the polished request
-takes over. Abstractly this is "the description, else the originating text",
-which any tracker can answer. ✓
+**Abstractly, intake is its own concept, not a re-reading of `body`.**
+`WorkStore.create(..., body=…)` is an abstract primitive (`base.py:944`); quietly
+making the FS adapter write that argument to `intake.md` while a remote adapter
+writes it to a description field gives one parameter two meanings. C1 adds an
+explicit intake surface to the interface instead, and every caller — CLI and
+`serve` (`serve/__init__.py:764-773`) — moves to it deliberately. ✓
+
+### The body surface: one presence rule, and a write contract
+
+Today "present" means two different things: `_read_item` accepts any existing
+file (`fs.py:2387`) while `artifacts()` requires non-whitespace content
+(`fs.py:2166-2172`). With the fallback added, an empty `initial-request.md`
+beside a real `intake.md` would show no body *and* no `R`.
+
+**One canonical resolver**, shared by `_read_item`, `body_path`, the core
+revision, `artifacts()`, the JSON projection, and `serve`. Presence is *exists
+and non-empty*. Reads resolve `initial-request.md` → `intake.md` → `""`. All
+three states are defined, including neither-present, which must return an empty
+body rather than raising.
+
+**Writes do not follow the read fallback.** `update_work(body=…)` targets
+`initial-request.md` (`fs.py:3156`), including from the web editor
+(`serve/__init__.py:984-991`), so on an intake-only item a body edit would either
+mutate raw input or silently satisfy the `request` stage. The contract:
+
+- A body write always targets `initial-request.md`. On an intake-only item that
+  is a **promotion** — it creates the request — and the CLI and `serve` say so
+  rather than doing it silently.
+- `intake.md` is **not** writable through the body surface. It is editable only
+  as a named artifact, because raw input that quietly changes is not raw input.
+
+**Core revision** currently hashes `state.yaml` plus the request
+(`fs.py:2904-2907`). It must hash state plus *which* file the body resolved to
+plus its content — otherwise promoting intake to a request with identical text
+produces an unchanged revision while the editable resource has changed.
 
 Every stage now reads the prior artifact and writes its own. `intake.md` is an
 artifact with no stage; `inbox` is a stage with no artifact. They are the two
 ends of the same table, not anomalies.
 
+**The board.** `intake` is appended to `WORK_ARTIFACTS`, preserving the existing
+letters exactly as `base.py:777-779` requires, and the renderer prefixes it as a
+lowercase `i` so the string still reads chronologically. Decided here rather than
+deferred, because acceptance criterion 3 depends on it.
+
 Existing items keep working: they have an `initial-request.md`, so the body
-surface resolves to it and nothing changes for them. C1 owns deciding whether
-any backfill is warranted (probably not).
+surface resolves to it and nothing changes for them. No backfill: an item that
+never had intake should not be given a fabricated one.
 
 ### Artifacts are keyed by name, not by stage
 
@@ -144,9 +187,42 @@ one-artifact-per-stage was never true: `inbox` produces none (`base.py:598`) and
 `verify` produces `refined-outcome.md` *or* `rework.md` (`base.py:619`), today
 recorded as prose rather than as names.
 
-Templates and `sections` attach to entries in `WORK_ARTIFACTS`, which is already
-the real artifact registry. A stage with no artifacts simply has no artifact
-hook; a stage with two has one hook per artifact name.
+Templates attach to entries in `WORK_ARTIFACTS`, which is already the real
+artifact registry. A stage with no artifacts has no artifact hook; a stage with
+two has one hook per artifact name.
+
+`LifecycleStep.sections` is **not** added. An earlier draft introduced it to give
+templates and a required-sections check one source, but the criterion that would
+have consumed it was rewritten and nothing else needs it. A structured section
+list can be added later by whatever actually requires it.
+
+### Stage entry never writes; scaffolding is explicit
+
+Artifact presence is the lifecycle's progress signal — it is what `tcw work list`
+renders and what "find your place" reads. C1 exists precisely because a
+pre-seeded `initial-request.md` made `R` meaningless. An artifact hook that wrote
+a templated `spec.md` at stage entry would re-create that defect for every other
+artifact: running `tcw work stage spec` merely to *read the instructions* would
+light up `S` before any spec existed.
+
+So the factory is kept, and separated from the real artifact by **filename**:
+
+- `tcw work scaffold <artifact> [ref]` resolves the artifact hook and writes
+  `<artifact>.draft.md` — `spec.draft.md`, `plan.draft.md`. It refuses when the
+  real artifact already exists.
+- `artifacts()` looks up `<name>.md` from `WORK_ARTIFACTS` and never sees a
+  draft, so presence stays honest with no new machinery: no content hashing, no
+  in-file marker, no adapter-visible draft state.
+- Drafts are a **bounded derived namespace** — exactly one per `WORK_ARTIFACTS`
+  entry — not an open folder glob. Any store can hold "the draft of artifact N"
+  as a named resource. ✓
+- The agent authors `<artifact>.md` from the draft. C5 decides whether a landed
+  artifact removes its draft, and states which.
+
+This also resolves `verify`. Its artifact is chosen by a verdict reached *after*
+verification — `refined-outcome.md` on acceptance, `rework.md` on rejection
+(`base.py:619`) — which no entry-time factory could pick. Scaffolding is a
+separate, later command, so the verdict is known when it runs.
 
 ### The order of operations
 
@@ -154,15 +230,21 @@ Stages and transitions each get their own sequence; they are not one sequence.
 
 **Entering a stage** — `tcw work stage <id> [ref]`:
 
-1. `pre` checks run. Non-zero exit stops everything. `[gated]`
-2. Every artifact and prompt binding is **resolved** — files read, `generate`
-   scripts run, conditions evaluated. Nothing is written yet.
-3. Only if every resolution succeeded: the artifact is written, if absent.
+1. Stage/status legality is checked (below). Illegal → exit non-zero, nothing runs.
+2. `pre` checks run. Non-zero exit stops everything. `[gated]`
+3. Prompt bindings are resolved — files read, `generate` scripts run, conditions
+   evaluated.
 4. Prompt text is concatenated to **stdout**.
 
-Resolve-then-write (steps 2-3) is deliberate. Writing the artifact before
-resolving prompts would let a failed prompt hook leave a written artifact behind
-that the next attempt then refuses to overwrite — a retry that can never succeed.
+**Nothing is written.** Stage entry is read-only with respect to the item, which
+is what makes it safe to run for its instructions alone.
+
+`tcw work scaffold` is the only writing verb, and it resolves fully before
+writing: if resolution fails, nothing is written and a retry is clean. If the
+*write itself* fails after resolution succeeded, it exits non-zero, reports to
+stderr, and writes nothing to stdout. `generate` hooks may re-run on retry, so
+they must be documented as needing to be side-effect-free; TCW does not cache a
+resolved bundle to avoid it.
 
 Check output goes to **stderr**, as today (`hooks.py:66-69`). Only step 4 writes
 to stdout, so `tcw work stage spec` on stdout is exactly the prompt.
@@ -171,23 +253,44 @@ to stdout, so `tcw work stage spec` on stdout is exactly the prompt.
 `generate` script — and executes nothing. It is how you read an unfamiliar
 repository's lifecycle before triggering it.
 
+### Where a stage is legal
+
+The stage verb mutates nothing, but `scaffold` does, and neither should accept a
+nonsensical combination — `implement` while the item sits in `backlog`, or `spec`
+after it completed. Each stage declares the statuses it is legal in, `postmortem`
+explicitly excepted as out-of-band (legal in `review` and after completion,
+never changing status — `base.py:620-626`). Checked before any hook runs.
+
+### Exit checks, and the stages that have none
+
 **There is no stage `post` and no `--done`.** Exit checks belong on the *next*
-stage's `pre`, and on the following transition's `pre` for the stages a
-transition follows. That covers every stage with one check family instead of two,
-and every check fires at a moment that actually happens. A stage `post` for
-`request`/`spec`/`plan` could never be more than advisory, and an advisory gate
-that looks like a gate is worse than no gate.
+stage's `pre`, and on the following transition's `pre`. This covers most stages
+with one check family instead of two, and every check fires at a moment that
+actually happens.
+
+It does **not** cover everything, and the earlier claim that it did was wrong:
+
+- **`postmortem` has no successor.** It is out-of-band and terminal. It gets
+  `pre` checks and no exit gate. Stated, not papered over.
+- **`verify` branches.** Its exit gate is whichever transition follows —
+  `complete`'s `pre` on acceptance, `rework`'s on rejection — and `complete` is
+  legal directly from `active` (`base.py:455`), so `implement`'s exit gate is
+  `submit`'s `pre` *or* `complete`'s.
+- **`rework` loops back into `implement`**, so `implement`'s `pre` checks run
+  again on the second pass. That is intended — a check worth running before the
+  first attempt is worth running before the second — and is stated so nobody
+  implements a first-time-only gate.
 
 **Transitions** keep today's semantics exactly: `pre` before anything is written,
 `post` after, never rolling back.
 
 ### Hook roles
 
-| Role       | Positions                            | Legal kinds                                    | Semantics                                        |
-| ---------- | ------------------------------------ | ---------------------------------------------- | ------------------------------------------------ |
-| `check`    | stage `pre`, transition `pre`/`post`  | `command`                                      | Runs. Exit code matters. Output → stderr.        |
-| `prompt`   | stage `prompt`                        | `blob`, `file`, `generate`, `builtin`, `skill` | Resolves to text. **All** matches concatenate.   |
-| `artifact` | stage `artifact`                      | `blob`, `file`, `generate`, `builtin`          | Resolves to text. **First** match wins.          |
+| Role       | Positions                             | Legal kinds                                    | Semantics                                      |
+| ---------- | ------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| `check`    | stage `pre`, transition `pre`/`post`   | `command`                                      | Runs. Exit code matters. Output → stderr.      |
+| `prompt`   | stage `prompt`                         | `blob`, `file`, `generate`, `builtin`, `skill` | Resolves to text. **All** matches concatenate. |
+| `artifact` | stage `artifact`, consumed by `scaffold` | `blob`, `file`, `generate`, `builtin`        | Resolves to text. **First** match wins.        |
 
 - **`blob`** — the text, inline in YAML.
 - **`file`** — a node-relative path. Normalized and confined to the node root; a
@@ -212,18 +315,32 @@ that looks like a gate is worse than no gate.
 - **`command`** — `check` only. In a prompt position it is a validation error
   naming `generate`.
 
-### Back-compat, all four legacy shapes
+### Back-compat, every legacy shape
 
 Stage bindings are never executed today, which makes this cheaper than it looks:
 
-| Legacy shape                     | Today                                              | After                                     |
-| -------------------------------- | -------------------------------------------------- | ----------------------------------------- |
-| `stages.<id>: [{skill: X}]`      | Reported as "invoke the X skill"                   | `prompt` binding, kind `skill`, same text |
-| `stages.<id>: [{command: C}]`    | Rendered as "run `C`" (`cli.py:648`) — not executed | `prompt` binding emitting the same line   |
-| `transitions.<id>.pre/post: [{command: C}]` | Executed                                | `check` binding, unchanged                |
-| `transitions.<id>.skill: X`      | Reported to stderr (`hooks.py:56`)                 | Reported to stderr, unchanged             |
+| Legacy shape                                    | Today                                               | After                                     |
+| ----------------------------------------------- | --------------------------------------------------- | ----------------------------------------- |
+| `stages.<id>: [{skill: X}]`                     | Rendered "invoke the X skill"                       | `prompt` binding, kind `skill`, same text |
+| `stages.<id>: [{command: C}]`                   | Rendered "run `C`" (`cli.py:648`) — **not executed** | `prompt` binding emitting the same line   |
+| `stages.<id>: [{skill: A},{command: B},{skill: C}]` | Rendered **grouped**: skills, then commands     | Same grouped rendering — see below        |
+| `stages.<id>: []`                               | Empty; directive renders nothing                    | Empty `prompt` list, unchanged            |
+| `transitions.<id>.pre/post: [{command: C}]`     | Executed                                            | `check` binding, unchanged                |
+| `transitions.<id>.pre/post: [{skill: X}]`       | Reported to stderr, not run (`hooks.py:54-58`)      | Reported to stderr, unchanged             |
+| `transitions.<id>.pre/post: []`                 | Empty; nothing runs                                 | Unchanged                                 |
 
-Every one preserves observable behavior. A bare list under `stages.<id>` parses
+An earlier draft listed `transitions.<id>.skill: X` as a legacy shape. **It was
+never valid** — `transitions.<id>` rejects any key but `pre` and `post`
+(`base.py:761-764`). That row is removed rather than supported.
+
+**Rendering order is preserved, not just parse order.** `_directive_text`
+(`cli.py:642-649`) groups all skills ahead of all commands, so a mixed list does
+*not* render in declaration order today. A naive conversion to declaration-order
+composition would change output that criterion 1 requires to be byte-identical.
+Legacy-shaped stage lists therefore keep the existing grouped renderer; the
+declaration-order rule applies to the new `prompt:` form.
+
+Every row preserves observable behavior. A bare list under `stages.<id>` parses
 as `prompt:`. `tests/test_lifecycle_policy.py:77-82` — which asserts a stage list
 mixing `skill` and `command` parses — must still pass unmodified.
 
@@ -248,12 +365,24 @@ forever.
 
 ### The item JSON projection
 
-A **versioned DTO**, not a dataclass dump. It carries an explicit `schema`
+**One already exists, and C2 must unify with it rather than add a second.**
+`tcw/serve/__init__.py:51-66` has `_jsonable`/`_json_bytes` — an `asdict()` dump
+finished with `json.dumps(…, default=str)` — and the web API ships it today. A
+new, separate projection for `tcw work show --json` would create exactly the
+two-sources drift this epic exists to remove.
+
+That also relocates the JSON-safety problem: `default=str` is already how the
+opaque `capabilities` blob gets past `json.dumps`, lossily, in production. C2 is
+not introducing the risk; it is deciding whether to keep that behavior or replace
+it, and saying which.
+
+The result is a **versioned DTO**, not a dataclass dump: an explicit `schema`
 version, explicitly typed and normalized fields, and an `artifacts` map of name →
-presence. Consumed by `tcw work show --json` and, under an `item` key, by
-`generate` hooks on stdin — alongside a `hook` object naming role, kind, id, and
-phase. The same facts go into the environment beside today's four `TCW_*`
-variables so a one-line script needs no JSON parser.
+presence built on the canonical presence rule. Consumed by `tcw work show
+--json`, by `serve`, and — under an `item` key — by `generate` hooks on stdin,
+alongside a `hook` object naming role, kind, id, and phase. The same facts go
+into the environment beside today's four `TCW_*` variables so a one-line script
+needs no JSON parser.
 
 `WorkItem.capabilities` is an opaque `object` (`base.py:843`) filled from
 arbitrary YAML (`fs.py:2366-2372`), so it can hold values with no JSON
@@ -278,22 +407,28 @@ stays in the skill; the *methodology* moves to the CLI.
 
 ## Child boundaries and ordering
 
-| ID  | Child                             | Delivers                                                                                                                                  | Blocked by |
-| --- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| C1  | Unify intake                      | `intake.md`; creation paths stop synthesizing requests; body-surface resolution; `request` gains inputs; `fs.py:2755-2769` deleted.        | —          |
-| C2  | Work item JSON projection         | The versioned DTO + `tcw work show --json`.                                                                                               | C1         |
-| C3  | Hook roles, kinds, and conditions  | Roles; kinds incl. the `generate` contract and `file` confinement; `when:`; parse/validate/back-compat; resolution library; `lifecycle --phase`; new Vocabulary term. | C2         |
-| C4  | The stage verb                    | `tcw work stage <id>` — pre → resolve → write → prompt, plus `--no-exec`.                                                                  | C3         |
-| C5  | Artifact templates                | `produces` as a tuple; `sections`; templates keyed by artifact name; wired into C4's sequence.                                             | C4         |
-| C6  | Built-in stage prompts            | `tcw/work/prompts/*.md`, `builtin` resolution, wheel packaging.                                                                           | C3         |
-| C7  | Skill and documentation rewrite   | Stage docs → routers; `hooks.md` rewritten; README lifecycle section; final consolidation only.                                           | C5, C6     |
+| ID  | Child                             | Delivers                                                                                                                                                                       | Blocked by |
+| --- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| C1  | Unify intake                      | `intake.md`; an abstract intake surface; creation paths stop synthesizing requests; the canonical presence rule; body read-fallback and write/promotion contract; core revision; board prefix. | —          |
+| C2  | Work item JSON projection         | The versioned DTO + `tcw work show --json`, **unified with `serve`'s existing `_jsonable`**.                                                                                   | C1         |
+| C3  | Hook roles, kinds, and conditions  | Roles; kinds incl. the `generate` contract and `file` confinement; `when:`; parse/validate/back-compat; **the full `builtin` syntax and resolution library**; `lifecycle --phase`; new Vocabulary term. | C2         |
+| C4  | The stage verb                    | `tcw work stage <id>` — legality → pre → resolve → prompt, plus `--no-exec`. Writes nothing.                                                                                   | C3         |
+| C5  | Artifact scaffolding              | `produces` as a tuple; `tcw work scaffold <artifact>`; `<artifact>.draft.md`; templates keyed by artifact name; stage/status legality table.                                    | C3         |
+| C6  | Built-in stage prompts            | `tcw/work/prompts/*.md` **content** and wheel packaging only — the `builtin` kind itself is C3's.                                                                              | C3         |
+| C7  | Skill and documentation rewrite   | Stage docs → routers; `hooks.md` rewritten; README lifecycle section; final consolidation only.                                                                                | C4, C5, C6 |
 
-Order: C1 → C2 → C3 → {C4 → C5, C6} → C7. C4 and C6 are parallel; do not chain
-them.
+Order: C1 → C2 → C3 → {C4, C5, C6} → C7. C4, C5, and C6 are all parallel once C3
+lands; do not chain them.
 
-C5's dependency on C4 is now **technical**, not sequencing: after C1 the request
-artifact is created by the `request` stage, so the stage verb is genuinely the
-firing point for conditional templates.
+**C5 no longer depends on C4.** Scaffolding is its own verb, so it needs C3's
+resolution library and nothing from the stage verb — the dependency that earlier
+drafts justified first as sequencing and then as technical turns out to be
+neither, once entry stopped writing.
+
+**`builtin` belongs entirely to C3.** An earlier draft split its syntax into C3
+and its resolution into C6, which left C4 able to meet valid `builtin`
+configuration with no implementation behind it. C6 supplies packaged content
+only.
 
 ## Acceptance criteria
 
@@ -303,15 +438,28 @@ firing point for conditional templates.
    output against a pre-epic baseline. `tests/test_lifecycle_policy.py:77-82`
    passes unmodified.
 2. `tcw work new "t"` with no stdin creates **no** `initial-request.md` and no
-   `intake.md`; with piped stdin it creates `intake.md` containing exactly the
-   piped bytes and no `initial-request.md`. `tcw work inbox accept` creates
-   `intake.md` and no `initial-request.md`. No code path synthesizes a request
-   document.
+   `intake.md`; with piped stdin it creates `intake.md` whose content equals the
+   decoded stdin text under a stated encoding-and-errors policy — `_stdin_body`
+   decodes rather than reading bytes and swallows read errors as empty
+   (`cli.py:90-96`), so "exactly the piped bytes" was not a promise this
+   interface can keep. `tcw work inbox accept` creates `intake.md` for a text
+   entry, a folder entry, **and** a binary-only entry, preserving attachments,
+   the `origin`-bearing manifest, and the binary fallback prose in every case.
+   All three are tested. No code path synthesizes a request document.
 3. `tcw work list` shows `R` only for items whose `request` stage has run, and
-   `I` for items with intake — verified on a fresh item, an intake-only item, and
-   a post-`request` item.
-4. `tcw work show` on an intake-only item displays the intake; after `request`
-   runs it displays the request.
+   the lowercase `i` prefix for items with intake — verified on a fresh item
+   (neither), an intake-only item (`i`), a post-`request` item (`iR`), and a
+   legacy item with a request and no intake (`R`).
+4. `tcw work show` displays the intake on an intake-only item, the request once
+   `request` has run, and an empty body — without raising — on an item with
+   neither. An empty `initial-request.md` beside a non-empty `intake.md` displays
+   the intake, because one presence rule governs both the body surface and the
+   board.
+4b. Editing the body of an intake-only item writes `initial-request.md`, reports
+    that it promoted the item, and leaves `intake.md` byte-identical. This holds
+    through `tcw work edit` and through `serve`'s PATCH path
+    (`serve/__init__.py:984-991`). Promoting intake to a request whose text is
+    identical still changes the core revision.
 5. `tcw work show <ref> --json` emits an object with an explicit `schema`
    version, each documented field at its documented JSON type, and an `artifacts`
    name→presence map. A test asserts the emitted document validates against the
@@ -328,22 +476,32 @@ firing point for conditional templates.
    overlapping matches, no-match, and an invalid `type` value rejected by
    `tcw validate`.
 8. `tcw work stage <id>` prints **only** resolved prompt text on stdout; every
-   check's stdout and stderr goes to stderr.
-9. A failing stage `pre` check exits non-zero with no artifact written and no
-   prompt resolved.
-10. When a prompt hook fails *after* an artifact hook resolved successfully, no
-    artifact is written and re-running the command succeeds — the resolve-then-
-    write property, tested as a retry rather than as a single failure.
-11. The artifact hook creates the artifact with exactly the resolved content when
-    absent, and leaves an existing artifact byte-identical when present. An
-    implementation that never writes anything fails this.
+   check's stdout and stderr goes to stderr. Running it for any stage writes
+   nothing: no artifact, no draft, no state change — verified by comparing the
+   item folder before and after.
+9. A failing stage `pre` check exits non-zero with no prompt resolved, and a
+   stage run in an illegal status (`implement` from `backlog`, `spec` after
+   completion) exits non-zero **before** any check, generator, or write runs.
+   `postmortem` is legal in `review` and after completion.
+10. `tcw work scaffold <artifact>` resolves fully before writing: when a hook
+    fails, nothing is written and a retry succeeds. When the *write* fails after
+    resolution succeeded, it exits non-zero, reports to stderr, and writes
+    nothing to stdout.
+11. `tcw work scaffold spec` writes `spec.draft.md` with exactly the resolved
+    content, does not create `spec.md`, and **does not change** what
+    `tcw work list` shows for that item — an implementation that writes nothing
+    fails the first clause, and one that writes `spec.md` fails the third. It
+    refuses when `spec.md` already exists.
 12. `tcw work lifecycle` still executes nothing — a bound command writing a
     sentinel file, run for every stage and transition id, leaves no sentinel.
 13. `tcw work lifecycle --transition complete --phase pre --directive` reports
     only the `pre` bindings.
 14. With nothing configured, `tcw work stage <id>` prints built-in instructions
-    for **every** stage id that has them, and `{builtin: true}` composed with a
-    node binding prints both in declaration order.
+    for each of `request`, `spec`, `plan`, `implement`, `verify`, and
+    `postmortem` — enumerated, and asserted as **exact set equality** against the
+    shipped registry so neither an empty file nor a missing stage passes.
+    `inbox` ships none, because it runs before an item exists. `{builtin: true}`
+    composed with a node binding prints both in declaration order.
 15. `tcw validate` rejects, each naming the offending key: an unknown role key;
     `command` in a prompt position; `skill` in a check position; an unknown
     `when:` key; an invalid `type` value; a `file` path that does not exist or
@@ -352,11 +510,14 @@ firing point for conditional templates.
     unconditional match.
 16. `--no-exec` prints every command and `generate` script that would run and
     executes none — verified by the sentinel technique from criterion 12.
-17. Exactly one definition of each built-in artifact template exists in the
-    codebase.
+17. A built-in template exists for **every** name in `WORK_ARTIFACTS`, asserted
+    as exact set equality rather than as "at least one", and each has exactly one
+    definition in the codebase.
 18. Every stage document in `skills/tcw-work/references/` routes to the CLI for
-    its instructions rather than restating them, verified by a test asserting the
-    routers reference the command and do **not** duplicate section prose.
+    its instructions rather than restating them — and **still carries** the
+    TCW-specific judgment the CLI does not: the stage's delegability, its
+    `[gated]`/`[judgment]` markers, and its epic deltas. Tested as both
+    directions, so a near-empty router that merely names the command fails.
 
 ## Risks
 
@@ -372,15 +533,20 @@ firing point for conditional templates.
   `→ edit:` path to a file that exists. C1 owns the replacement hint and the
   release-note wording; this is the most user-visible change in the epic and the
   one most likely to generate a bug report if it lands quietly.
-- **The board's stage-letter string changes meaning.** Adding `intake` to
-  `WORK_ARTIFACTS` shifts the display, and `base.py:777-779` warns that the
-  tuple's order drives it. Appending keeps existing letters stable at the cost of
-  `I` appearing after the letters for later stages. C1 decides and records which.
-- **`tcw serve` diverges further.** It runs no hooks, so a web-created artifact
-  gets no template. C5 decides explicitly whether template rendering — pure text,
-  not shell — applies in `serve`, and whether a template needing hook context
-  could render broken there. "Serve runs no hooks" answers a question about
-  shell and does not settle this by itself.
+- **`tcw serve` diverges further.** It runs no hooks, so nothing scaffolds from
+  the web app. C5 decides explicitly whether scaffolding — pure text rendering
+  for `blob`/`file`/`builtin`, but shell for `generate` — is offered there, and
+  whether the safe subset is worth the split. "Serve runs no hooks" answers a
+  question about shell and does not settle the non-shell kinds by itself.
+- **`generate` hooks re-run on retry.** Resolve-then-write means a failed write
+  discards resolved output, so the next attempt re-executes every generator. TCW
+  does not cache a resolved bundle to prevent this — that would be state to
+  invalidate — so generators must be documented as needing to be side-effect-
+  free. A generator that posts to an external system will post twice.
+- **Drafts can go stale.** `spec.draft.md` sits beside `spec.md` with no
+  guarantee they agree, and a draft left behind after the artifact lands is
+  clutter that reads as unfinished work. C5 decides whether landing an artifact
+  removes its draft.
 - **Plugin/CLI version skew.** A stale `tcw` serves stale instructions to a fresh
   skill. The routers must not restate what the prompts say (criterion 18), so
   skew reads as an old-but-coherent answer rather than a contradiction.
@@ -390,8 +556,80 @@ firing point for conditional templates.
 
 ## Review corrections
 
-Changes made after the `codex` / `bllm-review` pass, recorded so the reasoning is
-not lost.
+Changes made after two adversarial `codex` / `bllm-review` passes, recorded so
+the reasoning is not lost.
+
+### Round 2
+
+- **Stage entry wrote the artifact, re-creating the exact defect C1 exists to
+  fix** (codex R2-1). Writing a templated `spec.md` at entry would light up `S`
+  on the board before any spec existed. Resolved by the requester's decision:
+  stage entry writes nothing, and `tcw work scaffold` writes `<artifact>.draft.md`
+  — a distinct filename `artifacts()` never sees, so presence stays honest with
+  no content hashing, no in-file marker, and no adapter-visible draft state. The
+  repair I had considered — presence as "differs from the scaffold" — was
+  rejected because comparing against the scaffold means re-running the factory at
+  read time, so a `generate` hook would execute shell during `tcw work list`.
+- **`verify` could not use an entry-time factory** (codex R2-2), since its
+  artifact is chosen by a verdict reached after the stage. Dissolved by the same
+  change: scaffolding is a separate, later command.
+- **"Next stage's `pre` covers every stage" was false** (codex R2-3, bllm 3).
+  `postmortem` is terminal and out-of-band; `verify` branches; `complete` is
+  legal directly from `active`. Now stated per stage, including that `postmortem`
+  has no exit gate and that a `rework` loop re-runs `implement`'s `pre`.
+- **`request.inputs` read as required** (codex R2-4). `inputs` is descriptive and
+  enforced nowhere (`cli.py:621-622`); intake is optional and legacy items have
+  none.
+- **Body writes were undefined** (codex R2-5, found independently). Reads
+  fall back; writes always target `initial-request.md` and are an explicit
+  promotion. `intake.md` is not writable through the body surface.
+- **"Present" meant two different things** (codex R2-6) — `.exists()` in
+  `_read_item`, non-empty in `artifacts()`. One canonical resolver now, shared by
+  every reader.
+- **Inbox acceptance would have lost provenance** (codex R2-7, bllm 2). The
+  earlier "delete `fs.py:2755-2769`" was too glib: those lines carry the
+  origin-bearing manifest and the binary fallback. Now a refactor, with text,
+  folder, and binary-only entries all tested.
+- **The stage verb had no status legality contract** (codex R2-8) — `implement`
+  from `backlog` was permitted. Now checked before any hook runs.
+- **The back-compat table would have changed rendering order** (codex R2-9).
+  `_directive_text` groups skills before commands, so declaration-order
+  composition could not be byte-identical. Legacy lists keep the grouped
+  renderer.
+- **The table listed a shape that was never valid** (codex R2-10, bllm 4).
+  `transitions.<id>.skill: X` is rejected by `base.py:761-764`. Row removed;
+  transition-phase `skill` bindings and empty lists added.
+- **The board representation was deferred while a criterion depended on it**
+  (codex R2-11). Decided here: appended to `WORK_ARTIFACTS`, rendered as a
+  lowercase `i` prefix.
+- **Core revision was underspecified for a two-source body** (codex R2-12) — it
+  must hash which file resolved, not only its content.
+- **Reinterpreting the abstract `body` parameter as `intake.md` failed the litmus
+  test** (codex R2-13). C1 adds an explicit abstract intake surface instead.
+- **Write-failure behavior was undefined** (codex R2-14, bllm 5) → exit non-zero,
+  stderr only, nothing on stdout; generators documented as needing to be
+  side-effect-free rather than cached.
+- **C3 and C6 both owned `builtin`** (codex R2-15) → entirely C3's; C6 ships
+  content.
+- **C6 could not land green against its own criterion, and the checkpoint
+  reference was off by one** (codex R2-16) → acceptance split, numbering fixed.
+- **AC 14/17/18 admitted wrong implementations** (codex R2-17) → exact set
+  equality, and routers tested in both directions.
+- **AC 2 promised byte preservation through a text interface** (codex R2-18) →
+  decoded text with a stated encoding policy.
+- **`LifecycleStep.sections` had no consumer** (codex R2-19) → cut.
+- **The body surface was undefined when both files are absent** (bllm 1) → an
+  explicit third rung returning `""`.
+- **A second JSON projection would have been built** (found independently) —
+  `serve` already ships `_jsonable`/`_json_bytes` (`serve/__init__.py:51-66`).
+  C2 unifies with it; `default=str` is the existing answer to the `capabilities`
+  problem, to be kept or replaced deliberately.
+- **Not accepted:** bllm's "latest artifact wins the board letter" — the board
+  renders every present artifact as a letter string, not one letter; and bllm's
+  "DAG is clean, no over-engineering" verdict, which round-2 codex contradicted
+  with specific evidence on both counts.
+
+### Round 1
 
 - **One artifact per stage was false.** `produces` is now a tuple and artifacts
   are keyed by name (codex F1).
@@ -399,9 +637,9 @@ not lost.
   creation paths wrote `initial-request.md` unconditionally, so a create-if-absent
   hook could never fire (codex F3). Resolved by C1's intake unification, which
   the requester proposed and which subsumes the finding.
-- **Back-compat covered one shape of four**, and an existing test asserted a
-  shape the draft matrix forbade (codex F2). Now a four-row table; the fix is
-  cheap because stage bindings are never executed today.
+- **Back-compat covered one shape of several**, and an existing test asserted a
+  shape the draft matrix forbade (codex F2). The fix is cheap because stage
+  bindings are never executed today. (Round 2 corrected the table again.)
 - **The artifact write was not atomic with prompt resolution** (codex F4) →
   resolve-then-write, criterion 10.
 - **`generate` had no resource contract** (codex F5, bllm) → timeout, output cap,
@@ -423,8 +661,9 @@ not lost.
   confinement, criterion 15.
 - **AC 12 contradicted first-match-wins** (bllm) → replaced by explicit
   unreachable-entry validation.
-- **C4→C3 was an artificial dependency** (bllm). It is now technical: after C1
-  the stage verb really is the firing point for request templates.
+- **C5→C4 was an artificial dependency** (bllm). Round 2 removed it entirely:
+  once stage entry stopped writing, scaffolding needed nothing from the stage
+  verb.
 - **"Already drifted" overstated the duplicate templates.** The `## Inbox
   contents` difference is deliberate; only `TBD`-vs-empty is unexplained. Both
   disappear with C1.

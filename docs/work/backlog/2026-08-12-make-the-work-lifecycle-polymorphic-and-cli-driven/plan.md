@@ -5,8 +5,9 @@ create them, the dependency order, and the checkpoints where the epic reconciles
 No code is written against this item; implementation tasks belong to each child's
 own `plan.md`.
 
-> Rebuilt after the `codex` / `bllm-review` pass and the requester's intake
-> decision. Seven children, not six; C1 is new and everything shifted.
+> Rebuilt after two `codex` / `bllm-review` passes, the requester's intake
+> decision, and the requester's scaffold decision. Seven children; C4, C5, and
+> C6 are now all parallel behind C3.
 
 ## Children
 
@@ -21,21 +22,30 @@ expressed earlier.
 
 ### C1 — Unify intake
 
-**Delivers** `intake.md` as an artifact; `tcw work new` and `tcw work inbox
-accept` writing intake instead of synthesizing a request; the body surface
-resolving request-then-intake; `request` gaining `inputs=("intake.md",)`; and
-`fs.py:2755-2769` deleted outright. Decides and records the `WORK_ARTIFACTS`
-ordering question and the replacement for `tcw work new`'s `→ edit:` hint.
+**Delivers** `intake.md` as an artifact and an **abstract intake surface** on
+`WorkStore` — not a re-reading of the existing `body` parameter, which would
+give one abstract argument two adapter-specific meanings. Plus: `tcw work new`
+and `tcw work inbox accept` writing intake instead of synthesizing a request, the
+`origin` manifest and binary fallback preserved through a refactor of
+`fs.py:2755-2769` rather than its deletion; **one canonical presence resolver**
+(exists and non-empty) shared by `_read_item`, `body_path`, `artifacts()`, the
+core revision, and `serve`; the body read-fallback and the write/promotion
+contract; the core revision hashing which file resolved; and the lowercase `i`
+board prefix. Also the replacement for `tcw work new`'s `→ edit:` hint.
 
 **Why first:** the epic's headline feature — a conditional template for a `bug`
 item's request — is impossible while both creation paths write
 `initial-request.md` unconditionally. It also has value entirely on its own: it
 removes a duplicated template and makes the board's `R` letter mean something.
 
-**Verified by:** acceptance criteria 2, 3, and 4 — a fresh item with no artifacts,
-a piped item with intake only, an accepted inbox entry with intake only, and the
-board letters and `show` output correct at each point. Plus a migration check
-that existing items, which all have `initial-request.md`, are untouched.
+**Verified by:** acceptance criteria 2, 3, 4, and 4b — a fresh item with neither
+artifact, a piped item, and accepted inbox entries of all three shapes (text,
+folder, binary-only) with attachments, manifest, and origin intact; the board
+prefix and `show` output correct at each point including the both-absent and
+empty-request-beside-real-intake cases; and a body edit on an intake-only item
+promoting to a request, saying so, and leaving intake byte-identical. Plus a
+migration check that existing items, which all have `initial-request.md`, are
+untouched.
 
 **Capabilities:** new — `work/capture-raw-intake`; changed —
 `work/open-a-work-item`, `work/manage-the-work-inbox`.
@@ -43,13 +53,17 @@ that existing items, which all have `initial-request.md`, are untouched.
 ### C2 — Work item JSON projection
 
 **Delivers** a versioned DTO with explicitly typed fields and an `artifacts`
-map, plus `tcw work show --json`. Decides and documents the handling of
-`WorkItem.capabilities` — an opaque `object` filled from arbitrary YAML — and of
-`body`, which is unbounded.
+map, plus `tcw work show --json`. **Unifies with the projection that already
+exists** — `serve/__init__.py:51-66` ships `_jsonable`/`_json_bytes` today, and a
+second projection here would be exactly the two-sources drift this epic exists to
+remove. Decides and documents the handling of `WorkItem.capabilities` — an opaque
+`object` filled from arbitrary YAML, currently squeezed through
+`json.dumps(…, default=str)` — and of `body`, which is unbounded.
 
 **Verified by:** criterion 5. The schema-validation test is the point: a test
 that merely enumerates dataclass fields would pass for an unusable payload, which
-is exactly what review flagged.
+is exactly what review flagged. `serve`'s existing API responses must not change
+shape except deliberately.
 
 **Capability:** changed — `work/read-a-work-item`.
 
@@ -61,12 +75,17 @@ the `intake` artifact, and doing that after C1 avoids versioning the DTO twice.
 **Delivers** the model change: `check` / `prompt` / `artifact` roles; the `blob`,
 `file`, `generate`, and `builtin` kinds with the `generate` resource contract and
 `file` node-root confinement; the `when:` matcher; parsing, validation, and the
-four-row back-compat table; resolution as a library function. Also
-`tcw work lifecycle --transition <id> --phase pre|post` and the Vocabulary term
-`work-item/lifecycle-hook`. Picks the concrete `generate` output cap.
+full back-compat table including the preserved grouped rendering; resolution as a
+library function. Also `tcw work lifecycle --transition <id> --phase pre|post`
+and the Vocabulary term `work-item/lifecycle-hook`. Picks the concrete `generate`
+output cap.
 
-**No new command surface except `--phase`.** C3 makes resolution possible; C4
-makes it reachable. Splitting them keeps the parser and validator change
+**`builtin` is entirely C3's** — both the syntax and the resolution. Splitting it
+across C3 and C6 would let C4 and C5 meet valid `builtin` configuration with no
+implementation behind it. C6 ships only the content the kind resolves to.
+
+**No new command surface except `--phase`.** C3 makes resolution possible; C4 and
+C5 make it reachable. Splitting them keeps the parser and validator change
 reviewable on its own.
 
 **Verified by:** criteria 1, 6, 7, 12, 13, and 15 — the legacy-config corpus, the
@@ -80,47 +99,49 @@ truth table, `lifecycle` inertness, and every validation rejection by name.
 
 ### C4 — The stage verb
 
-**Delivers** `tcw work stage <id> [ref]` running pre-checks → resolve everything
-→ write → print prompt, plus `--no-exec`. Stdout carries prompt text and nothing
-else.
+**Delivers** `tcw work stage <id> [ref]` running legality → pre-checks → resolve
+→ print prompt, plus `--no-exec`. Stdout carries prompt text and nothing else,
+and the command **writes nothing at all**.
 
-**Verified by:** criteria 8, 9, 10, and 16. Criterion 10 is the one worth
-building first — a prompt hook failing after an artifact hook resolved must leave
-nothing written, and the retry must then succeed.
+**Verified by:** criteria 8, 9, and 16. The clause worth building first is that
+running the verb for any stage leaves the item folder byte-identical — that is
+what makes it safe to run purely for its instructions, and it is the property
+round-2 review found the earlier design had lost.
 
 **Capability:** new — `work/run-a-lifecycle-stage`.
 
 **Blocked by:** C3.
 
-### C5 — Artifact templates
+### C5 — Artifact scaffolding
 
-**Delivers** `LifecycleStep.produces` as a tuple of artifact names, `sections`,
-built-in templates keyed by artifact name, and the artifact hook wired into C4's
-sequence. Decides explicitly whether `tcw serve` applies templates, and whether a
-template needing hook context could render broken there.
+**Delivers** `LifecycleStep.produces` as a tuple of artifact names,
+`tcw work scaffold <artifact> [ref]` writing `<artifact>.draft.md`, built-in
+templates keyed by artifact name, and the stage/status legality table both this
+and C4 consult. Decides explicitly whether `tcw serve` offers scaffolding, and
+whether landing an artifact removes its draft.
 
-**Verified by:** criteria 11 and 17 — creation with exact resolved content,
-existing artifacts left byte-identical, and exactly one definition of each
-built-in template.
+**Verified by:** criteria 11 and 17 — a draft written with exact resolved
+content, `spec.md` not created, the board unchanged, a refusal when the real
+artifact exists, and a built-in template for every `WORK_ARTIFACTS` name.
 
 **Capability:** new — `work/customize-lifecycle-artifact-templates`.
 
-**Blocked by:** C4. This dependency is **technical**, not sequencing: after C1
-the request artifact is created by the `request` stage, so the stage verb is the
-firing point.
+**Blocked by:** C3 only. **Parallel with C4.** Once stage entry stopped writing,
+scaffolding needed nothing from the stage verb — the dependency earlier drafts
+defended twice turned out to be neither sequencing nor technical.
 
 ### C6 — Built-in stage prompts
 
-**Delivers** `tcw/work/prompts/<stage>.md` as package data, `builtin` kind
-resolution, and wheel packaging. Content condensed from [obra/superpowers].
+**Delivers** `tcw/work/prompts/<stage>.md` as package data and wheel packaging.
+Content condensed from [obra/superpowers]. The `builtin` kind itself is C3's.
 
-**Verified by:** criterion 14, tested **against C3's resolution library** rather
-than through `tcw work stage` — C6 lands before C4 may, and a child cannot verify
-itself with a command another child introduces. The end-to-end check belongs to
-checkpoint 3. Plus an installed-wheel test proving the prompts are packaged
-rather than merely present in the source tree.
+**Verified by:** criterion 14 tested **against C3's resolution library** rather
+than through `tcw work stage`, since C6 may land before C4 and a child cannot
+verify itself with a command another child introduces — plus an installed-wheel
+test proving the prompts are packaged rather than merely present in the source
+tree. The end-to-end check belongs to **checkpoint 4**.
 
-**Blocked by:** C3. **Parallel with C4** — do not chain them.
+**Blocked by:** C3. **Parallel with C4 and C5** — do not chain them.
 
 ### C7 — Skill and documentation rewrite
 
@@ -141,7 +162,7 @@ answer rather than a contradiction.
 **Verified by:** criterion 18; `tcw capabilities check`, `tcw capabilities
 drift`, and `tcw validate` all clean.
 
-**Blocked by:** C5, C6.
+**Blocked by:** C4, C5, C6.
 
 ## Delegation commands
 
@@ -162,8 +183,8 @@ tcw work new "Give lifecycle hooks roles, kinds, and conditions" \
 tcw work new "Add the stage-entry verb" \
     --initiative "$EPIC" --priority 72 --effort medium --complexity high \
     --tag work --tag cli
-tcw work new "Template the lifecycle artifacts" \
-    --initiative "$EPIC" --priority 68 --effort medium --complexity medium \
+tcw work new "Scaffold lifecycle artifacts from templates" \
+    --initiative "$EPIC" --priority 71 --effort medium --complexity medium \
     --tag work --tag cli
 tcw work new "Ship built-in stage prompts with the CLI" \
     --initiative "$EPIC" --priority 70 --effort medium --complexity medium \
@@ -180,23 +201,27 @@ relation, so without this every child reads as workable at once:
 tcw work edit <C2> --blocked-by <C1>
 tcw work edit <C3> --blocked-by <C2>
 tcw work edit <C4> --blocked-by <C3>
+tcw work edit <C5> --blocked-by <C3>
 tcw work edit <C6> --blocked-by <C3>
-tcw work edit <C5> --blocked-by <C4>
+tcw work edit <C7> --blocked-by <C4>
 tcw work edit <C7> --blocked-by <C5>
 tcw work edit <C7> --blocked-by <C6>
 ```
 
-C4 and C6 both hang off C3 and neither blocks the other. Chaining them would be a
-false blocker the tool then enforces.
+C4, C5, and C6 all hang off C3 and none blocks another. Chaining any pair would
+be a false blocker the tool then enforces.
 
 ## Dependency order
 
 ```
-C1 ──▶ C2 ──▶ C3 ──┬──▶ C4 ──▶ C5 ──┬──▶ C7
-                   └──▶ C6 ──────────┘
+                   ┌──▶ C4 ──┐
+C1 ──▶ C2 ──▶ C3 ──┼──▶ C5 ──┼──▶ C7
+                   └──▶ C6 ──┘
 ```
 
-Critical path: C1 → C2 → C3 → C4 → C5 → C7. C6 has slack equal to C4 + C5.
+Critical path: C1 → C2 → C3 → (widest of C4/C5/C6) → C7. The three middle
+children are fully parallel, so the epic's wall-clock is bounded by C3 plus the
+longest single one of them.
 
 Risk placement: C3 is the riskiest child — it rewrites the parser every existing
 `tcw-config.yaml` goes through — and it lands with no new command surface, so a
@@ -220,7 +245,8 @@ report is easy to attribute.
 4. **After C4 and C6 both land** — the first point where a user gets the whole
    feature end to end with nothing configured. This is where C6's built-in
    prompts get their real exercise, since C6 could only test them at library
-   level.
+   level. If C5 has also landed, exercise `scaffold` here too; it does not gate
+   this checkpoint.
 5. **Before closeout** — final reconcile; every child resolved, every child's
    ledger entries flipped by that child, `tcw validate` clean.
 
@@ -239,10 +265,12 @@ Evaluated for the initiative. Each child re-evaluates for its own diff at its
   your own skills and commands to the lifecycle" rewrite**, because that section
   describes one coherent model and four partial rewrites would be worse than one
   at the end.
-- **`skills/tcw-work/SKILL.md` [Skill-Driven-Component]** — fires for C1 and C4
-  in passing (the lifecycle they drive changes), and wholesale for C7. C1 updates
-  `references/stage-request.md`'s claim that `initial-request.md` "is never
-  absent" — which C1 makes false — rather than leaving it for C7.
+- **`skills/tcw-work/SKILL.md` [Skill-Driven-Component]** — fires for C1, C4, and
+  C5 in passing (the lifecycle they drive changes), and wholesale for C7. C1
+  updates `references/stage-request.md:18-19`, which states that
+  `initial-request.md` "is the always-present body and overview surface, so it is
+  never absent" — a claim C1 makes false, and the exact sentence that encoded the
+  old model. Fixing it belongs to C1, not C7.
 
 No epic-level documentation task: C7 *is* one, and it is already a child.
 
@@ -267,12 +295,17 @@ What the suite cannot check:
 
 - **The children are not created yet, deliberately.** The boundaries are what
   this plan asks the user to review, and creating them before that review means
-  retitling or deleting them if the boundaries move.
+  retitling or deleting them if the boundaries move. They have already moved
+  twice.
 - Priorities descend with dependency order (78 → 66), all under the epic's 80.
-  C6 sits at 70, above C5 at 68, because it is unblocked earlier.
+  C4, C5, and C6 sit adjacent (72/71/70) because they are genuinely parallel;
+  the ordering between them is a tiebreak for the board, not a dependency.
 - C1 and C2 both ship value alone. If the epic stalls after C2, unified intake
   and `tcw work show --json` are still real improvements.
-- The first draft of this plan had six children and put intake handling nowhere.
-  Review found the headline feature impossible without it; C1 is the result.
+- **Two rounds of review reshaped this plan.** Round 1 found the headline feature
+  impossible without intake unification, which produced C1. Round 2 found that
+  writing artifacts at stage entry would re-create for every other artifact the
+  exact defect C1 fixes for the request — which produced the scaffold verb, and
+  freed C5 from C4 as a side effect.
 
 [obra/superpowers]: https://github.com/obra/superpowers

@@ -122,6 +122,24 @@ Decided with it:
   above. Exit checks move to the next stage's `pre` — one check family instead of
   two, and every check fires at a moment that actually happens.
 
+## Added after the second review round
+
+A second adversarial pass found that the artifact-generation hook of step 2 in
+the requested ordering, firing at stage entry, would re-create for every other
+artifact the exact defect intake unification fixes for the request: writing a
+templated `spec.md` in order to *read* the stage instructions would mark the
+stage done on the board before any spec existed. Put to the requester, who
+resolved it:
+
+> Keep the factory, add an explicit scaffold verb, have the drafts carry a
+> predictable name (e.g. `spec.draft.md` as the empty draft).
+
+So stage entry writes nothing at all, and a separate `tcw work scaffold
+<artifact>` writes `<artifact>.draft.md`. Because the draft has a different
+filename, the artifact registry never sees it and progress reporting stays
+honest — with no content hashing, no in-file marker, and no draft state any store
+adapter has to represent.
+
 ## Constraints
 
 - **The two ladders are load-bearing.** A stage produces an artifact; a
