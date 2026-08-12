@@ -942,9 +942,17 @@ class WorkStore(ABC):
 
     @abstractmethod
     def create(self, title: str, created: str | None = None, body: str = "",
-               priority: int | None = None, parent: str | None = None) -> WorkItem:
+               priority: int | None = None, parent: str | None = None,
+               intake: str = "") -> WorkItem:
         """Create an item. With `parent` (a slug), create it as a child of that
-        item — an abstract node relation; the adapter realizes the nesting."""
+        item — an abstract node relation; the adapter realizes the nesting.
+
+        `body` is the item's **request**; `intake` is the raw, unprocessed input
+        it started from. They are separate arguments rather than one because an
+        adapter must be able to tell them apart — a tracker that files intake as
+        a comment and the request as a description cannot recover the distinction
+        from a single field. Either may be empty, including both: an item created
+        with neither has no body yet, and that is a state, not a defect."""
 
     @abstractmethod
     def get(self, slug: str) -> WorkItem | None:
@@ -1067,10 +1075,15 @@ class WorkStore(ABC):
                     parent: str | None = None,
                     initiative: str = "",
                     type: str = "",
-                    tags: list[str] | None = None) -> "WorkDetail":
+                    tags: list[str] | None = None,
+                    intake: str = "") -> "WorkDetail":
         """Create a work item with all fields in one atomic operation.
 
         * ``title`` — required, non-empty display name.
+        * ``body`` — the item's request; written only when non-empty.
+        * ``intake`` — the raw input the item started from; written only when
+          non-empty.  Kept distinct from ``body`` so an adapter knows which it
+          was handed (see ``create``).
         * ``effort`` / ``complexity`` — must be in ``WORK_LEVELS`` (or empty).
         * ``blockers`` — list of refs to resolve; unresolvable refs become
           external entries.

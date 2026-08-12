@@ -82,11 +82,14 @@ def test_slug_generation_collision_and_immutability(tmp_path):
 
 def test_body_path_points_at_initial_request_md(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
+    item = st.create("Task", created="2026-01-01", body="request\n")
     body = st.body_path(item.slug)
     assert body == st.path(item.slug) / "initial-request.md"
     assert body.exists()
     assert st.body_path("no-such-slug") is None
+    # an item created with nothing has no body file to point at
+    empty = st.create("Empty", created="2026-01-01")
+    assert st.body_path(empty.slug) is None
 
 
 @pytest.mark.parametrize(
@@ -107,7 +110,6 @@ def test_body_surface_resolves_by_one_presence_rule(
     st = FsWorkStore.open(node(tmp_path))
     item = st.create("Task", created="2026-01-01")
     d = st.path(item.slug)
-    (d / "initial-request.md").unlink()                # created with a request today
     for name, text in (("initial-request.md", request_text), ("intake.md", intake_text)):
         if text is not None:
             (d / name).write_text(text, encoding="utf-8")
@@ -121,9 +123,32 @@ def test_body_surface_resolves_by_one_presence_rule(
     assert present["intake"] is bool(intake_text and intake_text.strip())
 
 
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        ({}, {"state.yaml"}),
+        ({"body": "request"}, {"state.yaml", "initial-request.md"}),
+        ({"intake": "raw"}, {"state.yaml", "intake.md"}),
+        ({"body": "request", "intake": "raw"},
+         {"state.yaml", "initial-request.md", "intake.md"}),
+    ],
+)
+def test_create_writes_only_what_it_was_given(tmp_path, kwargs, expected):
+    """The folder contents are the assertion, not two path checks: creation used
+    to template a request for every item, which is what made `R` meaningless."""
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create_work("Task", created="2026-01-01", **kwargs).item
+    d = st.path(item.slug)
+    assert {p.name for p in d.iterdir()} == expected
+    if "intake" in kwargs:
+        assert (d / "intake.md").read_text() == "raw\n"
+    if "body" in kwargs:
+        assert (d / "initial-request.md").read_text() == "request\n"
+
+
 def test_modified_timestamp_tracks_only_bounded_work_resources(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
+    item = st.create("Task", created="2026-01-01", body="request\n")
     folder = st.path(item.slug)
     assert folder is not None
     request = folder / "initial-request.md"
@@ -943,7 +968,8 @@ def test_cli_edit_title_keeps_slug_and_body(tmp_path, monkeypatch):
     from tcw.cli import main
     root = node(tmp_path)
     monkeypatch.chdir(root)
-    item = FsWorkStore.open(root).create("Old title", created="2026-01-01")
+    item = FsWorkStore.open(root).create("Old title", created="2026-01-01",
+                                         body="# Old title\n\nprose\n")
     body_path = root / "docs" / "work" / "backlog" / item.slug / "initial-request.md"
     before = body_path.read_bytes()
 
@@ -1231,7 +1257,7 @@ def test_cli_list_shows_outcome_and_refined_outcome_stages(tmp_path, monkeypatch
     root = node(tmp_path)
     monkeypatch.chdir(root)
     st = FsWorkStore.open(root)
-    item = st.create("Finished", created="2026-01-01")
+    item = st.create("Finished", created="2026-01-01", body="request\n")
     d = st.path(item.slug)
     (d / "outcome.md").write_text("outcome\n", encoding="utf-8")
     (d / "refined-outcome.md").write_text("refined\n", encoding="utf-8")

@@ -2170,8 +2170,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         present. Reads fall back request → intake; writes never do (`update_work`)."""
         for name in _BODY_ORDER:
             p = d / self._artifact_filename(name)
-            if self._present(p):
-                return name, p.read_text(encoding="utf-8")
+            try:
+                if self._present(p):
+                    return name, p.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                continue                              # claimed out from under us
         return None, ""
 
     def body_path(self, slug: str) -> Path | None:
@@ -2815,7 +2818,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # -- writes --
 
     def create(self, title: str, created: str | None = None, body: str = "",
-               priority: int | None = None, parent: str | None = None) -> WorkItem:
+               priority: int | None = None, parent: str | None = None,
+               intake: str = "") -> WorkItem:
         """Create a work item — the `WorkItem`-returning face over `create_work`.
 
         `get_detail(...).item` *is* the `self.get(slug)` this used to end with —
@@ -2829,7 +2833,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # `create_work`, not hardening a duplicate.
         """
         return self.create_work(title, created=created, body=body,
-                                priority=priority, parent=parent).item
+                                priority=priority, parent=parent,
+                                intake=intake).item
 
     def set_field(self, slug: str, key: str, value) -> None:
         d = self._require_dir(slug)
@@ -2962,7 +2967,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     parent: str | None = None,
                     initiative: str = "",
                     type: str = "",
-                    tags: list[str] | None = None) -> "WorkDetail":
+                    tags: list[str] | None = None,
+                    intake: str = "") -> "WorkDetail":
         """Composite create: all fields validated before any write."""
         if not title:
             raise ValueError("title is required and must be non-empty")
@@ -3035,11 +3041,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
         state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
 
-        # Build body content
-        body_content = (
-            f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
-            f"{body}\n"
-        )
+        # Only what the caller actually supplied gets a file. Creation used to
+        # template a three-heading request unconditionally, which made every
+        # item look like its `request` stage had run.
+        written = {"state.yaml": state_text}
+        if body:
+            written["initial-request.md"] = body if body.endswith("\n") else body + "\n"
+        if intake:
+            written["intake.md"] = intake if intake.endswith("\n") else intake + "\n"
 
         # Write atomically (both files must succeed). `mkdir` without
         # `exist_ok` proves the directory did not exist, so the rollback is
@@ -3051,12 +3060,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # it). Staging stays outside — see `_write_node`.
         d.mkdir(parents=True)
         try:
-            _atomic_write(d / "state.yaml", state_text)
-            _atomic_write(d / "initial-request.md", body_content)
+            for name, content in written.items():
+                _atomic_write(d / name, content)
         except BaseException:
             shutil.rmtree(d, ignore_errors=True)
             raise
-        self._stage(d / "state.yaml", d / "initial-request.md")
+        self._stage(*(d / name for name in written))
 
         return self.get_detail(slug)
 

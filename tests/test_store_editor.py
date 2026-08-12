@@ -90,7 +90,7 @@ def test_revision_multi_order_dependent():
 
 def test_get_detail_returns_full_revision_map(tmp_path):
     st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
+    item = st.create("Task", created="2026-01-01", body="request\n")
     d = st.path(item.slug)
     (d / "spec.md").write_text("spec content\n")
     (d / "capabilities.yaml").write_text("links:\n- web\n")
@@ -102,7 +102,8 @@ def test_get_detail_returns_full_revision_map(tmp_path):
     assert detail.core_revision != ""
     assert "spec" in detail.artifact_revisions
     assert "capabilities.yaml" in detail.sidecar_revisions
-    # initial-request is always present after create
+    # present because this item was created *with* a request; creation no longer
+    # templates one for an item that has no body yet
     assert "initial-request" in detail.artifact_revisions
 
 
@@ -144,7 +145,6 @@ def test_get_detail_core_distinguishes_intake_from_request(tmp_path):
     st = FsWorkStore.open(_work_node(tmp_path))
     item = st.create("Task", created="2026-01-01")
     d = st.path(item.slug)
-    (d / "initial-request.md").unlink()
     (d / "intake.md").write_text("same text\n", encoding="utf-8")
     as_intake = st.get_detail(item.slug).core_revision
 
@@ -1117,7 +1117,7 @@ def test_create_work_failure_leaves_no_directory(tmp_path, monkeypatch):
 
     _fail_writing(monkeypatch, "initial-request.md")
     with pytest.raises(OSError):
-        st.create_work("Task", created="2026-01-01")
+        st.create_work("Task", created="2026-01-01", body="request\n")
 
     assert not d.exists()
     assert list(root.rglob("*.tmp")) == []
@@ -1131,7 +1131,7 @@ def test_create_failure_leaves_no_directory(tmp_path, monkeypatch):
 
     _fail_writing(monkeypatch, "initial-request.md")
     with pytest.raises(OSError):
-        st.create("Task", created="2026-01-01")
+        st.create("Task", created="2026-01-01", body="request\n")
 
     assert not d.exists()
     assert list(root.rglob("*.tmp")) == []

@@ -439,11 +439,15 @@ def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):
     main(["work", "start", slug, "--worktree"]); capsys.readouterr()
     wt = root / ".worktrees" / slug
     item_doc = ["docs", "work", "active", slug, "initial-request.md"]
-    # diverging edits to the SAME tracked file → conflicting merge
+    # Diverging content at the SAME path → conflicting merge. `add -A` rather
+    # than `commit -am`: `work new` no longer leaves a request behind, so this
+    # file is new on both sides (an add/add conflict, which merges just as badly).
     (wt.joinpath(*item_doc)).write_text("worktree side\n")
-    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-am", "wt"], check=True)
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "wt"], check=True)
     (root.joinpath(*item_doc)).write_text("main side\n")
-    subprocess.run(["git", "-C", str(root), "commit", "-q", "-am", "main"], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "main"], check=True)
 
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
     err = capsys.readouterr().err
