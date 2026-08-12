@@ -2,27 +2,3 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
-
-## The plugin now installs the published CLI
-
-When a session starts, the plugin puts `tcw` on your PATH by installing it from
-PyPI — the same `tcw-cli` package you would install yourself — instead of
-building its own copy from the plugin's files.
-
-What this means for you:
-
-- **If you already installed `tcw-cli` by hand, there is nothing to clean up.**
-  It used to be possible to end up with the plugin's copy and your own copy
-  drifting apart. Now they are the same one, and the plugin installs over yours
-  rather than beside it.
-- **The first session after you install or update the plugin needs an internet
-  connection.** The plugin no longer carries a CLI to fall back on. If it can't
-  reach PyPI, the session tells you in one line and `tcw` won't be available
-  until a session that can reach it. Previously this worked offline.
-- **You can move ahead of the plugin if you want to.** `pipx upgrade tcw-cli`
-  gets you the newest CLI without waiting for a plugin update. Your CLI version
-  no longer has to match your plugin version, and `/tcw-doctor` now tells you
-  when a newer one is available instead of treating the difference as a problem.
-
-A development checkout installed with `pip install -e .` is still left alone, and
-a machine without `pipx` is still left alone.
