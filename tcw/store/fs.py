@@ -2059,8 +2059,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return self._require(slug)
 
     def _claiming_dirs(self, slug: str) -> list[Path]:
-        """The adapter-private folders of claims for `slug` still mid-flight."""
-        return sorted((self.root / ".claiming").glob(f"{slug}-*"))
+        """The adapter-private folders of claims for `slug` still mid-flight.
+
+        Matched against the uuid suffix, not `-*`: `*` spans `-`, so a claim on
+        a longer slug would answer for a shorter one — and slugs are prefixes of
+        each other by construction, since `_unique_slug` mints `{base}-2` for a
+        duplicate title. A loose glob makes `start()` on an absent slug stall and
+        then claim there is an interrupted claim to recover.
+        """
+        return sorted((self.root / ".claiming").glob(f"{slug}-" + "[0-9a-f]" * 32))
 
     def _lost_the_claim(self, slug: str) -> NoReturn:
         """Report a lost race once the winner publishes, or an abandoned claim.

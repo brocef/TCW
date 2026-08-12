@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -204,6 +205,36 @@ def test_get_returns_none_when_the_folder_vanishes_mid_read(tmp_path, monkeypatc
     assert store.get(item.slug) is None
 
 
+def test_get_returns_none_when_state_yaml_goes_inside_load_yaml_s_guard(tmp_path, monkeypatch):
+    """CI failure 2 exactly: `FileNotFoundError` out of `get()` → `_item_from_dir`
+    → `_safe_yaml` → `load_yaml`'s `read_text`.
+
+    The test above removes the folder *before* any read, which `load_yaml`'s own
+    `exists()` guard absorbs into `{}` — so it exercises the re-check, not this.
+    Only a vanish landing *between* that guard and the read it protects produces
+    the traceback CI actually reported.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    real_exists = Path.exists
+    fired = {"did": False}
+
+    def vanish_inside_the_guard(self):
+        answer = real_exists(self)
+        if answer and self.name == "state.yaml" and self.parent.name == item.slug:
+            shutil.rmtree(self.parent)
+            fired["did"] = True
+        return answer
+
+    monkeypatch.setattr(Path, "exists", vanish_inside_the_guard)
+    assert store.get(item.slug) is None
+    # Without this the test could silently stop reaching the window it exists for.
+    assert fired["did"], "the read never happened, so nothing was exercised"
+
+
 def test_query_skips_an_item_that_vanishes_mid_scan(tmp_path, monkeypatch):
     """The board has the same window through `_item_dirs`, not `_find`."""
     code = _repo(tmp_path / "code")
@@ -264,12 +295,94 @@ def test_claim_loser_is_told_the_winner_not_no_such_work_item(tmp_path, monkeypa
     claiming = winner.root / ".claiming"
     claiming.mkdir(exist_ok=True)
     # The winner mid-flight: out of `backlog`, not yet published to `active`.
-    (winner.root / "backlog" / item.slug).rename(claiming / f"{item.slug}-deadbeef")
+    (winner.root / "backlog" / item.slug).rename(claiming / f"{item.slug}-{'ef' * 16}")
 
     with pytest.raises(ValueError) as caught:
         FsWorkStore.open(code).start(item.slug, owner="loser@example.com")
     assert "no such work item" not in str(caught.value)
     assert "take-over" in str(caught.value)
+
+
+def test_claim_loser_waits_for_the_winner_and_is_told_who_won(tmp_path):
+    """Criterion 3 through the new probe: not just "someone has it" but *who*.
+
+    The test above covers the claimant that never comes back. This one covers
+    the ordinary case — the winner is mid-flight and lands a moment later — and
+    asserts the loser receives the winner's owner and start time, which is the
+    whole point of the typed result.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    claiming = store.root / ".claiming"
+    claiming.mkdir(exist_ok=True)
+    private = claiming / f"{item.slug}-{'ab' * 16}"
+    (store.root / "backlog" / item.slug).rename(private)
+
+    def publish_a_moment_later():
+        time.sleep(0.05)
+        state = yaml.safe_load((private / "state.yaml").read_text())
+        state["owner"] = "winner@example.com"
+        state["started"] = "2026-08-12T00:00:00Z"
+        (private / "state.yaml").write_text(yaml.safe_dump(state, sort_keys=False))
+        private.rename(store.root / "active" / item.slug)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(publish_a_moment_later)
+        with pytest.raises(AlreadyClaimed) as caught:
+            FsWorkStore.open(code).start(item.slug, owner="loser@example.com")
+    assert caught.value.owner == "winner@example.com"
+    assert caught.value.started == "2026-08-12T00:00:00Z"
+
+
+def test_claim_loser_reads_the_winner_that_landed_while_it_was_asking(tmp_path, monkeypatch):
+    """The second escape: nothing is left in `.claiming/` because the winner
+    already published, so only a re-read of `get()` finds it. Without that
+    re-read this path reports `no such work item` for an item plainly sitting in
+    `active/`."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+    store.start(item.slug, owner="winner@example.com")
+
+    real_find = FsWorkStore._find
+    calls = {"n": 0}
+
+    def missing_on_the_first_lookup(self, slug):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real_find(self, slug)
+
+    monkeypatch.setattr(FsWorkStore, "_find", missing_on_the_first_lookup)
+
+    with pytest.raises(AlreadyClaimed) as caught:
+        FsWorkStore.open(code).start(item.slug, owner="loser@example.com")
+    assert caught.value.owner == "winner@example.com"
+    assert calls["n"] >= 2, "the re-read never happened"
+
+
+def test_a_claim_on_a_longer_slug_does_not_answer_for_a_shorter_one(tmp_path):
+    """`_unique_slug` mints `{base}-2` for a duplicate title, so slugs are
+    prefixes of each other by construction. A `-*` glob over `.claiming/` spans
+    the `-` and lets a longer slug's claim answer for a shorter one — turning a
+    plain typo into a 500 ms stall and a bogus offer to recover an interrupted
+    claim, for as long as the stale claim folder sits there."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    long_item = store.create("Claim me twice over", created="2026-08-08")
+
+    claiming = store.root / ".claiming"
+    claiming.mkdir(exist_ok=True)
+    (store.root / "backlog" / long_item.slug).rename(
+        claiming / f"{long_item.slug}-{'cd' * 16}")
+
+    shorter = long_item.slug[:len(long_item.slug) - len("-twice-over")]
+    assert store._claiming_dirs(shorter) == []
+    with pytest.raises(ValueError, match="no such work item"):
+        FsWorkStore.open(code).start(shorter, owner="someone@example.com")
 
 
 def test_repeated_claim_races_have_exactly_one_winner(tmp_path):
@@ -353,7 +466,7 @@ def test_takeover_recovers_interrupted_private_claim(tmp_path):
     init(["work"], code, "corelib")
     store = FsWorkStore.open(code)
     item = store.create("Interrupted", created="2026-08-08")
-    private = store.root / ".claiming" / f"{item.slug}-dead-process"
+    private = store.root / ".claiming" / f"{item.slug}-{'1a' * 16}"
     private.parent.mkdir()
     store.path(item.slug).replace(private)
     recovered = store.start(item.slug, owner="recovery@example.com", take_over=True)
