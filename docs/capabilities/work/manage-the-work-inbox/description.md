@@ -7,5 +7,9 @@ the active, configuration-aware work store.
 Inbox entries remain permissive intake packages rather than work items. An
 entry may be a standalone file or a folder containing an `INDEX.md` or
 `INDEX.txt` request plus related resources. Accepting an entry creates a
-backlog work item, preserves its resources as named attachments, generates the
-durable `initial-request.md`, and consumes the original inbox entry.
+backlog work item, preserves its resources as named attachments, records what
+arrived as the item's durable `intake.md` — the entry body, a manifest naming
+every preserved resource and the entry it was accepted from, and a note in place
+of a primary resource that is not text — and consumes the original inbox entry.
+Accepting no longer writes the item's request: what the entry said is preserved
+as raw intake, and the `request` stage is still to run.
