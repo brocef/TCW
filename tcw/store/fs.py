@@ -486,6 +486,10 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
 
 RESOLVED_IGNORE_COMMENT = "# Resolved work: kept on disk and in history, out of the tracked tree."
 
+# Read-resolution order for a work item's body surface. The request wins when
+# both exist; an item that has only raw intake still shows a body.
+_BODY_ORDER = ("initial-request", "intake")
+
 
 def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None) -> list[str]:
     """The .gitignore rules that make the end-state work folders untracked while
@@ -2155,9 +2159,27 @@ class FsWorkStore(FsTreeStore, WorkStore):
         except ValueError:
             return str(p)                             # outside node_root: absolute, don't crash
 
+    @staticmethod
+    def _present(p: Path) -> bool:
+        """The one presence rule: exists and non-empty. Mere existence would let
+        an empty file claim its stage ran, which is what `intake` made visible."""
+        return p.is_file() and bool(p.read_text(encoding="utf-8").strip())
+
+    def _resolve_body(self, d: Path) -> tuple[str | None, str]:
+        """The body surface: (artifact name, text), or (None, "") when neither is
+        present. Reads fall back request → intake; writes never do (`update_work`)."""
+        for name in _BODY_ORDER:
+            p = d / self._artifact_filename(name)
+            if self._present(p):
+                return name, p.read_text(encoding="utf-8")
+        return None, ""
+
     def body_path(self, slug: str) -> Path | None:
-        d = self._find(slug)                          # initial-request.md: FS realization of body surface
-        return d / "initial-request.md" if d is not None else None
+        d = self._find(slug)                          # FS realization of the body surface
+        if d is None:
+            return None
+        name, _ = self._resolve_body(d)
+        return d / self._artifact_filename(name) if name else None
 
     @staticmethod
     def _artifact_filename(name: str) -> str:
@@ -2171,7 +2193,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         for name in WORK_ARTIFACTS:
             p = d / self._artifact_filename(name)
             try:
-                present = p.is_file() and bool(p.read_text(encoding="utf-8").strip())
+                present = self._present(p)
             except FileNotFoundError:
                 return []                             # claimed out from under us
             out.append(Artifact(name=name, present=present))
@@ -2365,7 +2387,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def _read_item(self, d: Path) -> WorkItem:
         state = self._safe_yaml(d / "state.yaml")
-        request = d / "initial-request.md"
+        _, body_text = self._resolve_body(d)
         caps = d / "capabilities.yaml"
         capabilities = None
         if caps.exists():
@@ -2384,7 +2406,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             effort=state.get("effort") or "",        # `or ""`: bare YAML `effort:` (null) → ""
             complexity=state.get("complexity") or "",
             tags=list(state.get("tags") or []),
-            body=request.read_text(encoding="utf-8") if request.exists() else "",
+            body=body_text,
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=capabilities,
             initiative=state.get("initiative", ""),

@@ -89,6 +89,38 @@ def test_body_path_points_at_initial_request_md(tmp_path):
     assert st.body_path("no-such-slug") is None
 
 
+@pytest.mark.parametrize(
+    "request_text, intake_text, expect_file, expect_body",
+    [
+        ("request\n", None, "initial-request.md", "request\n"),   # request only
+        (None, "raw\n", "intake.md", "raw\n"),                    # intake only
+        ("request\n", "raw\n", "initial-request.md", "request\n"), # both: request wins
+        (None, None, None, ""),                                   # neither
+        ("   \n", "raw\n", "intake.md", "raw\n"),                 # empty request is absent
+    ],
+)
+def test_body_surface_resolves_by_one_presence_rule(
+    tmp_path, request_text, intake_text, expect_file, expect_body
+):
+    """Presence is exists-and-non-empty, and every reader uses the same rule:
+    the resolved body, the board letters, and `body_path` cannot disagree."""
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    d = st.path(item.slug)
+    (d / "initial-request.md").unlink()                # created with a request today
+    for name, text in (("initial-request.md", request_text), ("intake.md", intake_text)):
+        if text is not None:
+            (d / name).write_text(text, encoding="utf-8")
+
+    assert st.get(item.slug).body == expect_body
+    body = st.body_path(item.slug)
+    assert body == (d / expect_file if expect_file else None)
+
+    present = {a.name: a.present for a in st.artifacts(item.slug)}
+    assert present["initial-request"] is (expect_file == "initial-request.md")
+    assert present["intake"] is bool(intake_text and intake_text.strip())
+
+
 def test_modified_timestamp_tracks_only_bounded_work_resources(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
     item = st.create("Task", created="2026-01-01")
