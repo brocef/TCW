@@ -746,8 +746,10 @@ carrying a tag that was later unregistered. Tags don't affect board ordering.
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
-`tcw work new` also prints an "→ edit: …/initial-request.md" line (stderr) pointing
-at the new item's body so you can open it for editing right away.
+`tcw work new` also prints an "→ edit: …" line (stderr) pointing at the new
+item's body file when it has one — piped stdin lands in `intake.md`, so that is
+what the hint points at. Created with nothing piped, an item has no body file
+yet and the line is simply omitted.
 Every command that moves an item also names where it now lives, as a path
 relative to the project root — `tcw work start` and `tcw work complete` on
 stdout ("started my-item → docs/work/active/my-item"), `tcw work new` and
@@ -759,11 +761,26 @@ may be any standalone file, or a folder with exactly one `INDEX.md` or
 Hidden files and empty directories are ignored, symlinks are not followed, and
 binary contents are never printed. See the optional
 [`docs/work-inbox-template.md`](docs/work-inbox-template.md) for a useful request
-shape; the command does not require or parse that template.
+shape; the command does not require or parse that template. Accepting an entry
+records what arrived as the item's `intake.md` — the entry body, a manifest
+naming every preserved resource and the entry it came from, and a note standing
+in for a primary resource that is not text — and leaves the item's `request`
+stage still to run.
 
-`initial-request.md` is always-present — it is the item body/overview surface and
-the canonical request lifecycle artifact, seeded with title, the three-axis scaffold
-(Product / Technical / Meta changes), and any piped stdin.
+An item's **body surface** resolves to `initial-request.md` when it exists, and
+otherwise to `intake.md` — the raw, unprocessed input the item started from
+(piped stdin, or an accepted inbox entry with its manifest and attachments).
+An item created with neither has no body yet, which is a state rather than a
+defect: `initial-request.md` is the `request` stage's own artifact, so it exists
+once that stage has run and not before. Presence everywhere means *exists and is
+non-empty*.
+
+Editing an item's body always writes `initial-request.md`, never the intake. On
+an item that has only intake, that edit **promotes** it — the request is created,
+the intake is left byte-for-byte as it arrived, and the tool says a promotion
+happened rather than letting it look like an ordinary save. Raw input that
+quietly changes is not raw input, so `intake.md` is editable only as a named
+artifact.
 
 For large implementations, `plan.md` may optionally declare a bounded DAG of
 stage documents in YAML frontmatter. Each declaration has a lowercase kebab-case
@@ -776,10 +793,12 @@ Legacy single-file plans remain valid.
 
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
 `slug | status | stages | priority | title` (priority is the integer, or `-`
-when unspecified). `stages` is a compact lifecycle artifact string: `R` for
-`initial-request.md`, `S` for `spec.md`, `P` for `plan.md`, `O` for
-`outcome.md`, and `F` for `refined-outcome.md`; missing or empty artifacts do
-not contribute letters, and `-` means no lifecycle artifacts are present. The
+when unspecified). `stages` is a compact lifecycle artifact string: a lowercase `i` for
+`intake.md`, then `R` for `initial-request.md`, `S` for `spec.md`, `P` for
+`plan.md`, `O` for `outcome.md`, and `F` for `refined-outcome.md`; the letters
+read in lifecycle order. Missing or empty artifacts do not contribute letters,
+and `-` means no lifecycle artifacts are present — so `R` means the `request`
+stage has actually run. The
 board shows the live columns (backlog and active) and hides both closed
 columns by default — pass `--status completed` or `--status discarded` to list
 one, or `--all` for everything.

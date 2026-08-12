@@ -33,6 +33,20 @@ behind them — the CLI cannot run them, and asking it to is an argparse error:
 | audit the backlog      | [`audit-backlog.md`](audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude        |
 | migrate external plans | [`consolidate-plans.md`](consolidate-plans.md) — any harness · `/tcw-consolidate-plans` in Claude |
 
+## The body surface
+
+An item's body resolves to `initial-request.md` when it exists and non-empty, and
+to `intake.md` otherwise — the raw input the item started from, written by
+`tcw work new` from piped stdin or by `tcw work inbox accept` from the entry.
+Neither is created empty: `tcw work new "<title>"` with nothing piped leaves an
+item with no body file at all, which is why `R` on the board means the `request`
+stage has run and `i` means raw input is waiting for it.
+
+Writes never follow that fallback. A body edit always targets
+`initial-request.md`; on an intake-only item it **promotes** the item, creating
+the request and leaving `intake.md` byte-identical. Edit `intake.md` only as a
+named artifact — raw input that quietly changes is not raw input.
+
 ## Addressing
 
 A **bare slug** is local. `<project-id>/<slug>` resolves any node in the

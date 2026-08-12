@@ -22,8 +22,9 @@ you understand the request well enough to title it.
 ## Produce
 
 **No lifecycle artifact.** This stage creates the _item_; `tcw work inbox accept`
-writes its `initial-request.md` from the entry's own text, and the `request`
-stage is what shapes that into a proper request document.
+preserves the entry as its `intake.md` — body, resource manifest, attachments —
+and the `request` stage is what shapes that into a request document. Accepting an
+entry does not write one, so an accepted item shows `i` and not `R`.
 
 ## Steps
 

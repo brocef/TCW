@@ -8,15 +8,19 @@ be lost between a conversation and a spec.
 
 ## Inputs
 
-`initial-request.md` as it stands — `tcw work new` and `tcw work inbox accept`
-both seed it.
+`intake.md` when it exists — the raw input the item started from, written by
+`tcw work new` from piped stdin or by `tcw work inbox accept` from the entry.
+Neither seeds a request; this stage writes the first one.
 
 Repository discovery is unrestricted.
 
 ## Produce
 
-`initial-request.md`, at the item's folder root. It is the always-present body
-and overview surface, so it is never absent — this stage makes it _say something_.
+`initial-request.md`, at the item's folder root. **It is this stage's own
+artifact and absent until this stage runs** — that is what makes `R` on the board
+mean something. Until then the item's body surface shows its `intake.md`, and
+writing the request promotes the item off raw intake, leaving the intake itself
+untouched.
 
 Required: a title, and enough of the request that someone resuming cold knows
 what was wanted. For an epic it also carries the coordination goal and is the
