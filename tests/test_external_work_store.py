@@ -164,6 +164,125 @@ def test_claim_lost_at_find_takes_the_recovery_path_not_a_typeerror(tmp_path, mo
     assert calls["n"] >= 2, "the claim lookup was never reached"
 
 
+def _vanishing_find(monkeypatch, on_call: int):
+    """Force the third claim window: `_find` answers with a folder that is gone
+    by the time the caller reads inside it.
+
+    Same technique as the test above, for the same reason — the defect lives in
+    the gap between `_find` and the read that follows it, so no arrangement of
+    files on disk can produce it. Here `_find` is truthful about the *name* and
+    stale about the *existence*, which is exactly what a competing claim's
+    `os.replace` leaves behind.
+    """
+    real_find = FsWorkStore._find
+    calls = {"n": 0}
+
+    def find_a_vanished_dir(self, slug):
+        calls["n"] += 1
+        found = real_find(self, slug)
+        if calls["n"] == on_call and found is not None:
+            shutil.rmtree(found)
+        return found
+
+    monkeypatch.setattr(FsWorkStore, "_find", find_a_vanished_dir)
+    return calls
+
+
+def test_get_returns_none_when_the_folder_vanishes_mid_read(tmp_path, monkeypatch):
+    """CI failure 2: `get()` → `_item_from_dir` → `_safe_yaml` → FileNotFoundError.
+
+    Every read inside `_item_from_dir` guards with `exists()`/`is_file()` and
+    then opens the file, so any of them can be the one that loses. "Not here" is
+    the honest answer at that instant; the crash was not.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    _vanishing_find(monkeypatch, on_call=1)
+    assert store.get(item.slug) is None
+
+
+def test_query_skips_an_item_that_vanishes_mid_scan(tmp_path, monkeypatch):
+    """The board has the same window through `_item_dirs`, not `_find`."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    doomed = store.create("Claim me", created="2026-08-08")
+    survivor = store.create("Leave me", created="2026-08-08")
+
+    real_item_dirs = FsWorkStore._item_dirs
+
+    def remove_the_first_after_scanning(self):
+        dirs = real_item_dirs(self)
+        shutil.rmtree(next(d for d in dirs if d.name == doomed.slug))
+        return dirs
+
+    monkeypatch.setattr(FsWorkStore, "_item_dirs", remove_the_first_after_scanning)
+    assert [i.slug for i in store.query()] == [survivor.slug]
+
+
+def test_claim_loser_is_told_the_winner_not_no_such_work_item(tmp_path, monkeypatch):
+    """The other half of window 3, and the reason a local `get()` fix is not enough.
+
+    Once `get()` degrades to `None`, `start()`'s next line reports `no such work
+    item` — a worse answer than the crash it replaced, and a criterion 3 failure
+    of its own. A claim still sitting in `.claiming/` is the evidence that the
+    slug exists and someone else has it.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    winner = FsWorkStore.open(code)
+    claiming = winner.root / ".claiming"
+    claiming.mkdir(exist_ok=True)
+    # The winner mid-flight: out of `backlog`, not yet published to `active`.
+    (winner.root / "backlog" / item.slug).rename(claiming / f"{item.slug}-deadbeef")
+
+    with pytest.raises(ValueError) as caught:
+        FsWorkStore.open(code).start(item.slug, owner="loser@example.com")
+    assert "no such work item" not in str(caught.value)
+    assert "take-over" in str(caught.value)
+
+
+def test_repeated_claim_races_have_exactly_one_winner(tmp_path):
+    """Criterion 2, which one race per session never demonstrated.
+
+    A single-shot version of this passed 1202 of 1203 local runs *with a genuine
+    bug present*, so a green single race is close to no evidence. Both known CI
+    failures were windows of a few microseconds on a 2-core runner; the only
+    thing that finds those is repetition.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    config = yaml.safe_load((code / "tcw-config.yaml").read_text())
+    config.setdefault("work", {})["auto-commit-transitions"] = False
+    (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    seed = FsWorkStore.open(code)
+    slugs = [seed.create(f"Claim me {n}", created="2026-08-08").slug for n in range(25)]
+
+    def claim(args):
+        slug, owner = args
+        try:
+            return FsWorkStore.open(code).start(slug, owner=owner)
+        except AlreadyClaimed as error:
+            return error
+
+    for slug in slugs:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(claim, [(slug, "one@example.com"), (slug, "two@example.com")]))
+        winners = [r for r in results if not isinstance(r, AlreadyClaimed)]
+        assert len(winners) == 1, f"{slug}: {results}"
+        # Never both backlog and active, and never active without its metadata.
+        board = FsWorkStore.open(code)
+        assert board.path(slug).parent.name == "active"
+        active = board.get(slug)
+        assert active.owner == winners[0].owner and active.started.endswith("Z")
+
+
 def test_takeover_replaces_claim_and_submit_clears_it(tmp_path):
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")

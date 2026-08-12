@@ -22,6 +22,7 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import NoReturn
 
 import yaml
 
@@ -1976,7 +1977,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item = self.get(slug)
         if item is None and take_over:
-            interrupted = sorted((self.root / ".claiming").glob(f"{slug}-*"))
+            interrupted = self._claiming_dirs(slug)
             if len(interrupted) != 1:
                 raise ValueError(f"no recoverable interrupted claim for {slug}")
             if not owner:
@@ -1992,6 +1993,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if self.auto_commit_transitions():
                 self._commit_transition(slug, src, dst, "active", None)
             return self._require(slug)
+        if item is None:
+            # Empty has two meanings: no such slug, or a competitor moved the
+            # folder mid-read. Answering "no such work item" for the second is a
+            # worse lie than the crash it replaced, so look for the claim before
+            # denying the item exists — in `.claiming/` if the winner is still
+            # mid-flight, in `active/` if it landed while we were asking.
+            if self._claiming_dirs(slug):
+                self._lost_the_claim(slug)            # always raises
+            item = self.get(slug)
         if item is None:
             raise ValueError(f"no such work item: {slug}")
         if item.status == "active":
@@ -2032,12 +2042,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 raise FileNotFoundError(slug)
             os.replace(src, private)
         except FileNotFoundError:
-            for _ in range(50):
-                current = self.get(slug)
-                if current is not None and current.status == "active":
-                    raise AlreadyClaimed(slug, current.owner, current.started)
-                time.sleep(0.01)
-            raise ValueError(f"{slug} has an interrupted claim; use --take-over --owner <identity>")
+            self._lost_the_claim(slug)                # always raises
         state_path = private / "state.yaml"
         state = load_yaml(state_path)
         state["owner"], state["started"] = owner, started
@@ -2052,6 +2057,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, "active", item)
         return self._require(slug)
+
+    def _claiming_dirs(self, slug: str) -> list[Path]:
+        """The adapter-private folders of claims for `slug` still mid-flight."""
+        return sorted((self.root / ".claiming").glob(f"{slug}-*"))
+
+    def _lost_the_claim(self, slug: str) -> NoReturn:
+        """Report a lost race once the winner publishes, or an abandoned claim.
+
+        Every way of losing arrives here: `os.replace` raising, `_find` coming
+        back empty, or the item vanishing under a read. The winner is mid-move,
+        so wait briefly for it to reappear in `active` and name it; a claim that
+        never lands is one whose claimant died holding it.
+        """
+        for _ in range(50):
+            current = self.get(slug)
+            if current is not None and current.status == "active":
+                raise AlreadyClaimed(slug, current.owner, current.started)
+            time.sleep(0.01)
+        raise ValueError(f"{slug} has an interrupted claim; use --take-over --owner <identity>")
 
     def _status_of(self, d: Path) -> str:
         """Status = the first path component under the work root (`backlog/p/c`
@@ -2276,7 +2300,32 @@ class FsWorkStore(FsTreeStore, WorkStore):
         except yaml.YAMLError:
             return {}
 
-    def _item_from_dir(self, d: Path) -> WorkItem:
+    def _item_from_dir(self, d: Path) -> WorkItem | None:
+        """`None` when the folder went away mid-read — a concurrent claim moved
+        it between the `_find`/`_item_dirs` scan and this read.
+
+        Every guarded read below (`load_yaml`, `read_text`, `stat`) checks for
+        the file and then opens it, so each is its own window; a competing
+        claim's `os.replace` lands in any of them. Catching the vanish once,
+        here, is what keeps `get()`, `query()`, and the claim-recovery loop from
+        needing the same guard twenty times over.
+
+        Two conditions, because the failure has two shapes. The exception is the
+        narrow one — the folder went while a read was open. The re-check is the
+        wide one: `load_yaml` answers `{}` for an absent file and `_safe_yaml`
+        tolerates a malformed one, so a folder already gone reads as a *valid*
+        item full of defaults, still sitting in its old status. That silent
+        phantom is worse than the crash it would replace, and only an explicit
+        look for `state.yaml` after the read catches it. Both callers reach here
+        from a scan that required `state.yaml`, so its absence now means moved.
+        """
+        try:
+            item = self._read_item(d)
+        except FileNotFoundError:
+            return None
+        return item if (d / "state.yaml").exists() else None
+
+    def _read_item(self, d: Path) -> WorkItem:
         state = self._safe_yaml(d / "state.yaml")
         request = d / "initial-request.md"
         caps = d / "capabilities.yaml"
@@ -2328,7 +2377,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def query(self, status: str | None = None) -> list[WorkItem]:
         items = [self._item_from_dir(d) for d in self._item_dirs()]
-        return [i for i in items if status is None or i.status == status]
+        return [i for i in items
+                if i is not None and (status is None or i.status == status)]
 
     def initiative_epic(self, item: WorkItem) -> WorkItem | None:
         if not item.initiative:
