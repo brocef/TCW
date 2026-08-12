@@ -272,6 +272,51 @@ GitHub issue [#18](https://github.com/brocef/TCW/issues/18), filed 2026-08-12 by
 
 ## Product changes
 
+A node whose `tcw-config.yaml` sets `work.path` should behave like any other
+node. Today four commands do not:
+
+- `tcw work delegate` / `escalate` reach the target's real inbox, so a cross-node
+  request is readable by `tcw work inbox list` at the other end.
+- `tcw work reconcile` writes and commits the epic rollup instead of dying with a
+  traceback, which is what makes epics usable on such a node at all.
+- `tcw capabilities drift` reports its `shipped-missing` findings rather than
+  answering `no capability drift` because a directory it never reads is absent.
+- `tcw work start --worktree` leaves both repositories clean.
+
+Cutting across all four: **a write that cannot land should fail loudly.** Three
+of the four are silent today, and the silence is the actual harm — a lost
+delegation, an under-reported drift, and staged metadata that leaks into the
+user's next commit all look like success at the terminal.
+
 ## Technical changes
 
+The reports converge on one shape: these call sites reconstruct the store's
+location from the node root and the literal string `docs/work`, where
+`FsWorkStore` already computes `store_git_root` and `root` correctly and routes
+its own `_stage`/`_rm`/`_mv` through them. Resolving through the opened store is
+the fix in every case.
+
+Two shared pieces are what make this one item rather than four:
+
+- `_has_work_store` (`store/fs.py:173`) tests the `docs/work` directory *before*
+  consulting the config, so a stale or fabricated directory shadows a configured
+  path. #15 and #17 flag it independently, from opposite directions.
+- `_inbox_write`'s unconditional `inbox.mkdir(parents=True, exist_ok=True)` is
+  what converts a wrong path into a silent success — it fabricates the store's
+  whole parent chain, not just the inbox.
+
+The abstraction litmus test applies directly here: "where does this node's work
+store live" is a store-interface question, and every one of these call sites
+answers it with a filesystem convention instead of asking. Fixing the four
+without closing that class invites the fifth.
+
 ## Meta changes
+
+`--worktree`'s documented guarantee — that the branch carries the item's own
+status transition regardless of `auto-commit-transitions` — cannot hold when the
+store lives in a different repository. That is inherent to the separation rather
+than a defect, so it wants a documentation change, not a behavioral one.
+
+Whether `work.path` pointing outside the node's own repo is a configuration this
+project intends to support at all is worth settling before the fix, since it
+decides whether these are bugs or an unsupported layout failing loudly.

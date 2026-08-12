@@ -103,6 +103,35 @@ Reported against `tcw 0.18.2` on macOS 26.5.2, pyenv shim install.
 
 ## Product changes
 
+A `tcw://` link that names the project being served should open in the viewer.
+Today only the bare form works, and the qualified form — the one the docs steer
+you toward — renders as inert plain text, including when the project it names is
+the very node whose board you are looking at.
+
+What makes this worth fixing beyond the broken link: the failing form is the
+recommended one, and `tcw validate` calls it clean. The reporter wrote four
+request documents that way before noticing the links did nothing, because
+neither tool said anything.
+
 ## Technical changes
 
+`_hosted_projects()` (`serve/__init__.py:399`) builds its set from
+`descendant_nodes()`, which excludes the anchor — so the anchor's own registered
+id is hosted in neither mode: empty without `--include-descendants`, descendants
+only with it. The membership test at `serve/__init__.py:932` therefore cannot
+accept a locator naming the served node. Bare refs escape only because
+`not r.project` short-circuits ahead of the test.
+
+The docstring's reasoning about ancestors is sound; the gap is that a node is not
+an ancestor of itself, and its items are exactly what the board lists.
+
 ## Meta changes
+
+Two follow-ons the report raises, both about the gap between what `validate`
+accepts and what the viewer can open:
+
+- Whether `validate` should say something about a locator that will render dead.
+  This turns on whether unopenable-but-valid is the intended state for genuinely
+  remote refs — if it is, `validate` is right and only the docs need to say so.
+- A note in `cross-node-deltas.md` beside the recommended link form, which is the
+  same remedy #7 suggested for its own case.

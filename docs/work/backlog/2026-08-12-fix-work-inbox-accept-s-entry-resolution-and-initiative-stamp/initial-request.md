@@ -141,6 +141,40 @@ GitHub issue [#14](https://github.com/brocef/TCW/issues/14), filed 2026-08-12 by
 
 ## Product changes
 
+- `tcw work inbox accept` takes any identifier `tcw work inbox list` prints for
+  an entry, including the bare slug in its third column. Every other `work`
+  subcommand addresses items by bare slug; this one being the exception is the
+  whole of the surprise.
+- An accepted delegation keeps the epic it was delegated under, so
+  `tcw work reconcile` at the parent sees the slice instead of reporting the epic
+  "all blocked or complete" while freshly-delegated children sit unlinked.
+
+The second is the one that matters more, because it is silent and it is wrong in
+a direction the user cannot see: `delegate --initiative` writes the field
+expressly to survive the hand-off, and the reporter only caught it by checking
+each `state.yaml` by hand.
+
 ## Technical changes
 
+Both live in `accept`. Entry resolution wants a ladder — exact filename, then
+filename + `.md`, then slug match against the listed entries. The initiative
+stamp is already parsed (`accept` copies the frontmatter verbatim into the
+appended `## Inbox contents` section, so it demonstrably reads the field); it
+just never reaches `state.yaml`.
+
+Open, from the report: whether `accept` should warn when an entry carries a
+frontmatter key it discards, rather than fixing `initiative` alone and leaving
+the next such field to fail the same way silently.
+
 ## Meta changes
+
+None expected beyond the `tcw-work` skill, if the accepted argument forms change
+what it should tell an agent to type.
+
+## References
+
+- `2026-08-12-make-the-work-lifecycle-polymorphic-and-cli-driven` — reworks how
+  `accept` ingests an entry (its spec calls the current intake handling "three
+  different ways, and one of them is wrong"). Neither bug here is addressed
+  there, but the two touch the same code, so this either lands first or folds
+  into that item's plan. Decide before `spec`.
