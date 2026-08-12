@@ -127,11 +127,22 @@ an ancestor of itself, and its items are exactly what the board lists.
 
 ## Meta changes
 
-Two follow-ons the report raises, both about the gap between what `validate`
-accepts and what the viewer can open:
+The report asks whether `validate` should flag a locator the viewer will render
+dead. **Settled: no.** Whether a ref opens is a property of the *serve
+invocation*, not of the stored data — the same `tcw://W/proposit-core/…` is live
+under `serve --include-descendants` from the orchestrator and dead under a bare
+`serve` from `proposit-core`. `validate` has no invocation to check against, so
+any verdict it gives is wrong in one of the two cases. And once the fix above
+lands the ref genuinely *is* valid: it resolves through the registry, which is
+the question `validate` asks.
 
-- Whether `validate` should say something about a locator that will render dead.
-  This turns on whether unopenable-but-valid is the intended state for genuinely
-  remote refs — if it is, `validate` is right and only the docs need to say so.
-- A note in `cross-node-deltas.md` beside the recommended link form, which is the
-  same remedy #7 suggested for its own case.
+**What to fix instead:** the viewer currently renders an unhosted ref as plain
+text indistinguishable from prose, which is what let four documents accumulate
+dead links unnoticed. `serve` is the one surface that knows, at the moment it
+matters, whether a given ref is hosted — so it should say so: render an unhosted
+ref as a visibly distinct non-link carrying its project id, rather than silently
+downgrading it. That closes the reported detour without adding a check that
+cannot be correct.
+
+Still wanted: a note in `cross-node-deltas.md` beside the recommended link form,
+the same remedy #7 suggested for its own case.

@@ -162,9 +162,13 @@ stamp is already parsed (`accept` copies the frontmatter verbatim into the
 appended `## Inbox contents` section, so it demonstrably reads the field); it
 just never reaches `state.yaml`.
 
-Open, from the report: whether `accept` should warn when an entry carries a
-frontmatter key it discards, rather than fixing `initiative` alone and leaving
-the next such field to fail the same way silently.
+The report asks whether `accept` should warn on any frontmatter key it discards,
+rather than fixing `initiative` alone. **Settled: no — carry the field, add no
+warning machinery.** The inbox frontmatter vocabulary is closed at exactly two
+keys, `from:` and an optional `initiative:`, and both are written in one place
+(`_inbox_write`, `work/recursion.py:222`). A general discarded-key check would
+guard a set of two whose only writer is in this repo; if a third key is ever
+added, the same commit adds its handling.
 
 ## Meta changes
 

@@ -317,6 +317,25 @@ status transition regardless of `auto-commit-transitions` — cannot hold when t
 store lives in a different repository. That is inherent to the separation rather
 than a defect, so it wants a documentation change, not a behavioral one.
 
-Whether `work.path` pointing outside the node's own repo is a configuration this
-project intends to support at all is worth settling before the fix, since it
-decides whether these are bugs or an unsupported layout failing loudly.
+**Settled:** `work.path` pointing outside the node's own repo is supported, and
+is the intended multi-repo layout rather than an edge case. The `proposit`
+workspace at `~/Projects/proposit-orchestration` is the reference shape:
+
+```
+proposit-orchestration/          git repo A — owns docs/ and every work store
+├── docs/proposit-core/work/     the child's store lives here
+├── proposit-core/               git repo B, nested and gitignored by A
+│   └── tcw-config.yaml          work.path → ../docs/proposit-core/work
+├── proposit-mobile/  …          three more of the same
+```
+
+Planning and tracking consolidate in one repo; the code lives in several. That
+makes **"the store's repo is not the node's repo" the normal case**, not a
+degenerate one — which is precisely the assumption each of the four call sites
+violates. So these are bugs, and the fix is to honor the configuration, not to
+reject the layout.
+
+It also sets the bar for the fix: `store_git_root` and the node root must be
+treated as independently-varying, and a test fixture needs two real git repos to
+catch a regression. A single-repo `tmp_path` fixture reproduces none of this,
+which is plausibly why all four shipped.
