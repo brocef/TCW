@@ -1010,6 +1010,27 @@ def test_cli_edit_blocks_nonexistent_errors(tmp_path, monkeypatch):
     assert main(["work", "edit", a.slug, "--blocks", "nope"]) == 1
 
 
+def test_cli_new_pipes_stdin_into_intake_not_a_request(tmp_path, monkeypatch, capsys):
+    """Piped text is raw input. It lands in intake.md, and nothing synthesizes a
+    request around it — the promise is the *decoded* stdin text, since
+    `_stdin_body` reads str and swallows read errors as empty."""
+    import io
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("please fix the thing\n"))
+    assert main(["work", "new", "Piped"]) == 0
+    d = FsWorkStore.open(root).path(capsys.readouterr().out.strip())
+    assert {p.name for p in d.iterdir()} == {"state.yaml", "intake.md"}
+    assert (d / "intake.md").read_text() == "please fix the thing\n"
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))          # piped, but empty
+    assert main(["work", "new", "Empty pipe"]) == 0
+    d = FsWorkStore.open(root).path(capsys.readouterr().out.strip())
+    assert {p.name for p in d.iterdir()} == {"state.yaml"}
+
+
 def test_cli_new_blocked_by(tmp_path, monkeypatch):
     from tcw.cli import main
     root = node(tmp_path)

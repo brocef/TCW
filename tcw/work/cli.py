@@ -221,7 +221,7 @@ def _new(args: argparse.Namespace) -> int:
     try:
         detail = st.create_work(
             args.title,
-            body=_stdin_body(),
+            intake=_stdin_body(),      # piped text is raw input, not a request
             priority=args.priority,
             effort=args.effort or "",
             complexity=args.complexity or "",
