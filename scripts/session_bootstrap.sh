@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install or refresh the `tcw` CLI from PyPI (the `tcw-cli` distribution).
 #
-#   session_bootstrap.sh [clone-root] [sentinel-path]
+#   session_bootstrap.sh [plugin-root] [sentinel-path]
+#
+# The plugin root is read for the plugin's version, not installed from.
 #
 # Defaults: $CLAUDE_PLUGIN_ROOT and $CLAUDE_PLUGIN_DATA/installed-version. The
 # arguments exist so the tcw-plugin skill can run this under Codex, where

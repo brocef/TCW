@@ -63,7 +63,17 @@ def _doc_files() -> list[Path]:
 
 DOC_FILES = _doc_files()
 
-BACKTICKED = re.compile(r"`([^`\n]*\btcw\b[^`\n]*)`")
+# `tcw` must be followed by whitespace to count as an invocation. `\btcw\b` also
+# matches the `tcw` inside `tcw-cli` — `-` is a non-word character — so a span
+# documenting some *other* command that merely names the distribution, as
+# `pipx install --force tcw-cli` does, was parsed as a `tcw` invocation and its
+# flags checked against tcw's. Anchoring on the whitespace is what separates
+# "runs tcw" from "mentions tcw".
+# A space or tab, not `\s`: `\s` matches a newline, which would let a span cross
+# the line breaks the `[^`\n]` classes exist to forbid — enough to reunite a
+# wrapped `tcw\nwork …` and read a sentence *denying* a verb as documenting one.
+INVOCATION = re.compile(r"\btcw(?=[ \t])")
+BACKTICKED = re.compile(r"`([^`\n]*\btcw[ \t][^`\n]*)`")
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
 WORD = re.compile(r"[a-z][a-z0-9-]*$")
 FLAG = re.compile(r"--[a-z][a-z-]*")
@@ -138,7 +148,9 @@ def tree() -> dict[tuple, set[str]]:
 
 def _check(span: str, tree: dict[tuple, set[str]]) -> str | None:
     """The problem with this documented invocation, or None."""
-    tokens = span[span.index("tcw") + 3:].split()
+    # Same anchor the spans were found with: slicing at the first literal "tcw"
+    # would land inside `tcw-cli` in a span like `pipx install tcw-cli && tcw …`.
+    tokens = span[INVOCATION.search(span).end():].split()
     path: list[str] = []
     for token in tokens:
         if not WORD.match(token):        # <slug>, "text", |, #comment → args start
@@ -155,6 +167,24 @@ def _check(span: str, tree: dict[tuple, set[str]]) -> str | None:
         if flag not in known:
             return f"no such flag: {flag} on tcw {' '.join(path)}"
     return None
+
+
+@pytest.mark.parametrize(
+    "text, spans",
+    [
+        ("`pipx install --force tcw-cli`", []),
+        ("`pipx install tcw-cli` then `tcw work list`", ["tcw work list"]),
+        ("the `tcw-cli` distribution", []),
+        ("`tcw work list --status active`", ["tcw work list --status active"]),
+    ],
+)
+def test_only_real_invocations_are_parsed(text, spans):
+    """A span naming `tcw-cli` documents pipx, not tcw.
+
+    `\\btcw\\b` matches inside `tcw-cli`, so `pipx install --force tcw-cli` was
+    read as a `tcw` invocation and `--force` reported as a nonexistent tcw flag.
+    """
+    assert _invocations(text) == spans
 
 
 @pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))

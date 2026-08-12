@@ -118,13 +118,19 @@ skills; the
 `/tcw-capabilities-init`, `/tcw-docs-sync-setup`, and `/tcw-cut-version`
 commands; and the read-only `tcw-verifier` and
 `tcw-post-mortem` agents. There is nothing to run afterwards: the plugin puts
-`tcw` on your PATH from its _own clone_ (via pipx) at session start, and picks up
-a plugin update the same way, so there's one copy and it stays current —
-**don't also `pip install tcw-cli` separately**, or the two can drift
-(`/tcw-doctor` detects this and re-points). A development checkout installed with
-`pip install -e .` is left alone, and so is a machine without `pipx` — choosing a
-Python environment isn't something that should happen unasked at session start.
-Run `/tcw-doctor` any time `tcw` goes missing or looks wrong.
+`tcw` on your PATH at session start by installing `tcw-cli` from PyPI (via pipx),
+and refreshes it the same way when a plugin update lands. It's the same package
+you'd install by hand, so if you already ran `pipx install tcw-cli` there's
+nothing to undo — the plugin installs over it rather than beside it. A
+development checkout installed with `pip install -e .` is left alone, and so is a
+machine without `pipx` — choosing a Python environment isn't something that
+should happen unasked at session start. Run `/tcw-doctor` any time `tcw` goes
+missing or looks wrong.
+
+**This needs network the first time.** The plugin no longer carries a CLI to fall
+back on, so the first session after you install or update the plugin has to reach
+PyPI. If it can't, the session says so in one line and `tcw` won't be available
+until a session that can.
 
 In **Codex** (no slash commands — skills only):
 
@@ -134,8 +140,8 @@ codex plugin add tcw@tcw
 ```
 
 Codex has no session-start hook, so ask the agent to run the **`tcw-plugin`**
-setup — it installs the `tcw` CLI from the plugin clone by running the same
-script Claude runs automatically.
+setup — it installs the `tcw` CLI by running the same script Claude runs
+automatically.
 
 ### As a Python package
 
@@ -147,6 +153,11 @@ pip install -e .            # development install from a clone
 The package is called **`tcw-cli`** on PyPI because `tcw` was already taken by
 an unrelated project. The command it installs is still `tcw`, and the importable
 package is still `tcw` — only the name you type after `pipx install` differs.
+
+This is the same install the plugin performs for you: if you use the plugin, you
+don't need to run this, and if you run it anyway the plugin will install over it
+rather than beside it. Use it when you want the CLI without an agent harness at
+all, or to move ahead of the plugin's refresh cycle with `pipx upgrade tcw-cli`.
 
 `tcw` is a real Python package (entry point `tcw = tcw.cli:main`), not a
 symlink. Requires Python ≥ 3.11; the Python runtime dependency is PyYAML.
@@ -940,9 +951,9 @@ changes` planning check, contradiction-detection, the `Missing → Supported`
   shared vocabulary (`tcw taxonomy extends`), and bootstrapping a taxonomy from
   an existing codebase (`/tcw-taxonomy-init`).
 - **[`tcw-plugin`](skills/tcw-plugin/SKILL.md)** — install/repair the `tcw` CLI
-  from the plugin's own clone (pipx); the single source of the `/tcw-doctor`
-  procedure and of the install the session-start hook performs automatically, and
-  the Codex entry point for both.
+  from PyPI (pipx); the single source of the `/tcw-doctor` procedure and of the
+  install the session-start hook performs automatically, and the Codex entry
+  point for both.
 - **[`tcw-report`](skills/tcw-report/SKILL.md)** — how to report a `tcw` bug or
   send a suggestion **upstream to the TCW project** as a GitHub issue, with a
   ready-to-fill skeleton for each. Found a bug or have an idea? File it at

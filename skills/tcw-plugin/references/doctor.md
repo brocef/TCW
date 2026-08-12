@@ -1,11 +1,15 @@
 # Doctor — diagnose & repair the `tcw` install
 
-**Mental model:** Claude Code copies the repo into a version-namespaced cache dir
-(the _source of truth_); pipx builds an isolated venv _from_ that dir (a built
-copy). `scripts/session_bootstrap.sh` keeps those two reconciled — under Claude
-the `SessionStart` hook runs it every session. You are here because that was not
-enough: it was skipped, its install failed, or the problem is one the hook
-deliberately does not touch (a shadowed, duplicated, or editable install).
+**Mental model:** `tcw` is the published `tcw-cli` distribution on PyPI, and pipx
+builds an isolated venv from it. `scripts/session_bootstrap.sh` installs it when
+a plugin update changes the plugin's version — under Claude the `SessionStart`
+hook runs it every session. You are here because that was not enough: it was
+skipped, its install failed (network, most likely — there is no offline
+fallback), or the problem is one the hook deliberately does not touch (a
+shadowed, duplicated, or editable install).
+
+The plugin's own clone is **not** an install source. Never repair by installing
+from a cache directory.
 
 1. **Locate `tcw`:** `command -v tcw` → realpath → `head -1` for its shebang.
    `#!/…/bin/python…` names the interpreter that owns this install, and that
@@ -30,22 +34,26 @@ deliberately does not touch (a shadowed, duplicated, or editable install).
    makes the same call before installing anything, and an install it cannot
    identify is one it must not replace.)
 
-3. **Active cache version:** list the sibling version dirs under the plugin's cache
-   parent and take the highest with **`sort -V`** (lexicographic is wrong: `1.9.0`
-   sorts above `1.12.0`).
-
-4. **Reconcile:** if the installed source ≠ the active cache clone (a plugin update
-   abandoned the old version dir), run
-   `"<active-clone>"/scripts/session_bootstrap.sh "<active-clone>"` — the same code
+3. **Missing, or present but not ours?** That is the whole question — there is no
+   plugin-cache version to compare against, because nothing is installed from a
+   clone. Step 2 has already settled "not ours". For a **missing** `tcw`, run
+   `"<plugin-root>"/scripts/session_bootstrap.sh "<plugin-root>"` — the same code
    path the hook uses. Passing no sentinel path means it cannot take the hook's
    "already current" shortcut, but it is still silent on success and on its other
-   skips: `pipx` missing, or a `tcw` on PATH it may not replace (step 2's editable
-   case, or one whose owner it cannot identify). So re-check `tcw`'s source
-   afterwards: if it still points at the old clone the script skipped, and — only
-   once step 2 has cleared this install as neither editable nor unidentifiable —
-   `pipx install --force "<active-clone>"` is the direct fix. On a `--force` failure
-   (permissions, conflicts, no network) report and stop with manual-fix guidance —
-   do not silently retry.
+   skips: `pipx` missing, or a `tcw` on PATH it may not replace. So re-check
+   afterwards: if `tcw` is still missing the script skipped, and — only once step
+   2 has cleared the way — `pipx install --force tcw-cli` is the direct fix. On a
+   failure (permissions, conflicts, **no network**) report and stop with
+   manual-fix guidance — do not silently retry.
+
+4. **Behind the latest release?** Report it; do not treat it as breakage. The
+   installed CLI floats: the bootstrap resolves whatever PyPI had when the
+   plugin last changed version, so a newer `tcw-cli` published since then is
+   expected and is **not** required to equal the plugin's version. Compare
+   `tcw --version` against `pipx list` / PyPI only to inform the user, and name
+   `pipx upgrade tcw-cli` as the way to move forward. This is also where a
+   plugin release that briefly outran its own PyPI upload becomes visible — the
+   same upgrade resolves it.
 
 5. **For `tcw serve` failures only:** run `node --version` and require 22.12 or
    newer. A missing/old-Node message is a runtime prerequisite failure; a
@@ -56,11 +64,12 @@ deliberately does not touch (a shadowed, duplicated, or editable install).
 6. **Stale `tcw` pipx package alongside `tcw-cli`?** `pipx list` may show both,
    left over from an install made before the distribution was renamed. It is
    inert — pipx will not let it reclaim the `tcw` app link while `tcw-cli` owns
-   it ("Not modifying"), and its install spec is a local path, so an upgrade
-   resolves from that path rather than from PyPI's unrelated `tcw` project.
-   Report it as clutter the user may remove with `pipx uninstall tcw`; do not
-   remove it for them.
+   it ("Not modifying"). Its install spec is a local path, so an upgrade of *it*
+   resolves from that path rather than from PyPI's unrelated `tcw` project;
+   `tcw-cli`, the one that matters, resolves from PyPI. Report the leftover as
+   clutter the user may remove with `pipx uninstall tcw`; do not remove it for
+   them.
 
 7. **Report:** PATH status, install kind (pipx / editable / plain pip / missing),
-   installed vs active version, the action taken, and (only for serve diagnosis)
-   the Node prerequisite result.
+   installed version and whether a newer `tcw-cli` exists, the action taken, and
+   (only for serve diagnosis) the Node prerequisite result.
