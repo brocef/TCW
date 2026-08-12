@@ -312,7 +312,12 @@ def _visible_board_items(st: FsWorkStore, status: str | None, show_all: bool,
 
 
 def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -> None:
+    # Display order, not registry order: WORK_ARTIFACTS is append-only so that
+    # adding a name never shifts an existing item's letters, which leaves the
+    # newest entry last no matter where it belongs in the lifecycle. `intake`
+    # comes before the request, so the string still reads chronologically.
     labels = {
+        "intake": "i",
         "initial-request": "R",
         "spec": "S",
         "plan": "P",
@@ -321,12 +326,10 @@ def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -
         "rework": "W",
         "post-mortem": "M",
     }
-    stages = ""
-    for artifact in st.artifacts(it.slug):
-        if artifact.present:
-            # `.get` rather than `[]`: WORK_ARTIFACTS is the registry, and a name
-            # added there without a letter here should not crash the board.
-            stages += labels.get(artifact.name, "?")
+    present = {a.name for a in st.artifacts(it.slug) if a.present}
+    stages = "".join(letter for name, letter in labels.items() if name in present)
+    # A name in the registry with no letter here must not vanish silently.
+    stages += "?" * len(present - labels.keys())
     blockers = st.unresolved_blockers(it)
     suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
     ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""

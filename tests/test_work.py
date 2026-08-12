@@ -1279,6 +1279,33 @@ def test_cli_list_shows_lifecycle_stage_letters(tmp_path, monkeypatch, capsys):
     assert row[2] == "RSP"
 
 
+def test_cli_list_shows_intake_before_the_request(tmp_path, monkeypatch, capsys):
+    """`R` now means the request stage ran. All four states in one place: nothing
+    for a fresh item, `i` for raw intake, `iR` once a request exists, and `R` for
+    a legacy item that predates intake entirely."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+
+    fresh = st.create("Fresh", created="2026-01-01")
+    piped = st.create("Piped", created="2026-01-01", intake="raw\n")
+    legacy = st.create("Legacy", created="2026-01-01", body="request\n")
+
+    def letters(slug):
+        assert main(["work", "list"]) == 0
+        rows = capsys.readouterr().out.strip().splitlines()
+        row = next(r for r in rows if r.startswith(slug))
+        return row.split(" | ")[2]
+
+    assert letters(fresh.slug) == "-"          # the board's existing "no stages" mark
+    assert letters(piped.slug) == "i"
+    assert letters(legacy.slug) == "R"
+
+    (st.path(piped.slug) / "initial-request.md").write_text("req\n", encoding="utf-8")
+    assert letters(piped.slug) == "iR"
+
+
 def test_cli_list_ignores_empty_lifecycle_artifacts(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
