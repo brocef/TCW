@@ -10,8 +10,9 @@ import pytest
 import yaml
 
 from tcw.cli import main
+from tcw.store import fs
 from tcw.store.fs import FsWorkStore, init
-from tcw.store.base import AlreadyClaimed
+from tcw.store.base import AlreadyClaimed, MultipleMatch
 
 
 def _repo(path: Path) -> Path:
@@ -219,17 +220,21 @@ def test_get_returns_none_when_state_yaml_goes_inside_load_yaml_s_guard(tmp_path
     store = FsWorkStore.open(code)
     item = store.create("Claim me", created="2026-08-08")
 
-    real_exists = Path.exists
+    # Raised from `load_yaml` itself rather than by deleting the folder and
+    # hoping the read lands in the gap: `Path.exists` is called from inside
+    # `rglob` on some Python versions, so a patch there fires during the *scan*
+    # and exercises a different guard entirely. This pins one branch on every
+    # version.
+    real_load_yaml = fs.load_yaml
     fired = {"did": False}
 
-    def vanish_inside_the_guard(self):
-        answer = real_exists(self)
-        if answer and self.name == "state.yaml" and self.parent.name == item.slug:
-            shutil.rmtree(self.parent)
+    def vanish_between_the_guard_and_the_read(path, *args, **kwargs):
+        if path.name == "state.yaml" and path.parent.name == item.slug:
             fired["did"] = True
-        return answer
+            raise FileNotFoundError(str(path))
+        return real_load_yaml(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "exists", vanish_inside_the_guard)
+    monkeypatch.setattr(fs, "load_yaml", vanish_between_the_guard_and_the_read)
     assert store.get(item.slug) is None
     # Without this the test could silently stop reaching the window it exists for.
     assert fired["did"], "the read never happened, so nothing was exercised"
@@ -385,6 +390,122 @@ def test_a_claim_on_a_longer_slug_does_not_answer_for_a_shorter_one(tmp_path):
         FsWorkStore.open(code).start(shorter, owner="someone@example.com")
 
 
+def test_an_item_seen_in_two_status_folders_mid_move_is_not_a_duplicate(tmp_path, monkeypatch):
+    """CI found this one, on the stress test, with nothing mocked.
+
+    `_item_dirs` walks the status folders in order, so an item moving from an
+    earlier one to a later one — `backlog` → `active`, which is what every claim
+    does — is counted in the folder it left *and* the folder it entered. That is
+    one item at two instants, not two items, and answering `MultipleMatch` made
+    the most ordinary concurrent operation TCW has raise.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    real_item_dirs = FsWorkStore._item_dirs
+    calls = {"n": 0}
+
+    def seen_in_both_folders_once(self):
+        calls["n"] += 1
+        dirs = real_item_dirs(self)
+        if calls["n"] == 1:
+            # The item as the walk saw it: still in `backlog`, already in `active`.
+            return sorted(dirs + [self.root / "active" / item.slug])
+        return dirs
+
+    monkeypatch.setattr(FsWorkStore, "_item_dirs", seen_in_both_folders_once)
+    assert store._find(item.slug) == store.root / "backlog" / item.slug
+    assert calls["n"] >= 2, "the re-walk never happened"
+
+
+def test_a_genuine_duplicate_slug_still_raises(tmp_path):
+    """The re-walk must not swallow the condition it was guarding. A real
+    duplicate is in two places on every walk, not just the one."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+    shutil.copytree(store.root / "backlog" / item.slug,
+                    store.root / "review" / item.slug)
+
+    with pytest.raises(MultipleMatch):
+        store._find(item.slug)
+
+
+def test_the_board_scan_survives_a_folder_vanishing_mid_walk(tmp_path, monkeypatch):
+    """The other half of the CI failure, seen on Python 3.11: `rglob` reaches
+    each directory through `scandir`, which raises when it has gone rather than
+    skipping it — so one item leaving `backlog` mid-scan took down a read of the
+    entire board, well upstream of any per-item guard."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    doomed = store.create("Claim me", created="2026-08-08")
+    survivor = store.create("Leave me", created="2026-08-08")
+
+    real_rglob = Path.rglob
+    raised = {"did": False}
+
+    def vanish_on_the_first_walk(self, pattern, *args, **kwargs):
+        if not raised["did"] and self.name == "backlog":
+            raised["did"] = True
+            shutil.rmtree(store.root / "backlog" / doomed.slug)
+            raise FileNotFoundError(str(store.root / "backlog" / doomed.slug))
+        return real_rglob(self, pattern, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rglob", vanish_on_the_first_walk)
+    assert [i.slug for i in store.query()] == [survivor.slug]
+    assert raised["did"], "the walk never failed, so nothing was exercised"
+
+
+def test_a_loser_cannot_claim_the_winner_s_already_published_item(tmp_path, monkeypatch):
+    """The single-winner invariant itself — criterion 1 — broken 7 rounds in 150
+    at four contenders before this guard.
+
+    `_find` searches every status folder, so between `start()`'s opening status
+    read and its claim lookup it can return the winner's item *after* it has been
+    published to `active/`. `os.replace` then renames a settled claim into the
+    loser's private area quite happily, and with several contenders each one
+    republishes over the last — which is why every caller came back a "winner"
+    reporting the same owner: they were all re-reading the same final state.
+
+    The protocol only ever guaranteed one winner of the `backlog/<slug>` rename.
+    A claim moves an item out of `backlog` and nowhere else.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    real_find = FsWorkStore._find
+    calls = {"n": 0}
+
+    def publish_between_the_two_lookups(self, slug):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            # The winner lands while the loser is still checking its gates.
+            src = self.root / "backlog" / slug
+            state = yaml.safe_load((src / "state.yaml").read_text())
+            state["owner"] = "winner@example.com"
+            state["started"] = "2026-08-12T00:00:00Z"
+            (src / "state.yaml").write_text(yaml.safe_dump(state, sort_keys=False))
+            src.rename(self.root / "active" / slug)
+        return real_find(self, slug)
+
+    monkeypatch.setattr(FsWorkStore, "_find", publish_between_the_two_lookups)
+
+    with pytest.raises(AlreadyClaimed) as caught:
+        FsWorkStore.open(code).start(item.slug, owner="loser@example.com")
+    assert caught.value.owner == "winner@example.com"
+
+    # The winner's item stayed put, unstolen and unrestamped.
+    settled = FsWorkStore.open(code).get(item.slug)
+    assert settled.status == "active" and settled.owner == "winner@example.com"
+    assert list((store.root / ".claiming").glob("*")) == []
+
+
 def test_repeated_claim_races_have_exactly_one_winner(tmp_path):
     """Criterion 2, which one race per session never demonstrated.
 
@@ -400,6 +521,9 @@ def test_repeated_claim_races_have_exactly_one_winner(tmp_path):
     (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     seed = FsWorkStore.open(code)
     slugs = [seed.create(f"Claim me {n}", created="2026-08-08").slug for n in range(25)]
+    # Four, not two. Two contenders never once exposed the claim-stealing defect
+    # locally; four found it in roughly one round in twenty.
+    contenders = [f"{n}@example.com" for n in range(4)]
 
     def claim(args):
         slug, owner = args
@@ -409,8 +533,8 @@ def test_repeated_claim_races_have_exactly_one_winner(tmp_path):
             return error
 
     for slug in slugs:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            results = list(pool.map(claim, [(slug, "one@example.com"), (slug, "two@example.com")]))
+        with ThreadPoolExecutor(max_workers=len(contenders)) as pool:
+            results = list(pool.map(claim, [(slug, who) for who in contenders]))
         winners = [r for r in results if not isinstance(r, AlreadyClaimed)]
         assert len(winners) == 1, f"{slug}: {results}"
         # Never both backlog and active, and never active without its metadata.

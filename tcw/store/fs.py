@@ -1964,12 +1964,26 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def _item_dirs(self) -> list[Path]:
         """Every item folder (dir with a `state.yaml`), at any depth. Sorted by
-        path so a parent precedes its children."""
-        return sorted(
-            p.parent
-            for status in WORK_STATUSES
-            for p in (self.root / status).rglob("state.yaml")
-        )
+        path so a parent precedes its children.
+
+        Retried, because the walk is not atomic and a claim moves folders under
+        it. `rglob` reaches the directory through `scandir`, which raises rather
+        than skipping when it has gone — so one item leaving `backlog` mid-scan
+        takes down a read of the whole board. Re-walking is the cheap answer: the
+        window is a single rename wide, and a scan that fails five times running
+        is reporting something other than a transition.
+        """
+        for attempt in range(5):
+            try:
+                return sorted(
+                    p.parent
+                    for status in WORK_STATUSES
+                    for p in (self.root / status).rglob("state.yaml")
+                )
+            except FileNotFoundError:
+                if attempt == 4:
+                    raise
+        raise AssertionError("unreachable")                # for the type checker
 
     def start(self, slug: str, force: bool = False, *, owner: str = "",
               take_over: bool = False) -> WorkItem:
@@ -2032,13 +2046,18 @@ class FsWorkStore(FsTreeStore, WorkStore):
         claiming.mkdir(exist_ok=True)
         private = claiming / f"{slug}-{uuid.uuid4().hex}"
         try:
-            # Losing the race has two tells a moment apart: `_find` already came
-            # back empty because the winner's folder is in `.claiming/` where
-            # nothing looks, or it was still there and `os.replace` lost. Same
-            # event, so normalize to one signal — otherwise the `None` slips past
-            # this handler into `os.replace` and raises TypeError, skipping the
-            # recovery entirely.
-            if src is None:
+            # Losing the race has three tells a moment apart: `_find` came back
+            # empty because the winner's folder is in `.claiming/` where nothing
+            # looks; it pointed at a folder the winner had already published to
+            # `active/`; or it was still in `backlog` and `os.replace` lost. Same
+            # event, so normalize to one signal.
+            #
+            # The middle one is the dangerous one. `_find` searches every status
+            # folder, so it can hand back the winner's *published* item — and
+            # renaming that into our private area steals a settled claim, with
+            # every contender republishing over the last. A claim moves an item
+            # out of `backlog` and nowhere else; anything else means we lost.
+            if src is None or self._status_of(src) != "backlog":
                 raise FileNotFoundError(slug)
             os.replace(src, private)
         except FileNotFoundError:
@@ -2102,10 +2121,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # -- slug resolution (the stable-id resolver, A.5) --
 
     def _find(self, slug: str) -> Path | None:
-        matches = [d for d in self._item_dirs() if d.name == slug]
-        if len(matches) > 1:
-            raise MultipleMatch(f"slug resolves to {len(matches)} items: {slug}")
-        return matches[0] if matches else None
+        """Resolve a slug to its folder. `None` if absent — including the instant
+        it is mid-move, which callers on the claim path disambiguate.
+
+        Two matches does not mean two items. `_item_dirs` walks the status
+        folders in order, so an item moving from an earlier one to a later one —
+        `backlog` → `active`, which is precisely what a claim does — is counted
+        once where it was and once where it landed. Raising `MultipleMatch` there
+        turns the most ordinary concurrent operation TCW has into a traceback.
+        A genuine duplicate slug survives a re-walk; a transition does not.
+        """
+        for _ in range(5):
+            matches = [d for d in self._item_dirs() if d.name == slug]
+            if len(matches) <= 1:
+                return matches[0] if matches else None
+        raise MultipleMatch(f"slug resolves to {len(matches)} items: {slug}")
 
     def _require_dir(self, slug: str) -> Path:
         d = self._find(slug)
