@@ -22,6 +22,14 @@ category.
   re-read of `get()` catches a winner that published to `active/` in the
   meantime. Both land on the same typed `AlreadyClaimed` carrying the winner's
   owner and start time.
+- `FsWorkStore._claiming_dirs()` matches the 32-character uuid suffix instead of
+  `-*`, which spans `-` and let a claim on a longer slug answer for a shorter
+  one. Slugs are prefixes of each other by construction — `_unique_slug` mints
+  `{base}-2` for a duplicate title — so `tcw work start <absent-slug>` could
+  stall 500 ms and then report an interrupted claim belonging to a different
+  item, for as long as a stale claim folder sat in `.claiming/`. The `--take-over`
+  lookup, which refuses when it sees more than one candidate, is fixed by the
+  same change.
 - `FsWorkStore.artifacts()` returns `[]` rather than raising when the folder is
   claimed away between its `is_file()` test and the `read_text()` that test
   guards. This is the board's own window — `tcw work list` renders its
@@ -36,8 +44,8 @@ category.
   under a read — now ends in one place instead of three near-copies.
 - `_item_from_dir`'s reading body moved unchanged into `_read_item`; the outer
   function is now the vanish guard.
-- Four new tests in `tests/test_external_work_store.py`, three of which fail
-  against the previous code. `test_repeated_claim_races_have_exactly_one_winner`
+- Eight new tests in `tests/test_external_work_store.py`, each failing against
+  the code it pins. `test_repeated_claim_races_have_exactly_one_winner`
   runs the two-thread race 25 times to satisfy the acceptance criterion asking
   for repeated races; note that it passes with the defect present on a
   many-core machine, so it is evidence only on constrained CI schedulers.

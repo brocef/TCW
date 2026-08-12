@@ -44,6 +44,7 @@ have the folder moved out from under it by a competing claim.
 | `get()` → `_item_from_dir` | `_find` → read `state.yaml` | **Window 3 — closed here** |
 | `query()` → `_item_from_dir` | `_item_dirs` → read `state.yaml` | Same window, same fix |
 | `artifacts()` | `_find` → `is_file()` → `read_text()` | **Closed here** — the board's own window |
+| `unresolved_blockers()`, `_entry_for()` | `get()` → `None` read as absent | Open, deferred (see below) |
 | `path()`, `locate()`, `artifact_locator()` | `_find` → pure path math | No window; nothing is opened |
 | `_require_dir()`, `body_path()` | `_find` → return a path | No window here; the *caller's* read is the window |
 | `_unique_slug()` | `_find` → existence only | No window |
@@ -90,19 +91,76 @@ item is in `active` and nowhere else, and that its claim metadata is visible.
 without the fix on this machine. `rework.md` warned that a single-shot race
 passed 1202 of 1203 local runs with a genuine bug present; repetition raises the
 odds on a 2-core runner but does not manufacture evidence on a many-core laptop.
-The tests that actually pin the defect are the three deterministic ones, which
-force the gap between two calls because — as `rework.md` established — no
-arrangement of files on disk reproduces it.
+The tests that actually pin the defect are the deterministic ones, which force
+the gap between two calls because — as `rework.md` established — no arrangement
+of files on disk reproduces it. Review sharpened that point further: see below,
+where forcing the gap in the *wrong place* turned out to exercise a sibling
+condition rather than the defect CI reported.
+
+### 4. Self-review, and what it changed
+
+The rework pass was reviewed against the diff (Opus, Codex, and a local-LLM pass
+concurrently) before submission. Six findings; four verified and acted on, two
+verified and deliberately deferred.
+
+**Fixed — `_claiming_dirs` matched `{slug}-*`, and `*` spans `-`.** A claim on a
+longer slug answered for a shorter one, and slugs are prefixes of each other *by
+construction* because `_unique_slug` mints `{base}-2` for a duplicate title.
+This rework is what put that glob on the ordinary start path, so
+`tcw work start <absent-slug>` could stall 500 ms and then offer to recover an
+interrupted claim belonging to a different item — indefinitely, since
+`.claiming/` is never garbage-collected. Now matched on the 32-character uuid
+suffix, which also fixes the pre-existing takeover lookup that refuses when it
+sees more than one candidate.
+
+**Fixed — the tests covered the sibling condition, not the observed defect.**
+Line-level tracing showed the `except FileNotFoundError` branch was never
+executed by the suite: both vanish tests removed the folder *before* any read,
+which `load_yaml`'s own `exists()` guard absorbs into `{}`. So they exercised
+the re-check — the wide condition — while the branch CI actually crashed on had
+no coverage at all. Given this item was rejected at verify twice over precisely
+that traceback, that gap was worth closing:
+`test_get_returns_none_when_state_yaml_goes_inside_load_yaml_s_guard` forces the
+vanish *between* `load_yaml`'s guard and the read it protects.
+
+**Fixed — the new `.claiming/` probe was under-asserted.** Its only test checked
+the abandoned-claim message, not the `AlreadyClaimed` carrying the winner's
+owner and start time, and the `get()` re-read after it was never reached at all.
+Two tests added, so criterion 3 through the new branch now has a deterministic
+assertion rather than depending on the stress test's scheduling luck.
+
+**Deferred — `unresolved_blockers` / `_entry_for` / `get_detail`.** These read a
+transient `None` as "absent": a blocker being claimed at that instant drops out
+of the gate, and `--blocked-by` can persist `{"external": …}` where `{"slug": …}`
+belonged. Filed as
+`2026-08-12-teach-the-remaining-readers-to-tell-a-vanished-item-from-an-absent-one`
+rather than fixed here, for two reasons. The exposure is not new — the wider
+half, an item sitting in `.claiming/` where `_find` never looks, predates this
+commit — and the fix is a layering decision: `.claiming/` is a
+filesystem-adapter private detail, so `base.py` cannot consult it without
+breaking the abstraction that makes a Jira adapter possible. The follow-up
+records the three candidate designs. Improvising a fourth at the end of a rework
+that CI already rejected twice for one-site-at-a-time patching is the specific
+mistake `rework.md` was written about.
+
+**Rejected.** Three local-LLM findings did not survive verification: `get()`
+returning `None` is not a contract change (`WorkStore.get` is declared
+`-> WorkItem | None` in `base.py:950` and `_find` could already return `None`);
+the slug in an error message is not sensitive; and the 500 ms recovery bound,
+whatever its merits on NFS, was moved verbatim by this commit rather than
+introduced by it.
+
+**Noted, not a defect.** The stress test disables `auto-commit-transitions`,
+mirroring the pre-existing race test, so criterion 2's evidence does not cover
+two concurrent `git commit`s contending on `index.lock` — the configuration this
+repo ships as default. A coverage boundary worth knowing about.
 
 ## Verification
 
-- `python -m pytest -q`: **1216 passed** (1180 → 1216 across both passes).
-- New tests: 4. Three fail against the previous code
-  (`test_get_returns_none_when_the_folder_vanishes_mid_read`,
-  `test_query_skips_an_item_that_vanishes_mid_scan`,
-  `test_claim_loser_is_told_the_winner_not_no_such_work_item`), plus
-  `test_board_artifact_flags_survive_a_concurrent_claim`, which reproduces the
-  exact `FileNotFoundError` when run against the unfixed adapter.
+- `python -m pytest -q`: **1221 passed** (1180 → 1221 across both passes).
+- New tests: 8, each verified to fail against the code it pins — checked by
+  running them against `e7abd45^` and against the intermediate commits, not by
+  inspection.
 - `pnpm run lint` (zero warnings), `pnpm run test` (**50 passed**, 11 files),
   `pnpm run test:e2e` (**13 passed**, every scenario executed).
 - `tcw taxonomy check`, `tcw capabilities check`, `tcw validate`,
