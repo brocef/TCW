@@ -1,0 +1,14 @@
+slug: 2026-08-12-ship-built-in-stage-prompts-with-the-cli
+title: Ship built-in stage prompts with the CLI
+created: '2026-08-12'
+resolution: null
+priority: 70
+effort: medium
+complexity: medium
+tags:
+- work
+- cli
+- docs
+initiative: 2026-08-12-make-the-work-lifecycle-polymorphic-and-cli-driven
+blocked_by:
+- slug: 2026-08-12-give-lifecycle-hooks-roles-kinds-and-conditions

@@ -1,0 +1,11 @@
+slug: 2026-08-12-unify-raw-intake-into-a-single-artifact
+title: Unify raw intake into a single artifact
+created: '2026-08-12'
+resolution: null
+priority: 78
+effort: medium
+complexity: high
+tags:
+- work
+- cli
+initiative: 2026-08-12-make-the-work-lifecycle-polymorphic-and-cli-driven
