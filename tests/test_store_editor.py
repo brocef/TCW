@@ -138,6 +138,22 @@ def test_get_detail_core_changes_after_field_write(tmp_path):
     assert rev1 != rev2
 
 
+def test_get_detail_core_distinguishes_intake_from_request(tmp_path):
+    """Identical text in the other file is a different editable resource, so the
+    revision must differ — otherwise a guarded write survives a promotion."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    d = st.path(item.slug)
+    (d / "initial-request.md").unlink()
+    (d / "intake.md").write_text("same text\n", encoding="utf-8")
+    as_intake = st.get_detail(item.slug).core_revision
+
+    (d / "initial-request.md").write_text("same text\n", encoding="utf-8")
+    as_request = st.get_detail(item.slug).core_revision
+
+    assert as_intake != as_request
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # FsWorkStore — create_work (composite)
 # ═══════════════════════════════════════════════════════════════════════════════

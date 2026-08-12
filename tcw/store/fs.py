@@ -2923,11 +2923,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         d = self._find(slug)
         if d is None:                                  # moved out from under us
             return None
-        # Core revision = hash of state.yaml + body (initial-request.md)
+        # Core revision = state.yaml + *which* file the body resolved to + its
+        # text. The name matters: promoting an intake to a request with identical
+        # text changes the editable resource, and a revision that ignored the name
+        # would let a guarded write succeed against a stale view of what it edits.
         state_text = (d / "state.yaml").read_text(encoding="utf-8")
-        body_path = d / "initial-request.md"
-        body_text = body_path.read_text(encoding="utf-8") if body_path.exists() else ""
-        core_rev = _revision_multi(state_text, body_text)
+        body_name, body_text = self._resolve_body(d)
+        core_rev = _revision_multi(state_text, body_name or "", body_text)
 
         # Artifact revisions
         art_revs: dict[str, str] = {}
