@@ -55,3 +55,15 @@ category.
   pipx failed, and nothing in the script branches on CLI-vs-plugin version skew.
   The suite's no-real-pipx rule is intact — the migration check is manual and
   scripted in the work item's spec.
+
+## Fixed
+
+- `tests/test_documented_cli_surface.py` read any backtick span *mentioning*
+  `tcw` as a `tcw` invocation. `\btcw\b` matches inside `tcw-cli` (`-` is a
+  non-word character), so `pipx install --force tcw-cli` parsed as `tcw` with a
+  `--force` flag and failed as a nonexistent flag. Spans now require `tcw`
+  followed by a space or tab — deliberately not `\s`, which would match a
+  newline and let a span cross the line breaks the `[^`\n]` classes forbid,
+  reuniting a wrapped `tcw\nwork …` and reading a sentence that *denies* a verb
+  as one documenting it. Latent since the test was written; only reachable once
+  a doc named `tcw-cli` alongside a flag.
