@@ -2133,10 +2133,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         out: list[Artifact] = []
         for name in WORK_ARTIFACTS:
             p = d / self._artifact_filename(name)
-            out.append(Artifact(
-                name=name,
-                present=p.is_file() and bool(p.read_text(encoding="utf-8").strip()),
-            ))
+            try:
+                present = p.is_file() and bool(p.read_text(encoding="utf-8").strip())
+            except FileNotFoundError:
+                return []                             # claimed out from under us
+            out.append(Artifact(name=name, present=present))
         return out
 
     def artifact_locator(self, slug: str, name: str) -> str | None:

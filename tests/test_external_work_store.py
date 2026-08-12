@@ -223,6 +223,30 @@ def test_query_skips_an_item_that_vanishes_mid_scan(tmp_path, monkeypatch):
     assert [i.slug for i in store.query()] == [survivor.slug]
 
 
+def test_board_artifact_flags_survive_a_concurrent_claim(tmp_path, monkeypatch):
+    """`tcw work list` renders its R/S/P/O letters through `artifacts()`, which
+    tests each file and then reads it. The board is where a concurrent claim is
+    most visible, so it is the last place that should answer with a traceback."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    item = store.create("Claim me", created="2026-08-08")
+
+    # The window is between `is_file()` and the `read_text()` it guards — a
+    # folder already gone just reads as absent, so the vanish has to land
+    # *inside* the guard to reproduce anything.
+    real_is_file = Path.is_file
+
+    def vanish_between_the_test_and_the_read(self):
+        answer = real_is_file(self)
+        if answer and self.name == "initial-request.md":
+            shutil.rmtree(self.parent)
+        return answer
+
+    monkeypatch.setattr(Path, "is_file", vanish_between_the_test_and_the_read)
+    assert store.artifacts(item.slug) == []
+
+
 def test_claim_loser_is_told_the_winner_not_no_such_work_item(tmp_path, monkeypatch):
     """The other half of window 3, and the reason a local `get()` fix is not enough.
 
