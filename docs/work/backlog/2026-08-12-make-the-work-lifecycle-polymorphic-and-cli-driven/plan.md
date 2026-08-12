@@ -168,6 +168,53 @@ drift`, and `tcw validate` all clean.
 
 **Blocked by:** C4, C5, C6.
 
+### C8 — Backlog and upstream-issue audit
+
+**Delivers** no code. A full pass over this repo's own `docs/work` backlog and
+the open GitHub issues on the TCW repository, reconciling both against the design
+this epic shipped: items retitled or rescoped where the new model changed what
+they mean, closed or discarded where the model made them moot, and filed where it
+created a gap.
+
+A design change this size invalidates work items in three ways, and each needs a
+different action:
+
+- **Made moot.** The item describes a problem the new model no longer has →
+  `tcw work discard`, with the reason naming the child that removed it. The
+  known candidates:
+  `2026-08-12-teach-the-remaining-readers-to-tell-a-vanished-item-from-an-absent-one`
+  (C1's canonical presence resolver is exactly this fix, applied once at the
+  source) and
+  `2026-08-11-roll-back-or-reorder-the-pre-move-set-field-writes-on-a-lost-transition`
+  (re-check against C1's write/promotion contract).
+- **Rescoped.** The item still names a real gap, but against the old surface →
+  edit the request/spec in place.
+  `2026-07-22-evaluate-and-refine-the-plugin-skills-with-an-eval-harness` is the
+  clearest: after C6 and C7 the thing under evaluation is largely the CLI's
+  built-in prompts, not skill prose. `2026-08-04-supplement-filesystem-tcw-work-…`
+  and the three `remote/*` adapter items now inherit an abstract intake surface
+  and a versioned DTO they were written without.
+- **Newly possible or newly needed.** Gaps this epic opens rather than closes —
+  file them as new items rather than smuggling them into C7's closeout.
+
+Upstream GitHub issues get the same three-way treatment: comment and close what
+this epic resolved, edit what it rescoped, open what it exposed. **Close nothing
+without saying which child resolved it** — an issue closed silently reads to the
+reporter as ignored.
+
+**Runs on the `tcw-audit-work-backlog` skill**, one item at a time, with the
+`tcw:tcw-backlog-auditor` agent doing the read-only verification per item. The
+audit is a real work item rather than a closeout checklist because it changes
+tracked state and the user approves each action.
+
+**Verified by:** no acceptance criterion — this child ships no behavior the suite
+can assert. Its `verify` stage is the user confirming each disposition. `tcw
+validate` clean afterwards.
+
+**Blocked by:** C7. Last, deliberately: auditing the backlog against a design
+that is still half-landed produces dispositions that are wrong by the time the
+epic finishes.
+
 ## Delegation commands
 
 Run at the start of coordination, after the epic is started.
@@ -196,6 +243,9 @@ tcw work new "Ship built-in stage prompts with the CLI" \
 tcw work new "Repoint the work skill and docs at the CLI" \
     --initiative "$EPIC" --priority 66 --effort medium --complexity medium \
     --tag work --tag skills --tag docs
+tcw work new "Audit the backlog and upstream issues against the new lifecycle" \
+    --initiative "$EPIC" --priority 64 --effort medium --complexity low \
+    --tag work --tag docs
 ```
 
 Then record the order as blockers — `--initiative` carries no dependency
@@ -210,6 +260,7 @@ tcw work edit <C6> --blocked-by <C3>
 tcw work edit <C7> --blocked-by <C4>
 tcw work edit <C7> --blocked-by <C5>
 tcw work edit <C7> --blocked-by <C6>
+tcw work edit <C8> --blocked-by <C7>
 ```
 
 C4, C5, and C6 all hang off C3 and none blocks another. Chaining any pair would
@@ -219,11 +270,11 @@ be a false blocker the tool then enforces.
 
 ```
                    ┌──▶ C4 ──┐
-C1 ──▶ C2 ──▶ C3 ──┼──▶ C5 ──┼──▶ C7
+C1 ──▶ C2 ──▶ C3 ──┼──▶ C5 ──┼──▶ C7 ──▶ C8
                    └──▶ C6 ──┘
 ```
 
-Critical path: C1 → C2 → C3 → (widest of C4/C5/C6) → C7. The three middle
+Critical path: C1 → C2 → C3 → (widest of C4/C5/C6) → C7 → C8. The three middle
 children are fully parallel, so the epic's wall-clock is bounded by C3 plus the
 longest single one of them.
 
@@ -251,8 +302,11 @@ report is easy to attribute.
    prompts get their real exercise, since C6 could only test them at library
    level. If C5 has also landed, exercise `scaffold` here too; it does not gate
    this checkpoint.
-5. **Before closeout** — final reconcile; every child resolved, every child's
-   ledger entries flipped by that child, `tcw validate` clean.
+5. **After C7, before closeout** — the epic's feature work is done and the design
+   is final, which is the precondition C8 needs. Run the audit here, then a final
+   reconcile: every child resolved, every child's ledger entries flipped by that
+   child, `tcw validate` clean, and the backlog and upstream issues reconciled
+   against what actually shipped rather than against what this plan predicted.
 
 ## Documentation Sync
 
@@ -301,7 +355,7 @@ What the suite cannot check:
   this plan asks the user to review, and creating them before that review means
   retitling or deleting them if the boundaries move. They have already moved
   twice.
-- Priorities descend with dependency order (78 → 66), all under the epic's 80.
+- Priorities descend with dependency order (78 → 64), all under the epic's 80.
   C4, C5, and C6 sit adjacent (72/71/70) because they are genuinely parallel;
   the ordering between them is a tiebreak for the board, not a dependency.
 - C1 and C2 both ship value alone. If the epic stalls after C2, unified intake

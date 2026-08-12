@@ -426,9 +426,15 @@ stays in the skill; the *methodology* moves to the CLI.
 | C5  | Artifact scaffolding              | `produces` as a tuple; `tcw work scaffold <artifact>`; `<artifact>.draft.md`; templates keyed by artifact name; stage/status legality table.                                    | C3         |
 | C6  | Built-in stage prompts            | `tcw/work/prompts/*.md` **content** and wheel packaging only — the `builtin` kind itself is C3's.                                                                              | C3         |
 | C7  | Skill and documentation rewrite   | Stage docs → routers; `hooks.md` rewritten; README lifecycle section; final consolidation only.                                                                                | C4, C5, C6 |
+| C8  | Backlog and upstream-issue audit  | No code. This repo's own backlog and the TCW GitHub issues reconciled against the shipped design — discarded, rescoped, or newly filed.                                         | C7         |
 
-Order: C1 → C2 → C3 → {C4, C5, C6} → C7. C4, C5, and C6 are all parallel once C3
-lands; do not chain them.
+Order: C1 → C2 → C3 → {C4, C5, C6} → C7 → C8. C4, C5, and C6 are all parallel
+once C3 lands; do not chain them.
+
+**C8 carries no acceptance criterion.** It ships no behavior, so the criteria
+below cover C1–C7 only; C8's correctness is the user approving each disposition.
+It is last because a backlog audited against a half-landed design produces
+dispositions that are stale by the time the epic closes.
 
 **C5 no longer depends on C4.** Scaffolding is its own verb, so it needs C3's
 resolution library and nothing from the stage verb — the dependency that earlier
