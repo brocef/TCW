@@ -200,9 +200,17 @@ too.
 - Body write on an item with a request → update, as today.
 - Body write on an **intake-only** item → **promotion.** It creates
   `initial-request.md`, leaves `intake.md` byte-identical, and reports the
-  promotion: `tcw work edit` prints `→ promoted: created initial-request.md
-  (intake preserved)` on stderr, and `serve`'s PATCH response carries
-  `"promoted": true` in its JSON body.
+  promotion: `WorkDetail` carries `promoted: bool`, and `serve`'s PATCH response
+  surfaces it as `"promoted": true`.
+
+  **Corrected during implementation.** An earlier draft of this spec had
+  `tcw work edit --body` printing the promotion on stderr. There is no such
+  flag — `tcw work edit` sets title, estimates, tags, and blocking links only,
+  and the CLI has no body-write path at all. `update_work`'s callers are
+  `serve`'s PATCH handler and nothing else; on the filesystem an agent writes
+  `initial-request.md` directly, where the promotion is self-evident from the
+  file appearing. Adding a `--body` flag to satisfy a criterion is scope this
+  item was not asked for, so the contract lives where the writes actually go.
 - `intake.md` is never reachable through the body surface. It is editable only
   via `write_artifact("intake", …)`, because raw input that quietly changes is
   not raw input.
@@ -313,10 +321,11 @@ Numbered locally; the initiative's criteria 2, 3, 4, and 4b are the source.
    one exists, and an empty body **without raising** on an item with neither.
 7. An empty `initial-request.md` beside a non-empty `intake.md` displays the
    intake and shows `i` — one rule governing both surfaces.
-8. `tcw work edit <intake-only> --body …` writes `initial-request.md`, reports
-   the promotion on stderr, and leaves `intake.md` byte-identical (compared as
-   bytes). The same holds through `serve`'s PATCH path, whose response carries
-   `"promoted": true`.
+8. A body write on an intake-only item writes `initial-request.md`, leaves
+   `intake.md` byte-identical (compared as bytes), and reports
+   `promoted: True`; a second body write on the same item reports `False`.
+   Verified through `serve`'s PATCH path, which is the only caller of
+   `update_work` — see the correction under "The write contract".
 9. Promoting an intake to a request with **identical text** changes the core
    revision.
 10. `write_artifact(slug, "intake", …)` succeeds; a body write never touches

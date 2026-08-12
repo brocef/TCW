@@ -996,6 +996,10 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "coreRevision": detail.core_revision,
                     "artifactRevisions": detail.artifact_revisions,
                     "sidecarRevisions": detail.sidecar_revisions,
+                    # An edit that created the request on an intake-only item is
+                    # a promotion; the UI says so rather than letting it look
+                    # like an ordinary body save.
+                    "promoted": detail.promoted,
                 }
                 self._send_json(HTTPStatus.OK, _with_warnings(
                     response, work.node_root, "work", slug))

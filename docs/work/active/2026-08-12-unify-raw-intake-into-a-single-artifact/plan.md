@@ -90,21 +90,21 @@ correct, and (third case) the fallback prose present.
 
 ### 7. The write contract and promotion
 
-**Changes:** `update_work` (`fs.py:3057`) keeps targeting
-`initial-request.md`; add a `promoted` flag to what it reports when it created
-that file on an item that had only intake. `tcw work edit` prints
-`→ promoted: created initial-request.md (intake preserved)` on stderr;
-`serve`'s PATCH response (`serve/__init__.py:996-1000`) gains `"promoted": true`,
-additively.
+**Changes:** `update_work` keeps targeting `initial-request.md`; `WorkDetail`
+gains `promoted: bool`, set when the write created that file on an item that had
+none. `serve`'s PATCH response gains `"promoted"`, additively.
+
+**Corrected during implementation:** there is no `tcw work edit --body` — the CLI
+has no body-write path, so `serve` is the only caller that can report a
+promotion. See the spec's correction under "The write contract".
 
 **Verified by:** criterion 8 — the promotion writes the request, leaves
-`intake.md` **byte-identical** (compared as bytes, not text), and reports itself,
-through both `tcw work edit` and `serve`'s PATCH path. Plus criterion 9: identical
-text still changes the revision, which task 3 already made true and this task
-proves end to end.
+`intake.md` **byte-identical** (compared as bytes, not text), and reports itself;
+a second body write reports `False`. Plus criterion 9: identical text still
+changes the revision, which task 3 made true and this task proves end to end.
 
-The `serve` test is not optional. The web editor shares this code path, and a
-store-level test alone would not have caught it.
+Tested through `serve`, not the store: the web editor is the only caller, and a
+store-level test would have proved the contract somewhere nobody exercises it.
 
 ### 8. The board letter
 

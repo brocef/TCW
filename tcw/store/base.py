@@ -279,6 +279,11 @@ class WorkDetail:
     core_revision: str = ""
     artifact_revisions: dict[str, str] = field(default_factory=dict)
     sidecar_revisions: dict[str, str] = field(default_factory=dict)
+    # True when the write that produced this detail created the item's request
+    # where it had none — a promotion out of raw intake. Callers surface it so
+    # the transition is announced rather than silent; it is always False on a
+    # plain read.
+    promoted: bool = False
 
 
 @dataclass

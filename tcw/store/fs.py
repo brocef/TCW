@@ -3085,9 +3085,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     f"stale revision for work item '{slug}' "
                     f"(expected {core_revision}, got {detail.core_revision})")
 
-        # Read current state
+        # Read current state. A body write always targets the request, never the
+        # read fallback: following it would either mutate raw intake or quietly
+        # satisfy the `request` stage with text the author meant as an edit.
         state = load_yaml(d / "state.yaml")
         body_path = d / "initial-request.md"
+        had_request = self._present(body_path)
         body_text = body_path.read_text(encoding="utf-8") if body_path.exists() else ""
 
         # Validate effort / complexity before applying
@@ -3202,7 +3205,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             move_to.parent.mkdir(parents=True, exist_ok=True)
             self._mv(d, move_to)
 
-        return self.get_detail(slug)
+        detail = self.get_detail(slug)
+        if detail is not None and body is not _UNSET and not had_request \
+                and bool(body_text.strip()):
+            detail.promoted = True          # this write created the request
+        return detail
 
     # -- artifact read / write --
 

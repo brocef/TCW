@@ -289,6 +289,52 @@ class TestUpdateWork:
         assert status == HTTPStatus.OK
         assert body["item"]["body"] == "# Updated body\n\nNew content."
 
+    def test_body_edit_on_intake_only_item_promotes_and_preserves_intake(self, seeded):
+        """The web editor shares update_work, so the write contract has to hold
+        here too: the request is created, the raw intake is untouched, and the
+        response says a promotion happened rather than letting it look routine."""
+        root, base, _ = seeded
+        work = FsWorkStore.open(root)
+        item = work.create("Piped in", created="2026-01-02", intake="raw text\n")
+        d = work.path(item.slug)
+        intake_before = (d / "intake.md").read_bytes()
+
+        detail = _get_json(base, f"/api/work/{item.slug}")
+        assert detail["item"]["body"] == "raw text\n"          # intake is the body surface
+
+        status, body = _req(base, "PATCH", f"/api/work/{item.slug}", {
+            "revision": detail["coreRevision"],
+            "body": "# The request\n",
+        })
+        assert status == HTTPStatus.OK
+        assert body["promoted"] is True
+        assert (d / "initial-request.md").read_text() == "# The request\n"
+        assert (d / "intake.md").read_bytes() == intake_before
+
+        # A second body edit is an ordinary save, not another promotion.
+        status, body = _req(base, "PATCH", f"/api/work/{item.slug}", {
+            "revision": body["coreRevision"],
+            "body": "# Revised\n",
+        })
+        assert status == HTTPStatus.OK
+        assert body["promoted"] is False
+
+    def test_promoting_identical_text_still_changes_the_revision(self, seeded):
+        """Same bytes, different editable resource. A guarded write must not
+        survive the move from intake to request."""
+        root, base, _ = seeded
+        work = FsWorkStore.open(root)
+        item = work.create("Same text", created="2026-01-02", intake="same\n")
+
+        before = _get_json(base, f"/api/work/{item.slug}")["coreRevision"]
+        status, body = _req(base, "PATCH", f"/api/work/{item.slug}", {
+            "revision": before,
+            "body": "same\n",
+        })
+        assert status == HTTPStatus.OK
+        assert body["promoted"] is True
+        assert body["coreRevision"] != before
+
     def test_update_fields_and_body(self, seeded):
         root, base, slug = seeded
         detail = _get_json(base, f"/api/work/{slug}")
