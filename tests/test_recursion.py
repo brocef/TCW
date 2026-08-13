@@ -1,6 +1,7 @@
 """Cross-node recursion layer (work Spec 2): topology, epics, reconcile,
 the inbox channel, and worktrees. pytest over nested tmp_path git repos."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -14,17 +15,22 @@ from tcw.store.fs import (
     FsWorkStore, add_worktree, child_nodes, ensure_worktree_ignored, git_commit,
     init, parent_node, remove_worktree,
 )
-from tcw.work.recursion import delegate, escalate, reconcile
+from tcw.work.recursion import _inbox_write, delegate, escalate, reconcile
 
 
-def mk_node(base: Path, name: str) -> Path:
-    """A git repo with docs/work/ initialized, at base/name."""
+def mk_node(base: Path, name: str, *, work_repo: Path | None = None) -> Path:
+    """A git repo with docs/work/ initialized, at base/name.
+
+    With `work_repo`, the node's work store is configured into that *other* git
+    repository instead (`<work_repo>/<name>/work`) — the split-repository layout.
+    """
     root = base / name
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", "--initial-branch=main", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["work"], root, name.lower())
+    init(["work"], root, name.lower(),
+         work_path=None if work_repo is None else work_repo / name / "work")
     search = root.parent
     while search != search.parent and not (search / "tcw-config.yaml").is_file():
         search = search.parent
@@ -345,6 +351,62 @@ def test_escalate_writes_parent_inbox_and_root_errors(tmp_path):
     assert "from: child" in doc.read_text()
     with pytest.raises(ValueError):
         escalate(parent, "x")                              # parent is the root
+
+
+def test_delegate_uses_child_configured_inbox(tmp_path):
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child", work_repo=stores)
+
+    doc = delegate(parent, "child", "Do a thing")
+
+    assert doc.parent == FsWorkStore.open(child).root / "inbox"
+    assert not (child / "docs" / "work").exists()
+
+
+def test_escalate_uses_parent_configured_inbox(tmp_path):
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent", work_repo=stores)
+    child = mk_node(parent, "child")
+
+    doc = escalate(child, "Coordinate it")
+
+    assert doc.parent == FsWorkStore.open(parent).root / "inbox"
+    assert not (parent / "docs" / "work").exists()
+
+
+def test_inbox_write_refuses_to_manufacture_a_missing_store_root(tmp_path):
+    node = mk_node(tmp_path, "node")
+    store = FsWorkStore.open(node)
+    shutil.rmtree(store.root)
+
+    with pytest.raises(ValueError, match="work store root does not exist"):
+        _inbox_write(store, "Lost request", "body", "node", None)
+    assert not store.root.exists()
+
+
+def test_cli_delegate_to_a_broken_child_store_fails_loudly(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child", work_repo=stores)
+    shutil.rmtree(FsWorkStore.open(child).root)
+    monkeypatch.chdir(parent)
+
+    assert main(["work", "delegate", "child", "Do a thing"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "tcw work delegate:" in captured.err
+    assert not (child / "docs" / "work").exists()
+
+
+def test_inbox_write_restores_a_missing_inbox_leaf(tmp_path):
+    node = mk_node(tmp_path, "node")
+    store = FsWorkStore.open(node)
+    shutil.rmtree(store.root / "inbox")
+
+    doc = _inbox_write(store, "Still lands", "body", "node", None)
+    assert doc.parent == store.root / "inbox"
 
 
 # ── Task 5: worktrees ────────────────────────────────────────────────────────
