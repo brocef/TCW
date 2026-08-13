@@ -328,6 +328,14 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
 
 WORKTREES_DIR = ".worktrees"
 
+
+class _Moved(Exception):
+    """Internal: the item was renamed mid-read, so the whole snapshot restarts.
+
+    Private to this adapter and never raised past it — "the folder moved" has no
+    abstract analog, and callers get a settled snapshot or `None`.
+    """
+
 def git_commit(node_root: Path, message: str, *paths: str) -> None:
     """Commit staged changes. With paths, a scoped (partial) commit so unrelated
     staged changes are left alone — used by start --worktree (Spec 2 §3.4)."""
@@ -2451,9 +2459,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
         The read for callers whose job *is* the unstable state — claim recovery,
         lost-race detection, the blocker loop's error handling. They must see the
         raw None that `get` stabilizes away.
+
+        "Immediate" still means *correct*: locating the folder and reading it are
+        two steps, so a rename between them leaves a stale path that reads as
+        absent. One re-probe settles it. This window is not the claim window and
+        has no `.claiming/` evidence to key on — an ordinary `git mv` transition
+        opens it — so it has to close here rather than in `get`.
         """
         d = self._find(slug)
-        return self._item_from_dir(d) if d is not None else None
+        if d is None:
+            return None
+        item = self._item_from_dir(d)
+        if item is None:                       # the folder went while we read it
+            d = self._find(slug)               # once: it has a new home, or none
+            item = self._item_from_dir(d) if d is not None else None
+        return item
 
     def get(self, slug: str) -> WorkItem | None:
         """The settled item, or None if it is genuinely absent.
@@ -3023,12 +3043,30 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # -- revision-bearing detail + composite create/update --
 
     def get_detail(self, slug: str) -> "WorkDetail" | None:
+        """A whole-snapshot read: item and every revision from one location.
+
+        Composite, so it has a find-then-read window a transition can move the
+        item through. Retried rather than guarded per-file, because the fix has
+        to be all-or-nothing — pairing the first item with files re-read from its
+        *new* status would hand out revisions that never coexisted, and a caller
+        would then write against them.
+        """
+        for _ in range(5):
+            try:
+                return self._detail_snapshot(slug)
+            except _Moved:
+                continue                               # it went somewhere; look again
+            except FileNotFoundError:
+                continue                               # a path *inside* the item went
+        return None
+
+    def _detail_snapshot(self, slug: str) -> "WorkDetail" | None:
         item = self.get(slug)
         if item is None:
             return None
         d = self._find(slug)
         if d is None:                                  # moved out from under us
-            return None
+            raise _Moved
         # Core revision = hash of state.yaml + body (initial-request.md)
         state_text = (d / "state.yaml").read_text(encoding="utf-8")
         body_path = d / "initial-request.md"

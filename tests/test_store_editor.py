@@ -111,10 +111,15 @@ def test_get_detail_unknown_slug_returns_none(tmp_path):
     assert st.get_detail("no-such-slug") is None
 
 
-def test_get_detail_lost_at_find_returns_none(tmp_path, monkeypatch):
-    """`get_detail` resolves the item twice; losing it between the two used to be
-    `None / "state.yaml"` → `TypeError`. The function already returns
-    `WorkDetail | None`, so `None` is the honest answer."""
+def test_get_detail_retries_a_transient_loss_at_find(tmp_path, monkeypatch):
+    """Supersedes an earlier test that asserted `None` here.
+
+    Losing the item between `get_detail`'s two lookups once used to be
+    `None / "state.yaml"` → `TypeError`, and `None` was then the honest answer
+    because nothing looked again. It is no longer: the item exists, so a snapshot
+    that restarts finds it, and answering `None` would be the same
+    vanished-versus-absent confusion this whole item is about.
+    """
     st = FsWorkStore.open(_work_node(tmp_path))
     item = st.create("Task", created="2026-01-01")
 
@@ -126,6 +131,16 @@ def test_get_detail_lost_at_find_returns_none(tmp_path, monkeypatch):
         return None if calls["n"] == 2 else real_find(self, slug)
 
     monkeypatch.setattr(FsWorkStore, "_find", missing_on_the_second_lookup)
+    detail = st.get_detail(item.slug)
+    assert detail is not None and detail.item.slug == item.slug
+
+
+def test_get_detail_gives_up_when_the_item_never_settles(tmp_path, monkeypatch):
+    """The retry is bounded. A slug that never resolves is absent, not a hang."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+
+    monkeypatch.setattr(FsWorkStore, "_find", lambda self, slug: None)
     assert st.get_detail(item.slug) is None
 
 
