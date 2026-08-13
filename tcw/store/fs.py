@@ -3480,6 +3480,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
             revision=_revision(content),
         )
 
+    def delete_artifact(self, slug: str, name: str) -> None:
+        if name not in WORK_ARTIFACTS:
+            raise ValueError(
+                f"unknown artifact '{name}' "
+                f"(choose from {', '.join(WORK_ARTIFACTS)})")
+        p = self._require_dir(slug) / self._artifact_filename(name)
+        if p.is_file():
+            self._rm(p)
+
     # -- sidecar read / write --
 
     def read_sidecar(self, slug: str, name: str) -> "SidecarResource" | None:

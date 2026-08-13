@@ -14,11 +14,12 @@ from tcw.store.base import (
     topo_order,
 )
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsWorkStore, child_nodes, git_stage, parent_node,
+    FsCapabilitiesStore, FsWorkStore, child_nodes, parent_node,
     registered_project_id, slugify,
 )
 
 ROLLUP_RE = re.compile(r"<!-- tcw:rollup -->.*?<!-- /tcw:rollup -->", re.DOTALL)
+ROLLUP_SIDECAR = "rollup.md"
 
 
 def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
@@ -167,10 +168,31 @@ def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
     return "\n".join(lines)
 
 
+def _evict_legacy_rollup(store: FsWorkStore, slug: str) -> None:
+    """Strip a rollup block that an older release wrote into the request.
+
+    Reconciling is not the `request` stage, so writing the block there created an
+    `initial-request.md` nobody had written and lit `R` on the board for it. What
+    a human wrote above the block is kept; a request that held nothing else is
+    removed rather than left as an empty husk that still reads as a document.
+
+    Goes through the artifact surface, so an adapter that never had the old
+    layout simply finds nothing to strip.
+    """
+    request = store.read_artifact(slug, "initial-request")
+    if request is None or not ROLLUP_RE.search(request.content):
+        return
+    remainder = ROLLUP_RE.sub("", request.content).strip()
+    if remainder:
+        store.write_artifact(slug, "initial-request", f"{remainder}\n")
+    else:
+        store.delete_artifact(slug, "initial-request")
+
+
 def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
               complete_when_ready: bool = False) -> str:
     """Scan children for `initiative == epic_slug`; write a consolidated rollup
-    into the epic's initial-request.md managed block. Read-only on capabilities.
+    to the epic's `rollup.md` sidecar. Read-only on capabilities.
 
     When the epic's children are all resolved the rollup flags it "Ready to close";
     with `complete_when_ready` the epic is then auto-completed (the DoD/capability
@@ -183,7 +205,7 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
 
     # Decide (and effect) auto-completion first, gate-guarded, so the rollup we
     # persist reflects the final state — a completed epic must not keep a stale
-    # "Ready to close" instruction in its initial-request.md.
+    # "Ready to close" instruction in its rollup.
     auto_completed = False
     if complete_when_ready and store.epic_completable(epic):
         problems = capability_gate(store, epic)               # same gate as CLI complete
@@ -196,14 +218,15 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
 
     completable = store.epic_completable(store.get(epic_slug))     # False once completed
     block = _render(epic_slug, _tasks_for(node_root, epic_slug), completable=completable)
-    content = store.path(epic_slug) / "initial-request.md"         # resolves to the moved folder
-    original = content.read_text(encoding="utf-8") if content.exists() else ""
-    text = ROLLUP_RE.sub(block, original) if ROLLUP_RE.search(original) \
-        else f"{original.rstrip()}\n\n{block}\n"
-    changed = text != original
+    _evict_legacy_rollup(store, epic_slug)
+    current = store.read_sidecar(epic_slug, ROLLUP_SIDECAR)
+    text = f"{block}\n"
+    changed = current is None or current.content != text
     if changed:                                # idempotent: don't stage an unchanged
-        content.write_text(text, encoding="utf-8")   # rollup (an empty commit would fail)
-        git_stage(store.store_git_root, content)     # the store's repo, not the code node's
+        store.write_sidecar(epic_slug, ROLLUP_SIDECAR, text)   # rollup (an empty
+                                               # commit would fail). write_sidecar
+                                               # writes atomically and stages into
+                                               # the store's repo, not the code node's.
     # No `changed or auto_completed` guard: that guard existed only to avoid an
     # empty commit, which used to *fail*. `git_commit_result` answers "nothing to
     # commit" benignly, and the guard actively broke recovery — after a refused
