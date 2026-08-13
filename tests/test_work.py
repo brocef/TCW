@@ -195,6 +195,67 @@ def test_inbox_accept_folder_rejects_missing_or_ambiguous_index_without_consumin
     assert ambiguous.exists() and st.query() == []
 
 
+def test_inbox_show_and_accept_resolve_listed_file_title(tmp_path):
+    """`inbox list` prints `example.md | file | example`. Both of those are
+    identifiers the command showed me, so both must resolve."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    (root / "docs/work/inbox/example.md").write_text("do it\n", encoding="utf-8")
+
+    assert [(e.ref, e.title) for e in st.inbox_list()] == [("example.md", "example")]
+    assert st.inbox_show("example").body == "do it\n"          # bare listed title
+    assert st.inbox_show("example.md").body == "do it\n"       # exact ref still works
+
+    item = st.inbox_accept("example")
+    assert st.get(item.slug).title == "example"
+    assert not (root / "docs/work/inbox/example.md").exists()  # source consumed
+
+
+def test_inbox_exact_reference_wins_over_a_colliding_title(tmp_path):
+    """A folder named `example` *is* the exact reference `example`, even with an
+    `example.md` beside it whose listed title is also `example`. Exact wins, or a
+    folder becomes unaddressable by its own name the moment a file lands next to
+    it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    inbox = root / "docs/work/inbox"
+    (inbox / "example.md").write_text("the file\n", encoding="utf-8")
+    (inbox / "example").mkdir()
+    (inbox / "example" / "INDEX.md").write_text("the folder\n", encoding="utf-8")
+
+    assert st.inbox_show("example").body == "the folder\n"     # exact ref → folder
+    assert st.inbox_show("example.md").body == "the file\n"    # exact ref → file
+
+
+def test_inbox_accept_reports_an_ambiguous_title_without_consuming(tmp_path):
+    """Ambiguity is for an input that is neither an exact reference nor an
+    `<input>.md`, yet matches several listed titles. Picking one by iteration
+    order would consume the wrong entry irreversibly."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    inbox = root / "docs/work/inbox"
+    (inbox / "example.txt").write_text("text one\n", encoding="utf-8")
+    (inbox / "example.rst").write_text("text two\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="ambiguous inbox entry"):
+        st.inbox_accept("example")
+    assert (inbox / "example.txt").exists()                    # neither consumed
+    assert (inbox / "example.rst").exists()
+    assert st.query() == []
+
+    # Exact references stay unambiguous — that is what makes the error recoverable.
+    item = st.inbox_accept("example.txt")
+    assert st.get(item.slug) is not None
+
+
+def test_inbox_unknown_entry_still_reports_no_such_entry(tmp_path):
+    """Relaxed lookup must not turn a typo into a different error."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    with pytest.raises(ValueError, match="no such inbox entry"):
+        st.inbox_accept("nope")
+
+
 def test_cli_inbox_list_show_accept(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
