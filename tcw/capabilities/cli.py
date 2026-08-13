@@ -200,10 +200,11 @@ def _shipped_but_missing(node, st) -> list[tuple[str, str]]:
     """Local Missing capabilities whose `Planning doc` names a completed work item.
     Read-only follow of an existing capability→work forward pointer; degrades to
     empty when no work node is present (no hard cross-axis dependency)."""
-    if not (node / "docs" / "work").is_dir():
-        return []
     from tcw.store.fs import FsWorkStore
-    work = FsWorkStore.open(node)
+    try:
+        work = FsWorkStore.open(node)          # the *configured* store, wherever it is
+    except ValueError:
+        return []                              # no usable work component
     out: list[tuple[str, str]] = []
     for c in st.list_all(local_only=True):
         if c.status != "Missing":

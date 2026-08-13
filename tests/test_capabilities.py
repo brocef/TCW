@@ -353,6 +353,37 @@ def test_cli_drift_flags_shipped_but_missing(tmp_path, monkeypatch, capsys):
     assert "shipped-missing" in capsys.readouterr().out
 
 
+def _external_completed_planning_item(tmp_path: Path) -> tuple[Path, str]:
+    """A capabilities node whose work store lives in a *second* git repository,
+    with a completed item wired to a still-Missing capability."""
+    from tcw.store.fs import FsWorkStore, init
+    root = node(tmp_path)
+    store_repo = node(tmp_path, "store-repo")
+    init(["work"], root, "repo", work_path=store_repo / "work")
+    write_cap(root, "auth/login", Status="Missing")
+    st = FsWorkStore.open(root)
+    slug = st.create("Ship login", created="2026-01-01").slug
+    FsCapabilitiesStore.open(root).set("auth/login", {"Planning doc": slug})
+    st.start(slug)
+    st.complete(slug, "done", dod_ack=[], force=True)
+    return root, slug
+
+
+@pytest.mark.parametrize("with_decoy", [False, True])
+def test_cli_drift_reads_completed_item_from_external_store(
+        tmp_path, monkeypatch, capsys, with_decoy):
+    from tcw.cli import main
+    root, slug = _external_completed_planning_item(tmp_path)
+    if with_decoy:
+        (root / "docs" / "work").mkdir(parents=True)
+    monkeypatch.chdir(root)
+
+    assert main(["capabilities", "drift"]) == 1
+    output = capsys.readouterr().out
+    assert "shipped-missing" in output
+    assert slug in output
+
+
 def test_cli_drift_ignores_a_discarded_planning_doc(tmp_path, monkeypatch, capsys):
     """`shipped-missing` asks "did it ship?", not "is it closed?". A discarded
     item's capability is *supposed* to stay Missing — flagging it was a false
