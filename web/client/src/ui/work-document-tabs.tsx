@@ -84,6 +84,13 @@ export function WorkDocumentTabs({
             })
     }
 
+    // `item.body` falls back to the intake when no request exists. That is right
+    // for a single body surface; here the tab names which document it shows, so
+    // rendering the fallback would label raw intake as the request.
+    const requestPresent =
+        artifacts.find((artifact) => artifact.name === "initial-request")
+            ?.present ?? false
+
     const selectedArtifact =
         selectedDocument === "initial-request"
             ? undefined
@@ -137,7 +144,13 @@ export function WorkDocumentTabs({
                                 Edit Initial Request
                             </Button>
                         </Flex>
-                        <Markdown source={item.body ?? ""} resolveLinks />
+                        {requestPresent ? (
+                            <Markdown source={item.body ?? ""} resolveLinks />
+                        ) : (
+                            <Text color="gray">
+                                Initial Request is not yet present.
+                            </Text>
+                        )}
                     </>
                 ) : !selectedArtifact?.present ? (
                     <Text color="gray">
