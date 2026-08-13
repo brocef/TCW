@@ -40,3 +40,39 @@ category.
   because `mk_node` derives the project ID from the directory name;
   `test_delegate_resolves_the_project_id_not_the_directory_name` breaks that
   coincidence.
+
+### Stable reads across claims
+
+- Split `FsWorkStore.get` into `_get_now` (one immediate probe) and a stabilizing
+  `get`. `get` returns hits and evidence-free misses immediately, and only waits —
+  50 × 10 ms, the existing publication window — when `_claiming_dirs(slug)` proves
+  that exact slug is mid-flight. An abandoned claim raises the documented
+  interrupted-claim `ValueError`. `.claiming/` is not exposed through `WorkStore`;
+  the abstract contract is still "the current item or None", with the adapter free
+  to settle a transient move first.
+- `_get_now` re-probes once when `_find` returns a folder that `_item_from_dir`
+  then finds gone. That window is *not* the claim window — an ordinary `git mv`
+  transition opens it and there is no `.claiming/` evidence to key on — so it is
+  closed in the probe rather than in `get`.
+- Three call sites deliberately keep the immediate probe, each because its job is
+  the unstable state: `_lost_the_claim` (else each of its 50 iterations nests
+  another 500 ms wait), `start`'s take-over probe (the branch exists for the state
+  `get` now raises on, so `--take-over` would have become unreachable), and
+  `_effect_transition`'s lost-race message (which wants the raw state to describe).
+- `WorkStore.unresolved_blockers` catches an adapter's refusal to settle and
+  reports that blocker as a blocker. Raising there would answer "why can't I start
+  B?" with an error about A. Storage-neutral: any adapter may fail to resolve a
+  reference.
+- `get_detail` is now a whole-snapshot read: `_detail_snapshot` raises the private
+  `_Moved` (or a `FileNotFoundError` from a path inside the item) and `get_detail`
+  restarts, bounded at 5 attempts. All-or-nothing on purpose — pairing the first
+  item with files re-read from its new status would hand out revisions that never
+  coexisted. Permission errors and malformed content still surface.
+- `test_get_detail_lost_at_find_returns_none` is superseded by
+  `test_get_detail_retries_a_transient_loss_at_find`: `None` was the honest answer
+  only while nothing looked again. `test_get_detail_gives_up_when_the_item_never_settles`
+  pins the bound.
+- Sibling sweep over every `_find` call site in `tcw/store`, `tcw/serve`, `tcw/work`
+  found no further vulnerable reader. `artifacts()` and `_validation_resources`
+  already carry explicit vanish guards; the rest are transition/write logic that is
+  conflict-aware by contract, or single path lookups that read nothing.

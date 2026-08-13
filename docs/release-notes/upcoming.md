@@ -20,3 +20,19 @@ that epic's rollup.
 `tcw work delegate`'s help text said its first argument was a child node path. It
 is the child's canonical project ID — the form `tcw work nodes` lists. The command
 always behaved that way; only the help was wrong.
+
+Work items being claimed by another process are no longer mistaken for missing
+ones. Starting an item is briefly a two-step move, and during that instant other
+commands could read the item as absent — so a blocker that was being started
+elsewhere silently stopped blocking, and adding it as a blocker recorded it as
+free text instead of a real link. Reads now settle across that instant. Ordinary
+lookups are unaffected: asking for an item that genuinely does not exist still
+answers immediately.
+
+If a process died mid-claim, reads now say the item has an interrupted claim and
+point at `tcw work start <slug> --take-over --owner <identity>` to recover it,
+rather than reporting it missing. Starting a *different* item that is blocked by
+such an item reports it as a blocker, as it should.
+
+Opening a work item in the local web app while it is being moved no longer risks
+an internal error; the app now retries and shows the item in its new state.
