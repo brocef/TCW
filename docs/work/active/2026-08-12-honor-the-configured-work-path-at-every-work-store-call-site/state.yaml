@@ -11,3 +11,5 @@ tags:
 - capabilities
 owner: brocef@users.noreply.github.com
 started: '2026-08-13T13:31:00.406330Z'
+worktree: .worktrees/2026-08-12-honor-the-configured-work-path-at-every-work-store-call-site
+branch: work/2026-08-12-honor-the-configured-work-path-at-every-work-store-call-site
