@@ -256,6 +256,60 @@ def test_inbox_unknown_entry_still_reports_no_such_entry(tmp_path):
         st.inbox_accept("nope")
 
 
+def _delegated(root, name: str, front: str) -> None:
+    """An inbox entry shaped exactly as `tcw work delegate` writes one."""
+    (root / "docs/work/inbox" / name).write_text(
+        f"---\n{front}\n---\n\n# Do the thing\n\ndetails\n", encoding="utf-8")
+
+
+def test_inbox_accept_preserves_a_delegated_initiative(tmp_path):
+    """The back-pointer epic reconciliation runs on. Dropping it silently
+    unlinks a delegated slice from the epic that asked for it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", "from: parent\ninitiative: 2026-01-01-epic")
+
+    item = st.inbox_accept("req.md")
+    assert st.get(item.slug).initiative == "2026-01-01-epic"
+    assert "initiative: 2026-01-01-epic" in (st.path(item.slug) / "state.yaml").read_text()
+
+
+@pytest.mark.parametrize("front", ["from: parent",
+                                   "from: parent\ninitiative:",
+                                   "from: parent\ninitiative: '   '"])
+def test_inbox_accept_without_an_initiative_is_unchanged(tmp_path, front):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", front)
+
+    item = st.inbox_accept("req.md")
+    assert not st.get(item.slug).initiative
+
+
+def test_inbox_accept_rejects_a_structured_initiative_without_consuming(tmp_path):
+    """Frontmatter is intake, not trusted state. A list or mapping must fail
+    before an item exists, not get serialized into state.yaml."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", "from: parent\ninitiative: [a, b]")
+
+    with pytest.raises(ValueError, match="initiative"):
+        st.inbox_accept("req.md")
+    assert (root / "docs/work/inbox/req.md").exists()          # not consumed
+    assert st.query() == []                                    # no item created
+
+
+def test_inbox_accept_keeps_the_original_markdown_in_the_body(tmp_path):
+    """Parsing frontmatter must not rewrite what the requester sent."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", "from: parent\ninitiative: 2026-01-01-epic")
+
+    item = st.inbox_accept("req.md")
+    request = (st.path(item.slug) / "initial-request.md").read_text()
+    assert "from: parent" in request and "details" in request
+
+
 def test_cli_inbox_list_show_accept(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
