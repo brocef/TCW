@@ -1,0 +1,6 @@
+new:
+    - work/inspect-the-node-topology
+    - work/coordinate-a-cross-node-epic
+    - work/reconcile-an-epic-rollup
+    - work/delegate-a-request-to-a-child-node
+    - work/escalate-a-request-to-the-parent-node
