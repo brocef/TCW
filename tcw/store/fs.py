@@ -429,11 +429,15 @@ def ensure_ignored(node_root: Path, *lines: str) -> bool:
     return True
 
 
-def ensure_worktree_ignored(node_root: Path) -> None:
+def ensure_worktree_ignored(node_root: Path) -> bool:
     """Add `.worktrees/` to the node's .gitignore (a linked worktree dir is
-    untracked otherwise and would clutter/be staged). Idempotent; stages it."""
-    if ensure_ignored(node_root, f"{WORKTREES_DIR}/"):
+    untracked otherwise and would clutter/be staged). Idempotent; stages it.
+    Returns whether `.gitignore` changed, so a caller committing in a *different*
+    repository knows whether the code node still owes a commit."""
+    changed = ensure_ignored(node_root, f"{WORKTREES_DIR}/")
+    if changed:
         git_stage(node_root, node_root / ".gitignore")
+    return changed
 
 
 def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:

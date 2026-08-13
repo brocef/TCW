@@ -803,3 +803,114 @@ def test_incomplete_default_store_is_not_discoverable(tmp_path):
 
     init(["work"], code, "corelib")
     assert _has_work_store(code) is True
+
+
+# ── `start --worktree` across two repositories ───────────────────────────────
+
+def _porcelain(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _last_commit_files(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "show", "--name-only", "--format="],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _split_repo_item(tmp_path: Path, *, auto_commit: bool = True) -> tuple[Path, Path, str]:
+    """A code node whose work store lives in a second repository, holding one
+    committed backlog item. Returns (code, store_repo, slug)."""
+    code = _repo(tmp_path / "code")
+    store_repo = _repo(tmp_path / "store-repo")
+    init(["work"], code, "corelib", work_path=store_repo / "work")
+    if not auto_commit:
+        config = yaml.safe_load((code / "tcw-config.yaml").read_text())
+        config.setdefault("work", {})["auto-commit-transitions"] = False
+        (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    slug = FsWorkStore.open(code).create("Task", created="2026-01-01").slug
+    for repo in (code, store_repo):
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "init"], check=True)
+    return code, store_repo, slug
+
+
+@pytest.mark.parametrize("auto_commit", [True, False])
+def test_worktree_start_commits_each_repository_that_owns_something(
+        tmp_path, monkeypatch, capsys, auto_commit):
+    code, store_repo, slug = _split_repo_item(tmp_path, auto_commit=auto_commit)
+    (code / "unrelated.txt").write_text("keep\n")
+    (store_repo / "unrelated.txt").write_text("keep\n")
+    for repo in (code, store_repo):
+        subprocess.run(["git", "-C", str(repo), "add", "unrelated.txt"], check=True)
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 0
+    capsys.readouterr()
+
+    active = FsWorkStore.open(code).get(slug)
+    assert active.status == "active"
+    assert active.worktree == f".worktrees/{slug}"
+    assert active.branch == f"work/{slug}"
+
+    store_files = _last_commit_files(store_repo)
+    assert f"work/active/{slug}/state.yaml" in store_files
+    assert ".gitignore" not in store_files                # code-repo business only
+    assert "unrelated.txt" not in store_files
+
+    code_files = _last_commit_files(code)
+    assert code_files.strip() == ".gitignore"             # nothing else is the code's
+    assert "unrelated.txt" in _porcelain(code)            # unrelated staging preserved
+    assert "unrelated.txt" in _porcelain(store_repo)
+    assert "state.yaml" not in _porcelain(store_repo)     # nothing left staged
+
+    # The code branch carries code-repo setup only; the lifecycle files are in
+    # another repository and cannot be represented on it.
+    tree = subprocess.run(["git", "-C", str(code), "ls-tree", "-r", "--name-only",
+                           f"work/{slug}"], capture_output=True, text=True, check=True)
+    assert "docs/work" not in tree.stdout
+    assert (code / ".worktrees" / slug).is_dir()
+
+
+def test_worktree_start_commit_excludes_another_staged_work_item(
+        tmp_path, monkeypatch, capsys):
+    """The store pathspec names the started item, never the whole store root."""
+    code, store_repo, slug = _split_repo_item(tmp_path)
+    other = FsWorkStore.open(code).create("Other", created="2026-01-02").slug
+    subprocess.run(["git", "-C", str(store_repo), "add", "-A"], check=True)
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 0
+    capsys.readouterr()
+
+    assert other not in _last_commit_files(store_repo)
+    assert other in _porcelain(store_repo)                # still staged, uncommitted
+
+
+def test_worktree_start_stops_at_a_refused_store_commit(tmp_path, monkeypatch, capsys):
+    from tcw.work import cli as work_cli
+    code, store_repo, slug = _split_repo_item(tmp_path)
+    monkeypatch.setattr(work_cli, "git_commit_result", lambda *a, **k: "store refused")
+    created: list[str] = []
+    monkeypatch.setattr(work_cli, "add_worktree",
+                        lambda *a, **k: created.append("made"))
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 1
+    assert "no worktree was created" in capsys.readouterr().err
+    assert created == []
+
+
+def test_worktree_start_stops_at_a_refused_gitignore_commit(tmp_path, monkeypatch, capsys):
+    from tcw.work import cli as work_cli
+    code, store_repo, slug = _split_repo_item(tmp_path)
+    answers = iter([None, "code refused"])
+    monkeypatch.setattr(work_cli, "git_commit_result", lambda *a, **k: next(answers))
+    created: list[str] = []
+    monkeypatch.setattr(work_cli, "add_worktree",
+                        lambda *a, **k: created.append("made"))
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 1
+    err = capsys.readouterr().err
+    assert "metadata was committed" in err and "no worktree was created" in err
+    assert created == []

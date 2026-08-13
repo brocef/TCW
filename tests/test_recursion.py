@@ -450,6 +450,13 @@ def test_inbox_write_restores_a_missing_inbox_leaf(tmp_path):
 
 # ── Task 5: worktrees ────────────────────────────────────────────────────────
 
+def test_ensure_worktree_ignored_reports_whether_it_changed(tmp_path):
+    """The return value is what tells a split-repository caller whether the code
+    node still owes a `.gitignore` commit."""
+    root = mk_node(tmp_path, "repo")
+    assert ensure_worktree_ignored(root) is True
+    assert ensure_worktree_ignored(root) is False
+
 def test_start_worktree_places_item_in_worktree(tmp_path, monkeypatch, capsys):
     root = mk_node(tmp_path, "repo")
     commit_all(root)
