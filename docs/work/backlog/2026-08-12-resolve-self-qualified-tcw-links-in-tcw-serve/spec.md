@@ -40,9 +40,39 @@ locator — a symlinked project root, a relocated locator — produces the same 
 reported remediation unchanged would turn an inert link into a 500 from
 `/api/resolve`. A fix has to canonicalize the anchor, not just add it to a set.
 
-**Next action:** confirm with the reporter whether that `tcw serve` ran inside a
-worktree checkout, then re-specify the Design section below against the confirmed
-cause.
+### Hypothesis tested and disproven (2026-08-13, implementation attempt)
+
+The path-aliasing hypothesis above was tested directly, in both shapes it names.
+Neither reproduces on HEAD:
+
+| Anchor reached via | `registered_project_id(anchor, anchor)` | self-qualified `tcw://W/<own-id>/<slug>` |
+| --- | --- | --- |
+| the real project path | `myproj` | `ok=True`, `project=''` |
+| a **symlinked** project root | `myproj` | `ok=True`, `project=''` |
+| a **`start --worktree` checkout** (copied sentinel, distinct real path) | `myproj` | `ok=True`, `project=''` |
+
+`find_node_root` and `registered_project_id` both `.resolve()`, so a symlinked
+anchor collapses onto the same real path; and a worktree checkout still resolves
+its own registered ID rather than raising. In every case the anchor short-circuit
+at `tcw/refs.py:125-126` fires and returns no `project`, so `_hosted_projects()`
+is never consulted — exactly as the original review found.
+
+So the hosted-project half has **no known reproduction and no surviving
+hypothesis**. Implementing it would be writing code against a defect nobody can
+demonstrate, and the spec's own Design section already records that it "fixes
+nothing observable as written".
+
+**Next action:** the reporter (@brocef) is the only remaining source. Needed: the
+exact `tcw serve` invocation, the directory it ran from, and the `tcw-config.yaml`
+of both the anchor and the named project. Until then this half stays blocked.
+
+**The presentation half is independent and remains implementable**, because
+genuinely unhosted references already occur and are reproducible today: the table
+above shows `tcw://W/<descendant-id>/<slug>` resolving `ok: false` in plain serve
+mode. That is precisely the case the viewer renders as an indistinguishable inert
+link, which is what let four request documents accumulate silently-downgraded
+references. It needs the `reason`/`project` payload extension but **not** the
+`_hosted_projects()` change.
 
 ## Problem
 
