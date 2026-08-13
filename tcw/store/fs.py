@@ -2053,8 +2053,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 raise AlreadyClaimed(slug, item.owner, item.started)
             if not owner:
                 raise ValueError("takeover requires an owner")
-            self.set_field(slug, "owner", owner)
-            self.set_field(slug, "started", started)
+            self._set_fields_at(self._require_dir(slug),
+                                {"owner": owner, "started": started})
             if self.auto_commit_transitions():
                 rel = str(self._require_dir(slug).relative_to(self.store_git_root))
                 err = git_commit_result(self.store_git_root, f"tcw work: take over {slug}", rel)
@@ -2954,13 +2954,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                 priority=priority, parent=parent).item
 
     def set_field(self, slug: str, key: str, value) -> None:
-        d = self._require_dir(slug)
+        self._set_fields_at(self._require_dir(slug), {key: value})
+
+    def _set_fields_at(self, d: Path, fields: dict) -> None:
+        """Apply `fields` to the item living at `d`, in one read-modify-write.
+
+        Takes a folder rather than a slug because its callers already know where
+        the item is — a transition that just moved it, or a claim holding it
+        privately. Re-resolving the slug would reopen the window they closed.
+        Multi-key so a pair like `owner`/`started` cannot be torn across two
+        locations by a move landing between them.
+        """
         state = load_yaml(d / "state.yaml")
-        state[key] = value
+        state.update(fields)
         dump_yaml(d / "state.yaml", state)
         self._stage(d / "state.yaml")
 
-    def _effect_transition(self, slug: str, to_status: str) -> None:
+    def _effect_transition(self, slug: str, to_status: str,
+                           fields: dict | None = None) -> None:
         # Read the item *before* the move: afterwards `_find` points at the new
         # location and the pre-move branch/worktree fields are what the
         # trunk-branch check needs.
@@ -2988,6 +2999,23 @@ class FsWorkStore(FsTreeStore, WorkStore):
         (self.root / to_status).mkdir(parents=True, exist_ok=True)
         dst = self.root / to_status / slug
         self._mv(src, dst)
+        if fields:
+            # After the move, before the commit. After, because the move is where
+            # this process learns it won — a write before it lands on whatever
+            # folder the winner moved. Before, because the transition commit is
+            # scoped to these two paths and takes working-tree state, so this is
+            # what keeps the fields and the move in one commit.
+            try:
+                self._set_fields_at(dst, fields)
+            except subprocess.CalledProcessError as e:
+                # `git add` refused (a held index.lock, most likely — which is
+                # what the concurrent agents in this scenario produce). The item
+                # has already moved, so this is the error that already means
+                # exactly that; CalledProcessError is not in the CLI's handled
+                # set and would exit as a traceback.
+                raise TransitionCommitError(
+                    f"{slug} moved to {to_status}, but writing its fields "
+                    f"failed:\n{e}")
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, to_status, item)
 

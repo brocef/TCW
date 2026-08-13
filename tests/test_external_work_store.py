@@ -14,7 +14,7 @@ import yaml
 from tcw.cli import main
 from tcw.store import fs
 from tcw.store.fs import FsWorkStore, _has_work_store, child_nodes, init
-from tcw.store.base import AlreadyClaimed, MultipleMatch
+from tcw.store.base import AlreadyClaimed, MultipleMatch, TransitionCommitError
 
 
 def _repo(path: Path) -> Path:
@@ -573,14 +573,14 @@ def test_takeover_lost_at_the_commit_lookup_is_a_valueerror(tmp_path, monkeypatc
     item = store.create("Claim me", created="2026-08-08")
     store.start(item.slug, owner="first@example.com")
 
-    real_set_field = FsWorkStore.set_field
+    real_set_fields_at = FsWorkStore._set_fields_at
 
-    def vanish_after_started(self, slug, key, value):
-        real_set_field(self, slug, key, value)
-        if key == "started":
+    def vanish_after_started(self, d, fields):
+        real_set_fields_at(self, d, fields)
+        if "started" in fields:
             monkeypatch.setattr(FsWorkStore, "_find", lambda self, slug: None)
 
-    monkeypatch.setattr(FsWorkStore, "set_field", vanish_after_started)
+    monkeypatch.setattr(FsWorkStore, "_set_fields_at", vanish_after_started)
 
     with pytest.raises(ValueError, match="no such work item"):
         FsWorkStore.open(code).start(item.slug, owner="second@example.com",
@@ -651,7 +651,7 @@ def test_cli_complete_losing_the_race_exits_1_without_a_traceback(tmp_path, monk
     real_find = FsWorkStore._find
     real_effect = FsWorkStore._effect_transition
 
-    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
         calls = {"n": 0}
 
         def missing_at_the_move(inner, inner_slug):
@@ -659,7 +659,7 @@ def test_cli_complete_losing_the_race_exits_1_without_a_traceback(tmp_path, monk
             return None if calls["n"] == 2 else real_find(inner, inner_slug)
 
         monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
-        return real_effect(self, item_slug, to_status)
+        return real_effect(self, item_slug, to_status, fields)
 
     monkeypatch.setattr(FsWorkStore, "_effect_transition",
                         lose_the_race_inside_the_transition)
@@ -695,7 +695,7 @@ def test_cli_submit_losing_the_race_exits_1_without_a_traceback(tmp_path, monkey
     real_find = FsWorkStore._find
     real_effect = FsWorkStore._effect_transition
 
-    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
         calls = {"n": 0}
 
         def missing_at_the_move(inner, inner_slug):
@@ -703,7 +703,7 @@ def test_cli_submit_losing_the_race_exits_1_without_a_traceback(tmp_path, monkey
             return None if calls["n"] == 2 else real_find(inner, inner_slug)
 
         monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
-        return real_effect(self, item_slug, to_status)
+        return real_effect(self, item_slug, to_status, fields)
 
     monkeypatch.setattr(FsWorkStore, "_effect_transition",
                         lose_the_race_inside_the_transition)
@@ -716,28 +716,26 @@ def test_cli_submit_losing_the_race_exits_1_without_a_traceback(tmp_path, monkey
 
 
 def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
-    """A DOCUMENTED LIMITATION, pinned — not a behavior worth keeping.
+    """A lost `complete` writes nothing — the guarantee, formerly the limitation.
 
-    `complete()` stamps `resolution` with `set_field` (`base.py:1397`) *before*
-    `_effect_transition` moves the item, so a transition that loses the race
-    reports the loss with the loser's resolution already on disk. Two agents
-    completing one `review` item with different resolutions can therefore leave
-    one's `resolution` on the item the other moved — exactly the
-    status/resolution disagreement `_status_resolution_problems` still describes
-    as something "no code path can produce". That docstring is now known to be
-    optimistic.
+    `complete()` used to stamp `resolution` with `set_field` before
+    `_effect_transition` moved the item, so a transition that lost the race
+    reported the loss with the loser's resolution already on disk — and via the
+    pre-move path it landed in the folder the *winner* moved. Two agents
+    completing one `review` item as `done` and `wontfix` could leave the item in
+    `completed/` reading `wontfix`, the status/resolution disagreement
+    `_status_resolution_problems` exists to detect.
 
-    Fixing it means rolling back or reordering the pre-move writes, which
-    collides with the ordering deliberately documented at `work/cli.py:915-918`.
-    Tracked as
-    `2026-08-11-roll-back-or-reorder-the-pre-move-set-field-writes-on-a-lost-transition`.
-    When that lands, this test should be inverted, not deleted.
+    The resolution now rides the transition (`base.py`: `complete` passes
+    `fields` to `transition`, which hands them to `_effect_transition`), so it is
+    written after the move or not at all. The name is kept from when this pinned
+    the residual: it is the same scenario, asserting the opposite.
     """
     code, store, slug = _reviewed(tmp_path)
     real_find = FsWorkStore._find
     real_effect = FsWorkStore._effect_transition
 
-    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
         calls = {"n": 0}
 
         def missing_at_the_move(inner, inner_slug):
@@ -745,7 +743,7 @@ def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
             return None if calls["n"] == 2 else real_find(inner, inner_slug)
 
         monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
-        return real_effect(self, item_slug, to_status)
+        return real_effect(self, item_slug, to_status, fields)
 
     monkeypatch.setattr(FsWorkStore, "_effect_transition",
                         lose_the_race_inside_the_transition)
@@ -755,7 +753,106 @@ def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
 
     item = FsWorkStore.open(code).get(slug)
     assert item.status == "review"          # the move did not happen...
-    assert item.resolution == "done"        # ...but the write before it did
+    assert item.resolution is None          # ...and neither did the write
+
+
+def test_lost_submit_leaves_the_claim_intact(tmp_path, monkeypatch):
+    """The other pre-move write: `transition` blanks `owner`/`started` whenever
+    either end of the move is `active`. A `submit` that loses the race used to
+    blank them anyway — on the winner's item, since the write preceded the move.
+    """
+    code, store, slug = _reviewed(tmp_path)
+    store.rework(slug)                                # back to active, unowned
+    store.start(slug, owner="me@example.com", take_over=True)
+    real_find = FsWorkStore._find
+    real_effect = FsWorkStore._effect_transition
+
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
+        calls = {"n": 0}
+
+        def missing_at_the_move(inner, inner_slug):
+            calls["n"] += 1
+            return None if calls["n"] == 2 else real_find(inner, inner_slug)
+
+        monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
+        return real_effect(self, item_slug, to_status, fields)
+
+    monkeypatch.setattr(FsWorkStore, "_effect_transition",
+                        lose_the_race_inside_the_transition)
+    with pytest.raises(ValueError, match="cannot move"):
+        store.submit(slug)
+    monkeypatch.undo()
+
+    item = FsWorkStore.open(code).get(slug)
+    assert item.status == "active"
+    assert item.owner == "me@example.com"             # the claim survives
+    assert item.started
+
+
+def test_a_transition_that_wins_still_writes_its_fields(tmp_path):
+    """The reorder must not turn into a dropped write. Read back from a fresh
+    store so this sees the disk, not an in-process return value."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    slug = store.create("Write me", created="2026-08-08").slug
+    store.start(slug, owner="me@example.com")
+
+    submitted = FsWorkStore.open(code)
+    assert submitted.submit(slug).status == "review"
+    item = FsWorkStore.open(code).get(slug)
+    assert item.owner == "" and item.started == ""    # cleared by the move
+
+    FsWorkStore.open(code).complete(slug, "done", dod_ack=[])
+    done = FsWorkStore.open(code).get(slug)
+    assert done.status == "completed" and done.resolution == "done"
+
+
+def test_the_transition_commit_carries_the_field_write(tmp_path):
+    """The reason the fields are applied *before* `_commit_transition` rather
+    than after the transition returns: the scoped commit takes working-tree state
+    for `src` and `dst`, so a write in between rides it. `review/` is tracked
+    (only `completed/`/`discarded/` are ignored by default), so git can be asked
+    directly what the commit recorded.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    subprocess.run(["git", "-C", str(code), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(code), "commit", "-qm", "init"], check=True)
+    store = FsWorkStore.open(code)
+    slug = store.create("Commit me", created="2026-08-08").slug
+    store.start(slug, owner="me@example.com")
+    FsWorkStore.open(code).submit(slug)
+
+    rel = (store.root / "review" / slug / "state.yaml").relative_to(code)
+    committed = subprocess.run(["git", "-C", str(code), "show", f"HEAD:{rel}"],
+                               capture_output=True, text=True, check=True).stdout
+    assert yaml.safe_load(committed)["owner"] == ""   # in the commit, not after it
+    porcelain = subprocess.run(["git", "-C", str(code), "status", "--porcelain"],
+                               capture_output=True, text=True, check=True).stdout
+    assert slug not in porcelain                      # nothing left staged or dirty
+
+
+def test_a_refused_stage_after_the_move_is_a_transition_commit_error(tmp_path,
+                                                                     monkeypatch):
+    """The failure mode the reorder introduces. `_set_fields_at` ends in `git
+    add`, which can refuse — a held `index.lock` is exactly what two concurrent
+    agents produce. Before the reorder that happened before the move and left
+    nothing behind; now the item has already moved, so it must surface as the
+    error that says so rather than as an unhandled `CalledProcessError`.
+    """
+    code, store, slug = _reviewed(tmp_path)
+    import tcw.store.fs as fs_mod
+
+    def refuse(node_root, *paths):
+        raise subprocess.CalledProcessError(1, ["git", "add"], stderr="index.lock")
+
+    monkeypatch.setattr(fs_mod, "git_stage", refuse)
+    with pytest.raises(TransitionCommitError, match="writing its fields failed"):
+        store.complete(slug, "done", dod_ack=[])
+    monkeypatch.undo()
+
+    assert FsWorkStore.open(code).get(slug).status == "completed"   # it did move
 
 
 # ── configured-store discovery is authoritative ───────────────────────────────
