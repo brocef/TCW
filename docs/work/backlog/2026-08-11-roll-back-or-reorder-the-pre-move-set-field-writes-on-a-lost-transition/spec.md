@@ -3,12 +3,19 @@
 ## Capability changes
 
 None. The node's ledger already declares the affected commands —
-`work/complete-a-work-item`, `work/submit-a-work-item-for-review`,
-`work/rework-a-reviewed-work-item`, `work/open-a-work-item` — all `Supported`,
-and this change adds no ability and removes none. `complete-a-work-item`'s text
-promises that "the resolution picks where it lands" and that "TCW commits the
-status move itself"; both stay true, and neither says anything about a losing
-writer, so no wording changes either.
+`work/complete-a-work-item`, `work/discard-a-work-item`,
+`work/submit-a-work-item-for-review`, `work/rework-a-reviewed-work-item`,
+`work/open-a-work-item` — all `Supported`, and this change adds no ability and
+removes none. `complete-a-work-item`'s text promises that "the resolution picks
+where it lands" and that "TCW commits the status move itself"; both stay true,
+and neither says anything about a losing writer, so no wording changes either.
+
+One capability makes an *unconditional* promise worth checking:
+`open-a-work-item` says `tcw work new` "prints its generated slug". On the new
+read-back failure (below) the item is created and the command exits 1, so the
+slug must still reach the user or that promise breaks. It does — the error names
+the slug, which is why `_require_detail` takes the ref rather than a bare
+message. Stderr instead of stdout on a failure path is not a capability change.
 
 (The parent item's spec recorded "this node has no capabilities component". That
 was wrong — `tcw capabilities list` returns 40+ entries. The conclusion is the
@@ -53,7 +60,9 @@ The request records the fix as blocked by the ordering documented at
 ```
 
 The `pre` hook runs in the **CLI**, before `st.complete()` is entered at all. The
-same shape guards `start` (`cli.py:509-512`). Reordering writes *inside*
+same shape guards `start` (`cli.py:508-511`), `submit` (`cli.py:598`) and
+`rework` (`cli.py:620`); `tcw serve` runs no lifecycle hooks at all. Reordering
+writes *inside*
 `complete()` cannot reach it: a failing hook still returns before any store call,
 so `tests/test_lifecycle_hooks.py:77`
 (`test_a_failing_pre_hook_writes_no_field`) keeps passing unmodified — more
@@ -172,11 +181,14 @@ def transition(self, slug, to_status, fields: dict | None = None) -> WorkItem:
         raise IllegalTransition(...)
     merged = dict(fields or {})
     if item.status == "active" or to_status == "active":
-        merged.setdefault("owner", "")
-        merged.setdefault("started", "")
+        merged.update({"owner": "", "started": ""})     # lifecycle-owned; not overridable
     self._effect_transition(slug, to_status, merged)
     return self._require(slug)
 ```
+
+`update`, not `setdefault`: clearing the claim is a guarantee `transition` makes
+today, and `fields` is now part of its contract — a caller passing `owner` should
+not be able to defeat it.
 
 `complete` passes `{"resolution": resolution}` instead of calling `set_field`
 first — on both routes, including the `from_backlog_epic` direct call
@@ -195,10 +207,24 @@ and before the auto-commit (`fs.py:2991-2992`):
 ```python
 self._mv(src, dst)
 if fields:
-    self._set_fields_at(dst, fields)
+    try:
+        self._set_fields_at(dst, fields)
+    except subprocess.CalledProcessError as e:          # `git add` refused
+        raise TransitionCommitError(
+            f"{slug} moved to {to_status}, but writing its fields failed:\n{e}")
 if self.auto_commit_transitions():
     self._commit_transition(slug, src, dst, to_status, item)
 ```
+
+The `try` is not decoration. `_set_fields_at` ends in `_stage` → `git_stage` →
+`subprocess.run(..., check=True)` (`fs.py:287`), and a held `index.lock` — which
+is exactly what the concurrent agents in this scenario produce — raises
+`CalledProcessError`. Before the reorder that failure happened *before* the move
+and left nothing behind; after it, the item has moved. `CalledProcessError` is
+not in `_ERRORS` (`tcw/work/cli.py:34`), so it would exit as a traceback.
+`TransitionCommitError` is, it already means precisely "it moved, the follow-up
+git step did not" (`cli.py:30-33`), and `serve._transition_ok`
+(`serve/__init__.py:162-177`) already renders it that way.
 
 with `set_field` (`fs.py:2956-2961`) refactored onto the same helper:
 
@@ -240,23 +266,28 @@ becomes "This process changed nothing; re-read the item before retrying." The
 
 ### 4. The remaining window, stated honestly
 
-After the fix, a disagreement needs the process to die (or the write to fail on
-I/O) between a successful move and the field write — microseconds, and on an item
+After the fix, a disagreement needs the process to die (or the write to fail)
+between a successful move and the field write — microseconds, and on an item
 *this* process legitimately owns. The result is a completed item with no
 resolution, which `_status_resolution_problems` reports as "status 'completed'
 with missing or invalid resolution" (`fs.py:2703-2704`) — loud and on the right
 item, versus today's silent wrong answer. Its docstring (`fs.py:2689-2693`) is
 rewritten to say that, replacing "no code path can produce" a disagreement.
 
+The one non-fatal way to reach it is the `git add` refusal above, which is why it
+raises `TransitionCommitError` rather than passing: the item moved, its fields
+did not follow, and the operator is told so in the same sentence the store
+already uses for a refused transition commit.
+
 ### 5. `_require_detail` for the five read-back sites
 
 ```python
 def _require_detail(detail, kind: str, ref: str):
-    """A composite write's read-back lost the race. The write landed; the caller
-    asked for a snapshot that no longer exists to take."""
+    """A composite operation's read-back lost the race: the snapshot it was asked
+    to return no longer exists to take."""
     if detail is None:
-        raise ValueError(f"{kind} '{ref}' was written, but reading it back failed: "
-                         f"another process moved or removed it. Re-read it.")
+        raise ValueError(f"{kind} '{ref}' could not be read back: another process "
+                         f"moved or removed it. Re-read it.")
     return detail
 ```
 
@@ -264,8 +295,19 @@ A module-level function, not a method: the three stores are separate classes ove
 one `FsTreeStore`, and one shared line per site beats a mixin. Applied at
 `fs.py:3203`, `3316`, `3338`, `1260`, `1925`.
 
+**The message deliberately does not say the write landed**, even though at four
+of the five sites it did. `fs.py:3316` is `update_work`'s
+`if not changed and parent is _UNSET` early return — nothing was written there,
+and one message that is true at five sites beats two messages split by a
+distinction the caller cannot act on. What the caller can act on is the re-read,
+which the message names, and the **ref**, which is why the helper takes one:
+after a failed `tcw work new` the item exists under a slug the user would
+otherwise never see.
+
 Downstream effects, all handled: `tcw work new` prints
-`tcw work new: <message>` and exits 1 (`cli.py:232-234`); `FsWorkStore.create`
+`tcw work new: <message>` and exits 1 (the handler at `cli.py:235-237`, reached
+because `item = detail.item` at `cli.py:234` is inside the `try`);
+`FsWorkStore.create`
 (`fs.py:2953`) propagates the same `ValueError`; both `serve` write routes hit
 `_map_store_error` and return **422** with a JSON body instead of a 500 whose
 text is `'NoneType' object has no attribute 'item'`. 422 over 409 because
@@ -288,9 +330,20 @@ Repo-wide, both defect shapes.
 | `base.py:1273-1274`           | The defect (transition). Fixed.                                 |
 | `base.py:1407`                | The defect (complete). Fixed.                                   |
 | `base.py:1233`, `1248`        | `add_blocker` / `remove_blocker` — standalone, no move follows. |
-| `base.py:1312-1313`, `1330-1332` | `WorkStore.start` — after the move, and dead under FS.       |
-| `fs.py:2056-2057`             | Take-over — writes then commits; no move.                       |
+| `base.py:1312-1313`           | `WorkStore.start`'s take-over branch — no move at all (returns at `1314`), and dead under FS. |
+| `base.py:1330-1332`           | `WorkStore.start` — after the move, and dead under FS.          |
+| `fs.py:2056-2057`             | Take-over — no move of its own, but see below.                  |
 | `cli.py:539-540`              | `--worktree` fields — after `start`, committed at `cli.py:545+`. |
+
+The take-over path deserves the sharper test — "can a competitor's move strand
+this write?", not "does *my* move follow it?".
+`tests/test_external_work_store.py:562` already documents a competitor moving the
+item out from under exactly this path, and because `owner` and `started` are two
+`set_field` calls, a move between them tears the pair: `owner` on the old folder,
+`started` on the new. It produces no status/resolution disagreement, so it is not
+this item's defect — but `_set_fields_at` collapses the pair into one write for
+free, so this spec takes that one line rather than leaving a documented tear
+behind.
 
 Non-`set_field` writes-before-a-move: only `update_work`'s re-parent
 (non-goal above). No other `_mv` in `tcw/store/fs.py` is preceded by a write to
@@ -333,9 +386,15 @@ no `create_term` / `create_capability` to check.
    no-change call to reach).
 8. `tcw work new` surfaces that as `tcw work new: <message>` on stderr with exit
    1 and no traceback; `POST /api/work` returns 422 with a JSON body, not 500.
-9. `grep -n "set_field(" tcw/store/base.py` shows no call that precedes a
-   `transition`/`_effect_transition` in the same method.
-10. Full suite green locally and both CI legs green.
+9. No `set_field` call remains on a code path that goes on to reach a transition.
+   Checked by reading `grep -n "set_field(" tcw/store/base.py` with judgment, not
+   by text position: `base.py:1312-1313` still *textually* precedes the
+   `transition` at `base.py:1329`, but its branch returns at `1314` and never
+   reaches it.
+10. A `git add` failure during the post-move field write surfaces as
+    `TransitionCommitError` naming the item and the destination — not
+    `CalledProcessError` — with a test that patches `git_stage` to raise.
+11. Full suite green locally and both CI legs green.
 
 ## Risks
 
