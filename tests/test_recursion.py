@@ -367,6 +367,43 @@ def test_delegate_writes_child_inbox_only(tmp_path):
     assert _no_items(child)                                # boundary: never touches backlog/active/completed
 
 
+def test_delegate_resolves_the_project_id_not_the_directory_name(tmp_path):
+    """`delegate` matches the canonical project ID, never a filesystem path.
+
+    Deliberately breaks the coincidence `mk_node` creates — it derives the
+    project ID from the directory name, so ID and directory always match and
+    this distinction is invisible to every other test in this file.
+    """
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "sub-dir-name")
+    for root, cfg in ((parent, "parent"), (child, "sub-dir-name")):
+        c = yaml.safe_load((root / "tcw-config.yaml").read_text())
+        if root is child:
+            c["id"] = "canonical-id"
+        else:
+            c["connected-projects"]["children"] = {"canonical-id": str(child.resolve())}
+        (root / "tcw-config.yaml").write_text(yaml.safe_dump(c, sort_keys=False))
+    c = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    c["connected-projects"] = {"parent": {"parent": str(parent.resolve())}}
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(c, sort_keys=False))
+
+    with pytest.raises(ValueError, match="no child node 'sub-dir-name'"):
+        delegate(parent, "sub-dir-name", "by directory name")
+    doc = delegate(parent, "canonical-id", "by project id")
+    assert doc.parent == FsWorkStore.open(child).root / "inbox"
+
+
+def test_delegate_help_names_the_project_id(capsys):
+    """The defect this pins is documentation, not behavior: the help string used
+    to promise a path, which is the one thing that does not resolve."""
+    from tcw.cli import main
+    with pytest.raises(SystemExit):
+        main(["work", "delegate", "--help"])
+    text = capsys.readouterr().out.lower()
+    assert "project id" in text
+    assert "path" not in text
+
+
 def test_delegate_unknown_child_errors(tmp_path):
     parent = mk_node(tmp_path, "parent")
     mk_node(parent, "child")

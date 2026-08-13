@@ -1023,7 +1023,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pr.set_defaults(func=_reconcile)
 
     pdg = g.add_parser("delegate", help="write a request into a child node's inbox/")
-    pdg.add_argument("child", help="child node path (relative to this node)")
+    pdg.add_argument("child", help="child node's canonical project id (`tcw work nodes` lists them)")
     pdg.add_argument("title")
     pdg.add_argument("--initiative", help="stamp the request with an initiative slug")
     pdg.set_defaults(func=_delegate)
