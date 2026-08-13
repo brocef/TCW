@@ -384,8 +384,8 @@ def test_inbox_accept_keeps_the_original_markdown_in_the_body(tmp_path):
     _delegated(root, "req.md", "from: parent\ninitiative: 2026-01-01-epic")
 
     item = st.inbox_accept("req.md")
-    request = (st.path(item.slug) / "initial-request.md").read_text()
-    assert "from: parent" in request and "details" in request
+    intake = (st.path(item.slug) / "intake.md").read_text()
+    assert "from: parent" in intake and "details" in intake
 
 
 def test_cli_inbox_list_show_accept(tmp_path, monkeypatch, capsys):
