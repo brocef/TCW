@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -914,3 +916,135 @@ def test_worktree_start_stops_at_a_refused_gitignore_commit(tmp_path, monkeypatc
     err = capsys.readouterr().err
     assert "metadata was committed" in err and "no worktree was created" in err
     assert created == []
+
+
+# ── stable reads across an in-flight claim ───────────────────────────────────
+
+def _privately_claim(store: FsWorkStore, slug: str) -> Path:
+    """Move `slug` into the adapter-private `.claiming/` folder, as `start` does
+    between its atomic rename and its publication to `active/`. Returns the
+    private directory."""
+    claiming = store.root / ".claiming"
+    claiming.mkdir(exist_ok=True)
+    private = claiming / f"{slug}-{'0' * 32}"
+    os.replace(store.root / "backlog" / slug, private)
+    return private
+
+
+def _blocked_pair(tmp_path: Path) -> tuple[Path, str, str]:
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    a = st.create("Blocker A", created="2026-01-01").slug
+    b = st.create("Target B", created="2026-01-02").slug
+    st.set_field(b, "blocked_by", [{"slug": a}])
+    return code, a, b
+
+
+def test_get_of_a_missing_slug_does_not_wait(tmp_path):
+    """The wait is conditional on claim evidence. An ordinary miss is the hot
+    path and must not pay the 500 ms publication window."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+
+    started = time.monotonic()
+    assert st.get("2026-01-01-nope") is None
+    assert time.monotonic() - started < 0.25
+
+
+def test_a_longer_slugs_claim_does_not_stall_a_shorter_one(tmp_path):
+    """`_unique_slug` mints `{base}-2`, so slugs are prefixes of each other by
+    construction. A claim on the longer one must not answer for the shorter."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    long_slug = st.create("Same title", created="2026-01-01").slug
+    _privately_claim(st, long_slug)
+
+    started = time.monotonic()
+    assert FsWorkStore.open(code).get("2026-01-01-same") is None
+    assert time.monotonic() - started < 0.25
+
+
+def test_start_waits_for_an_in_flight_blocker_then_reports_it(tmp_path):
+    """The defect: while A is privately claimed, `get(A)` answers None and the
+    storage-neutral blocker loop reads that as "resolved", so B starts straight
+    through a blocker that very much exists."""
+    code, a, b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    private = _privately_claim(st, a)
+
+    def publish():
+        # Deliberately after the reader has already looked: the whole point is
+        # that the first probe sees `.claiming/`. 50 ms against the 500 ms
+        # publication window leaves an order of magnitude of slack, and the
+        # unfixed code fails instantly rather than on a timing edge.
+        time.sleep(0.05)
+        os.replace(private, st.root / "active" / a)
+
+    publisher = threading.Thread(target=publish)
+    publisher.start()
+    try:
+        with pytest.raises(ValueError, match="blocked by"):
+            FsWorkStore.open(code).start(b, owner="t@t")
+    finally:
+        publisher.join(5)
+
+
+def test_create_records_an_in_flight_blocker_as_a_slug_not_external(tmp_path):
+    """`_entry_for` stores `{"external": ref}` when `get` says None. A blocker
+    mid-claim would be silently demoted to free text and stop being a blocker."""
+    code, a, _b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    private = _privately_claim(st, a)
+
+    def publish():
+        # Deliberately after the reader has already looked: the whole point is
+        # that the first probe sees `.claiming/`. 50 ms against the 500 ms
+        # publication window leaves an order of magnitude of slack, and the
+        # unfixed code fails instantly rather than on a timing edge.
+        time.sleep(0.05)
+        os.replace(private, st.root / "active" / a)
+
+    publisher = threading.Thread(target=publish)
+    publisher.start()
+    try:
+        item = FsWorkStore.open(code).create_work("Depends on A", created="2026-01-03",
+                                                  blockers=[a]).item
+    finally:
+        publisher.join(5)
+    assert FsWorkStore.open(code).get(item.slug).blocked_by == [{"slug": a}]
+
+
+def test_take_over_still_recovers_an_abandoned_claim(tmp_path):
+    """The documented remedy. A stable `get` that raises on exactly this state
+    would make the recovery branch unreachable."""
+    code, a, _b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    _privately_claim(st, a)                      # abandoned: nobody will publish
+
+    recovered = FsWorkStore.open(code).start(a, take_over=True, owner="t@t")
+    assert recovered.status == "active"
+    assert recovered.owner == "t@t"
+
+
+def test_an_abandoned_blocker_is_reported_as_a_blocker(tmp_path):
+    """Starting B must fail about B's blocker, not raise A's interrupted-claim
+    error — B's caller cannot act on a message about a different item."""
+    code, a, b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    _privately_claim(st, a)                      # abandoned
+
+    with pytest.raises(ValueError, match="blocked by") as caught:
+        FsWorkStore.open(code).start(b, owner="t@t")
+    assert "interrupted claim" not in str(caught.value)
+
+
+def test_an_abandoned_claim_reports_an_interrupted_claim_on_a_plain_read(tmp_path):
+    code, a, _b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    _privately_claim(st, a)
+
+    with pytest.raises(ValueError, match="interrupted claim"):
+        FsWorkStore.open(code).get(a)
