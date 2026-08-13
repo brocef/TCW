@@ -1048,3 +1048,42 @@ def test_an_abandoned_claim_reports_an_interrupted_claim_on_a_plain_read(tmp_pat
 
     with pytest.raises(ValueError, match="interrupted claim"):
         FsWorkStore.open(code).get(a)
+
+
+def test_get_detail_survives_a_move_between_find_and_read(tmp_path):
+    """`get_detail` locates the directory and then reads `state.yaml` inside it.
+    A concurrent claim moves that directory in between, so the read raised
+    `FileNotFoundError` — a raw traceback out of the web API for an item that is
+    perfectly fine, just somewhere else now."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    slug = st.create("Racy", created="2026-01-01").slug
+
+    real_find = FsWorkStore._find
+    moved = {"done": False}
+
+    def move_after_locating(self, inner_slug):
+        found = real_find(self, inner_slug)
+        if inner_slug == slug and not moved["done"]:
+            moved["done"] = True                 # the window, forced open once
+            os.replace(self.root / "backlog" / slug, self.root / "active" / slug)
+        return found
+
+    reader = FsWorkStore.open(code)
+    original = FsWorkStore._find
+    FsWorkStore._find = move_after_locating
+    try:
+        detail = reader.get_detail(slug)
+    finally:
+        FsWorkStore._find = original
+
+    assert detail is not None
+    assert detail.item.status == "active"        # the settled location...
+    assert detail.core_revision                  # ...and revisions from that same snapshot
+
+
+def test_get_detail_of_a_genuinely_unknown_slug_is_none(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    assert FsWorkStore.open(code).get_detail("2026-01-01-nope") is None
