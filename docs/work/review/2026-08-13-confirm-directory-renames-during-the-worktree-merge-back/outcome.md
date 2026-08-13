@@ -49,6 +49,7 @@ Criteria evidence:
   edited to accommodate the change.
 - **8 (single override).** `rg -n '"-c",' tcw --glob '*.py'` → exactly one hit,
   in `merge_worktree`, across 21 `git -C` call sites.
+- **7 (branch-absent no-op).** Covered by a new test — see correction 4 below.
 
 ### Tasks 3-6 — documentation (`580f52f`)
 
@@ -79,7 +80,15 @@ plan from the previous item's experience and held.
    proof: `git diff <red-commit>..HEAD -- tests/test_recursion.py`, which is empty
    precisely when the fix touched no test.
 
-3. **Task 7 Step 2's `pnpm install` note was already satisfied.** The plan assumed
+3. **Criterion 7 had no coverage, and the plan said it did.** Plan Task 2 Step 3
+   asserted the branch-absent no-op was "already covered by the existing recovery
+   test". Checking rather than trusting that: the only candidate,
+   `test_already_integrated_tolerates_a_worktree_removed_externally`, passes
+   `--already-integrated`, which skips `merge_worktree` altogether. Nothing
+   exercised the guard. Added
+   `test_merge_worktree_is_a_quiet_no_op_without_the_branch` (`724b036`).
+
+4. **Task 7 Step 2's `pnpm install` note was already satisfied.** The plan assumed
    a fresh linked worktree; this one was already installed during the previous
    item, so the step was a no-op rather than a prerequisite.
 
@@ -93,7 +102,7 @@ than the editable install pinned at the primary checkout.
 
 | Check | Result |
 | --- | --- |
-| `python -m pytest -q` | **1249 passed** in 241s (was 1247; +2 new tests) |
+| `python -m pytest -q` | **1250 passed** in 247s (was 1247; +3 new tests) |
 | `pnpm exec tsc --noEmit` | clean |
 | `pnpm run lint` | clean |
 | `pnpm run test` | 50 passed, 11 files |
