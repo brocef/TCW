@@ -76,3 +76,30 @@ category.
   found no further vulnerable reader. `artifacts()` and `_validation_resources`
   already carry explicit vanish guards; the rest are transition/write logic that is
   conflict-aware by contract, or single path lookups that read nothing.
+
+### Reconcile commit reporting
+
+- `reconcile` (`tcw/work/recursion.py`) commits through `git_commit_result`
+  instead of `git_commit` and raises `ValueError` carrying git's output.
+  `git_commit` raises `subprocess.CalledProcessError`, which is absent from
+  `tcw/work/cli.py`'s `_ERRORS`, so a refused commit escaped `main` as a
+  traceback. `_ERRORS` is deliberately **unchanged**: it guards 16 `except` sites,
+  and widening it would swallow the `git_mv` raise-through that
+  `tests/test_work_autocommit.py:311` exists to protect.
+- Removed the `changed or auto_completed` guard on the commit. It existed only to
+  avoid an empty commit back when that raised; `git_commit_result` answers
+  "nothing to commit" benignly. Keeping it broke recovery: after a refused commit
+  the rollup is already correct on disk, so a retry computed `changed=False`,
+  skipped the commit, and exited 0 with the rollup still staged — a false success
+  reached by following the documented retry. Idempotence is unchanged (an
+  unchanged rollup with nothing else staged has nothing committable). One nuance:
+  an unchanged reconcile now also commits unrelated work-store changes that were
+  already staged, the same whole-store pathspec behavior a changed reconcile has
+  always had.
+- `git_commit` now has no production caller and is retained as a test helper
+  (`tests/test_recursion.py`). Not dead code to delete.
+- `tests/test_recursion.py`: `_refuse_commits` writes a rejecting `pre-commit`
+  hook into the repository's own `.git/hooks/`, independent of `core.hooksPath`.
+  `test_refusing_hook_fixture_actually_blocks_a_commit` guards the fixture itself,
+  so an environment where hooks go inert fails there rather than letting the
+  reconcile tests pass for the wrong reason.

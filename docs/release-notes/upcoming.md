@@ -36,3 +36,10 @@ such an item reports it as a blocker, as it should.
 
 Opening a work item in the local web app while it is being moved no longer risks
 an internal error; the app now retries and shows the item in its new state.
+
+Reconciling an epic with `--commit` now tells you when the commit was refused —
+by a pre-commit hook, a signing key it could not use, or anything else git
+declines — instead of showing an internal error. The message says the rollup was
+written and staged, so you know the work is sitting in your index rather than
+lost, and re-running the command once the cause is fixed now finishes the job.
+Previously that retry reported success without ever committing.
