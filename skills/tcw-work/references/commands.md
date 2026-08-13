@@ -3,7 +3,7 @@
 | Goal                     | Command                                                                                                                                         |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | create an item           | `tcw work new "<title>" [--priority N] [--effort L\|M\|H\|VH] [--complexity …] [--tag <t>] [--blocked-by <ref>]`                                |
-| triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`                                                             |
+| triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`; `<entry>` is either identifier `list` printed (ref or title) |
 | locate stores            | `tcw work path` (configured work root) · `tcw work inbox path` (its inbox); both print only the absolute resolved path                          |
 | the board                | `tcw work list [--status <s>] [--tag <t>] [--all] [-i]` — hides resolved; `-i` adds descendant boards                                           |
 | read an item             | `tcw work show <slug>` · `tcw work path <slug>`                                                                                                 |
@@ -21,7 +21,7 @@
 | nest a coupled piece     | `tcw work new "<sub>" --parent <slug>`                                                                                                          |
 | add an epic task         | `tcw work new "<task>" --initiative <epic-slug>`                                                                                                |
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
-| hand work down / up      | `tcw work delegate <child> "<title>"` · `tcw work escalate "<title>"`                                                                           |
+| hand work down / up      | `tcw work delegate <child-project-id> "<title>"` · `tcw work escalate "<title>"` — the ID `tcw work nodes` lists, never a path              |
 | topology                 | `tcw work nodes`                                                                                                                                |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 

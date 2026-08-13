@@ -673,6 +673,7 @@ tcw work init                          # docs/work/{inbox,backlog,active,review,
 tcw work inbox list                    # list each raw file or folder entry
 tcw work inbox show request.md         # inspect metadata, text, and resource manifest
 tcw work inbox accept request.md       # consume it into a new backlog item; print the slug
+tcw work inbox accept request            # …or the bare title `inbox list` printed, same entry
 tcw work inbox accept request.md --title "Clear title"
 
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
@@ -905,7 +906,7 @@ tcw work reconcile "$epic"                  # follow registered descendants → 
 tcw work reconcile "$epic" --commit         # …and commit it
 tcw work reconcile "$epic" --complete-when-ready  # …and auto-close it if every child is resolved
 
-echo "needs an API change" | tcw work delegate child-repo "Expose X"  # request DOWN to a child inbox/
+echo "needs an API change" | tcw work delegate child-repo "Expose X"  # request DOWN (child's project id, not a path)
 echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # request UP to the parent inbox/
 ```
 
@@ -915,7 +916,10 @@ deltas, and the next ready actions — and is **read-only** on the capabilities
 ledger. `delegate`/`escalate` only ever write a request into the target node's
 `inbox/`, never its tracked work, respecting the node write-boundary — into the
 target's *configured* inbox, and they fail loudly rather than inventing a
-`docs/work/` folder when that store cannot be reached.
+`docs/work/` folder when that store cannot be reached. `delegate` addresses its
+target by canonical project ID, the form `tcw work nodes` lists — never by
+filesystem path. A delegated request's `--initiative` survives acceptance, so a
+slice accepted in the child stays linked to the epic that asked for it.
 
 Initiative transitions are relation-gated: a task with `initiative: <epic>` is
 refused at `start` until the epic is active, and an epic is refused at
