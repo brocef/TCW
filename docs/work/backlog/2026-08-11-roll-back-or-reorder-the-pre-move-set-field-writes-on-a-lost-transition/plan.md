@@ -19,8 +19,8 @@ isolated, not where it is convenient.
     - `_effect_transition` (abstract, `base.py:997`) gains
       `fields: dict | None = None`.
     - `transition` (`base.py:1268-1276`) gains the same parameter, merges its
-      `owner`/`started` blanking into it with `setdefault` (an explicit caller
-      value wins), and passes the merged dict down. It no longer calls
+      `owner`/`started` blanking into it with `update` (the lifecycle-owned keys
+      win over a caller's), and passes the merged dict down. It no longer calls
       `set_field`.
     - `complete` (`base.py:1371-1421`) drops `set_field(slug, "resolution", …)`
       at `base.py:1407` and passes `{"resolution": resolution}` on **both**
@@ -37,7 +37,15 @@ isolated, not where it is convenient.
       `dst` **after** `self._mv(src, dst)` (`fs.py:2990`) and **before** the
       auto-commit (`fs.py:2991-2992`). Writing at `dst` directly, not by
       re-resolving the slug: a third rescan would reopen the window the move just
-      closed.
+      closed. The call is wrapped so a `CalledProcessError` out of `git_stage`
+      (`fs.py:287`, e.g. a held `index.lock`) re-raises as
+      `TransitionCommitError` — the item moved and the git step did not, which is
+      what that error already means and what `_ERRORS` (`cli.py:34`) already
+      handles.
+    - `start`'s take-over branch (`fs.py:2056-2057`) writes `owner` and `started`
+      through one `_set_fields_at` instead of two `set_field` calls, so a
+      competitor moving the item between them can no longer tear the pair across
+      two folders. One line; not the reported defect, but the same primitive.
 - `tests/test_external_work_store.py` — the three
   `lose_the_race_inside_the_transition` stubs (`:654`, `:698`, `:740`) take
   `fields=None` and pass it through, or they raise `TypeError`.
@@ -53,14 +61,17 @@ isolated, not where it is convenient.
    `owner` and `started` at their pre-call values (they are set by `start`, so the
    fixture must start with an owner). Run it; it fails.
 3. Make the code change above. Both now pass.
-4. Add the two positive pins, which must never have been failing:
+4. Add the three positive pins, which must never have been failing:
     - a **successful** `complete` still writes `resolution`, and a successful
       `submit` from `active` still blanks `owner`/`started`, read back from a
       fresh `FsWorkStore.open(...)`;
     - for a **tracked** destination (`review/`, which is not gitignored),
       `git show HEAD:<dst>/state.yaml` after `submit` already carries the blanked
       `owner` — i.e. the field write is inside the transition commit, not left
-      dirty behind it.
+      dirty behind it;
+    - a `git_stage` patched to raise `CalledProcessError` during the post-move
+      write surfaces as `TransitionCommitError` naming the item and destination,
+      and the CLI reports it with exit 1 and no traceback.
 
 **Verified by**
 
@@ -85,9 +96,15 @@ green plus the greps below.
   code path can produce" a disagreement and names the three ways one can now
   arrive: a hand-run `mv`, a bad merge, and a transition interrupted between its
   move and its field write.
-- `tcw/work/cli.py:509-511` and `934-936` — the two `pre`-hook comments keep the
+- `tcw/work/cli.py:508-510` and `934-936` — the two `pre`-hook comments keep the
   rule (no store mutation before the hook) and drop the rationale that
-  `complete()` writes fields first, which task 1 makes false.
+  `complete()` writes fields first, which task 1 makes false. (The `start` block
+  is `508-510`; `511` is the `run_pre` guard itself and does not change.)
+- `tcw/store/fs.py:317-319` — `git_mv`'s justification for `rm -f`: "the
+  transition stages the item's own state before moving it, so the index
+  legitimately differs from both HEAD and the worktree". Task 1 removes that
+  staging. `-f` is still required — `create_work` stages a never-committed item
+  (`fs.py:3201`) — so only the reason changes.
 - `tests/test_lifecycle_hooks.py` — the module docstring (`:4-8`) and
   `test_a_failing_pre_hook_writes_no_field`'s docstring (`:78-84`) make the same
   claim about `complete()` writing before it moves. Same correction; the
@@ -105,10 +122,12 @@ archive); `pytest -q` green.
 
 - `tcw/store/fs.py` — module-level
   `_require_detail(detail, kind: str, ref: str)`: returns `detail`, or raises
-  `ValueError(f"{kind} '{ref}' was written, but reading it back failed: another "
-  f"process moved or removed it. Re-read it.")`. A function, not a method: the
-  three stores are sibling classes over one `FsTreeStore` and a mixin would cost
-  more than five call sites.
+  `ValueError(f"{kind} '{ref}' could not be read back: another process moved or "
+  f"removed it. Re-read it.")`. A function, not a method: the three stores are
+  sibling classes over one `FsTreeStore` and a mixin would cost more than five
+  call sites. The message says nothing about the write landing — at `fs.py:3316`
+  nothing was written — but it always names the ref, which is the only way a user
+  whose `tcw work new` failed learns the slug of the item that now exists.
 - Applied at the five returns that promise a value:
   `fs.py:3203` (`create_work`), `fs.py:3316` and `fs.py:3338` (`update_work`),
   `fs.py:1260` (`update_term`), `fs.py:1925` (`update_capability`).
