@@ -1,75 +1,86 @@
 # Rework — Unify raw intake into a single artifact
 
-Rejected at `verify`. Criteria 1–7 and 9–12 are met and were re-confirmed by hand
-after the merge with `main` (scratch node: all three inbox shapes, all four board
-states, promotion by direct file write, empty-request-beside-real-intake, an item
-with neither artifact). The suite is green at 1310.
-
-**Criterion 8 is met at the API and false at the surface a user touches.** The
-web app was never taught about intake, and `verify` is where that showed up —
-`outcome.md` predicted it under "Not done: clicking through `tcw serve`'s
-editor."
+Second rejection at `verify`. The first rejection's three items landed and were
+re-verified (`38a79df`, `9e0de85`, `607a891`) — the web app's request tab, its
+editor seeding, and the promotion notice. That history is recorded in
+`outcome.md` under "After the rejection"; this document is now the **second**
+pass's outstanding work.
 
 ## What still has to be done
 
-### 1. The request tab must stop rendering intake under the request's name
+### `tcw work reconcile` must stop creating the request
 
-`web/client/src/ui/work-document-tabs.tsx:140` renders `item.body` in the
-"Initial Request" tab. After this item, `body` resolves through the fallback, so
-an **intake-only item shows its raw intake labelled "Initial Request"** — the
-exact conflation this work exists to remove, reintroduced one layer up. Worse,
-"Edit Initial Request" then opens that intake text in the body editor, and saving
-writes it into `initial-request.md`: the user promotes an item while believing
-they are editing the document they are looking at.
+`recursion.py:197` composes `store.path(epic_slug) / "initial-request.md"` and
+writes the rollup block into it, creating the file when absent. On a fresh epic
+that is a code path producing an `initial-request.md` **without the `request`
+stage running** — the exact thing criterion 4 asserts no longer happens. The
+grep it uses (`"## Product changes"`) passes because reconcile writes real
+content rather than a template, so the criterion reads clean while the property
+behind it does not hold. Raised in the first pass and held out of the first
+rework; the requester has now put it in scope.
 
-Gate the tab's body on the `initial-request` artifact being **present**, using
-the `artifacts` prop the component already receives. When it is absent, show the
-not-yet-present notice the spec and plan tabs already use
-(`work-document-tabs.tsx:142-147`) and keep the Edit button — writing it is how
-the request comes into being.
+Two defects, one cause:
 
-`item.body`'s fallback is correct for `tcw work show`, which has one body surface
-and says so. It is wrong for a tab that names which document it is showing.
+1. **The board lies.** A reconciled epic shows `R` — "someone wrote this up" —
+   when all that happened is that a machine wrote a table into the file. That is
+   the letter this item exists to make meaningful.
+2. **The path is composed.** `store.path(...) / "<filename>"` is a hardcoded
+   filesystem reference of exactly the kind `CLAUDE.md` names under "Keep out of
+   the model". No remote adapter can honor it, and the rollup is the one
+   operation an external tracker would most obviously implement differently.
 
-### 2. Saving a body that created the request must say so
+**Move the rollup to its own bounded resource.** `rollup.md` as a **sidecar** —
+`WORK_SIDECARS`, `media_type: text/markdown`, no validation rule — not an
+artifact:
 
-`serve/__init__.py:1002` puts `"promoted"` in the PATCH response and **nothing
-reads it** — `grep -rn "promoted" web/ tcw/serve/dist` is empty. The capability
-`work/capture-raw-intake` claims "that edit promotes the item and says so"; the
-CLI has no body-write path at all, so `serve` is the only place that sentence can
-be true, and today it is not.
+- The rollup is **generated**, not authored. Every `WORK_ARTIFACTS` name is the
+  output of a lifecycle stage a human or agent runs; the rollup is the output of
+  a command. Registering it as an artifact would give it a board letter and place
+  it in a lifecycle it has no position in.
+- `write_sidecar` is already on the abstract `WorkStore`
+  (`base.py:1166`) and already does the atomic write and the staging that
+  `reconcile` currently hand-rolls. The whole change at the write site is calling
+  it. That is the litmus test passing rather than being argued around.
+- Sidecars are already in `_modified_timestamp`'s bounded name list
+  (`fs.py:2491-2495`), so the epic's modified time keeps tracking its rollup.
 
-`app.tsx:630` calls `showSaveResult("Saved", result.data)` on the work core
-PATCH. Distinguish the promoting save there.
+**Migrate on write.** This repo's own epic has its rollup inside
+`initial-request.md` today, and so will anyone else's. When `reconcile` finds a
+`<!-- tcw:rollup -->` block there, strip it, write it to the sidecar, and leave
+the request holding only what a human actually wrote. If stripping leaves the
+request blank, do not leave an empty file behind pretending to be a document.
 
-### 3. Intake needs no new tab
+**Keep every property the current implementation defends.** They were each won
+by a previous item and the comments at `recursion.py:203-226` say so:
+idempotence (an unchanged rollup stages nothing), the unguarded commit (so a
+retry after a refused commit still commits), and `git_commit_result`'s benign
+non-commit handling rather than a traceback.
 
-Already reachable: `content-views.tsx:393-431` renders every present artifact
-outside the three-tab set as a button row, and `intake` now qualifies. Adding a
-fourth tab would be scope this rejection does not ask for. Confirm it renders and
-leave it.
+### Verification
 
-### 4. Re-run the checks
+- A fresh epic reconciles, gets `rollup.md`, and has **no** `initial-request.md`
+  — asserted by listing the folder, the way criterion 1 is.
+- Its board line shows no `R`.
+- An epic whose rollup sits in `initial-request.md` migrates on the next
+  reconcile: sidecar written, block gone from the request, human-written prose
+  above it untouched.
+- Migration where the request was *only* the rollup leaves no empty file.
+- Idempotence: a second reconcile with nothing changed stages nothing.
+- Criterion 4 re-run, and this time it means what it says.
 
-`pnpm` test suite for the changed components, a rebuilt `tcw/serve/dist` (it is
-tracked, and a stale build is what let this ship), and the by-hand click-through
-that `outcome.md` deferred: an intake-only item in `tcw serve`, the request tab,
-the edit, the notice.
+### Documentation
 
-## Not in this rework
-
-**`tcw work reconcile` still writes `initial-request.md`** for an epic with no
-request, which remains the one path that can light `R` on an item nobody wrote
-up. `outcome.md` raised it deliberately and it is out of scope here — it is a
-reconcile defect, not an intake one. File it as its own item at closeout.
+`epic-deltas.md` declares `initial-request.md` the managed target for the rollup
+and is now wrong. The reconcile capability, `commands.md`, the changelog, and the
+release notes all follow.
 
 ## Notes
 
-- The spec is not wrong, and this is not a spec defect. Criterion 8 says
-  "verified through `serve`'s PATCH path", and the PATCH path is verified. What
-  it did not say is that `serve` is more than its API — a criterion written
-  against a handler cannot catch a frontend that ignores the handler's answer.
-  Worth carrying into C2, which also touches a projection `serve` consumes.
-- Both fixes are small and local. The reason this is rework rather than a
-  follow-up is that shipping otherwise would land a capability whose only
-  interactive surface contradicts it.
+- **This is the third time the same fallacy has cost this item a pass.** Criterion
+  8 was verified at the API and false in the client. Criterion 4 is verified by a
+  grep for a template and false for a path that writes real content. Both times
+  the criterion tested the mechanism the implementer had in mind rather than the
+  property the user cares about. Worth carrying into C2's spec, which is written
+  against a projection with the same shape.
+- No new command surface, no new flag. `tcw work reconcile` behaves identically
+  from the outside except in where it puts the file.
