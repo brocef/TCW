@@ -119,7 +119,9 @@ git commit -m "fix: version plugin bootstrap without python source"
 
 - [ ] **Step 1: Update version paths and add VERSION**
 
-Point manifest substitutions at `plugin/.claude-plugin/plugin.json` and `plugin/.codex-plugin/plugin.json`; add exact read/write of `plugin/VERSION`; retain marketplace and Python versions in the drift check.
+Point manifest substitutions at `plugin/.claude-plugin/plugin.json` and `plugin/.codex-plugin/plugin.json`; retain marketplace and Python versions in the drift check.
+
+`plugin/VERSION` needs a second code path, not a new dict entry: `VERSION_FILES` maps a path to a `"version": "(…)"` regex and the bump reuses those patterns (`scripts/cut_version.py:22-27, 86-88`), while VERSION is a bare version string plus newline. Give it its own read (whole-file strip) and write (overwrite), and make sure the **drift check** covers it too — a marker the bump writes but the drift check ignores is the one that silently rots.
 
 - [ ] **Step 2: Extend isolated cut-version tests**
 
@@ -145,7 +147,8 @@ git commit -m "build: version the isolated plugin payload"
 ### Task 5: Repair repository-wide path consumers
 
 **Files:**
-- Modify: tests and scripts found by the stale-path audit
+- Modify: `tests/test_skill_lifecycle_parity.py:25-26` — `SKILL`/`REFS` are `REPO / "skills/tcw-work/…"` constants that break on the move; the only known-in-advance consumer, so fix it directly rather than waiting for the audit to rediscover it
+- Modify: further tests and scripts found by the stale-path audit
 - Modify: repository docs outside the final Documentation Sync set when they contain broken literal paths
 
 - [ ] **Step 1: Audit stale paths**
@@ -210,7 +213,11 @@ Run the documented Claude plugin validator and Codex plugin/Agentskills validato
 
 - [ ] **Step 3: Inspect the payload and diff**
 
-Run: `find plugin -type f -printf '%P\n' | sort && git diff --check && git status --short`
+Run: `git ls-files plugin && git diff --check && git status --short`
+
+(`find -printf` is GNU-only and fails on the macOS BSD `find` this repo is
+developed on; `git ls-files` is also the more honest listing, since untracked
+files are not payload.)
 
 Expected: only agent assets appear under plugin, no Python files are listed, and no unexpected changes remain.
 

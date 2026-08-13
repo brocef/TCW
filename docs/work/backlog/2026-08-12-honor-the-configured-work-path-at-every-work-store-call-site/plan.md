@@ -95,6 +95,21 @@ def _has_work_store(node_root: Path) -> bool:
 
 Catch only `ValueError`; unexpected filesystem and programming errors remain visible.
 
+Note what this tightens beyond the decoy case: `open()` also requires `inbox` and
+**every** name in `WORK_STATUSES` to exist (`tcw/store/fs.py:1945-1947`), while the
+fast path accepted any `docs/work` directory at all. A default-layout store
+predating a later-added status folder is discoverable today and becomes invisible
+after this change — a registered node silently dropping out of `child_nodes` /
+`descendant_nodes` is a worse failure than the decoy it fixes.
+
+- [ ] **Step 3b: Cover the incomplete-default-store case**
+
+Add a test for a default `docs/work` missing one `WORK_STATUSES` folder and decide
+the answer deliberately: either `_has_work_store` stays strict and the release
+notes tell users to run the repair (name the exact command), or discovery treats a
+structurally incomplete *default* store as present and lets `open()` raise at use.
+Record the choice in `spec.md`; do not let it fall out of the implementation.
+
 - [ ] **Step 4: Verify discovery behavior**
 
 ```bash
@@ -420,11 +435,19 @@ ignore_changed = ensure_worktree_ignored(node)
 st.set_field(bare, "worktree", f"{WORKTREES_DIR}/{bare}")
 st.set_field(bare, "branch", f"work/{bare}")
 
-store_pathspec = str(st.root.relative_to(st.store_git_root))
+# Both status folders, exactly as today (`cli.py:546-556`): with auto-commit off
+# the move is only staged, and a staged rename needs both halves or the deletion
+# is left behind. `git_commit_result` drops pathspecs git has nothing for.
+rel = st.root.relative_to(st.store_git_root)
+store_paths = [str(rel / "backlog" / bare), str(rel / "active" / bare)]
+if st.store_git_root == node:
+    # Same repository: one commit, as today. `.gitignore` joins the pathspec
+    # rather than earning a second commit.
+    store_paths += [".gitignore"] if ignore_changed else []
+    ignore_changed = False
+what = "worktree" if st.store_git_root == node else "worktree metadata"
 store_err = git_commit_result(
-    st.store_git_root,
-    f"tcw work: start {bare} (worktree metadata)",
-    store_pathspec,
+    st.store_git_root, f"tcw work: start {bare} ({what})", *store_paths,
 )
 if store_err:
     print(
@@ -449,6 +472,12 @@ if ignore_changed:
 ```
 
 Call `add_worktree(node, bare)` only after both required commits succeed.
+
+Two things this shape is deliberately protecting, both of which the obvious
+version loses:
+
+- **Never widen the pathspec to the store root.** `str(st.root.relative_to(st.store_git_root))` would name the whole work store, sweeping every other staged work-store change — another item's edit, an unrelated transition — into this item's commit. A test that stages `unrelated.txt` outside the store cannot catch that; add one that stages a *second work item* in the store repository and asserts it stays out of the commit.
+- **Do not split the default layout into two commits.** When the store and code share a repository — the common case, and the one criterion 9 promises is unchanged — `.gitignore` belongs in the single existing commit. Only a genuinely split repository pays for two. Keep the same-repository commit message `tcw work: start {bare} (worktree)` so existing assertions and history stay stable; the `(worktree metadata)` / `(worktree ignore)` pair is for the split case only.
 
 - [ ] **Step 6: Write failure-ordering tests**
 

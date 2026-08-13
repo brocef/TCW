@@ -28,9 +28,16 @@ Assert `start(B)` waits for publication then raises `blocked by: A`. In a separa
 
 Measure `get("missing")` with no matching claim and assert it returns `None` well below the 500 ms claim window. Reuse the prefix-collision fixture to prove a longer slug's claim is ignored.
 
+- [ ] **Step 3b: Pin the abandoned-claim recovery paths**
+
+These pass today and must still pass after Task 2 — they are the guard on the one way this change can regress a documented remedy. With an *abandoned* exact claim (a `.claiming/<slug>-<32 hex>` directory and no publisher thread):
+
+- `start(slug, take_over=True, owner="t@t")` recovers the item to `active` and does not raise the interrupted-claim error.
+- With that abandoned claim on blocker A, `start(B)` fails naming A as a blocker, not with A's interrupted-claim error.
+
 - [ ] **Step 4: Run red tests and commit**
 
-Run: `pytest tests/test_external_work_store.py tests/test_work.py -k 'blocker or stable_get' -v`
+Run: `pytest tests/test_external_work_store.py tests/test_work.py -k 'blocker or stable_get or take_over' -v`
 
 Expected: blocker cases fail because base methods observe `None`; genuine miss remains fast.
 
@@ -54,9 +61,15 @@ Move the current one-shot `FsWorkStore.get` body into `_get_now(slug)`. Keep dec
 
 Make `get` return `_get_now` hits immediately. On a miss with no exact `_claiming_dirs`, return `None`. With claim evidence, poll `_get_now` 50 times at 10 ms; return the published item or raise a domain `InterruptedClaim`/clear `ValueError` consistently with takeover messaging.
 
-- [ ] **Step 3: Remove recursive waiting from `_lost_the_claim`**
+- [ ] **Step 3: Keep the claim-recovery callers on the immediate probe**
 
-Poll `_get_now` there. Continue raising `AlreadyClaimed` when active publishes and the interrupted-claim error after one bounded window.
+Three call sites must read `_get_now`, not the new `get`, or the stabilization breaks the very recovery it exists to support:
+
+- `_lost_the_claim` — poll `_get_now`, so each of its 50 iterations does not nest another bounded wait. Continue raising `AlreadyClaimed` when active publishes and the interrupted-claim error after one window.
+- `start`'s take-over probe (`tcw/store/fs.py:1993-2000`) — the `item is None and take_over` branch exists precisely for the state the new `get` raises on. Probe with `_get_now` so `--take-over` can still reach `.claiming/`.
+- `unresolved_blockers` (`tcw/store/base.py:1284`) — a settled blocker must block; an abandoned one must still be reported as a blocker rather than converting `start(B)` into A's interrupted-claim error. Base stays storage-neutral: handle the error there, do not reach for `_get_now` from `base.py`.
+
+Then enumerate the rest: `rg -n 'self\.get\(' tcw/store/base.py tcw/store/fs.py` and classify every remaining caller as "wants the settled value" (leave on `get`) or "is handling the unstable state" (moves to `_get_now`). Record the classification — the error's blast radius is the point of this step.
 
 - [ ] **Step 4: Run claim and blocker suites**
 

@@ -41,6 +41,37 @@ A non-filesystem adapter can continue implementing `get` transactionally; the mo
 
 Use one domain error/message for an abandoned private claim so CLI and HTTP layers can translate it consistently. `AlreadyClaimed` remains specific to a competing `start`, not an ordinary read.
 
+### Claim-recovery paths must keep the immediate probe
+
+A stable `get` is correct for callers asking *"what is this item?"* and wrong for
+the callers whose whole job is to handle the unstable state. Two of them exist,
+and both read through `get` today:
+
+- **`start(..., take_over=True)`** recovers an abandoned claim by observing
+  `get(slug) is None` and then looking in `.claiming/` (`tcw/store/fs.py:1993-2000`).
+  A `get` that raises on exactly that state makes the recovery branch
+  unreachable — `--take-over`, the documented remedy for an interrupted claim,
+  would stop working the moment there is something to recover.
+- **`unresolved_blockers`** calls `get` per blocker (`tcw/store/base.py:1284`).
+  A blocker mid-claim must settle and then block; a blocker whose claim was
+  *abandoned* must still report as a blocker, not convert `start(B)` into a
+  raised error about some other item.
+
+So: `_get_now` is the read for `start`'s take-over probe, for `_lost_the_claim`,
+and for the blocker loop's error handling — the stable `get` supplies the
+settled-value case, and the caller decides what an unsettled claim means to it.
+That distinction is storage-neutral: a transactional adapter draws the same line
+between "read the committed value" and "inspect an in-flight transaction".
+
+### Consequence for the abandoned-claim error
+
+Because the recovery callers no longer route through it, the domain error raised
+by `get` is reachable only from plain reads (`show`, `get_detail`, the web API).
+That is the intent — it names a state the reader cannot resolve and points at
+`--take-over` — but it means the error's blast radius must be enumerated in the
+implementation, not assumed: every `self.get(` in `base.py` and `fs.py` is a
+caller whose behavior changes from "returns None" to "raises" for one input.
+
 ### Harden composite detail reads
 
 `get_detail` should build a snapshot in a bounded retry loop. Each attempt obtains a stable item, finds its directory, and reads state/body/artifacts/sidecars. If the directory or one of those files vanishes because the item moved, restart from stable lookup. A genuine absence returns `None`; exhausted evidence of an interrupted claim raises the domain error. Permission errors, malformed YAML, and other corruption still surface.
@@ -59,6 +90,8 @@ No changes are needed in `_entry_for` or `unresolved_blockers` once adapter `get
 - `FsWorkStore.get("missing")` returns `None` without a 500 ms delay when no exact claim exists.
 - Prefix-related claim directories do not delay or affect another slug.
 - An abandoned exact claim raises the documented domain error after the bounded wait.
+- `tcw work start <slug> --take-over --owner <id>` still recovers an abandoned exact claim, with no `--force`, and does not raise the interrupted-claim error before reaching the recovery branch.
+- With an abandoned claim on blocker A, `start(B)` reports A as a blocker rather than raising A's interrupted-claim error.
 - `_lost_the_claim` completes in roughly one bounded window rather than multiplying nested waits.
 - A `get_detail` race with `start` returns a consistent detail or a translated not-found/conflict response, never `FileNotFoundError` or a traceback.
 - Existing high-contention single-winner and takeover tests remain green.

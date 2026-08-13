@@ -138,6 +138,10 @@ operations whose correctness depends on the active configured store.
    repository, commits a changed `.gitignore` only in the code repository,
    creates the code worktree only after required persistence succeeds, and
    leaves both repositories without staged TCW changes.
+7b. With the default in-repository layout that start still produces exactly one
+   commit, carrying both status paths and `.gitignore`, as it does today. Neither
+   layout's commit contains any work-store path other than the started item's —
+   a second work item staged in the store repository stays staged.
 8. A forced Git failure in each write/commit path returns non-zero with an
    actionable error and does not silently proceed as though the intended write
    was persisted.
@@ -155,6 +159,13 @@ operations whose correctness depends on the active configured store.
 - Tightening `_has_work_store` may expose malformed configurations that a decoy
   default directory previously hid. That is intentional, but discovery callers
   must preserve their established skip-versus-error contracts.
+- The tightening is broader than the decoy case. `FsWorkStore.open` requires
+  `inbox` plus every `WORK_STATUSES` folder, where the fast path accepted any
+  `docs/work` directory — so a default-layout store missing a later-added status
+  folder disappears from node discovery instead of merely failing at use. The
+  implementation must test that case and settle it explicitly (strict plus a named
+  repair command in the release notes, or a structural allowance for default
+  stores), rather than inheriting whichever behavior falls out.
 - Narrow pathspec derivation must handle stores at repository-relative nested
   paths without sweeping unrelated staged changes into TCW commits.
 - Inbox-store validation must prevent phantom roots without breaking an

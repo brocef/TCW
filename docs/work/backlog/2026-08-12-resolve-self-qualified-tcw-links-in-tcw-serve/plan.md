@@ -8,31 +8,65 @@
 
 **Tech Stack:** Python HTTP server, React, TypeScript, Vite, pytest, Vitest/npm tooling.
 
+> **Task 1 is blocked** (2026-08-13 review): self-qualified links already resolve
+> on HEAD in both serve modes, so its red step is green and its fix is a no-op.
+> Task 0 replaces it until the real cause is confirmed. Tasks 2–5 stand.
+
 ---
 
-### Task 1: Correct the server's hosted-project contract
+### Task 0: Reproduce the report before changing the resolver
+
+**Files:**
+- Modify: `tests/test_serve_resolve.py` (characterization only)
+
+- [ ] **Step 1: Pin the current behavior as a test**
+
+Add the parameterized anchor case over `include_descendants=False/True` — register anchor `root`, create an item, resolve both spellings (`tcw://root/W/<slug>`, `tcw://W/root/<slug>`) — and assert `ok: true`, axis `work`, key `<slug>`. It passes today. Land it anyway: it is the regression guard for whatever the real fix turns out to be, and it is the evidence that the filed root cause is not the live one.
+
+- [ ] **Step 2: Test the path-aliased anchor hypothesis**
+
+Serve a node from a second path that resolves to the same project but is not its registered locator — a `start --worktree` checkout is the reporter-shaped case, a symlinked root the cheap one. Resolve a self-qualified reference against it.
+
+Expected: `{"ok": false}`, reproducing the report. If it does, the defect is anchor canonicalization, not set membership, and `registered_project_id(anchor, anchor)` raising (`tcw/store/fs.py:190`) is the constraint the fix has to satisfy.
+
+- [ ] **Step 3: Ask the reporter**
+
+Confirm whether the failing `tcw serve` ran inside a worktree checkout. A negative answer with Step 2 reproducing still narrows it to path aliasing; a negative answer with Step 2 *not* reproducing means the cause is still unknown and this item returns to triage rather than to implementation.
+
+- [ ] **Step 4: Re-specify before writing the fix**
+
+Rewrite `spec.md` §"Hosted project set" against the confirmed cause, including what a genuinely unregistered anchor serves and where `_hosted_projects()` is computed (once per request, not once per URI). Do not carry the filed remediation forward unexamined.
+
+- [ ] **Step 5: Commit the characterization**
+
+```bash
+git add tests/test_serve_resolve.py
+git commit -m "test: pin tcw:// anchor resolution behavior"
+```
+
+### Task 1: Correct the server's hosted-project contract — **blocked on Task 0**
 
 **Files:**
 - Modify: `tests/test_serve_resolve.py:65-145`
 - Modify: `tcw/serve/__init__.py:399-413,919-934`
 
-- [ ] **Step 1: Add failing anchor-resolution tests**
+- [ ] **Step 1: Add the structured unhosted failure**
 
-Add a parameterized test over `include_descendants=False/True`. Register anchor `root`, create a work item, resolve both accepted qualified spellings (`tcw://root/W/<slug>` and `tcw://W/root/<slug>`), and expect `ok: true`, axis `work`, key `<slug>`.
+Change the existing non-aggregated descendant and ancestor assertions to expect `{"ok": false, "reason": "unhosted-project", "project": <id>}`. Keep malformed/missing references exactly `{"ok": false}`. This half is independent of Task 0 — those references are genuinely unhosted today and Task 2 needs the payload.
 
-- [ ] **Step 2: Tighten the descendant/ancestor expectations**
-
-Change the existing non-aggregated descendant and ancestor assertions to expect `{"ok": false, "reason": "unhosted-project", "project": <id>}`. Keep malformed/missing references exactly `{"ok": false}`.
-
-- [ ] **Step 3: Run the resolver tests red**
+- [ ] **Step 2: Run the resolver tests red**
 
 Run: `pytest tests/test_serve_resolve.py -v`
 
-Expected: FAIL because the anchor is absent and unhosted failures carry no context.
+Expected: FAIL because unhosted failures carry no context.
 
-- [ ] **Step 4: Build hosted IDs from served roots**
+- [ ] **Step 3: Emit the structured failure**
 
-In `_hosted_projects`, initialize with `registered_project_id(anchor, anchor)` and union descendants only when enabled. In `/api/resolve`, distinguish `r.ok` plus unhosted project from an invalid resolution and emit the structured failure.
+In `/api/resolve`, distinguish `r.ok` plus unhosted project from an invalid resolution. Hoist `_hosted_projects()` out of the per-URI loop while you are in it.
+
+- [ ] **Step 4: Apply the anchor fix Task 0 specified**
+
+Only once Task 0 Step 4 has rewritten the design. Skip if Task 0 returns the item to triage.
 
 - [ ] **Step 5: Run server tests green and commit**
 
@@ -42,7 +76,7 @@ Expected: PASS.
 
 ```bash
 git add tcw/serve/__init__.py tests/test_serve_resolve.py
-git commit -m "fix: host self-qualified work links"
+git commit -m "fix: report unhosted work links with their project"
 ```
 
 ### Task 2: Render unhosted projects distinctly

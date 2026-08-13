@@ -1,14 +1,52 @@
 # Resolve self-qualified tcw:// links in tcw serve — Specification
 
+> **BLOCKED — the premise below does not reproduce on HEAD (2026-08-13 review).**
+> Do not implement the hosted-project half of this spec until the reporter's
+> environment is nailed down. See "Reproduction status". The presentation half
+> ("Viewer presentation") is independent and still valid.
+
 ## Capability changes
 
 No capability-ledger delta is required. This repairs qualified-link navigation within the existing local web viewer.
 
+## Reproduction status
+
+Resolved against 0.21.0, a two-node registered graph, both serve modes:
+
+| ref | plain `serve` | `--include-descendants` |
+| --- | --- | --- |
+| `tcw://W/<anchor-id>/<slug>` | `ok: true` | `ok: true` |
+| `tcw://<anchor-id>/W/<slug>` | `ok: true` | `ok: true` |
+| `tcw://W/<descendant-id>/<slug>` | `ok: false` | `ok: true` |
+| `tcw://W/<ancestor-id>/<slug>` (from the child) | `ok: false` | — |
+
+Every one of those is the documented intent. The reported failure is absent
+because `resolve_tcw_ref` short-circuits a reference that lands on the anchor
+node and returns **no** `project` (`tcw/refs.py:125-126`), so
+`ok = r.ok and (not r.project or …)` never consults `_hosted_projects()` for the
+anchor's own ID. That short-circuit is `ff2741f`, shipped in v0.14.0 — before the
+0.18.2 the issue was filed against — so the report is not a version skew either.
+
+**Leading hypothesis for the real trigger: a path-aliased anchor.** When `serve`
+runs from a `.worktrees/<slug>` checkout (a `start --worktree` checkout copies the
+sentinel), `store.node_root != node_root.resolve()`, the anchor's own reference is
+classified foreign, and it fails the membership test exactly as reported. The
+reporter is a heavy `--worktree` user. Any other path aliasing of the registered
+locator — a symlinked project root, a relocated locator — produces the same shape.
+
+**That hypothesis changes the fix.** `registered_project_id(anchor, anchor)`
+*raises* `ValueError` when the anchor path is not a registered locator
+(`tcw/store/fs.py:190`), which is precisely the aliased case; adopting the
+reported remediation unchanged would turn an inert link into a 500 from
+`/api/resolve`. A fix has to canonicalize the anchor, not just add it to a set.
+
+**Next action:** confirm with the reporter whether that `tcw serve` ran inside a
+worktree checkout, then re-specify the Design section below against the confirmed
+cause.
+
 ## Problem
 
-The viewer resolves `tcw://` work references through `/api/resolve`, then additionally requires a qualified reference's project to be in `_hosted_projects()` (`tcw/serve/__init__.py:919-934`). That set is empty without descendant aggregation and contains descendants only with it; the served anchor is omitted in both cases (`tcw/serve/__init__.py:399-413`). Consequently, a valid reference qualified with the current node's own project ID is rendered inert even though the board serves that item.
-
-The SPA already marks rejected TCW anchors with `tcw-inert` and copies the URI into `title`, but that treatment does not explain that the named project is outside the current board (`web/client/src/ui/shared-components.tsx`, styled by `web/client/src/style.css` and generated into `tcw/serve/dist`).
+The SPA marks rejected TCW anchors with `tcw-inert` and copies the URI into `title`, but that treatment does not explain that the named project is outside the current board (`web/client/src/ui/shared-components.tsx`, styled by `web/client/src/style.css` and generated into `tcw/serve/dist`). That is what let four request documents accumulate references the viewer silently downgraded to prose.
 
 ## Goals
 
@@ -27,11 +65,27 @@ The SPA already marks rejected TCW anchors with `tcw-inert` and copies the URI i
 
 ## Design
 
-### Hosted project set
+### Hosted project set — **pending re-specification**
 
 Build `_hosted_projects()` from the anchor first, using `registered_project_id(anchor, anchor)`. When `include_descendants` is true, union the registered IDs of `descendant_nodes(anchor)`. This mirrors `_board()`, whose served roots are exactly `[anchor]` or `[anchor, *descendants]` (`tcw/serve/__init__.py:415-427`).
 
-Project registration errors should follow the same behavior already used by qualified resolution; do not invent an unregistered fallback ID. Bare references still bypass project membership.
+Three things this design does not yet answer, all of which the reproduction work
+must settle first:
+
+- **It fixes nothing observable as written.** A reference landing on the anchor
+  already carries no `project`, so adding the anchor's ID to the set changes no
+  answer for any case reachable today.
+- **It raises where the real defect probably lives.** For an aliased anchor,
+  `registered_project_id(anchor, anchor)` raises rather than returning an ID.
+  Canonicalizing the anchor to its registered locator — and deciding what a
+  genuinely unregistered anchor should serve — is the actual design question.
+- **It must not be computed per reference.** `_hosted_projects()` is called
+  inside the `/api/resolve` URI loop (`tcw/serve/__init__.py:931`). Today the
+  non-aggregating path returns an empty set immediately; any version that opens
+  and validates the registry has to be hoisted out of the loop, or a batch of
+  `RESOLVE_MAX_URIS` references pays for that many registry reads.
+
+Bare references still bypass project membership.
 
 ### Resolution response
 
