@@ -536,6 +536,80 @@ def test_complete_merges_worktree_branch_before_teardown(tmp_path, monkeypatch, 
     assert FsWorkStore.open(root).get(slug).status == "completed"
 
 
+def _submit_then_complete_a_worktree_item(root: Path, capsys) -> tuple[str, str]:
+    """Drive the flow that straddles a transition rename: start `--worktree`, ADD
+    a file inside the item folder on the branch, `submit` (which renames that
+    folder on the primary checkout), then `complete`.
+
+    The addition is the load-bearing detail. Directory-rename confirmation fires
+    on files *added* inside a renamed directory, so a test that only modifies an
+    already-tracked file passes against the unfixed code — which is why the two
+    older merge-back tests miss this.
+
+    Returns (slug, implementation commit sha).
+    """
+    from tcw.cli import main
+    commit_all(root)                                      # caller has already chdir'd
+    main(["work", "new", "Ship"]); slug = capsys.readouterr().out.strip()
+    main(["work", "start", slug, "--worktree"]); capsys.readouterr()
+    wt = root / ".worktrees" / slug
+
+    (wt / "docs" / "work" / "active" / slug / "outcome.md").write_text("shipped\n")
+    (wt / "feature.py").write_text("x = 1\n")             # code, outside the renamed dir
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "impl"], check=True)
+    impl = subprocess.run(["git", "-C", str(wt), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+
+    assert main(["work", "submit", slug]) == 0            # renames active/ → review/
+    capsys.readouterr()
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+    capsys.readouterr()
+    return slug, impl
+
+
+def test_complete_merges_across_a_transition_rename(tmp_path, monkeypatch, capsys):
+    """`submit` renames `active/<slug>/` on the primary checkout while the branch
+    keeps committing under the old path. Git knows where the branch's new file
+    belongs and stages it there, but stops for confirmation — which TCW used to
+    read as a failed merge, refusing to complete a perfectly mergeable item."""
+    root = mk_node(tmp_path, "repo")
+    monkeypatch.chdir(root)
+
+    slug, impl = _submit_then_complete_a_worktree_item(root, capsys)
+
+    work = root / "docs" / "work"
+    assert (work / "completed" / slug / "outcome.md").read_text() == "shipped\n"
+    assert not (work / "active" / slug).exists()
+    assert not (work / "review" / slug).exists()
+    assert subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor",
+                           impl, "HEAD"]).returncode == 0          # no data loss
+    assert (root / "feature.py").read_text() == "x = 1\n"
+    assert not (root / ".worktrees" / slug).exists()
+    branches = subprocess.run(["git", "-C", str(root), "branch", "--list", f"work/{slug}"],
+                              capture_output=True, text=True).stdout.strip()
+    assert branches == ""
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_complete_merges_across_a_rename_despite_local_git_config(tmp_path, monkeypatch,
+                                                                  capsys):
+    """The merge-back is TCW's decision, not an ambient preference. A repository
+    that explicitly asks for the stopping behavior still completes, and TCW does
+    not rewrite that setting to get there."""
+    root = mk_node(tmp_path, "repo")
+    subprocess.run(["git", "-C", str(root), "config",
+                    "merge.directoryRenames", "conflict"], check=True)
+    monkeypatch.chdir(root)
+
+    slug, _impl = _submit_then_complete_a_worktree_item(root, capsys)
+
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+    value = subprocess.run(["git", "-C", str(root), "config", "--get",
+                            "merge.directoryRenames"], capture_output=True, text=True)
+    assert value.stdout.strip() == "conflict"             # left exactly as the user set it
+
+
 def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):
     """Fail closed: an unmergeable work branch must leave branch + worktree
     intact, keep the item active, and not report completion."""
