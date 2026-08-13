@@ -96,6 +96,51 @@ git add tcw/store/fs.py tests/test_work.py
 git commit -m "fix: preserve delegated inbox initiatives"
 ```
 
+### Task 3b: Correct `delegate`'s argument help (folded in 2026-08-13)
+
+**Files:**
+- Modify: `tests/test_recursion.py`
+- Modify: `tcw/work/cli.py` (the `pdg.add_argument("child", …)` help string)
+
+- [ ] **Step 1: Write the failing test**
+
+The fixture must break the coincidence `mk_node` creates, or it proves nothing — `mk_node` derives the project ID from the directory name, so ID and directory always match and the defect is invisible. Build a child whose directory name and project ID differ, then assert both directions:
+
+```python
+def test_delegate_resolves_the_project_id_not_the_directory_name(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "sub-dir-name")
+    # Re-id the child, and re-register it under that id, so the directory name
+    # and the canonical project id genuinely differ.
+    ...
+    with pytest.raises(ValueError, match="no child node 'sub-dir-name'"):
+        delegate(parent, "sub-dir-name", "by directory name")
+    doc = delegate(parent, "canonical-id", "by project id")
+    assert doc.parent == FsWorkStore.open(child).root / "inbox"
+```
+
+Run it and confirm it fails only on the *help string* assertion below — the behavioral half should already pass, because the code is correct.
+
+- [ ] **Step 2: Assert the documented form**
+
+```python
+def test_delegate_help_names_the_project_id(capsys):
+    ...  # parse `tcw work delegate --help`; assert "project id" appears and "path" does not
+```
+
+Expected: FAIL — the current text reads `child node path (relative to this node)`.
+
+- [ ] **Step 3: Fix the help string**
+
+Name the canonical project ID and point at `tcw work nodes` as the way to list valid values. Do **not** change `delegate`'s resolution logic: IDs are identity, paths are adapter locators, and accepting a path here would be the actual defect.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tcw/work/cli.py tests/test_recursion.py
+git commit -m "fix: name the project id in delegate's argument help"
+```
+
 ### Task 4: Documentation Sync
 
 **Files:**
@@ -106,7 +151,7 @@ git commit -m "fix: preserve delegated inbox initiatives"
 
 - [ ] **Step 1: Update public usage guidance**
 
-Document that `inbox accept` accepts either the listed filename/ref or bare listed title and that delegated initiatives survive acceptance.
+Document that `inbox accept` accepts either the listed filename/ref or bare listed title and that delegated initiatives survive acceptance. Also correct any prose that describes `delegate`'s argument as a path — `README.md` and `skills/tcw-work/references/commands.md` both mention the command; check each rather than assuming.
 
 - [ ] **Step 2: Add user and developer notes**
 
@@ -145,4 +190,6 @@ Expected: no whitespace errors; only intended implementation-stage files are pre
 
 ## Verification
 
-No manual-only behavior remains. Automated tests cover resolution precedence, ambiguity, metadata validation, atomic failure, and cross-node initiative round-trip.
+No manual-only behavior remains. Automated tests cover resolution precedence, ambiguity, metadata validation, atomic failure, cross-node initiative round-trip, and (folded in) `delegate`'s identifier form in both behavior and help text.
+
+The one judgment a test cannot make: whether the corrected help string actually reads as "canonical project id" to someone who has not just read the source. Read the rendered `--help` output, not the diff.
