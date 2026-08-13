@@ -7,3 +7,5 @@ tags:
 - bug
 - work
 - cli
+blocked_by:
+- slug: 2026-08-12-honor-the-configured-work-path-at-every-work-store-call-site
