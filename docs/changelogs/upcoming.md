@@ -77,6 +77,59 @@ category.
   already carry explicit vanish guards; the rest are transition/write logic that is
   conflict-aware by contract, or single path lookups that read nothing.
 
+### Transition field writes ride the move
+
+- `WorkStore.transition` and the `_effect_transition` primitive take an optional
+  `fields` dict and apply it **as part of** the move; neither writes before it.
+  `complete` passes `{"resolution": …}` on both routes (the `transition` call and
+  the `from_backlog_epic` direct `_effect_transition`), and `transition` merges
+  its own `owner`/`started` blanking over the caller's fields with `update`, not
+  `setdefault` — clearing the claim is a guarantee a caller must not be able to
+  defeat. Storage-neutral: a remote tracker's transition endpoint takes field
+  updates in the same call for the same reason.
+- `FsWorkStore._effect_transition` applies the fields at the destination after
+  `_mv` and **before** `_commit_transition`. After, because the move is where the
+  process learns it won; before, because the transition commit is scoped to `src`
+  and `dst` and takes working-tree state — that ordering is what keeps
+  `porcelain(root) == ""` (`tests/test_work_autocommit.py:247`) true. Writing at
+  `dst` directly rather than re-resolving the slug avoids reopening the window
+  the move just closed.
+- New `FsWorkStore._set_fields_at(dir, fields)`; `set_field` is now a one-line
+  face over it. Multi-key, so `start`'s take-over branch writes `owner` and
+  `started` in one read-modify-write instead of two `set_field` calls that a move
+  landing between them could tear across two folders.
+- A `git add` refused during the post-move write (a held `index.lock`, which is
+  what concurrent agents produce) raises `TransitionCommitError` rather than
+  letting `CalledProcessError` — absent from `tcw/work/cli.py`'s `_ERRORS` —
+  escape as a traceback. The item moved and the git step did not, which is
+  exactly what that error already means to the CLI and to `serve._transition_ok`.
+- `test_lost_complete_leaves_its_resolution_written` is **inverted in place**, as
+  its own docstring instructed: same scenario, asserting `resolution is None`.
+  Three `_effect_transition` monkeypatch stubs take the new parameter.
+- `_status_resolution_problems`' docstring no longer claims no code path can
+  produce a status/resolution disagreement. It names what remains: a hand-run
+  `mv`, a bad merge, and a transition interrupted between its move and its field
+  write. The two `pre`-hook comments in `tcw/work/cli.py` and `git_mv`'s `-f`
+  justification cited the pre-move staging and were corrected; the hook's
+  position in the CLI is unchanged and `test_a_failing_pre_hook_writes_no_field`
+  passes unmodified.
+
+### Composite writes no longer leak `None`
+
+- `_require_detail(detail, kind, ref)` guards the five returns where a
+  `-> … | None` read-back was handed through a non-optional signature:
+  `create_work`, `update_work` (both returns), `update_term`,
+  `update_capability`. Previously the `None` surfaced as an `AttributeError` at
+  the first caller to dereference it — `FsWorkStore.create`, `tcw work new`
+  (`work/cli.py:234`), and both `serve` write routes, where the bare
+  `except Exception` rendered `500 server error: 'NoneType' object has no
+  attribute 'item'`. Now a `ValueError` that `_ERRORS` and
+  `serve._map_store_error` (→ 422) already handle.
+- The message deliberately does not assert the write landed: `update_work`'s
+  no-change early return writes nothing. It always names the ref, which is the
+  only way a failed `tcw work new` tells the user the slug of the item that now
+  exists.
+
 ### Reconcile commit reporting
 
 - `reconcile` (`tcw/work/recursion.py`) commits through `git_commit_result`

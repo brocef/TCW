@@ -37,6 +37,19 @@ such an item reports it as a blocker, as it should.
 Opening a work item in the local web app while it is being moved no longer risks
 an internal error; the app now retries and shows the item in its new state.
 
+When two people (or two agents) act on the same work item at the same moment, the
+one that loses now leaves the item completely untouched. Before, it had already
+written its own answer before discovering it had lost — so completing an item as
+"done" while someone else completed it as "wontfix" could leave the item filed
+under completed while reading `wontfix`, and submitting an item someone else had
+just moved could clear the owner off their copy. The command that loses now says
+so and changes nothing.
+
+Creating or editing an item that something else moves at the same instant now
+reports a plain error naming the item, instead of an internal error. The message
+includes the item's name, so if `tcw work new` hits this, you can still find the
+item it created.
+
 Reconciling an epic with `--commit` now tells you when the commit was refused —
 by a pre-commit hook, a signing key it could not use, or anything else git
 declines — instead of showing an internal error. The message says the rollup was
