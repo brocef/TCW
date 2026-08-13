@@ -144,6 +144,59 @@ def test_get_detail_gives_up_when_the_item_never_settles(tmp_path, monkeypatch):
     assert st.get_detail(item.slug) is None
 
 
+# ── a composite write whose read-back loses the race ─────────────────────────
+#
+# `get_detail` and its siblings are `-> … | None`; the four composite writers
+# that end with one are not. Handing the `None` through anyway only relocates the
+# failure — `AttributeError` at whichever caller dereferences first, rendered by
+# `serve` as a 500. Each of the five returns is driven here with its reader
+# forced to `None`.
+
+
+def test_create_work_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
+    st = FsWorkStore.open(_work_node(tmp_path))
+    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+    with pytest.raises(ValueError, match="could not be read back"):
+        st.create_work("Task", created="2026-01-01")
+
+
+def test_create_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
+    """`create` is the `WorkItem`-returning face over `create_work`, and it
+    dereferences `.item` — the site that used to raise `AttributeError`."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+    with pytest.raises(ValueError, match="could not be read back"):
+        st.create("Task", created="2026-01-01")
+
+
+def test_update_work_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
+    st = FsWorkStore.open(_work_node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+    with pytest.raises(ValueError, match="could not be read back"):
+        st.update_work(item.slug, title="Renamed")
+
+
+def test_update_work_no_change_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
+    """The early return taken when nothing was asked for and nothing written —
+    which is why the message stops short of claiming the write landed."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+    with pytest.raises(ValueError, match="could not be read back"):
+        st.update_work(item.slug)
+
+
+def test_update_work_error_names_the_slug(tmp_path, monkeypatch):
+    """The ref is the point: after a failed `tcw work new` it is the only place
+    the user learns the slug of the item that now exists."""
+    st = FsWorkStore.open(_work_node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+    with pytest.raises(ValueError, match=item.slug):
+        st.update_work(item.slug, title="Renamed")
+
+
 def test_get_detail_core_changes_after_field_write(tmp_path):
     st = FsWorkStore.open(_work_node(tmp_path))
     item = st.create("Task", created="2026-01-01")
@@ -523,6 +576,17 @@ def test_update_term_description(tmp_path):
         or True  # revision changed after write
 
 
+def test_update_term_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
+    """The taxonomy sibling: no transitions to race, but a concurrent delete or
+    rename reaches the same `None` through the same non-optional signature."""
+    root = _tax_node(tmp_path)
+    st = FsTaxonomyStore.open(root)
+    st.add("Admin")
+    monkeypatch.setattr(FsTaxonomyStore, "get_term_detail", lambda self, ref: None)
+    with pytest.raises(ValueError, match="could not be read back"):
+        st.update_term("admin", description="Manage users")
+
+
 def test_update_term_name_and_relatesto(tmp_path):
     root = _tax_node(tmp_path)
     st = FsTaxonomyStore.open(root)
@@ -636,6 +700,16 @@ def test_update_capability_body(tmp_path):
     st.add("routes/login", name="Sign in")
     detail = st.update_capability("routes/login", body="Updated body text.")
     assert detail.capability.body == "Updated body text."
+
+
+def test_update_capability_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
+    root = _cap_node(tmp_path)
+    st = FsCapabilitiesStore.open(root)
+    st.add("routes/login", name="Sign in")
+    monkeypatch.setattr(FsCapabilitiesStore, "get_capability_detail",
+                        lambda self, identifier: None)
+    with pytest.raises(ValueError, match="could not be read back"):
+        st.update_capability("routes/login", body="Updated body text.")
 
 
 def test_update_capability_fields(tmp_path):

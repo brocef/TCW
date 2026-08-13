@@ -1092,6 +1092,26 @@ def test_cli_new_blocked_by_attach_failure_returns_nonzero(tmp_path, monkeypatch
     assert (root / "docs/work/backlog" / out).is_dir()      # item still created + slug printed
 
 
+def test_cli_new_reports_a_lost_read_back_without_a_traceback(tmp_path, monkeypatch,
+                                                              capsys):
+    """`create_work`'s read-back can lose a race to a concurrent move. The item
+    is created either way, so the message has to name its slug — this is the only
+    place the user would ever see it."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+
+    assert main(["work", "new", "Raced"]) == 1
+    out = capsys.readouterr()
+    assert out.out == ""                                     # no slug on stdout
+    assert "tcw work new: work item '" in out.err
+    assert "could not be read back" in out.err
+    assert "Traceback" not in out.err
+    monkeypatch.undo()
+    assert [d.name for d in (root / "docs" / "work" / "backlog").iterdir()] != []
+
+
 def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)

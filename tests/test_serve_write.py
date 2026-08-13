@@ -224,6 +224,18 @@ class TestCreateWork:
         assert item["complexity"] == "medium"
         assert item["initiative"] == "my-epic"
 
+    def test_create_read_back_lost_is_not_a_500(self, bare, monkeypatch):
+        """`create_work` ends in a read-back that a concurrent move can lose. It
+        used to return `None` through a `-> WorkDetail` signature, so the route
+        dereferenced it and the bare `except Exception` rendered
+        `500 server error: 'NoneType' object has no attribute 'item'`. It is a
+        handled store error now, and the item's slug is in the message."""
+        root, base = bare
+        monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+        status, body = _req(base, "POST", "/api/work", {"title": "Raced"})
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert "could not be read back" in json.dumps(body)
+
     def test_create_missing_title(self, bare):
         root, base = bare
         status, body = _req(base, "POST", "/api/work", {})

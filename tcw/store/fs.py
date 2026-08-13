@@ -666,6 +666,26 @@ def _revision(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
+def _require_detail(detail, kind: str, ref: str):
+    """The detail a composite operation promised to return, or a handled error.
+
+    `get_detail` and its siblings are `-> … | None` because a concurrent move or
+    delete can outlast their retries. `create_work` / `update_work` /
+    `update_term` / `update_capability` are not: they declare a value. Handing
+    `None` through anyway relocates the failure to whichever caller dereferences
+    it first — a 500 out of `serve`, an `AttributeError` out of the CLI.
+
+    The message does not claim the write landed, because at one of the five call
+    sites (`update_work`'s no-change early return) nothing was written. It always
+    names the ref: after a failed `tcw work new` that is the only place the user
+    learns the slug of the item that now exists.
+    """
+    if detail is None:
+        raise ValueError(f"{kind} '{ref}' could not be read back: another process "
+                         f"moved or removed it. Re-read it.")
+    return detail
+
+
 def _revision_multi(*contents: str) -> str:
     """Revision for multiple resources concatenated (core = fields + body)."""
     return _revision("\x00".join(contents))
@@ -1258,7 +1278,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         self._write_node(d, meta, desc_text)
 
         # Return fresh detail
-        return self.get_term_detail(ref)
+        return _require_detail(self.get_term_detail(ref), "term", ref)
 
 
 # ── FsCapabilitiesStore ──────────────────────────────────────────────────────
@@ -1923,7 +1943,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             if not existed and not (d / "meta.yaml").exists():
                 shutil.rmtree(d, ignore_errors=True)
             raise
-        return self.get_capability_detail(identifier)
+        return _require_detail(self.get_capability_detail(identifier),
+                               "capability", identifier)
 
 
 # ── FsWorkStore ──────────────────────────────────────────────────────────────
@@ -3230,7 +3251,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise
         self._stage(d / "state.yaml", d / "initial-request.md")
 
-        return self.get_detail(slug)
+        return _require_detail(self.get_detail(slug), "work item", slug)
 
     def update_work(self, slug: str, *,
                     title=_UNSET, body=_UNSET, priority=_UNSET,
@@ -3343,7 +3364,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             changed = True
 
         if not changed and parent is _UNSET:
-            return self.get_detail(slug)
+            return _require_detail(self.get_detail(slug), "work item", slug)
 
         # Write atomically
         state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
@@ -3365,7 +3386,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             move_to.parent.mkdir(parents=True, exist_ok=True)
             self._mv(d, move_to)
 
-        return self.get_detail(slug)
+        return _require_detail(self.get_detail(slug), "work item", slug)
 
     # -- artifact read / write --
 
