@@ -1,7 +1,0 @@
-slug: 2026-08-11-roll-back-or-reorder-the-pre-move-set-field-writes-on-a-lost-transition
-title: Roll back or reorder the pre-move set_field writes on a lost transition
-created: '2026-08-11'
-resolution: null
-tags:
-- bug
-- work

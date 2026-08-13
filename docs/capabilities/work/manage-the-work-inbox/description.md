@@ -13,3 +13,9 @@ every preserved resource and the entry it was accepted from, and a note in place
 of a primary resource that is not text — and consumes the original inbox entry.
 Accepting no longer writes the item's request: what the entry said is preserved
 as raw intake, and the `request` stage is still to run.
+
+Requests I send across nodes with `tcw work delegate` and `tcw work escalate`
+land in the target project's configured inbox, wherever `work.path` puts it. If
+that store cannot be resolved, the command fails with a non-zero exit and an
+error rather than creating a default `docs/work/inbox` folder nobody reads — a
+misrouted request is reported, never silently written away.

@@ -1007,7 +1007,16 @@ class WorkStore(ABC):
     def set_field(self, slug: str, key: str, value) -> None: ...
 
     @abstractmethod
-    def _effect_transition(self, slug: str, to_status: str) -> None: ...
+    def _effect_transition(self, slug: str, to_status: str,
+                           fields: dict | None = None) -> None:
+        """Move `slug` to `to_status`, applying `fields` as part of the move.
+
+        The fields ride the transition rather than preceding it so a transition
+        that loses a race to a competing process changes nothing at all — the
+        loser's `resolution` must not land on the item the winner moved. Any
+        backend can honor this: a remote tracker's transition endpoint takes the
+        field updates in the same call for the same reason.
+        """
 
     @abstractmethod
     def _delete(self, slug: str) -> None: ...
@@ -1283,14 +1292,22 @@ class WorkStore(ABC):
         children = self.initiative_children(item.slug)
         return bool(children) and all(c.status in RESOLVED_STATUSES for c in children)
 
-    def transition(self, slug: str, to_status: str) -> WorkItem:
+    def transition(self, slug: str, to_status: str,
+                   fields: dict | None = None) -> WorkItem:
+        """Move the item, applying `fields` as part of the move.
+
+        Nothing is written before `_effect_transition`: on a lost race the writes
+        would land in the folder the winner moved, stamping this process's data
+        onto the winner's item. Clearing the claim is not negotiable, so it is
+        applied *over* the caller's fields rather than under them.
+        """
         item = self._require(slug)
         if (item.status, to_status) not in self.LEGAL_TRANSITIONS:
             raise IllegalTransition(f"{item.status} → {to_status} is not a legal transition")
+        merged = dict(fields or {})
         if item.status == "active" or to_status == "active":
-            self.set_field(slug, "owner", "")
-            self.set_field(slug, "started", "")
-        self._effect_transition(slug, to_status)
+            merged.update({"owner": "", "started": ""})
+        self._effect_transition(slug, to_status, merged)
         return self._require(slug)
 
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
@@ -1303,7 +1320,17 @@ class WorkStore(ABC):
             if "external" in b:
                 out.append(f"external: {b['external']}")
             elif "slug" in b:
-                blocker = self.get(b["slug"])
+                try:
+                    blocker = self.get(b["slug"])
+                except ValueError:
+                    # An adapter can refuse to settle a blocker — a claim on it
+                    # was abandoned. That is still a blocker, and reporting it as
+                    # one keeps this item's caller reading about *this* item.
+                    # Raising the blocker's error here would answer "why can't I
+                    # start B?" with a message about A. Storage-neutral: any
+                    # adapter may fail to resolve a reference.
+                    out.append(b["slug"])
+                    continue
                 if blocker is not None and blocker.status not in RESOLVED_STATUSES:
                     out.append(b["slug"])
             # else: structurally malformed entry — skip (degrade, don't crash)
@@ -1412,7 +1439,12 @@ class WorkStore(ABC):
                 if blockers:
                     raise ValueError("blocked by: " + ", ".join(blockers)
                                      + " (use --force to override)")
-        self.set_field(slug, "resolution", resolution)
+        # The resolution rides the transition rather than preceding it: written
+        # first, a `complete` that then loses the move would leave its resolution
+        # on the item the winner moved — an item reading `wontfix` in
+        # `completed/`. `_status_resolution_problems` calls that a defect, and it
+        # was reachable from here.
+        #
         # `dod_ack` is deliberately not persisted. It was written to every
         # completed item as the same fixed 5-string constant — `_complete` passes
         # the whole checklist unconditionally — so it recorded nothing that could
@@ -1423,10 +1455,11 @@ class WorkStore(ABC):
         # change for no gain, and a remote adapter may have somewhere to put it.
         # Items completed before this change keep their stored `dod:` unread,
         # exactly as `phase` was handled — no rewrite pass.
-        if from_backlog_epic:                       # bypass transition()'s own
-            self._effect_transition(slug, dest)     # LEGAL_TRANSITIONS check
+        fields = {"resolution": resolution}
+        if from_backlog_epic:                               # bypass transition()'s own
+            self._effect_transition(slug, dest, fields)     # LEGAL_TRANSITIONS check
             return self._require(slug)
-        return self.transition(slug, dest)
+        return self.transition(slug, dest, fields)
 
     def drop(self, slug: str) -> None:
         item = self._require(slug)

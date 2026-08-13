@@ -273,6 +273,121 @@ def test_inbox_accept_folder_rejects_missing_or_ambiguous_index_without_consumin
     assert ambiguous.exists() and st.query() == []
 
 
+def test_inbox_show_and_accept_resolve_listed_file_title(tmp_path):
+    """`inbox list` prints `example.md | file | example`. Both of those are
+    identifiers the command showed me, so both must resolve."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    (root / "docs/work/inbox/example.md").write_text("do it\n", encoding="utf-8")
+
+    assert [(e.ref, e.title) for e in st.inbox_list()] == [("example.md", "example")]
+    assert st.inbox_show("example").body == "do it\n"          # bare listed title
+    assert st.inbox_show("example.md").body == "do it\n"       # exact ref still works
+
+    item = st.inbox_accept("example")
+    assert st.get(item.slug).title == "example"
+    assert not (root / "docs/work/inbox/example.md").exists()  # source consumed
+
+
+def test_inbox_exact_reference_wins_over_a_colliding_title(tmp_path):
+    """A folder named `example` *is* the exact reference `example`, even with an
+    `example.md` beside it whose listed title is also `example`. Exact wins, or a
+    folder becomes unaddressable by its own name the moment a file lands next to
+    it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    inbox = root / "docs/work/inbox"
+    (inbox / "example.md").write_text("the file\n", encoding="utf-8")
+    (inbox / "example").mkdir()
+    (inbox / "example" / "INDEX.md").write_text("the folder\n", encoding="utf-8")
+
+    assert st.inbox_show("example").body == "the folder\n"     # exact ref → folder
+    assert st.inbox_show("example.md").body == "the file\n"    # exact ref → file
+
+
+def test_inbox_accept_reports_an_ambiguous_title_without_consuming(tmp_path):
+    """Ambiguity is for an input that is neither an exact reference nor an
+    `<input>.md`, yet matches several listed titles. Picking one by iteration
+    order would consume the wrong entry irreversibly."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    inbox = root / "docs/work/inbox"
+    (inbox / "example.txt").write_text("text one\n", encoding="utf-8")
+    (inbox / "example.rst").write_text("text two\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="ambiguous inbox entry"):
+        st.inbox_accept("example")
+    assert (inbox / "example.txt").exists()                    # neither consumed
+    assert (inbox / "example.rst").exists()
+    assert st.query() == []
+
+    # Exact references stay unambiguous — that is what makes the error recoverable.
+    item = st.inbox_accept("example.txt")
+    assert st.get(item.slug) is not None
+
+
+def test_inbox_unknown_entry_still_reports_no_such_entry(tmp_path):
+    """Relaxed lookup must not turn a typo into a different error."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    with pytest.raises(ValueError, match="no such inbox entry"):
+        st.inbox_accept("nope")
+
+
+def _delegated(root, name: str, front: str) -> None:
+    """An inbox entry shaped exactly as `tcw work delegate` writes one."""
+    (root / "docs/work/inbox" / name).write_text(
+        f"---\n{front}\n---\n\n# Do the thing\n\ndetails\n", encoding="utf-8")
+
+
+def test_inbox_accept_preserves_a_delegated_initiative(tmp_path):
+    """The back-pointer epic reconciliation runs on. Dropping it silently
+    unlinks a delegated slice from the epic that asked for it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", "from: parent\ninitiative: 2026-01-01-epic")
+
+    item = st.inbox_accept("req.md")
+    assert st.get(item.slug).initiative == "2026-01-01-epic"
+    assert "initiative: 2026-01-01-epic" in (st.path(item.slug) / "state.yaml").read_text()
+
+
+@pytest.mark.parametrize("front", ["from: parent",
+                                   "from: parent\ninitiative:",
+                                   "from: parent\ninitiative: '   '"])
+def test_inbox_accept_without_an_initiative_is_unchanged(tmp_path, front):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", front)
+
+    item = st.inbox_accept("req.md")
+    assert not st.get(item.slug).initiative
+
+
+def test_inbox_accept_rejects_a_structured_initiative_without_consuming(tmp_path):
+    """Frontmatter is intake, not trusted state. A list or mapping must fail
+    before an item exists, not get serialized into state.yaml."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", "from: parent\ninitiative: [a, b]")
+
+    with pytest.raises(ValueError, match="initiative"):
+        st.inbox_accept("req.md")
+    assert (root / "docs/work/inbox/req.md").exists()          # not consumed
+    assert st.query() == []                                    # no item created
+
+
+def test_inbox_accept_keeps_the_original_markdown_in_the_body(tmp_path):
+    """Parsing frontmatter must not rewrite what the requester sent."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    _delegated(root, "req.md", "from: parent\ninitiative: 2026-01-01-epic")
+
+    item = st.inbox_accept("req.md")
+    request = (st.path(item.slug) / "initial-request.md").read_text()
+    assert "from: parent" in request and "details" in request
+
+
 def test_cli_inbox_list_show_accept(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
@@ -1076,6 +1191,26 @@ def test_cli_new_blocked_by_attach_failure_returns_nonzero(tmp_path, monkeypatch
     out = capsys.readouterr().out.strip()
     assert rc == 1                                           # non-zero on attach failure
     assert (root / "docs/work/backlog" / out).is_dir()      # item still created + slug printed
+
+
+def test_cli_new_reports_a_lost_read_back_without_a_traceback(tmp_path, monkeypatch,
+                                                              capsys):
+    """`create_work`'s read-back can lose a race to a concurrent move. The item
+    is created either way, so the message has to name its slug — this is the only
+    place the user would ever see it."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
+
+    assert main(["work", "new", "Raced"]) == 1
+    out = capsys.readouterr()
+    assert out.out == ""                                     # no slug on stdout
+    assert "tcw work new: work item '" in out.err
+    assert "could not be read back" in out.err
+    assert "Traceback" not in out.err
+    monkeypatch.undo()
+    assert [d.name for d in (root / "docs" / "work" / "backlog").iterdir()] != []
 
 
 def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):

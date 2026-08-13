@@ -3,7 +3,7 @@
 | Goal                     | Command                                                                                                                                         |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | create an item           | `tcw work new "<title>" [--priority N] [--effort L\|M\|H\|VH] [--complexity …] [--tag <t>] [--blocked-by <ref>]`                                |
-| triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`                                                             |
+| triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`; `<entry>` is either identifier `list` printed (ref or title) |
 | locate stores            | `tcw work path` (configured work root) · `tcw work inbox path` (its inbox); both print only the absolute resolved path                          |
 | the board                | `tcw work list [--status <s>] [--tag <t>] [--all] [-i]` — hides resolved; `-i` adds descendant boards                                           |
 | read an item             | `tcw work show <slug>` · `tcw work path <slug>`                                                                                                 |
@@ -21,7 +21,7 @@
 | nest a coupled piece     | `tcw work new "<sub>" --parent <slug>`                                                                                                          |
 | add an epic task         | `tcw work new "<task>" --initiative <epic-slug>`                                                                                                |
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
-| hand work down / up      | `tcw work delegate <child> "<title>"` · `tcw work escalate "<title>"`                                                                           |
+| hand work down / up      | `tcw work delegate <child-project-id> "<title>"` · `tcw work escalate "<title>"` — the ID `tcw work nodes` lists, never a path              |
 | topology                 | `tcw work nodes`                                                                                                                                |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 
@@ -68,6 +68,20 @@ stage documents directly. Nothing is only available through a command.
 
 Treat `start` as a claim: supply a stable owner (flag, environment, or Git
 identity), choose another item after contention, and use `--take-over` only as a
-deliberate ownership replacement. A configured `work.path` changes only the
+deliberate ownership replacement.
+
+A claim is briefly in flight, and reads settle across that window rather than
+reporting the item missing — a blocker being started elsewhere still blocks. If a
+claimant died mid-claim, reads report an **interrupted claim** instead of guessing;
+`tcw work start <slug> --take-over --owner <identity>` is the documented recovery,
+and it still works while that state persists. A configured `work.path` changes only the
 filesystem adapter location; project identity, hooks, and code worktrees stay
 with the owning node.
+
+The store may live in a **different Git repository** than the code, so never
+compose a store path from the node root — `tcw work path`, `tcw work path <slug>`
+and `tcw work inbox path` are the only correct answers, and they are what
+`delegate`, `escalate`, `reconcile` and `tcw capabilities drift` follow too. A
+`docs/work/` folder sitting next to a configured store is a leftover, not the
+store; TCW ignores it. Conversely, a default-layout store missing `inbox` or any
+status folder counts as *no* store at all — `tcw work init` restores it.

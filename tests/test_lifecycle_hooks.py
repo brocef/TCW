@@ -1,10 +1,12 @@
 """Hook execution and `tcw work lifecycle`.
 
 The load-bearing test in this file is
-`test_a_failing_pre_hook_writes_no_field`. `complete()` writes the resolution
-*before* it moves the item, so a `pre` hook evaluated inside the store would
-strand a resolution on an unmoved item — one reading as closed while sitting in
-`active`. Asserting "did not move" alone would pass that broken implementation.
+`test_a_failing_pre_hook_writes_no_field`. A refused `pre` hook has to mean the
+item is untouched, and asserting "did not move" alone would pass an
+implementation that moved nothing but still wrote the resolution — leaving an
+item reading as closed while sitting in `active`. The store no longer writes
+fields outside a move, so the field assertion now guards two things at once: the
+hook's position in the CLI, and the store's own ordering.
 """
 import json
 import subprocess
@@ -77,10 +79,10 @@ def test_a_failing_pre_hook_aborts_the_transition(tmp_path, monkeypatch, capsys)
 def test_a_failing_pre_hook_writes_no_field(tmp_path, monkeypatch, capsys):
     """The reason hook execution lives in the CLI rather than the store.
 
-    `complete()` calls `set_field("resolution", ...)` before `transition()`. A
-    hook evaluated inside it would abort having already stamped a resolution onto
-    an item still sitting in `active` — closed by its data, open by its folder.
-    Asserting only that it did not move would pass that implementation.
+    A hook evaluated part-way through `complete()` could abort after a write had
+    already landed, leaving an item closed by its data and open by its folder.
+    Asserting only that it did not move would pass that implementation, so this
+    asserts the field too.
     """
     root = node(tmp_path)
     slug = make_item(root)

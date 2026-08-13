@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,8 +13,8 @@ import yaml
 
 from tcw.cli import main
 from tcw.store import fs
-from tcw.store.fs import FsWorkStore, init
-from tcw.store.base import AlreadyClaimed, MultipleMatch
+from tcw.store.fs import FsWorkStore, _has_work_store, child_nodes, init
+from tcw.store.base import AlreadyClaimed, MultipleMatch, TransitionCommitError
 
 
 def _repo(path: Path) -> Path:
@@ -573,14 +575,14 @@ def test_takeover_lost_at_the_commit_lookup_is_a_valueerror(tmp_path, monkeypatc
     item = store.create("Claim me", created="2026-08-08")
     store.start(item.slug, owner="first@example.com")
 
-    real_set_field = FsWorkStore.set_field
+    real_set_fields_at = FsWorkStore._set_fields_at
 
-    def vanish_after_started(self, slug, key, value):
-        real_set_field(self, slug, key, value)
-        if key == "started":
+    def vanish_after_started(self, d, fields):
+        real_set_fields_at(self, d, fields)
+        if "started" in fields:
             monkeypatch.setattr(FsWorkStore, "_find", lambda self, slug: None)
 
-    monkeypatch.setattr(FsWorkStore, "set_field", vanish_after_started)
+    monkeypatch.setattr(FsWorkStore, "_set_fields_at", vanish_after_started)
 
     with pytest.raises(ValueError, match="no such work item"):
         FsWorkStore.open(code).start(item.slug, owner="second@example.com",
@@ -651,7 +653,7 @@ def test_cli_complete_losing_the_race_exits_1_without_a_traceback(tmp_path, monk
     real_find = FsWorkStore._find
     real_effect = FsWorkStore._effect_transition
 
-    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
         calls = {"n": 0}
 
         def missing_at_the_move(inner, inner_slug):
@@ -659,7 +661,7 @@ def test_cli_complete_losing_the_race_exits_1_without_a_traceback(tmp_path, monk
             return None if calls["n"] == 2 else real_find(inner, inner_slug)
 
         monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
-        return real_effect(self, item_slug, to_status)
+        return real_effect(self, item_slug, to_status, fields)
 
     monkeypatch.setattr(FsWorkStore, "_effect_transition",
                         lose_the_race_inside_the_transition)
@@ -695,7 +697,7 @@ def test_cli_submit_losing_the_race_exits_1_without_a_traceback(tmp_path, monkey
     real_find = FsWorkStore._find
     real_effect = FsWorkStore._effect_transition
 
-    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
         calls = {"n": 0}
 
         def missing_at_the_move(inner, inner_slug):
@@ -703,7 +705,7 @@ def test_cli_submit_losing_the_race_exits_1_without_a_traceback(tmp_path, monkey
             return None if calls["n"] == 2 else real_find(inner, inner_slug)
 
         monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
-        return real_effect(self, item_slug, to_status)
+        return real_effect(self, item_slug, to_status, fields)
 
     monkeypatch.setattr(FsWorkStore, "_effect_transition",
                         lose_the_race_inside_the_transition)
@@ -716,28 +718,26 @@ def test_cli_submit_losing_the_race_exits_1_without_a_traceback(tmp_path, monkey
 
 
 def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
-    """A DOCUMENTED LIMITATION, pinned — not a behavior worth keeping.
+    """A lost `complete` writes nothing — the guarantee, formerly the limitation.
 
-    `complete()` stamps `resolution` with `set_field` (`base.py:1397`) *before*
-    `_effect_transition` moves the item, so a transition that loses the race
-    reports the loss with the loser's resolution already on disk. Two agents
-    completing one `review` item with different resolutions can therefore leave
-    one's `resolution` on the item the other moved — exactly the
-    status/resolution disagreement `_status_resolution_problems` still describes
-    as something "no code path can produce". That docstring is now known to be
-    optimistic.
+    `complete()` used to stamp `resolution` with `set_field` before
+    `_effect_transition` moved the item, so a transition that lost the race
+    reported the loss with the loser's resolution already on disk — and via the
+    pre-move path it landed in the folder the *winner* moved. Two agents
+    completing one `review` item as `done` and `wontfix` could leave the item in
+    `completed/` reading `wontfix`, the status/resolution disagreement
+    `_status_resolution_problems` exists to detect.
 
-    Fixing it means rolling back or reordering the pre-move writes, which
-    collides with the ordering deliberately documented at `work/cli.py:915-918`.
-    Tracked as
-    `2026-08-11-roll-back-or-reorder-the-pre-move-set-field-writes-on-a-lost-transition`.
-    When that lands, this test should be inverted, not deleted.
+    The resolution now rides the transition (`base.py`: `complete` passes
+    `fields` to `transition`, which hands them to `_effect_transition`), so it is
+    written after the move or not at all. The name is kept from when this pinned
+    the residual: it is the same scenario, asserting the opposite.
     """
     code, store, slug = _reviewed(tmp_path)
     real_find = FsWorkStore._find
     real_effect = FsWorkStore._effect_transition
 
-    def lose_the_race_inside_the_transition(self, item_slug, to_status):
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
         calls = {"n": 0}
 
         def missing_at_the_move(inner, inner_slug):
@@ -745,7 +745,7 @@ def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
             return None if calls["n"] == 2 else real_find(inner, inner_slug)
 
         monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
-        return real_effect(self, item_slug, to_status)
+        return real_effect(self, item_slug, to_status, fields)
 
     monkeypatch.setattr(FsWorkStore, "_effect_transition",
                         lose_the_race_inside_the_transition)
@@ -755,4 +755,434 @@ def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
 
     item = FsWorkStore.open(code).get(slug)
     assert item.status == "review"          # the move did not happen...
-    assert item.resolution == "done"        # ...but the write before it did
+    assert item.resolution is None          # ...and neither did the write
+
+
+def test_lost_submit_leaves_the_claim_intact(tmp_path, monkeypatch):
+    """The other pre-move write: `transition` blanks `owner`/`started` whenever
+    either end of the move is `active`. A `submit` that loses the race used to
+    blank them anyway — on the winner's item, since the write preceded the move.
+    """
+    code, store, slug = _reviewed(tmp_path)
+    store.rework(slug)                                # back to active, unowned
+    store.start(slug, owner="me@example.com", take_over=True)
+    real_find = FsWorkStore._find
+    real_effect = FsWorkStore._effect_transition
+
+    def lose_the_race_inside_the_transition(self, item_slug, to_status, fields=None):
+        calls = {"n": 0}
+
+        def missing_at_the_move(inner, inner_slug):
+            calls["n"] += 1
+            return None if calls["n"] == 2 else real_find(inner, inner_slug)
+
+        monkeypatch.setattr(FsWorkStore, "_find", missing_at_the_move)
+        return real_effect(self, item_slug, to_status, fields)
+
+    monkeypatch.setattr(FsWorkStore, "_effect_transition",
+                        lose_the_race_inside_the_transition)
+    with pytest.raises(ValueError, match="cannot move"):
+        store.submit(slug)
+    monkeypatch.undo()
+
+    item = FsWorkStore.open(code).get(slug)
+    assert item.status == "active"
+    assert item.owner == "me@example.com"             # the claim survives
+    assert item.started
+
+
+def test_a_transition_that_wins_still_writes_its_fields(tmp_path):
+    """The reorder must not turn into a dropped write. Read back from a fresh
+    store so this sees the disk, not an in-process return value."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    store = FsWorkStore.open(code)
+    slug = store.create("Write me", created="2026-08-08").slug
+    store.start(slug, owner="me@example.com")
+
+    submitted = FsWorkStore.open(code)
+    assert submitted.submit(slug).status == "review"
+    item = FsWorkStore.open(code).get(slug)
+    assert item.owner == "" and item.started == ""    # cleared by the move
+
+    FsWorkStore.open(code).complete(slug, "done", dod_ack=[])
+    done = FsWorkStore.open(code).get(slug)
+    assert done.status == "completed" and done.resolution == "done"
+
+
+def test_the_transition_commit_carries_the_field_write(tmp_path):
+    """The reason the fields are applied *before* `_commit_transition` rather
+    than after the transition returns: the scoped commit takes working-tree state
+    for `src` and `dst`, so a write in between rides it. `review/` is tracked
+    (only `completed/`/`discarded/` are ignored by default), so git can be asked
+    directly what the commit recorded.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    subprocess.run(["git", "-C", str(code), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(code), "commit", "-qm", "init"], check=True)
+    store = FsWorkStore.open(code)
+    slug = store.create("Commit me", created="2026-08-08").slug
+    store.start(slug, owner="me@example.com")
+    FsWorkStore.open(code).submit(slug)
+
+    rel = (store.root / "review" / slug / "state.yaml").relative_to(code)
+    committed = subprocess.run(["git", "-C", str(code), "show", f"HEAD:{rel}"],
+                               capture_output=True, text=True, check=True).stdout
+    assert yaml.safe_load(committed)["owner"] == ""   # in the commit, not after it
+    porcelain = subprocess.run(["git", "-C", str(code), "status", "--porcelain"],
+                               capture_output=True, text=True, check=True).stdout
+    assert slug not in porcelain                      # nothing left staged or dirty
+
+
+def test_a_refused_stage_after_the_move_is_a_transition_commit_error(tmp_path,
+                                                                     monkeypatch):
+    """The failure mode the reorder introduces. `_set_fields_at` ends in `git
+    add`, which can refuse — a held `index.lock` is exactly what two concurrent
+    agents produce. Before the reorder that happened before the move and left
+    nothing behind; now the item has already moved, so it must surface as the
+    error that says so rather than as an unhandled `CalledProcessError`.
+    """
+    code, store, slug = _reviewed(tmp_path)
+    import tcw.store.fs as fs_mod
+
+    def refuse(node_root, *paths):
+        raise subprocess.CalledProcessError(1, ["git", "add"], stderr="index.lock")
+
+    monkeypatch.setattr(fs_mod, "git_stage", refuse)
+    with pytest.raises(TransitionCommitError, match="writing its fields failed"):
+        store.complete(slug, "done", dod_ack=[])
+    monkeypatch.undo()
+
+    assert FsWorkStore.open(code).get(slug).status == "completed"   # it did move
+
+
+# ── configured-store discovery is authoritative ───────────────────────────────
+
+def _register(parent: Path, child: Path) -> None:
+    """Wire `child` into `parent`'s connected-projects both ways."""
+    parent_cfg = yaml.safe_load((parent / "tcw-config.yaml").read_text())
+    child_cfg = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    parent_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+        child_cfg["id"]
+    ] = str(child.resolve())
+    child_cfg["connected-projects"] = {"parent": {parent_cfg["id"]: str(parent.resolve())}}
+    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_cfg, sort_keys=False))
+
+
+def test_has_work_store_does_not_let_default_decoy_shadow_invalid_config(tmp_path):
+    code = _repo(tmp_path / "code")
+    store_repo = _repo(tmp_path / "store-repo")
+    init(["work"], code, "corelib", work_path=store_repo / "work")
+    (code / "docs" / "work").mkdir(parents=True)
+    shutil.rmtree(store_repo / "work")
+
+    assert _has_work_store(code) is False
+
+
+def test_registered_node_discovery_finds_a_valid_external_store(tmp_path):
+    parent = _repo(tmp_path / "parent")
+    store_repo = _repo(tmp_path / "store-repo")
+    init(["work"], parent, "parent")
+    child = _repo(tmp_path / "parent" / "child")
+    init(["work"], child, "child", work_path=store_repo / "child-work")
+    _register(parent, child)
+
+    assert [p.resolve() for p in child_nodes(parent)] == [child.resolve()]
+
+
+def test_incomplete_default_store_is_not_discoverable(tmp_path):
+    # Settled deliberately: `_has_work_store` is strict, so a structurally
+    # incomplete store is *absent* rather than half-present. `tcw work init`
+    # restores the missing folders.
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    shutil.rmtree(code / "docs" / "work" / "review")
+
+    assert _has_work_store(code) is False
+
+    init(["work"], code, "corelib")
+    assert _has_work_store(code) is True
+
+
+# ── `start --worktree` across two repositories ───────────────────────────────
+
+def _porcelain(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _last_commit_files(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "show", "--name-only", "--format="],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _split_repo_item(tmp_path: Path, *, auto_commit: bool = True) -> tuple[Path, Path, str]:
+    """A code node whose work store lives in a second repository, holding one
+    committed backlog item. Returns (code, store_repo, slug)."""
+    code = _repo(tmp_path / "code")
+    store_repo = _repo(tmp_path / "store-repo")
+    init(["work"], code, "corelib", work_path=store_repo / "work")
+    if not auto_commit:
+        config = yaml.safe_load((code / "tcw-config.yaml").read_text())
+        config.setdefault("work", {})["auto-commit-transitions"] = False
+        (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    slug = FsWorkStore.open(code).create("Task", created="2026-01-01").slug
+    for repo in (code, store_repo):
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "init"], check=True)
+    return code, store_repo, slug
+
+
+@pytest.mark.parametrize("auto_commit", [True, False])
+def test_worktree_start_commits_each_repository_that_owns_something(
+        tmp_path, monkeypatch, capsys, auto_commit):
+    code, store_repo, slug = _split_repo_item(tmp_path, auto_commit=auto_commit)
+    (code / "unrelated.txt").write_text("keep\n")
+    (store_repo / "unrelated.txt").write_text("keep\n")
+    for repo in (code, store_repo):
+        subprocess.run(["git", "-C", str(repo), "add", "unrelated.txt"], check=True)
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 0
+    capsys.readouterr()
+
+    active = FsWorkStore.open(code).get(slug)
+    assert active.status == "active"
+    assert active.worktree == f".worktrees/{slug}"
+    assert active.branch == f"work/{slug}"
+
+    store_files = _last_commit_files(store_repo)
+    assert f"work/active/{slug}/state.yaml" in store_files
+    assert ".gitignore" not in store_files                # code-repo business only
+    assert "unrelated.txt" not in store_files
+
+    code_files = _last_commit_files(code)
+    assert code_files.strip() == ".gitignore"             # nothing else is the code's
+    assert "unrelated.txt" in _porcelain(code)            # unrelated staging preserved
+    assert "unrelated.txt" in _porcelain(store_repo)
+    assert "state.yaml" not in _porcelain(store_repo)     # nothing left staged
+
+    # The code branch carries code-repo setup only; the lifecycle files are in
+    # another repository and cannot be represented on it.
+    tree = subprocess.run(["git", "-C", str(code), "ls-tree", "-r", "--name-only",
+                           f"work/{slug}"], capture_output=True, text=True, check=True)
+    assert "docs/work" not in tree.stdout
+    assert (code / ".worktrees" / slug).is_dir()
+
+
+def test_worktree_start_commit_excludes_another_staged_work_item(
+        tmp_path, monkeypatch, capsys):
+    """The store pathspec names the started item, never the whole store root."""
+    code, store_repo, slug = _split_repo_item(tmp_path)
+    other = FsWorkStore.open(code).create("Other", created="2026-01-02").slug
+    subprocess.run(["git", "-C", str(store_repo), "add", "-A"], check=True)
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 0
+    capsys.readouterr()
+
+    assert other not in _last_commit_files(store_repo)
+    assert other in _porcelain(store_repo)                # still staged, uncommitted
+
+
+def test_worktree_start_stops_at_a_refused_store_commit(tmp_path, monkeypatch, capsys):
+    from tcw.work import cli as work_cli
+    code, store_repo, slug = _split_repo_item(tmp_path)
+    monkeypatch.setattr(work_cli, "git_commit_result", lambda *a, **k: "store refused")
+    created: list[str] = []
+    monkeypatch.setattr(work_cli, "add_worktree",
+                        lambda *a, **k: created.append("made"))
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 1
+    assert "no worktree was created" in capsys.readouterr().err
+    assert created == []
+
+
+def test_worktree_start_stops_at_a_refused_gitignore_commit(tmp_path, monkeypatch, capsys):
+    from tcw.work import cli as work_cli
+    code, store_repo, slug = _split_repo_item(tmp_path)
+    answers = iter([None, "code refused"])
+    monkeypatch.setattr(work_cli, "git_commit_result", lambda *a, **k: next(answers))
+    created: list[str] = []
+    monkeypatch.setattr(work_cli, "add_worktree",
+                        lambda *a, **k: created.append("made"))
+    monkeypatch.chdir(code)
+
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 1
+    err = capsys.readouterr().err
+    assert "metadata was committed" in err and "no worktree was created" in err
+    assert created == []
+
+
+# ── stable reads across an in-flight claim ───────────────────────────────────
+
+def _privately_claim(store: FsWorkStore, slug: str) -> Path:
+    """Move `slug` into the adapter-private `.claiming/` folder, as `start` does
+    between its atomic rename and its publication to `active/`. Returns the
+    private directory."""
+    claiming = store.root / ".claiming"
+    claiming.mkdir(exist_ok=True)
+    private = claiming / f"{slug}-{'0' * 32}"
+    os.replace(store.root / "backlog" / slug, private)
+    return private
+
+
+def _blocked_pair(tmp_path: Path) -> tuple[Path, str, str]:
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    a = st.create("Blocker A", created="2026-01-01").slug
+    b = st.create("Target B", created="2026-01-02").slug
+    st.set_field(b, "blocked_by", [{"slug": a}])
+    return code, a, b
+
+
+def test_get_of_a_missing_slug_does_not_wait(tmp_path):
+    """The wait is conditional on claim evidence. An ordinary miss is the hot
+    path and must not pay the 500 ms publication window."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+
+    started = time.monotonic()
+    assert st.get("2026-01-01-nope") is None
+    assert time.monotonic() - started < 0.25
+
+
+def test_a_longer_slugs_claim_does_not_stall_a_shorter_one(tmp_path):
+    """`_unique_slug` mints `{base}-2`, so slugs are prefixes of each other by
+    construction. A claim on the longer one must not answer for the shorter."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    long_slug = st.create("Same title", created="2026-01-01").slug
+    _privately_claim(st, long_slug)
+
+    started = time.monotonic()
+    assert FsWorkStore.open(code).get("2026-01-01-same") is None
+    assert time.monotonic() - started < 0.25
+
+
+def test_start_waits_for_an_in_flight_blocker_then_reports_it(tmp_path):
+    """The defect: while A is privately claimed, `get(A)` answers None and the
+    storage-neutral blocker loop reads that as "resolved", so B starts straight
+    through a blocker that very much exists."""
+    code, a, b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    private = _privately_claim(st, a)
+
+    def publish():
+        # Deliberately after the reader has already looked: the whole point is
+        # that the first probe sees `.claiming/`. 50 ms against the 500 ms
+        # publication window leaves an order of magnitude of slack, and the
+        # unfixed code fails instantly rather than on a timing edge.
+        time.sleep(0.05)
+        os.replace(private, st.root / "active" / a)
+
+    publisher = threading.Thread(target=publish)
+    publisher.start()
+    try:
+        with pytest.raises(ValueError, match="blocked by"):
+            FsWorkStore.open(code).start(b, owner="t@t")
+    finally:
+        publisher.join(5)
+
+
+def test_create_records_an_in_flight_blocker_as_a_slug_not_external(tmp_path):
+    """`_entry_for` stores `{"external": ref}` when `get` says None. A blocker
+    mid-claim would be silently demoted to free text and stop being a blocker."""
+    code, a, _b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    private = _privately_claim(st, a)
+
+    def publish():
+        # Deliberately after the reader has already looked: the whole point is
+        # that the first probe sees `.claiming/`. 50 ms against the 500 ms
+        # publication window leaves an order of magnitude of slack, and the
+        # unfixed code fails instantly rather than on a timing edge.
+        time.sleep(0.05)
+        os.replace(private, st.root / "active" / a)
+
+    publisher = threading.Thread(target=publish)
+    publisher.start()
+    try:
+        item = FsWorkStore.open(code).create_work("Depends on A", created="2026-01-03",
+                                                  blockers=[a]).item
+    finally:
+        publisher.join(5)
+    assert FsWorkStore.open(code).get(item.slug).blocked_by == [{"slug": a}]
+
+
+def test_take_over_still_recovers_an_abandoned_claim(tmp_path):
+    """The documented remedy. A stable `get` that raises on exactly this state
+    would make the recovery branch unreachable."""
+    code, a, _b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    _privately_claim(st, a)                      # abandoned: nobody will publish
+
+    recovered = FsWorkStore.open(code).start(a, take_over=True, owner="t@t")
+    assert recovered.status == "active"
+    assert recovered.owner == "t@t"
+
+
+def test_an_abandoned_blocker_is_reported_as_a_blocker(tmp_path):
+    """Starting B must fail about B's blocker, not raise A's interrupted-claim
+    error — B's caller cannot act on a message about a different item."""
+    code, a, b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    _privately_claim(st, a)                      # abandoned
+
+    with pytest.raises(ValueError, match="blocked by") as caught:
+        FsWorkStore.open(code).start(b, owner="t@t")
+    assert "interrupted claim" not in str(caught.value)
+
+
+def test_an_abandoned_claim_reports_an_interrupted_claim_on_a_plain_read(tmp_path):
+    code, a, _b = _blocked_pair(tmp_path)
+    st = FsWorkStore.open(code)
+    _privately_claim(st, a)
+
+    with pytest.raises(ValueError, match="interrupted claim"):
+        FsWorkStore.open(code).get(a)
+
+
+def test_get_detail_survives_a_move_between_find_and_read(tmp_path):
+    """`get_detail` locates the directory and then reads `state.yaml` inside it.
+    A concurrent claim moves that directory in between, so the read raised
+    `FileNotFoundError` — a raw traceback out of the web API for an item that is
+    perfectly fine, just somewhere else now."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    slug = st.create("Racy", created="2026-01-01").slug
+
+    real_find = FsWorkStore._find
+    moved = {"done": False}
+
+    def move_after_locating(self, inner_slug):
+        found = real_find(self, inner_slug)
+        if inner_slug == slug and not moved["done"]:
+            moved["done"] = True                 # the window, forced open once
+            os.replace(self.root / "backlog" / slug, self.root / "active" / slug)
+        return found
+
+    reader = FsWorkStore.open(code)
+    original = FsWorkStore._find
+    FsWorkStore._find = move_after_locating
+    try:
+        detail = reader.get_detail(slug)
+    finally:
+        FsWorkStore._find = original
+
+    assert detail is not None
+    assert detail.item.status == "active"        # the settled location...
+    assert detail.core_revision                  # ...and revisions from that same snapshot
+
+
+def test_get_detail_of_a_genuinely_unknown_slug_is_none(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    assert FsWorkStore.open(code).get_detail("2026-01-01-nope") is None

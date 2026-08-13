@@ -7,3 +7,13 @@ Starting work is an atomic claim. I identify the claimant with `--owner`,
 its UTC start time. If another process wins, TCW reports the existing claim so I
 can select another item. `--take-over --owner <identity>` deliberately replaces
 an active claim; `--force` remains limited to blocker and initiative gates.
+
+With `--worktree`, TCW persists the setup in whichever repository owns each part:
+the item's own state in the work store's repository, the `.worktrees/` ignore rule
+in the code repository, and only then the branch and linked worktree. When
+`work.path` puts those in the same repository — the default — that is still one
+commit carrying both. When they differ, the two commits cannot be made atomic, so
+a refusal stops the command, names the repository that already committed, and
+leaves no worktree behind for me to re-run against. The work branch therefore
+carries the code side only: a Git branch cannot contain lifecycle files that live
+in another repository, and the item stays visible through `tcw work path <slug>`.

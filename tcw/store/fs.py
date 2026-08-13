@@ -170,8 +170,9 @@ def descendant_nodes(root: Path) -> list[Path]:
 
 
 def _has_work_store(node_root: Path) -> bool:
-    if (node_root / "docs" / "work").is_dir():
-        return True
+    """Whether `node_root` has a usable work store. The *configured* store is the
+    only authority: a literal `docs/work` folder must not vouch for a node whose
+    `work.path` points somewhere else (or somewhere broken)."""
     try:
         FsWorkStore.open(node_root)
         return True
@@ -313,10 +314,11 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
     """
     if git_ignored(node_root, dst):
         # --ignore-unmatch: an item created but never committed is not in the
-        # index at all, and that is not an error here. -f: the transition stages
-        # the item's own state before moving it, so the index legitimately
-        # differs from both HEAD and the worktree, which `rm` otherwise refuses.
-        # With --cached it still only touches the index; the files stay on disk.
+        # index at all, and that is not an error here. -f: an item's own writes
+        # are staged as they are made (`create_work`, `set_field`), so the index
+        # legitimately differs from both HEAD and the worktree, which `rm`
+        # otherwise refuses. With --cached it still only touches the index; the
+        # files stay on disk.
         subprocess.run(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
                         "--ignore-unmatch", "--", str(src)], check=True)
         shutil.move(str(src), str(dst))
@@ -326,6 +328,14 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
 
 
 WORKTREES_DIR = ".worktrees"
+
+
+class _Moved(Exception):
+    """Internal: the item was renamed mid-read, so the whole snapshot restarts.
+
+    Private to this adapter and never raised past it — "the folder moved" has no
+    abstract analog, and callers get a settled snapshot or `None`.
+    """
 
 def git_commit(node_root: Path, message: str, *paths: str) -> None:
     """Commit staged changes. With paths, a scoped (partial) commit so unrelated
@@ -428,11 +438,15 @@ def ensure_ignored(node_root: Path, *lines: str) -> bool:
     return True
 
 
-def ensure_worktree_ignored(node_root: Path) -> None:
+def ensure_worktree_ignored(node_root: Path) -> bool:
     """Add `.worktrees/` to the node's .gitignore (a linked worktree dir is
-    untracked otherwise and would clutter/be staged). Idempotent; stages it."""
-    if ensure_ignored(node_root, f"{WORKTREES_DIR}/"):
+    untracked otherwise and would clutter/be staged). Idempotent; stages it.
+    Returns whether `.gitignore` changed, so a caller committing in a *different*
+    repository knows whether the code node still owes a commit."""
+    changed = ensure_ignored(node_root, f"{WORKTREES_DIR}/")
+    if changed:
         git_stage(node_root, node_root / ".gitignore")
+    return changed
 
 
 def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
@@ -447,15 +461,28 @@ def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
 def merge_worktree(node_root: Path, branch: str) -> str | None:
     """Merge the work branch into the primary checkout's current branch — the
     "merge-back on complete" half of the split-ownership model. Runs *before* the
-    active→completed rename so the merge sees the item docs still under
-    `active/<slug>/` (no rename/modify overlap). Fail closed: a missing branch is
-    a quiet no-op (e.g. a recovery re-run), any merge failure aborts the
-    half-merge and returns an error so teardown is skipped and the branch is left
-    intact. Returns None on success, else an error message."""
+    active→completed rename, so it never collides with `complete`'s own move — but
+    it can still meet a rename an *earlier* transition left behind: `submit` moves
+    `active/<slug>/` to `review/<slug>/` on the primary checkout while the branch
+    goes on committing under the old path. Hence the pinned rename setting below.
+    Fail closed: a missing branch is a quiet no-op (e.g. a recovery re-run), any
+    merge failure aborts the half-merge and returns an error so teardown is
+    skipped and the branch is left intact. Returns None on success, else an error
+    message."""
     if subprocess.run(["git", "-C", str(node_root), "rev-parse", "--verify", "--quiet",
                        f"refs/heads/{branch}"], capture_output=True).returncode != 0:
         return None                                   # branch already gone — nothing to merge
-    r = subprocess.run(["git", "-C", str(node_root), "merge", "--no-edit", branch],
+    # `merge.directoryRenames` defaults to `conflict` for merges: git works out
+    # that a file added under a renamed directory belongs at the new path, stages
+    # it there, and *still* exits non-zero so a human confirms the relocation.
+    # That is indistinguishable here from a real conflict, so the merge-back
+    # refused items it could have finished. Pinned with `-c` rather than read from
+    # config: where TCW's own lifecycle moved the folder, relocating is the answer
+    # on every machine. `true`, not `false` — `false` disables rename detection
+    # and would strand the file in a directory the transition deleted.
+    r = subprocess.run(["git", "-C", str(node_root),
+                        "-c", "merge.directoryRenames=true",
+                        "merge", "--no-edit", branch],
                        capture_output=True, text=True)
     if r.returncode != 0:
         subprocess.run(["git", "-C", str(node_root), "merge", "--abort"],
@@ -641,6 +668,26 @@ def _extended_component_roots(
 def _revision(content: str) -> str:
     """Cheap content-hash revision token (16 hex chars of SHA-256)."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+
+
+def _require_detail(detail, kind: str, ref: str):
+    """The detail a composite operation promised to return, or a handled error.
+
+    `get_detail` and its siblings are `-> … | None` because a concurrent move or
+    delete can outlast their retries. `create_work` / `update_work` /
+    `update_term` / `update_capability` are not: they declare a value. Handing
+    `None` through anyway relocates the failure to whichever caller dereferences
+    it first — a 500 out of `serve`, an `AttributeError` out of the CLI.
+
+    The message does not claim the write landed, because at one of the five call
+    sites (`update_work`'s no-change early return) nothing was written. It always
+    names the ref: after a failed `tcw work new` that is the only place the user
+    learns the slug of the item that now exists.
+    """
+    if detail is None:
+        raise ValueError(f"{kind} '{ref}' could not be read back: another process "
+                         f"moved or removed it. Re-read it.")
+    return detail
 
 
 def _revision_multi(*contents: str) -> str:
@@ -1235,7 +1282,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         self._write_node(d, meta, desc_text)
 
         # Return fresh detail
-        return self.get_term_detail(ref)
+        return _require_detail(self.get_term_detail(ref), "term", ref)
 
 
 # ── FsCapabilitiesStore ──────────────────────────────────────────────────────
@@ -1900,7 +1947,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             if not existed and not (d / "meta.yaml").exists():
                 shutil.rmtree(d, ignore_errors=True)
             raise
-        return self.get_capability_detail(identifier)
+        return _require_detail(self.get_capability_detail(identifier),
+                               "capability", identifier)
 
 
 # ── FsWorkStore ──────────────────────────────────────────────────────────────
@@ -1993,7 +2041,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
               take_over: bool = False) -> WorkItem:
         """Publish a stamped backlog claim with a single atomic source rename."""
         started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        item = self.get(slug)
+        # `_get_now`: the take-over branch below exists precisely for the state
+        # the stabilizing `get` raises on, so probing through `get` would make
+        # `--take-over` — the documented remedy for an interrupted claim —
+        # unreachable the moment there was something to recover.
+        item = self._get_now(slug)
         if item is None and take_over:
             interrupted = self._claiming_dirs(slug)
             if len(interrupted) != 1:
@@ -2027,8 +2079,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 raise AlreadyClaimed(slug, item.owner, item.started)
             if not owner:
                 raise ValueError("takeover requires an owner")
-            self.set_field(slug, "owner", owner)
-            self.set_field(slug, "started", started)
+            self._set_fields_at(self._require_dir(slug),
+                                {"owner": owner, "started": started})
             if self.auto_commit_transitions():
                 rel = str(self._require_dir(slug).relative_to(self.store_git_root))
                 err = git_commit_result(self.store_git_root, f"tcw work: take over {slug}", rel)
@@ -2101,7 +2153,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         never lands is one whose claimant died holding it.
         """
         for _ in range(50):
-            current = self.get(slug)
+            # `_get_now`, not `get`: this loop *is* the bounded wait, and reading
+            # through the stabilizing `get` would nest another 500 ms window
+            # inside each of these 50 iterations.
+            current = self._get_now(slug)
             if current is not None and current.status == "active":
                 raise AlreadyClaimed(slug, current.owner, current.started)
             time.sleep(0.01)
@@ -2211,21 +2266,32 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return str(d / self._artifact_filename(name))
 
     @staticmethod
-    def _plan_manifest(content: str) -> list[dict] | None:
+    def _frontmatter(content: str, label: str) -> dict | None:
+        """The leading `---` YAML block as a mapping, or None when absent/empty.
+
+        `label` names the document in errors — this reads both `plan.md` and
+        inbox entries, and "malformed YAML frontmatter" is useless without
+        saying which file.
+        """
         if not content.startswith("---\n"):
             return None
         end = content.find("\n---\n", 4)
         if end < 0:
-            raise ValueError("plan.md: malformed YAML frontmatter")
+            raise ValueError(f"{label}: malformed YAML frontmatter")
         try:
             metadata = yaml.safe_load(content[4:end])
         except yaml.YAMLError as exc:
-            raise ValueError(f"plan.md: malformed YAML frontmatter: {exc}") from exc
+            raise ValueError(f"{label}: malformed YAML frontmatter: {exc}") from exc
         if metadata is None:
             return None
         if not isinstance(metadata, dict):
-            raise ValueError("plan.md: frontmatter must be a mapping")
-        if "stages" not in metadata:
+            raise ValueError(f"{label}: frontmatter must be a mapping")
+        return metadata
+
+    @staticmethod
+    def _plan_manifest(content: str) -> list[dict] | None:
+        metadata = FsWorkStore._frontmatter(content, "plan.md")
+        if metadata is None or "stages" not in metadata:
             return None
         stages = metadata["stages"]
         if not isinstance(stages, list):
@@ -2434,9 +2500,52 @@ class FsWorkStore(FsTreeStore, WorkStore):
             resources.extend(sorted(plan_folder.glob("*.md")))
         return _modified_timestamp(resources)
 
-    def get(self, slug: str) -> WorkItem | None:
+    def _get_now(self, slug: str) -> WorkItem | None:
+        """One immediate probe: the item as it is on disk this instant, or None.
+
+        The read for callers whose job *is* the unstable state — claim recovery,
+        lost-race detection, the blocker loop's error handling. They must see the
+        raw None that `get` stabilizes away.
+
+        "Immediate" still means *correct*: locating the folder and reading it are
+        two steps, so a rename between them leaves a stale path that reads as
+        absent. One re-probe settles it. This window is not the claim window and
+        has no `.claiming/` evidence to key on — an ordinary `git mv` transition
+        opens it — so it has to close here rather than in `get`.
+        """
         d = self._find(slug)
-        return self._item_from_dir(d) if d is not None else None
+        if d is None:
+            return None
+        item = self._item_from_dir(d)
+        if item is None:                       # the folder went while we read it
+            d = self._find(slug)               # once: it has a new home, or none
+            item = self._item_from_dir(d) if d is not None else None
+        return item
+
+    def get(self, slug: str) -> WorkItem | None:
+        """The settled item, or None if it is genuinely absent.
+
+        `start` moves an item through an adapter-private `.claiming/` folder
+        between two renames, and during that interval a naive read answers None —
+        which storage-neutral callers correctly read as "absent", and so a blocker
+        mid-claim silently stopped blocking. So: answer a hit immediately, answer
+        a miss with *no claim evidence* immediately, and only wait when this exact
+        slug is provably mid-flight.
+
+        The claim folder never reaches `WorkStore`; the abstract contract is still
+        "the current item or None", and an adapter is free to settle a transient
+        move before answering. A transactional adapter draws the same line between
+        reading a committed value and inspecting an in-flight transaction.
+        """
+        item = self._get_now(slug)
+        if item is not None or not self._claiming_dirs(slug):
+            return item                        # hit, or an ordinary miss: no wait
+        for _ in range(50):                    # the publication window, 500 ms
+            time.sleep(0.01)
+            item = self._get_now(slug)
+            if item is not None:
+                return item
+        raise ValueError(f"{slug} has an interrupted claim; use --take-over --owner <identity>")
 
     def query(self, status: str | None = None) -> list[WorkItem]:
         items = [self._item_from_dir(d) for d in self._item_dirs()]
@@ -2625,10 +2734,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
     @staticmethod
     def _status_resolution_problems(item) -> list[str]:
         """Status and resolution must agree. `complete()` derives the status from
-        the resolution, so no code path can produce a disagreement — but the
-        filesystem adapter stores status as a folder, and a hand-run `mv` or a
-        bad merge can. This is the detector for that, not a second source of
-        truth."""
+        the resolution and writes it as part of the move, so a transition that
+        runs to completion cannot disagree with itself. Three things still can: a
+        hand-run `mv`, a bad merge, and a transition interrupted between its move
+        and its field write — which leaves a resolved item with no resolution and
+        is reported below. This is the detector, not a second source of truth."""
         terminal = item.status in RESOLVED_STATUSES
         if not terminal:
             if item.resolution:
@@ -2673,6 +2783,39 @@ class FsWorkStore(FsTreeStore, WorkStore):
     @property
     def inbox_root(self) -> Path:
         return self.root / "inbox"
+
+    def _resolve_inbox_ref(self, ref: str) -> str:
+        """The canonical `InboxEntry.ref` for an identifier `inbox list` printed.
+
+        `list` prints two usable identifiers per row — the ref and the derived
+        title — so both resolve, in a fixed order:
+
+        1. the exact ref;
+        2. `<ref>.md`, the common case where the title is the stem;
+        3. a unique listed title.
+
+        Exact wins outright: a folder named `example` stays addressable as
+        `example` even once `example.md` lands beside it. Ambiguity is therefore
+        only reachable at step 3 — several listed titles, no exact ref, no `.md`
+        — and it raises rather than picking by iteration order, because accepting
+        consumes the entry and the wrong guess is not undoable.
+        """
+        safe = ref and ref not in {".", ".."} and "/" not in ref \
+            and "\\" not in ref and not ref.startswith(".")
+        if safe:
+            exact = self.inbox_root / ref
+            if exact.exists() and not exact.is_symlink() and exact.parent == self.inbox_root:
+                return ref
+            dotmd = self.inbox_root / f"{ref}.md"
+            if dotmd.is_file() and not dotmd.is_symlink():
+                return f"{ref}.md"
+            titled = sorted(e.ref for e in self.inbox_list() if e.title == ref)
+            if len(titled) > 1:
+                raise ValueError(f"ambiguous inbox entry: {ref} matches "
+                                 + ", ".join(titled))
+            if titled:
+                return titled[0]
+        raise ValueError(f"no such inbox entry: {ref}")
 
     def _inbox_path(self, ref: str) -> Path:
         if not ref or ref in {".", ".."} or "/" in ref or "\\" in ref or ref.startswith("."):
@@ -2746,12 +2889,34 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return out
 
     def inbox_show(self, ref: str) -> InboxEntryDetail:
-        detail, _primary = self._inbox_detail(ref)
+        detail, _primary = self._inbox_detail(self._resolve_inbox_ref(ref))
         return detail
 
+    @staticmethod
+    def _inbox_initiative(body: str | None, ref: str) -> str | None:
+        """The `initiative` back-pointer a delegated entry carries, if any.
+
+        Only this one key crosses from intake into work-item state. Inbox
+        frontmatter is a requester's text, not trusted model data, so a
+        structured value is refused rather than serialized into `state.yaml`.
+        """
+        metadata = FsWorkStore._frontmatter(body or "", f"inbox entry {ref}")
+        value = (metadata or {}).get("initiative")
+        if value is None:
+            return None
+        if isinstance(value, (list, dict, tuple, set)):
+            raise ValueError(
+                f"inbox entry {ref}: initiative must be a single value, not "
+                f"{type(value).__name__}")
+        return str(value).strip() or None
+
     def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
+        ref = self._resolve_inbox_ref(ref)   # once — both reads must see one entry
         source = self._inbox_path(ref)
         detail, primary = self._inbox_detail(ref)
+        # Before anything is created or consumed: a bad initiative must not leave
+        # a half-accepted item behind.
+        initiative = self._inbox_initiative(detail.body, ref)
         accepted_title = (title or detail.entry.title).strip()
         if not accepted_title:
             raise ValueError("title is required and must be non-empty")
@@ -2790,6 +2955,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         try:
             state = {"slug": slug, "title": accepted_title,
                      "created": created, "resolution": None}
+            if initiative:                   # absent key when there is none, as before
+                state["initiative"] = initiative
             dump_yaml(temp / "state.yaml", state)
             (temp / "intake.md").write_text(intake, encoding="utf-8")
             for name, path in attachments:
@@ -2837,25 +3004,40 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                 intake=intake).item
 
     def set_field(self, slug: str, key: str, value) -> None:
-        d = self._require_dir(slug)
+        self._set_fields_at(self._require_dir(slug), {key: value})
+
+    def _set_fields_at(self, d: Path, fields: dict) -> None:
+        """Apply `fields` to the item living at `d`, in one read-modify-write.
+
+        Takes a folder rather than a slug because its callers already know where
+        the item is — a transition that just moved it, or a claim holding it
+        privately. Re-resolving the slug would reopen the window they closed.
+        Multi-key so a pair like `owner`/`started` cannot be torn across two
+        locations by a move landing between them.
+        """
         state = load_yaml(d / "state.yaml")
-        state[key] = value
+        state.update(fields)
         dump_yaml(d / "state.yaml", state)
         self._stage(d / "state.yaml")
 
-    def _effect_transition(self, slug: str, to_status: str) -> None:
+    def _effect_transition(self, slug: str, to_status: str,
+                           fields: dict | None = None) -> None:
         # Read the item *before* the move: afterwards `_find` points at the new
         # location and the pre-move branch/worktree fields are what the
         # trunk-branch check needs.
         item = self.get(slug)
         src = self._find(slug)
         if src is None:
-            current = self.get(slug)
+            # `_get_now`: this branch is already reporting a lost race, so it
+            # wants the raw state to describe. Settling here would trade an
+            # accurate "another process moved it first" for an interrupted-claim
+            # error about the same instant.
+            current = self._get_now(slug)
             where = (f"it is now in '{current.status}'" if current is not None
                      else "it no longer exists")
             raise ValueError(
                 f"cannot move {slug} to {to_status}: another process moved it first "
-                f"({where}). This process did not move it; re-read the item before "
+                f"({where}). This process changed nothing; re-read the item before "
                 f"retrying."
             )
         # Nodes created before a status existed have no folder for it, and
@@ -2867,6 +3049,23 @@ class FsWorkStore(FsTreeStore, WorkStore):
         (self.root / to_status).mkdir(parents=True, exist_ok=True)
         dst = self.root / to_status / slug
         self._mv(src, dst)
+        if fields:
+            # After the move, before the commit. After, because the move is where
+            # this process learns it won — a write before it lands on whatever
+            # folder the winner moved. Before, because the transition commit is
+            # scoped to these two paths and takes working-tree state, so this is
+            # what keeps the fields and the move in one commit.
+            try:
+                self._set_fields_at(dst, fields)
+            except subprocess.CalledProcessError as e:
+                # `git add` refused (a held index.lock, most likely — which is
+                # what the concurrent agents in this scenario produce). The item
+                # has already moved, so this is the error that already means
+                # exactly that; CalledProcessError is not in the CLI's handled
+                # set and would exit as a traceback.
+                raise TransitionCommitError(
+                    f"{slug} moved to {to_status}, but writing its fields "
+                    f"failed:\n{e}")
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, to_status, item)
 
@@ -2922,12 +3121,30 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # -- revision-bearing detail + composite create/update --
 
     def get_detail(self, slug: str) -> "WorkDetail" | None:
+        """A whole-snapshot read: item and every revision from one location.
+
+        Composite, so it has a find-then-read window a transition can move the
+        item through. Retried rather than guarded per-file, because the fix has
+        to be all-or-nothing — pairing the first item with files re-read from its
+        *new* status would hand out revisions that never coexisted, and a caller
+        would then write against them.
+        """
+        for _ in range(5):
+            try:
+                return self._detail_snapshot(slug)
+            except _Moved:
+                continue                               # it went somewhere; look again
+            except FileNotFoundError:
+                continue                               # a path *inside* the item went
+        return None
+
+    def _detail_snapshot(self, slug: str) -> "WorkDetail" | None:
         item = self.get(slug)
         if item is None:
             return None
         d = self._find(slug)
         if d is None:                                  # moved out from under us
-            return None
+            raise _Moved
         # Core revision = state.yaml + *which* file the body resolved to + its
         # text. The name matters: promoting an intake to a request with identical
         # text changes the editable resource, and a revision that ignored the name
@@ -3067,7 +3284,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise
         self._stage(*(d / name for name in written))
 
-        return self.get_detail(slug)
+        return _require_detail(self.get_detail(slug), "work item", slug)
 
     def update_work(self, slug: str, *,
                     title=_UNSET, body=_UNSET, priority=_UNSET,
@@ -3183,7 +3400,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             changed = True
 
         if not changed and parent is _UNSET:
-            return self.get_detail(slug)
+            return _require_detail(self.get_detail(slug), "work item", slug)
 
         # Write atomically
         state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
@@ -3205,9 +3422,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             move_to.parent.mkdir(parents=True, exist_ok=True)
             self._mv(d, move_to)
 
-        detail = self.get_detail(slug)
-        if detail is not None and body is not _UNSET and not had_request \
-                and bool(body_text.strip()):
+        detail = _require_detail(self.get_detail(slug), "work item", slug)
+        if body is not _UNSET and not had_request and bool(body_text.strip()):
             detail.promoted = True          # this write created the request
         return detail
 
