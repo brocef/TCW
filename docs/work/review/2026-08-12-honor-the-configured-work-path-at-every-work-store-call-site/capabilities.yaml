@@ -1,6 +1,0 @@
-changed:
-    - work/configure-the-work-store-location
-    - work/manage-the-work-inbox
-    - work/start-a-work-item
-    - work/complete-a-work-item
-    - capabilities/detect-capability-drift
