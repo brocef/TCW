@@ -8,6 +8,7 @@ const PUBLIC_PORT = 8891
 const baseUrl = `http://127.0.0.1:${PUBLIC_PORT}`
 let server: ChildProcess
 let serverError = ""
+let nodeRoot = ""
 
 test.describe.configure({ mode: "serial" })
 
@@ -29,7 +30,7 @@ async function stableScreenshot(page: Page, name: string) {
 }
 
 test.beforeAll(async () => {
-    const nodeRoot = await mkdtemp(join(tmpdir(), "tcw-playwright-"))
+    nodeRoot = await mkdtemp(join(tmpdir(), "tcw-playwright-"))
     spawnSync("git", ["init", "-q"], { cwd: nodeRoot, stdio: "inherit" })
     const initialized = spawnSync("tcw", ["init", "--id", "playwright-node"], {
         cwd: nodeRoot,
@@ -484,11 +485,20 @@ test("handles missing lifecycle document tabs and resets them across work items"
     ).toHaveCount(0)
 
     await workTabs.getByRole("tab", { name: "Initial Request" }).click()
+    // A created item has no request until someone writes one, so the tab says so
+    // rather than rendering whatever `body` resolved to under the request's name.
+    await expect(
+        page.getByText("Initial Request is not yet present.")
+    ).toBeVisible()
     await page.getByRole("button", { name: "Edit Initial Request" }).click()
     await page
         .getByLabel("Markdown", { exact: true })
         .fill("# Updated initial request\n")
     await page.getByRole("button", { name: "Save" }).click()
+    // The save created the request. Nothing else in the view would say so.
+    await expect(
+        page.getByText("Saved — Initial Request created")
+    ).toBeVisible()
     const updatedFixture = await (
         await request.get(`${baseUrl}/api/work/${fixture.slug}`)
     ).json()
@@ -681,4 +691,61 @@ test("drops a backlog Work item through the confirmation modal", async ({
     await expect(
         page.getByText("React-edited work", { exact: true })
     ).toHaveCount(0)
+})
+
+// Last, deliberately: it adds a work item, and every screenshot baseline above
+// encodes the tree as it stands at that point.
+test("writes a request without copying the intake it replaces", async ({
+    page,
+    request,
+}) => {
+    // Piped stdin is the only way to get an item whose body resolves to intake.
+    const created = spawnSync("tcw", ["work", "new", "Intake only fixture"], {
+        cwd: nodeRoot,
+        encoding: "utf8",
+        input: "the exporter times out on big files\n",
+    })
+    if (created.status !== 0) throw new Error(created.stderr)
+    const fixture = (
+        (await (await request.get(`${baseUrl}/api/work`)).json()) as Array<{
+            slug: string
+            title: string
+        }>
+    ).find((item) => item.title === "Intake only fixture")!
+
+    await page.goto(`${baseUrl}/work/${fixture.slug}`)
+    // The tab names the request, so it must not render the intake under it.
+    await expect(
+        page.getByText("Initial Request is not yet present.")
+    ).toBeVisible()
+    await expect(
+        page.getByText("the exporter times out on big files")
+    ).toHaveCount(0)
+    // Reachable, under its own name.
+    await expect(
+        page.getByRole("button", { name: "intake", exact: true })
+    ).toBeVisible()
+
+    await page.getByRole("button", { name: "Edit Initial Request" }).click()
+    // Seeded from the intake, saving would copy it into the request.
+    await expect(page.getByLabel("Markdown", { exact: true })).toHaveValue("")
+    await page
+        .getByLabel("Markdown", { exact: true })
+        .fill("# Written up properly\n")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(
+        page.getByText("Saved \u2014 Initial Request created")
+    ).toBeVisible()
+
+    const detail = (await (
+        await request.get(`${baseUrl}/api/work/${fixture.slug}`)
+    ).json()) as { item: { body: string } }
+    expect(detail.item.body).toBe("# Written up properly\n")
+    // Raw input that quietly changes is not raw input any more.
+    const intake = (await (
+        await request.get(
+            `${baseUrl}/api/work/${fixture.slug}/artifacts/intake`
+        )
+    ).json()) as { content: string }
+    expect(intake.content).toBe("the exporter times out on big files\n")
 })
