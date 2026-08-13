@@ -13,7 +13,7 @@ import yaml
 # Task 5: add_worktree, ensure_worktree_ignored, git_commit, remove_worktree).
 from tcw.store.fs import (
     FsWorkStore, add_worktree, child_nodes, ensure_worktree_ignored, git_commit,
-    init, parent_node, remove_worktree,
+    init, merge_worktree, parent_node, remove_worktree,
 )
 from tcw.work.recursion import _inbox_write, delegate, escalate, reconcile
 
@@ -608,6 +608,15 @@ def test_complete_merges_across_a_rename_despite_local_git_config(tmp_path, monk
     value = subprocess.run(["git", "-C", str(root), "config", "--get",
                             "merge.directoryRenames"], capture_output=True, text=True)
     assert value.stdout.strip() == "conflict"             # left exactly as the user set it
+
+
+def test_merge_worktree_is_a_quiet_no_op_without_the_branch(tmp_path):
+    """A recovery re-run, or an external flow that already cleaned up. Returning
+    None (rather than running `git merge` against a branch that isn't there and
+    reporting its error) is what makes `complete` re-runnable."""
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    assert merge_worktree(root, "work/never-existed") is None
 
 
 def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):
