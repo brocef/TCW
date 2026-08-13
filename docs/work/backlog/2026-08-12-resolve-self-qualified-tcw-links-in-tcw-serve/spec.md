@@ -62,9 +62,47 @@ hypothesis**. Implementing it would be writing code against a defect nobody can
 demonstrate, and the spec's own Design section already records that it "fixes
 nothing observable as written".
 
-**Next action:** the reporter (@brocef) is the only remaining source. Needed: the
-exact `tcw serve` invocation, the directory it ran from, and the `tcw-config.yaml`
-of both the anchor and the named project. Until then this half stays blocked.
+### Reporter's environment checked directly (2026-08-13)
+
+The reporter confirmed `tcw serve` ran in `/Users/brian/Projects/proposit-orchestration/`
+(project id `proposit-app`, default `docs/work`, four registered children). Tested
+against that live node, read-only:
+
+- `registered_project_id(anchor, anchor)` → `proposit-app`. No raise, no aliasing.
+- **All eight** real `tcw://W/proposit-app/<slug>` references in that node's own
+  `docs/work` resolve `ok=True, project=''`.
+
+So the symptom does not reproduce against the reporter's real data, from the
+reporter's real directory, on HEAD.
+
+### The gate is not `_hosted_projects()`
+
+`_hosted_projects()` cannot be the cause and never could: a self-qualified
+reference short-circuits with no `project`, so `ok = r.ok and (not r.project or …)`
+never consults it. The gate that *can* make a self-qualified reference inert is in
+the resolver, one layer earlier:
+
+```python
+target = Path(target_project.locator)
+if not _has_work_store(target):        # tcw/store/fs.py:249
+    return None                        # -> ok=False -> inert link
+```
+
+Demonstrated: with the anchor's own work store unresolvable, a self-qualified
+reference goes inert, and it recovers the moment the store resolves again.
+
+That places the defect squarely in the **work-store resolution** class — the same
+class as GitHub issues #15-#18, filed by the same reporter on the same day, during
+the same migration of this very orchestrator to child nodes with external
+`work.path`. Those four were fixed by
+`2026-08-12-honor-the-configured-work-path-at-every-work-store-call-site`
+(completed 2026-08-13), which made `_has_work_store` authoritative and routed
+store resolution through the configured path.
+
+**Conclusion: the hosted-project half is almost certainly already fixed, by a
+different item, and its Design here targets the wrong function.** It should be
+discarded as superseded rather than implemented. The presentation half is
+independent and unaffected by any of this.
 
 **The presentation half is independent and remains implementable**, because
 genuinely unhosted references already occur and are reproducible today: the table
