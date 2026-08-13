@@ -371,7 +371,10 @@ edit** any object directly from the browser:
   Request, Spec, and Implementation Plan in first-class content tabs; edit
   other lifecycle artifacts and the `capabilities.yaml` sidecar using a
   Markdown editor with live preview; and run lifecycle actions (start,
-  complete, drop).
+  complete, drop). Each content tab shows only its own document: on an item
+  whose request has not been written, the tab says so and the editor opens
+  empty rather than pre-filling it with the item's raw intake. Saving a body
+  that creates the request says that it did.
   Completing as `done` requires resolving blockers and acknowledging every
   Definition-of-Done item, plus a capabilities reconciliation reminder;
   discarding drops all three for a single confirmation.

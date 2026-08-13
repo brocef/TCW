@@ -50,6 +50,13 @@ only raw intake, editing the body creates its request for the first time and say
 so. The intake is left exactly as it arrived; raw input that quietly changes
 isn't raw input any more.
 
+In the local web app, the Initial Request tab now shows only the request. On an
+item whose request has not been written, the tab says it is not yet present and
+the editor opens blank — it no longer hands you the raw intake to edit under the
+request's name, which would have copied it into the request the moment you saved.
+The intake is still there to read, as its own document. When a save creates the
+request, the confirmation says so.
+
 ## Nothing changes for items you already have
 
 Every existing item has a request document, so it reads, displays, and shows on

@@ -39,6 +39,16 @@ category.
   text, so promoting an intake to a request with identical text changes the
   token. Every existing item's core revision changes on first read after upgrade;
   the token is compared within a session and never persisted.
+- **The web app's Initial Request tab gates on the artifact, not the body.**
+  `WorkDocumentTabs` reads `initial-request`'s `present` flag from the
+  `artifacts` prop; absent, it renders the same not-yet-present notice the Spec
+  and Plan tabs use. `item.body`'s intake fallback was rendering raw intake
+  under the request's label.
+- **The web core editor seeds `body` from the request only.** `enterCore` opens
+  an empty body when `initial-request` is absent, so saving cannot copy the
+  intake into the request that replaces it.
+- **`app.tsx` reads the PATCH response's `promoted`** and reports
+  "Saved — Initial Request created". The field shipped unread.
 - **Board letters render in lifecycle order** from the renderer's own table
   rather than in `WORK_ARTIFACTS` order, which is append-only and therefore
   cannot express lifecycle position.
