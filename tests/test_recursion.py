@@ -279,6 +279,93 @@ def test_reconcile_commits_external_rollup_in_store_repository(tmp_path):
     assert _commits(stores) == before
 
 
+def _refuse_commits(root: Path, message: str = "policy: no") -> None:
+    """Install a pre-commit hook that rejects every commit in `root`.
+
+    Written into the repository's own `.git/hooks/`, so it does not depend on
+    `core.hooksPath` or on whatever `git init` templated in.
+    """
+    hooks = root / ".git" / "hooks"
+    hooks.mkdir(parents=True, exist_ok=True)
+    hook = hooks / "pre-commit"
+    hook.write_text(f"#!/bin/sh\necho '{message}' >&2\nexit 1\n")
+    hook.chmod(0o755)
+
+
+def test_refusing_hook_fixture_actually_blocks_a_commit(tmp_path):
+    """The fixture below is load-bearing, so it gets its own test. If hook
+    execution ever goes inert in CI, this fails first and names why — rather
+    than the reconcile tests passing because the commit failed for some
+    unrelated reason."""
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    _refuse_commits(root)
+    (root / "f.txt").write_text("x\n")
+    subprocess.run(["git", "-C", str(root), "add", "f.txt"], check=True)
+
+    r = subprocess.run(["git", "-C", str(root), "commit", "-m", "nope"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "policy: no" in r.stderr
+
+
+def _epic_with_a_slice(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("Redesign", created="2026-01-01")
+    child = mk_node(parent, "child")
+    _child_task(child, epic.slug)
+    commit_all(child)
+    commit_all(parent)
+    return parent, epic.slug
+
+
+def test_cli_reconcile_reports_a_refused_commit(tmp_path, monkeypatch, capsys):
+    """`git_commit` raises `CalledProcessError`, which is not in `_ERRORS`, so a
+    refused commit escaped `main` as a traceback through TCW internals."""
+    from tcw.cli import main
+    parent, epic = _epic_with_a_slice(tmp_path)
+    _refuse_commits(parent)
+    monkeypatch.chdir(parent)
+
+    assert main(["work", "reconcile", epic, "--commit"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("tcw work reconcile:")
+    assert "policy: no" in err                     # git's own words reached the user
+    assert "staged" in err                         # the rollup is in the index, not lost
+
+    content = (FsWorkStore.open(parent).path(epic) / "initial-request.md").read_text()
+    assert "<!-- tcw:rollup -->" in content        # written...
+    assert "initial-request.md" in porcelain(parent)    # ...and staged
+
+
+def test_reconcile_without_commit_ignores_a_refusing_hook(tmp_path, monkeypatch, capsys):
+    """Only `--commit` touches git, so a refusing hook is irrelevant without it."""
+    from tcw.cli import main
+    parent, epic = _epic_with_a_slice(tmp_path)
+    _refuse_commits(parent)
+    monkeypatch.chdir(parent)
+
+    assert main(["work", "reconcile", epic]) == 0
+
+
+def test_reconcile_commit_recovers_once_the_hook_is_removed(tmp_path, monkeypatch, capsys):
+    """The rollup was staged, not lost, so the retry is just re-running it — and
+    a second unchanged run stays a no-op rather than making an empty commit."""
+    from tcw.cli import main
+    parent, epic = _epic_with_a_slice(tmp_path)
+    _refuse_commits(parent)
+    monkeypatch.chdir(parent)
+    assert main(["work", "reconcile", epic, "--commit"]) == 1
+    capsys.readouterr()
+
+    (parent / ".git" / "hooks" / "pre-commit").unlink()
+    before = _commits(parent)
+    assert main(["work", "reconcile", epic, "--commit"]) == 0
+    assert _commits(parent) == before + 1
+    assert main(["work", "reconcile", epic, "--commit"]) == 0
+    assert _commits(parent) == before + 1          # unchanged rollup: still a no-op
+
+
 def test_reconcile_unknown_epic_errors(tmp_path):
     parent = mk_node(tmp_path, "parent")
     with pytest.raises(ValueError):
