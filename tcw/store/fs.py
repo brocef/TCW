@@ -170,8 +170,9 @@ def descendant_nodes(root: Path) -> list[Path]:
 
 
 def _has_work_store(node_root: Path) -> bool:
-    if (node_root / "docs" / "work").is_dir():
-        return True
+    """Whether `node_root` has a usable work store. The *configured* store is the
+    only authority: a literal `docs/work` folder must not vouch for a node whose
+    `work.path` points somewhere else (or somewhere broken)."""
     try:
         FsWorkStore.open(node_root)
         return True

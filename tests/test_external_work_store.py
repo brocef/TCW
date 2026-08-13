@@ -11,7 +11,7 @@ import yaml
 
 from tcw.cli import main
 from tcw.store import fs
-from tcw.store.fs import FsWorkStore, init
+from tcw.store.fs import FsWorkStore, _has_work_store, child_nodes, init
 from tcw.store.base import AlreadyClaimed, MultipleMatch
 
 
@@ -754,3 +754,52 @@ def test_lost_complete_leaves_its_resolution_written(tmp_path, monkeypatch):
     item = FsWorkStore.open(code).get(slug)
     assert item.status == "review"          # the move did not happen...
     assert item.resolution == "done"        # ...but the write before it did
+
+
+# ── configured-store discovery is authoritative ───────────────────────────────
+
+def _register(parent: Path, child: Path) -> None:
+    """Wire `child` into `parent`'s connected-projects both ways."""
+    parent_cfg = yaml.safe_load((parent / "tcw-config.yaml").read_text())
+    child_cfg = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    parent_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+        child_cfg["id"]
+    ] = str(child.resolve())
+    child_cfg["connected-projects"] = {"parent": {parent_cfg["id"]: str(parent.resolve())}}
+    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_cfg, sort_keys=False))
+
+
+def test_has_work_store_does_not_let_default_decoy_shadow_invalid_config(tmp_path):
+    code = _repo(tmp_path / "code")
+    store_repo = _repo(tmp_path / "store-repo")
+    init(["work"], code, "corelib", work_path=store_repo / "work")
+    (code / "docs" / "work").mkdir(parents=True)
+    shutil.rmtree(store_repo / "work")
+
+    assert _has_work_store(code) is False
+
+
+def test_registered_node_discovery_finds_a_valid_external_store(tmp_path):
+    parent = _repo(tmp_path / "parent")
+    store_repo = _repo(tmp_path / "store-repo")
+    init(["work"], parent, "parent")
+    child = _repo(tmp_path / "parent" / "child")
+    init(["work"], child, "child", work_path=store_repo / "child-work")
+    _register(parent, child)
+
+    assert [p.resolve() for p in child_nodes(parent)] == [child.resolve()]
+
+
+def test_incomplete_default_store_is_not_discoverable(tmp_path):
+    # Settled deliberately: `_has_work_store` is strict, so a structurally
+    # incomplete store is *absent* rather than half-present. `tcw work init`
+    # restores the missing folders.
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    shutil.rmtree(code / "docs" / "work" / "review")
+
+    assert _has_work_store(code) is False
+
+    init(["work"], code, "corelib")
+    assert _has_work_store(code) is True
