@@ -12,8 +12,8 @@ resolved. An epic nothing points at yet says so rather than rendering an empty
 table.
 
 It is **idempotent**. A rollup that has not changed is not rewritten, so
-re-running produces no commit and no churn — safe to run on a schedule or before
-every status meeting.
+re-running is no churn and, with nothing else waiting to be committed, no commit
+either — safe to run on a schedule or before every status meeting.
 
 It is **read-only on the capabilities ledger**. The rollup surfaces the deltas
 slices declared so I can see them in one place; it never flips a capability's
@@ -25,8 +25,11 @@ Two flags extend it:
 - `--commit` also commits the refreshed rollup, in the repository that holds the
   work store — which is not necessarily the code repository, when the project
   configures [a work-store location](tcw://C/work/configure-the-work-store-location).
-  The commit is scoped to the work store, so unrelated staged changes are left
-  alone.
+  The commit is scoped to the work store, so anything I have staged outside it is
+  left alone — but work-store changes I had already staged ride along in the same
+  commit. If Git refuses the commit — a hook, a missing identity — TCW says so and
+  names Git's own reason, and the rollup stays staged so re-running is the
+  recovery.
 - `--complete-when-ready` auto-completes the epic when every slice is resolved,
   after refreshing the rollup so the persisted text reflects the closed state
   rather than a stale "ready to close" instruction. The Definition-of-Done and
