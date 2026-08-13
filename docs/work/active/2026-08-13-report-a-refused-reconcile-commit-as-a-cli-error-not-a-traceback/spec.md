@@ -104,10 +104,26 @@ their index.
 `git_commit_result` also returns `None` when there was legitimately nothing to
 commit. That is strictly better than today: the current `git_commit` would
 *raise* on an empty commit, so the `changed or auto_completed` guard at
-`recursion.py:208` is load-bearing against a crash. After this change the guard
-becomes belt-and-braces rather than the only thing standing between a no-op and a
-traceback. Keep it — it still prevents pointless work — but it is no longer
-carrying that weight alone.
+`recursion.py:208` is load-bearing against a crash.
+
+**Corrected during implementation (2026-08-13): the guard must be removed, not
+kept.** This section originally said to keep it as "belt-and-braces". That
+contradicts this spec's own first constraint — *never report a successful
+reconcile when the rollup was not committed*. After a refused commit the rollup is
+already correct on disk, so a retry computes `changed=False`, the guard skips the
+commit, and the command exits **0** with the change still staged: the exact
+false-success the constraint forbids, reached by following the recovery this spec
+tells the user to perform. Caught by
+`test_reconcile_commit_recovers_once_the_hook_is_removed`.
+
+With `git_commit_result` the guard has no remaining job — "nothing to commit" is
+answered benignly rather than by raising — so `if commit:` is both simpler and
+correct. The tested idempotence contract is unchanged: an unchanged rollup with
+nothing else staged still produces no commit, because there is nothing
+committable. The one nuance worth knowing is that an unchanged reconcile *does*
+now commit unrelated work-store changes that were already staged; that is the same
+whole-store pathspec behavior a changed reconcile has always had, now reachable in
+one more case.
 
 **`git_commit` then has no production caller.** Deliberately **keep** it: it is
 imported by `tests/test_recursion.py:15` as a test fixture helper, and deleting a
