@@ -2007,7 +2007,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
               take_over: bool = False) -> WorkItem:
         """Publish a stamped backlog claim with a single atomic source rename."""
         started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        item = self.get(slug)
+        # `_get_now`: the take-over branch below exists precisely for the state
+        # the stabilizing `get` raises on, so probing through `get` would make
+        # `--take-over` — the documented remedy for an interrupted claim —
+        # unreachable the moment there was something to recover.
+        item = self._get_now(slug)
         if item is None and take_over:
             interrupted = self._claiming_dirs(slug)
             if len(interrupted) != 1:
@@ -2115,7 +2119,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         never lands is one whose claimant died holding it.
         """
         for _ in range(50):
-            current = self.get(slug)
+            # `_get_now`, not `get`: this loop *is* the bounded wait, and reading
+            # through the stabilizing `get` would nest another 500 ms window
+            # inside each of these 50 iterations.
+            current = self._get_now(slug)
             if current is not None and current.status == "active":
                 raise AlreadyClaimed(slug, current.owner, current.started)
             time.sleep(0.01)
@@ -2438,9 +2445,40 @@ class FsWorkStore(FsTreeStore, WorkStore):
             resources.extend(sorted(plan_folder.glob("*.md")))
         return _modified_timestamp(resources)
 
-    def get(self, slug: str) -> WorkItem | None:
+    def _get_now(self, slug: str) -> WorkItem | None:
+        """One immediate probe: the item as it is on disk this instant, or None.
+
+        The read for callers whose job *is* the unstable state — claim recovery,
+        lost-race detection, the blocker loop's error handling. They must see the
+        raw None that `get` stabilizes away.
+        """
         d = self._find(slug)
         return self._item_from_dir(d) if d is not None else None
+
+    def get(self, slug: str) -> WorkItem | None:
+        """The settled item, or None if it is genuinely absent.
+
+        `start` moves an item through an adapter-private `.claiming/` folder
+        between two renames, and during that interval a naive read answers None —
+        which storage-neutral callers correctly read as "absent", and so a blocker
+        mid-claim silently stopped blocking. So: answer a hit immediately, answer
+        a miss with *no claim evidence* immediately, and only wait when this exact
+        slug is provably mid-flight.
+
+        The claim folder never reaches `WorkStore`; the abstract contract is still
+        "the current item or None", and an adapter is free to settle a transient
+        move before answering. A transactional adapter draws the same line between
+        reading a committed value and inspecting an in-flight transaction.
+        """
+        item = self._get_now(slug)
+        if item is not None or not self._claiming_dirs(slug):
+            return item                        # hit, or an ordinary miss: no wait
+        for _ in range(50):                    # the publication window, 500 ms
+            time.sleep(0.01)
+            item = self._get_now(slug)
+            if item is not None:
+                return item
+        raise ValueError(f"{slug} has an interrupted claim; use --take-over --owner <identity>")
 
     def query(self, status: str | None = None) -> list[WorkItem]:
         items = [self._item_from_dir(d) for d in self._item_dirs()]
@@ -2909,7 +2947,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         item = self.get(slug)
         src = self._find(slug)
         if src is None:
-            current = self.get(slug)
+            # `_get_now`: this branch is already reporting a lost race, so it
+            # wants the raw state to describe. Settling here would trade an
+            # accurate "another process moved it first" for an interrupted-claim
+            # error about the same instant.
+            current = self._get_now(slug)
             where = (f"it is now in '{current.status}'" if current is not None
                      else "it no longer exists")
             raise ValueError(

@@ -1285,7 +1285,17 @@ class WorkStore(ABC):
             if "external" in b:
                 out.append(f"external: {b['external']}")
             elif "slug" in b:
-                blocker = self.get(b["slug"])
+                try:
+                    blocker = self.get(b["slug"])
+                except ValueError:
+                    # An adapter can refuse to settle a blocker — a claim on it
+                    # was abandoned. That is still a blocker, and reporting it as
+                    # one keeps this item's caller reading about *this* item.
+                    # Raising the blocker's error here would answer "why can't I
+                    # start B?" with a message about A. Storage-neutral: any
+                    # adapter may fail to resolve a reference.
+                    out.append(b["slug"])
+                    continue
                 if blocker is not None and blocker.status not in RESOLVED_STATUSES:
                     out.append(b["slug"])
             # else: structurally malformed entry — skip (degrade, don't crash)
