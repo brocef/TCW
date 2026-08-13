@@ -535,7 +535,7 @@ def _start(args: argparse.Namespace) -> int:
         _complete_hint(args.slug)
         return _post_result(post_err, "start", args.slug)
     node = st.node_root
-    ensure_worktree_ignored(node)
+    ignore_changed = ensure_worktree_ignored(node)
     st.set_field(bare, "worktree", f"{WORKTREES_DIR}/{bare}")
     st.set_field(bare, "branch", f"work/{bare}")
     # The store already committed the status move (unless auto-commit is off).
@@ -543,21 +543,41 @@ def _start(args: argparse.Namespace) -> int:
     # written just above — and both must land before `add_worktree`, because the
     # work branch is created from HEAD and would otherwise not carry them.
     #
+    # Two owners, and they are not always the same repository: the work store
+    # owns the item folder, the code node owns `.gitignore` and the worktree.
     # The pathspec deliberately names both status folders. With auto-commit off
     # the move is still staged and this commit is the one that records it, and a
     # staged rename needs both halves or the deletion is left behind.
     # `git_commit_result` drops pathspecs git has nothing for, so listing the
-    # already-committed source folder is harmless.
+    # already-committed source folder is harmless. It stays scoped to *this*
+    # item — naming the store root would sweep in every other staged work-store
+    # change.
     #
     # `--worktree` commits regardless of `auto-commit-transitions`: with the
     # setting off and no commit here, the branch would be created without the
     # item's own status move on it, producing a worktree whose item is not in it.
-    paths = [f"docs/work/backlog/{bare}", f"docs/work/active/{bare}", ".gitignore"]
-    err = git_commit_result(node, f"tcw work: start {bare} (worktree)", *paths)
+    same_repo = st.store_git_root == node
+    rel = st.root.relative_to(st.store_git_root)
+    store_paths = [str(rel / "backlog" / bare), str(rel / "active" / bare)]
+    if same_repo and ignore_changed:      # one repository, one commit, as before
+        store_paths.append(".gitignore")
+        ignore_changed = False
+    what = "worktree" if same_repo else "worktree metadata"
+    err = git_commit_result(st.store_git_root, f"tcw work: start {bare} ({what})",
+                            *store_paths)
     if err:
         print(f"tcw work start: {bare} is active, but committing the worktree "
-              f"setup failed:\n{err}", file=sys.stderr)
+              f"setup in {st.store_git_root} failed; no worktree was created:\n{err}",
+              file=sys.stderr)
         return 1
+    if ignore_changed:                    # split repositories: the code node's half
+        err = git_commit_result(node, f"tcw work: start {bare} (worktree ignore)",
+                                ".gitignore")
+        if err:
+            print(f"tcw work start: {bare} metadata was committed in "
+                  f"{st.store_git_root}, but committing .gitignore in {node} failed; "
+                  f"no worktree was created:\n{err}", file=sys.stderr)
+            return 1
     try:
         wt, _branch = add_worktree(node, bare)
     except subprocess.CalledProcessError as e:

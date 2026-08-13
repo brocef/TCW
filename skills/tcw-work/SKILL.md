@@ -11,8 +11,8 @@ license: Apache-2.0
 # Driving `tcw work`
 
 `tcw work` is the change-tracking state machine. This skill is the **judgment**
-on top of it. Name `tcw …` commands; never hand-edit `docs/work/` when a command
-exists.
+on top of it. Name `tcw …` commands; never hand-edit the store when a command
+exists, and never compose store paths — see [`commands.md`](references/commands.md).
 
 Work is the last layer in `Vocabulary → Features → Capabilities → Work`; an item
 may change any earlier one. For a product delta, check those layers in order

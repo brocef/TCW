@@ -170,8 +170,9 @@ def descendant_nodes(root: Path) -> list[Path]:
 
 
 def _has_work_store(node_root: Path) -> bool:
-    if (node_root / "docs" / "work").is_dir():
-        return True
+    """Whether `node_root` has a usable work store. The *configured* store is the
+    only authority: a literal `docs/work` folder must not vouch for a node whose
+    `work.path` points somewhere else (or somewhere broken)."""
     try:
         FsWorkStore.open(node_root)
         return True
@@ -428,11 +429,15 @@ def ensure_ignored(node_root: Path, *lines: str) -> bool:
     return True
 
 
-def ensure_worktree_ignored(node_root: Path) -> None:
+def ensure_worktree_ignored(node_root: Path) -> bool:
     """Add `.worktrees/` to the node's .gitignore (a linked worktree dir is
-    untracked otherwise and would clutter/be staged). Idempotent; stages it."""
-    if ensure_ignored(node_root, f"{WORKTREES_DIR}/"):
+    untracked otherwise and would clutter/be staged). Idempotent; stages it.
+    Returns whether `.gitignore` changed, so a caller committing in a *different*
+    repository knows whether the code node still owes a commit."""
+    changed = ensure_ignored(node_root, f"{WORKTREES_DIR}/")
+    if changed:
         git_stage(node_root, node_root / ".gitignore")
+    return changed
 
 
 def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
@@ -447,15 +452,28 @@ def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
 def merge_worktree(node_root: Path, branch: str) -> str | None:
     """Merge the work branch into the primary checkout's current branch — the
     "merge-back on complete" half of the split-ownership model. Runs *before* the
-    active→completed rename so the merge sees the item docs still under
-    `active/<slug>/` (no rename/modify overlap). Fail closed: a missing branch is
-    a quiet no-op (e.g. a recovery re-run), any merge failure aborts the
-    half-merge and returns an error so teardown is skipped and the branch is left
-    intact. Returns None on success, else an error message."""
+    active→completed rename, so it never collides with `complete`'s own move — but
+    it can still meet a rename an *earlier* transition left behind: `submit` moves
+    `active/<slug>/` to `review/<slug>/` on the primary checkout while the branch
+    goes on committing under the old path. Hence the pinned rename setting below.
+    Fail closed: a missing branch is a quiet no-op (e.g. a recovery re-run), any
+    merge failure aborts the half-merge and returns an error so teardown is
+    skipped and the branch is left intact. Returns None on success, else an error
+    message."""
     if subprocess.run(["git", "-C", str(node_root), "rev-parse", "--verify", "--quiet",
                        f"refs/heads/{branch}"], capture_output=True).returncode != 0:
         return None                                   # branch already gone — nothing to merge
-    r = subprocess.run(["git", "-C", str(node_root), "merge", "--no-edit", branch],
+    # `merge.directoryRenames` defaults to `conflict` for merges: git works out
+    # that a file added under a renamed directory belongs at the new path, stages
+    # it there, and *still* exits non-zero so a human confirms the relocation.
+    # That is indistinguishable here from a real conflict, so the merge-back
+    # refused items it could have finished. Pinned with `-c` rather than read from
+    # config: where TCW's own lifecycle moved the folder, relocating is the answer
+    # on every machine. `true`, not `false` — `false` disables rename detection
+    # and would strand the file in a directory the transition deleted.
+    r = subprocess.run(["git", "-C", str(node_root),
+                        "-c", "merge.directoryRenames=true",
+                        "merge", "--no-edit", branch],
                        capture_output=True, text=True)
     if r.returncode != 0:
         subprocess.run(["git", "-C", str(node_root), "merge", "--abort"],

@@ -9,3 +9,9 @@ entry may be a standalone file or a folder containing an `INDEX.md` or
 `INDEX.txt` request plus related resources. Accepting an entry creates a
 backlog work item, preserves its resources as named attachments, generates the
 durable `initial-request.md`, and consumes the original inbox entry.
+
+Requests I send across nodes with `tcw work delegate` and `tcw work escalate`
+land in the target project's configured inbox, wherever `work.path` puts it. If
+that store cannot be resolved, the command fails with a non-zero exit and an
+error rather than creating a default `docs/work/inbox` folder nobody reads — a
+misrouted request is reported, never silently written away.

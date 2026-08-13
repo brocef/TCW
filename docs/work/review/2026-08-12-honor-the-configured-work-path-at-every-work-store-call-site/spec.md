@@ -162,10 +162,13 @@ operations whose correctness depends on the active configured store.
 - The tightening is broader than the decoy case. `FsWorkStore.open` requires
   `inbox` plus every `WORK_STATUSES` folder, where the fast path accepted any
   `docs/work` directory — so a default-layout store missing a later-added status
-  folder disappears from node discovery instead of merely failing at use. The
-  implementation must test that case and settle it explicitly (strict plus a named
-  repair command in the release notes, or a structural allowance for default
-  stores), rather than inheriting whichever behavior falls out.
+  folder disappears from node discovery instead of merely failing at use.
+  **Settled: strict.** `_has_work_store` is exactly "the configured store opens",
+  with no structural allowance for default layouts, and `tcw work init` is the
+  named repair (it recreates missing status folders idempotently). Covered by
+  `test_incomplete_default_store_is_not_discoverable`. The exposure is small
+  because `init` gitignores the resolved status folders with a `.gitkeep`
+  re-include, so a fresh clone of a default-layout node keeps all six folders.
 - Narrow pathspec derivation must handle stores at repository-relative nested
   paths without sweeping unrelated staged changes into TCW commits.
 - Inbox-store validation must prevent phantom roots without breaking an

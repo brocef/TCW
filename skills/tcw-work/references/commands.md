@@ -57,3 +57,11 @@ identity), choose another item after contention, and use `--take-over` only as a
 deliberate ownership replacement. A configured `work.path` changes only the
 filesystem adapter location; project identity, hooks, and code worktrees stay
 with the owning node.
+
+The store may live in a **different Git repository** than the code, so never
+compose a store path from the node root — `tcw work path`, `tcw work path <slug>`
+and `tcw work inbox path` are the only correct answers, and they are what
+`delegate`, `escalate`, `reconcile` and `tcw capabilities drift` follow too. A
+`docs/work/` folder sitting next to a configured store is a leftover, not the
+store; TCW ignores it. Conversely, a default-layout store missing `inbox` or any
+status folder counts as *no* store at all — `tcw work init` restores it.

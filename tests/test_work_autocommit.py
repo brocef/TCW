@@ -445,6 +445,30 @@ def test_worktree_start_commits_even_with_auto_commit_off(tmp_path, monkeypatch,
     assert porcelain(root) == ""
 
 
+def test_worktree_start_is_one_commit_and_excludes_another_staged_item(
+        tmp_path, monkeypatch, capsys):
+    """The default in-repository layout keeps its single worktree commit — and
+    that commit is still scoped to the started item, not to the whole store."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    slug = make_item(root)
+    other = FsWorkStore.open(root).create("Other", created="2026-01-02").slug
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    before = log_count(root)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "start", slug, "--worktree"]) == 0
+    capsys.readouterr()
+
+    assert log_count(root) == before + 2               # store move + worktree setup
+    files = subprocess.run(["git", "-C", str(root), "show", "--name-only", "--format="],
+                           capture_output=True, text=True, check=True).stdout
+    assert ".gitignore" in files                       # same commit, not a second one
+    assert f"docs/work/active/{slug}/state.yaml" in files
+    assert other not in files
+    assert other in porcelain(root)                    # still staged, uncommitted
+
+
 def test_worktree_start_creates_no_empty_commit(tmp_path, monkeypatch, capsys):
     """The store commits the move and `_start` commits `.gitignore` plus the
     worktree fields. Two commits, and neither is empty."""

@@ -203,10 +203,11 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
     changed = text != original
     if changed:                                # idempotent: don't stage an unchanged
         content.write_text(text, encoding="utf-8")   # rollup (an empty commit would fail)
-        git_stage(node_root, content)
+        git_stage(store.store_git_root, content)     # the store's repo, not the code node's
     if commit and (changed or auto_completed):
         msg = f"auto-complete {epic_slug}" if auto_completed else f"reconcile {epic_slug}"
-        git_commit(node_root, f"tcw work: {msg}", "docs/work")
+        work_pathspec = str(store.root.relative_to(store.store_git_root))
+        git_commit(store.store_git_root, f"tcw work: {msg}", work_pathspec)
     if auto_completed:
         block += f"\n\nAuto-completed {epic_slug} (all children resolved)."
     return block
@@ -214,9 +215,16 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
 
 # ── inbox channel ────────────────────────────────────────────────────────────
 
-def _inbox_write(inbox: Path, title: str, body: str, origin: str,
+def _inbox_write(store: FsWorkStore, title: str, body: str, origin: str,
                  initiative: str | None) -> Path:
-    inbox.mkdir(parents=True, exist_ok=True)
+    """Write one request into `store`'s inbox. Bounded on purpose: it may restore
+    a missing `inbox` leaf inside a store that already exists, but it must never
+    manufacture the store root — that turns a misrouted request into a silent
+    success in a directory nobody reads."""
+    if not store.root.is_dir():
+        raise ValueError(f"work store root does not exist: {store.root}")
+    inbox = store.root / "inbox"
+    inbox.mkdir(exist_ok=True)
     base = f"{date.today().isoformat()}-{slugify(title)}"
     name, n = base, 2
     while (inbox / f"{name}.md").exists():
@@ -237,7 +245,7 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
     origin = registered_project_id(node_root, node_root)
-    return _inbox_write(children[child_ref] / "docs" / "work" / "inbox",
+    return _inbox_write(FsWorkStore.open(children[child_ref]),
                         title, body, origin=origin, initiative=initiative)
 
 
@@ -248,4 +256,4 @@ def escalate(node_root: Path, title: str, body: str = "",
     if parent is None:
         raise ValueError("no parent node to escalate to (this is the root)")
     origin = registered_project_id(node_root, node_root)
-    return _inbox_write(parent / "docs" / "work" / "inbox", title, body, origin, initiative)
+    return _inbox_write(FsWorkStore.open(parent), title, body, origin, initiative)

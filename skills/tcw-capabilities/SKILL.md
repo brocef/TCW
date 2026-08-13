@@ -108,7 +108,7 @@ codebase → draft → refine with the user → write) → read [`references/ini
 | federate another project         | `tcw capabilities extends <project-id>` (`--rm`)                                                                                  |
 | list only local (not inherited)  | `tcw capabilities list --local-only`                                                                                              |
 | check the ledger                 | `tcw capabilities check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                  |
-| find drift                       | `tcw capabilities drift` — inherited-but-unreviewed + local-Missing whose Planning doc is a completed item (exit non-zero if any) |
+| find drift                       | `tcw capabilities drift` — inherited-but-unreviewed + local-Missing whose Planning doc is a completed item (exit non-zero if any). The Planning doc is resolved through the node's **configured** work store (`work.path`, in whatever repository); it degrades to silence only when the node has no usable work component |
 | find / read                      | `tcw capabilities search <term>` · `tcw capabilities show <path>`                                                                 |
 | locate the filesystem store      | `tcw capabilities path` — prints only the absolute, resolved store folder                                                         |
 | ask the orchestrator for wording | `tcw work escalate "capability wording: <name>"`                                                                                  |

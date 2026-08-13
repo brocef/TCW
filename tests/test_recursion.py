@@ -1,6 +1,7 @@
 """Cross-node recursion layer (work Spec 2): topology, epics, reconcile,
 the inbox channel, and worktrees. pytest over nested tmp_path git repos."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,19 +13,24 @@ import yaml
 # Task 5: add_worktree, ensure_worktree_ignored, git_commit, remove_worktree).
 from tcw.store.fs import (
     FsWorkStore, add_worktree, child_nodes, ensure_worktree_ignored, git_commit,
-    init, parent_node, remove_worktree,
+    init, merge_worktree, parent_node, remove_worktree,
 )
-from tcw.work.recursion import delegate, escalate, reconcile
+from tcw.work.recursion import _inbox_write, delegate, escalate, reconcile
 
 
-def mk_node(base: Path, name: str) -> Path:
-    """A git repo with docs/work/ initialized, at base/name."""
+def mk_node(base: Path, name: str, *, work_repo: Path | None = None) -> Path:
+    """A git repo with docs/work/ initialized, at base/name.
+
+    With `work_repo`, the node's work store is configured into that *other* git
+    repository instead (`<work_repo>/<name>/work`) — the split-repository layout.
+    """
     root = base / name
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", "--initial-branch=main", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["work"], root, name.lower())
+    init(["work"], root, name.lower(),
+         work_path=None if work_repo is None else work_repo / name / "work")
     search = root.parent
     while search != search.parent and not (search / "tcw-config.yaml").is_file():
         search = search.parent
@@ -234,6 +240,45 @@ def test_reconcile_rollup_keys_by_node_and_is_idempotent(tmp_path):
     assert content.count("<!-- tcw:rollup -->") == 1      # no duplicate block
 
 
+def porcelain(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _commits(root: Path) -> int:
+    return int(subprocess.run(["git", "-C", str(root), "rev-list", "--count", "HEAD"],
+                              capture_output=True, text=True, check=True).stdout)
+
+
+def test_reconcile_commits_external_rollup_in_store_repository(tmp_path):
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent", work_repo=stores)
+    child = mk_node(parent, "child")
+    epic_store = FsWorkStore.open(parent)
+    epic = epic_store.create("Redesign", created="2026-01-01")
+    _child_task(child, epic.slug)
+    commit_all(child)
+    commit_all(stores)
+    (stores / "unrelated.txt").write_text("keep me staged\n")
+    subprocess.run(["git", "-C", str(stores), "add", "unrelated.txt"], check=True)
+
+    reconcile(parent, epic.slug, commit=True)
+
+    content = epic_store.path(epic.slug) / "initial-request.md"
+    changed = subprocess.run(
+        ["git", "-C", str(stores), "show", "--name-only", "--format="],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert str(content.relative_to(stores)) in changed
+    assert "unrelated.txt" not in changed                  # scoped to the work store
+    assert porcelain(stores) == "A  unrelated.txt\n"       # and left staged
+    assert not (parent / "docs" / "work").exists()
+
+    before = _commits(stores)
+    reconcile(parent, epic.slug, commit=True)              # unchanged rollup: no-op
+    assert _commits(stores) == before
+
+
 def test_reconcile_unknown_epic_errors(tmp_path):
     parent = mk_node(tmp_path, "parent")
     with pytest.raises(ValueError):
@@ -347,7 +392,70 @@ def test_escalate_writes_parent_inbox_and_root_errors(tmp_path):
         escalate(parent, "x")                              # parent is the root
 
 
+def test_delegate_uses_child_configured_inbox(tmp_path):
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child", work_repo=stores)
+
+    doc = delegate(parent, "child", "Do a thing")
+
+    assert doc.parent == FsWorkStore.open(child).root / "inbox"
+    assert not (child / "docs" / "work").exists()
+
+
+def test_escalate_uses_parent_configured_inbox(tmp_path):
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent", work_repo=stores)
+    child = mk_node(parent, "child")
+
+    doc = escalate(child, "Coordinate it")
+
+    assert doc.parent == FsWorkStore.open(parent).root / "inbox"
+    assert not (parent / "docs" / "work").exists()
+
+
+def test_inbox_write_refuses_to_manufacture_a_missing_store_root(tmp_path):
+    node = mk_node(tmp_path, "node")
+    store = FsWorkStore.open(node)
+    shutil.rmtree(store.root)
+
+    with pytest.raises(ValueError, match="work store root does not exist"):
+        _inbox_write(store, "Lost request", "body", "node", None)
+    assert not store.root.exists()
+
+
+def test_cli_delegate_to_a_broken_child_store_fails_loudly(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child", work_repo=stores)
+    shutil.rmtree(FsWorkStore.open(child).root)
+    monkeypatch.chdir(parent)
+
+    assert main(["work", "delegate", "child", "Do a thing"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "tcw work delegate:" in captured.err
+    assert not (child / "docs" / "work").exists()
+
+
+def test_inbox_write_restores_a_missing_inbox_leaf(tmp_path):
+    node = mk_node(tmp_path, "node")
+    store = FsWorkStore.open(node)
+    shutil.rmtree(store.root / "inbox")
+
+    doc = _inbox_write(store, "Still lands", "body", "node", None)
+    assert doc.parent == store.root / "inbox"
+
+
 # ── Task 5: worktrees ────────────────────────────────────────────────────────
+
+def test_ensure_worktree_ignored_reports_whether_it_changed(tmp_path):
+    """The return value is what tells a split-repository caller whether the code
+    node still owes a `.gitignore` commit."""
+    root = mk_node(tmp_path, "repo")
+    assert ensure_worktree_ignored(root) is True
+    assert ensure_worktree_ignored(root) is False
 
 def test_start_worktree_places_item_in_worktree(tmp_path, monkeypatch, capsys):
     root = mk_node(tmp_path, "repo")
@@ -426,6 +534,89 @@ def test_complete_merges_worktree_branch_before_teardown(tmp_path, monkeypatch, 
                               capture_output=True, text=True).stdout.strip()
     assert branches == ""                                          # branch deleted (post-merge)
     assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def _submit_then_complete_a_worktree_item(root: Path, capsys) -> tuple[str, str]:
+    """Drive the flow that straddles a transition rename: start `--worktree`, ADD
+    a file inside the item folder on the branch, `submit` (which renames that
+    folder on the primary checkout), then `complete`.
+
+    The addition is the load-bearing detail. Directory-rename confirmation fires
+    on files *added* inside a renamed directory, so a test that only modifies an
+    already-tracked file passes against the unfixed code — which is why the two
+    older merge-back tests miss this.
+
+    Returns (slug, implementation commit sha).
+    """
+    from tcw.cli import main
+    commit_all(root)                                      # caller has already chdir'd
+    main(["work", "new", "Ship"]); slug = capsys.readouterr().out.strip()
+    main(["work", "start", slug, "--worktree"]); capsys.readouterr()
+    wt = root / ".worktrees" / slug
+
+    (wt / "docs" / "work" / "active" / slug / "outcome.md").write_text("shipped\n")
+    (wt / "feature.py").write_text("x = 1\n")             # code, outside the renamed dir
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "impl"], check=True)
+    impl = subprocess.run(["git", "-C", str(wt), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+
+    assert main(["work", "submit", slug]) == 0            # renames active/ → review/
+    capsys.readouterr()
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+    capsys.readouterr()
+    return slug, impl
+
+
+def test_complete_merges_across_a_transition_rename(tmp_path, monkeypatch, capsys):
+    """`submit` renames `active/<slug>/` on the primary checkout while the branch
+    keeps committing under the old path. Git knows where the branch's new file
+    belongs and stages it there, but stops for confirmation — which TCW used to
+    read as a failed merge, refusing to complete a perfectly mergeable item."""
+    root = mk_node(tmp_path, "repo")
+    monkeypatch.chdir(root)
+
+    slug, impl = _submit_then_complete_a_worktree_item(root, capsys)
+
+    work = root / "docs" / "work"
+    assert (work / "completed" / slug / "outcome.md").read_text() == "shipped\n"
+    assert not (work / "active" / slug).exists()
+    assert not (work / "review" / slug).exists()
+    assert subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor",
+                           impl, "HEAD"]).returncode == 0          # no data loss
+    assert (root / "feature.py").read_text() == "x = 1\n"
+    assert not (root / ".worktrees" / slug).exists()
+    branches = subprocess.run(["git", "-C", str(root), "branch", "--list", f"work/{slug}"],
+                              capture_output=True, text=True).stdout.strip()
+    assert branches == ""
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_complete_merges_across_a_rename_despite_local_git_config(tmp_path, monkeypatch,
+                                                                  capsys):
+    """The merge-back is TCW's decision, not an ambient preference. A repository
+    that explicitly asks for the stopping behavior still completes, and TCW does
+    not rewrite that setting to get there."""
+    root = mk_node(tmp_path, "repo")
+    subprocess.run(["git", "-C", str(root), "config",
+                    "merge.directoryRenames", "conflict"], check=True)
+    monkeypatch.chdir(root)
+
+    slug, _impl = _submit_then_complete_a_worktree_item(root, capsys)
+
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+    value = subprocess.run(["git", "-C", str(root), "config", "--get",
+                            "merge.directoryRenames"], capture_output=True, text=True)
+    assert value.stdout.strip() == "conflict"             # left exactly as the user set it
+
+
+def test_merge_worktree_is_a_quiet_no_op_without_the_branch(tmp_path):
+    """A recovery re-run, or an external flow that already cleaned up. Returning
+    None (rather than running `git merge` against a branch that isn't there and
+    reporting its error) is what makes `complete` re-runnable."""
+    root = mk_node(tmp_path, "repo")
+    commit_all(root)
+    assert merge_worktree(root, "work/never-existed") is None
 
 
 def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):

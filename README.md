@@ -201,9 +201,24 @@ To keep a project's work in another Git repository while preserving its own ID
 and lifecycle configuration, set `work.path` in its `tcw-config.yaml` or pass
 `tcw work init --path <path>` (`tcw init --work-path <path> work`). Relative
 paths are anchored to the owning project's primary checkout; absolute paths and
-symlinks are supported. TCW commits work-item changes in the target repository,
-while hooks and `--worktree` continue to use the owning code repository. Existing
-non-pristine stores are never moved automatically.
+symlinks are supported. Existing non-pristine stores are never moved
+automatically.
+
+Everything that reads or writes work follows `work.path`: `delegate` and
+`escalate` land in the target project's configured inbox, `reconcile` writes and
+commits the epic rollup in the store's repository, `tcw capabilities drift` finds
+completed planning items there, and status transitions and web edits commit there
+too. What stays with the code repository is what the code owns — lifecycle hooks,
+the `.gitignore` entry for worktrees, and the branches and linked worktrees
+themselves. A project that names a `work.path` and also happens to have a leftover
+`docs/work/` folder is read through its configured path, not the leftover.
+
+When the two repositories differ, `tcw work start --worktree` commits the item's
+state in the store repository and the `.gitignore` change in the code repository,
+then creates the worktree — and if either commit is refused it stops, says which
+repository already committed, and creates no worktree. A code branch cannot carry
+lifecycle files that live in another repository, so the work branch holds the
+code side only; the item itself stays visible through the store.
 
 ### Connected projects
 
@@ -871,7 +886,8 @@ completion, so the standing capability ledger stays current by construction.
 #### Cross-node recursion (epics across repos)
 
 For cross-node discovery (`tcw work nodes` / epics / delegate / escalate), a
-**node** is a git repo with a `docs/work/`; "orchestrator" and "project" are
+**node** is a git repo with a usable work store — `docs/work/` by default, or
+wherever its `work.path` points; "orchestrator" and "project" are
 relative roles. (The _current node_ — where `tcw` operates day-to-day — is the
 nearest `tcw-config.yaml` ancestor, which may be a subfolder.) A node nested
 under another is a **child**, the enclosing one its **parent**. An **epic** is
@@ -897,7 +913,9 @@ echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # reque
 rollup block in the epic's `initial-request.md` — a slice table, surfaced capability
 deltas, and the next ready actions — and is **read-only** on the capabilities
 ledger. `delegate`/`escalate` only ever write a request into the target node's
-`inbox/`, never its tracked work, respecting the node write-boundary.
+`inbox/`, never its tracked work, respecting the node write-boundary — into the
+target's *configured* inbox, and they fail loudly rather than inventing a
+`docs/work/` folder when that store cannot be reached.
 
 Initiative transitions are relation-gated: a task with `initiative: <epic>` is
 refused at `start` until the epic is active, and an epic is refused at
@@ -919,7 +937,16 @@ Status transitions stay on the node's primary checkout (the board is always
 `ls active/`); in-flight edits live on the work branch. `complete` merges that
 branch back into the primary checkout, then tears the worktree down — and if the
 merge conflicts it stops with the branch and worktree left intact, so committed
-work is never silently dropped.
+work is never silently dropped. Moving the item through its lifecycle while the
+branch is open is not a conflict: `submit` relocates the item's folder on the
+primary checkout, and the merge-back carries the branch's files into the folder's
+new home rather than stopping to ask. The same applies to any other directory
+renamed on the primary checkout while the branch was open, code included — files
+the branch added under the old path follow the rename. With a `work.path` in
+another repository the
+setup commits split by owner — item state in the store repository, `.gitignore`
+in the code one — and the work branch carries the code side only, because one
+Git branch cannot contain another repository's files.
 
 Run `complete` **from the primary checkout**, not from inside the item's own
 worktree: both the merge-back and the teardown act on the primary checkout, and
