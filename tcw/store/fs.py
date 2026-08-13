@@ -2667,6 +2667,39 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def inbox_root(self) -> Path:
         return self.root / "inbox"
 
+    def _resolve_inbox_ref(self, ref: str) -> str:
+        """The canonical `InboxEntry.ref` for an identifier `inbox list` printed.
+
+        `list` prints two usable identifiers per row — the ref and the derived
+        title — so both resolve, in a fixed order:
+
+        1. the exact ref;
+        2. `<ref>.md`, the common case where the title is the stem;
+        3. a unique listed title.
+
+        Exact wins outright: a folder named `example` stays addressable as
+        `example` even once `example.md` lands beside it. Ambiguity is therefore
+        only reachable at step 3 — several listed titles, no exact ref, no `.md`
+        — and it raises rather than picking by iteration order, because accepting
+        consumes the entry and the wrong guess is not undoable.
+        """
+        safe = ref and ref not in {".", ".."} and "/" not in ref \
+            and "\\" not in ref and not ref.startswith(".")
+        if safe:
+            exact = self.inbox_root / ref
+            if exact.exists() and not exact.is_symlink() and exact.parent == self.inbox_root:
+                return ref
+            dotmd = self.inbox_root / f"{ref}.md"
+            if dotmd.is_file() and not dotmd.is_symlink():
+                return f"{ref}.md"
+            titled = sorted(e.ref for e in self.inbox_list() if e.title == ref)
+            if len(titled) > 1:
+                raise ValueError(f"ambiguous inbox entry: {ref} matches "
+                                 + ", ".join(titled))
+            if titled:
+                return titled[0]
+        raise ValueError(f"no such inbox entry: {ref}")
+
     def _inbox_path(self, ref: str) -> Path:
         if not ref or ref in {".", ".."} or "/" in ref or "\\" in ref or ref.startswith("."):
             raise ValueError(f"no such inbox entry: {ref}")
@@ -2739,10 +2772,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return out
 
     def inbox_show(self, ref: str) -> InboxEntryDetail:
-        detail, _primary = self._inbox_detail(ref)
+        detail, _primary = self._inbox_detail(self._resolve_inbox_ref(ref))
         return detail
 
     def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
+        ref = self._resolve_inbox_ref(ref)   # once — both reads must see one entry
         source = self._inbox_path(ref)
         detail, primary = self._inbox_detail(ref)
         accepted_title = (title or detail.entry.title).strip()
