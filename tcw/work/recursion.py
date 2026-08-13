@@ -175,7 +175,7 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
     When the epic's children are all resolved the rollup flags it "Ready to close";
     with `complete_when_ready` the epic is then auto-completed (the DoD/capability
     gates still run, so it can't skip a declared-Missing capability)."""
-    from tcw.store.fs import git_commit
+    from tcw.store.fs import git_commit_result
     store = FsWorkStore.open(node_root)
     epic = store.get(epic_slug)
     if epic is None:
@@ -204,10 +204,27 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
     if changed:                                # idempotent: don't stage an unchanged
         content.write_text(text, encoding="utf-8")   # rollup (an empty commit would fail)
         git_stage(store.store_git_root, content)     # the store's repo, not the code node's
-    if commit and (changed or auto_completed):
+    # No `changed or auto_completed` guard: that guard existed only to avoid an
+    # empty commit, which used to *fail*. `git_commit_result` answers "nothing to
+    # commit" benignly, and the guard actively broke recovery — after a refused
+    # commit the rollup is already correct on disk, so a retry computed
+    # `changed=False`, skipped the commit, and exited 0 with the change still
+    # sitting staged. Reporting success for an uncommitted rollup is the one
+    # thing this must never do.
+    if commit:
         msg = f"auto-complete {epic_slug}" if auto_completed else f"reconcile {epic_slug}"
         work_pathspec = str(store.root.relative_to(store.store_git_root))
-        git_commit(store.store_git_root, f"tcw work: {msg}", work_pathspec)
+        # `git_commit_result`, like every other commit path in the codebase: it
+        # separates a benign non-commit from a real refusal instead of raising
+        # `CalledProcessError`, which is not in the CLI's `_ERRORS` and so
+        # escaped as a traceback. The message says the rollup was *staged*,
+        # because it was — written and staged above, before the commit was
+        # attempted — so the user knows the change is in their index rather than
+        # lost, and that re-running is the recovery.
+        err = git_commit_result(store.store_git_root, f"tcw work: {msg}", work_pathspec)
+        if err:
+            raise ValueError(f"reconciled {epic_slug} and staged the rollup, but "
+                             f"committing it failed:\n{err}")
     if auto_completed:
         block += f"\n\nAuto-completed {epic_slug} (all children resolved)."
     return block
