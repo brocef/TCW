@@ -1,0 +1,9 @@
+slug: 2026-08-13-report-a-refused-reconcile-commit-as-a-cli-error-not-a-traceback
+title: Report a refused reconcile commit as a CLI error, not a traceback
+created: '2026-08-13'
+resolution: null
+priority: 40
+tags:
+- bug
+- cli
+- work
