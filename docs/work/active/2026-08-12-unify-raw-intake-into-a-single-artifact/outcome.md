@@ -1,5 +1,9 @@
 # Outcome — Unify raw intake into a single artifact
 
+> **Second pass.** Rejected at `verify` and reworked — see the "After the
+> rejection" section at the end. The body of this document describes the first
+> pass and stands as written.
+
 All thirteen plan tasks shipped. Suite green at 1245 passed (baseline before this
 item: 1229). Every acceptance criterion is met; criterion 12's `Missing` →
 `Supported` flip is the completion gate's and has not run yet.
@@ -107,3 +111,72 @@ Everything the plan listed as unverifiable by the suite, except one:
 - Every existing item's core revision changes on first read after this lands. The
   token is compared within a session and never persisted, so the effect is nil;
   recorded so it is not rediscovered as a bug.
+
+## After the rejection
+
+`verify` rejected the first pass on `rework.md`: the store, the CLI, and the API
+learned about intake and the web app did not. All three items are addressed.
+
+| # | Task | Commit |
+| - | ---- | ------ |
+| 1 | The request tab gates on the artifact, not the body | `9e0de85` |
+| 2 | The core editor seeds `body` from the request only | `9e0de85` |
+| 3 | The save reports a promotion | `9e0de85` |
+| 4 | Regression tests, component and end-to-end | `38a79df` |
+| 5 | Documentation Sync — README, changelog, release notes | `607a891` |
+
+**The rework document under-described the defect, and clicking through found the
+rest.** It named the tab's *rendering* — raw intake shown under the request's
+label. Fixing the rendering and re-running the by-hand check showed the same
+fallback reaching the **editor**: "Edit Initial Request" opened pre-filled with
+the intake text, so saving copied the intake into the request that is supposed to
+replace it, and the intake was preserved only in the sense that a copy of it now
+existed in two places. `enterCore` seeds `draft.body` from `item.body`, which is
+the same fallback one layer further in. Both now read the `initial-request`
+artifact's `present` flag, which is the resolved fact rather than a resolution of
+it.
+
+This is the one finding that would not have come from any amount of reading, and
+it is exactly the check `outcome.md`'s first pass deferred and `rework.md`
+re-listed as task 4. The lesson generalizes past this item: `serve` has an API
+and a client, and a criterion satisfied at the handler says nothing about the
+client, because the client is free to ignore what the handler returns — which is
+literally what `promoted` was doing.
+
+**No new tab for intake.** `content-views.tsx:393-431` already renders every
+present artifact outside the three-tab set as a button row, so `intake` was
+reachable the whole time under its own name. Confirmed rather than rebuilt.
+
+**Where the checks went.** The tab logic is a component test
+(`work-document-tabs.test.tsx`) because that is where the fallback lives. The
+editor seeding and the promotion notice are end-to-end
+(`parity.spec.ts`) because they only exist as a round trip through the API. The
+new e2e case is **last in the file, deliberately**: it creates a work item, and
+every screenshot baseline above it encodes the tree as it stands at that point.
+
+**`tcw/serve/dist` is tracked, and a stale build is how this shipped.**
+`pnpm check:build` compares the committed bundle against a fresh one; it was
+never run against the first pass. Rebuilt and committed with the fix.
+
+### Re-verified after the merge with `main`
+
+The branch was 99 commits behind `main` (v0.21.1 released in between) and was
+merged forward before any of this. Two conflicts, both in code this item wrote:
+`_detail_snapshot`'s missing-directory branch, where `main`'s `raise _Moved`
+retry supersedes this item's `return None`, and `update_work`'s return, where
+`main`'s `_require_detail` and this item's `promoted` flag compose. One test
+`main` added after the divergence
+(`test_inbox_accept_keeps_the_original_markdown_in_the_body`) asserted the
+accepted entry lands in `initial-request.md`; it reads `intake.md` now.
+
+Every acceptance criterion re-checked by hand in a scratch node after the merge —
+all three inbox shapes, all four board states, both promotion paths, and the
+both-absent and empty-request-beside-real-intake cases. Suite green at 1310
+Python tests, 51 web unit tests, and 14 end-to-end tests.
+
+### Still deferred
+
+**`tcw work reconcile` writes `initial-request.md`** for an epic with no request.
+Raised in the first pass, held out of the rework as a reconcile defect rather
+than an intake one, and still the one path that can light `R` on an item nobody
+wrote up. For `verify` to file as its own item.
