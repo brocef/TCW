@@ -1,9 +1,0 @@
-slug: 2026-08-12-resolve-self-qualified-tcw-links-in-tcw-serve
-title: Resolve self-qualified tcw:// links in tcw serve
-created: '2026-08-12'
-resolution: null
-priority: 45
-effort: low
-tags:
-- bug
-- web
