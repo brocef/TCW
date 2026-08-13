@@ -10,12 +10,28 @@ No capability-ledger record changes are required. This is a correction to the ex
 
 Delegation writes a closed frontmatter vocabulary containing `from` and optional `initiative` (`tcw/work/recursion.py:218-226`). Acceptance currently treats the whole Markdown file as opaque body text and creates the work item without extracting `initiative`, silently breaking the back-pointer used by epic reconciliation (`tcw/store/fs.py:2737-2825`, `tcw/work/recursion.py:71-80`).
 
+### Folded in: `delegate --help` names the wrong identifier
+
+Found 2026-08-13 while declaring the cross-node capabilities, and folded into this item rather than filed separately because it is the same defect in the same subsystem: the CLI advertising one identifier form while resolving another.
+
+`tcw work delegate`'s first argument is documented as `child node path (relative to this node)` (`tcw/work/cli.py`, the `pdg.add_argument("child", …)` help string). It is not a path. `delegate` builds `{registered_project_id(node_root, c): c for c in child_nodes(node_root)}` and matches the **canonical project ID** (`tcw/work/recursion.py:239-249`). Verified on a fixture where directory name and project ID differ:
+
+```
+'sub-dir-name'   -> ValueError: no child node 'sub-dir-name'. children: canonical-id
+'canonical-id'   -> OK  …/sub-dir-name/docs/work/inbox
+```
+
+The existing tests cannot catch it: `mk_node` in `tests/test_recursion.py` derives the project ID from the directory name, so the two always coincide.
+
+Unlike the inbox case, the **code is right and the documentation is wrong**. IDs are identity and paths are adapter locators, so accepting a path here would be the defect. The fix is the help string plus a test whose ID and directory name differ.
+
 ## Goals
 
 - Let `inbox accept` consume a standalone file by its exact reference, its filename without `.md`, or its unique derived title/slug as shown by `inbox list`.
 - Preserve a valid, non-empty delegated `initiative` value in the accepted item's `state.yaml`.
 - Keep folder-entry addressing and attachment ingestion unchanged.
 - Fail explicitly when a relaxed identifier is ambiguous rather than choosing an entry by iteration order.
+- Correct `tcw work delegate`'s argument help so it names the canonical project ID it actually resolves, and pin it with a test whose project ID and directory name differ.
 
 ## Non-goals
 
@@ -24,6 +40,8 @@ Delegation writes a closed frontmatter vocabulary containing `from` and optional
 - A general warning system for unknown frontmatter. TCW's own writer emits only `from` and `initiative`.
 - Validation of the initiative against another node during acceptance; cross-node references are intentionally loose.
 - Changes to the broader intake unification proposed by the lifecycle epic.
+- Making `delegate` accept a filesystem path. IDs are identity; the code is correct and only its help string is wrong.
+- Auditing every other CLI help string for the same class of drift. Out of scope here; worth its own pass.
 
 ## Design
 
@@ -58,9 +76,12 @@ This change lands before the lifecycle-polymorphism epic because both alter inta
 - Missing or blank initiative frontmatter creates the same item shape as today.
 - A non-scalar initiative fails before creating an item or consuming the inbox entry.
 - Existing folder, binary-file, attachment, CLI, and cross-node recursion tests remain green.
+- `tcw work delegate --help` describes its first argument as a canonical project ID, with no mention of a path.
+- A test in which a child's project ID and directory name differ asserts that the ID resolves and the directory name is refused with the valid IDs named.
 
 ## Risks
 
 - Relaxed lookup can introduce collisions. Exact-first ordering and explicit ambiguity make collisions safe and deterministic.
 - Intake code is also in scope for the lifecycle epic. Landing first and recording regression tests prevents the rewrite from losing these guarantees.
 - Treating arbitrary frontmatter as trusted state would widen the model accidentally. Only `initiative` is propagated.
+- The `delegate` regression is only meaningful if its fixture breaks the ID/directory-name coincidence that `mk_node` creates. A test reusing `mk_node` unchanged would pass against the unfixed code and prove nothing.
