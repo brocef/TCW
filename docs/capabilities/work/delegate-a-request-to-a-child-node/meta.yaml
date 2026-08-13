@@ -1,0 +1,6 @@
+id: cap-432c9b
+name: Delegate a request to a child node
+Status: Supported
+Subject:
+- node
+Feature: work-inbox

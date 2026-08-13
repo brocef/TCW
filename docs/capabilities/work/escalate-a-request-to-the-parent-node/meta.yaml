@@ -1,0 +1,6 @@
+id: cap-45a1e7
+name: Escalate a request to the parent node
+Status: Supported
+Subject:
+- node
+Feature: work-inbox
