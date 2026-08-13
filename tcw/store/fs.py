@@ -2204,21 +2204,32 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return str(d / self._artifact_filename(name))
 
     @staticmethod
-    def _plan_manifest(content: str) -> list[dict] | None:
+    def _frontmatter(content: str, label: str) -> dict | None:
+        """The leading `---` YAML block as a mapping, or None when absent/empty.
+
+        `label` names the document in errors — this reads both `plan.md` and
+        inbox entries, and "malformed YAML frontmatter" is useless without
+        saying which file.
+        """
         if not content.startswith("---\n"):
             return None
         end = content.find("\n---\n", 4)
         if end < 0:
-            raise ValueError("plan.md: malformed YAML frontmatter")
+            raise ValueError(f"{label}: malformed YAML frontmatter")
         try:
             metadata = yaml.safe_load(content[4:end])
         except yaml.YAMLError as exc:
-            raise ValueError(f"plan.md: malformed YAML frontmatter: {exc}") from exc
+            raise ValueError(f"{label}: malformed YAML frontmatter: {exc}") from exc
         if metadata is None:
             return None
         if not isinstance(metadata, dict):
-            raise ValueError("plan.md: frontmatter must be a mapping")
-        if "stages" not in metadata:
+            raise ValueError(f"{label}: frontmatter must be a mapping")
+        return metadata
+
+    @staticmethod
+    def _plan_manifest(content: str) -> list[dict] | None:
+        metadata = FsWorkStore._frontmatter(content, "plan.md")
+        if metadata is None or "stages" not in metadata:
             return None
         stages = metadata["stages"]
         if not isinstance(stages, list):
@@ -2775,10 +2786,31 @@ class FsWorkStore(FsTreeStore, WorkStore):
         detail, _primary = self._inbox_detail(self._resolve_inbox_ref(ref))
         return detail
 
+    @staticmethod
+    def _inbox_initiative(body: str | None, ref: str) -> str | None:
+        """The `initiative` back-pointer a delegated entry carries, if any.
+
+        Only this one key crosses from intake into work-item state. Inbox
+        frontmatter is a requester's text, not trusted model data, so a
+        structured value is refused rather than serialized into `state.yaml`.
+        """
+        metadata = FsWorkStore._frontmatter(body or "", f"inbox entry {ref}")
+        value = (metadata or {}).get("initiative")
+        if value is None:
+            return None
+        if isinstance(value, (list, dict, tuple, set)):
+            raise ValueError(
+                f"inbox entry {ref}: initiative must be a single value, not "
+                f"{type(value).__name__}")
+        return str(value).strip() or None
+
     def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
         ref = self._resolve_inbox_ref(ref)   # once — both reads must see one entry
         source = self._inbox_path(ref)
         detail, primary = self._inbox_detail(ref)
+        # Before anything is created or consumed: a bad initiative must not leave
+        # a half-accepted item behind.
+        initiative = self._inbox_initiative(detail.body, ref)
         accepted_title = (title or detail.entry.title).strip()
         if not accepted_title:
             raise ValueError("title is required and must be non-empty")
@@ -2817,6 +2849,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         try:
             state = {"slug": slug, "title": accepted_title,
                      "created": created, "resolution": None}
+            if initiative:                   # absent key when there is none, as before
+                state["initiative"] = initiative
             dump_yaml(temp / "state.yaml", state)
             (temp / "initial-request.md").write_text(request, encoding="utf-8")
             for name, path in attachments:
