@@ -314,10 +314,11 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
     """
     if git_ignored(node_root, dst):
         # --ignore-unmatch: an item created but never committed is not in the
-        # index at all, and that is not an error here. -f: the transition stages
-        # the item's own state before moving it, so the index legitimately
-        # differs from both HEAD and the worktree, which `rm` otherwise refuses.
-        # With --cached it still only touches the index; the files stay on disk.
+        # index at all, and that is not an error here. -f: an item's own writes
+        # are staged as they are made (`create_work`, `set_field`), so the index
+        # legitimately differs from both HEAD and the worktree, which `rm`
+        # otherwise refuses. With --cached it still only touches the index; the
+        # files stay on disk.
         subprocess.run(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
                         "--ignore-unmatch", "--", str(src)], check=True)
         shutil.move(str(src), str(dst))
@@ -2687,10 +2688,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
     @staticmethod
     def _status_resolution_problems(item) -> list[str]:
         """Status and resolution must agree. `complete()` derives the status from
-        the resolution, so no code path can produce a disagreement — but the
-        filesystem adapter stores status as a folder, and a hand-run `mv` or a
-        bad merge can. This is the detector for that, not a second source of
-        truth."""
+        the resolution and writes it as part of the move, so a transition that
+        runs to completion cannot disagree with itself. Three things still can: a
+        hand-run `mv`, a bad merge, and a transition interrupted between its move
+        and its field write — which leaves a resolved item with no resolution and
+        is reported below. This is the detector, not a second source of truth."""
         terminal = item.status in RESOLVED_STATUSES
         if not terminal:
             if item.resolution:
@@ -2987,7 +2989,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                      else "it no longer exists")
             raise ValueError(
                 f"cannot move {slug} to {to_status}: another process moved it first "
-                f"({where}). This process did not move it; re-read the item before "
+                f"({where}). This process changed nothing; re-read the item before "
                 f"retrying."
             )
         # Nodes created before a status existed have no folder for it, and

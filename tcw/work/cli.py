@@ -506,8 +506,8 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     st, bare = resolved
     # `pre` hooks run before the store is touched at all — not merely before the
-    # move. `complete()` writes fields first, so a hook evaluated any later could
-    # strand a resolution on an unmoved item.
+    # move. A hook is allowed to refuse the transition, and a refusal has to mean
+    # nothing happened; evaluating one after any store call would make that false.
     if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog")):
         print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
         return 1
@@ -931,9 +931,9 @@ def _complete(args: argparse.Namespace) -> int:
         if problems:
             print("Mark them Omitted (tcw capabilities set <path> --status Omitted) "
                   "if they will never be built.", file=sys.stderr)
-    # Last thing before the store is touched. `complete()` writes the resolution
-    # with `set_field` before it moves the item, so a hook evaluated any later
-    # could abort having already stamped a resolution onto an unmoved item.
+    # Last thing before the store is touched. A `pre` hook may refuse the
+    # completion, and a refusal has to mean the item is untouched — so the hook
+    # runs before `complete()` is entered at all, not somewhere inside it.
     if (err := run_pre(policy, transition_id, st.node_root, bare, item.status)):
         print(f"tcw work complete: {err}; {bare} not closed", file=sys.stderr)
         return 1
