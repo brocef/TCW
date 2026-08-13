@@ -240,6 +240,45 @@ def test_reconcile_rollup_keys_by_node_and_is_idempotent(tmp_path):
     assert content.count("<!-- tcw:rollup -->") == 1      # no duplicate block
 
 
+def porcelain(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _commits(root: Path) -> int:
+    return int(subprocess.run(["git", "-C", str(root), "rev-list", "--count", "HEAD"],
+                              capture_output=True, text=True, check=True).stdout)
+
+
+def test_reconcile_commits_external_rollup_in_store_repository(tmp_path):
+    stores = mk_node(tmp_path, "stores")
+    parent = mk_node(tmp_path, "parent", work_repo=stores)
+    child = mk_node(parent, "child")
+    epic_store = FsWorkStore.open(parent)
+    epic = epic_store.create("Redesign", created="2026-01-01")
+    _child_task(child, epic.slug)
+    commit_all(child)
+    commit_all(stores)
+    (stores / "unrelated.txt").write_text("keep me staged\n")
+    subprocess.run(["git", "-C", str(stores), "add", "unrelated.txt"], check=True)
+
+    reconcile(parent, epic.slug, commit=True)
+
+    content = epic_store.path(epic.slug) / "initial-request.md"
+    changed = subprocess.run(
+        ["git", "-C", str(stores), "show", "--name-only", "--format="],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert str(content.relative_to(stores)) in changed
+    assert "unrelated.txt" not in changed                  # scoped to the work store
+    assert porcelain(stores) == "A  unrelated.txt\n"       # and left staged
+    assert not (parent / "docs" / "work").exists()
+
+    before = _commits(stores)
+    reconcile(parent, epic.slug, commit=True)              # unchanged rollup: no-op
+    assert _commits(stores) == before
+
+
 def test_reconcile_unknown_epic_errors(tmp_path):
     parent = mk_node(tmp_path, "parent")
     with pytest.raises(ValueError):

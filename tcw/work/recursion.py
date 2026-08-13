@@ -203,10 +203,11 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
     changed = text != original
     if changed:                                # idempotent: don't stage an unchanged
         content.write_text(text, encoding="utf-8")   # rollup (an empty commit would fail)
-        git_stage(node_root, content)
+        git_stage(store.store_git_root, content)     # the store's repo, not the code node's
     if commit and (changed or auto_completed):
         msg = f"auto-complete {epic_slug}" if auto_completed else f"reconcile {epic_slug}"
-        git_commit(node_root, f"tcw work: {msg}", "docs/work")
+        work_pathspec = str(store.root.relative_to(store.store_git_root))
+        git_commit(store.store_git_root, f"tcw work: {msg}", work_pathspec)
     if auto_completed:
         block += f"\n\nAuto-completed {epic_slug} (all children resolved)."
     return block
