@@ -9,6 +9,8 @@ TCW commits the status move itself, scoped to the item's own folders so unrelate
 
 A `--worktree` item must be completed from the **primary checkout**, not from inside its own worktree: the merge-back and the teardown both act on the primary checkout, and `git worktree remove` would be deleting the directory I am standing in. Run from inside, the tool refuses and names where to re-run it. Completing from some other, unrelated worktree is unaffected. See [Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree).
 
+When the project's `work.path` puts its work store in a different repository, the merge-back and teardown still act on the code repository, because that is where the branch and worktree live. The item's own status move is committed in the store repository, so a completed item is never waiting on the code branch to be merged before it shows as completed.
+
 If the work branch was merged outside TCW — a merged pull request, say — I add `--already-integrated` to skip TCW's merge-back. Every other gate still runs: blockers, the epic-children check, capability reconciliation, and `--confirm`. It is rejected on an item that has no worktree.
 
 Completed items no longer store a Definition-of-Done list. It was the same checklist on every item, so it recorded nothing; the checklist is still printed before I confirm. Which entries it holds is my node's to choose — see [Customize the Definition of Done](tcw://C/work/customize-the-definition-of-done).

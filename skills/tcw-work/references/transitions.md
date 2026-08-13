@@ -34,6 +34,12 @@ those are evaluated once, by the session holding the user relationship.
   transitions stay on the primary checkout, edits ride the branch, and `complete`
   merges back. It commits regardless of `auto-commit-transitions`, because the
   branch is cut from `HEAD` and would otherwise not contain the item's own move.
+- With a `work.path` in **another** repository, the setup splits by owner: the
+  item's state commits in the store repository, `.gitignore` in the code one, and
+  the worktree is created only after both succeed. The two commits cannot be
+  atomic — on a failure the command names which repository already committed and
+  creates no worktree, so re-run `start` after fixing that repository. The work
+  branch carries the code side only; the item lives where `tcw work path` says.
 
 `plan.md` being present is a **check**, not a gate: the tool does not refuse.
 
