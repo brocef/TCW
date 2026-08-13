@@ -71,7 +71,9 @@ This change lands before the lifecycle-polymorphism epic because both alter inta
 
 - Given `inbox/foo.md`, `inbox list` prints `foo.md | file | foo`, and both `inbox show foo` and `inbox accept foo` resolve that file.
 - Exact `foo.md` addressing continues to work.
-- If a folder and a Markdown file produce the same listed title, accepting that title fails with an ambiguity error and consumes neither entry; either exact reference still works.
+- **Corrected 2026-08-13 during implementation.** This criterion previously read: "If a folder and a Markdown file produce the same listed title, accepting that title fails with an ambiguity error." That contradicts the Design's own first rule — a folder named `example` *is* the exact reference `example`, and the Design says "Exact reference wins even if a relaxed candidate would collide." Both cannot hold. Resolved toward the Design, because the alternative makes a folder unaddressable by its own name the moment someone drops `example.md` beside it, and because the ref is the first column `inbox list` prints. The criteria are therefore:
+    - Given `inbox/example/` and `inbox/example.md`, `accept example` resolves the **folder** (exact reference), and `accept example.md` resolves the file. Neither is an error.
+    - Ambiguity is reserved for an input that is *not* an exact reference and has no `<input>.md`, yet matches several listed titles — e.g. `example.txt` and `example.rst` with input `example`. That fails with an ambiguity error naming the candidates and consumes nothing.
 - Accepting a delegated entry with `initiative: epic-slug` creates a backlog item whose `initiative` is `epic-slug` and whose state serializes that field.
 - Missing or blank initiative frontmatter creates the same item shape as today.
 - A non-scalar initiative fails before creating an item or consuming the inbox entry.
