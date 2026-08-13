@@ -76,6 +76,9 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   `outcome.md`. `[gated]` **REQUIRED SUB-SKILL: Use tcw-capabilities.**
 - For a `--worktree` item, the work branch is merged back before teardown, and a
   merge conflict fails closed — resolve and re-run rather than forcing. `[gated]`
+  An item whose folder moved while the branch was open (any `submit` does this) is
+  **not** a conflict: the merge-back carries branch files into the folder's new
+  location. Only a genuine content conflict stops it.
 - **Run it from the primary checkout, not from inside the item's own worktree.**
   Both the merge-back and the teardown act on the primary checkout, so from
   inside it refuses and names where to re-run. `[gated]` Completing from an

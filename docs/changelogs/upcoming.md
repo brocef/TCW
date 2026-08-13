@@ -45,3 +45,30 @@ category.
   `tests/test_capabilities.py`. New coverage for commit scoping (an unrelated
   staged file and a second staged work item both stay out of the start commit)
   and for both worktree-start failure boundaries.
+
+### Worktree merge-back
+
+- `merge_worktree` (`tcw/store/fs.py`) pins `merge.directoryRenames=true` with
+  `-c` on its `git merge` invocation. Git defaults that setting to `conflict` for
+  merges, which stages a file added under a renamed directory at the new path but
+  still exits non-zero so a human confirms the relocation; `merge_worktree` could
+  not tell that apart from a real conflict and failed closed. The trigger is the
+  ordinary flow — `start --worktree`, commit a lifecycle artifact on the branch,
+  `submit` (which renames `active/<slug>/` to `review/<slug>/` on the primary
+  checkout), `complete` — and it affects the default in-repository layout, not
+  only a configured `work.path`. Scoped with `-c` so the user's Git configuration
+  is neither read nor written; a repository setting `merge.directoryRenames=conflict`
+  still completes. `true` rather than `false`: `false` disables rename detection
+  and would strand the file under the removed directory.
+- The `merge_worktree` docstring no longer claims the merge cannot meet a
+  rename/modify overlap. Ordering it before `complete`'s own `active→completed`
+  rename avoids that one; it does not avoid a rename an earlier transition left.
+- Note the widened effect: `directoryRenames=true` applies to every directory
+  rename in the merge, so branch-added files follow renamed **code** directories
+  too. Verified directly, not inferred.
+- `tests/test_recursion.py`: `test_complete_merges_across_a_transition_rename` and
+  `test_complete_merges_across_a_rename_despite_local_git_config`, sharing
+  `_submit_then_complete_a_worktree_item`. No prior test combined `--worktree`,
+  `submit`, and a file *added* inside the renamed directory — additions are what
+  trigger the confirmation, so the two existing merge-back tests could not catch
+  this. `test_complete_aborts_on_merge_conflict` is unchanged.

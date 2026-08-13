@@ -937,7 +937,13 @@ Status transitions stay on the node's primary checkout (the board is always
 `ls active/`); in-flight edits live on the work branch. `complete` merges that
 branch back into the primary checkout, then tears the worktree down — and if the
 merge conflicts it stops with the branch and worktree left intact, so committed
-work is never silently dropped. With a `work.path` in another repository the
+work is never silently dropped. Moving the item through its lifecycle while the
+branch is open is not a conflict: `submit` relocates the item's folder on the
+primary checkout, and the merge-back carries the branch's files into the folder's
+new home rather than stopping to ask. The same applies to any other directory
+renamed on the primary checkout while the branch was open, code included — files
+the branch added under the old path follow the rename. With a `work.path` in
+another repository the
 setup commits split by owner — item state in the store repository, `.gitignore`
 in the code one — and the work branch carries the code side only, because one
 Git branch cannot contain another repository's files.

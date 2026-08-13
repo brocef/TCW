@@ -28,3 +28,15 @@ now have that setting honored everywhere, not just in some commands:
 A project whose default `docs/work` folder is missing one of its status folders
 is now treated as having no work store at all, rather than half-working. Run
 `tcw work init` in that project to restore the missing folders.
+
+Completing a work item that was started with `--worktree` no longer reports a
+merge failure that did not happen. If the item moved through its lifecycle while
+its branch was open — the usual case, since submitting it for review relocates its
+folder — finishing it used to stop and claim the merge had failed, leaving you to
+resolve by hand. It now completes on its own, while a genuine conflict between two
+edits still stops exactly as before, with the branch and worktree left intact.
+
+One behavior change comes with that fix, worth knowing if you rename directories:
+when the merge-back runs, files your work branch added under a directory that has
+since been renamed on the main branch now follow the rename into its new location.
+That applies to code directories too, not only to the item's own folder.
