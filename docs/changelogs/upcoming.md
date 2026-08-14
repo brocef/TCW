@@ -21,6 +21,12 @@ category.
   artifact would give it a board letter and a stage position it does not have.
 - **`WorkStore.delete_artifact`.** On the ABC, so the rollup migration can drop a
   request that held nothing but the rollup block without composing a path.
+- **`generated` on a `WORK_SIDECARS` entry.** Marks a sidecar a command writes
+  rather than a person. `serve`'s two sidecar payload builders echo it as a
+  boolean, and the web client renders a `generated` label instead of an Edit
+  button. `capabilities.yaml` is unaffected. `PUT` still accepts the write —
+  the flag governs the affordance, not the store, since `reconcile` writes the
+  file through the same path.
 
 ## Changed
 
