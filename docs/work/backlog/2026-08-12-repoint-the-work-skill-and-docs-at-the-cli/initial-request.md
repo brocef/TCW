@@ -79,12 +79,38 @@ Decided by the requester at this stage, so `spec` is not re-litigating them:
   — the per-stage "Moves into the prompt / Stays in the skill / Deliberately
   lost" table, written explicitly as C7's contract. The right-hand columns are
   what the routers are *for*.
-- `/Users/brian/.claude/plugins/cache/claude-plugins-official/superpowers/6.3.0/skills/writing-skills`
-  — skill-authoring guidance. **The requester asked for a `writing-specs` skill;
-  no such skill exists** in either installed superpowers version (6.2.0 or
-  6.3.0). `writing-skills` is the nearest and the more relevant one, since this
-  item is a skill rewrite. `writing-plans` also exists if the plan stage wants
-  it.
+- **Superpowers, for running the `spec` stage well — two specific documents, not
+  a skill wholesale.** Under
+  `/Users/brian/.claude/plugins/cache/claude-plugins-official/superpowers/6.3.0/skills/brainstorming/`:
+    - `SKILL.md`'s **Spec Self-Review** checklist (~L211-218) — placeholder scan,
+      internal consistency, scope check, ambiguity check ("could any requirement
+      be interpreted two different ways? If so, pick one and make it explicit").
+      TCW's stage-spec has no self-review pass; this is the transplantable part.
+    - `spec-document-reviewer-prompt.md` — a spec-review rubric whose
+      calibration clause ("only flag issues that would cause real problems
+      during implementation planning") is what TCW's review pass lacks.
+
+  **Do not follow `brainstorming` as a procedure.** It was investigated for this
+  purpose and only partially fits: it is a *conversation* protocol ("through
+  natural collaborative dialogue", L8) that asks one question per message and
+  gates on human approval — which deadlocks a delegated spec stage, and TCW's
+  `spec` is explicitly delegable. Two of its three paths refuse to write a spec
+  file at all, and its design content (architecture, components, data flow,
+  interfaces) is *how*, which is TCW's `plan` stage and the exact failure mode
+  stage-spec names.
+
+  **No `writing-specs` skill exists** — confirmed against local 6.2.0 and 6.3.0
+  and against upstream `main` and `dev`, all at 6.3.0 with an identical
+  fourteen-skill set. An earlier draft of this request pointed at
+  `writing-skills`; that was wrong, and the error is worth naming: it matched the
+  *subject matter* of this item (rewriting skills) against the *stage* being run.
+  The reference material is for running a spec stage, whatever the item is about.
+
+  **What superpowers does not cover, so do not go looking:** acceptance-criteria
+  quality, non-goals, grounding claims in code with file and line, and the
+  repo-wide sibling sweep. Grepping all fourteen skills for "acceptance criteria"
+  or "non-goal" finds one file, and it consumes criteria from a plan rather than
+  teaching how to write them. Those four are TCW-original.
 - `CLAUDE.md` §"Skill authoring (progressive disclosure)", which names
   `tcw-plugin` and `tcw-work` as the pattern a router should follow.
 - `tests/test_skill_lifecycle_parity.py` — the existing guards, including the
