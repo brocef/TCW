@@ -298,7 +298,7 @@ It does **not** cover everything, and the earlier claim that it did was wrong:
 
 | Role       | Positions                             | Legal kinds                                    | Semantics                                      |
 | ---------- | ------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
-| `check`    | stage `pre`, transition `pre`/`post`   | `command`                                      | Runs. Exit code matters. Output → stderr.      |
+| `check`    | stage `pre`, transition `pre`/`post`   | `command`, `skill` (reported, never run)       | Runs. Exit code matters. Output → stderr.      |
 | `prompt`   | stage `prompt`                         | `blob`, `file`, `generate`, `builtin`, `skill` | Resolves to text. **All** matches concatenate. |
 | `artifact` | stage `artifact`, consumed by `scaffold` | `blob`, `file`, `generate`, `builtin`        | Resolves to text. **First** match wins.        |
 
