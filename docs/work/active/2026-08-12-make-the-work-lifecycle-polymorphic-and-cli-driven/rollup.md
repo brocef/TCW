@@ -3,7 +3,7 @@
 
 | node | slug | status | blocked-by |
 |---|---|---|---|
-| . | 2026-08-12-unify-raw-intake-into-a-single-artifact | active | - |
+| . | 2026-08-12-unify-raw-intake-into-a-single-artifact | completed | - |
 | . | 2026-08-12-project-a-work-item-as-json | backlog | 2026-08-12-unify-raw-intake-into-a-single-artifact |
 | . | 2026-08-12-give-lifecycle-hooks-roles-kinds-and-conditions | backlog | 2026-08-12-project-a-work-item-as-json |
 | . | 2026-08-12-add-the-stage-entry-verb | backlog | 2026-08-12-give-lifecycle-hooks-roles-kinds-and-conditions |
@@ -16,6 +16,8 @@
 - ./2026-08-12-unify-raw-intake-into-a-single-artifact: new work/capture-raw-intake
 - ./2026-08-12-unify-raw-intake-into-a-single-artifact: changed work/open-a-work-item
 - ./2026-08-12-unify-raw-intake-into-a-single-artifact: changed work/manage-the-work-inbox
+- ./2026-08-12-unify-raw-intake-into-a-single-artifact: changed work/reconcile-an-epic-rollup
+- ./2026-08-12-unify-raw-intake-into-a-single-artifact: changed web/editing
 
-**Next:** 2026-08-12-unify-raw-intake-into-a-single-artifact
+**Next:** 2026-08-12-project-a-work-item-as-json
 <!-- /tcw:rollup -->
