@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import Binding, LifecyclePolicy
+from tcw.work.resolve import select
 
 
 def hook_env(node_root: Path, slug: str, status: str, transition: str) -> dict[str, str]:
@@ -74,19 +75,23 @@ def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
 
 
 def run_pre(policy: LifecyclePolicy, transition: str, node_root: Path, slug: str,
-            status: str) -> str | None:
+            status: str, item=None) -> str | None:
     """`pre` hooks for a transition. A failure means **do not touch the store**.
 
     Callers must invoke this before any `set_field`, not merely before the move:
     that is the whole reason execution lives outside the store.
+
+    `item` is what a binding's `when:` is matched against. It is optional so the
+    existing callers keep working, and a conditional binding without one simply
+    does not match — a check that cannot be evaluated must not silently run.
     """
-    return run_bindings(policy.transition(transition).pre, node_root,
+    return run_bindings(select(policy.transition(transition).pre, item), node_root,
                         hook_env(node_root, slug, status, transition),
                         policy.timeout, f"{transition} pre")
 
 
 def run_post(policy: LifecyclePolicy, transition: str, node_root: Path, slug: str,
-             status: str) -> str | None:
+             status: str, item=None) -> str | None:
     """`post` hooks for a transition. A failure **never rolls back**.
 
     The move and its commit have already happened, and unwinding a committed
@@ -94,6 +99,6 @@ def run_post(policy: LifecyclePolicy, transition: str, node_root: Path, slug: st
     non-zero so nothing downstream mistakes it for success — but the item stays
     where it moved to.
     """
-    return run_bindings(policy.transition(transition).post, node_root,
+    return run_bindings(select(policy.transition(transition).post, item), node_root,
                         hook_env(node_root, slug, status, transition),
                         policy.timeout, f"{transition} post")

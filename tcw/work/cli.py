@@ -527,7 +527,8 @@ def _start(args: argparse.Namespace) -> int:
     # `pre` hooks run before the store is touched at all — not merely before the
     # move. A hook is allowed to refuse the transition, and a refusal has to mean
     # nothing happened; evaluating one after any store call would make that false.
-    if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog")):
+    if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog",
+                       st.get(bare))):
         print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
         return 1
     owner = (args.owner or os.environ.get("TCW_WORK_OWNER", "")).strip()
@@ -547,7 +548,8 @@ def _start(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
-    post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active")
+    post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active",
+                        st.get(bare))
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
@@ -614,7 +616,8 @@ def _submit(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
-    if (err := run_pre(st.lifecycle_policy(), "submit", st.node_root, bare, "active")):
+    if (err := run_pre(st.lifecycle_policy(), "submit", st.node_root, bare, "active",
+                       st.get(bare))):
         print(f"tcw work submit: {err}; {bare} not moved", file=sys.stderr)
         return 1
     try:
@@ -622,7 +625,8 @@ def _submit(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
-    post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review")
+    post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review",
+                        st.get(bare))
     print(f"submitted {args.slug} → review")
     print(f"→ next: verify the work, then either "
           f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
@@ -636,7 +640,8 @@ def _rework(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
-    if (err := run_pre(st.lifecycle_policy(), "rework", st.node_root, bare, "review")):
+    if (err := run_pre(st.lifecycle_policy(), "rework", st.node_root, bare, "review",
+                       st.get(bare))):
         print(f"tcw work rework: {err}; {bare} not moved", file=sys.stderr)
         return 1
     try:
@@ -644,7 +649,8 @@ def _rework(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
-    post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active")
+    post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
+                        st.get(bare))
     print(f"reworking {args.slug} → active")
     print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
           file=sys.stderr)
@@ -1042,7 +1048,8 @@ def _complete(args: argparse.Namespace) -> int:
     # Last thing before the store is touched. A `pre` hook may refuse the
     # completion, and a refusal has to mean the item is untouched — so the hook
     # runs before `complete()` is entered at all, not somewhere inside it.
-    if (err := run_pre(policy, transition_id, st.node_root, bare, item.status)):
+    if (err := run_pre(policy, transition_id, st.node_root, bare, item.status,
+                       item)):
         print(f"tcw work complete: {err}; {bare} not closed", file=sys.stderr)
         return 1
     try:
@@ -1051,7 +1058,7 @@ def _complete(args: argparse.Namespace) -> int:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
     post_err = run_post(policy, transition_id, st.node_root, bare,
-                        "completed" if shipping else "discarded")
+                        "completed" if shipping else "discarded", item)
     loc = st.locate(bare)
     print(f"{'completed' if shipping else 'discarded'} {args.slug} "
           f"({args.resolution})" + (f" → {loc}" if loc else ""))
