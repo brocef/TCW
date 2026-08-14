@@ -397,8 +397,19 @@ needs no JSON parser.
 `WorkItem.capabilities` is an opaque `object` (`base.py:843`) filled from
 arbitrary YAML (`fs.py:2366-2372`), so it can hold values with no JSON
 equivalent. C2 decides explicitly whether to normalize or exclude it, and states
-which. `body` is bounded or excluded for the same reason — it can be arbitrarily
-large.
+which.
+
+**Amended by C2: `body` is carried in full, and the cap moves to C3.** This
+paragraph previously required `body` to be "bounded or excluded — it can be
+arbitrarily large". That is not available to a single shared projection:
+`serve`'s core editor seeds its draft from `item.body` (`app.tsx:403`), so
+excluding the field breaks the web editor, and truncating it means a body
+silently cut and then saved back — data loss presenting as a successful save,
+which is the defect class C1 spent a rework round closing. The size concern is
+real but it belongs where the size actually costs something: **C3 bounds the
+`body` it puts on a `generate` hook's stdin**, at the boundary it owns. Recorded
+here rather than resolved inside C2, because a child quietly overruling its epic
+is how a spec stops being the source of truth.
 
 **Litmus test.** Every field is abstract: `WorkItem` (`base.py:829-850`) is
 store-independent and `artifacts()` (`base.py:958`) is an existing abstract
