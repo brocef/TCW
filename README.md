@@ -706,6 +706,7 @@ tcw work lifecycle --stage spec --directive
                                        # one instruction line for an agent, or nothing if unbound
 
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
+tcw work show "$slug" --json           # the item as a versioned JSON document
 tcw work path                           # absolute, resolved work-store folder
 tcw work path "$slug"                  # current filesystem path of the slug
 tcw work inbox path                     # absolute, resolved inbox folder
@@ -825,6 +826,13 @@ It sorts by priority first (higher integer above lower, unspecified-priority
 items keeping creation order), then topologically — blockers appear before the
 items they block, since a priority preference can't jump a hard dependency —
 and annotates blocked items with their unresolved blockers.
+
+`tcw work show <slug> --json` prints the item as a machine-readable document
+instead of the human-readable summary: an explicit `schema` version, every field
+at a documented JSON type, and an `artifacts` map saying which lifecycle
+documents exist. It is the same document `tcw serve`'s API returns, so a script
+and the web app cannot disagree about what an item is. Errors go to stderr and
+leave stdout empty, so piping into `jq` fails cleanly rather than on a fragment.
 
 Pass `-i`, `--incl-desc`, or `--include-descendants` to list every **registered
 descendant work node**. The output is grouped by project ID (`# .` for the

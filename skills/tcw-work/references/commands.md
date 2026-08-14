@@ -6,7 +6,7 @@
 | triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`; `<entry>` is either identifier `list` printed (ref or title) |
 | locate stores            | `tcw work path` (configured work root) · `tcw work inbox path` (its inbox); both print only the absolute resolved path                          |
 | the board                | `tcw work list [--status <s>] [--tag <t>] [--all] [-i]` — hides resolved; `-i` adds descendant boards                                           |
-| read an item             | `tcw work show <slug>` · `tcw work path <slug>`                                                                                                 |
+| read an item             | `tcw work show <slug> [--json]` · `tcw work path <slug>`                                                                                        |
 | the lifecycle contract   | `tcw work lifecycle [work-ref] [--json]` · `--stage <id> --directive`                                                                           |
 | start work               | `tcw work start <slug> [--worktree] [--force]`                                                                                                  |
 | submit for verification  | `tcw work submit <slug>`                                                                                                                        |

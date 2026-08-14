@@ -57,6 +57,27 @@ request's name, which would have copied it into the request the moment you saved
 The intake is still there to read, as its own document. When a save creates the
 request, the confirmation says so.
 
+## Reading a work item as JSON
+
+`tcw work show <slug> --json` prints the item as a machine-readable document
+instead of the human-readable summary — so you can pipe a work item into `jq`, or
+into a script of your own.
+
+The document says what version it is (`"schema": 1`), carries every field of the
+item under its own name, and includes a map of which lifecycle documents exist,
+so a script can ask "has the spec been written?" without looking at files. If
+something goes wrong, the error goes to the error stream and nothing is printed,
+so a pipeline fails cleanly instead of receiving half a document.
+
+It is the same document the local web app's API returns. That is the point: there
+was one shape for the web app and none for the command line, and now there is one
+shape for both.
+
+One small change if you keep unusual values in a work item's `capabilities`
+block: a YAML set used to appear as text like `"{1, 2}"` and now appears as a
+proper list, `[1, 2]`. Dates, binary values, and deeply linked structures are all
+handled properly now rather than being stringified on the way out.
+
 ## An epic's rollup lives in its own file
 
 `tcw work reconcile` used to write its summary of an initiative's slices into the

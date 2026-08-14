@@ -21,6 +21,17 @@ category.
   artifact would give it a board letter and a stage position it does not have.
 - **`WorkStore.delete_artifact`.** On the ABC, so the rollup migration can drop a
   request that held nothing but the rollup block without composing a path.
+- **`tcw/work/projection.py`** — `SCHEMA_VERSION`, `WORK_ITEM_SCHEMA`, and
+  `work_item_json(item, artifacts)`. A versioned DTO with a real JSON Schema
+  (closed, every property required) rather than an `asdict()` dump. Pure: no
+  store, no path, no I/O; the caller supplies the artifact list it already
+  resolved.
+- **`tcw work show --json`** — emits the DTO with
+  `json.dumps(..., indent=2, sort_keys=True, allow_nan=False)` and **no
+  `default=`**. Projection or encoding failures are caught at the CLI boundary:
+  stderr, exit 1, nothing on stdout.
+- **`jsonschema` in the `dev` extra.** Tests only; runtime `dependencies` stays
+  `["PyYAML>=6"]`.
 - **`generated` on a `WORK_SIDECARS` entry.** Marks a sidecar a command writes
   rather than a person. `serve`'s two sidecar payload builders echo it as a
   boolean, and the web client renders a `generated` label instead of an Edit
@@ -71,6 +82,19 @@ category.
   `<!-- tcw:rollup -->` block is stripped from `initial-request.md` and written to
   the sidecar, leaving surrounding prose untouched. A request left empty by the
   strip is deleted rather than kept as a blank document.
+- **`serve` projects every work item through `work_item_json`.** All six sites —
+  the board, the detail handler, the POST create response, both action handlers,
+  and the PATCH response. `_jsonable`/`_json_bytes` stay for taxonomy and
+  capabilities. The item payload is a superset of the old one: same field names
+  and values, plus `schema` and `artifacts`. The board now costs one
+  `artifacts()` call per row, which `tcw work list` already paid; a board shaped
+  differently from every other item payload was the alternative.
+- **`capabilities` is normalized in the projection, not by `default=str`.**
+  Non-finite floats and unknown types become strings, `bytes` becomes base64
+  (not `"b'hi'"`), `set` becomes a `key=str`-sorted array, and cycles — which
+  YAML anchors can produce — render `"<circular reference>"` instead of raising
+  `RecursionError`. A mapping whose keys collide once stringified now **raises**
+  rather than silently dropping a value.
 - **Board letters render in lifecycle order** from the renderer's own table
   rather than in `WORK_ARTIFACTS` order, which is append-only and therefore
   cannot express lifecycle position.
