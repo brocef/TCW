@@ -37,9 +37,17 @@ def test_each_prompt_has_content(sid):
 
 @pytest.mark.parametrize("sid", sorted(SHIPPED))
 def test_each_prompt_stays_under_the_ceiling(sid):
-    """40 lines, enforced rather than reviewed for — this is text an agent reads
-    at every stage entry, and a ceiling that is only a convention erodes."""
-    assert len(load_builtins().stage_prompts[sid].splitlines()) <= 40
+    """50 lines, enforced rather than reviewed for — this is text an agent reads
+    at every stage entry, and a ceiling that is only a convention erodes.
+
+    Raised from 40 at C6's verify stage. Four of the six prompts landed at
+    exactly 40, which is a ceiling with no margin: C7 moves clauses across the
+    CLI/skill seam and could not accept one without first removing another,
+    which would have let the ceiling decide the seam instead of the design.
+    The guard is the point, not the number — it still refuses a prompt that
+    grows back into the stage document it was condensed from.
+    """
+    assert len(load_builtins().stage_prompts[sid].splitlines()) <= 50
 
 
 @pytest.mark.parametrize("sid", sorted(SHIPPED))

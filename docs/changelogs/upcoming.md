@@ -119,7 +119,7 @@ category.
   condition is on the binding list, not the resolved text: a stage whose only
   binding carries a non-matching `when:` still resolves to `""`.
 - **`tests/test_shipped_prompts.py`** — set equality against the derivation,
-  ≥15 non-blank and ≤40 lines per prompt, no `tcw work lifecycle --stage` step
+  ≥15 non-blank and ≤50 lines per prompt, no `tcw work lifecycle --stage` step
   and no sub-skill name in the text, and a wheel test that runs
   `pip wheel --no-deps --no-build-isolation` and reads
   `tcw/work/prompts/*.md` out of the `.whl` as a zip. Default suite, no marker.
