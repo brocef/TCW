@@ -1,8 +1,8 @@
 # Outcome — Unify raw intake into a single artifact
 
-> **Second pass.** Rejected at `verify` and reworked — see the "After the
-> rejection" section at the end. The body of this document describes the first
-> pass and stands as written.
+> **Third pass.** Rejected at `verify` twice. The body of this document
+> describes the first pass and stands as written; each rejection is recorded in
+> its own section at the end.
 
 All thirteen plan tasks shipped. Suite green at 1245 passed (baseline before this
 item: 1229). Every acceptance criterion is met; criterion 12's `Missing` →
@@ -180,3 +180,65 @@ Python tests, 51 web unit tests, and 14 end-to-end tests.
 Raised in the first pass, held out of the rework as a reconcile defect rather
 than an intake one, and still the one path that can light `R` on an item nobody
 wrote up. For `verify` to file as its own item.
+
+_(`verify` put it in scope instead of filing it — closed below.)_
+
+## After the second rejection
+
+`verify` rejected again on `rework.md`: reconcile still created the request, so
+criterion 4 read clean while the property behind it did not hold. The deferral
+above is now closed in this item rather than as a follow-up.
+
+| # | Task | Commit |
+| - | ---- | ------ |
+| 1 | Pin the rollup to its own sidecar (tests first) | `2a15af4` |
+| 2 | Write the rollup to `rollup.md`; migrate a legacy in-request block | `89dedfc` |
+| 3 | Documentation Sync — README, capability, `epic-deltas.md`, changelog, release notes | `4b8cb4f` |
+
+**The whole change at the write site was calling the method that already
+existed.** `recursion.py` composed `store.path(epic) / "initial-request.md"` and
+hand-rolled the atomic write and the staging; `write_sidecar` on the abstract
+`WorkStore` already did both. Registering `rollup.md` in `WORK_SIDECARS` and
+calling it removed code rather than adding it — the litmus test passing instead
+of being argued around. `delete_artifact` is the one genuinely new ABC method,
+and it exists so the migration can drop a request the strip left empty without
+composing a path either.
+
+**The rollup is a sidecar, not an artifact, and that is the load-bearing
+choice.** Every `WORK_ARTIFACTS` name is the output of a stage someone runs; this
+one is the output of a command. As an artifact it would carry a board letter and
+sit in a lifecycle position it does not occupy — which is the same defect,
+re-registered as a feature.
+
+### Verified by hand
+
+Migration was exercised on **this repository's own epic**, which is the only
+place a real legacy rollup existed:
+
+- `tcw work reconcile <epic>` moved the block out of `initial-request.md` into a
+  new `rollup.md`, left the human-written request prose above it untouched, and
+  `git grep tcw:rollup` on the request returns nothing. Committed as `4579a78`.
+- Re-running with nothing changed stages nothing; `--commit` on an unchanged
+  rollup exits 0 without an empty commit.
+- A fresh epic in a scratch node reconciles to `rollup.md` with **no**
+  `initial-request.md` in the folder, and its board line shows no `R` — the
+  property criterion 4 was supposed to assert, now asserted by listing the folder
+  rather than by grepping for a template. Covered by `2a15af4`'s tests.
+
+Suite green: 1314 Python, 51 web unit, 14 end-to-end, and `pnpm check:build`
+clean (the stale-bundle trap from the first rework).
+
+### One thing found and not fixed
+
+**The web app offers an Edit button on the generated rollup.** `tcw serve`'s
+sidecar handling is registry-driven, so `rollup.md` appeared in the Sidecars
+section the moment it was registered — read, listed, and editable, exactly like
+`capabilities.yaml`. Reading it there is the improvement; editing it is not, because
+the next `reconcile` overwrites whatever was typed.
+
+Left alone deliberately. It is a lost edit to a machine-generated file, not the
+laundering of a user's own words into a document they did not write, which is the
+defect class this item exists to close — and marking a sidecar read-only means a
+`generated` flag in the registry, a rejection in the PUT handler, and a read-only
+mode in the editor, for a file nobody has asked to edit. Named here so `verify`
+decides rather than discovers: a follow-up item if wanted, otherwise accepted.
