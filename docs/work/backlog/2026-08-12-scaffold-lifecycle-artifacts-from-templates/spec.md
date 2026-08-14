@@ -166,13 +166,22 @@ different ref rules would be a worse inconsistency than either choice.
    unknown → exit 1 naming the legal names.
 2. Resolve the item; missing or ambiguous → exit 1.
 3. **Refuse when the real artifact is present** — see the presence rule below.
-4. **Refuse when a draft is already present**, unless `--force` — see below.
-5. Check stage/status legality via C4's `STAGE_STATUSES` (`base.py:769-777`) for
+4. Check stage/status legality via C4's `STAGE_STATUSES` (`base.py:769-777`) for
    the stage that produces this artifact.
-6. Resolve the template through `resolve_artifact` — first match wins, with the
+5. Resolve the template through `resolve_artifact` — first match wins, with the
    built-in fallback below.
-7. Write `<artifact>.draft.md` through the store.
-8. Print the draft's locator on stdout.
+6. Write `<artifact>.draft.md` through the store, which **refuses when a draft is
+   already present** unless `--force`.
+7. Print the draft's locator on stdout.
+
+**The draft refusal is enforced at the write, not before the resolve**, because
+the check and the write are one store call (`write_draft`, below) and there is no
+`read_draft` to ask earlier. The visible consequence: a `generate` template runs
+before the refusal is issued. Nothing this spec pins changes — the exit code, the
+message, and the existing draft's bytes are all as criterion 4 states — and the
+Risks section already requires generators to be side-effect-free, because
+resolve-then-write re-executes them on every retry regardless. Making the refusal
+earlier would mean a second store round-trip to buy back one generator run.
 
 **Resolve fully, then write.** A hook failure means nothing was written and a
 retry is clean. A write failure after successful resolution exits non-zero,
@@ -404,10 +413,32 @@ by someone else without asking what it meant.
     `tests/fixtures/lifecycle_baseline/`, proving neither the `--json` payload
     nor the human render moved. `tests/test_lifecycle_hooks.py:277` also passes
     unmodified.
-13. **The parity test compares exact sets**: for every stage,
-    `artifacts_in(Produce section) == {f"{n}.md" for n in step.produces}`. A
-    stage document naming an extra artifact fails it, which it does not today,
-    and the extensionless tuple names are converted rather than substring-matched.
+13. **The parity test matches exact filenames, not substrings**: for every stage,
+    `{f"{n}.md" for n in step.produces} <= artifacts_in(Produce section)` — the
+    extensionless tuple names are converted to filenames and looked up in the set
+    `artifacts_in()` returns, rather than substring-matched against the body. An
+    implementation asserting `"spec" in body` passes today against
+    `specification` and the bare word "spec"; this one does not. `verify` names
+    both of its outcomes, which subsumes
+    `test_verify_names_both_of_its_outcomes` (`:114-116`).
+
+    **Subset, not equality — decided, not conceded.** Exact-set equality was the
+    first draft of this criterion and it is unimplementable against the shipped
+    documents: `artifacts_in()` regexes every `<name>.md` out of the prose
+    (`tests/test_skill_lifecycle_parity.py:55-57`), and three of the seven Produce
+    sections legitimately name an artifact they do not produce —
+    `stage-inbox.md`'s explains that `inbox accept` preserves the entry as
+    `intake.md` while producing no lifecycle artifact, `stage-request.md`'s says
+    `tcw work reconcile` puts its rollup in `rollup.md` "precisely so an epic
+    nobody has written up still shows no `R`", and `stage-plan.md`'s
+    cross-references `epic-deltas.md`. All three are prose about what is *not*
+    produced, which is the most useful sentence in each section. Intersecting the
+    document side with `WORK_ARTIFACTS` does not rescue it — `intake.md` is a
+    registered artifact — and neither does restricting to the first paragraph.
+    The direction that catches a real defect is the subset one; the "no extra"
+    direction would buy a guard against a documentation error nobody has made, at
+    the cost of forbidding the sentences that make the documents worth reading.
+    If C7's reduction makes exact equality achievable, C7 may tighten it.
 14. **No surface reports a draft as an artifact**: with **every** draft present
     and no real artifact, `tcw work list`'s string is unchanged, `artifacts()`
     reports all absent, `tcw work show --json`'s `artifacts` map is all `false`,
@@ -424,8 +455,12 @@ by someone else without asking what it meant.
     `docs/changelogs/upcoming.md`, `skills/tcw-work/references/commands.md`, and
     `skills/tcw-work/references/hooks.md` each document `tcw work scaffold`**,
     including `--force` and the draft-versus-artifact distinction. A test asserts
-    the command name appears in the README command block and in `commands.md`,
-    the same guard `tcw work stage` has.
+    the command name appears in the README command block and in `commands.md`.
+    **That is a new assertion, not an existing pattern**:
+    `tests/test_documented_cli_surface.py` runs the opposite direction — every
+    documented verb must exist in the CLI — and nothing today asserts that a
+    shipped verb *is* documented. The positive check lands beside the negative
+    one.
 18. **The capability `work/customize-lifecycle-artifact-templates` is declared in
     this item's `capabilities.yaml` as `new`, written to the ledger during
     `implement`, and flipped by `complete`** — `tcw capabilities check` and
