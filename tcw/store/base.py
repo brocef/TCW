@@ -680,7 +680,11 @@ class LifecycleStep:
     kind: str                        # "stage" | "transition"
     objective: str
     inputs: tuple[str, ...] = ()     # lifecycle artifacts the step may read
-    produces: str = ""               # the one artifact a stage writes; "" for transitions
+    produces: str = ""               # the artifacts a stage writes; "" for transitions
+    # The prose form of `produces`, and the only one anything renders: it is what
+    # `tcw work lifecycle` prints and what `--json` ships under `produces`, so it
+    # cannot move without breaking a compatibility baseline.
+    produces_note: str = ""
     moves: str = ""                  # "from → to" for a transition; "" for a stage
     gates: tuple[str, ...] = ()      # what the tool refuses past
 
@@ -696,31 +700,35 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
     LifecycleStep(
         id="request", kind="stage",
         objective="Capture what is being asked for, and why.",
-        produces="initial-request.md"),
+        produces="initial-request.md", produces_note="initial-request.md"),
     LifecycleStep(
         id="spec", kind="stage",
         objective="Decide what to build and why, before deciding how.",
-        inputs=("initial-request.md",), produces="spec.md"),
+        inputs=("initial-request.md",),
+        produces="spec.md", produces_note="spec.md"),
     LifecycleStep(
         id="plan", kind="stage",
         objective="Decide how to build it, in ordered, checkable steps.",
-        inputs=("initial-request.md", "spec.md"), produces="plan.md"),
+        inputs=("initial-request.md", "spec.md"),
+        produces="plan.md", produces_note="plan.md"),
     LifecycleStep(
         id="implement", kind="stage",
         objective="Build it, and record what actually happened.",
-        inputs=("spec.md", "plan.md", "rework.md"), produces="outcome.md"),
+        inputs=("spec.md", "plan.md", "rework.md"),
+        produces="outcome.md", produces_note="outcome.md"),
     LifecycleStep(
         id="verify", kind="stage",
         objective="Obtain the user's acceptance decision on the finished work.",
         inputs=("spec.md", "outcome.md"),
-        produces="refined-outcome.md (accepted) or rework.md (rejected)"),
+        produces="refined-outcome.md (accepted) or rework.md (rejected)",
+        produces_note="refined-outcome.md (accepted) or rework.md (rejected)"),
     LifecycleStep(
         id="postmortem", kind="stage",
         objective="Find which stage first missed a problem. Out-of-band: legal "
                   "in review or after completion, and never changes status.",
         inputs=("initial-request.md", "spec.md", "plan.md", "outcome.md",
                 "refined-outcome.md", "rework.md"),
-        produces="post-mortem.md"),
+        produces="post-mortem.md", produces_note="post-mortem.md"),
     LifecycleStep(
         id="start", kind="transition",
         objective="Begin implementation.", moves="backlog → active",

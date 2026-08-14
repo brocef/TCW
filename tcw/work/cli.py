@@ -667,8 +667,8 @@ def _lifecycle_lines(step, bindings_for) -> list[str]:
         out.append(f"  moves:    {step.moves}")
     if step.inputs:
         out.append(f"  inputs:   {', '.join(step.inputs)}")
-    if step.produces:
-        out.append(f"  produces: {step.produces}")
+    if step.produces_note:
+        out.append(f"  produces: {step.produces_note}")
     if step.gates:
         out.append(f"  gates:    {'; '.join(step.gates)}")
     for label, bindings in bindings_for(step):
@@ -912,7 +912,7 @@ def _lifecycle(args: argparse.Namespace) -> int:
         payload = [{
             "id": s.id, "kind": s.kind, "objective": s.objective,
             "moves": s.moves, "inputs": list(s.inputs),
-            "produces": s.produces, "gates": list(s.gates),
+            "produces": s.produces_note, "gates": list(s.gates),
             "bindings": {label.rstrip(":"): [_binding_json(b) for b in bs]
                          for label, bs in bindings_for(s)},
         } for s in steps]
