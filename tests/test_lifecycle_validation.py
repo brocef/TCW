@@ -240,3 +240,55 @@ def test_a_malformed_policy_still_does_not_break_reading(tmp_path):
     _configure(root, {"stages": {"spec": {"prompt": [{"command": "./x.sh"}]}}})
     assert FsWorkStore.open(root).lifecycle_policy().stage("spec") == []
     assert FsWorkStore.open(root).board() == []
+
+
+# ── an empty prompt list ─────────────────────────────────────────────────────
+
+
+def test_a_bare_empty_stage_list_is_rejected():
+    """The legacy spelling. It always meant nothing, and now that an
+    unconfigured stage resolves to TCW's built-in it reads as an opt-out it is
+    not — so `validate` refuses it rather than the model guessing."""
+    p = only({"stages": {"spec": []}})
+    assert "spec" in p and "blob" in p
+
+
+def test_an_explicit_empty_prompt_list_is_rejected():
+    p = only({"stages": {"spec": {"prompt": []}}})
+    assert "spec" in p and "blob" in p
+
+
+def test_an_empty_pre_list_is_untouched():
+    """Asserted so the check cannot overreach into a different key: `pre: []`
+    has no built-in behind it and means exactly what it says."""
+    assert problems({"stages": {"spec": {"pre": []}}}) == []
+    assert problems({"transitions": {"complete": {"pre": [], "post": []}}}) == []
+
+
+def test_a_non_empty_prompt_list_is_still_accepted():
+    assert problems({"stages": {"spec": [{"blob": "x"}]}}) == []
+    assert problems({"stages": {"spec": {"prompt": [{"blob": "x"}]}}}) == []
+
+
+def test_the_rejected_spelling_still_resolves_to_the_builtin(tmp_path):
+    """Rejection is the parser's advisory problem list; `lifecycle_policy()`
+    discards it. So the config `validate` now refuses still *runs*, and what it
+    runs as is the built-in — which is the ambiguity the rejection exists to
+    make visible rather than to change."""
+    from tcw.work.resolve import load_builtins, resolve_prompts
+
+    policy, found = parse_lifecycle_policy({"stages": {"spec": []}})
+    assert found
+    res = resolve_prompts(policy, "spec", None, tmp_path, load_builtins())
+    assert res.text == load_builtins().stage_prompts["spec"].rstrip()
+
+
+def test_the_legacy_corpus_config_is_the_one_now_rejected():
+    """Pinned to a config that demonstrably existed before this break rather
+    than one written to fail it: `stage_empty.config.yaml` is part of C3's
+    back-compat corpus, and its recorded `tcw work lifecycle` render — which
+    reads the policy and discards problems — is unchanged."""
+    corpus = Path(__file__).parent / "fixtures" / "lifecycle_baseline"
+    raw = yaml.safe_load((corpus / "stage_empty.config.yaml").read_text())
+    p = only(raw)
+    assert "spec" in p

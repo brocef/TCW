@@ -963,6 +963,14 @@ def _check_artifact_list(bindings: list[Binding], where: str,
             blocked_by = i
 
 
+def _empty_prompt(where: str, problems: list[str]) -> None:
+    problems.append(
+        f"{where}: an empty prompt list is not an opt-out — a stage with no "
+        f"prompts resolves to TCW's built-in instructions, and after parsing "
+        f"this is indistinguishable from not writing the key at all. Remove "
+        f"it, or bind [{{blob: ''}}] for a stage that should say nothing")
+
+
 def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":
     """A stage entry: either a bare list (legacy) or a mapping of `pre`/`prompt`.
 
@@ -972,8 +980,18 @@ def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":
     `command` was legal in the list: the explicit `prompt:` key rejects it and
     names `generate`, while the legacy list has always accepted it and cannot be
     renamed now.
+
+    **An empty prompt list is rejected, in both spellings.** After parsing,
+    `StageBindings` cannot tell a written-but-empty `prompt:` from an absent
+    one, and an absent one resolves to TCW's built-in — so an empty list reads
+    as an opt-out it is not. `raw.get("prompt") is not None` is the only place
+    that distinction still exists, which makes this the one place the ambiguity
+    can be refused. `pre:` is untouched: nothing is behind it, so `[]` there
+    means exactly what it says.
     """
     if isinstance(raw, list):
+        if not raw:
+            _empty_prompt(where, problems)
         return StageBindings(
             prompt=_parse_binding_list(raw, where, problems,
                                        LEGACY_PROMPT_KINDS, "prompt"),
@@ -991,6 +1009,8 @@ def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":
         sb.pre = _parse_binding_list(raw["pre"], f"{where}.pre", problems,
                                      CHECK_KINDS, "check")
     if raw.get("prompt") is not None:
+        if not raw["prompt"]:
+            _empty_prompt(f"{where}.prompt", problems)
         sb.prompt = _parse_binding_list(raw["prompt"], f"{where}.prompt", problems,
                                         PROMPT_KINDS, "prompt")
     return sb
