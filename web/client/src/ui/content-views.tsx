@@ -566,21 +566,32 @@ export function DetailView({
                                     >
                                         {resource.name}
                                     </Text>
-                                    <Button
-                                        className="sidecar-edit-btn"
-                                        size="1"
-                                        variant="soft"
-                                        type="button"
-                                        onClick={() =>
-                                            onResource(
-                                                "sidecars",
-                                                item.slug,
-                                                resource.name
-                                            )
-                                        }
-                                    >
-                                        Edit
-                                    </Button>
+                                    {/* A generated sidecar is written by a
+                                        command, so an edit here would be
+                                        discarded the next time that command
+                                        runs. Offer no button rather than a
+                                        button whose result disappears. */}
+                                    {resource.generated ? (
+                                        <Text color="gray" size="1">
+                                            generated
+                                        </Text>
+                                    ) : (
+                                        <Button
+                                            className="sidecar-edit-btn"
+                                            size="1"
+                                            variant="soft"
+                                            type="button"
+                                            onClick={() =>
+                                                onResource(
+                                                    "sidecars",
+                                                    item.slug,
+                                                    resource.name
+                                                )
+                                            }
+                                        >
+                                            Edit
+                                        </Button>
+                                    )}
                                 </Flex>
                             ))}
                     </div>

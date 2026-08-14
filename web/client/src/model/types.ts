@@ -64,6 +64,8 @@ export interface ResourceSummary {
     present: boolean
     revision?: string
     mediaType?: string
+    /** Written by a command, not a person — readable, never editable here. */
+    generated?: boolean
 }
 
 export interface TPlanStage extends ResourceSummary {

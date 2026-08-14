@@ -71,9 +71,12 @@ command itself behaves the same — it still prints the rollup when you run it, 
 One thing to know: `tcw work show <epic>` no longer prints the rollup, because it
 prints the epic's request and the rollup is no longer in it. To read a rollup,
 run `tcw work reconcile <epic>` — it prints the current one, and changes nothing
-if nothing has changed — or open `rollup.md` in the local web app, which lists it
-alongside the epic's other documents. `tcw work path <epic>` tells you where the
-folder is.
+if nothing has changed. `tcw work path <epic>` tells you where the file lives if
+you would rather open it directly.
+
+The local web app lists `rollup.md` and marks it generated. It offers no Edit
+button for it, because `tcw work reconcile` writes that file and would discard
+anything you typed there.
 
 Epics you already have migrate themselves. The first time you reconcile one, the
 rollup moves out of the request and into `rollup.md`, and anything you wrote

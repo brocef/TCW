@@ -164,6 +164,11 @@ class TestDetailReads:
         assert cap_sc["present"] is True
         assert cap_sc["revision"] != ""
         assert cap_sc["mediaType"] == "application/yaml"
+        # The client hides its Edit affordance on this flag, so the payload has
+        # to carry it — and has to carry it as False for an authored sidecar.
+        assert cap_sc["generated"] is False
+        rollup_sc = next(s for s in sidecars if s["name"] == "rollup.md")
+        assert rollup_sc["generated"] is True
 
     def test_taxonomy_detail_has_revision(self, seeded):
         root, base, slug = seeded

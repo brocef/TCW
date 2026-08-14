@@ -599,6 +599,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "mediaType": sc_info["media_type"],
                     "present": present,
                     "revision": revision,
+                    "generated": bool(sc_info.get("generated")),
                 })
             self._send_json(HTTPStatus.OK, sidecars)
             return
@@ -654,6 +655,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "mediaType": sc_info["media_type"],
                     "present": present,
                     "revision": detail.sidecar_revisions.get(sc_name, ""),
+                    "generated": bool(sc_info.get("generated")),
                 })
             self._send_json(HTTPStatus.OK, {
                 "item": item_data,
