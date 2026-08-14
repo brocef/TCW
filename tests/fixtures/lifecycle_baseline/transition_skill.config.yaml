@@ -1,0 +1,4 @@
+transitions:
+  start:
+    post:
+    - skill: notify

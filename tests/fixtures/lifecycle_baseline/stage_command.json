@@ -1,0 +1,244 @@
+[
+  {
+    "argv": [],
+    "returncode": 0,
+    "stdout": "inbox  [stage]\n  Triage a raw inbox entry into a work item.\n\nrequest  [stage]\n  Capture what is being asked for, and why.\n  produces: initial-request.md\n\nspec  [stage]\n  Decide what to build and why, before deciding how.\n  inputs:   initial-request.md\n  produces: spec.md\n  bind:    command:./bin/spec-help.sh\n\nplan  [stage]\n  Decide how to build it, in ordered, checkable steps.\n  inputs:   initial-request.md, spec.md\n  produces: plan.md\n\nimplement  [stage]\n  Build it, and record what actually happened.\n  inputs:   spec.md, plan.md, rework.md\n  produces: outcome.md\n\nverify  [stage]\n  Obtain the user's acceptance decision on the finished work.\n  inputs:   spec.md, outcome.md\n  produces: refined-outcome.md (accepted) or rework.md (rejected)\n\npostmortem  [stage]\n  Find which stage first missed a problem. Out-of-band: legal in review or after completion, and never changes status.\n  inputs:   initial-request.md, spec.md, plan.md, outcome.md, refined-outcome.md, rework.md\n  produces: post-mortem.md\n\nstart  [transition]\n  Begin implementation.\n  moves:    backlog \u2192 active\n  gates:    unresolved blockers; the initiative epic must be active\n\nsubmit  [transition]\n  Hand finished work to verification.\n  moves:    active \u2192 review\n\nrework  [transition]\n  Send rejected work back for another pass.\n  moves:    review \u2192 active\n  gates:    refined-outcome.md must be absent\n\ncomplete  [transition]\n  Close the item as shipped.\n  moves:    review | active \u2192 completed\n  gates:    unresolved blockers; open initiative children; declared capabilities reconciled; worktree merge-back; --confirm\n\ndiscard  [transition]\n  Close the item without shipping. Reached as `complete --resolution <not-done>`, not a verb of its own.\n  moves:    backlog | active | review \u2192 discarded\n  gates:    --confirm\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "inbox"
+    ],
+    "returncode": 0,
+    "stdout": "inbox  [stage]\n  Triage a raw inbox entry into a work item.\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "inbox",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "request"
+    ],
+    "returncode": 0,
+    "stdout": "request  [stage]\n  Capture what is being asked for, and why.\n  produces: initial-request.md\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "request",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "spec"
+    ],
+    "returncode": 0,
+    "stdout": "spec  [stage]\n  Decide what to build and why, before deciding how.\n  inputs:   initial-request.md\n  produces: spec.md\n  bind:    command:./bin/spec-help.sh\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "spec",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "For this stage, run `./bin/spec-help.sh`.\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "plan"
+    ],
+    "returncode": 0,
+    "stdout": "plan  [stage]\n  Decide how to build it, in ordered, checkable steps.\n  inputs:   initial-request.md, spec.md\n  produces: plan.md\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "plan",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "implement"
+    ],
+    "returncode": 0,
+    "stdout": "implement  [stage]\n  Build it, and record what actually happened.\n  inputs:   spec.md, plan.md, rework.md\n  produces: outcome.md\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "implement",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "verify"
+    ],
+    "returncode": 0,
+    "stdout": "verify  [stage]\n  Obtain the user's acceptance decision on the finished work.\n  inputs:   spec.md, outcome.md\n  produces: refined-outcome.md (accepted) or rework.md (rejected)\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "verify",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "postmortem"
+    ],
+    "returncode": 0,
+    "stdout": "postmortem  [stage]\n  Find which stage first missed a problem. Out-of-band: legal in review or after completion, and never changes status.\n  inputs:   initial-request.md, spec.md, plan.md, outcome.md, refined-outcome.md, rework.md\n  produces: post-mortem.md\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--stage",
+      "postmortem",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "start"
+    ],
+    "returncode": 0,
+    "stdout": "start  [transition]\n  Begin implementation.\n  moves:    backlog \u2192 active\n  gates:    unresolved blockers; the initiative epic must be active\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "start",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "submit"
+    ],
+    "returncode": 0,
+    "stdout": "submit  [transition]\n  Hand finished work to verification.\n  moves:    active \u2192 review\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "submit",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "complete"
+    ],
+    "returncode": 0,
+    "stdout": "complete  [transition]\n  Close the item as shipped.\n  moves:    review | active \u2192 completed\n  gates:    unresolved blockers; open initiative children; declared capabilities reconciled; worktree merge-back; --confirm\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "complete",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "rework"
+    ],
+    "returncode": 0,
+    "stdout": "rework  [transition]\n  Send rejected work back for another pass.\n  moves:    review \u2192 active\n  gates:    refined-outcome.md must be absent\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "rework",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "discard"
+    ],
+    "returncode": 0,
+    "stdout": "discard  [transition]\n  Close the item without shipping. Reached as `complete --resolution <not-done>`, not a verb of its own.\n  moves:    backlog | active | review \u2192 discarded\n  gates:    --confirm\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--transition",
+      "discard",
+      "--directive"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "--json"
+    ],
+    "returncode": 0,
+    "stdout": "{\n  \"timeout\": 300,\n  \"steps\": [\n    {\n      \"id\": \"inbox\",\n      \"kind\": \"stage\",\n      \"objective\": \"Triage a raw inbox entry into a work item.\",\n      \"moves\": \"\",\n      \"inputs\": [],\n      \"produces\": \"\",\n      \"gates\": [],\n      \"bindings\": {\n        \"bind\": []\n      }\n    },\n    {\n      \"id\": \"request\",\n      \"kind\": \"stage\",\n      \"objective\": \"Capture what is being asked for, and why.\",\n      \"moves\": \"\",\n      \"inputs\": [],\n      \"produces\": \"initial-request.md\",\n      \"gates\": [],\n      \"bindings\": {\n        \"bind\": []\n      }\n    },\n    {\n      \"id\": \"spec\",\n      \"kind\": \"stage\",\n      \"objective\": \"Decide what to build and why, before deciding how.\",\n      \"moves\": \"\",\n      \"inputs\": [\n        \"initial-request.md\"\n      ],\n      \"produces\": \"spec.md\",\n      \"gates\": [],\n      \"bindings\": {\n        \"bind\": [\n          {\n            \"command\": \"./bin/spec-help.sh\"\n          }\n        ]\n      }\n    },\n    {\n      \"id\": \"plan\",\n      \"kind\": \"stage\",\n      \"objective\": \"Decide how to build it, in ordered, checkable steps.\",\n      \"moves\": \"\",\n      \"inputs\": [\n        \"initial-request.md\",\n        \"spec.md\"\n      ],\n      \"produces\": \"plan.md\",\n      \"gates\": [],\n      \"bindings\": {\n        \"bind\": []\n      }\n    },\n    {\n      \"id\": \"implement\",\n      \"kind\": \"stage\",\n      \"objective\": \"Build it, and record what actually happened.\",\n      \"moves\": \"\",\n      \"inputs\": [\n        \"spec.md\",\n        \"plan.md\",\n        \"rework.md\"\n      ],\n      \"produces\": \"outcome.md\",\n      \"gates\": [],\n      \"bindings\": {\n        \"bind\": []\n      }\n    },\n    {\n      \"id\": \"verify\",\n      \"kind\": \"stage\",\n      \"objective\": \"Obtain the user's acceptance decision on the finished work.\",\n      \"moves\": \"\",\n      \"inputs\": [\n        \"spec.md\",\n        \"outcome.md\"\n      ],\n      \"produces\": \"refined-outcome.md (accepted) or rework.md (rejected)\",\n      \"gates\": [],\n      \"bindings\": {\n        \"bind\": []\n      }\n    },\n    {\n      \"id\": \"postmortem\",\n      \"kind\": \"stage\",\n      \"objective\": \"Find which stage first missed a problem. Out-of-band: legal in review or after completion, and never changes status.\",\n      \"moves\": \"\",\n      \"inputs\": [\n        \"initial-request.md\",\n        \"spec.md\",\n        \"plan.md\",\n        \"outcome.md\",\n        \"refined-outcome.md\",\n        \"rework.md\"\n      ],\n      \"produces\": \"post-mortem.md\",\n      \"gates\": [],\n      \"bindings\": {\n        \"bind\": []\n      }\n    },\n    {\n      \"id\": \"start\",\n      \"kind\": \"transition\",\n      \"objective\": \"Begin implementation.\",\n      \"moves\": \"backlog \\u2192 active\",\n      \"inputs\": [],\n      \"produces\": \"\",\n      \"gates\": [\n        \"unresolved blockers\",\n        \"the initiative epic must be active\"\n      ],\n      \"bindings\": {\n        \"pre\": [],\n        \"post\": []\n      }\n    },\n    {\n      \"id\": \"submit\",\n      \"kind\": \"transition\",\n      \"objective\": \"Hand finished work to verification.\",\n      \"moves\": \"active \\u2192 review\",\n      \"inputs\": [],\n      \"produces\": \"\",\n      \"gates\": [],\n      \"bindings\": {\n        \"pre\": [],\n        \"post\": []\n      }\n    },\n    {\n      \"id\": \"rework\",\n      \"kind\": \"transition\",\n      \"objective\": \"Send rejected work back for another pass.\",\n      \"moves\": \"review \\u2192 active\",\n      \"inputs\": [],\n      \"produces\": \"\",\n      \"gates\": [\n        \"refined-outcome.md must be absent\"\n      ],\n      \"bindings\": {\n        \"pre\": [],\n        \"post\": []\n      }\n    },\n    {\n      \"id\": \"complete\",\n      \"kind\": \"transition\",\n      \"objective\": \"Close the item as shipped.\",\n      \"moves\": \"review | active \\u2192 completed\",\n      \"inputs\": [],\n      \"produces\": \"\",\n      \"gates\": [\n        \"unresolved blockers\",\n        \"open initiative children\",\n        \"declared capabilities reconciled\",\n        \"worktree merge-back\",\n        \"--confirm\"\n      ],\n      \"bindings\": {\n        \"pre\": [],\n        \"post\": []\n      }\n    },\n    {\n      \"id\": \"discard\",\n      \"kind\": \"transition\",\n      \"objective\": \"Close the item without shipping. Reached as `complete --resolution <not-done>`, not a verb of its own.\",\n      \"moves\": \"backlog | active | review \\u2192 discarded\",\n      \"inputs\": [],\n      \"produces\": \"\",\n      \"gates\": [\n        \"--confirm\"\n      ],\n      \"bindings\": {\n        \"pre\": [],\n        \"post\": []\n      }\n    }\n  ]\n}\n",
+    "stderr": ""
+  }
+]
