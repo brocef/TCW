@@ -3,6 +3,15 @@ lifecycle stage. TCW checks the stage makes sense for where the item is, runs
 whatever `pre` checks the project configured, resolves the stage's prompt
 bindings, and prints the instructions.
 
+**With nothing configured for a stage, the instructions are TCW's own.** TCW
+ships defaults for the six lifecycle stages that run against an existing item —
+`request`, `spec`, `plan`, `implement`, `verify`, and `postmortem` — so the
+command is useful on a project that has never written a line of lifecycle
+configuration. `inbox` has none: it runs before an item exists. A stage my
+project does configure replaces them outright; writing `builtin: true` in that
+stage's `prompt:` list puts them back, composed with my own in the order I
+declared them.
+
 They come out on **stdout alone**, so I can pipe them straight into an agent.
 Every check's own output, and every error, goes to stderr — and any failure
 prints *nothing* on stdout, so a pipeline receives the whole instruction or none
