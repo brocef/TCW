@@ -13,11 +13,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from functools import lru_cache
+from importlib.resources import files
 from pathlib import Path
 from typing import Mapping, Sequence
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, Binding, LifecyclePolicy, WorkItem,
+    DEFAULT_OUTPUT_CAP, STAGE_IDS, Binding, LifecyclePolicy, WorkItem,
 )
 from tcw.work.generate import GenerateError, run_generate
 from tcw.work.projection import work_item_json
@@ -51,8 +52,29 @@ def load_builtins() -> Builtins:
     different places, so every caller asks here and every new kind of built-in
     is added to this return value — C6 populates `stage_prompts` from
     `tcw/work/prompts/*.md` right here, beside the artifact templates.
+
+    The stage set is the derivation `set(STAGE_IDS) - {"inbox"}`, never a
+    literal list, so adding a stage without its prompt file fails here rather
+    than shipping a stage that silently says nothing. `importlib.resources`
+    rather than a path off `__file__`: the latter assumes an unpacked directory
+    and breaks under a zipimport-style install.
     """
-    return Builtins(artifact_templates=ARTIFACT_TEMPLATES)
+    root = files("tcw.work")
+    prompts = {}
+    for sid in sorted(set(STAGE_IDS) - {"inbox"}):
+        rel = f"prompts/{sid}.md"
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except (FileNotFoundError, OSError) as e:
+            raise ResolveError(
+                f"built-in prompt for stage '{sid}' is missing from the "
+                f"installed package (tcw/work/{rel}): {e}")
+        if not text.strip():
+            raise ResolveError(
+                f"built-in prompt for stage '{sid}' is empty "
+                f"(tcw/work/{rel})")
+        prompts[sid] = text
+    return Builtins(stage_prompts=prompts, artifact_templates=ARTIFACT_TEMPLATES)
 
 
 @dataclass(frozen=True)
