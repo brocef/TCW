@@ -750,6 +750,32 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
 
 LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}
 
+# Where each stage is legal. Contract data about the lifecycle, so it sits beside
+# the table that declares what each stage is for rather than inside the verb that
+# consults it — `tcw work stage` checks it, and `tcw work scaffold` will too.
+#
+# Two rows are worth reading twice:
+#
+# * `verify` includes `active` because `complete` moves from `review | active`,
+#   so an item can be verified without ever having been submitted.
+# * `postmortem` is `review` and `completed` — **not** `discarded`. The stage's
+#   own objective says "legal in review or after completion", and the two
+#   terminal statuses are deliberately distinct: `completed` means shipped,
+#   `discarded` means closed without shipping. A post-mortem on work nobody did
+#   is not the out-of-band review this stage is.
+#
+# `inbox` is empty: it runs before an item exists, so there is no status to be
+# legal in and no item to resolve a stage against.
+STAGE_STATUSES: dict[str, tuple[str, ...]] = {
+    "inbox": (),
+    "request": ("backlog",),
+    "spec": ("backlog",),
+    "plan": ("backlog",),
+    "implement": ("active",),
+    "verify": ("active", "review"),
+    "postmortem": ("review", "completed"),
+}
+
 
 def _parse_condition(raw: Any, where: str, problems: list[str]) -> "Condition | None":
     """Parse a `when:` mapping. Every shape is validated, not just `type`'s value.

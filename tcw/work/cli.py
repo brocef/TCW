@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
+    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_RESOLUTIONS,
+    WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
@@ -20,14 +21,15 @@ from tcw.store.fs import (
     remove_worktree, resolve_qualified_work_ref,
 )
 from tcw.store.project import worktree_anchors
-from tcw.work.hooks import run_post, run_pre
+from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
+from tcw.work.resolve import Builtins, ResolveError, resolve_prompts, select
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
                "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
-               "escalate", "tags", "lifecycle"}
+               "escalate", "tags", "lifecycle", "stage"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 # TransitionCommitError is included deliberately: the item *did* move, and its
@@ -741,6 +743,85 @@ def _binding_json(b) -> dict:
     return out
 
 
+def _stage(args: argparse.Namespace) -> int:
+    """`tcw work stage <id> [ref]` — what to do at a lifecycle stage.
+
+    Order matters and is the contract: id → item → legality → checks → resolve →
+    print. Legality is decided **before any hook runs** — not before any read,
+    which is impossible, since the item's status is the thing being judged.
+
+    stdout carries the resolved prompt and nothing else, emitted once at the end
+    after everything that could fail has succeeded. An agent piping this gets
+    either the whole instruction or nothing, never a fragment.
+    """
+    step = LIFECYCLE_STEPS_BY_ID.get(args.stage_id)
+    if step is None or step.kind != "stage":
+        legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
+        print(f"tcw work stage: unknown stage '{args.stage_id}'; expected one of "
+              f"{', '.join(legal)}", file=sys.stderr)
+        return 1
+    if not STAGE_STATUSES[step.id]:
+        # `inbox` — rejected with the reason rather than printing nothing, which
+        # would read as "no instructions configured".
+        print(f"tcw work stage: '{step.id}' runs before an item exists, so there "
+              f"is no item to resolve a stage against; use `tcw work inbox list` "
+              f"and `tcw work inbox accept`", file=sys.stderr)
+        return 1
+
+    resolved = _resolve(args.slug, "stage")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work stage: {e}", file=sys.stderr)
+        return 1
+    if item is None:
+        print(f"tcw work stage: no such work item: {args.slug}", file=sys.stderr)
+        return 1
+
+    legal = STAGE_STATUSES[step.id]
+    if item.status not in legal:
+        print(f"tcw work stage: '{step.id}' is not legal for an item in "
+              f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
+        return 1
+
+    policy = st.lifecycle_policy()
+    if not args.no_exec:
+        checks = select(policy.stage_checks(step.id), item)
+        err = run_bindings(checks, st.node_root,
+                           hook_env(st.node_root, bare, item.status, step.id),
+                           policy.timeout, f"{step.id} pre")
+        if err:
+            print(f"tcw work stage: {err}; nothing resolved", file=sys.stderr)
+            return 1
+
+    try:
+        res = resolve_prompts(policy, step.id, item, st.node_root, Builtins(),
+                              artifacts=st.artifacts(bare), env=dict(os.environ),
+                              execute=not args.no_exec)
+    except ResolveError as e:
+        print(f"tcw work stage: {e}", file=sys.stderr)
+        return 1
+
+    if args.no_exec:
+        # The plan is a diagnostic, so it goes to stderr: a caller piping stdout
+        # should get the (partial) prompt, never a plan they might act on.
+        print(f"tcw work stage {step.id}: --no-exec, nothing was executed",
+              file=sys.stderr)
+        for b in select(policy.stage_checks(step.id), item):
+            print(f"  pre check would run: {b.ref}", file=sys.stderr)
+        for entry in res.plan:
+            state = "matched" if entry.matched else "skipped (condition)"
+            detail = f": {entry.ref}" if entry.kind != "builtin" else ""
+            print(f"  prompt {entry.kind} — {state}{detail}", file=sys.stderr)
+
+    if res.text:
+        print(res.text)
+    return 0
+
+
 def _lifecycle(args: argparse.Namespace) -> int:
     # A work ref resolves the item's *owning* node, so a qualified descendant
     # reports its own policy rather than the anchor's.
@@ -1218,6 +1299,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     plc.add_argument("--json", action="store_true", help="machine-readable output")
     plc.add_argument("--directive", action="store_true",
                      help="emit one instruction line for an agent, or nothing when unbound")
+    pstg = g.add_parser("stage",
+                        help="print a stage's instructions after its checks pass")
+    pstg.add_argument("stage_id", metavar="stage")
+    pstg.add_argument("slug")
+    pstg.add_argument("--no-exec", action="store_true",
+                      help="report what would run and run none of it")
+    pstg.set_defaults(func=_stage)
+
     plc.add_argument("--phase", choices=("pre", "post", "prompt"),
                      help="limit to one phase; a stage has 'pre' and 'prompt', "
                           "a transition has 'pre' and 'post'")
