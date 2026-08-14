@@ -435,7 +435,7 @@ stays in the skill; the *methodology* moves to the CLI.
 | C3  | Hook roles, kinds, and conditions  | Roles; kinds incl. the `generate` contract and `file` confinement; `when:`; parse/validate/back-compat; **the full `builtin` syntax and resolution library**; `lifecycle --phase`; new Vocabulary term. | C2         |
 | C4  | The stage verb                    | `tcw work stage <id>` — legality → pre → resolve → prompt, plus `--no-exec`. Writes nothing.                                                                                   | C3         |
 | C5  | Artifact scaffolding              | `produces` as a tuple; `tcw work scaffold <artifact>`; `<artifact>.draft.md`; templates keyed by artifact name. **(The stage/status legality table moved to C4 — see below.)**   | C3         |
-| C6  | Built-in stage prompts            | `tcw/work/prompts/*.md` **content** and wheel packaging only — the `builtin` kind itself is C3's.                                                                              | C3         |
+| C6  | Built-in stage prompts            | `tcw/work/prompts/*.md` content and wheel packaging, **plus the floor that makes them reachable** — see the amendment below. The `builtin` kind itself is still C3's.          | C3         |
 | C7  | Skill and documentation rewrite   | Stage docs → routers; `hooks.md` rewritten; README lifecycle section; final consolidation only.                                                                                | C4, C5, C6 |
 | C8  | Backlog and upstream-issue audit  | No code. This repo's own backlog and the TCW GitHub issues reconciled against the shipped design — discarded, rescoped, or newly filed.                                         | C7         |
 
@@ -462,8 +462,40 @@ how the epic stops being the source of truth.
 
 **`builtin` belongs entirely to C3.** An earlier draft split its syntax into C3
 and its resolution into C6, which left C4 able to meet valid `builtin`
-configuration with no implementation behind it. C6 supplies packaged content
-only.
+configuration with no implementation behind it. C6 supplies packaged content —
+and, per the amendment below, the one condition that makes it reachable.
+
+**Amendment: C6 owns the floor.** This spec scoped C6 to "content and wheel
+packaging only", and criterion 14 asks for built-in instructions **with nothing
+configured**. Against the shipped code those two cannot both hold. Verified on
+this repo, which configures no `work.lifecycle` key at all:
+
+```
+$ tcw work stage spec 2026-08-12-ship-built-in-stage-prompts-with-the-cli
+$ echo $?
+0
+```
+
+Nothing printed. Two reasons, neither a defect in the child that shipped it:
+`LifecyclePolicy.stage()` returns `[]` for a stage the node never configured
+(`base.py:641-650`), so `resolve_prompts` iterates nothing whatever the registry
+holds; and `tcw work stage` passes the empty default `Builtins()`
+(`cli.py:800-803`), so even an explicit `builtin: true` resolves to `""`. C3's
+`Builtins` docstring says "C6 fills `stage_prompts`" and C4 wired the only value
+that existed at the time. This is a seam the epic did not cost, not a regression.
+
+So **C6 additionally delivers**: the floor in `resolve_prompts` (a stage with no
+prompt bindings resolves as if it bound `[{builtin: true}]`), the argument at
+`cli.py:801`, and — because the floor makes `prompt: []` indistinguishable from
+an absent key — a `tcw validate` rejection of an empty prompt list in both
+spellings, which is the requester's decision and the epic's one deliberate
+back-compat break. The floor is inert while the registry is empty, so no existing
+C3 or C4 test changes.
+
+Recorded here rather than inside C6, for the same reason the C4 amendment above
+is: a child overruling its epic quietly is how the epic stops being the source of
+truth. **Criterion 14 stands as written** — this amendment names who makes it
+satisfiable, and adds that `tcw validate` must reject `prompt: []`.
 
 ## Acceptance criteria
 
@@ -533,7 +565,8 @@ only.
     only the `pre` bindings. `--phase` accepts `pre` and `post` for a transition
     and `pre` only for a stage, since stages no longer have a `post`; `--phase
     post` on a stage is an error naming the reason rather than empty output.
-14. With nothing configured, `tcw work stage <id>` prints built-in instructions
+14. **(Amended — see "Amendment: C6 owns the floor" below.)** With nothing
+    configured, `tcw work stage <id>` prints built-in instructions
     for each of `request`, `spec`, `plan`, `implement`, `verify`, and
     `postmortem` — enumerated, and asserted as **exact set equality** against the
     shipped registry so neither an empty file nor a missing stage passes.

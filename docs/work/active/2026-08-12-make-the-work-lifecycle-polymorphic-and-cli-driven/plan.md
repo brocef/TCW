@@ -136,8 +136,24 @@ defended twice turned out to be neither sequencing nor technical.
 
 ### C6 — Built-in stage prompts
 
-**Delivers** `tcw/work/prompts/<stage>.md` as package data and wheel packaging.
-Content condensed from [obra/superpowers]. The `builtin` kind itself is C3's.
+**Delivers** `tcw/work/prompts/<stage>.md` as package data and wheel packaging,
+for the six stages `STAGE_IDS` minus `inbox`. The `builtin` kind itself is C3's.
+
+**Content is condensed from TCW's own `skills/tcw-work/references/stage-*.md`**,
+not written fresh from [obra/superpowers] — the requester's decision at the
+`request` stage. Those documents already encode this project's methodology and
+C7 reduces the same ones to routers, so the content *moves* rather than being
+re-invented, and the two cannot disagree at the seam C7 has to reconcile.
+superpowers is borrowed from only where the stage documents are silent (three
+places, named in C6's spec). Each prompt is 15–40 lines, asserted by a test.
+
+**Amended: C6 also owns the floor.** "Content only" cannot satisfy criterion 14 —
+`tcw work stage` on an unconfigured node prints nothing today, and filling the
+registry does not change that. C6 additionally ships the `resolve_prompts` floor,
+the `Builtins` argument at `cli.py:801`, and a `tcw validate` rejection of
+`prompt: []`. Full reasoning in the epic spec's "Amendment: C6 owns the floor".
+**This is the epic's one back-compat break**, so it needs a legacy-corpus case
+and an upgrade sentence in the release notes.
 
 **Verified by:** criterion 14 tested **against C3's resolution library** rather
 than through `tcw work stage`, since C6 may land before C4 and a child cannot
