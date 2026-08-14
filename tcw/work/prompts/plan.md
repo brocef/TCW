@@ -27,8 +27,9 @@ the suite cannot check. Optional `## Notes`.
    past a blocker: `tcw work edit <slug> --blocked-by <ref>`.
 5. **No placeholders.** "TBD", "add error handling", "similar to Task 3" — a
    task nobody can execute without asking you a question is not a task.
-6. Re-read the finished plan against the spec: coverage gaps, inconsistent
-   names, tasks that appear twice.
+6. **Self-review.** Re-read the finished plan against the spec: every
+   acceptance criterion is covered by at least one task and every task traces
+   back to one; inconsistent names; tasks that appear twice.
 7. Commit `plan.md` on its own, before `tcw work start`.
 
 ## Exit badly

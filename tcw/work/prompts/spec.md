@@ -31,6 +31,14 @@ criteria**, **Risks**. Optional `## Notes`.
    from the previous stage — is a scope nobody chose.
 6. Commit `spec.md` on its own, before planning.
 
+## Self-review, before committing
+
+- Every `file:line` citation still resolves to what the spec claims it shows;
+  a sibling change landing mid-spec moves lines.
+- Every acceptance criterion executable against the tree today has been run,
+  and one that fails is reworded or dropped rather than shipped.
+- Any criterion two readers could check two different ways is pinned to one.
+
 ## Exit badly
 
 - _Reading the code contradicts the request._ Stop and return to `request`. A

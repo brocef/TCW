@@ -28,7 +28,8 @@ what shipped task by task with commit references, the test result, and
    (`AGENTS.md` or `CLAUDE.md`) once, against the whole finished diff rather
    than the task you just committed. Commit the doc updates separately.
 8. **No completion claim without output from a command you ran just now.**
-9. Write `outcome.md` and commit it.
+9. Write `outcome.md` and commit it. **Self-review:** an empty "what the plan
+   or spec got wrong" section is a claim, not an omission.
 
 ## Exit badly
 

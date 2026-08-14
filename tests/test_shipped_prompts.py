@@ -67,6 +67,20 @@ def test_no_prompt_names_a_sub_skill(sid):
         assert name not in text
 
 
+def test_the_self_review_pass_appears_in_exactly_three_prompts():
+    """A pass earns its place only where it checks the artifact against a source
+    outside itself — the tree, a prior artifact, a command's output. `request`
+    has no such source, `verify` *is* the review pass, `postmortem` is terminal.
+
+    Set equality rather than three presence checks: the failure this guards is a
+    later editor copying the pass into all six, which turns a check into a
+    ritual, and that direction is invisible to a presence check.
+    """
+    prompts = load_builtins().stage_prompts
+    found = {sid for sid, text in prompts.items() if "self-review" in text.lower()}
+    assert found == {"spec", "plan", "implement"}
+
+
 def test_a_missing_prompt_file_is_a_loud_failure(monkeypatch):
     """A broken install saying nothing is exactly the failure the built-ins
     exist to rule out, so the loader raises rather than resolving to ""."""
