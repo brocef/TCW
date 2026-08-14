@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
+    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
@@ -670,24 +670,69 @@ def _lifecycle_lines(step, bindings_for) -> list[str]:
     return out
 
 
-def _directive_text(step, bindings) -> str:
+def _directive_text(step, bindings, grouped: bool = True) -> str:
     """One complete instruction, or "" when nothing is bound.
 
     Never a bare value: this is injected verbatim into an agent's context, so an
     unbound id has to render as *nothing* rather than as a broken sentence.
+
+    `grouped` is the **legacy** rendering: all skills ahead of all commands,
+    regardless of declaration order. That is what a bare stage list has always
+    produced, so a naive move to declaration order would silently change output
+    this repo's own criterion requires to be byte-identical. An explicit
+    `prompt:` list is new syntax and renders in the order it was written.
     """
     if not bindings:
         return ""
-    skills = [b.ref for b in bindings if b.kind == "skill"]
-    commands = [b.ref for b in bindings if b.kind == "command"]
-    parts = []
-    if skills:
-        parts.append(f"invoke the {' then '.join(skills)} skill"
-                     f"{'s' if len(skills) > 1 else ''}")
-    if commands:
-        parts.append("run " + " then ".join(f"`{c}`" for c in commands))
     where = "this stage" if step.kind == "stage" else f"the {step.id} transition"
-    return f"For {where}, {' and '.join(parts)}."
+    if grouped:
+        skills = [b.ref for b in bindings if b.kind == "skill"]
+        commands = [b.ref for b in bindings if b.kind == "command"]
+        parts = []
+        if skills:
+            parts.append(f"invoke the {' then '.join(skills)} skill"
+                         f"{'s' if len(skills) > 1 else ''}")
+        if commands:
+            parts.append("run " + " then ".join(f"`{c}`" for c in commands))
+        return f"For {where}, {' and '.join(parts)}."
+
+    # Declaration order. The text-producing kinds (blob/file/generate/builtin)
+    # cannot be inlined here: `tcw work lifecycle` executes nothing, so naming a
+    # `generate` script's output would mean running it. They collapse into one
+    # clause, at the position of the first one.
+    parts: list[str] = []
+    named_text = False
+    for b in bindings:
+        if b.kind == "skill":
+            parts.append(f"invoke the {b.ref} skill")
+        elif b.kind == "command":
+            parts.append(f"run `{b.ref}`")
+        elif not named_text:
+            parts.append("read this node's configured instructions")
+            named_text = True
+    return f"For {where}, {' and '.join(parts)}." if parts else ""
+
+
+def _binding_json(b) -> dict:
+    """A binding as `--json` reports it.
+
+    `{kind: value}` is the shape this payload has always had, so a legacy
+    `skill`/`command` binding serializes exactly as before. `builtin` reports
+    `true` — its configured form — rather than the empty string it parses to,
+    and `when` appears only when there is one. A legacy config has neither, so
+    its payload is byte-identical.
+    """
+    out: dict = {b.kind: True if b.kind == "builtin" else b.ref}
+    if b.when is not None:
+        w: dict = {}
+        if b.when.tags:
+            w["tags"] = list(b.when.tags)
+        if b.when.not_tags:
+            w["not_tags"] = list(b.when.not_tags)
+        if b.when.type is not None:
+            w["type"] = b.when.type
+        out["when"] = w
+    return out
 
 
 def _lifecycle(args: argparse.Namespace) -> int:
@@ -708,11 +753,45 @@ def _lifecycle(args: argparse.Namespace) -> int:
         print(f"tcw work lifecycle: {e}", file=sys.stderr)
         return 1
 
+    # `--phase` filters what is reported. Legal phases differ by kind: a stage has
+    # `pre` checks and `prompt` bindings and no `post` at all (exit checks live on
+    # the next stage's `pre`), while a transition has `pre` and `post`. An illegal
+    # combination is an error naming the reason rather than empty output, because
+    # silence reads as "nothing is configured".
+    phase = getattr(args, "phase", None)
+    if phase:
+        wanted_kind = "stage" if args.stage else "transition" if args.transition else None
+        legal = {"stage": ("pre", "prompt"), "transition": ("pre", "post")}
+        if wanted_kind is None:
+            print("tcw work lifecycle: --phase needs --stage or --transition",
+                  file=sys.stderr)
+            return 1
+        if phase not in legal[wanted_kind]:
+            reason = ("stages have no 'post' phase — a stage's exit checks belong "
+                      "on the next stage's 'pre'"
+                      if wanted_kind == "stage" and phase == "post" else
+                      f"transitions have no '{phase}' phase")
+            print(f"tcw work lifecycle: --phase {phase} is not valid for a "
+                  f"{wanted_kind}: {reason}; expected one of "
+                  f"{', '.join(legal[wanted_kind])}", file=sys.stderr)
+            return 1
+
     def bindings_for(step):
         if step.kind == "stage":
-            return [("bind:", policy.stage(step.id))]
-        tb = policy.transition(step.id)
-        return [("pre:", tb.pre), ("post:", tb.post)]
+            # "bind:" keeps its exact meaning — the stage's prompts. Stage
+            # bindings were never executed, so what they always were is what
+            # `prompt` names; the label stays so legacy output does not move.
+            rows = [("bind:", policy.stage(step.id))]
+            checks = policy.stage_checks(step.id)
+            if checks:                        # new key, absent from legacy output
+                rows.insert(0, ("pre:", checks))
+        else:
+            tb = policy.transition(step.id)
+            rows = [("pre:", tb.pre), ("post:", tb.post)]
+        if not phase:
+            return rows
+        want = "bind:" if (step.kind == "stage" and phase == "prompt") else f"{phase}:"
+        return [(label, bs) for label, bs in rows if label == want]
 
     if args.directive:
         # Exactly one of --stage/--transition, enforced by argparse; an unknown
@@ -727,7 +806,8 @@ def _lifecycle(args: argparse.Namespace) -> int:
                   f"of {', '.join(legal)}", file=sys.stderr)
             return 1
         flat = [b for _label, bs in bindings_for(step) for b in bs]
-        text = _directive_text(step, flat)
+        grouped = step.kind != "stage" or policy.stage_is_legacy(step.id)
+        text = _directive_text(step, flat, grouped)
         if text:                                   # empty = print nothing at all
             print(text)
         return 0
@@ -742,15 +822,24 @@ def _lifecycle(args: argparse.Namespace) -> int:
         return 1
 
     if args.json:
-        import json
         payload = [{
             "id": s.id, "kind": s.kind, "objective": s.objective,
             "moves": s.moves, "inputs": list(s.inputs),
             "produces": s.produces, "gates": list(s.gates),
-            "bindings": {label.rstrip(":"): [{b.kind: b.ref} for b in bs]
+            "bindings": {label.rstrip(":"): [_binding_json(b) for b in bs]
                          for label, bs in bindings_for(s)},
         } for s in steps]
-        print(json.dumps({"timeout": policy.timeout, "steps": payload}, indent=2))
+        # A superset, the same discipline the JSON projection applied to `serve`:
+        # every key a legacy config produced is still here with the same value,
+        # and the new ones appear only when the feature is configured — so a
+        # legacy node's payload is byte-identical.
+        doc = {"timeout": policy.timeout, "steps": payload}
+        if policy.output_cap != DEFAULT_OUTPUT_CAP:
+            doc["output-cap"] = policy.output_cap
+        if policy.artifacts:
+            doc["artifacts"] = {name: [_binding_json(b) for b in bs]
+                                for name, bs in policy.artifacts.items()}
+        print(json.dumps(doc, indent=2))
         return 0
 
     for i, step in enumerate(steps):
@@ -1122,6 +1211,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     plc.add_argument("--json", action="store_true", help="machine-readable output")
     plc.add_argument("--directive", action="store_true",
                      help="emit one instruction line for an agent, or nothing when unbound")
+    plc.add_argument("--phase", choices=("pre", "post", "prompt"),
+                     help="limit to one phase; a stage has 'pre' and 'prompt', "
+                          "a transition has 'pre' and 'post'")
     sel = plc.add_mutually_exclusive_group()
     sel.add_argument("--stage", help="limit to one stage id")
     sel.add_argument("--transition", help="limit to one transition id")

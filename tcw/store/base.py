@@ -532,23 +532,78 @@ STAGE_IDS = ("inbox", "request", "spec", "plan", "implement", "verify", "postmor
 TRANSITION_IDS = ("start", "submit", "complete", "rework", "discard")
 
 
+# Bound on a `generate` hook's stdout, in **raw bytes before decoding**.
+# Enforced while reading rather than after, so a runaway script cannot exhaust
+# memory before the check fires. Also the cap on the item `body` a hook gets.
+DEFAULT_OUTPUT_CAP = 64 * 1024
+
+# The only values `type` may hold. Named here because `Condition` validates
+# against it and `create_work` checks it (`fs.py:3208`); two literals would be a
+# way for a typo to be legal in one place and not the other.
+WORK_TYPES = ("", "epic")
+
+# What a binding may be, by role. `skill` is legal in a check position because it
+# already is — `run_bindings` reports it to stderr without running it — and the
+# back-compat table requires that unchanged. `command` in a prompt position is an
+# error naming `generate`, *except* in a bare legacy stage list, which predates
+# the distinction and cannot be renamed.
+BINDING_KINDS = ("blob", "file", "generate", "builtin", "skill", "command")
+CHECK_KINDS = frozenset({"command", "skill"})
+PROMPT_KINDS = frozenset({"blob", "file", "generate", "builtin", "skill"})
+ARTIFACT_KINDS = frozenset({"blob", "file", "generate", "builtin"})
+LEGACY_PROMPT_KINDS = PROMPT_KINDS | {"command"}
+
+
+@dataclass(frozen=True)
+class Condition:
+    """When a binding applies. Keys are ANDed; a list value means any-of.
+
+    Three keys by decision, not by accident: every key added has to be validated,
+    documented, and supported forever. `generate` exists so that pressure has
+    somewhere to go — one unconditional generator receives the whole item and
+    decides in real code.
+    """
+    tags: tuple[str, ...] = ()
+    not_tags: tuple[str, ...] = ()
+    type: str | None = None          # None = unset; "" matches a non-epic
+
+    def matches(self, item: "WorkItem | None") -> bool:
+        """With no item, a condition never matches.
+
+        Resolution can be called without one — an artifact template for an item
+        that does not exist yet. Treating "no item" as a match would fire every
+        conditional binding at exactly the moment nothing is known.
+        """
+        if item is None:
+            return False
+        have = set(item.tags or ())
+        if self.tags and not (have & set(self.tags)):
+            return False
+        if self.not_tags and (have & set(self.not_tags)):
+            return False
+        if self.type is not None and (item.type or "") != self.type:
+            return False
+        return True
+
+
 @dataclass(frozen=True)
 class Binding:
-    """One configured hook: a skill reference *or* a shell command, never both.
+    """One configured hook: what it is, where its text or command comes from,
+    and when it applies.
 
-    Declared explicitly rather than inferred from a bare string. Guessing which a
-    plain value meant is a whole class of bug bought for nothing.
+    `kind` + `value` rather than a field per kind — a field per kind is how a
+    two-kind model becomes a six-kind mess. `builtin` carries an empty `value`;
+    its YAML form is the literal `true`, which is a boolean and has no business
+    in a string field.
     """
-    skill: str = ""
-    command: str = ""
-
-    @property
-    def kind(self) -> str:
-        return "skill" if self.skill else "command"
+    kind: str = ""
+    value: str = ""
+    when: Condition | None = None
 
     @property
     def ref(self) -> str:
-        return self.skill or self.command
+        """The binding's payload. Kept because seven call sites read it."""
+        return self.value
 
 
 @dataclass
@@ -559,17 +614,54 @@ class TransitionBindings:
 
 
 @dataclass
+class StageBindings:
+    """A stage's checks and prompts.
+
+    `legacy_prompt` records that the prompts arrived as a **bare list** rather
+    than under `prompt:`. It is a real field and not an implementation detail:
+    the two forms render differently — a legacy list groups skills ahead of
+    commands, an explicit list concatenates in declaration order — and after
+    parsing nothing else can tell them apart. It also decides whether `command`
+    was legal in the list at all.
+    """
+    pre: list[Binding] = field(default_factory=list)
+    prompt: list[Binding] = field(default_factory=list)
+    legacy_prompt: bool = False
+
+
+@dataclass
 class LifecyclePolicy:
-    """A node's configured stage and transition bindings. Empty is the default."""
-    stages: dict[str, list[Binding]] = field(default_factory=dict)
+    """A node's configured bindings. Empty is the default."""
+    stages: dict[str, StageBindings] = field(default_factory=dict)
     transitions: dict[str, TransitionBindings] = field(default_factory=dict)
+    artifacts: dict[str, list[Binding]] = field(default_factory=dict)
     timeout: int = 300
+    output_cap: int = DEFAULT_OUTPUT_CAP
 
     def stage(self, stage_id: str) -> list[Binding]:
-        return self.stages.get(stage_id, [])
+        """A stage's **prompts**.
+
+        This accessor kept its meaning through the roles rewrite, which is the
+        accurate reading rather than a compatibility shim: stage bindings were
+        never executed (`hooks.py:79-101` handles transitions only), so what they
+        always were is what `prompt` names.
+        """
+        sb = self.stages.get(stage_id)
+        return sb.prompt if sb else []
+
+    def stage_checks(self, stage_id: str) -> list[Binding]:
+        sb = self.stages.get(stage_id)
+        return sb.pre if sb else []
+
+    def stage_is_legacy(self, stage_id: str) -> bool:
+        sb = self.stages.get(stage_id)
+        return bool(sb and sb.legacy_prompt)
 
     def transition(self, transition_id: str) -> TransitionBindings:
         return self.transitions.get(transition_id, TransitionBindings())
+
+    def artifact(self, name: str) -> list[Binding]:
+        return self.artifacts.get(name, [])
 
 
 DEFAULT_HOOK_TIMEOUT = 300
@@ -659,50 +751,211 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
 LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}
 
 
-def _parse_binding(raw: Any, where: str, problems: list[str]) -> "Binding | None":
+def _parse_condition(raw: Any, where: str, problems: list[str]) -> "Condition | None":
+    """Parse a `when:` mapping. Every shape is validated, not just `type`'s value.
+
+    An earlier draft checked the `type` value and let every other malformed shape
+    crash at match time — `tags: bug` is the mistake everyone makes exactly once,
+    and it should fail at `tcw validate` rather than by silently iterating a
+    string's characters.
+    """
+    if not isinstance(raw, dict) or not raw:
+        problems.append(f"{where}: 'when' must be a non-empty mapping with "
+                        f"'tags', 'not_tags', and/or 'type'")
+        return None
+    unknown = set(raw) - {"tags", "not_tags", "type"}
+    if unknown:
+        problems.append(f"{where}: unknown 'when' key(s) {', '.join(sorted(unknown))}; "
+                        f"expected 'tags', 'not_tags', or 'type'")
+        return None
+    lists: dict[str, tuple[str, ...]] = {}
+    for key in ("tags", "not_tags"):
+        if key not in raw:
+            lists[key] = ()
+            continue
+        value = raw[key]
+        if isinstance(value, str) or not isinstance(value, list):
+            problems.append(f"{where}: 'when.{key}' must be a list of tags "
+                            f"(write [{value}] rather than {value})"
+                            if isinstance(value, str) else
+                            f"{where}: 'when.{key}' must be a list of tags, "
+                            f"got {type(value).__name__}")
+            return None
+        items = []
+        for element in value:
+            if not isinstance(element, str) or not element.strip():
+                problems.append(f"{where}: 'when.{key}' element {element!r} must be "
+                                f"a non-blank string")
+                return None
+            items.append(element.strip())
+        lists[key] = tuple(items)
+    kind = None
+    if "type" in raw:
+        value = raw["type"]
+        if not isinstance(value, str):
+            problems.append(f"{where}: 'when.type' must be a string, "
+                            f"got {type(value).__name__}")
+            return None
+        if value not in WORK_TYPES:
+            problems.append(f"{where}: 'when.type' value '{value}' is not a known "
+                            f"item type; expected one of "
+                            f"{', '.join(repr(t) for t in WORK_TYPES)}")
+            return None
+        kind = value
+    return Condition(tags=lists["tags"], not_tags=lists["not_tags"], type=kind)
+
+
+def _parse_binding(raw: Any, where: str, legal: "frozenset[str] | set[str]",
+                   role: str, problems: list[str]) -> "Binding | None":
+    """One binding: exactly one kind key, an optional `when:`.
+
+    `legal` is the kind set the *position* allows, so the same parser serves all
+    three roles and the "which kinds may appear here" rule lives in one table
+    rather than in three call sites.
+    """
     if not isinstance(raw, dict):
         problems.append(f"{where}: binding must be a mapping "
-                        f"({{skill: …}} or {{command: …}}), got {type(raw).__name__}")
+                        f"({{{' | '.join(sorted(legal))}}}: …), "
+                        f"got {type(raw).__name__}")
         return None
-    unknown = set(raw) - {"skill", "command"}
+    unknown = set(raw) - set(BINDING_KINDS) - {"when"}
     if unknown:
         problems.append(f"{where}: unknown binding key(s) {', '.join(sorted(unknown))}; "
-                        f"expected 'skill' or 'command'")
+                        f"expected one of {', '.join(BINDING_KINDS)}")
         return None
-    skill, command = raw.get("skill"), raw.get("command")
-    if skill is not None and command is not None:
-        problems.append(f"{where}: binding declares both 'skill' and 'command'; "
+    declared = [k for k in BINDING_KINDS if k in raw]
+    if len(declared) > 1:
+        problems.append(f"{where}: binding declares {' and '.join(declared)}; "
                         f"choose one")
         return None
-    if skill is None and command is None:
-        problems.append(f"{where}: binding declares neither 'skill' nor 'command'")
+    if not declared:
+        problems.append(f"{where}: binding declares no kind; expected one of "
+                        f"{', '.join(BINDING_KINDS)}")
         return None
-    value = skill if skill is not None else command
-    if not isinstance(value, str) or not value.strip():
-        problems.append(f"{where}: binding '{'skill' if skill is not None else 'command'}' "
-                        f"must be a non-blank string")
+    kind = declared[0]
+    if kind not in legal:
+        hint = ""
+        if kind == "command" and role in ("prompt", "artifact"):
+            # The one misuse that is both likely and has a named alternative.
+            hint = " — use 'generate' to run a script whose output is the text"
+        problems.append(f"{where}: '{kind}' is not allowed in a {role} position; "
+                        f"expected one of {', '.join(sorted(legal))}{hint}")
         return None
-    return (Binding(skill=value.strip()) if skill is not None
-            else Binding(command=value.strip()))
+
+    value = raw[kind]
+    if kind == "builtin":
+        # `builtin: true` is a YAML boolean; anything else is a mistake, and the
+        # value never reaches `Binding.value`, which is a str.
+        if value is not True:
+            problems.append(f"{where}: 'builtin' must be the value true, "
+                            f"got {value!r}")
+            return None
+        text = ""
+    else:
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"{where}: binding '{kind}' must be a non-blank string")
+            return None
+        # `blob` is literal text: stripping it would silently edit a prompt.
+        text = value if kind == "blob" else value.strip()
+
+    when = None
+    if "when" in raw:
+        when = _parse_condition(raw["when"], where, problems)
+        if when is None:
+            return None
+    return Binding(kind=kind, value=text, when=when)
 
 
-def _parse_binding_list(raw: Any, where: str, problems: list[str]) -> list[Binding]:
+def _parse_binding_list(raw: Any, where: str, problems: list[str],
+                        legal: "frozenset[str] | set[str]" = CHECK_KINDS,
+                        role: str = "check") -> list[Binding]:
     if not isinstance(raw, list):
         problems.append(f"{where}: expected a list of bindings, "
                         f"got {type(raw).__name__}")
         return []
     out: list[Binding] = []
-    seen: set[str] = set()
+    # Identity is (kind, value, when), not the value alone. The same script under
+    # two different conditions is the obvious way to say "this prompt for bugs,
+    # that one for features"; rejecting it would make conditions unusable.
+    seen: set[tuple] = set()
     for i, entry in enumerate(raw):
-        binding = _parse_binding(entry, f"{where}[{i}]", problems)
+        binding = _parse_binding(entry, f"{where}[{i}]", legal, role, problems)
         if binding is None:
             continue
-        if binding.ref in seen:
-            problems.append(f"{where}: duplicate binding '{binding.ref}'")
+        key = (binding.kind, binding.value, binding.when)
+        if key in seen:
+            problems.append(f"{where}: duplicate binding '{binding.kind}: "
+                            f"{binding.ref}'")
             continue
-        seen.add(binding.ref)
+        seen.add(key)
         out.append(binding)                            # declaration order is significant
     return out
+
+
+def _check_artifact_list(bindings: list[Binding], where: str,
+                         problems: list[str]) -> None:
+    """First-match-wins makes some orders meaningless. Reject the obvious ones.
+
+    Deliberately *syntactic*: an entry after an unconditional one can never run,
+    and `builtin` is a fallback so it belongs last and unconditional. What this
+    does **not** do is reason about whether a set of conditions is exhaustive —
+    `type: epic` then `type: ""` also shadows everything after it, and detecting
+    that is a solver. The initiative's spec rejects growing `when:` into a
+    config language; this is the honest edge of what syntax can tell you.
+    """
+    blocked_by = None
+    for i, b in enumerate(bindings):
+        if blocked_by is not None:
+            problems.append(
+                f"{where}[{i}]: unreachable — entry {blocked_by} above it matches "
+                f"unconditionally, and the first match wins")
+            return
+        if b.kind == "builtin":
+            if b.when is not None:
+                problems.append(f"{where}[{i}]: a 'builtin' artifact binding is the "
+                                f"fallback, so it cannot carry a 'when'")
+                return
+            if i != len(bindings) - 1:
+                problems.append(f"{where}[{i}]: a 'builtin' artifact binding must be "
+                                f"last; it is the fallback and would shadow "
+                                f"{len(bindings) - i - 1} entr"
+                                f"{'y' if len(bindings) - i == 2 else 'ies'} below it")
+                return
+        if b.when is None:
+            blocked_by = i
+
+
+def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":
+    """A stage entry: either a bare list (legacy) or a mapping of `pre`/`prompt`.
+
+    The bare list is the shape every existing config uses, and it renders through
+    the grouped renderer rather than in declaration order — so which form it
+    arrived in has to be recorded, not inferred later. It also decides whether
+    `command` was legal in the list: the explicit `prompt:` key rejects it and
+    names `generate`, while the legacy list has always accepted it and cannot be
+    renamed now.
+    """
+    if isinstance(raw, list):
+        return StageBindings(
+            prompt=_parse_binding_list(raw, where, problems,
+                                       LEGACY_PROMPT_KINDS, "prompt"),
+            legacy_prompt=True)
+    if not isinstance(raw, dict):
+        problems.append(f"{where}: expected a list of bindings, or a mapping with "
+                        f"'pre' and/or 'prompt', got {type(raw).__name__}")
+        return StageBindings()
+    extra = set(raw) - {"pre", "prompt"}
+    if extra:
+        problems.append(f"{where}: unknown key(s) {', '.join(sorted(extra))}; "
+                        f"expected 'pre' or 'prompt', or a bare list of bindings")
+    sb = StageBindings()
+    if raw.get("pre") is not None:
+        sb.pre = _parse_binding_list(raw["pre"], f"{where}.pre", problems,
+                                     CHECK_KINDS, "check")
+    if raw.get("prompt") is not None:
+        sb.prompt = _parse_binding_list(raw["prompt"], f"{where}.prompt", problems,
+                                        PROMPT_KINDS, "prompt")
+    return sb
 
 
 def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
@@ -721,10 +974,11 @@ def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
     if not isinstance(raw, dict):
         return policy, [f"work.lifecycle: expected a mapping, got {type(raw).__name__}"]
 
-    unknown = set(raw) - {"stages", "transitions", "timeout"}
+    top = {"stages", "transitions", "timeout", "artifacts", "output-cap"}
+    unknown = set(raw) - top
     if unknown:
         problems.append(f"work.lifecycle: unknown key(s) {', '.join(sorted(unknown))}; "
-                        f"expected 'stages', 'transitions', or 'timeout'")
+                        f"expected {', '.join(repr(k) for k in sorted(top))}")
 
     timeout = raw.get("timeout", DEFAULT_HOOK_TIMEOUT)
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
@@ -732,6 +986,13 @@ def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
                         "(seconds)")
     else:
         policy.timeout = timeout
+
+    cap = raw.get("output-cap", DEFAULT_OUTPUT_CAP)
+    if isinstance(cap, bool) or not isinstance(cap, int) or cap <= 0:
+        problems.append("work.lifecycle.output-cap: expected a positive integer "
+                        "(bytes)")
+    else:
+        policy.output_cap = cap
 
     stages = raw.get("stages")
     if stages is not None:
@@ -745,7 +1006,24 @@ def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
                     problems.append(f"{where}: unknown stage id; expected one of "
                                     f"{', '.join(STAGE_IDS)}")
                     continue
-                policy.stages[sid] = _parse_binding_list(value, where, problems)
+                policy.stages[sid] = _parse_stage(value, where, problems)
+
+    artifacts = raw.get("artifacts")
+    if artifacts is not None:
+        if not isinstance(artifacts, dict):
+            problems.append(f"work.lifecycle.artifacts: expected a mapping, "
+                            f"got {type(artifacts).__name__}")
+        else:
+            for name, value in artifacts.items():
+                where = f"work.lifecycle.artifacts.{name}"
+                if name not in WORK_ARTIFACTS:
+                    problems.append(f"{where}: unknown artifact; expected one of "
+                                    f"{', '.join(WORK_ARTIFACTS)}")
+                    continue
+                bindings = _parse_binding_list(value, where, problems,
+                                               ARTIFACT_KINDS, "artifact")
+                _check_artifact_list(bindings, where, problems)
+                policy.artifacts[name] = bindings
 
     transitions = raw.get("transitions")
     if transitions is not None:

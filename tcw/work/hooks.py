@@ -58,17 +58,17 @@ def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
             continue
         try:
             r = subprocess.run(
-                binding.command, shell=True, cwd=str(node_root), env=env,
+                binding.ref, shell=True, cwd=str(node_root), env=env,
                 capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
-            return (f"{label} hook `{binding.command}` exceeded the {timeout}s "
+            return (f"{label} hook `{binding.ref}` exceeded the {timeout}s "
                     f"timeout")
         if r.stdout:
             sys.stderr.write(r.stdout)
         if r.stderr:
             sys.stderr.write(r.stderr)
         if r.returncode != 0:
-            return (f"{label} hook `{binding.command}` failed "
+            return (f"{label} hook `{binding.ref}` failed "
                     f"(exit {r.returncode})")
     return None
 

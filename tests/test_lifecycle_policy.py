@@ -63,7 +63,7 @@ def test_an_absent_policy_is_empty_and_clean():
 def test_a_stage_binding_parses():
     policy, problems = parse({"stages": {"spec": [{"skill": "superpowers:brainstorming"}]}})
     assert problems == []
-    assert policy.stage("spec") == [Binding(skill="superpowers:brainstorming")]
+    assert policy.stage("spec") == [Binding("skill", "superpowers:brainstorming")]
     assert policy.stage("spec")[0].kind == "skill"
     assert policy.stage("spec")[0].ref == "superpowers:brainstorming"
 
@@ -71,7 +71,7 @@ def test_a_stage_binding_parses():
 def test_a_command_binding_parses():
     policy, problems = parse({"transitions": {"complete": {"pre": [{"command": "pytest -q"}]}}})
     assert problems == []
-    assert policy.transition("complete").pre == [Binding(command="pytest -q")]
+    assert policy.transition("complete").pre == [Binding("command", "pytest -q")]
     assert policy.transition("complete").pre[0].kind == "command"
 
 
@@ -107,7 +107,7 @@ def test_a_custom_timeout_parses():
 
 def test_binding_values_are_stripped():
     policy, _ = parse({"stages": {"spec": [{"skill": "  a:b  "}]}})
-    assert policy.stage("spec")[0].skill == "a:b"
+    assert policy.stage("spec")[0].ref == "a:b"
 
 
 # ── the rejections, each naming its offender ─────────────────────────────────
@@ -172,12 +172,12 @@ def test_a_bare_string_binding_is_never_inferred():
 
 def test_a_binding_with_neither_key_is_rejected():
     p = only_problem({"stages": {"spec": [{}]}})
-    assert "neither" in p
+    assert "declares no kind" in p
 
 
 def test_a_binding_with_both_keys_is_rejected():
     p = only_problem({"stages": {"spec": [{"skill": "a", "command": "b"}]}})
-    assert "both" in p
+    assert "declares skill and command" in p and "choose one" in p
 
 
 def test_an_unknown_binding_key_is_rejected():
@@ -290,7 +290,7 @@ def test_the_adapter_round_trips_a_policy_in_declared_order(tmp_path):
     })
     policy = FsWorkStore.open(root).lifecycle_policy()
     assert [b.ref for b in policy.stage("spec")] == ["z", "a"]
-    assert policy.transition("complete").pre[0].command == "pytest -q"
+    assert policy.transition("complete").pre[0].ref == "pytest -q"
 
 
 def test_a_malformed_policy_does_not_break_reading_the_board(tmp_path):
