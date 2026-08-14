@@ -34,7 +34,7 @@ from tcw.store.base import (
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
-    parse_lifecycle_policy,
+    Binding, parse_lifecycle_policy,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -2641,8 +2641,47 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def lifecycle_problems(self) -> list[str]:
         """Policy problems, prefixed with the file they came from — for `check`."""
-        _policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        problems += self._file_binding_problems(policy)
         return [f"{SENTINEL}: {p}" for p in problems]
+
+    def _file_binding_problems(self, policy: LifecyclePolicy) -> list[str]:
+        """`file:` bindings that do not exist or leave the node.
+
+        Here rather than in `parse_lifecycle_policy` because the parser is pure —
+        it takes a loaded object and touches no filesystem, which is what lets
+        `lifecycle_policy` and `tcw validate` share it. Resolving a path is
+        adapter knowledge by definition, and `file:` is declared a node-local
+        source kind for the same reason: a remote policy store can hold a named
+        prompt resource but cannot honor an arbitrary local path.
+
+        Confinement resolves **both** sides with symlinks followed. A lexical
+        `..` check passes a symlink inside the node that points out of it, and
+        then reads exactly the file the check exists to prevent.
+        """
+        problems: list[str] = []
+        root = self.node_root.resolve()
+
+        def check(b: "Binding", where: str) -> None:
+            if b.kind != "file":
+                return
+            target = (root / b.value).resolve()
+            if target != root and root not in target.parents:
+                problems.append(f"{where}: file '{b.value}' resolves outside the "
+                                f"node root ({target})")
+            elif not target.is_file():
+                problems.append(f"{where}: file '{b.value}' does not exist "
+                                f"({target})")
+
+        for sid, sb in policy.stages.items():
+            for i, b in enumerate(sb.prompt):
+                check(b, f"work.lifecycle.stages.{sid}[{i}]")
+            for i, b in enumerate(sb.pre):
+                check(b, f"work.lifecycle.stages.{sid}.pre[{i}]")
+        for name, bindings in policy.artifacts.items():
+            for i, b in enumerate(bindings):
+                check(b, f"work.lifecycle.artifacts.{name}[{i}]")
+        return problems
 
     def trunk_branch(self) -> str | None:
         """The branch transitions are expected to land on, or None when unset.
