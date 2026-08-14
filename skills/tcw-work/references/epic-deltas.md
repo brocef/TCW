@@ -11,11 +11,16 @@ replaces were ~85% identical and had already drifted apart.
 
 | Artifact             | For an epic                                                                                                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initial-request.md` | The initiative request and coordination goal. Also the managed target for `reconcile`'s rollup.                                                                                 |
+| `initial-request.md` | The initiative request and coordination goal. Written by the `request` stage only — `reconcile` never touches it.                                                              |
 | `spec.md`            | An overview spec: affected nodes, child boundaries, ordering constraints, acceptance criteria for the whole initiative. Implementation detail belongs in each child's own spec. |
 | `plan.md`            | A coordination plan: child tasks, delegation commands, dependency order, rollup checkpoints.                                                                                    |
 | `outcome.md`         | Aggregate status reconciled from the children.                                                                                                                                  |
 | `refined-outcome.md` | Aggregate verification and closeout decisions.                                                                                                                                  |
+
+`reconcile` writes the rollup to a **`rollup.md` sidecar**, not to an artifact.
+It is generated rather than authored, so it carries no board letter and belongs
+to no stage — and nothing a machine writes ever lands in a document a person is
+credited with.
 
 ## Choosing the child relation
 

@@ -938,10 +938,12 @@ elsewhere still blocks. If a process dies holding a claim, reads report an
 interrupted claim and point at `tcw work start <slug> --take-over --owner <id>`
 rather than pretending the item is gone.
 
-`reconcile` consolidates every child task for an initiative into a managed
-rollup block in the epic's `initial-request.md` — a slice table, surfaced capability
-deltas, and the next ready actions — and is **read-only** on the capabilities
-ledger. `delegate`/`escalate` only ever write a request into the target node's
+`reconcile` consolidates every child task for an initiative into the epic's
+`rollup.md` — a slice table, surfaced capability deltas, and the next ready
+actions — and is **read-only** on the capabilities ledger. The rollup is
+generated, so it lives in its own file rather than inside a document someone
+wrote; an epic that has only ever been reconciled still shows no `R` on the
+board. `delegate`/`escalate` only ever write a request into the target node's
 `inbox/`, never its tracked work, respecting the node write-boundary — into the
 target's *configured* inbox, and they fail loudly rather than inventing a
 `docs/work/` folder when that store cannot be reached. `delegate` addresses its

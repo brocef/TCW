@@ -57,6 +57,22 @@ request's name, which would have copied it into the request the moment you saved
 The intake is still there to read, as its own document. When a save creates the
 request, the confirmation says so.
 
+## An epic's rollup lives in its own file
+
+`tcw work reconcile` used to write its summary of an initiative's slices into the
+epic's `initial-request.md`. That meant reconciling an epic created a request
+document nobody had written — and the board then claimed the epic had been
+written up when all that happened was that a command wrote a table.
+
+The rollup now goes to `rollup.md` alongside the epic's other documents. Reading
+it, committing it with `--commit`, and everything else about the command are
+unchanged; only its destination moved.
+
+Epics you already have migrate themselves. The first time you reconcile one, the
+rollup moves out of the request and into `rollup.md`, and anything you wrote
+around it stays exactly where it was. If the rollup was the only thing in the
+request, the empty file is removed rather than left behind.
+
 ## Nothing changes for items you already have
 
 Every existing item has a request document, so it reads, displays, and shows on
