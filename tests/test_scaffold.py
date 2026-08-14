@@ -13,6 +13,8 @@ import yaml
 
 from tcw.store.base import WORK_ARTIFACTS
 from tcw.store.fs import FsWorkStore, init
+from tcw.work.resolve import load_builtins
+from tcw.work.templates import ARTIFACT_TEMPLATES
 
 
 def _node(tmp_path: Path, name: str = "repo") -> Path:
@@ -38,6 +40,25 @@ def item(tmp_path):
     root = _node(tmp_path)
     st = FsWorkStore.open(root)
     return root, st, st.create("Thing", body="req\n").slug
+
+
+# ── the built-in templates ───────────────────────────────────────────────────
+
+
+def test_every_artifact_has_exactly_one_built_in_template():
+    assert set(ARTIFACT_TEMPLATES) == set(WORK_ARTIFACTS)
+
+
+def test_intakes_template_is_empty():
+    """Intake is whatever someone supplied, so it has no prescribed structure.
+    Pinned so nobody helpfully adds headings later."""
+    assert ARTIFACT_TEMPLATES["intake"] == ""
+
+
+def test_load_builtins_carries_the_templates():
+    """One loader for every kind of built-in TCW ships — two would resolve a
+    stage's prompt and the same stage's template from different places."""
+    assert load_builtins().artifact_templates == ARTIFACT_TEMPLATES
 
 
 # ── the store method ─────────────────────────────────────────────────────────

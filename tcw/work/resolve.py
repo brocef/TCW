@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -20,6 +21,7 @@ from tcw.store.base import (
 )
 from tcw.work.generate import GenerateError, run_generate
 from tcw.work.projection import work_item_json
+from tcw.work.templates import ARTIFACT_TEMPLATES
 
 
 class ResolveError(Exception):
@@ -38,6 +40,19 @@ class Builtins:
     """
     stage_prompts: Mapping[str, str] = field(default_factory=dict)
     artifact_templates: Mapping[str, str] = field(default_factory=dict)
+
+
+@lru_cache(maxsize=1)
+def load_builtins() -> Builtins:
+    """TCW's shipped text, loaded once per process.
+
+    **One loader, both halves.** Two functions returning two different
+    `Builtins` is how `spec`'s prompt and `spec`'s template end up resolved from
+    different places, so every caller asks here and every new kind of built-in
+    is added to this return value — C6 populates `stage_prompts` from
+    `tcw/work/prompts/*.md` right here, beside the artifact templates.
+    """
+    return Builtins(artifact_templates=ARTIFACT_TEMPLATES)
 
 
 @dataclass(frozen=True)
