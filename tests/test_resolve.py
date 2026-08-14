@@ -8,13 +8,13 @@ import pytest
 import yaml
 
 from tcw.store.base import (
-    Artifact, Binding, Condition, LifecyclePolicy, StageBindings, WorkItem,
-    parse_lifecycle_policy,
+    STAGE_IDS, Artifact, Binding, Condition, LifecyclePolicy, StageBindings,
+    WorkItem, parse_lifecycle_policy,
 )
 from tcw.work.projection import WORK_ITEM_SCHEMA
 from tcw.work.resolve import (
-    Builtins, ResolveError, hook_payload, resolve_artifact, resolve_prompts,
-    select,
+    Builtins, ResolveError, hook_payload, load_builtins, resolve_artifact,
+    resolve_prompts, select,
 )
 
 ENV = dict(os.environ)
@@ -325,3 +325,56 @@ def test_the_plan_records_a_binding_that_did_not_match(tmp_path):
                           Builtins(), env=ENV)
     assert [(p.ref, p.matched) for p in res.plan] == [
         ("for bugs", False), ("for all", True)]
+
+
+# ── the floor: a stage the node never configured ─────────────────────────────
+
+
+@pytest.mark.parametrize("sid", sorted(set(STAGE_IDS) - {"inbox"}))
+def test_an_unconfigured_stage_resolves_to_the_builtin(sid, tmp_path):
+    """The floor. A node that configures nothing is the common case — TCW's own
+    repo has no `work.lifecycle` key at all — and it gets TCW's instructions."""
+    b = load_builtins()
+    res = resolve_prompts(LifecyclePolicy(), sid, item(), tmp_path, b, env=ENV)
+    # `_join` rstrips each part; the text is otherwise byte-for-byte the file's.
+    assert res.text == b.stage_prompts[sid].rstrip()
+    assert [(p.kind, p.matched, p.executed) for p in res.plan] == [
+        ("builtin", True, False)]
+
+
+def test_the_floor_is_a_real_plan_entry(tmp_path):
+    """`--no-exec` prints `res.plan`; a floor that resolved text while
+    contributing no entry would make the dry run understate the real one."""
+    res = resolve_prompts(LifecyclePolicy(), "spec", item(), tmp_path,
+                          load_builtins(), env=ENV, execute=False)
+    assert [p.kind for p in res.plan] == ["builtin"]
+
+
+def test_a_configured_stage_wins_outright(tmp_path):
+    """A floor, not a ceiling — and not an addition either. The built-in appears
+    only where the node asks for it by name."""
+    policy = policy_of({"stages": {"spec": {"prompt": [{"blob": "X"}]}}})
+    res = resolve_prompts(policy, "spec", item(), tmp_path, load_builtins(),
+                          env=ENV)
+    assert res.text == "X"
+
+
+def test_builtin_composes_with_the_nodes_own_text(tmp_path):
+    """Declaration order, one blank line between — `_join`'s contract, asserted
+    against the real shipped text rather than a fabricated registry."""
+    b = load_builtins()
+    policy = policy_of({"stages": {"spec": {"prompt": [
+        {"builtin": True}, {"blob": "X"}]}}})
+    res = resolve_prompts(policy, "spec", item(), tmp_path, b, env=ENV)
+    assert res.text == b.stage_prompts["spec"].rstrip() + "\n\n" + "X"
+
+
+def test_a_stage_whose_only_binding_does_not_match_stays_empty(tmp_path):
+    """The boundary the floor must not cross: the condition is on the binding
+    *list*, not on the resolved text. This node configured `spec`; it does not
+    get the built-in back because its one binding sat out."""
+    policy = policy_of({"stages": {"spec": {"prompt": [
+        {"blob": "for bugs", "when": {"tags": ["bug"]}}]}}})
+    res = resolve_prompts(policy, "spec", item(tags=["feature"]), tmp_path,
+                          load_builtins(), env=ENV)
+    assert res.text == ""

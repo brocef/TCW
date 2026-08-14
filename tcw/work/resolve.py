@@ -227,10 +227,19 @@ def resolve_prompts(policy: LifecyclePolicy, stage_id: str,
                     item: WorkItem | None, node_root: Path, builtins: Builtins,
                     artifacts: Sequence = (), env: dict | None = None, *,
                     execute: bool = True) -> Resolution:
-    """A stage's prompt text: **every** matching binding, in declaration order."""
+    """A stage's prompt text: **every** matching binding, in declaration order.
+
+    A stage with **no prompt bindings** resolves as if it bound
+    `[{builtin: true}]` — the floor, so a node that configures nothing still
+    gets TCW's own instructions. The condition is on the binding *list*, not on
+    the resolved text: a stage whose only binding carries a `when:` that did not
+    match resolves to nothing, because the node configured that stage and a
+    stage the node configures wins outright.
+    """
     res = Resolution()
     parts: list[str] = []
-    for b in policy.stage(stage_id):
+    bindings = policy.stage(stage_id) or [Binding(kind="builtin")]
+    for b in bindings:
         matched = b.when is None or b.when.matches(item)
         if not matched:
             res.plan.append(PlanEntry(b.kind, b.ref, False))
