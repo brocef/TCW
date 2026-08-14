@@ -26,6 +26,7 @@ include = ["tcw*"]
 
 [tool.setuptools.package-data]
 "tcw.serve" = ["dist/*", "dist/**/*"]
+"tcw.work" = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
