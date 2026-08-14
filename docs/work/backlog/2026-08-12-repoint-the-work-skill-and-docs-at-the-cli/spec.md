@@ -115,11 +115,12 @@ check` passes and `tcw capabilities drift` reports none):
    `work-item/lifecycle-hook` for exactly that noun and
    `work/customize-lifecycle-artifact-templates` links both.
 
-**Recommendation:** fold both into C7, because C7 is already editing this
-record and the whole fix is four `tcw capabilities set --field` calls with no
-prose to write. If the requester prefers, they are a clean C8 item instead.
-This spec does not assume the answer; acceptance criterion 12 is conditional on
-it.
+**Recommendation: fold both into C7**, because C7 is already editing this record
+and the whole fix is four `tcw capabilities set --field` calls with no prose to
+write.
+
+**Accepted by the requester.** Criterion 12 is therefore **unconditional** — the
+linkage fixes are C7's, not C8's.
 
 ## Problem
 
@@ -352,6 +353,13 @@ what was asked) with no floor beyond the structural one. Padding five documents
 by 12–18 lines each to hit a range is the one outcome constraint 2 names as
 worse than a long document.
 
+**Requester's decision: ceiling of 40, no floor.** Constraint 1's 40–50 range is
+formally amended to that, and the reason is worth keeping: the ceiling is
+test-enforced and the floor is not, so a later author can add genuine judgment
+without a test fighting them, while nobody can pad a router to hit a target. The
+routers will look thin next to what they replaced; that is the shape of the
+change, not a defect in it.
+
 **The `## Exit` section is dropped from the six reduced routers**, and
 `stage-inbox.md` keeps all five. Verified per stage rather than assumed:
 
@@ -573,14 +581,11 @@ the stage-document and reference-file routing checks, and every guard in
     prints the same thing; it names the `prompt: []` / bare `stages.<id>: []`
     exception and the `{blob: ""}` opt-out. `Status` is still `Supported`. The
     item's `capabilities.yaml` reads `changed: [work/configure-the-work-lifecycle]`.
-12. **Conditional on the requester accepting the recommendation in
-    `## Capability changes`:** `work/run-a-lifecycle-stage` carries
-    `Subject: work-item/lifecycle-stage`;
-    `work/configure-the-work-lifecycle` carries both
-    `work-item/lifecycle-stage` and `work-item/lifecycle-hook`; and the four
-    lifecycle capabilities carry `Feature: configurable-work-lifecycle`. If the
-    requester defers it to C8, this criterion is recorded as waived rather than
-    silently dropped.
+12. `work/run-a-lifecycle-stage` carries `Subject: work-item/lifecycle-stage`;
+    `work/configure-the-work-lifecycle` carries both `work-item/lifecycle-stage`
+    and `work-item/lifecycle-hook`; and all four lifecycle capabilities carry
+    `Feature: configurable-work-lifecycle`. (**Requester accepted** the
+    recommendation in `## Capability changes`; this criterion is unconditional.)
 13. `tcw capabilities check`, `tcw capabilities drift`, and `tcw validate` are
     all clean, and the full pytest suite is green.
 14. Release notes and changelog carry the entries named in §10, and no other
