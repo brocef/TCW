@@ -1,0 +1,7 @@
+id: cap-25a19a
+name: Customize lifecycle artifact templates
+Status: Missing
+Planning doc: 2026-08-12-scaffold-lifecycle-artifacts-from-templates
+Subject:
+- work-item/lifecycle-hook
+- work-item/lifecycle-stage
