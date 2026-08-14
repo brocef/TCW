@@ -160,8 +160,9 @@ Consequences, stated so they are not discovered later:
   asks for, and it is what the ledger already promises.
 - An explicitly empty prompt list (`prompt: []`, or the legacy bare
   `stages.<id>: []`) is indistinguishable from an absent one after parsing —
-  `StageBindings` records no "was `prompt:` written" flag — so it also gets the
-  built-in. Accepted rather than designed around; see `## Risks`.
+  `StageBindings` records no "was `prompt:` written" flag — so it resolves to the
+  built-in too. **`tcw validate` rejects the spelling** rather than the model
+  recording it; see §3a.
 - `tcw work lifecycle` is untouched. It reports the policy directly and resolves
   nothing, so an unconfigured stage still reports no bindings there.
 
@@ -182,6 +183,31 @@ the registry is empty (`Builtins()` still resolves a `builtin` to `""`), so
 assertion in `tests/test_stage_verb.py` configures its stage explicitly
 (`test_stage_verb.py:146-157` and the `--no-exec` block), so the floor does not
 apply to any of them.
+
+### 3a. An empty prompt list is a validation error
+
+**Requester's decision**, taken when the floor was raised: `prompt: []` still
+resolves to the built-in — the parser genuinely cannot tell it from an absent
+key — but **`tcw validate` rejects it**, naming the stage.
+
+This puts the ambiguity where a user can see it. Writing `prompt: []` was always
+meaningless (an empty list of prompts resolved to empty text before the floor,
+and to the built-in after it), so the config that would silently change behaviour
+is the config `validate` now refuses to let anyone keep. The alternative —
+recording "was `prompt:` written" on `StageBindings` — buys a real opt-out
+spelling at the cost of widening C3's model for a user nobody has met.
+
+**Where.** `_parse_stage` (`base.py:954-984`) is the one place both spellings
+arrive: the legacy bare list at `:965-968` and the explicit key at
+`:982-984`. `raw.get("prompt") is not None` already distinguishes "written" from
+"absent" at parse time, which is exactly the fact resolution loses. Both branches
+append a problem when the list they were handed is empty. Nothing in the model
+changes; the check lives entirely in the parser, which already returns a problem
+list `tcw validate` reports and the adapter discards (`base.py:987-994`).
+
+**There is no opt-out spelling, deliberately.** A stage whose prompt should say
+nothing binds `{blob: ""}` — one entry, valid today, and honest about being a
+choice. Recorded in the release notes.
 
 ### 4. Wiring the verb
 
@@ -273,11 +299,15 @@ C6's own Documentation Sync obligations, per `CLAUDE.md`:
   TCW what to do at a stage" already claims the instructions are "TCW's own by
   default", which is false today. C6 makes it true and adds which six stages ship
   defaults, that `inbox` does not, and that configuring a stage replaces them
-  while `builtin: true` composes.
+  while `builtin: true` composes. Plus the upgrade sentence for the one
+  back-compat break: `prompt: []` is now a validation error, and a stage that
+  should say nothing binds `{blob: ""}`.
 - **`docs/changelogs/upcoming.md`** [Any-Code-Change] — *Added*: the prompt files
   as package data, the loader, the `pyproject` package-data key, the
   unconfigured-stage floor in `resolve_prompts`, and the wheel test. *Changed*:
-  `tcw work stage` passes the shipped builtins.
+  `tcw work stage` passes the shipped builtins; an unconfigured stage resolves to
+  the built-in. *Removed*: `prompt: []` as a legal spelling — `tcw validate`
+  rejects it in both forms.
 - **`skills/tcw-work/**`** [Skill-Driven-Component] — **no edit.** The trigger
   fires, and the answer is that C7 owns it: the epic assigns "stage docs →
   routers" and "`hooks.md` rewritten" to C7, and editing them here means editing
@@ -328,6 +358,15 @@ C6's own Documentation Sync obligations, per `CLAUDE.md`:
 12. **Capability.** `work/run-a-lifecycle-stage` carries the revised wording from
     `## Capability changes`, and `tcw capabilities check` and
     `tcw capabilities drift` are clean.
+13. **An empty prompt list is rejected, in both spellings.** `tcw validate`
+    reports a problem naming the stage for `stages.<id>.prompt: []` **and** for
+    the legacy bare `stages.<id>: []`, and the message says what to write
+    instead. A non-empty list in either spelling is still accepted, and
+    `stages.<id>.pre: []` — a different key, not covered by this decision — is
+    **unaffected**, asserted so the check does not overreach. Resolution is
+    tested separately: a policy carrying an empty prompt list still returns the
+    built-in text, because the parser's problem list is advisory and the adapter
+    discards it (`base.py:987-994`).
 
 ## Risks
 
@@ -335,14 +374,16 @@ C6's own Documentation Sync obligations, per `CLAUDE.md`:
   would not touch.** Mitigated by scope: one condition in one function, inert
   while the registry is empty, with no existing test edited. Escalated in
   `## Notes` rather than absorbed silently.
-- **`prompt: []` stops meaning "nothing".** A node that spelled an opt-out as an
-  explicit empty list now gets TCW's default, because parsing cannot tell it from
-  an absent key. No such node is known — TCW's own config has no `work.lifecycle`
-  at all, and the epic's back-compat table introduced that row to describe
-  `tcw work lifecycle`'s directive rendering, which is unchanged. The alternative
-  is a new field on `StageBindings` to record whether `prompt:` was written,
-  which is model surface bought for a hypothetical user. Documented in the
-  release notes instead.
+- **`prompt: []` stops meaning "nothing", and becomes a validation error.** A
+  node that spelled an opt-out as an explicit empty list gets TCW's default at
+  resolution *and* a `tcw validate` failure telling it so (§3a). No such node is
+  known — TCW's own config has no `work.lifecycle` at all, and the epic's
+  back-compat table introduced that row to describe `tcw work lifecycle`'s
+  directive rendering, which is unchanged. The residual risk is narrow and worth
+  naming: this is the **one back-compat break in C6**, so a config that validated
+  before this change can fail after it. That is the point of the rejection rather
+  than a side effect of it, but it means C3's legacy-config corpus needs a case
+  for it and the release notes need the upgrade sentence.
 - **Condensation drops something load-bearing.** The per-stage table is the
   control: anything not in a "moves" cell is in a "stays" or "lost" cell, so a
   reviewer can find the omission rather than notice its absence. C7's criterion
@@ -374,9 +415,11 @@ the request repeats it. Against the shipped code that is not sufficient:
 
 Neither is a defect in C3 or C4: C3's `Builtins` docstring says "C6 fills
 `stage_prompts`", and C4 wired the only value that existed when it shipped. They
-are the seam the epic did not cost. C6 therefore makes **two code changes it was
-not scoped for** — the floor in `resolve_prompts` and the argument at
-`cli.py:801` — and this is an **epic amendment**, following the precedent C4 set
+are the seam the epic did not cost. C6 therefore makes **three code changes it
+was not scoped for** — the floor in `resolve_prompts`, the argument at
+`cli.py:801`, and the `prompt: []` rejection in `_parse_stage` that the floor
+makes necessary (§3a, the requester's decision) — and this is an **epic
+amendment**, following the precedent C4 set
 ("a child overruling its epic quietly is how the epic stops being the source of
 truth — so the epic is amended instead"). The coordinating session should amend
 the epic's C6 row and criterion 14 before implementation starts.
