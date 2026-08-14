@@ -85,12 +85,23 @@ def test_every_transition_has_a_section_in_transitions_md(transition_id):
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
 def test_produce_names_every_artifact_the_table_lists(stage_id):
     """`inbox` produces none and `verify` produces one of two — both are values,
-    not exceptions. The table is the source; the document must cover it."""
+    not exceptions. The table is the source; the document must cover it.
+
+    Filenames, matched against the set `artifacts_in()` returns rather than
+    substring-searched in the body: the tuple holds *extensionless* names, and
+    `"spec" in body` passes against `specification` and the bare word "spec".
+
+    Subset, not equality: three Produce sections legitimately name an artifact
+    they do not produce — `stage-inbox.md` explains that `inbox accept` preserves
+    the entry as `intake.md` while producing no lifecycle artifact, and
+    `stage-request.md` and `stage-plan.md` cross-reference `rollup.md` and
+    `epic-deltas.md`. The subset direction is the one that catches a real defect.
+    """
     step = LIFECYCLE_STEPS_BY_ID[stage_id]
-    body = sections(stage_doc(stage_id))["Produce"]
-    for artifact in artifacts_in(step.produces):
-        assert artifact in body, \
-            f"stage-{stage_id}.md 'Produce' omits {artifact}"
+    named = artifacts_in(sections(stage_doc(stage_id))["Produce"])
+    wanted = {f"{n}.md" for n in step.produces}
+    assert wanted <= named, \
+        f"stage-{stage_id}.md 'Produce' omits {', '.join(sorted(wanted - named))}"
 
 
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
@@ -109,11 +120,6 @@ def test_a_stage_producing_nothing_says_so_explicitly():
     is useful to an agent deciding whether it is finished."""
     body = sections(stage_doc("inbox"))["Produce"].lower()
     assert "no lifecycle artifact" in body
-
-
-def test_verify_names_both_of_its_outcomes():
-    body = sections(stage_doc("verify"))["Produce"]
-    assert "refined-outcome.md" in body and "rework.md" in body
 
 
 # ── shape ────────────────────────────────────────────────────────────────────

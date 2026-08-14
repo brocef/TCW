@@ -680,7 +680,11 @@ class LifecycleStep:
     kind: str                        # "stage" | "transition"
     objective: str
     inputs: tuple[str, ...] = ()     # lifecycle artifacts the step may read
-    produces: str = ""               # the artifacts a stage writes; "" for transitions
+    # The artifacts a stage writes, extensionless; empty for a transition. A
+    # tuple because one-per-stage was never true: `inbox` produces none and
+    # `verify` produces one of two, and a template keyed by artifact needs the
+    # names rather than a sentence about them.
+    produces: tuple[str, ...] = ()
     # The prose form of `produces`, and the only one anything renders: it is what
     # `tcw work lifecycle` prints and what `--json` ships under `produces`, so it
     # cannot move without breaking a compatibility baseline.
@@ -696,31 +700,31 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
     LifecycleStep(
         id="inbox", kind="stage",
         objective="Triage a raw inbox entry into a work item.",
-        produces=""),
+        produces=()),
     LifecycleStep(
         id="request", kind="stage",
         objective="Capture what is being asked for, and why.",
-        produces="initial-request.md", produces_note="initial-request.md"),
+        produces=("initial-request",), produces_note="initial-request.md"),
     LifecycleStep(
         id="spec", kind="stage",
         objective="Decide what to build and why, before deciding how.",
         inputs=("initial-request.md",),
-        produces="spec.md", produces_note="spec.md"),
+        produces=("spec",), produces_note="spec.md"),
     LifecycleStep(
         id="plan", kind="stage",
         objective="Decide how to build it, in ordered, checkable steps.",
         inputs=("initial-request.md", "spec.md"),
-        produces="plan.md", produces_note="plan.md"),
+        produces=("plan",), produces_note="plan.md"),
     LifecycleStep(
         id="implement", kind="stage",
         objective="Build it, and record what actually happened.",
         inputs=("spec.md", "plan.md", "rework.md"),
-        produces="outcome.md", produces_note="outcome.md"),
+        produces=("outcome",), produces_note="outcome.md"),
     LifecycleStep(
         id="verify", kind="stage",
         objective="Obtain the user's acceptance decision on the finished work.",
         inputs=("spec.md", "outcome.md"),
-        produces="refined-outcome.md (accepted) or rework.md (rejected)",
+        produces=("refined-outcome", "rework"),
         produces_note="refined-outcome.md (accepted) or rework.md (rejected)"),
     LifecycleStep(
         id="postmortem", kind="stage",
@@ -728,7 +732,7 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
                   "in review or after completion, and never changes status.",
         inputs=("initial-request.md", "spec.md", "plan.md", "outcome.md",
                 "refined-outcome.md", "rework.md"),
-        produces="post-mortem.md", produces_note="post-mortem.md"),
+        produces=("post-mortem",), produces_note="post-mortem.md"),
     LifecycleStep(
         id="start", kind="transition",
         objective="Begin implementation.", moves="backlog → active",

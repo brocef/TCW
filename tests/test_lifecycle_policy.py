@@ -10,9 +10,11 @@ Every rejection is tested for the *message*, not just the count. An unparseable
 config whose error does not name the offending key is barely better than no
 check at all.
 """
+import re
+
 from tcw.store.base import (
-    DEFAULT_HOOK_TIMEOUT, STAGE_IDS, TRANSITION_IDS, Binding,
-    parse_lifecycle_policy,
+    DEFAULT_HOOK_TIMEOUT, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, STAGE_IDS,
+    TRANSITION_IDS, WORK_ARTIFACTS, Binding, parse_lifecycle_policy,
 )
 
 
@@ -39,6 +41,32 @@ def test_stage_ids_match_the_epic_contract():
 
 def test_transition_ids_match_the_epic_contract():
     assert TRANSITION_IDS == ("start", "submit", "complete", "rework", "discard")
+
+
+def test_produces_is_a_tuple_of_artifact_names():
+    """One artifact per stage was never true — `inbox` produces none and `verify`
+    produces one of two — so the field holds names, not a sentence."""
+    for step in LIFECYCLE_STEPS:
+        assert isinstance(step.produces, tuple), step.id
+        assert set(step.produces) <= set(WORK_ARTIFACTS), step.id
+    assert LIFECYCLE_STEPS_BY_ID["verify"].produces == ("refined-outcome", "rework")
+    assert LIFECYCLE_STEPS_BY_ID["inbox"].produces == ()
+
+
+def test_every_artifact_but_intake_is_produced_by_a_stage():
+    """`intake` is raw input — no stage writes it, which is why `tcw work
+    scaffold intake` has no stage legality row to look up."""
+    produced = {n for s in LIFECYCLE_STEPS for n in s.produces}
+    assert produced == set(WORK_ARTIFACTS) - {"intake"}
+
+
+def test_produces_and_produces_note_describe_the_same_artifacts():
+    """Two fields carrying one fact drift silently. `produces_note` is prose and
+    `produces` is machine-readable; the filenames in the prose must be exactly
+    the tuple's, `inbox`'s empty pair included."""
+    for step in LIFECYCLE_STEPS:
+        in_note = set(re.findall(r"\b([a-z][a-z0-9-]*\.md)\b", step.produces_note))
+        assert in_note == {f"{n}.md" for n in step.produces}, step.id
 
 
 def test_every_transition_id_except_discard_is_a_cli_verb():
