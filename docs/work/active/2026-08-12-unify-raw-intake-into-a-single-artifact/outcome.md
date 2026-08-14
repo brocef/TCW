@@ -1,6 +1,6 @@
 # Outcome — Unify raw intake into a single artifact
 
-> **Third pass.** Rejected at `verify` twice. The body of this document
+> **Fourth pass.** Rejected at `verify` three times. The body of this document
 > describes the first pass and stands as written; each rejection is recorded in
 > its own section at the end.
 
@@ -242,3 +242,64 @@ defect class this item exists to close — and marking a sidecar read-only means
 `generated` flag in the registry, a rejection in the PUT handler, and a read-only
 mode in the editor, for a file nobody has asked to edit. Named here so `verify`
 decides rather than discovers: a follow-up item if wanted, otherwise accepted.
+
+_(`verify` priced this correctly and put it in scope — closed below.)_
+
+## After the third rejection
+
+`verify` confirmed the second rework's behavior at the property level, in a
+scratch node through the real CLI, and rejected on the reporting layer instead:
+three documents describing something the code no longer does, plus the web
+affordance above.
+
+| # | Task | Commit |
+| - | ---- | ------ |
+| 1 | `stage-request.md`'s retracted claim; the vacuous assertion; the release-note wording | `5429702` |
+| 2 | Mark `rollup.md` generated; drop its Edit affordance | `8c40cc2` |
+| 3 | Documentation Sync — changelog, `web/editing` capability, capability ledger | `b6dfabf` |
+
+**The cost estimate above was wrong, and being wrong is the finding.** This
+document argued the web fix away on a price — registry flag, PUT rejection,
+read-only editor mode — that nobody had checked. Both `serve` sidecar payloads
+are already assembled field-by-field from `sc_info`, so the real change is one
+registry key, that key echoed twice, and one conditional in the client. The PUT
+rejection and the read-only editor are not prerequisites and were not built:
+`reconcile` writes through `write_sidecar` itself, so the flag governs the
+affordance, not the store. An estimate offered as a reason to defer is a claim
+like any other, and this one went into an outcome document unverified.
+
+**The vacuous assertion is the third appearance of this item's own fallacy —
+inside the test written to close the second one.**
+`assert "R" not in {a.name for a in store.artifacts(epic) if a.present}` cannot
+fail: `artifacts()` yields `initial-request`, `spec`, `intake` — names, never
+board letters. It was removed rather than replaced. The property is already
+pinned by the two lines around it (the folder listing and
+`read_artifact(...) is None`), and the board letter follows from the artifact's
+absence; a check that cannot fail is worse than no check, because it reads as
+coverage. The comment left in its place says so, so it does not come back.
+
+### One place where the rework document was not followed
+
+`rework.md` item 4 said reading the rollup in the web app "must survive: hide the
+Edit affordance, not the sidecar." The sidecar is still listed and labelled
+`generated`, but it is **not readable in the app** — the Edit modal was the only
+thing that rendered its content, and `/open` hands the file to the OS rather than
+rendering it in-page. Keeping in-app reading meant a read-only mode in the resource
+editor, which is the hardening the same document called optional.
+
+So the release note was corrected instead of the app: it now points at
+`tcw work reconcile <epic>` (which prints the current rollup and provably stages
+nothing when unchanged) and `tcw work path`, and does not claim the web app will
+show it. That is a real, if small, loss against the pre-change behavior, where the
+rollup was readable in the Request tab because it was the request. Flagged rather
+than buried — `verify` may reasonably want the read-only viewer as a follow-up.
+
+### Checks
+
+Suite green: 1314 Python, **52** web unit (one new), 14 end-to-end, `tcw validate`
+and `tcw capabilities check` OK, and `pnpm check:build` clean with the bundle
+rebuilt and committed — the stale-bundle trap that shipped once already.
+
+The new component test was confirmed to **fail** with the guard removed before it
+was kept, which given the paragraph above about vacuous assertions is not a
+formality.
