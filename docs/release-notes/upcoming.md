@@ -92,6 +92,14 @@ under `pre:`, and give each lifecycle document a **template** under `artifacts:`
 spec — TCW's own by default, yours if you have configured them. It is the command
 that makes everything above reachable.
 
+**TCW now ships those defaults**, so this works on a project that has configured
+nothing at all. There is a set of instructions for each of the six stages that
+run against an existing item — request, spec, plan, implement, verify, and
+post-mortem. The one exception is the inbox, which runs before an item exists
+and so has nothing to give instructions about. Configure a stage's prompts and
+yours replace TCW's outright; add `builtin: true` to that stage's list and TCW's
+come back, composed with your own in the order you wrote them.
+
 It checks first that the stage makes sense for where the item is: asking for
 `implement` on something still in the backlog is refused, and so is asking about
 a spec for work that is already closed. Then it runs whatever `pre` checks you
@@ -152,10 +160,20 @@ can decide anything.
 
 ## Everything you have configured already keeps working
 
-This is the change most likely to worry you, so: no. A stage id with a plain list
-of skills or commands under it means exactly what it always meant, and prints
-exactly what it always printed. That is checked against recordings of the old
-behaviour, including this project's own configuration.
+This is the change most likely to worry you, so: nearly all of it. A stage id
+with a plain list of skills or commands under it means exactly what it always
+meant, and prints exactly what it always printed. That is checked against
+recordings of the old behaviour, including this project's own configuration.
+
+**One thing to change if you have it.** An *empty* prompt list — `prompt: []`,
+or a stage id with nothing but `[]` under it — is now refused by
+`tcw validate`, which names the stage. An empty list never said anything, and
+now that a stage you have configured nothing for falls back to TCW's own
+instructions, an empty list reads as an opt-out that it is not: it gets the
+default too. If you meant "this stage should say nothing", write
+`prompt: [{blob: ""}]` — one entry, and honest about being a choice. If you
+meant nothing in particular, delete the line. Everything still runs either way
+while you fix it; only `tcw validate` complains.
 
 ## Scripts that misbehave now fail instead of leaking
 

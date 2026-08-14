@@ -635,8 +635,11 @@ concatenated in the order you wrote them. An entry under `artifacts:` is a
 normalized and confined to it, so a typo cannot quietly read something else.
 `generate:` is a script you own: TCW pipes the work item to it as JSON on stdin
 and its stdout becomes the text. `builtin: true` is TCW's own default for that
-stage or artifact. `skill:` names an agent skill, which is a name rather than
-instructions and is the weakest option. `command:` is for checks.
+stage or artifact — TCW ships instructions for each of the six lifecycle stages
+(`inbox` runs before an item exists, so it has none) and a template for each
+lifecycle document, and **a stage you have configured nothing for resolves to
+them**. `skill:` names an agent skill, which is a name rather than instructions
+and is the weakest option. `command:` is for checks.
 
 ```yaml
 work:
@@ -672,8 +675,15 @@ side-effect-free.
 
 Your existing configuration keeps working exactly as it did: a bare list under a
 stage id is still valid, still means "prompt", and still renders identically.
+One exception, and it is the only one: an **empty** prompt list is now rejected
+by `tcw validate`, in both spellings — `prompt: []` and a bare
+`stages.<id>: []`. It never said anything, and now that an unconfigured stage
+falls back to TCW's own instructions it reads as an opt-out it is not. A stage
+that should genuinely say nothing binds `{blob: ""}`.
 
-**Reading a stage's instructions** is `tcw work stage <id> <ref>`. It refuses a
+**Reading a stage's instructions** is `tcw work stage <id> <ref>`. With nothing
+configured it prints TCW's own instructions for that stage, so the command is
+useful before you have written any lifecycle configuration at all. It refuses a
 stage that makes no sense for the item's current status, runs the stage's `pre`
 checks, resolves its prompts, and prints the result — **on stdout, alone**, so
 you can pipe it. Every check's output goes to stderr, and any failure prints

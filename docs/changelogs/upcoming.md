@@ -99,6 +99,30 @@ category.
 - **`load_builtins()`** in `tcw/work/resolve.py` — the single `lru_cache`d source
   of TCW's shipped text, currently `artifact_templates`. Every new kind of
   built-in extends this return value rather than adding a second loader.
+- **`tcw/work/prompts/<stage>.md`** — six condensed stage prompts (`request`,
+  `spec`, `plan`, `implement`, `verify`, `postmortem`), shipped as package data
+  through a `"tcw.work" = ["prompts/*.md"]` entry in
+  `[tool.setuptools.package-data]`, matching the `tcw.serve` precedent. Each is
+  condensed from the matching `skills/tcw-work/references/stage-*.md` against
+  the item spec's per-stage table; `inbox` ships none, since it runs before an
+  item exists.
+- **`load_builtins()` fills `stage_prompts`.** Read through
+  `importlib.resources.files("tcw.work")` — not a path off `__file__`, which
+  breaks under a zipimport-style install — over `sorted(set(STAGE_IDS) -
+  {"inbox"})`, so a stage added without its file fails rather than shipping
+  silent. A missing or empty file raises `ResolveError` naming the stage and the
+  package path. `lru_cache` does not memoize the raise, so a broken install
+  reports on every call.
+- **The unconfigured-stage floor in `resolve_prompts`.** A stage with **no**
+  prompt bindings resolves as if it bound `[{builtin: true}]`, appending a real
+  `PlanEntry("builtin", …, matched=True)` so `--no-exec` reports it. The
+  condition is on the binding list, not the resolved text: a stage whose only
+  binding carries a non-matching `when:` still resolves to `""`.
+- **`tests/test_shipped_prompts.py`** — set equality against the derivation,
+  ≥15 non-blank and ≤40 lines per prompt, no `tcw work lifecycle --stage` step
+  and no sub-skill name in the text, and a wheel test that runs
+  `pip wheel --no-deps --no-build-isolation` and reads
+  `tcw/work/prompts/*.md` out of the `.whl` as a zip. Default suite, no marker.
 - **`LifecycleStep.produces_note`** — the prose form, and the only one rendered:
   `_lifecycle_lines`' `produces:` line and `--json`'s `"produces"` key both read
   it, so neither payload moved. A per-step invariant asserts the `<name>.md`
@@ -186,12 +210,24 @@ category.
   prose, where `"spec"` matched `specification`. Subset, not equality: three
   `Produce` sections legitimately name an artifact they do not produce.
   `test_verify_names_both_of_its_outcomes` is subsumed and gone.
+- **`tcw work stage` passes `load_builtins()`** instead of an empty
+  `Builtins()`, inside the existing `except ResolveError` block. Until this the
+  verb resolved every `builtin` binding to `""`, however the node was
+  configured.
 - **Board letters render in lifecycle order** from the renderer's own table
   rather than in `WORK_ARTIFACTS` order, which is append-only and therefore
   cannot express lifecycle position.
 
 ## Removed
 
+- **`prompt: []` as a legal spelling, in both forms.** `_parse_stage` appends a
+  problem for an explicit empty `prompt:` list and for the legacy bare
+  `stages.<id>: []`. **This is a back-compat break**: a config that validated
+  before can fail after it. Nothing in the model changes — no field on
+  `StageBindings` — and `pre: []` is untouched in both the stage and transition
+  positions, asserted so the check cannot be generalized later. The parser's
+  problem list stays advisory, so `lifecycle_policy()` still discards it and
+  `stage_empty.config.yaml` renders byte-identically to its recorded baseline.
 - **Both hardcoded request templates.** `create_work`'s three-heading skeleton and
   `inbox_accept`'s `TBD`-seeded variant of the same skeleton — two copies in one
   file that disagreed with each other. Nothing synthesizes a request document.
