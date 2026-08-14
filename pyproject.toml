@@ -15,7 +15,11 @@ dependencies = ["PyYAML>=6"]
 tcw = "tcw.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+# jsonschema validates the work item projection against its declared schema.
+# Tests only — nothing TCW ships imports it, and runtime dependencies stay at
+# PyYAML alone. Writing the validator by hand would let the test and the
+# projection share a bug.
+dev = ["pytest", "jsonschema"]
 
 [tool.setuptools.packages.find]
 include = ["tcw*"]
