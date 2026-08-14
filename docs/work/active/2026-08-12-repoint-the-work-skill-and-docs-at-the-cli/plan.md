@@ -170,6 +170,13 @@ Unchanged and still passing: the produce/inputs subset checks, the marker
 vocabulary check, the deleted-reference check, `test_a_stage_producing_nothing_says_so_explicitly`,
 the `SKILL.md` budget, and both routing checks.
 
+**Corrected at `implement`:** one more guard, and it is in a different file —
+`tests/test_documentation_sync_wiring.py:76-82` requires the literal phrase
+``invoke the `documentation-sync` skill`` in `stage-plan.md` and
+`stage-implement.md`. Neither this list nor spec §11 named it, and the first
+drafts of those two routers failed it. The phrase stays in both routers; the
+guard is not touched.
+
 **Checks before commit:** full suite, `wc -l` over the six (each ≤ 40), and
 `git diff --stat -- skills/tcw-work/references/stage-inbox.md` empty.
 

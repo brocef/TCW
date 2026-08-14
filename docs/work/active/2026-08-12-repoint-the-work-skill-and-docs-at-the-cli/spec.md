@@ -529,6 +529,16 @@ the stage-document and reference-file routing checks, and every guard in
 `tests/test_shipped_prompts.py` (50-line ceiling, 15-line floor, the
 `tcw work lifecycle --stage` grep, the sub-skill-name grep).
 
+**Corrected at `implement`:** this table missed a guard outside
+`tests/test_skill_lifecycle_parity.py`.
+`tests/test_documentation_sync_wiring.py:76-82` requires the literal phrase
+``invoke the `documentation-sync` skill`` in **both** `stage-plan.md` and
+`stage-implement.md`, and the first reduced drafts of those two routers said
+"discharged by a sub-skill" instead and failed it. The guard is correct and is
+not changed: the phrase is the sub-skill-name material §5 assigns to the skill,
+so both routers carry it verbatim. It belongs in the "unchanged and still
+passing" list above.
+
 ## Acceptance criteria
 
 1. Each of `stage-{request,spec,plan,implement,verify,postmortem}.md` is **≤ 40

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from tcw.store.base import LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID
+from tcw.work.resolve import load_builtins
 
 REPO = Path(__file__).resolve().parents[1]
 SKILL = REPO / "skills/tcw-work/SKILL.md"
@@ -28,8 +29,18 @@ REFS = REPO / "skills/tcw-work/references"
 STAGE_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "stage")
 TRANSITION_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "transition")
 
+# `inbox` runs before an item exists, so no prompt ships for it and
+# `tcw work stage inbox` is refused. Its document keeps its own methodology; the
+# other six are routers over a prompt the CLI prints.
+ROUTER_IDS = tuple(s for s in STAGE_IDS if s != "inbox")
+
 STAGE_SECTIONS = ("Purpose", "Inputs", "Produce", "Steps", "Exit")
+# Derived, never written out a second time: a router's `Exit` would restate the
+# prompt's own `Exit badly` branches by construction, and nothing else differs.
+ROUTER_SECTIONS = tuple(s for s in STAGE_SECTIONS if s != "Exit")
 MARKERS = ("[auto]", "[gated]", "[prompted]", "[judgment]")
+
+ROUTER_LINE_CEILING = 40
 
 # Retired by this restructure. A dangling route is worse than the duplication it
 # replaced, so their names must not survive anywhere in the repository.
@@ -125,9 +136,13 @@ def test_a_stage_producing_nothing_says_so_explicitly():
 # ── shape ────────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
-def test_every_stage_document_has_the_five_sections_in_order(stage_id):
+def test_every_stage_document_has_the_sections_in_order(stage_id):
+    """Five for `inbox`, four for a router — the `Exit` section is the one shape
+    that cannot survive the split, since "how this stage ends badly" is exactly
+    the redirect material the prompt carries."""
+    wanted = STAGE_SECTIONS if stage_id == "inbox" else ROUTER_SECTIONS
     found = [h for h in sections(stage_doc(stage_id)) if h in STAGE_SECTIONS]
-    assert found == list(STAGE_SECTIONS), \
+    assert found == list(wanted), \
         f"stage-{stage_id}.md sections are {found}"
 
 
@@ -153,10 +168,72 @@ def test_no_unrecognized_marker_is_used(stage_id):
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
 def test_every_stage_document_names_the_harness_neutral_binding_command(stage_id):
     """Codex receives no context injection, so every stage must carry the command
-    both harnesses can run. `--directive` is sugar, never the path."""
+    both harnesses can run. `--directive` is sugar, never the path.
+
+    The command that answers "what do I do here" is now `tcw work stage`, which
+    resolves a binding *and* falls back to TCW's own instructions. `inbox` keeps
+    `tcw work lifecycle`: the verb refuses `inbox` by design, so pointing its
+    document at it would route a reader into an error.
+    """
     text = stage_doc(stage_id).read_text(encoding="utf-8")
-    assert "tcw work lifecycle" in text, \
-        f"stage-{stage_id}.md never tells the agent how to find its bindings"
+    wanted = "tcw work lifecycle" if stage_id == "inbox" else f"tcw work stage {stage_id}"
+    assert wanted in text, \
+        f"stage-{stage_id}.md never tells the agent how to find its instructions"
+
+
+# ── the routers stay routers ─────────────────────────────────────────────────
+
+def _normalized_sentences(text: str) -> set[str]:
+    """Sentences of eight or more words, comparable across two authors.
+
+    Lowercased; Markdown emphasis (`*`, `_`, backticks) dropped; split on line
+    boundaries and `.`/`!`/`?`; remaining punctuation removed and whitespace
+    collapsed. Short fragments are excluded because headings, bare artifact
+    names, and command lines are *addressing* — a router is supposed to share
+    those with its prompt. Eight words is where a fragment becomes a claim.
+    """
+    text = re.sub(r"[*_`]", "", text.lower())
+    out = set()
+    for chunk in re.split(r"[.!?\n]", text):
+        words = re.sub(r"[^a-z0-9 ]+", " ", chunk).split()
+        if len(words) >= 8:
+            out.add(" ".join(words))
+    return out
+
+
+@pytest.mark.parametrize("stage_id", ROUTER_IDS)
+def test_no_router_sentence_appears_in_its_prompt(stage_id):
+    """The literal-restatement guard. A router that copies a sentence out of the
+    prompt reintroduces the version skew the split exists to remove — and the
+    same author now writes both sides, which makes it likelier, not less."""
+    shared = _normalized_sentences(stage_doc(stage_id).read_text(encoding="utf-8")) \
+        & _normalized_sentences(load_builtins().stage_prompts[stage_id])
+    assert not shared, (
+        f"stage-{stage_id}.md and prompts/{stage_id}.md share a sentence — "
+        f"fix whichever one should not have it: {sorted(shared)}")
+
+
+@pytest.mark.parametrize("stage_id", ROUTER_IDS)
+def test_each_router_stays_within_its_ceiling(stage_id):
+    """The backstop behind the shared-sentence check: no test can catch a
+    faithful paraphrase, but a router that paraphrased its whole prompt would
+    not fit. `inbox` is exempt — it carries its own methodology."""
+    lines = len(stage_doc(stage_id).read_text(encoding="utf-8").splitlines())
+    assert lines <= ROUTER_LINE_CEILING, \
+        f"stage-{stage_id}.md is {lines} lines, ceiling is {ROUTER_LINE_CEILING}"
+
+
+@pytest.mark.parametrize("stage_id", ROUTER_IDS)
+def test_each_router_keeps_its_judgment(stage_id):
+    """The other direction, and the reason there is no floor: a router reduced to
+    a title and a command has deleted the skill-only material rather than routed
+    to it. Delegability and the marker notation are both things the CLI does not
+    and cannot say."""
+    text = stage_doc(stage_id).read_text(encoding="utf-8")
+    assert "delegable" in text.lower(), \
+        f"stage-{stage_id}.md says nothing about delegability"
+    assert any(m in text for m in MARKERS), \
+        f"stage-{stage_id}.md carries no enforcement marker"
 
 
 # ── no ordinals, no dangling routes ──────────────────────────────────────────
