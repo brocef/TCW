@@ -619,10 +619,59 @@ work:
                 pre: [{ command: "pytest -q" }]
 ```
 
-A binding is a `skill:` **or** a `command:` — never a bare string, because
-guessing which one was meant is a class of bug bought for nothing. `tcw validate`
-rejects an unknown id, a malformed shape, a blank or duplicated reference, and a
-binding declaring neither or both.
+A binding declares **what it is for** and **where its text or command comes
+from** — never a bare string, because guessing which one was meant is a class of
+bug bought for nothing. `tcw validate` rejects an unknown id, a malformed shape,
+a blank or duplicated reference, a kind used in the wrong position, and a
+condition with an unknown key or an impossible value.
+
+**Three roles.** A `pre:` binding is a **check** — it runs, and a non-zero exit
+matters. A `prompt:` binding resolves to **text an agent reads**; every match is
+concatenated in the order you wrote them. An entry under `artifacts:` is a
+**template** for one of the lifecycle documents; the first match wins, so a
+`builtin` fallback belongs last.
+
+**Six kinds.** `blob:` is text written inline. `file:` is a path in your node —
+normalized and confined to it, so a typo cannot quietly read something else.
+`generate:` is a script you own: TCW pipes the work item to it as JSON on stdin
+and its stdout becomes the text. `builtin: true` is TCW's own default for that
+stage or artifact. `skill:` names an agent skill, which is a name rather than
+instructions and is the weakest option. `command:` is for checks.
+
+```yaml
+work:
+    lifecycle:
+        stages:
+            spec:
+                pre: [{ command: "./bin/ready.sh" }]
+                prompt:
+                    - builtin: true
+                    - blob: "In this repo, specs name their rejected options."
+                    - generate: ./bin/spec-prompt.py
+                      when: { tags: [bug] }
+        artifacts:
+            spec:
+                - blob: "# Spec\n\n## Repro\n"
+                  when: { tags: [bug] }
+                - builtin: true
+```
+
+**Conditions.** Any binding may carry `when:` with `tags:` (any of), `not_tags:`
+(none of), and `type:` — so a bug gets different instructions and a different
+template than a feature. Three keys, deliberately; anything harder belongs in a
+`generate:` script, which receives the whole item and decides in real code.
+
+**The `generate:` contract**, enforced rather than hoped for: stdin is
+`{"item": …, "hook": …}` where `item` is the same document
+`tcw work show --json` prints; the script's environment carries `TCW_HOOK_ROLE`,
+`TCW_HOOK_KIND`, `TCW_HOOK_ID`, and `TCW_HOOK_PHASE` so a one-liner needs no JSON
+parser; output is capped (`work.lifecycle.output-cap`, 64 KiB by default) and the
+timeout applies; and a script that **exits non-zero contributes nothing at all**,
+so half a prompt never reaches your agent. Generators may re-run, so write them
+side-effect-free.
+
+Your existing configuration keeps working exactly as it did: a bare list under a
+stage id is still valid, still means "prompt", and still renders identically.
 
 `pre` hooks run **before** anything is written: a non-zero exit aborts the
 transition and the item does not move. `post` hooks run after, and a failure

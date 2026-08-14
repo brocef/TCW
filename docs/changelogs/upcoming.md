@@ -32,6 +32,35 @@ category.
   stderr, exit 1, nothing on stdout.
 - **`jsonschema` in the `dev` extra.** Tests only; runtime `dependencies` stays
   `["PyYAML>=6"]`.
+- **Hook roles, kinds, and conditions.** `Binding` becomes `kind` + `value` +
+  `when` (the `skill=`/`command=` constructor is gone; `.ref` stays). Six kinds —
+  `blob`, `file`, `generate`, `builtin`, `skill`, `command` — with a per-position
+  legality table (`CHECK_KINDS`, `PROMPT_KINDS`, `ARTIFACT_KINDS`).
+  `Condition(tags, not_tags, type)` with full shape validation, matched in all
+  three roles including transition checks. `WORK_TYPES` names the item-type set
+  the condition validates against.
+- **`StageBindings`** with `pre`, `prompt`, and `legacy_prompt`.
+  `LifecyclePolicy.stages` changes type accordingly; `policy.stage()` keeps
+  returning the prompt list (stage bindings were never executed, so that is what
+  they always were) and `stage_checks()`/`stage_is_legacy()` are new.
+- **`work.lifecycle.artifacts`** — templates keyed by `WORK_ARTIFACTS` name, with
+  first-match-wins ordering validation: `builtin` must be last and
+  unconditional, and no entry may follow an unconditional one.
+- **`work.lifecycle.output-cap`** (default 64 KiB) and `DEFAULT_OUTPUT_CAP`.
+- **`tcw/work/generate.py`** — `Popen` with its own process group, concurrent
+  bounded drains of stdout and stderr, kill-the-group on cap or timeout, stdin
+  written tolerating `BrokenPipeError`, UTF-8 with `errors="replace"`, and all
+  stdout discarded on a non-zero exit. Not `subprocess.run(capture_output=True)`:
+  that buffers everything first, so a cap checked afterwards bounds the result
+  and not memory.
+- **`tcw/work/resolve.py`** — `Builtins` (two registries: stage prompts and
+  artifact templates, because `spec` is both a stage id and an artifact name),
+  `Resolution`/`PlanEntry`, `resolve_prompts`, `resolve_artifact`, `select`, and
+  `hook_payload`. `execute=False` is plan mode: the same traversal, running
+  nothing and reading nothing.
+- **`--phase`** on `tcw work lifecycle`: `pre`/`prompt` for a stage,
+  `pre`/`post` for a transition. `--phase post` on a stage errors naming why.
+- **Vocabulary term `work-item/lifecycle-hook`.**
 - **`generated` on a `WORK_SIDECARS` entry.** Marks a sidecar a command writes
   rather than a person. `serve`'s two sidecar payload builders echo it as a
   boolean, and the web client renders a `generated` label instead of an Edit
@@ -95,6 +124,21 @@ category.
   YAML anchors can produce — render `"<circular reference>"` instead of raising
   `RecursionError`. A mapping whose keys collide once stringified now **raises**
   rather than silently dropping a value.
+- **`file:` bindings are validated against the node root** in
+  `FsWorkStore._file_binding_problems`, not in the pure parser — resolving a path
+  is adapter knowledge. Both sides resolve symlinks, so a link inside the node
+  pointing out of it is rejected rather than followed.
+- **Binding identity is `(kind, value, when)`**, not the reference alone. The
+  same script under two different conditions is the point of conditions;
+  the old rule rejected it.
+- **`_directive_text` takes `grouped`.** A legacy bare list keeps the existing
+  skills-then-commands grouping; an explicit `prompt:` list renders in
+  declaration order. Text-producing kinds collapse into one clause, since
+  `lifecycle` resolves nothing.
+- **`--json` is a superset.** `bind` keeps its exact meaning and content; `pre`,
+  `when`, `artifacts`, and `output-cap` appear only when configured, so a legacy
+  node's payload is byte-identical.
+- **`run_pre`/`run_post` take the item** so a check's `when:` can be evaluated.
 - **Board letters render in lifecycle order** from the renderer's own table
   rather than in `WORK_ARTIFACTS` order, which is append-only and therefore
   cannot express lifecycle position.

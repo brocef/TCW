@@ -1,0 +1,3 @@
+changed:
+    - work/configure-the-work-lifecycle # roles, kinds, conditions, the generate contract
+    - work/inspect-the-lifecycle-contract # --phase, and the --json superset

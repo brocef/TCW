@@ -57,6 +57,66 @@ request's name, which would have copied it into the request the moment you saved
 The intake is still there to read, as its own document. When a save creates the
 request, the confirmation says so.
 
+## Writing your own instructions for a lifecycle stage
+
+Until now, telling TCW what should happen at a stage meant naming an agent skill
+— and a skill name is not instructions, it is the name of something that has
+them. If your project does not ship a plugin, there was nowhere to put your own
+words.
+
+Now there is. In `tcw-config.yaml`, a stage can carry instructions written inline,
+read from a file in your project, or produced by a script you own:
+
+```yaml
+work:
+    lifecycle:
+        stages:
+            spec:
+                prompt:
+                    - builtin: true
+                    - blob: "In this repo, specs name their rejected options."
+                    - file: docs/spec-guide.md
+```
+
+`builtin: true` means "TCW's own default", so you can add to it rather than
+replace it. A `generate:` script receives the work item as JSON on its standard
+input and prints whatever it likes — useful when the instructions depend on
+something only your project knows.
+
+You can also give a stage a **check** that has to pass before the work begins,
+under `pre:`, and give each lifecycle document a **template** under `artifacts:`.
+
+## Instructions that depend on the item
+
+Any of these can carry a condition, so a bug is treated differently from a
+feature:
+
+```yaml
+prompt:
+    - blob: "Start with the reproduction steps."
+      when: { tags: [bug] }
+```
+
+`tags:` matches any of the listed tags, `not_tags:` excludes, and `type:`
+distinguishes an epic from an ordinary item. Three ways to say when — anything
+more complicated is what a `generate:` script is for, since it is real code and
+can decide anything.
+
+## Everything you have configured already keeps working
+
+This is the change most likely to worry you, so: no. A stage id with a plain list
+of skills or commands under it means exactly what it always meant, and prints
+exactly what it always printed. That is checked against recordings of the old
+behaviour, including this project's own configuration.
+
+## Scripts that misbehave now fail instead of leaking
+
+A `generate:` script that exits with an error contributes **nothing** — not the
+half a prompt it printed before it died. One that runs too long, or prints more
+than 64 KiB, fails with a message saying which limit it hit rather than quietly
+handing you a truncated instruction. And `tcw work lifecycle` still runs nothing
+at all; it only ever tells you what is configured.
+
 ## Reading a work item as JSON
 
 `tcw work show <slug> --json` prints the item as a machine-readable document
