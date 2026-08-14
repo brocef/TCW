@@ -685,6 +685,29 @@ your own `pre` checks and `generate` scripts — and `--no-exec` skips even thos
 printing what would have run instead. That is how you read an unfamiliar
 repository's lifecycle before triggering it.
 
+**Starting the document itself** is `tcw work scaffold <artifact> <ref>`. It
+resolves that artifact's template — yours if you configured one under
+`artifacts:`, TCW's own otherwise — and writes it to `<artifact>.draft.md`,
+printing the draft's path on stdout and nothing else.
+
+A draft is **a file to type into, never the document**. `spec.draft.md` is not
+`spec.md`: the board still shows the spec as unwritten, `tcw work show --json`
+still reports it absent, and the local web app does not list it. Writing the real
+document is your job, and until you do it nothing claims you have.
+
+Two things it refuses, both so nothing you have is destroyed. It refuses once the
+real artifact exists, because a draft beside a finished document only competes
+with it. And it refuses a draft that already has something in it — run it twice
+out of habit and your half-written spec survives. `--force` replaces one
+deliberately. An *empty* draft is regenerated with no flag, which is why
+`tcw work scaffold intake` — whose template is empty on purpose — works like
+everything else.
+
+Nothing is written until the whole template has resolved, so a failed `generate:`
+script leaves no file behind and fixing it and running again is clean. That also
+means a generator runs again on every retry, and under `--force` — one more
+reason to keep them side-effect-free.
+
 `pre` hooks run **before** anything is written: a non-zero exit aborts the
 transition and the item does not move. `post` hooks run after, and a failure
 there **never rolls back** — the move already happened, so `tcw` reports it and
@@ -771,6 +794,10 @@ tcw work show "$slug" --json           # the item as a versioned JSON document
 
 tcw work stage spec "$slug"            # what to do at this stage: checks, then instructions
 tcw work stage spec "$slug" --no-exec  # what *would* run, running none of it
+
+tcw work scaffold spec "$slug"         # write spec.draft.md from its template — a starting
+                                       # point to type into, never the spec itself
+tcw work scaffold spec "$slug" --force # replace a draft you already have
 tcw work path                           # absolute, resolved work-store folder
 tcw work path "$slug"                  # current filesystem path of the slug
 tcw work inbox path                     # absolute, resolved inbox folder

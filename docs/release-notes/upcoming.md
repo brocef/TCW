@@ -110,6 +110,30 @@ point.
 scripts — printing what it *would* have run instead. Use it to read an
 unfamiliar project's lifecycle before you trigger any of it.
 
+## A starting point for a lifecycle document
+
+`tcw work scaffold spec my-item` writes a draft of that item's spec — your
+project's template if you configured one, TCW's own otherwise — and prints where
+it put it.
+
+What it writes is `spec.draft.md`, and that is the whole idea: **a draft is a
+file to type into, not the document**. The board still shows the spec as
+unwritten, because it is. Nothing claims the work has been done until you write
+`spec.md` yourself. Every lifecycle document has a template, including the raw
+intake, whose template is deliberately empty — an empty file to type into rather
+than headings that would put words in someone else's mouth.
+
+It gets out of your way twice over. It refuses once the real document exists,
+because a draft next to a finished spec only competes with it. And it refuses to
+overwrite a draft you have already typed into — run the command twice by habit
+and your half-written spec is still there. `--force` replaces one when you mean
+to. A draft you have not typed anything into yet is simply rewritten, no flag
+needed.
+
+If your template comes from a script and the script fails, nothing is written at
+all: fix it, run the command again, and you get a clean draft. That does mean the
+script runs again each time, so keep it free of side effects.
+
 ## Instructions that depend on the item
 
 Any of these can carry a condition, so a bug is treated differently from a

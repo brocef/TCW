@@ -77,6 +77,32 @@ category.
   button. `capabilities.yaml` is unaffected. `PUT` still accepts the write —
   the flag governs the affordance, not the store, since `reconcile` writes the
   file through the same path.
+- **`tcw work scaffold <artifact> <ref> [--force]`** — resolves an artifact's
+  template and writes `<artifact>.draft.md`, printing the locator on stdout
+  alone. Order: unknown artifact → missing item → the real artifact already
+  present (by the canonical `_present` rule, so a whitespace-only `spec.md` does
+  not block) → stage legality via `STAGE_STATUSES` keyed by the stage whose
+  `produces` names the artifact → resolve → write. `intake` is produced by no
+  stage, so it has no legality row and is legal in every status. Resolve fully,
+  then write: a `ResolveError` leaves nothing behind and puts nothing on stdout.
+- **`WorkStore.write_draft(slug, artifact, content, *, force=False) -> str`** —
+  a bounded derived namespace, one draft per `WORK_ARTIFACTS` entry, returning
+  the locator. Raises `ValueError` for an unknown name and for a present draft
+  without `force`; presence is `_present`, so an empty draft is never present.
+  `FsWorkStore` writes `<artifact>.draft.md` through `_atomic_write` + `_stage`,
+  and that filename shape exists nowhere else. No `read_draft` — nothing reads a
+  draft, and the presence check and the write are one call.
+- **`tcw/work/templates.py`** — `ARTIFACT_TEMPLATES`, one built-in per
+  `WORK_ARTIFACTS` name (set equality asserted), each derived from the matching
+  stage document's `Produce` section. `intake`'s is `""`. A module-level dict
+  rather than package data: one definition each, no wheel work.
+- **`load_builtins()`** in `tcw/work/resolve.py` — the single `lru_cache`d source
+  of TCW's shipped text, currently `artifact_templates`. Every new kind of
+  built-in extends this return value rather than adding a second loader.
+- **`LifecycleStep.produces_note`** — the prose form, and the only one rendered:
+  `_lifecycle_lines`' `produces:` line and `--json`'s `"produces"` key both read
+  it, so neither payload moved. A per-step invariant asserts the `<name>.md`
+  filenames in the note equal `{f"{n}.md" for n in produces}`.
 
 ## Changed
 
@@ -149,6 +175,17 @@ category.
   `when`, `artifacts`, and `output-cap` appear only when configured, so a legacy
   node's payload is byte-identical.
 - **`run_pre`/`run_post` take the item** so a check's `when:` can be evaluated.
+- **`LifecycleStep.produces` is `tuple[str, ...]`** of extensionless artifact
+  names — `()`, `("spec",)`, `("refined-outcome", "rework")` — because one
+  artifact per stage was never true and a template keyed by artifact name needs
+  the names. Deliberately **not** added to `--json`: nothing outside TCW needs
+  it, and a key appearing for every configuration would break compatibility for
+  a non-compatibility reason.
+- **`test_produce_names_every_artifact_the_table_lists` compares filenames**
+  against the set `artifacts_in()` returns instead of substring-matching the
+  prose, where `"spec"` matched `specification`. Subset, not equality: three
+  `Produce` sections legitimately name an artifact they do not produce.
+  `test_verify_names_both_of_its_outcomes` is subsumed and gone.
 - **Board letters render in lifecycle order** from the renderer's own table
   rather than in `WORK_ARTIFACTS` order, which is append-only and therefore
   cannot express lifecycle position.

@@ -92,6 +92,31 @@ unfamiliar lifecycle rather than its full text.
 
 `tcw work stage inbox` is rejected: `inbox` runs before an item exists.
 
+## Reaching an `artifacts:` template
+
+```
+tcw work scaffold <artifact> <slug>            # write <artifact>.draft.md from its template
+tcw work scaffold <artifact> <slug> --force    # replace a draft that is already there
+```
+
+This is the verb an `artifacts:` binding exists for — the first matching entry
+wins, and TCW's own built-in is the fallback when nothing is bound. The locator
+goes to stdout alone.
+
+**A draft is not the artifact.** `spec.draft.md` is a file to type into; the
+stage still has to write `spec.md`, and until it does, the board, `--json`, and
+`tcw serve` all report the artifact absent. Do not treat a draft as the document,
+and do not rename one into place without reading it.
+
+Two refusals, both protecting what is already there: the real artifact being
+present, and a draft that has content (`--force` replaces that one). An empty
+draft is regenerated with no flag, which is why `scaffold intake` — whose
+built-in template is empty — behaves like every other artifact.
+
+Nothing is written until the whole template resolves, so a failed `generate:`
+leaves no draft and a retry after fixing it is clean. Generators therefore re-run
+on every retry and under `--force`; keep them side-effect-free.
+
 ## What runs, and what does not
 
 TCW runs `command:` bindings around transitions:
