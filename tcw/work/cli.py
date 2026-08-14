@@ -24,8 +24,7 @@ from tcw.store.project import worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
 from tcw.work.resolve import (
-    Builtins, ResolveError, load_builtins, resolve_artifact, resolve_prompts,
-    select,
+    ResolveError, load_builtins, resolve_artifact, resolve_prompts, select,
 )
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
@@ -801,7 +800,8 @@ def _stage(args: argparse.Namespace) -> int:
             return 1
 
     try:
-        res = resolve_prompts(policy, step.id, item, st.node_root, Builtins(),
+        res = resolve_prompts(policy, step.id, item, st.node_root,
+                              load_builtins(),
                               artifacts=st.artifacts(bare), env=dict(os.environ),
                               execute=not args.no_exec)
     except ResolveError as e:

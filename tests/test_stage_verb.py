@@ -11,6 +11,7 @@ from tcw.store.base import (
     STAGE_IDS, STAGE_STATUSES, WORK_STATUSES, WorkStore,
 )
 from tcw.store.fs import FsWorkStore, init
+from tcw.work.resolve import load_builtins
 
 
 def _node(tmp_path: Path, name: str = "repo") -> Path:
@@ -298,3 +299,30 @@ def test_no_exec_reports_a_condition_that_did_not_match(tmp_path):
     r = _cli(root, "spec", item.slug, "--no-exec")
     assert "skipped (condition)" in r.stderr
     assert r.stdout == "for all\n"
+
+
+# ── the built-in floor, end to end ───────────────────────────────────────────
+
+
+def test_an_unconfigured_node_prints_tcws_own_instructions(one_of_each):
+    """The demonstration. A node with no `work.lifecycle` key at all — which is
+    the state every node starts in — gets TCW's instructions for the stage
+    rather than exit 0 and silence."""
+    root, slugs = one_of_each
+    shipped = load_builtins().stage_prompts
+    for stage in sorted(set(STAGE_IDS) - {"inbox"}):
+        status = STAGE_STATUSES[stage][0]
+        r = _cli(root, stage, slugs[status])
+        assert r.returncode == 0, r.stderr
+        assert r.stdout == shipped[stage].rstrip() + "\n"
+
+
+def test_inbox_still_ships_no_prompt(one_of_each):
+    """`inbox` runs before an item exists, so it has no built-in to fall back
+    to — re-asserted here rather than assumed, because the floor is exactly the
+    change that could have given it one."""
+    root, slugs = one_of_each
+    assert "inbox" not in load_builtins().stage_prompts
+    r = _cli(root, "inbox", slugs["backlog"])
+    assert r.returncode == 1 and r.stdout == ""
+    assert "runs before an item exists" in r.stderr
