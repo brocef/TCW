@@ -371,3 +371,53 @@ def test_the_cli_module_composes_no_draft_path():
     assert ".draft.md" not in source
     assert not [ln for ln in source.splitlines()
                 if "path(" in ln and "draft" in ln]
+
+
+# ── no surface reports a draft ───────────────────────────────────────────────
+
+
+def _every_draft(root: Path, st: FsWorkStore, slug: str) -> None:
+    for name in WORK_ARTIFACTS:
+        st.write_draft(slug, name, f"# draft of {name}\n")
+
+
+def test_no_surface_reports_a_draft_as_an_artifact(tmp_path):
+    """Four surfaces, not the two anyone would remember. `serve` is included
+    because it changes not at all here — the property already holds through its
+    registry gate, and it has to survive."""
+    import json
+    import threading
+    from urllib.request import urlopen
+
+    from tcw.serve import HOST, TcwServer
+
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create("Thing").slug
+    before = _list(root)
+    _every_draft(root, st, slug)
+
+    # 1. the board
+    assert _list(root) == before
+    # 2. the store's own presence report
+    assert all(not a.present for a in st.artifacts(slug))
+    # 3. `tcw work show --json`
+    shown = json.loads(subprocess.run(["tcw", "work", "show", slug, "--json"],
+                                      cwd=str(root), capture_output=True,
+                                      text=True).stdout)
+    assert set(shown["artifacts"]) == set(WORK_ARTIFACTS)
+    assert not any(shown["artifacts"].values())
+
+    # 4. `tcw serve`'s detail response
+    httpd = TcwServer((HOST, 0), root)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://{HOST}:{httpd.server_port}/api/work/{slug}") as res:
+            detail = json.loads(res.read())
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+    assert detail["artifacts"], "no artifact list to check — the test is vacuous"
+    assert not [a for a in detail["artifacts"] if a["present"]]
