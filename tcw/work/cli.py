@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_RESOLUTIONS,
-    WORK_STATUSES, _UNSET,
+    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
+    WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
@@ -23,13 +23,16 @@ from tcw.store.fs import (
 from tcw.store.project import worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
-from tcw.work.resolve import Builtins, ResolveError, resolve_prompts, select
+from tcw.work.resolve import (
+    Builtins, ResolveError, load_builtins, resolve_artifact, resolve_prompts,
+    select,
+)
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
                "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
-               "escalate", "tags", "lifecycle", "stage"}
+               "escalate", "tags", "lifecycle", "stage", "scaffold"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 # TransitionCommitError is included deliberately: the item *did* move, and its
@@ -822,6 +825,86 @@ def _stage(args: argparse.Namespace) -> int:
     return 0
 
 
+# Which stage writes each artifact, inverted from the one table that says so.
+# `intake` is absent on purpose: no stage produces it, so it has no legality row
+# and scaffolding it is legal wherever the item is.
+_STAGE_FOR_ARTIFACT = {name: step.id for step in LIFECYCLE_STEPS
+                       for name in step.produces}
+
+
+def _scaffold(args: argparse.Namespace) -> int:
+    """Write a starting point for a lifecycle document — never the document.
+
+    The draft is a resource of its own, named for its artifact and reported by
+    nothing as one, so `tcw work list` still shows the stage as unwritten until
+    someone writes it. The store owns that naming; this verb composes no path.
+
+    **Resolve fully, then write.** A hook failure leaves nothing behind and a
+    retry is clean; a write failure puts nothing on stdout, so a caller reading
+    stdout for a path never gets one for a file that does not exist.
+    """
+    if args.artifact not in WORK_ARTIFACTS:
+        print(f"tcw work scaffold: unknown artifact '{args.artifact}'; expected "
+              f"one of {', '.join(WORK_ARTIFACTS)}", file=sys.stderr)
+        return 1
+
+    resolved = _resolve(args.slug, "scaffold")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work scaffold: {e}", file=sys.stderr)
+        return 1
+    if item is None:
+        print(f"tcw work scaffold: no such work item: {args.slug}", file=sys.stderr)
+        return 1
+
+    # The canonical presence rule, through `artifacts()` — the same answer the
+    # board gives. A whitespace-only `spec.md` reads as absent there, so it must
+    # read as absent here too, or the two disagree about what exists.
+    artifacts = st.artifacts(bare)
+    if any(a.name == args.artifact and a.present for a in artifacts):
+        print(f"tcw work scaffold: {args.artifact} is already written "
+              f"({st.artifact_locator(bare, args.artifact)}); a draft beside it "
+              f"would only compete with it", file=sys.stderr)
+        return 1
+
+    stage = _STAGE_FOR_ARTIFACT.get(args.artifact)
+    if stage is not None and item.status not in STAGE_STATUSES[stage]:
+        print(f"tcw work scaffold: '{args.artifact}' is written by the "
+              f"'{stage}' stage, which is not legal for an item in "
+              f"'{item.status}'; it runs in "
+              f"{', '.join(STAGE_STATUSES[stage])}", file=sys.stderr)
+        return 1
+
+    policy = st.lifecycle_policy()
+    builtins = load_builtins()
+    try:
+        res = resolve_artifact(policy, args.artifact, item, st.node_root,
+                               builtins, artifacts=artifacts,
+                               env=dict(os.environ))
+    except ResolveError as e:
+        print(f"tcw work scaffold: {e}; nothing written", file=sys.stderr)
+        return 1
+
+    # `resolve_artifact` has no implicit fallback: a project that declares no
+    # binding gets an empty `Resolution`, which is every project today. The
+    # built-in is the fallback when *nothing won* — a binding that won and
+    # resolved to empty text asked for an empty template and keeps it.
+    text = (res.text if any(e.matched for e in res.plan)
+            else builtins.artifact_templates.get(args.artifact, ""))
+
+    try:
+        locator = st.write_draft(bare, args.artifact, text, force=args.force)
+    except (*_ERRORS, OSError) as e:
+        print(f"tcw work scaffold: {e}", file=sys.stderr)
+        return 1
+    print(locator)
+    return 0
+
+
 def _lifecycle(args: argparse.Namespace) -> int:
     # A work ref resolves the item's *owning* node, so a qualified descendant
     # reports its own policy rather than the anchor's.
@@ -1306,6 +1389,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pstg.add_argument("--no-exec", action="store_true",
                       help="report what would run and run none of it")
     pstg.set_defaults(func=_stage)
+
+    pscf = g.add_parser("scaffold",
+                        help="write a draft of a lifecycle artifact from its template")
+    pscf.add_argument("artifact", help=f"one of: {', '.join(WORK_ARTIFACTS)}")
+    pscf.add_argument("slug")
+    pscf.add_argument("--force", action="store_true",
+                      help="replace a draft that is already there")
+    pscf.set_defaults(func=_scaffold)
 
     plc.add_argument("--phase", choices=("pre", "post", "prompt"),
                      help="limit to one phase; a stage has 'pre' and 'prompt', "
