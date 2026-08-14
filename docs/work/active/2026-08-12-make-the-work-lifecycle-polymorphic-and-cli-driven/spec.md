@@ -436,7 +436,7 @@ stays in the skill; the *methodology* moves to the CLI.
 | C4  | The stage verb                    | `tcw work stage <id>` — legality → pre → resolve → prompt, plus `--no-exec`. Writes nothing.                                                                                   | C3         |
 | C5  | Artifact scaffolding              | `produces` as a tuple; `tcw work scaffold <artifact>`; `<artifact>.draft.md`; templates keyed by artifact name. **(The stage/status legality table moved to C4 — see below.)**   | C3         |
 | C6  | Built-in stage prompts            | `tcw/work/prompts/*.md` content and wheel packaging, **plus the floor that makes them reachable** — see the amendment below. The `builtin` kind itself is still C3's.          | C3         |
-| C7  | Skill and documentation rewrite   | Stage docs → routers; `hooks.md` rewritten; README lifecycle section; final consolidation only.                                                                                | C4, C5, C6 |
+| C7  | Skill and documentation rewrite   | Stage docs → routers; `hooks.md` rewritten; README lifecycle section; **plus a self-review pass in the stage prompts** — see the amendment below.                              | C4, C5, C6 |
 | C8  | Backlog and upstream-issue audit  | No code. This repo's own backlog and the TCW GitHub issues reconciled against the shipped design — discarded, rescoped, or newly filed.                                         | C7         |
 
 Order: C1 → C2 → C3 → {C4, C5, C6} → C7 → C8. C4, C5, and C6 are all parallel
@@ -496,6 +496,32 @@ Recorded here rather than inside C6, for the same reason the C4 amendment above
 is: a child overruling its epic quietly is how the epic stops being the source of
 truth. **Criterion 14 stands as written** — this amendment names who makes it
 satisfiable, and adds that `tcw validate` must reject `prompt: []`.
+
+**Amendment: C7 owns both sides of the seam, and adds a self-review pass.** This
+spec scoped C7 to consolidation — "only the consolidation that cannot be
+expressed earlier". The requester has widened it, for a reason the epic's own
+structure produced: C7 is the **only** child that reads a built-in prompt and its
+router together, so it is the only one that can move a clause into the CLI and
+out of the skill in a single coherent pass. Splitting that across two children
+would have them negotiating a boundary neither can see whole.
+
+Concretely, C7 additionally edits `tcw/work/prompts/*.md` — C6's shipped content
+— to add **a self-review pass per stage**: after writing the artifact, re-read it
+against a short fixed checklist before moving on. TCW has none today at any
+stage, and this epic is the argument for one: C5's and C6's specs each shipped a
+claim that was false against the tree, and both were caught downstream at `plan`
+rather than by the stage that wrote them. The checklist is per stage and TCW's
+own, not a generic list copied six times; a stage where the pass adds nothing
+does not get one.
+
+The **40→50 line ceiling raise** taken at C6's verify stage (`ab86012`) is the
+headroom this spends, and was taken for exactly this reason — so the ceiling
+would not decide the seam that the design should.
+
+Only this one import was accepted. Review calibration, a generalized
+no-placeholders ban, and an explicit decomposition trigger were each considered
+against [obra/superpowers] and **declined**. Criterion 18 is unchanged and now
+binds harder: C7 writes the prompt text it must not restate.
 
 ## Acceptance criteria
 

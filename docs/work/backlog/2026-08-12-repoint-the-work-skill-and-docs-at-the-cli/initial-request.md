@@ -31,6 +31,10 @@ Four surfaces:
    coherent rewrite. The epic reserved this for C7 deliberately, because four
    partial rewrites by four children would have been worse than one at the end.
 
+5. **`tcw/work/prompts/*.md`** — a **self-review pass** per stage. See
+   constraint 6; this is an expansion of C7's original scope, agreed with the
+   requester.
+
 ## Meta changes
 
 None. C8 audits the backlog afterwards; C7 does not.
@@ -69,6 +73,35 @@ Decided by the requester at this stage, so `spec` is not re-litigating them:
    Codex user needs it. It is headroom, not an invitation: the reason for the
    raise was to stop the ceiling deciding the CLI/skill seam, not to move the
    stage documents wholesale into the CLI.
+
+6. **C7 also adds a self-review pass to the stage prompts, and it owns both
+   sides of the seam.** This expands C7 beyond consolidation, deliberately: C7
+   is the only child that sees a prompt and its router together, so it can move
+   a clause into the CLI and out of the skill in one coherent pass rather than
+   two children negotiating across the boundary. The 40→50 ceiling raise
+   (constraint 5) is the headroom this spends.
+
+   **What a self-review pass is.** After writing a stage's artifact, re-read it
+   against a short fixed checklist before moving on — placeholders and vague
+   requirements, internal contradictions, whether the scope still fits one item,
+   and whether any statement could be read two ways. Fix inline; do not
+   re-review. TCW has **no** self-review pass at any stage today, and this
+   session is the argument for one: two specs shipped with claims that were
+   false against the tree, and both were caught downstream at the `plan` stage
+   rather than by the stage that wrote them.
+
+   **The checklist is TCW's own, per stage** — not a generic four-item list
+   copied into six files. What a `spec` re-reads for is not what an `implement`
+   re-reads for. The spec should say what each stage's pass actually checks, and
+   a stage where the pass adds nothing should not have one.
+
+   **It belongs in the prompt, not the router**, by the same rule as everything
+   else: methodology goes to the CLI, so a Codex user driving `tcw` directly
+   gets it.
+
+   **Only this one piece is taken.** Review calibration, a generalized
+   no-placeholders ban, and an explicit decomposition trigger were all considered
+   and declined by the requester. Do not fold them in.
 
 ## References
 

@@ -171,9 +171,17 @@ tree. The end-to-end check belongs to **checkpoint 4**.
 and README §"Binding your own skills and commands to the lifecycle"
 (`README.md:587-622`) rewritten as one coherent section.
 
-**Only consolidation.** Each of C1–C6 has already updated its own command docs,
-changelog, release notes, and ledger. C7 does not flip other children's
-capability deltas.
+**No longer only consolidation.** Each of C1–C6 has already updated its own
+command docs, changelog, release notes, and ledger, and C7 still does not flip
+other children's capability deltas. But C7 now also **edits the stage prompts**
+to add a self-review pass, and **fixes the `work/configure-the-work-lifecycle`
+contradiction** C6 surfaced — its record still promises "a stage id with a plain
+list under it means what it always meant", which C6's validation rejection made
+false. Both are in the epic spec's "Amendment: C7 owns both sides of the seam".
+
+The routers target **40–50 lines**, down from today's 66–77, with `stage-inbox.md`
+exempt because no prompt ships for `inbox`. A stage with less than 40 lines of
+genuine skill-only judgment gets a shorter router rather than padding.
 
 **The routers must not restate what the built-in prompts say** — that is
 criterion 18, and it is what keeps CLI/plugin version skew readable as an old
