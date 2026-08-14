@@ -434,7 +434,7 @@ stays in the skill; the *methodology* moves to the CLI.
 | C2  | Work item JSON projection         | The versioned DTO + `tcw work show --json`, **unified with `serve`'s existing `_jsonable`**.                                                                                   | C1         |
 | C3  | Hook roles, kinds, and conditions  | Roles; kinds incl. the `generate` contract and `file` confinement; `when:`; parse/validate/back-compat; **the full `builtin` syntax and resolution library**; `lifecycle --phase`; new Vocabulary term. | C2         |
 | C4  | The stage verb                    | `tcw work stage <id>` — legality → pre → resolve → prompt, plus `--no-exec`. Writes nothing.                                                                                   | C3         |
-| C5  | Artifact scaffolding              | `produces` as a tuple; `tcw work scaffold <artifact>`; `<artifact>.draft.md`; templates keyed by artifact name; stage/status legality table.                                    | C3         |
+| C5  | Artifact scaffolding              | `produces` as a tuple; `tcw work scaffold <artifact>`; `<artifact>.draft.md`; templates keyed by artifact name. **(The stage/status legality table moved to C4 — see below.)**   | C3         |
 | C6  | Built-in stage prompts            | `tcw/work/prompts/*.md` **content** and wheel packaging only — the `builtin` kind itself is C3's.                                                                              | C3         |
 | C7  | Skill and documentation rewrite   | Stage docs → routers; `hooks.md` rewritten; README lifecycle section; final consolidation only.                                                                                | C4, C5, C6 |
 | C8  | Backlog and upstream-issue audit  | No code. This repo's own backlog and the TCW GitHub issues reconciled against the shipped design — discarded, rescoped, or newly filed.                                         | C7         |
@@ -451,6 +451,14 @@ dispositions that are stale by the time the epic closes.
 resolution library and nothing from the stage verb — the dependency that earlier
 drafts justified first as sequencing and then as technical turns out to be
 neither, once entry stopped writing.
+
+**Amended by C4: the stage/status legality table belongs to C4, and C5 consumes
+it.** This spec assigned it to C5 with both consulting it, which leaves the two
+parallel children racing for the same contract data. C4 is the one that cannot
+function without it — criterion 9 is C4's — so C4 defines
+`STAGE_STATUSES` beside `LIFECYCLE_STEPS` and C5 reads it. Recorded here rather
+than as a deviation inside C4, because a child overruling its epic quietly is
+how the epic stops being the source of truth.
 
 **`builtin` belongs entirely to C3.** An earlier draft split its syntax into C3
 and its resolution into C6, which left C4 able to meet valid `builtin`
