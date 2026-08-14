@@ -1,0 +1,9 @@
+{slug}  [active]
+title: Rich fields
+priority: 9
+effort: low
+complexity: very-high
+tags: alpha, beta
+owner: someone@example.com
+started: {started}
+blocked_by: {blocker}, external: https://example.com/issue/1
