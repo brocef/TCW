@@ -1,7 +1,0 @@
-new:
-    - work/capture-raw-intake # seeded Missing at planning; flipped by complete
-changed:
-    - work/open-a-work-item
-    - work/manage-the-work-inbox
-    - work/reconcile-an-epic-rollup # rollup moved to rollup.md; no longer creates the request
-    - web/editing # a generated sidecar is listed but not editable
