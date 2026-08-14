@@ -1486,6 +1486,25 @@ class WorkStore(ABC):
         Returns the written ``ArtifactResource`` with a fresh revision.
         """
 
+    @abstractmethod
+    def write_draft(self, slug: str, artifact: str, content: str, *,
+                    force: bool = False) -> str:
+        """Write the draft of a lifecycle artifact and return its locator.
+
+        A **bounded derived namespace** — exactly one draft per `WORK_ARTIFACTS`
+        entry, never an open namespace — so any store can hold "the draft of
+        artifact N" as a named resource and refuse to clobber one.
+
+        Raises ``ValueError`` for an unknown artifact name, and for a draft that
+        is already present unless ``force``; presence is the same rule the store
+        applies to artifacts, so an empty draft is never present and is always
+        regenerable.
+
+        There is deliberately no ``read_draft``: nothing reads a draft — the
+        agent opens it, TCW does not — and the presence check and the write are
+        one call.
+        """
+
     # -- sidecar read / write --
 
     @abstractmethod

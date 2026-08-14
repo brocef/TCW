@@ -3519,6 +3519,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
             revision=_revision(content),
         )
 
+    def write_draft(self, slug: str, artifact: str, content: str, *,
+                    force: bool = False) -> str:
+        if artifact not in WORK_ARTIFACTS:
+            raise ValueError(
+                f"unknown artifact '{artifact}' "
+                f"(choose from {', '.join(WORK_ARTIFACTS)})")
+        d = self._require_dir(slug)
+        # The one place this filename shape exists. `artifacts()` looks up
+        # `<name>.md` from the registry and never sees it, so presence stays
+        # honest with no new machinery.
+        p = d / f"{artifact}.draft.md"
+        if not force and self._present(p):
+            raise ValueError(
+                f"a draft is already there: {p} — type into it, or pass "
+                f"--force to replace it")
+        _atomic_write(p, content)
+        self._stage(p)
+        return str(p)
+
     def delete_artifact(self, slug: str, name: str) -> None:
         if name not in WORK_ARTIFACTS:
             raise ValueError(
