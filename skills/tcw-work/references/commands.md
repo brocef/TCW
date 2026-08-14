@@ -23,6 +23,7 @@
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
 | hand work down / up      | `tcw work delegate <child-project-id> "<title>"` · `tcw work escalate "<title>"` — the ID `tcw work nodes` lists, never a path              |
 | topology                 | `tcw work nodes`                                                                                                                                |
+| a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 
 **Not CLI subcommands.** Two workflows are AI-driven reviews with no `tcw` verb

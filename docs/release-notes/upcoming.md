@@ -86,6 +86,30 @@ something only your project knows.
 You can also give a stage a **check** that has to pass before the work begins,
 under `pre:`, and give each lifecycle document a **template** under `artifacts:`.
 
+## Asking TCW what to do at a stage
+
+`tcw work stage spec my-item` prints the instructions for writing that item's
+spec — TCW's own by default, yours if you have configured them. It is the command
+that makes everything above reachable.
+
+It checks first that the stage makes sense for where the item is: asking for
+`implement` on something still in the backlog is refused, and so is asking about
+a spec for work that is already closed. Then it runs whatever `pre` checks you
+configured, and prints the result.
+
+The instructions go to standard output on their own, so you can pipe them
+anywhere. Everything else — your checks' output, any error — goes to the error
+stream, and if anything fails you get *nothing* on standard output rather than
+half an instruction.
+
+**It changes nothing.** No document is written, no draft appears, the item does
+not move. Running it just to find out what to do is safe, which is rather the
+point.
+
+`--no-exec` goes further and runs nothing at all — not your checks, not your
+scripts — printing what it *would* have run instead. Use it to read an
+unfamiliar project's lifecycle before you trigger any of it.
+
 ## Instructions that depend on the item
 
 Any of these can carry a condition, so a bug is treated differently from a

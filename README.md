@@ -673,6 +673,18 @@ side-effect-free.
 Your existing configuration keeps working exactly as it did: a bare list under a
 stage id is still valid, still means "prompt", and still renders identically.
 
+**Reading a stage's instructions** is `tcw work stage <id> <ref>`. It refuses a
+stage that makes no sense for the item's current status, runs the stage's `pre`
+checks, resolves its prompts, and prints the result — **on stdout, alone**, so
+you can pipe it. Every check's output goes to stderr, and any failure prints
+nothing on stdout at all, so a pipeline gets the whole instruction or none of it.
+
+It **writes nothing**: no document, no draft, no status change. Running it purely
+to find out what to do is safe, which is the point. The one thing it does run is
+your own `pre` checks and `generate` scripts — and `--no-exec` skips even those,
+printing what would have run instead. That is how you read an unfamiliar
+repository's lifecycle before triggering it.
+
 `pre` hooks run **before** anything is written: a non-zero exit aborts the
 transition and the item does not move. `post` hooks run after, and a failure
 there **never rolls back** — the move already happened, so `tcw` reports it and
@@ -756,6 +768,9 @@ tcw work lifecycle --stage spec --directive
 
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
 tcw work show "$slug" --json           # the item as a versioned JSON document
+
+tcw work stage spec "$slug"            # what to do at this stage: checks, then instructions
+tcw work stage spec "$slug" --no-exec  # what *would* run, running none of it
 tcw work path                           # absolute, resolved work-store folder
 tcw work path "$slug"                  # current filesystem path of the slug
 tcw work inbox path                     # absolute, resolved inbox folder

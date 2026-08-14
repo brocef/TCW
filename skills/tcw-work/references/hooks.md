@@ -73,6 +73,25 @@ receives no injection, so nothing may depend on it.
 A stage has no `post`: its exit checks belong on the next stage's `pre`, and
 asking for one is an error rather than empty output.
 
+## Reading a stage's instructions
+
+```
+tcw work stage <id> <slug>             # checks, then the resolved prompt on stdout
+tcw work stage <id> <slug> --no-exec   # what would run, running none of it
+```
+
+It refuses a stage illegal for the item's status **before any hook runs**, runs
+the stage's `pre` checks, then prints the resolved prompt. stdout is the prompt
+and nothing else; checks and errors go to stderr; any failure leaves stdout
+empty. **It writes nothing** — no artifact, no draft, no status change — so it is
+safe to run purely to find out what to do.
+
+`--no-exec` skips the checks and refuses to read `file:` bindings or run
+`generate:` ones, printing the plan to stderr instead. It shows the *shape* of an
+unfamiliar lifecycle rather than its full text.
+
+`tcw work stage inbox` is rejected: `inbox` runs before an item exists.
+
 ## What runs, and what does not
 
 TCW runs `command:` bindings around transitions:

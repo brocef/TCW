@@ -61,6 +61,16 @@ category.
 - **`--phase`** on `tcw work lifecycle`: `pre`/`prompt` for a stage,
   `pre`/`post` for a transition. `--phase post` on a stage errors naming why.
 - **Vocabulary term `work-item/lifecycle-hook`.**
+- **`tcw work stage <id> <ref>`** — legality → `pre` checks → resolve → print.
+  stdout carries the resolved prompt alone, buffered and emitted once after
+  everything that can fail has succeeded; checks and errors go to stderr. Writes
+  nothing: asserted both as "no mutating `WorkStore` method is called" (the
+  portable property) and as item-folder byte-identity (the adapter one).
+  `--no-exec` skips the checks and passes `execute=False` to the resolver.
+- **`STAGE_STATUSES`** beside `LIFECYCLE_STEPS` — where each stage is legal.
+  `verify` is `active` *and* `review` because `complete` moves from either;
+  `postmortem` is `review` and `completed` but **not** `discarded`. Tested over
+  the full `STAGE_IDS` x `WORK_STATUSES` product, not on sampled pairs.
 - **`generated` on a `WORK_SIDECARS` entry.** Marks a sidecar a command writes
   rather than a person. `serve`'s two sidecar payload builders echo it as a
   boolean, and the web client renders a `generated` label instead of an Edit
