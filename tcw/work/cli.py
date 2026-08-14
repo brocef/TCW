@@ -1,6 +1,7 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from tcw.store.fs import (
 )
 from tcw.store.project import worktree_anchors
 from tcw.work.hooks import run_post, run_pre
+from tcw.work.projection import work_item_json
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
@@ -457,6 +459,20 @@ def _show(args: argparse.Namespace) -> int:
     if item is None:
         print(f"tcw work show: no such work item: {args.slug}", file=sys.stderr)
         return 1
+    if getattr(args, "json", False):
+        # Built and encoded before anything is printed, so a projection failure
+        # leaves stdout empty rather than half a document for `jq` to choke on.
+        # No `default=`: the DTO is JSON-native by construction, and allow_nan
+        # is the guard for the case where it turns out not to be.
+        try:
+            doc = work_item_json(item, st.artifacts(bare))
+            text = json.dumps(doc, indent=2, sort_keys=True, allow_nan=False)
+        except (ValueError, TypeError) as e:
+            print(f"tcw work show: cannot project {bare} as JSON: {e}",
+                  file=sys.stderr)
+            return 1
+        print(text)
+        return 0
     _print_item(item)
     return 0
 
@@ -1074,6 +1090,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     psh = g.add_parser("show", help="resolve slug → item; print state + body")
     psh.add_argument("slug")
+    psh.add_argument("--json", action="store_true",
+                     help="emit the item as a versioned JSON document")
     psh.set_defaults(func=_show)
 
     pp = g.add_parser("path", help="print the work store or a work item folder path")
