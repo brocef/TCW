@@ -23,8 +23,9 @@ writing the request promotes the item off raw intake, leaving the intake itself
 untouched.
 
 Required: a title, and enough of the request that someone resuming cold knows
-what was wanted. For an epic it also carries the coordination goal and is the
-managed target for `tcw work reconcile`'s rollup.
+what was wanted. For an epic it also carries the coordination goal. Nothing else
+writes it — `tcw work reconcile` puts its rollup in the epic's own `rollup.md`,
+precisely so an epic nobody has written up still shows no `R`.
 
 Optional `## Notes`: anything worth keeping that has no home in the request
 itself.

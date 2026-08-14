@@ -64,9 +64,16 @@ epic's `initial-request.md`. That meant reconciling an epic created a request
 document nobody had written — and the board then claimed the epic had been
 written up when all that happened was that a command wrote a table.
 
-The rollup now goes to `rollup.md` alongside the epic's other documents. Reading
-it, committing it with `--commit`, and everything else about the command are
-unchanged; only its destination moved.
+The rollup now goes to `rollup.md` alongside the epic's other documents. The
+command itself behaves the same — it still prints the rollup when you run it, and
+`--commit` still commits it.
+
+One thing to know: `tcw work show <epic>` no longer prints the rollup, because it
+prints the epic's request and the rollup is no longer in it. To read a rollup,
+run `tcw work reconcile <epic>` — it prints the current one, and changes nothing
+if nothing has changed — or open `rollup.md` in the local web app, which lists it
+alongside the epic's other documents. `tcw work path <epic>` tells you where the
+folder is.
 
 Epics you already have migrate themselves. The first time you reconcile one, the
 rollup moves out of the request and into `rollup.md`, and anything you wrote

@@ -813,7 +813,10 @@ def test_reconcile_writes_a_sidecar_and_never_the_request(tmp_path):
     assert {p.name for p in store.path(epic).iterdir()} == {
         "state.yaml", "rollup.md"}
     assert block in store.read_sidecar(epic, "rollup.md").content
-    assert "R" not in {a.name for a in store.artifacts(epic) if a.present}
+    # The board letter follows from the artifact's absence, so absence is what
+    # gets asserted. An earlier version of this line looked for "R" among the
+    # names `artifacts()` yields, which are `initial-request`, `spec`, … — a set
+    # that cannot contain a board letter, so the check passed either way.
     assert store.read_artifact(epic, "initial-request") is None
 
 
