@@ -66,6 +66,19 @@ def test_this_repository_s_own_lifecycle_output_is_unchanged():
     If C3 changes how this node's config renders, every `tcw` command in the
     session that develops C3 starts behaving differently — the cheapest place in
     the world to find out.
+
+    Unlike every other row, this one pins a **live** config rather than a fixture,
+    so it also fails when this repository's own `tcw-config.yaml` changes — which
+    is a legitimate edit, not a regression. Re-capture it when that happens:
+
+        python -c "import json,sys; sys.path.insert(0, 'tests/fixtures/lifecycle_baseline'); \
+            from capture import capture_one; from pathlib import Path; \
+            Path('tests/fixtures/lifecycle_baseline/self.json').write_text( \
+                json.dumps(capture_one(Path.cwd()), indent=2) + chr(10))"
+
+    Before re-capturing, check the other rows still pass. They pin fixed configs
+    against the same renderer, so if they are green the delta is your config and
+    not the code.
     """
     baseline = json.loads((FIXTURES / "self.json").read_text())
     for expected in baseline:
