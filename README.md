@@ -633,13 +633,12 @@ concatenated in the order you wrote them. An entry under `artifacts:` is a
 
 **Six kinds.** `blob:` is text written inline. `file:` is a path in your node —
 normalized and confined to it, so a typo cannot quietly read something else.
-`generate:` is a script you own: TCW pipes the work item to it as JSON on stdin
-and its stdout becomes the text. `builtin: true` is TCW's own default for that
-stage or artifact — TCW ships instructions for each of the six lifecycle stages
-(`inbox` runs before an item exists, so it has none) and a template for each
-lifecycle document, and **a stage you have configured nothing for resolves to
-them**. `skill:` names an agent skill, which is a name rather than instructions
-and is the weakest option. `command:` is for checks.
+`generate:` is a script you own, under the contract below. `builtin: true` is
+TCW's own default for that stage or artifact — TCW ships instructions for each of
+the six lifecycle stages (`inbox` runs before an item exists, so it has none) and
+a template for each lifecycle document, and **a stage you have configured nothing
+for resolves to them**. `skill:` names an agent skill, which is a name rather than
+instructions and is the weakest option. `command:` is for checks.
 
 ```yaml
 work:
@@ -662,7 +661,7 @@ work:
 **Conditions.** Any binding may carry `when:` with `tags:` (any of), `not_tags:`
 (none of), and `type:` — so a bug gets different instructions and a different
 template than a feature. Three keys, deliberately; anything harder belongs in a
-`generate:` script, which receives the whole item and decides in real code.
+`generate:` script, which decides in real code.
 
 **The `generate:` contract**, enforced rather than hoped for: stdin is
 `{"item": …, "hook": …}` where `item` is the same document
@@ -670,7 +669,8 @@ template than a feature. Three keys, deliberately; anything harder belongs in a
 `TCW_HOOK_KIND`, `TCW_HOOK_ID`, and `TCW_HOOK_PHASE` so a one-liner needs no JSON
 parser; output is capped (`work.lifecycle.output-cap`, 64 KiB by default) and the
 timeout applies; and a script that **exits non-zero contributes nothing at all**,
-so half a prompt never reaches your agent. Generators may re-run, so write them
+so half a prompt never reaches your agent. Generators re-run on every
+resolution — including every scaffold retry and under `--force` — so write them
 side-effect-free.
 
 Your existing configuration keeps working exactly as it did: a bare list under a
@@ -683,11 +683,13 @@ that should genuinely say nothing binds `{blob: ""}`.
 
 **Reading a stage's instructions** is `tcw work stage <id> <ref>`. With nothing
 configured it prints TCW's own instructions for that stage, so the command is
-useful before you have written any lifecycle configuration at all. It refuses a
-stage that makes no sense for the item's current status, runs the stage's `pre`
-checks, resolves its prompts, and prints the result — **on stdout, alone**, so
-you can pipe it. Every check's output goes to stderr, and any failure prints
-nothing on stdout at all, so a pipeline gets the whole instruction or none of it.
+useful before you have written any lifecycle configuration at all; those shipped
+instructions include a short self-review pass at the stages where one earns its
+place — `spec`, `plan`, and `implement`. It refuses a stage that makes no sense
+for the item's current status, runs the stage's `pre` checks, resolves its
+prompts, and prints the result — **on stdout, alone**, so you can pipe it. Every
+check's output goes to stderr, and any failure prints nothing on stdout at all,
+so a pipeline gets the whole instruction or none of it.
 
 It **writes nothing**: no document, no draft, no status change. Running it purely
 to find out what to do is safe, which is the point. The one thing it does run is
@@ -714,9 +716,7 @@ deliberately. An *empty* draft is regenerated with no flag, which is why
 everything else.
 
 Nothing is written until the whole template has resolved, so a failed `generate:`
-script leaves no file behind and fixing it and running again is clean. That also
-means a generator runs again on every retry, and under `--force` — one more
-reason to keep them side-effect-free.
+script leaves no file behind and fixing it and running again is clean.
 
 `pre` hooks run **before** anything is written: a non-zero exit aborts the
 transition and the item does not move. `post` hooks run after, and a failure

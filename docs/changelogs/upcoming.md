@@ -217,6 +217,48 @@ category.
 - **Board letters render in lifecycle order** from the renderer's own table
   rather than in `WORK_ARTIFACTS` order, which is append-only and therefore
   cannot express lifecycle position.
+- **The shipped `spec`, `plan`, and `implement` prompts carry a self-review
+  pass.** `spec.md` gains a `## Self-review, before committing` block
+  (citations re-resolve, executable criteria executed, two-reading criteria
+  pinned) and lands at 48 of the 50-line ceiling; `plan.md`'s re-read step
+  gains the coverage
+  direction it half-stated and a `**Self-review.**` lead; `implement.md` gains
+  one line in its `outcome.md` step. `request`, `verify`, and `postmortem` get
+  none: the pass has to check the artifact against something outside itself, and
+  those three have nothing to check it against.
+- **The six stage reference documents are routers, not methodology.**
+  `skills/tcw-work/references/stage-{request,spec,plan,implement,verify,postmortem}.md`
+  now name `tcw work stage <id> <slug>` and carry only what the CLI does not
+  say — delegability, the `[auto]`/`[gated]`/`[prompted]`/`[judgment]` markers,
+  epic and cross-node deltas, sub-skill names, store mechanics. `## Exit` is gone
+  from all six: every one of its branches is already in the corresponding shipped
+  prompt. `stage-inbox.md` is byte-identical and keeps all five sections and
+  `tcw work lifecycle`, because `tcw work stage inbox` is refused by design.
+- **`hooks.md` consolidated**, 159 → 92 lines. The duplicate configuration
+  example, the three verbs' usage blocks, and the paragraphs restating
+  `README.md`'s hook section or the CLI's own `--help` and refusal text are gone;
+  the role × kind table, `when:`, and the four judgment items survive intact.
+- **`skills/tcw-work/SKILL.md` repointed at `tcw work stage <id> <slug>`** in its
+  "Always" section — `tcw work lifecycle --stage <id>` reports bindings and
+  never resolves a `builtin`, so on an unconfigured node it told a reader
+  nothing. The stage/artifact table drops its `Runs in` column, which restated
+  `STAGE_STATUSES` that `tcw work stage` already enforces and names when it
+  refuses. Body still 60 of 60.
+- **`README.md`'s lifecycle-binding section says each fact once.** The
+  `generate:` contract, resolve-then-write, the trust model, and the `tcw serve`
+  caveat each state themselves in one paragraph; one sentence about the
+  self-review pass is added.
+- **Parity tests.** `test_every_stage_document_names_the_harness_neutral_binding_command`
+  asserts `tcw work stage <id>` for the six and keeps `tcw work lifecycle` for
+  `inbox`; `test_every_stage_document_has_the_sections_in_order` (renamed) takes
+  the router tuple by dropping `Exit` from `STAGE_SECTIONS`, so the two cannot
+  drift. New: `test_no_router_sentence_appears_in_its_prompt` (no normalized
+  sentence of ≥ 8 words in both a router and its prompt),
+  `test_each_router_stays_within_its_ceiling` (≤ 40 lines, `inbox` exempt), and
+  `test_each_router_keeps_its_judgment` (a delegability statement plus at least
+  one marker). In `tests/test_shipped_prompts.py`, new
+  `test_the_self_review_pass_appears_in_exactly_three_prompts` asserts set
+  equality against `{spec, plan, implement}`.
 
 ## Removed
 

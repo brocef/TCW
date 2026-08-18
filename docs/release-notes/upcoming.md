@@ -118,6 +118,27 @@ point.
 scripts — printing what it *would* have run instead. Use it to read an
 unfamiliar project's lifecycle before you trigger any of it.
 
+## TCW's own instructions now check themselves at three stages
+
+The instructions TCW ships include a short self-review pass — but only at `spec`,
+`plan`, and `implement`, and only where the pass checks something against
+something the stage cannot already see.
+
+At `spec` it is three items: every line of code you cited still says what you
+claimed it says, every acceptance criterion you can run against the project today
+has actually been run, and any criterion two people could read two ways is pinned
+to one reading. At `plan` it is the re-read that was already there, now asked in
+both directions: every acceptance criterion is covered by at least one task, and
+every task traces back to one. At `implement` it is one line — an empty "what the
+plan or spec got wrong" section is a claim you are making, not a section you
+forgot.
+
+The other three stages get none, deliberately. A request has nothing outside the
+requester's own words to check it against; verifying *is* a review pass, so a
+self-review there reviews the reviewer; and a post-mortem is the last thing that
+happens and has nobody downstream to protect. A pass that catches nothing turns
+into a ritual, so the stages that could not use one do not have one.
+
 ## A starting point for a lifecycle document
 
 `tcw work scaffold spec my-item` writes a draft of that item's spec — your
