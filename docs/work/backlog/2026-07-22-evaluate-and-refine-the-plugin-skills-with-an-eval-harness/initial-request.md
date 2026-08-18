@@ -77,8 +77,12 @@ a baseline comparison can show that.
 
 ## Non-goals
 
-- No remote-store or CLI behavior changes. This item measures and tunes the
-  judgment layer; mechanism stays in the binary.
+- No remote-store changes and no change to the `tcw` command surface. **Since
+  `2026-08-12-ship-built-in-stage-prompts-with-the-cli` the lifecycle
+  methodology ships *inside* the binary** as `tcw/work/prompts/*.md`, so
+  editing a shipped prompt is an in-scope refinement — it is prose, not
+  mechanism. Unlike a skill edit it ships in the wheel and earns a release
+  note. (Rescoped by the C8 audit.)
 - No description-triggering optimization loop. Whether skills _fire_ is a
   separate axis from whether they _work_; defer it.
 - No iterate-until-clean refinement loop, and no deep single-skill coverage.

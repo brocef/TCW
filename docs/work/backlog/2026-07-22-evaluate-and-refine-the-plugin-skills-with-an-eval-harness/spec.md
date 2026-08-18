@@ -2,9 +2,14 @@
 
 ## Capability changes
 
-None. This item adds contributor-facing measurement machinery under `evals/`
-and tunes skill prose. No `tcw` CLI surface changes, so nothing a user can do
-changes. The `capabilities.yaml` sidecar is deliberately absent.
+None expected. This item adds contributor-facing measurement machinery under
+`evals/` and tunes the prose an agent reads — the skill routers **and** the six
+stage prompts the CLI prints. No command-surface change, but a prompt edit
+changes what `tcw work stage` prints, which *is* user-visible: re-run the gate
+at closeout against `work/run-a-lifecycle-stage` (`cap-f42255`) and write a
+release note for any prompt refinement. The `capabilities.yaml` sidecar is
+deliberately absent unless a refinement crosses that line. (Rescoped by the C8
+audit.)
 
 Re-run the gate at closeout: if a refinement changes _what_ a skill instructs an
 agent to do rather than how reliably it does it, the affected `plugin/*` or
@@ -19,11 +24,21 @@ agent to do rather than how reliably it does it, the affected `plugin/*` or
 > commands**. The test set covers 6 of 8 skills; the other two are explicit
 > exclusions rather than silent gaps — see **Test set**.
 
-The eight skills are the plugin's judgment layer — the thing the README calls the
-counterpart to the CLI's mechanism. Their quality has only ever been established
-by reading them. Nobody knows whether an agent holding `tcw-work` actually
-outperforms one holding only `tcw --help`, which parts of the prose carry the
-weight, or which skill is weakest. Every refinement to date has been a guess
+The eight skills **and the six stage prompts the CLI ships**
+(`tcw/work/prompts/*.md`) together are the judgment layer. Their quality has only
+ever been established by reading them. Nobody knows whether an agent holding
+`tcw-work` actually outperforms one holding only `tcw --help`, which parts of the
+prose carry the weight, or which skill is weakest.
+
+**The seam is now the most interesting thing to measure.** Since
+`2026-08-12-repoint-the-work-skill-and-docs-at-the-cli`, `tcw-work`'s lifecycle
+methodology is split across 22–36-line routers fronting 39–48-line prompts, and
+nothing checks that a router faithfully summarizes the prompt beneath it — that
+child's own refined outcome concedes it. The baseline arm carries the prompts
+too, because `tcw-cli` is installed in both arms, so the with/without-skill
+delta measures what the skill adds **beyond** the shipped prompts, plus whether
+it makes the agent reach `tcw work stage` at all. A near-zero delta on the early
+cases is an informative result, not an indictment. (Rescoped by the C8 audit.) Every refinement to date has been a guess
 validated by a second guess.
 
 ## Goals
@@ -39,7 +54,9 @@ validated by a second guess.
 
 ## Non-goals
 
-- No `tcw` CLI or store changes.
+- No `tcw` command-surface or store changes. Edits to the six shipped stage
+  prompts are in scope: they are the same judgment layer the skills used to
+  hold.
 - No description-triggering optimization (whether skills _fire_ is a separate
   axis from whether they _work_).
 - No iterate-until-clean loop, and no deep single-skill coverage.
