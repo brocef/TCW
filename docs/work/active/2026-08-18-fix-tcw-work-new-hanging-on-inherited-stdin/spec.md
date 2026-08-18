@@ -88,7 +88,19 @@ with non-interactive arguments; none reads stdin.
 
 ## Goals
 
-1. No `tcw` invocation blocks indefinitely on a stdin it was not asked to read.
+1. None of the **five intake entry points**, and no lifecycle `command:` hook,
+   blocks indefinitely on a stdin it was not asked to read.
+
+   *Deliberately narrower than "no `tcw` invocation", which the first draft
+   claimed and this change does not deliver.* Review verified the gap: TCW makes
+   roughly twenty `subprocess.run` calls to `git` (`tcw/store/fs.py:288, 293,
+   298, …`, `tcw/work/cli.py:541`) with neither a timeout nor `stdin=`, so each
+   inherits the caller's stdin. None of them contacts a remote — they are
+   `add`, `mv`, `rm`, `commit`, `rev-parse`, `ls-files`, `check-ignore`,
+   `worktree` — so no credential helper can prompt; the residual exposure is a
+   user's own `pre-commit`-style git hook reading inherited stdin during
+   `git commit`. Real, unaddressed here, and recorded in Risks with a follow-up
+   rather than smuggled under a goal this item does not meet.
 2. `echo "…" | tcw work new "…"` keeps working, byte-for-byte, including when the
    producer is slow to start.
 3. Interactive use is unchanged.
@@ -124,26 +136,76 @@ the shared helper.
 ```python
 if sys.stdin.isatty():
     return ""                       # unchanged: a terminal is never intake
-fd = sys.stdin.fileno()             # ValueError under pytest capture → ""
+fd = sys.stdin.fileno()             # raises under pytest capture → ""
 chunks = bytearray()
 while True:
     if not select.select([fd], [], [], timeout)[0]:
-        if not chunks:              # waited, got nothing at all
-            warn_that_nothing_arrived()
-        break                       # bounded either way: never wait twice over
+        return expired(chunks)      # bounded: never wait twice over
     block = os.read(fd, 65536)
-    if not block:                   # EOF — the normal end
+    if not block:                   # EOF — the only complete ending
         break
     chunks += block
 return chunks.decode("utf-8", "replace")
 ```
 
-**The `if not chunks` guard is load-bearing and was found by running the loop,
-not by reading it.** A first draft used `while select(...): … else: warn`, whose
-`else` fires on *any* timeout exit — including the measured case "writer sent a
-line and then held the pipe open", which yields `expired=True` **with** data. That
-draft would have warned "no piped input" at a command that had just read a full
-intake. The rule is: warn only when nothing at all arrived.
+### Three outcomes, not two
+
+The loop can end three ways, and conflating any two of them loses data. This is
+the part of the design two review passes changed, so the reasoning is recorded
+rather than the conclusion alone.
+
+| Ending | Meaning | Behavior |
+| ------ | ------- | -------- |
+| **EOF** | The producer finished. | Return the text. Silent. |
+| **Timeout, nothing read** | Ambiguous: either no intake was intended (the overwhelmingly common case — `tcw work new "title"` with stdin merely inherited) or a producer has not started. | **Proceed** with no intake, warn on stderr. |
+| **Timeout, partial read** | Unambiguous: bytes arrived, so intake *was* intended, and the rest is gone. | **Fail.** Exit non-zero, write nothing, name the byte count and the knob. |
+
+The asymmetry is the point. A first draft warned on any timeout, which misfires
+on "writer sent a line then held the pipe open" — measured, `expired=True` *with*
+a complete line. Correcting that to "warn only when nothing arrived" then made
+the genuinely bad case **silent**, which adversarial review caught and execution
+confirmed:
+
+```python
+# { printf first; sleep 1.5; printf second; } | …   with a 0.5s bound
+partial-stream result: ('first', 'EXPIRED')
+```
+
+`second` is gone. Storing `first` as the item's `intake` would violate the
+`work/capture-raw-intake` capability in writing — "lands in `intake.md`
+**verbatim**" — by preserving a truncation as though it were the document. A
+half-artifact is worse than no artifact, because nothing downstream can tell it
+is half.
+
+So partial input is refused, not stored. Refusing is legal under the request's
+own rule — "an invocation that cannot get its intake should **fail or proceed**,
+never wait" — and it is the only one of the two that cannot corrupt a record.
+Nothing-at-all still proceeds, because there the common case really is "no intake
+intended", and failing would strand every automated `tcw work new` this item
+exists to unstrand.
+
+### Failing on every error, never falling back to a blocking read
+
+Every step can raise: `isatty()`, `fileno()` (pytest's captured stdin raises
+`io.UnsupportedOperation`, which subclasses **both** `OSError` and `ValueError`),
+`select` on an invalid descriptor, and `os.read`. All of them are caught as
+`(OSError, ValueError)` and yield `""` — no intake, treated as the
+nothing-at-all case.
+
+**The one thing the helper must never do is fall back to `sys.stdin.read()`.** An
+earlier draft did exactly that when `select` was unsupported, which reintroduces
+the hang this item exists to remove — a fallback that restores the bug is not a
+fallback. On a platform where `select` cannot poll stdin, piped intake is
+unavailable and the command proceeds without it, loudly.
+
+### The helper owns file descriptor 0
+
+Reading through `os.read` while `sys.stdin` is a buffered text stream is correct
+only if nothing has already pulled bytes into that buffer. That is true today —
+the helper is called once, at the top of a command, before any other read — but
+it is a contract rather than an accident, so it is stated in the helper's
+docstring: *call this before anything touches `sys.stdin`, and do not read
+`sys.stdin` afterwards.*
 
 Why each piece:
 
@@ -246,14 +308,20 @@ Arms below mean the three from the Problem section, re-run as tests.
    (without `--description`, since it short-circuits), and
    `tcw capabilities add` — each creating its own kind of record, not an item.
 2. **Arm C is unchanged.** `echo "raw intake body" | tcw work new "<t>"` writes
-   `intake` containing exactly `raw intake body\n`, exits 0, in under 1s.
+   `intake` containing exactly `raw intake body\n` and exits 0. Timing is
+   asserted on the **helper**, not the process: `read_piped_stdin` returns
+   without ever entering a timeout wait. Process-level assertions use a generous
+   fixed deadline (30s) purely as a hang tripwire, because a full CLI invocation
+   also does filesystem and git work whose duration this design does not
+   govern.
 3. **A slow producer is not dropped.** A writer that sleeps 1s (under the 2.0s
    default) before writing still delivers its full body to `intake`.
 4. **A chunked producer past the total-duration mark is not dropped.** A writer
    emitting three chunks 1s apart — 3s total, over the 2.0s bound — delivers all
    three, proving the timeout measures a gap and not a duration.
-5. **Arm B is unchanged.** `stdin=DEVNULL` exits 0 in under 1s, no intake, and
-   **no** warning on stderr.
+5. **Arm B is unchanged.** `stdin=DEVNULL` exits 0, writes no intake, and emits
+   **no** warning on stderr — EOF is immediate, so the nothing-arrived path is
+   never reached.
 6. **A terminal is never read.** With `isatty()` true, `read_piped_stdin`
    returns `""` without touching the fd. Asserted directly on the helper.
 7. **`TCW_STDIN_TIMEOUT=0`** makes arm A return in well under 1s.
@@ -270,7 +338,16 @@ Arms below mean the three from the Problem section, re-run as tests.
     captures only the slug.
 12. **`taxonomy add --description "x"` never reads stdin at all**, and so cannot
     expire or warn even with stdin held open — the short-circuit is preserved.
-13. **The suite does not get slower.** `python -m pytest -q` reports ≥ 1592
+13. **A stalled mid-stream producer fails rather than truncating.**
+    `{ printf first; sleep <2×timeout>; printf second; } | tcw work new "<t>"`
+    exits **non-zero**, creates **no** work item and **no** intake artifact, and
+    names both the byte count received and `TCW_STDIN_TIMEOUT` on stderr. This is
+    the criterion that distinguishes the three outcomes; without it, criterion 1
+    and criterion 3 are jointly satisfiable by a helper that silently truncates.
+14. **No fallback to a blocking read.** `grep -n "sys.stdin.read()" tcw/` returns
+    nothing after the change. A helper that falls back to a blocking read on any
+    error path reintroduces the hang, so its absence is asserted directly.
+15. **The suite does not get slower.** `python -m pytest -q` reports ≥ 1592
     passed, 0 failed, and its wall-clock stays within 10% of the 284s measured on
     this tree today. Several tests spawn `tcw` as a real subprocess without
     setting `stdin=` (`tests/test_scaffold.py:40`,
@@ -299,6 +376,20 @@ Arms below mean the three from the Problem section, re-run as tests.
 - **Mixing `os.read(0, …)` with `sys.stdin`.** Correct only because nothing reads
   `sys.stdin` before the helper; if a future caller reads it first, buffered
   bytes would be lost. The helper is called once, at the top of a command.
+- **~20 git subprocesses still inherit stdin and carry no timeout**
+  (`tcw/store/fs.py:288, 293, 298, 323, 327, 328, 347, …`,
+  `tcw/work/cli.py:541`). None contacts a remote, so no credential prompt can
+  arise; the live exposure is a user's own git hook reading stdin during
+  `git commit`. Out of scope by the narrowed Goal 1, and a follow-up item to be
+  filed at completion rather than folded in here — closing it means touching
+  every git call site, which is a different change with a different blast
+  radius.
+- **Refusing on partial input turns a silent corruption into a hard failure**,
+  and a hard failure is a worse outcome for anyone whose producer legitimately
+  stalls past the bound. Accepted: the knob raises the bound, the error names it,
+  and the alternative is storing half a document as a verbatim artifact. Named
+  ceiling: if real workflows hit this, the answer is a larger default, not
+  silently keeping the fragment.
 - **The stderr warning is new output.** Any caller asserting on exact stderr for
   an empty-stdin invocation sees one more line. The suite is the check.
 
@@ -314,6 +405,35 @@ Arms below mean the three from the Problem section, re-run as tests.
   side — "a script that exits without reading stdin makes the parent's write
   raise" — which is why that file is the one place stdin handling was thought
   through, and the three CLI copies were not.
+- **Reviewed by `codex` after the first draft; seven findings, five accepted,
+  one accepted-and-narrowed, one already fixed.** Dispositions, because a review
+  whose outcome is not recorded is a review nobody can check:
+  - *Partial-stream truncation* (High) — **accepted**, and it is the finding that
+    changed the design. It survived my own self-review, which had fixed only the
+    misfiring warning and thereby made the truncation silent. Reproduced by
+    execution before accepting.
+  - *`tcw taxonomy new` does not exist* (High) — **already fixed** in
+    self-review; codex reviewed the pre-amendment commit.
+  - *Exception policy unspecified, and the `select` fallback reintroduces the
+    hang* (Medium) — **accepted**. Its supporting claim is imprecise:
+    `io.UnsupportedOperation` subclasses **both** `OSError` and `ValueError`, so
+    the original `ValueError` catch was not in fact wrong. Catching both is free
+    and clearer, so the recommendation is taken even though the reasoning behind
+    it was not right.
+  - *Goal 1 broader than the delivery* (Medium) — **accepted and narrowed**, with
+    the git-subprocess gap measured and recorded in Risks rather than quietly
+    dropped.
+  - *Timing criteria assert more than the design guarantees* (Medium) —
+    **accepted**; process-level timing became a hang tripwire and the real
+    assertion moved to the helper.
+  - *Unstated fd-0 exclusivity contract* (Low) — **accepted**; it is now a stated
+    docstring contract.
+  - *`generate.py` uses `Popen`, not `run`* (Low) — **already fixed**; the spec
+    never claimed `run`, but the citation is now a range and names `Popen`.
+- `bllm-review` was dispatched on the same diff and had produced no output by the
+  time this spec was amended. If it returns findings they are folded in before
+  `implement`; if it does not, this spec has had one external reviewer, as the
+  two before it did.
 - Every `file:line` above was re-resolved against the tree while writing this,
   and again during self-review. The self-review pass corrected four things the
   first draft got wrong, all recorded above rather than quietly fixed: the claim
