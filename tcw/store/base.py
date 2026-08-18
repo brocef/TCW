@@ -1314,7 +1314,18 @@ class WorkStore(ABC):
 
     @abstractmethod
     def artifacts(self, slug: str) -> list[Artifact]:
-        """The bounded lifecycle artifact set for `slug`, with presence only."""
+        """The bounded lifecycle artifact set for `slug`, with presence only.
+
+        **Present means the artifact holds non-whitespace content.** One that
+        exists but is blank is reported *absent*, because this answers the
+        lifecycle question — *did this stage produce anything?* — and mere
+        existence would let an empty artifact claim its stage ran.
+
+        This is a different question from `read_artifact`, which asks whether a
+        resource exists at that name and answers *yes* for the same blank
+        artifact. Both are correct; see `read_artifact` for why they must differ.
+        An adapter has to implement both rules, not one.
+        """
 
     @abstractmethod
     def artifact_locator(self, slug: str, name: str) -> str | None:
@@ -1333,7 +1344,9 @@ class WorkStore(ABC):
 
     @abstractmethod
     def read_plan_stage(self, slug: str, stage_id: str) -> PlanStageResource | None:
-        """Read a declared stage document, or ``None`` when it is absent."""
+        """Read a declared stage document, or ``None`` when no resource exists at
+        that name — the same resource rule as `read_artifact`, blank-but-present
+        included."""
 
     @abstractmethod
     def write_plan_stage(self, slug: str, stage_id: str, content: str,
@@ -1492,7 +1505,20 @@ class WorkStore(ABC):
     def read_artifact(self, slug: str, name: str) -> "ArtifactResource" | None:
         """Read a lifecycle artifact by bounded name.
 
-        Returns ``None`` when the artifact has not been written yet.
+        Returns ``None`` when **no resource exists** at that name.  An artifact
+        that exists but holds only whitespace *is* returned, with a revision —
+        it is a real resource: readable, versioned, deletable, and reading one in
+        order to see that it is blank is a legitimate operation.
+
+        **`artifacts()` reports that same artifact as absent**, and the
+        disagreement is deliberate: the two answer different questions.  Adopting
+        the content-based rule here would make this call and `write_artifact`
+        contradict each other — the read would report the artifact missing, so a
+        caller would send ``revision=""`` per `write_artifact`'s contract, and the
+        write would refuse it as stale.  (`get_detail` still carries the correct
+        revision, so a caller is not stranded; it just has to know about the
+        split — which is why it is written down here.)
+
         Raises ``ValueError`` for unknown artifact names.
         """
 
@@ -1531,7 +1557,8 @@ class WorkStore(ABC):
     def read_sidecar(self, slug: str, name: str) -> "SidecarResource" | None:
         """Read a bounded sidecar by registry name.
 
-        Returns ``None`` when the sidecar has not been written yet.
+        Returns ``None`` when no resource exists at that name — the same
+        resource rule as `read_artifact`, blank-but-present included.
         Raises ``ValueError`` for unknown sidecar names.
         """
 

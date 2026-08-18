@@ -2217,8 +2217,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @staticmethod
     def _present(p: Path) -> bool:
-        """The one presence rule: exists and non-empty. Mere existence would let
-        an empty file claim its stage ran, which is what `intake` made visible."""
+        """The **lifecycle** presence rule: exists and has non-whitespace content.
+
+        Answers *did this stage produce anything?* Mere existence would let an
+        empty file claim its stage ran, which is what `intake` made visible.
+
+        Deliberately **not** the rule used by the read / write / delete /
+        revision surface, which asks a different question — *is there a resource
+        at this name?* — and answers it with a bare `is_file()`.  A blank file is
+        a real resource there: readable, versioned, deletable.  Routing that
+        surface through this rule would make `read_artifact` and `write_artifact`
+        contradict each other (the read reports absent, so the caller sends
+        `revision=""`, and the write refuses it as stale).  Both rules are stated
+        on `WorkStore.artifacts` and `WorkStore.read_artifact`, which is where an
+        adapter author will look; `tests/test_work.py` pins them against each
+        other so neither can drift into the other by accident."""
         return p.is_file() and bool(p.read_text(encoding="utf-8").strip())
 
     def _resolve_body(self, d: Path) -> tuple[str | None, str]:
@@ -3476,6 +3489,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"(choose from {', '.join(WORK_ARTIFACTS)})")
         d = self._require_dir(slug)
         p = d / self._artifact_filename(name)
+        # Mere existence, not `_present`: this is the resource question, and a
+        # blank artifact is a real resource. See `WorkStore.read_artifact`.
         if not p.is_file():
             return None
         text = p.read_text(encoding="utf-8")
