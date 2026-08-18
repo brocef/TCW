@@ -99,6 +99,30 @@ Three required keys per entry, all non-empty strings. Parsed by a new
 in shape: pure, filesystem-free, never raises, returns an advisory problem list
 that `tcw validate` surfaces and the adapter discards.
 
+**The plumbing, stated rather than assumed.** `LifecyclePolicy` is built from
+`work.lifecycle` alone (`tcw/store/fs.py:2640`), so it does **not** carry these
+entries and must not be made to — `work.documentation` is a sibling config block,
+not part of the lifecycle policy, and folding it in would mean every
+`parse_lifecycle_policy` caller silently acquires a second concern. The path is:
+
+1. `DocEntry` (frozen dataclass: `path`, `trigger`, `description`) in
+   `tcw/store/base.py`, beside `StageBindings`.
+2. **`WorkStore.documentation() -> list[DocEntry]`** on the abstract interface,
+   with the precedent that `lifecycle_policy()` (`tcw/store/base.py:1385`) is
+   already a config-derived method on the ABC rather than an adapter detail.
+3. `FsWorkStore.documentation()` reads `self._work_config().get("documentation")`
+   through the same `_work_config` helper (`tcw/store/fs.py:2613`) that
+   `lifecycle_policy`, `auto-commit-transitions`, and `trunk-branch` use.
+   `FsWorkStore.documentation_problems()` mirrors `lifecycle_problems`
+   (`tcw/store/fs.py:2643`) for `tcw validate`.
+4. `resolve_prompts` gains a `documentation: Sequence[DocEntry] = ()` keyword,
+   defaulted so every existing caller compiles unchanged and resolves to the
+   fallback.
+5. `tcw work stage` and `tcw work docs` pass `st.documentation()`.
+
+A non-filesystem adapter implements one method reading its own node config. That
+is the whole obligation, which is why this belongs on the interface.
+
 **Validation is shape-only, deliberately.** `tcw validate` reports: a non-list
 `documentation:`, an entry that is not a mapping, a missing or blank `path` /
 `trigger` / `description`, a `path` that is absolute or escapes the node, a
@@ -117,16 +141,24 @@ correctly-configured new project.
 
 ### How the entries reach the prompt
 
-`_resolve_one` resolves a `builtin` binding at `tcw/work/resolve.py:191-192`:
+The two built-in prompts gain one placeholder token, `{{tcw:documentation}}`.
 
-```python
-if b.kind == "builtin":
-    return builtins.get(hook_id, ""), False
-```
+**Substitution happens in `resolve_prompts`, on the joined `res.text`** — not in
+`_resolve_one`. `_resolve_one` is shared: `resolve_artifact` calls it with
+`role="artifact"` (`tcw/work/resolve.py:277-281`), so substituting there would
+also rewrite artifact templates. Worse, it would do so *inconsistently*, because
+`tcw work scaffold`'s implicit built-in fallback bypasses `_resolve_one`
+entirely (`tcw/work/cli.py:896-897`): an explicitly-bound `builtin` template
+would be substituted and the default one would not.
 
-That is the single place every built-in prompt passes through, and it already has
-`policy` in scope. The two built-in prompts gain one placeholder token,
-`{{tcw:documentation}}`, which is substituted there:
+Doing it in `resolve_prompts` fixes both at once — `resolve_artifact` is a
+separate function and is left alone, so artifact templates never see the token —
+and it has a deliberate bonus: a project's own `file:` or `blob:` prompt may use
+`{{tcw:documentation}}` too, since the substitution runs over the composed text.
+That is what makes this "the same prompt generation" rather than a built-in-only
+special case.
+
+The token resolves to:
 
 - **Entries configured** → a rendered block: one Markdown table row per entry
   (`| path | trigger | what to write |`), preceded by the one-line instruction
@@ -135,8 +167,23 @@ That is the single place every built-in prompt passes through, and it already ha
   resolved bytes are unchanged for every project that has not adopted this.
 
 Substituting at resolve time rather than in `load_builtins()` is forced:
-`load_builtins()` (`tcw/work/resolve.py:47`) takes no policy and is cached per
-process, so a project's entries cannot reach it.
+`load_builtins()` (`tcw/work/resolve.py:47`) takes no node context and is loaded
+once per process, so a project's entries cannot reach it.
+
+**Rendering is a list, not a table** — deliberately. A Markdown table row is
+delimited by `|`, and a `description` containing one would break the table
+silently. A list has no such delimiter:
+
+```
+- `README.md` — **[Public-API]**
+  Public-facing overview and `tcw` CLI usage. Update when the public CLI
+  surface or user-facing behavior changes.
+```
+
+`path` and `trigger` are validated to contain no newline; `description` has its
+internal newlines collapsed to single spaces at render time, so a YAML block
+scalar cannot break out of its bullet. No escaping rule is needed because no
+delimiter is load-bearing.
 
 **The 50-line prompt ceiling is unaffected.**
 `tests/test_shipped_prompts.py:50` asserts
@@ -165,7 +212,14 @@ docs/changelogs/upcoming.md    [Any-Code-Change]  Developer changelog; …
 
 `--json` emits `{"schema": 1, "source": "config" | "agent-guide", "entries": [...]}`.
 `source` is what lets the skill branch without guessing: `agent-guide` means the
-node configured nothing and the skill should read `CLAUDE.md` as it does today.
+node configured nothing and the skill should do exactly what it does today.
+
+**The fallback introduces no new ambiguity, because its text is byte-identical to
+today's.** The built-in prompts name "the project's agent guide (`AGENTS.md` or
+`CLAUDE.md`)" and the skill names `CLAUDE.md`; those two already disagree, and
+this spec neither widens nor narrows it. Recorded as a pre-existing inconsistency
+in `## Notes` rather than fixed here, because fixing it means deciding a
+precedence rule that has nothing to do with this change.
 Entries go to stdout alone; errors to stderr; nothing on stdout on failure —
 the same contract `tcw work stage` established.
 
@@ -179,6 +233,21 @@ where the entries come from, not how they are judged.
 
 `references/setup.md` gains the config form as the recommended shape, keeping the
 Markdown section documented as the fallback.
+
+**Four more places read the section and would contradict the change if left.**
+Found by review, not by the first pass:
+
+| Location | What it says |
+| -------- | ------------ |
+| `skills/documentation-sync/SKILL.md:62` | "For each file listed in the Documentation Sync section" — the evaluation loop's own input. |
+| `skills/documentation-sync/SKILL.md:101` | Defines "changelog files" as those "listed in the project's `## Documentation Sync` section". |
+| `skills/documentation-sync/references/release-notes-and-changelogs.md:5,7` | Gates the whole opt-in structure on what "the project's `## Documentation Sync` section explicitly lists". |
+| `docs/lifecycle/implementation.md:20-23` | This repo's own implement-stage prompt, which currently explains that the section *cannot* move. |
+
+All four are rewritten to read "the project's documentation entries
+(`tcw work docs`)", keeping the Markdown section named only as the fallback.
+`docs/lifecycle/implementation.md` loses its explanation entirely, since the
+constraint it explains is what this item removes.
 
 ### This repository
 
@@ -219,8 +288,17 @@ requires no capability of the store.
    and reports `"source": "config"`.
 6. On an unconfigured node, `tcw work docs --json` reports
    `"source": "agent-guide"` with `"entries": []`, and exits 0.
-7. `tcw work docs` writes nothing and changes no item state — asserted by a clean
-   `git status` and an unchanged store after running it.
+7. `tcw work docs` writes nothing. Asserted by hashing every path under the work
+   store and the node config before and after the call and comparing the two
+   manifests — not by `git status`, which is meaningless in a tree that is
+   intentionally dirty during implementation and would not catch a write
+   followed by a restore.
+7a. `{{tcw:documentation}}` placed in an **artifact** template is left verbatim
+   by `tcw work scaffold`, whether the template is bound explicitly or falls
+   back to the built-in. Substitution is a prompt-role behavior and the two
+   scaffold paths must agree.
+7b. `{{tcw:documentation}}` in a project's own `file:` or `blob:` **prompt**
+   binding is substituted, same as in the built-in.
 8. `tests/test_shipped_prompts.py` passes unchanged: both edited prompts stay
    within the 50-line ceiling.
 9. `tests/fixtures/lifecycle_baseline/` passes **without re-capture**.
@@ -233,6 +311,11 @@ requires no capability of the store.
 11. This repository's `AGENTS.md` has no `## Documentation Sync` section, its
     `tcw-config.yaml` carries the four entries, and `tcw work stage implement`
     on a real item prints all four.
+11a. No file in the repository instructs a reader to find documentation entries
+    in a Markdown section except as the named fallback — specifically
+    `skills/documentation-sync/SKILL.md:62,101`,
+    `skills/documentation-sync/references/release-notes-and-changelogs.md:5,7`,
+    and `docs/lifecycle/implementation.md`.
 12. `docs/migration-guide-0.21.X-to-1.0.0.md` no longer advises readers to work
     around the limitation, and instead documents the configuration form.
 13. `python -m pytest -q` reports ≥ 1592 passed and 0 failed — the baseline
@@ -255,6 +338,10 @@ requires no capability of the store.
   could disagree. Config wins and the skill never reads the section when
   `source` is `config`, but nothing warns about the stale section. Accepted;
   a warning is a follow-up, not a blocker.
+- **`WorkStore` grows a method, which every future adapter must implement.**
+  That is the cost of putting it on the interface rather than in the FS adapter,
+  and it is the right cost: a node's documentation entries are node
+  configuration, and an adapter that cannot report them cannot serve the gate.
 - **Folding into v1.0.0 rewrites a tag.** Safe only because the tag is local —
   `skills/documentation-sync/scripts/unpushed-version.sh` exists to prove that
   (exit 0 = still local), and it is run before the fold rather than assumed.
@@ -283,3 +370,16 @@ requires no capability of the store.
   fixed above: the open-trigger-set statement is at `SKILL.md:56`, not `:54`
   (`:54` is the partition rule), and `unpushed-version.sh` ships inside the skill
   at `skills/documentation-sync/scripts/`, not in the repo's top-level `scripts/`.
+- **Reviewed by `codex` before planning; six defects, all verified against the
+  tree and all accepted.** They changed the design rather than decorating it:
+  the substitution site moved from `_resolve_one` to `resolve_prompts` (it would
+  have rewritten artifact templates, and inconsistently, since
+  `tcw work scaffold`'s implicit fallback bypasses `_resolve_one`); the
+  `LifecyclePolicy`-carries-the-entries assumption was wrong and the plumbing is
+  now specified through the `WorkStore` interface; four more documents that read
+  the Markdown section were found; the Markdown table became a list because a
+  `|` in a description would have broken it; the fallback's determinism is now
+  stated; and criterion 7 stopped resting on `git status`.
+- `bllm-review` was again unavailable — the invocation from the previous item was
+  still running after an hour having produced nothing, so no second review was
+  attempted. This spec, like the last, has had one reviewer rather than two.
