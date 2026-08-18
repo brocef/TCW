@@ -35,112 +35,45 @@ Any binding may carry `when: {tags: […], not_tags: […], type: …}` — keys
 list meaning any-of. Three keys by decision; anything harder is a `generate:`
 script.
 
-```yaml
-work:
-    lifecycle:
-        stages:
-            spec:
-                pre: [{ command: "./bin/ready.sh" }]
-                prompt:
-                    - builtin: true
-                    - generate: ./bin/spec-prompt.py
-                      when: { tags: [bug] }
-        artifacts:
-            spec: [{ builtin: true }]
-```
+A bare list under a stage id still means `prompt:`. It is the one place
+`command:` is accepted in a prompt position — the explicit `prompt:` key rejects
+it and points at `generate:` — because the legacy shape predates the distinction
+and cannot be renamed.
 
-**A bare list under a stage id is still valid** and still means `prompt:`. It is
-the one place `command:` is accepted in a prompt position — the explicit
-`prompt:` key rejects it and points at `generate:` — because the legacy shape
-predates the distinction and cannot be renamed.
+## The three verbs
 
-## Finding what is bound
-
-```
-tcw work lifecycle [work-ref]        # every id, its contract, and its bindings
-tcw work lifecycle --json            # the same, machine-readable
-```
-
-**This command is the contract.** It reads identically under Claude and Codex,
+`tcw work lifecycle [work-ref]` reports every id, its contract, and its bindings.
+**This command is the contract**: it reads identically under Claude and Codex,
 runs nothing, and changes nothing. Consult it before performing a stage.
+`--stage <id> --directive` is sugar for Claude's dynamic
+context injection and **never the path**: Codex receives no injection, so nothing
+may depend on it.
 
-`tcw work lifecycle --stage <id> --directive` emits one ready-to-follow
-instruction line, or nothing when unbound. It exists for Claude's dynamic context
-injection and is **sugar over the command above, never the path** — Codex
-receives no injection, so nothing may depend on it.
+`tcw work stage <id> <slug>` runs the stage's `pre` checks and prints the
+resolved prompt on stdout. **It writes nothing** — no artifact, no draft, no
+status change — so it is safe to run purely to find out what to do.
 
-`--phase pre|prompt` narrows a stage and `--phase pre|post` narrows a transition.
-A stage has no `post`: its exit checks belong on the next stage's `pre`, and
-asking for one is an error rather than empty output.
+`tcw work scaffold <artifact> <slug>` writes `<artifact>.draft.md` from that
+artifact's template. **A draft is not the artifact.** `spec.draft.md` is a file
+to type into; the stage still has to write `spec.md`, and until it does, the
+board, `--json`, and `tcw serve` all report the artifact absent. Do not treat a
+draft as the document, and do not rename one into place without reading it.
 
-## Reading a stage's instructions
-
-```
-tcw work stage <id> <slug>             # checks, then the resolved prompt on stdout
-tcw work stage <id> <slug> --no-exec   # what would run, running none of it
-```
-
-It refuses a stage illegal for the item's status **before any hook runs**, runs
-the stage's `pre` checks, then prints the resolved prompt. stdout is the prompt
-and nothing else; checks and errors go to stderr; any failure leaves stdout
-empty. **It writes nothing** — no artifact, no draft, no status change — so it is
-safe to run purely to find out what to do.
-
-`--no-exec` skips the checks and refuses to read `file:` bindings or run
-`generate:` ones, printing the plan to stderr instead. It shows the *shape* of an
-unfamiliar lifecycle rather than its full text.
-
-`tcw work stage inbox` is rejected: `inbox` runs before an item exists.
-
-## Reaching an `artifacts:` template
-
-```
-tcw work scaffold <artifact> <slug>            # write <artifact>.draft.md from its template
-tcw work scaffold <artifact> <slug> --force    # replace a draft that is already there
-```
-
-This is the verb an `artifacts:` binding exists for — the first matching entry
-wins, and TCW's own built-in is the fallback when nothing is bound. The locator
-goes to stdout alone.
-
-**A draft is not the artifact.** `spec.draft.md` is a file to type into; the
-stage still has to write `spec.md`, and until it does, the board, `--json`, and
-`tcw serve` all report the artifact absent. Do not treat a draft as the document,
-and do not rename one into place without reading it.
-
-Two refusals, both protecting what is already there: the real artifact being
-present, and a draft that has content (`--force` replaces that one). An empty
-draft is regenerated with no flag, which is why `scaffold intake` — whose
-built-in template is empty — behaves like every other artifact.
-
-Nothing is written until the whole template resolves, so a failed `generate:`
-leaves no draft and a retry after fixing it is clean. Generators therefore re-run
-on every retry and under `--force`; keep them side-effect-free.
+Their flags, and what each one refuses and why, are in `--help` and in the
+refusal message itself. Read those there rather than here.
 
 ## What runs, and what does not
 
-TCW runs `command:` bindings around transitions:
-
-- `pre` runs **before anything is written**. A non-zero exit aborts the
-  transition; the item does not move and no field is set. `[gated]`
-- `post` runs after. A failure **never rolls back** — the move and its commit
-  have happened. TCW reports it and exits non-zero, and the item stays where it
-  went. `[auto]`
-
-Commands run through the shell, from the node root, with `TCW_SLUG`,
-`TCW_STATUS`, `TCW_TRANSITION`, and `TCW_NODE_ROOT` in the environment, under a
-300-second default timeout (`work.lifecycle.timeout`).
+A transition's `pre` checks are `[gated]` — a non-zero exit aborts the move
+before anything is written. Its `post` checks are `[auto]`: a failure there never
+rolls back.
 
 A check carrying a `when:` runs only when it matches — and a check that cannot be
 evaluated, because no item was resolved, does **not** run.
 
-`generate:` hooks additionally receive `{"item": …, "hook": …}` on stdin — `item`
-is the document `tcw work show --json` prints, with its `body` capped at 64 KiB
-and `hook.body_truncated` saying so — plus `TCW_HOOK_ROLE`, `TCW_HOOK_KIND`,
-`TCW_HOOK_ID`, and `TCW_HOOK_PHASE`. Output is capped
-(`work.lifecycle.output-cap`, 64 KiB by default) and a **non-zero exit discards
-everything the script printed**, so half a prompt never reaches you. Resolution
-can re-run, so a generator must be side-effect-free.
+The `item` a `generate:` hook reads on stdin carries its `body` capped at 64 KiB
+— a separate limit from the output cap — and `hook.body_truncated` says when it
+was cut.
 
 **`skill:` bindings are named, never executed** — TCW cannot invoke a skill; you
 can. Invoking it is `[judgment]`: nothing enforces it.
