@@ -11,3 +11,30 @@ work:
         - tech-debt
         - web
         - work
+    lifecycle:
+        stages:
+            spec:
+                prompt:
+                    - builtin: true
+                    - file: docs/lifecycle/abstraction.md
+                    - file: docs/lifecycle/harness.md
+            plan:
+                pre:
+                    - command: "python scripts/require_artifact.py spec"
+                prompt:
+                    - builtin: true
+                    - file: docs/lifecycle/abstraction.md
+            implement:
+                prompt:
+                    - builtin: true
+                    - file: docs/lifecycle/implementation.md
+                    - file: docs/lifecycle/harness.md
+        artifacts:
+            spec:
+                - file: docs/lifecycle/templates/spec-bug.md
+                  when: { tags: [bug] }
+                - file: docs/lifecycle/templates/spec.md
+        transitions:
+            complete:
+                pre:
+                    - command: "tcw validate"
