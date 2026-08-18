@@ -35,7 +35,7 @@ from tcw.store.base import (
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
-    Binding, parse_lifecycle_policy,
+    Binding, DocEntry, parse_documentation_entries, parse_lifecycle_policy,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -2653,6 +2653,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
         policy, _problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
         return policy
 
+    def documentation(self) -> list[DocEntry]:
+        """Configured documentation entries, problems discarded — same contract
+        as `lifecycle_policy`: a malformed key must not break `tcw work list`."""
+        entries, _problems = parse_documentation_entries(
+            self._work_config().get("documentation"))
+        return entries
+
+    def documentation_problems(self) -> list[str]:
+        """Documentation-entry problems, prefixed with the file they came from —
+        for `check`. Mirrors `lifecycle_problems`, and shares its parser, so the
+        two surfaces can never disagree about what is legal."""
+        _entries, problems = parse_documentation_entries(
+            self._work_config().get("documentation"))
+        return [f"{SENTINEL}: {p}" for p in problems]
+
     def lifecycle_problems(self) -> list[str]:
         """Policy problems, prefixed with the file they came from — for `check`."""
         policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
@@ -2746,6 +2761,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         problems: list[str] = []
         if identifier is None:                         # node-wide config, not per-item
             problems.extend(self.lifecycle_problems())
+            problems.extend(self.documentation_problems())
         if identifier is not None:
             item = self.get(identifier)
             if item is None:

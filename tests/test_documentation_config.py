@@ -132,3 +132,67 @@ def test_a_multiline_description_is_legal():
 def test_an_empty_list_is_legal():
     entries, problems = parse_documentation_entries([])
     assert entries == [] and problems == []
+
+
+# -- the `tcw validate` boundary (acceptance criteria 1 and 2) --------------
+
+import subprocess
+from pathlib import Path
+
+import yaml
+
+
+def _node(tmp_path: Path, documentation) -> Path:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    for k, v in (("user.email", "t@t"), ("user.name", "t")):
+        subprocess.run(["git", "-C", str(tmp_path), "config", k, v], check=True)
+    subprocess.run(["tcw", "init", "--id", "docs-node", "work"], cwd=tmp_path,
+                   capture_output=True, check=True, stdin=subprocess.DEVNULL)
+    cfg = tmp_path / "tcw-config.yaml"
+    conf = yaml.safe_load(cfg.read_text()) or {}
+    if documentation is not None:
+        conf.setdefault("work", {})["documentation"] = documentation
+    cfg.write_text(yaml.safe_dump(conf, sort_keys=False))
+    return tmp_path
+
+
+def _validate(root: Path):
+    return subprocess.run(["tcw", "validate"], cwd=root, capture_output=True,
+                          text=True, stdin=subprocess.DEVNULL)
+
+
+def test_validate_reports_a_malformed_entry(tmp_path):
+    root = _node(tmp_path, [{"path": "", "trigger": "Public API",
+                             "description": "d"}])
+    r = _validate(root)
+    assert r.returncode != 0
+    assert "work.documentation entry 0" in r.stdout + r.stderr
+
+
+def test_validate_accepts_a_well_formed_block(tmp_path):
+    root = _node(tmp_path, GOOD)
+    r = _validate(root)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_validate_accepts_a_nonexistent_path_and_a_custom_trigger(tmp_path):
+    """Acceptance criterion 2, at the CLI rather than in the parser."""
+    root = _node(tmp_path, [{"path": "docs/not-written-yet.md",
+                             "trigger": "Skill-Driven-Component",
+                             "description": "Planned."}])
+    r = _validate(root)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_an_unconfigured_node_still_validates(tmp_path):
+    r = _validate(_node(tmp_path, None))
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_malformed_block_does_not_break_the_board(tmp_path):
+    """The adapter discards problems: `tcw work list` must keep working even
+    when the configuration is wrong, which is what 'advisory' buys."""
+    root = _node(tmp_path, "not-a-list")
+    r = subprocess.run(["tcw", "work", "list"], cwd=root, capture_output=True,
+                       text=True, stdin=subprocess.DEVNULL)
+    assert r.returncode == 0, r.stderr

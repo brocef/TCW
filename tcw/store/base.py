@@ -1488,6 +1488,17 @@ class WorkStore(ABC):
     #    realize a registered set + membership check) --
 
     @abstractmethod
+    def documentation(self) -> list["DocEntry"]:
+        """The node's configured documentation entries; empty when unset.
+
+        Node configuration, like `lifecycle_policy` — an adapter reads it from
+        wherever that node keeps its settings and returns the parsed entries.
+        Nothing here touches the work store, and an adapter that has no
+        configuration surface returns `[]`, which is the behavior every project
+        had before entries existed.
+        """
+
+    @abstractmethod
     def lifecycle_policy(self) -> LifecyclePolicy:
         """The node's configured stage/transition bindings; empty when unset.
 
