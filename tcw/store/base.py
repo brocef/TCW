@@ -18,6 +18,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from typing import Any
 
 
@@ -614,6 +615,20 @@ class TransitionBindings:
 
 
 @dataclass
+@dataclass(frozen=True)
+class DocEntry:
+    """One `work.documentation` entry: a document, when it must be updated, and
+    what to write in it.
+
+    Node configuration, not store content — a tracker-backed node has these
+    exactly as a filesystem node does, the same way `work.tags` and
+    `work.lifecycle` already do.
+    """
+    path: str
+    trigger: str
+    description: str
+
+
 class StageBindings:
     """A stage's checks and prompts.
 
@@ -1014,6 +1029,84 @@ def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":
         sb.prompt = _parse_binding_list(raw["prompt"], f"{where}.prompt", problems,
                                         PROMPT_KINDS, "prompt")
     return sb
+
+
+def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
+    """Parse a `work.documentation` list into entries plus a problem list.
+
+    Mirrors `parse_lifecycle_policy`: pure, touches no filesystem, never raises,
+    and returns problems advisorily so `tcw validate` can report them while the
+    adapter discards them. A typo in one entry must not blank a project's whole
+    documentation gate, so entries that parse are kept alongside the problems.
+
+    **Shape only, deliberately.** The trigger vocabulary is explicitly open —
+    `skills/documentation-sync/SKILL.md` says "Treat any such project-defined
+    trigger as authoritative for that project" — so a trigger is checked for
+    whitespace (which catches `Public API` and a dropped bracket) and nothing
+    else. `path` is likewise **not** required to exist: an entry routinely names
+    a file the project intends to create, and this repository's own entry is the
+    pattern `skills/<component>/SKILL.md`, which resolves to no file at all.
+    """
+    entries: list[DocEntry] = []
+    problems: list[str] = []
+    if raw is None:
+        return entries, problems
+    if not isinstance(raw, list):
+        return entries, [f"work.documentation: expected a list, "
+                         f"got {type(raw).__name__}"]
+
+    seen: dict[str, int] = {}
+    for index, item in enumerate(raw):
+        where = f"work.documentation entry {index}"
+        if not isinstance(item, dict):
+            problems.append(f"{where}: expected a mapping, "
+                            f"got {type(item).__name__}")
+            continue
+
+        unknown = set(item) - {"path", "trigger", "description"}
+        if unknown:
+            problems.append(f"{where}: unknown key(s) {', '.join(sorted(unknown))}; "
+                            f"expected 'path', 'trigger', 'description'")
+
+        values: dict[str, str] = {}
+        for key in ("path", "trigger", "description"):
+            value = item.get(key)
+            if not isinstance(value, str) or not value.strip():
+                problems.append(f"{where}: '{key}' is required and must be a "
+                                f"non-empty string")
+            else:
+                values[key] = value.strip()
+        if len(values) != 3:
+            continue
+
+        path, trigger = values["path"], values["trigger"]
+        if "\n" in path:
+            problems.append(f"{where}: 'path' must not contain a newline")
+            continue
+        if "\n" in trigger:
+            problems.append(f"{where}: 'trigger' must not contain a newline")
+            continue
+        if PurePosixPath(path).is_absolute() or path.startswith("/"):
+            problems.append(f"{where}: 'path' must be relative to the node, "
+                            f"got an absolute path")
+            continue
+        if any(part == ".." for part in PurePosixPath(path).parts):
+            problems.append(f"{where}: 'path' must not escape the node")
+            continue
+        if any(character.isspace() for character in trigger):
+            problems.append(f"{where}: 'trigger' must not contain whitespace "
+                            f"(got {trigger!r}) — a trigger is one bracketed name")
+            continue
+
+        if path in seen:
+            problems.append(f"{where}: duplicate 'path' {path!r}, already "
+                            f"declared by entry {seen[path]}")
+            continue
+        seen[path] = index
+        entries.append(DocEntry(path=path, trigger=trigger,
+                                description=values["description"]))
+
+    return entries, problems
 
 
 def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:

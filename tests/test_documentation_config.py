@@ -1,0 +1,134 @@
+"""`work.documentation`: the pure parser, and what `tcw validate` reports.
+
+Table-driven, because the value of a shape-validating parser is entirely in
+which shapes it rejects and which it lets through — and the second list matters
+as much as the first. Entries naming a file that does not exist yet, and
+project-defined triggers outside the base vocabulary, are both **legal** and are
+asserted here so a later tightening has to argue with a red test.
+"""
+
+import pytest
+
+from tcw.store.base import DocEntry, parse_documentation_entries
+
+GOOD = [
+    {"path": "README.md", "trigger": "Public-API", "description": "Overview."},
+    {"path": "docs/changelogs/upcoming.md", "trigger": "Any-Code-Change",
+     "description": "Developer changelog."},
+]
+
+
+def _problems(raw):
+    return parse_documentation_entries(raw)[1]
+
+
+def _entries(raw):
+    return parse_documentation_entries(raw)[0]
+
+
+# -- the happy path ---------------------------------------------------------
+
+def test_absent_configuration_is_not_a_problem():
+    entries, problems = parse_documentation_entries(None)
+    assert entries == [] and problems == []
+
+
+def test_well_formed_entries_parse_in_order():
+    entries, problems = parse_documentation_entries(GOOD)
+    assert problems == []
+    assert [e.path for e in entries] == ["README.md", "docs/changelogs/upcoming.md"]
+    assert entries[0] == DocEntry(path="README.md", trigger="Public-API",
+                                  description="Overview.")
+
+
+def test_entries_are_frozen():
+    with pytest.raises(Exception):
+        _entries(GOOD)[0].path = "elsewhere.md"
+
+
+# -- what must be reported (acceptance criterion 1) -------------------------
+
+@pytest.mark.parametrize("raw, needle", [
+    ({"path": "x"}, "expected a list"),
+    ("README.md", "expected a list"),
+    ([["not", "a", "mapping"]], "entry 0"),
+    (["README.md"], "entry 0"),
+    ([{"trigger": "Public-API", "description": "d"}], "path"),
+    ([{"path": "", "trigger": "Public-API", "description": "d"}], "path"),
+    ([{"path": "   ", "trigger": "Public-API", "description": "d"}], "path"),
+    ([{"path": "a.md", "description": "d"}], "trigger"),
+    ([{"path": "a.md", "trigger": "", "description": "d"}], "trigger"),
+    ([{"path": "a.md", "trigger": "Public-API"}], "description"),
+    ([{"path": "a.md", "trigger": "Public-API", "description": "  "}], "description"),
+    ([{"path": "/etc/passwd", "trigger": "T", "description": "d"}], "absolute"),
+    ([{"path": "../outside.md", "trigger": "T", "description": "d"}], "escape"),
+    ([{"path": "a.md", "trigger": "Public API", "description": "d"}], "whitespace"),
+    ([{"path": "a\nb.md", "trigger": "T", "description": "d"}], "newline"),
+    ([{"path": "a.md", "trigger": "T\nU", "description": "d"}], "newline"),
+])
+def test_malformed_configuration_is_reported(raw, needle):
+    problems = _problems(raw)
+    assert problems, f"expected a problem for {raw!r}"
+    assert any(needle in p for p in problems), (needle, problems)
+
+
+def test_a_duplicate_path_is_reported():
+    problems = _problems(GOOD + [dict(GOOD[0])])
+    assert any("duplicate" in p for p in problems)
+
+
+def test_every_problem_names_the_entry_index():
+    problems = _problems([GOOD[0], {"path": "", "trigger": "", "description": ""}])
+    assert problems and all("entry 1" in p for p in problems)
+
+
+def test_the_parser_never_raises():
+    for raw in [0, 1.5, True, b"bytes", [None], [{"path": 3, "trigger": 4,
+                                                  "description": 5}]]:
+        parse_documentation_entries(raw)          # must not raise
+
+
+def test_a_malformed_list_still_yields_the_entries_it_could_read():
+    """Advisory, like `parse_lifecycle_policy`: one bad entry must not blank the
+    rest, or a typo would silently empty a project's documentation gate."""
+    entries, problems = parse_documentation_entries([GOOD[0], {"path": ""}])
+    assert [e.path for e in entries] == ["README.md"]
+    assert problems
+
+
+# -- what must NOT be reported (acceptance criterion 2) ---------------------
+
+def test_a_path_that_does_not_exist_is_legal():
+    """The parser touches no filesystem, and an entry naming a file the project
+    intends to create is correct — `references/setup.md` exists to create them."""
+    assert _problems([{"path": "docs/not-written-yet.md", "trigger": "Public-API",
+                       "description": "Planned."}]) == []
+
+
+def test_a_project_defined_trigger_is_legal():
+    """`skills/documentation-sync/SKILL.md` declares the vocabulary open:
+    'Treat any such project-defined trigger as authoritative for that project.'"""
+    assert _problems([{"path": "a.md", "trigger": "Skill-Driven-Component",
+                       "description": "d"}]) == []
+    assert _problems([{"path": "b.md", "trigger": "Wildly-Bespoke-Trigger",
+                       "description": "d"}]) == []
+
+
+def test_a_path_placeholder_is_legal():
+    """This repository's own entry is `skills/<component>/SKILL.md` — a pattern,
+    not a resolvable path. Rejecting it would reject the node writing the rule."""
+    assert _problems([{"path": "skills/<component>/SKILL.md",
+                       "trigger": "Skill-Driven-Component",
+                       "description": "d"}]) == []
+
+
+def test_a_multiline_description_is_legal():
+    """YAML block scalars are the natural way to write these, and rendering
+    collapses their newlines rather than the parser refusing them."""
+    assert _problems([{"path": "a.md", "trigger": "T",
+                       "description": "one\ntwo\nthree"}]) == []
+
+
+def test_an_empty_list_is_legal():
+    entries, problems = parse_documentation_entries([])
+    assert entries == [] and problems == []
