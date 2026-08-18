@@ -1,3 +1,6 @@
 id: cap-f42255
 name: Run a lifecycle stage
 Status: Supported
+Subject:
+- work-item/lifecycle-stage
+Feature: configurable-work-lifecycle
