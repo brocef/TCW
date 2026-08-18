@@ -1,0 +1,10 @@
+slug: 2026-08-18-reconcile-read-artifact-with-the-canonical-presence-rule
+title: Reconcile read_artifact with the canonical presence rule
+created: '2026-08-18'
+resolution: null
+priority: 35
+effort: low
+complexity: low
+tags:
+- cli
+- bug
