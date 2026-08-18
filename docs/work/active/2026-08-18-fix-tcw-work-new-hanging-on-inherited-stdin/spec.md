@@ -63,8 +63,11 @@ four callers still able to strand a script.
 
 `taxonomy add` is the one partial exception: it reads
 `args.description or _stdin_body()` (`tcw/taxonomy/cli.py:78`), and Python's
-`or` short-circuits, so `--description` given on the command line means stdin is
-never touched. It hangs only when the description is omitted. The other four
+`or` short-circuits, so a `description` given on the command line means stdin is
+never touched. It hangs only when the description is omitted. Note `description` is a
+**positional** argument (`tcw taxonomy add <name> [description]`), not a flag —
+the first draft of this spec and its tests both said `--description`, and the
+test failed against the real parser. The other four
 call `_stdin_body()` unconditionally.
 
 The sweep also confirms what is **not** there: `grep -rn "\binput(\|getpass\|
@@ -336,7 +339,7 @@ Arms below mean the three from the Problem section, re-run as tests.
     timeout.
 11. **Nothing reaches stdout on the warning path**, so `$(tcw work new …)`
     captures only the slug.
-12. **`taxonomy add --description "x"` never reads stdin at all**, and so cannot
+12. **`taxonomy add <name> "<description>"` never reads stdin at all**, and so cannot
     expire or warn even with stdin held open — the short-circuit is preserved.
 13. **A stalled mid-stream producer fails rather than truncating.**
     `{ printf first; sleep <2×timeout>; printf second; } | tcw work new "<t>"`

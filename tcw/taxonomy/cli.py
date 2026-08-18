@@ -3,6 +3,7 @@
 import argparse
 import sys
 
+from tcw.stdin import read_piped_stdin
 from tcw.store.base import AmbiguousRef, Term
 from tcw.store.fs import FsTaxonomyStore, find_node
 
@@ -23,15 +24,6 @@ def _store() -> FsTaxonomyStore | None:
               file=sys.stderr)
         return None
     return FsTaxonomyStore.open(node)
-
-
-def _stdin_body() -> str:
-    if sys.stdin.isatty():
-        return ""
-    try:
-        return sys.stdin.read()
-    except (OSError, ValueError):  # e.g. stdin not readable (captured under pytest)
-        return ""
 
 
 def _print_term(term: Term) -> None:
@@ -75,7 +67,7 @@ def _add(args: argparse.Namespace) -> int:
         return 1
     try:
         term = st.add(args.name, slug=args.slug, parent=args.parent,
-                      description=args.description or _stdin_body(),
+                      description=args.description or read_piped_stdin(),
                       kind=args.kind, vocabulary=args.vocab)
     except ValueError as e:
         print(f"tcw taxonomy add: {e}", file=sys.stderr)

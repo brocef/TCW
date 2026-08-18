@@ -20,6 +20,7 @@ from tcw.store.fs import (
     merge_worktree, parent_node, qualified_work_ref_problem, registered_project_id,
     remove_worktree, resolve_qualified_work_ref,
 )
+from tcw.stdin import read_piped_stdin
 from tcw.store.project import worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
@@ -91,15 +92,6 @@ def _resolve(slug: str, label: str) -> tuple[FsWorkStore, str] | None:
         print(f"tcw work {label}: {qualified_work_ref_problem(node, slug)}", file=sys.stderr)
         return None
     return resolved
-
-
-def _stdin_body() -> str:
-    if sys.stdin.isatty():
-        return ""
-    try:
-        return sys.stdin.read()
-    except (OSError, ValueError):
-        return ""
 
 
 def _split(val: str | None) -> list[str]:
@@ -184,7 +176,7 @@ def _delegate(args: argparse.Namespace) -> int:
         print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
-        doc = delegate(node, args.child, args.title, body=_stdin_body(),
+        doc = delegate(node, args.child, args.title, body=read_piped_stdin(),
                        initiative=args.initiative)
     except _ERRORS as e:
         print(f"tcw work delegate: {e}", file=sys.stderr)
@@ -199,7 +191,8 @@ def _escalate(args: argparse.Namespace) -> int:
         print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
-        doc = escalate(node, args.title, body=_stdin_body(), initiative=args.initiative)
+        doc = escalate(node, args.title, body=read_piped_stdin(),
+                       initiative=args.initiative)
     except _ERRORS as e:
         print(f"tcw work escalate: {e}", file=sys.stderr)
         return 1
@@ -227,7 +220,7 @@ def _new(args: argparse.Namespace) -> int:
     try:
         detail = st.create_work(
             args.title,
-            intake=_stdin_body(),      # piped text is raw input, not a request
+            intake=read_piped_stdin(),   # piped text is raw input, not a request
             priority=args.priority,
             effort=args.effort or "",
             complexity=args.complexity or "",

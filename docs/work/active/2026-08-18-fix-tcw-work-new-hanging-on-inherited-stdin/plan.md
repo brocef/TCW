@@ -67,7 +67,8 @@ Delete `_stdin_body` from all three modules (`tcw/work/cli.py:96`,
 callers at `read_piped_stdin` — `work new` (`:230`), `work delegate` (`:187`),
 `work escalate` (`:202`), `taxonomy add` (`:78`), `capabilities add` (`:99`).
 
-`taxonomy add` keeps `args.description or read_piped_stdin()` exactly as it is:
+`taxonomy add` keeps `args.description or read_piped_stdin()` exactly as it is
+(`description` is a positional argument, not a flag):
 the short-circuit is a feature, and preserving it is acceptance criterion 12.
 
 `tests/test_stdin_cli.py` runs the real CLI as a subprocess against a real

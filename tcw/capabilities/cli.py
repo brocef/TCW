@@ -3,6 +3,7 @@
 import argparse
 import sys
 
+from tcw.stdin import read_piped_stdin
 from tcw.store.base import Capability, RefError
 from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
@@ -29,15 +30,6 @@ def _store() -> FsCapabilitiesStore | None:
 def _taxonomy_for(node):
     """The node's taxonomy store, if it has one (for cross-component Subject check)."""
     return FsTaxonomyStore.open(node) if (node / "docs" / "taxonomy").is_dir() else None
-
-
-def _stdin_body() -> str:
-    if sys.stdin.isatty():
-        return ""
-    try:
-        return sys.stdin.read()
-    except (OSError, ValueError):
-        return ""
 
 
 def _fmt(v) -> str:
@@ -96,7 +88,7 @@ def _add(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     try:
-        cap = st.add(args.path, name=args.name, status=args.status, body=_stdin_body())
+        cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin())
     except (ValueError, RefError) as e:
         print(f"tcw capabilities add: {e}", file=sys.stderr)
         return 1
