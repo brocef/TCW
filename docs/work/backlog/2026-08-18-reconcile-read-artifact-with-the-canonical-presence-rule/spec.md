@@ -37,7 +37,7 @@ def _present(p: Path) -> bool:
 
 The request asked for a repo-wide sweep of `is_file()` on artifact paths before
 deciding. It does not find one stray call — it finds that **every read/write/
-delete/revision surface uses `is_file()`, and only the three lifecycle-presence
+delete/revision surface uses `is_file()`, and only the four lifecycle-presence
 surfaces use `_present`**:
 
 | Rule | Surfaces |
@@ -64,8 +64,8 @@ lifecycle judgments rather than resource lookups:
   refusing to overwrite.
 
 Both would be *wrong* with `is_file()`, exactly as the twelve would be wrong with
-`_present`. The split is not accidental; it is applied correctly at six separate
-decision points by two different authors.
+`_present`. The split is not accidental; it is applied correctly at all sixteen
+decision points.
 
 ### Why they must differ — the deciding evidence
 
@@ -104,7 +104,7 @@ would read it:
 - `WorkStore.read_artifact` (`tcw/store/base.py:1492-1497`) — "Returns `None`
   when the artifact has not been written yet." Ambiguous on exactly the case in
   question: a blank file has been written.
-- `_present`'s docstring calls itself "**the one** presence rule" while eleven
+- `_present`'s docstring calls itself "**the one** presence rule" while twelve
   other surfaces use a different one — actively misleading to the next reader,
   which is how this item got filed.
 
