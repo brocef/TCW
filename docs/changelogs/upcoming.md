@@ -39,3 +39,44 @@ category.
   therefore cannot move into a stage prompt.
 - **`docs/migration-guide-0.21.X-to-1.0.0.md`**, linked from
   `docs/release-notes/v1.0.0.md`.
+
+## Added
+
+- **`tcw/stdin.py`** — `read_piped_stdin()`, the single bounded reader all intake
+  paths use, plus `StdinTruncated`. The read is `select`-gated per chunk, so the
+  bound measures a *gap in the stream* rather than total duration: a producer
+  that streams for a minute is read in full, one that never starts gives up after
+  one interval. New module rather than a home in `tcw/cli.py`, which imports all
+  three component CLIs and would cycle.
+- **`TCW_STDIN_TIMEOUT`** (seconds, float; `0` disables waiting) overrides the
+  2.0s default. Unparseable or negative values fall back to the default silently —
+  a malformed environment variable must not break item creation.
+
+## Fixed
+
+- **The three duplicated `_stdin_body()` copies are gone.** `tcw/work/cli.py`,
+  `tcw/taxonomy/cli.py`, and `tcw/capabilities/cli.py` each carried the same
+  `if sys.stdin.isatty(): return "" / sys.stdin.read()` body. `isatty()` false
+  means "not a terminal", not "a pipe with data", so an inherited-and-open
+  descriptor blocked forever. Five call sites now share one implementation:
+  `work new`, `work delegate`, `work escalate`, `taxonomy add`,
+  `capabilities add`. `taxonomy add`'s `args.description or …` short-circuit is
+  preserved.
+- **`StdinTruncated` subclasses `ValueError`** so all five sites report it as
+  `tcw <command>: <message>` with exit 1 through the `except` clauses they
+  already had — no new error handling was added anywhere.
+- **`tcw/work/hooks.py` runs `command:` bindings with `stdin=subprocess.DEVNULL`.**
+  Previously they inherited the caller's stdin, so a hook that read it could
+  consume the piped intake or stall to the full hook timeout — which aborts the
+  transition, not merely delays it. `tcw/work/generate.py` is unchanged: its
+  `Popen` owns `stdin=PIPE` deliberately and writes the payload.
+
+## Internal
+
+- `tests/test_stdin.py` drives real descriptors (pipe, devnull, regular file,
+  socketpair, closed fd) rather than mocks. `tests/test_stdin_cli.py` shells out,
+  because a parent holding a pipe's write end open is not reproducible in-process.
+- **Known gap, deliberately out of scope:** roughly twenty `subprocess.run` calls
+  to `git` in `tcw/store/fs.py` and `tcw/work/cli.py` still inherit stdin and
+  carry no timeout. None contacts a remote, so no credential helper can prompt;
+  the residual exposure is a user's own git hook. Tracked as a follow-up item.

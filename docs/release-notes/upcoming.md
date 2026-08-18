@@ -2,3 +2,24 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
+
+## Fixed
+
+- **`tcw work new` no longer hangs when it is run by a script.** If the program
+  that started `tcw` left its own input open — a shell wrapper, a CI job, a
+  git hook — `tcw` used to wait forever for input that was never coming, and a
+  batch of commands that each take a fraction of a second would simply never
+  finish. It now creates the work item without intake and says so. The same fix
+  covers `tcw work delegate`, `tcw work escalate`, `tcw taxonomy add`, and
+  `tcw capabilities add`.
+- **Piping text in still works exactly as before**, including when the program
+  producing that text is slow to start. What changed is that if the text starts
+  arriving and then stops partway, the command now stops with an error instead
+  of quietly keeping the half it received — a partial document saved as the
+  item's raw intake looks identical to one you wrote on purpose. Set
+  `TCW_STDIN_TIMEOUT` to a number of seconds to wait longer, or `0` to never
+  wait at all.
+- **A lifecycle hook can no longer stall a transition by reading input it was
+  never given.** Hooks now run with their input closed, so a hook that happens
+  to read from stdin finishes immediately instead of consuming the text you
+  piped in, or timing out and aborting the transition.

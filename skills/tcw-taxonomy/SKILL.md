@@ -60,7 +60,10 @@ viewers; it is not an editable taxonomy field.
   area; it does not describe behavior, acceptance criteria, support status, or
   user stories. Put those details in capabilities.
 - **Nest specializations** under a parent: `tcw taxonomy add <Name> --parent <path>`
-  (`-s` to override the leaf slug; description inline or piped on stdin).
+  (`-s` to override the leaf slug; description inline or piped on stdin). Reading
+  stdin is bounded: an inline description skips it entirely, nothing piped adds
+  the term with no description and warns, and a stream that stalls part-way is
+  refused rather than stored truncated (`TCW_STDIN_TIMEOUT` sets the bound).
 - **Keep descriptions short** — one or two sentences of what the noun means here.
 - **Run `tcw taxonomy check` after edits** — it validates inherited project IDs,
   taxonomy kinds, feature vocabulary refs, and every relatesTo / subject

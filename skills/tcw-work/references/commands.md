@@ -44,6 +44,14 @@ Neither is created empty: `tcw work new "<title>"` with nothing piped leaves an
 item with no body file at all, which is why `R` on the board means the `request`
 stage has run and `i` means raw input is waiting for it.
 
+**Piping never hangs, and never half-succeeds.** Reading stdin is bounded: with
+nothing piped the command proceeds without intake and warns on stderr, so driving
+`tcw` from a script or hook that leaves its own stdin open is safe. A stream that
+starts and then stalls is **refused** (exit 1, nothing created) rather than
+stored truncated. `TCW_STDIN_TIMEOUT` sets the bound in seconds; `0` never waits.
+The same holds for `tcw work delegate`, `tcw work escalate`, `tcw taxonomy add`,
+and `tcw capabilities add`.
+
 Writes never follow that fallback. A body edit always targets
 `initial-request.md`; on an intake-only item it **promotes** the item, creating
 the request and leaving `intake.md` byte-identical. Edit `intake.md` only as a

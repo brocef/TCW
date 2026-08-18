@@ -897,6 +897,16 @@ defect: `initial-request.md` is the `request` stage's own artifact, so it exists
 once that stage has run and not before. Presence everywhere means *exists and is
 non-empty*.
 
+**Piping is safe to automate.** `tcw work new "<title>"` reads intake from
+stdin when something is piped in, and a script, CI job, or hook that leaves its
+own input open no longer hangs waiting for an end-of-input nobody will send: the
+command creates the item without intake and says so on stderr. If text starts
+arriving and then stops, the command fails instead of storing the fragment —
+half a document kept as `intake.md` would be indistinguishable from one you meant
+to write. Set `TCW_STDIN_TIMEOUT` (seconds; `0` never waits) when a producer is
+genuinely slow. The same applies to `tcw work delegate`, `tcw work escalate`,
+`tcw taxonomy add`, and `tcw capabilities add`.
+
 Editing an item's body always writes `initial-request.md`, never the intake. On
 an item that has only intake, that edit **promotes** it — the request is created,
 the intake is left byte-for-byte as it arrived, and the tool says a promotion
