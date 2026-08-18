@@ -80,3 +80,31 @@ category.
   to `git` in `tcw/store/fs.py` and `tcw/work/cli.py` still inherit stdin and
   carry no timeout. None contacts a remote, so no credential helper can prompt;
   the residual exposure is a user's own git hook. Tracked as a follow-up item.
+
+## Changed
+
+- **The two artifact-presence rules are now stated on the `WorkStore` interface.**
+  `artifacts()` answers *did this stage produce anything?* — present means
+  non-whitespace content, so a blank artifact is **absent**. `read_artifact`
+  answers *is there a resource at this name?* — mere existence, so the same blank
+  artifact **is** returned, with a revision. Both docstrings now say so, and say
+  why they must differ: routing the read through the content rule makes it
+  contradict `write_artifact`, which still sees the file and refuses
+  `revision=""` as stale. `read_sidecar` and `read_plan_stage` are annotated with
+  the same resource rule; `FsWorkStore._present` no longer calls itself "the one
+  presence rule".
+
+  **No behavior changes** — verified structurally by comparing the ASTs of
+  `tcw/store/base.py` and `tcw/store/fs.py` before and after with docstrings
+  stripped; both are identical. This is a contract change for anyone implementing
+  the interface: an adapter reporting a blank field as present from `artifacts()`
+  was within the documented contract before and is not now.
+
+## Internal
+
+- `tests/test_work.py::test_the_two_artifact_presence_rules_disagree_on_purpose`
+  pins all four facts about a whitespace-only artifact in one test, so none can be
+  "fixed" in isolation. It was needed: with `read_artifact` mutated to use
+  `_present`, **388 tests across the work-store, scaffold, serve, projection and
+  show-json suites passed and only this one failed**.
+
