@@ -364,9 +364,19 @@ Arms below mean the three from the Problem section, re-run as tests.
     names both the byte count received and `TCW_STDIN_TIMEOUT` on stderr. This is
     the criterion that distinguishes the three outcomes; without it, criterion 1
     and criterion 3 are jointly satisfiable by a helper that silently truncates.
-14. **No fallback to a blocking read.** `grep -n "sys.stdin.read()" tcw/` returns
-    nothing after the change. A helper that falls back to a blocking read on any
-    error path reintroduces the hang, so its absence is asserted directly.
+14. **A descriptor that exists but cannot be polled is never read blockingly.**
+    With `select.select` patched to raise, `read_piped_stdin` on a real pipe
+    returns `""` rather than falling through to `stdin.read()`. Asserted by a
+    test, not by a grep.
+
+    *This criterion was rewritten during implementation, and the reason is worth
+    recording.* It originally read: `grep -n "sys.stdin.read()" tcw/` returns
+    nothing. That grep **passes on the shipped code** — but only because the
+    fallback is spelled `stdin.read()` on a local variable, not
+    `sys.stdin.read()`. It was checking a string, not the property, and would
+    have gone on "passing" no matter what the code did. A criterion two readers
+    could satisfy two different ways is exactly what the spec stage says to pin;
+    this one was pinned to the wrong thing.
 15. **The suite does not get slower.** `python -m pytest -q` reports ≥ 1592
     passed, 0 failed, and its wall-clock stays within 10% of the 284s measured on
     this tree today. Several tests spawn `tcw` as a real subprocess without
