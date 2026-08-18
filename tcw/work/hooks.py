@@ -60,7 +60,11 @@ def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
         try:
             r = subprocess.run(
                 binding.ref, shell=True, cwd=str(node_root), env=env,
-                capture_output=True, text=True, timeout=timeout)
+                capture_output=True, text=True, timeout=timeout,
+                # A hook reads only the stdin it was given, which is none: an
+                # inherited descriptor would let it consume the caller's piped
+                # intake, or stall to the full timeout and abort the transition.
+                stdin=subprocess.DEVNULL)
         except subprocess.TimeoutExpired:
             return (f"{label} hook `{binding.ref}` exceeded the {timeout}s "
                     f"timeout")

@@ -132,3 +132,38 @@ def test_a_stalled_producer_is_refused_and_creates_nothing(node):
     assert out == ""                          # nothing on stdout on failure
     listing = _run(node, ["work", "list"], stdin=subprocess.DEVNULL).stdout
     assert "arm d" not in listing             # and no item was created
+
+
+# -- lifecycle hooks must not inherit stdin either ---------------------------
+
+def test_a_command_hook_does_not_inherit_stdin(node):
+    """A hook reading stdin would otherwise consume the parent's piped intake,
+    or stall to the full hook timeout waiting on a pipe nobody will close.
+
+    Run as a subprocess with a held-open descriptor: an in-process test inherits
+    pytest's `/dev/null`, hits EOF at once, and would pass either way.
+    """
+    import yaml
+    cfg = node / "tcw-config.yaml"
+    conf = yaml.safe_load(cfg.read_text()) or {}
+    conf.setdefault("work", {})["lifecycle"] = {
+        "timeout": 5,                       # pre-fix, `cat` stalls out to here
+        "transitions": {"start": {"pre": [{"command": "cat"}]}},
+    }
+    cfg.write_text(yaml.safe_dump(conf, sort_keys=False))
+
+    slug = _run(node, ["work", "new", "hooked"],
+                stdin=subprocess.DEVNULL).stdout.strip()
+
+    r, w = _held_open_pipe()
+    try:
+        start = time.monotonic()
+        result = _run(node, ["work", "start", slug], stdin=r)
+        elapsed = time.monotonic() - start
+    finally:
+        os.close(r)
+        os.close(w)
+
+    assert result.returncode == 0, result.stderr
+    assert "timeout" not in result.stderr
+    assert elapsed < 5, "the hook waited on inherited stdin"
