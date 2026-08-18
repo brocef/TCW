@@ -2302,3 +2302,42 @@ def test_a_state_yaml_still_carrying_phase_stays_readable(tmp_path):
     # And it reaches no output surface: `show` renders the item without it.
     from tcw.work.cli import _print_item
     _print_item(st.get(item.slug))
+
+
+def test_the_two_artifact_presence_rules_disagree_on_purpose(tmp_path):
+    """A whitespace-only artifact is **absent** to the lifecycle and **present**
+    as a resource. That is intended, not a latent bug — the two answer different
+    questions, and both answers are load-bearing:
+
+    * `artifacts()` asks *did this stage produce anything?* A blank file must not
+      let a stage claim it ran.
+    * `read_artifact` asks *is there a resource at this name?* A blank file is a
+      real resource: readable, versioned, deletable. Reading one in order to see
+      that it is blank is a legitimate operation.
+
+    Making `read_artifact` use `_present` makes the paired read/write calls
+    contradict each other: the read reports absent, so a client sends
+    `revision=""` per `write_artifact`'s contract, and the write refuses it as
+    stale. Recovery then requires knowing to reach for `get_detail()` instead.
+
+    All four facts are asserted together deliberately. Split into four tests,
+    three could keep passing while someone "fixes" the fourth.
+    """
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Blank spec")
+
+    st.write_artifact(item.slug, "spec", "   \n\t\n")
+
+    absent = {a.name for a in st.artifacts(item.slug) if not a.present}
+    assert "spec" in absent                       # the lifecycle: it did not run
+
+    resource = st.read_artifact(item.slug, "spec")
+    assert resource is not None                   # the resource: it is there
+    assert resource.revision                      # and it is versioned
+
+    detail = st.get_detail(item.slug)
+    assert "spec" in detail.artifact_revisions    # the documented recovery route
+
+    with pytest.raises(StaleRevision):            # "does not exist yet" is refused
+        st.write_artifact(item.slug, "spec", "real content\n", revision="")
