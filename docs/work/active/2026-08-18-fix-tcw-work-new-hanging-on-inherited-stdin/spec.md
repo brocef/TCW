@@ -15,9 +15,11 @@ completion.
 
 The initial request stated the hang as an observation and asked for evidence.
 Three arms of `tcw work new`, per-call timeout of 15s, against a real scratch
-node created with `tcw init --id … work` (the earlier attempt measured nothing
-because it ran `tcw work init`, which does not exist, so every arm returned
-`rc=1` before reaching any stdin code):
+node created with `tcw init --id … work`. The first attempt at this measurement
+reproduced the original failure: every arm returned `rc=1` before reaching any
+stdin code, because the node was never created — `tcw work init` exists, but it
+refuses without `--id`, and the arms were measuring that refusal rather than
+stdin. Only once all three arms reached real code did the difference appear:
 
 | Arm | stdin | Result |
 | --- | ----- | ------ |
@@ -53,11 +55,21 @@ copied verbatim into two sibling CLIs, so the defect is three defects:
 | Site | Consumed by |
 | ---- | ----------- |
 | `tcw/work/cli.py:96` | `work new` (`:230`), `work delegate` (`:187`), `work escalate` (`:202`) |
-| `tcw/taxonomy/cli.py:28` | `taxonomy new --description` fallback (`:78`) |
-| `tcw/capabilities/cli.py:34` | `capabilities add` body (`:99`) |
+| `tcw/taxonomy/cli.py:28` | `taxonomy add` (`:78`) |
+| `tcw/capabilities/cli.py:34` | `capabilities add` (`:99`) |
 
 Five entry points, one bug, three copies. Fixing only the reported one leaves
 four callers still able to strand a script.
+
+`taxonomy add` is the one partial exception: it reads
+`args.description or _stdin_body()` (`tcw/taxonomy/cli.py:78`), and Python's
+`or` short-circuits, so `--description` given on the command line means stdin is
+never touched. It hangs only when the description is omitted. The other four
+call `_stdin_body()` unconditionally.
+
+The sweep also confirms what is **not** there: `grep -rn "\binput(\|getpass\|
+readline()" tcw/ --include=*.py` returns nothing, so no interactive prompt exists
+anywhere in the package. Stdin is the only blocking-read surface.
 
 ### One sibling from the same sweep
 
@@ -69,8 +81,8 @@ hook that blocks on it stalls for the full hook timeout. It is bounded, so it is
 a stall rather than a hang — but it is the same rule being broken (*read only the
 stdin you asked for*) and the fix is one keyword argument.
 
-`tcw/work/generate.py:107` is **not** in scope and must not be changed: it passes
-`stdin=subprocess.PIPE` deliberately and writes the payload, which is the
+`tcw/work/generate.py:107-111` is **not** in scope and must not be changed: it
+passes `stdin=subprocess.PIPE` deliberately and writes the payload, which is the
 `generate:` contract. Every other `subprocess.run` in the package invokes `git`
 with non-interactive arguments; none reads stdin.
 
@@ -114,15 +126,24 @@ if sys.stdin.isatty():
     return ""                       # unchanged: a terminal is never intake
 fd = sys.stdin.fileno()             # ValueError under pytest capture → ""
 chunks = bytearray()
-while select.select([fd], [], [], timeout)[0]:
+while True:
+    if not select.select([fd], [], [], timeout)[0]:
+        if not chunks:              # waited, got nothing at all
+            warn_that_nothing_arrived()
+        break                       # bounded either way: never wait twice over
     block = os.read(fd, 65536)
-    if not block:                   # EOF
+    if not block:                   # EOF — the normal end
         break
     chunks += block
-else:
-    warn_that_nothing_arrived()
 return chunks.decode("utf-8", "replace")
 ```
+
+**The `if not chunks` guard is load-bearing and was found by running the loop,
+not by reading it.** A first draft used `while select(...): … else: warn`, whose
+`else` fires on *any* timeout exit — including the measured case "writer sent a
+line and then held the pipe open", which yields `expired=True` **with** data. That
+draft would have warned "no piped input" at a command that had just read a full
+intake. The rule is: warn only when nothing at all arrived.
 
 Why each piece:
 
@@ -139,6 +160,31 @@ Why each piece:
   must not turn a work item into a traceback.
 - **EOF ends the loop immediately**, so arm B and arm C keep their present
   sub-second timings. The timeout is only ever paid by arm A.
+
+### The loop was executed against every stdin shape, not reasoned about
+
+Measured with a 0.5s timeout so the probe is quick; `expired` is the flag that
+gates the warning:
+
+| stdin | Result | Elapsed |
+| ----- | ------ | ------- |
+| regular file (always "ready" to `select`) | `'file body\n'`, `expired=False` | 0.00s |
+| `/dev/null` | `''`, `expired=False` | 0.00s |
+| pipe, data then writer closes | `'piped body\n'`, `expired=False` | 0.00s |
+| **pipe held open, no data** | `''`, `expired=True` | 0.51s |
+| **pipe, data then held open** | `'data then silence\n'`, `expired=True` | 0.51s |
+| slow producer, gap under the bound | `'slow body\n'`, `expired=False` | 0.26s |
+| three chunks, **total 0.91s > 0.5s bound** | all three chunks, `expired=False` | 0.91s |
+| UTF-8 sequence split across two writes | `'héllo wörld ✓\n'` intact | 0.06s |
+| socketpair | `'sock body\n'`, `expired=False` | 0.00s |
+| closed fd | raises `OSError` (EBADF) | — |
+| pytest's captured stdin | `fileno()` raises `ValueError` | — |
+
+Three of these settle open questions. A **regular file** as stdin is read to EOF
+and never stalls, so redirecting a file in still works. The **chunked** row is the
+per-gap argument holding under measurement: 0.91s of total duration against a
+0.5s bound, and nothing dropped. The **closed fd** and **pytest** rows are why
+both `OSError` and `ValueError` must be caught rather than one of them.
 
 ### The bound, and the knob
 
@@ -196,7 +242,9 @@ Arms below mean the three from the Problem section, re-run as tests.
 1. **Arm A no longer hangs.** `tcw work new "<title>"` with stdin an `os.pipe()`
    read end the parent holds open exits 0 within `timeout + 5s`, creates the
    item, writes **no** intake artifact, and prints the expiry warning on stderr.
-   Asserted for `work new`, `taxonomy new`, and `capabilities add`.
+   Asserted for all three real verbs: `tcw work new`, `tcw taxonomy add`
+   (without `--description`, since it short-circuits), and
+   `tcw capabilities add` — each creating its own kind of record, not an item.
 2. **Arm C is unchanged.** `echo "raw intake body" | tcw work new "<t>"` writes
    `intake` containing exactly `raw intake body\n`, exits 0, in under 1s.
 3. **A slow producer is not dropped.** A writer that sleeps 1s (under the 2.0s
@@ -220,8 +268,17 @@ Arms below mean the three from the Problem section, re-run as tests.
     timeout.
 11. **Nothing reaches stdout on the warning path**, so `$(tcw work new …)`
     captures only the slug.
-12. `python -m pytest -q` reports ≥ 1592 passed and 0 failed — the baseline from
-    the preceding item's `outcome.md`.
+12. **`taxonomy add --description "x"` never reads stdin at all**, and so cannot
+    expire or warn even with stdin held open — the short-circuit is preserved.
+13. **The suite does not get slower.** `python -m pytest -q` reports ≥ 1592
+    passed, 0 failed, and its wall-clock stays within 10% of the 284s measured on
+    this tree today. Several tests spawn `tcw` as a real subprocess without
+    setting `stdin=` (`tests/test_scaffold.py:40`,
+    `tests/test_lifecycle_baseline.py:30,40`,
+    `tests/test_documented_cli_surface.py:99`), so if any of them started paying
+    the timeout the run would visibly lengthen. Under pytest's default fd capture
+    those subprocesses inherit `/dev/null` and hit EOF at once; the timing check
+    is what proves that rather than assuming it.
 
 ## Risks
 
@@ -257,4 +314,13 @@ Arms below mean the three from the Problem section, re-run as tests.
   side — "a script that exits without reading stdin makes the parent's write
   raise" — which is why that file is the one place stdin handling was thought
   through, and the three CLI copies were not.
-- Every `file:line` above was re-resolved against the tree while writing this.
+- Every `file:line` above was re-resolved against the tree while writing this,
+  and again during self-review. The self-review pass corrected four things the
+  first draft got wrong, all recorded above rather than quietly fixed: the claim
+  that `tcw work init` does not exist (it does; it refuses without `--id`), the
+  verb name `taxonomy new` (it is `taxonomy add`), the `while/else` warning gate
+  (it misfires on data-then-held-open), and the missing note that
+  `taxonomy add --description` short-circuits past stdin entirely.
+- The suite baseline is **exactly 1592 passed in 284s**, measured on this tree
+  today, not carried over from the previous item's `outcome.md`. Criterion 13's
+  "≥ 1592" therefore means "no test was lost", which is its purpose.

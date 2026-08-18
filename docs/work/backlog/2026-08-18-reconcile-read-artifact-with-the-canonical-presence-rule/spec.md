@@ -11,7 +11,7 @@ becomes possible, impossible, or different. Nothing to reconcile at completion.
 The request is accurate: TCW has two answers to "does this artifact exist", and
 they disagree on a file that exists but holds only whitespace.
 
-`FsWorkStore._present` (`tcw/store/fs.py:2219-2222`):
+`FsWorkStore._present` (`tcw/store/fs.py:2218-2222`):
 
 ```python
 @staticmethod
@@ -42,11 +42,30 @@ surfaces use `_present`**:
 
 | Rule | Surfaces |
 | ---- | -------- |
-| `_present` (non-whitespace) | `artifacts()`, `_resolve_body` (`fs.py:2224`), `body_path` |
+| `_present` (non-whitespace) | `_resolve_body` `:2230`, `artifacts()` `:2255`, `update_work` `:3350`, `write_draft` `:3534` |
 | `is_file()` (mere existence) | `read_artifact` `:3479`, `write_artifact` `:3500`, `delete_artifact` `:3548`, `get_detail` artifact + sidecar revisions `:3200,:3207`, `read_sidecar` `:3560`, `write_sidecar` `:3599`, `read_plan_stage` `:2381`, `write_plan_stage` `:2392`, `delete_plan_stage` `:2403`, `PlanStage.present` `:2366`, `_declared_plan_stages` `:2305` |
 
-Twelve to three. This is not an oversight in one function; it is two rules
+Twelve to four. This is not an oversight in one function; it is two rules
 answering two different questions, one of which was never written down.
+
+**The request's own list of `_present` callers was wrong, and correcting it
+strengthens the conclusion.** It named "`artifacts()`, `_resolve_body`, and
+`body_path`". `body_path` (`fs.py:2236-2241`) does not call `_present` at all —
+it delegates to `_resolve_body`, so it inherits the rule rather than applying it.
+The two callers the request missed are the interesting ones, and both are
+lifecycle judgments rather than resource lookups:
+
+- **`update_work` `:3350`** computes `had_request = self._present(body_path)`,
+  which decides whether a body write *promotes* the item — i.e. whether this edit
+  is the one that created the request. A whitespace-only `initial-request.md`
+  must not count as "already had a request", or the promotion is never reported.
+- **`write_draft` `:3534`** guards `<artifact>.draft.md` against clobbering:
+  `if not force and self._present(p)`. A blank draft is not something worth
+  refusing to overwrite.
+
+Both would be *wrong* with `is_file()`, exactly as the twelve would be wrong with
+`_present`. The split is not accidental; it is applied correctly at six separate
+decision points by two different authors.
 
 ### Why they must differ — the deciding evidence
 
@@ -134,7 +153,7 @@ Three edits, all documentation, plus one test:
    `read_sidecar` / `read_plan_stage` pointing at the same rule.
 2. **`tcw/store/fs.py`** — `_present`'s docstring stops claiming to be "the one
    presence rule" and instead says it is the *lifecycle* presence rule, names its
-   three callers, and states that the read/write/delete surface deliberately uses
+   four callers, and states that the read/write/delete surface deliberately uses
    mere existence, with the `StaleRevision` deadlock as the reason.
 3. **`read_artifact`** gains a one-line comment at the `is_file()` test pointing
    back, since that line is where the next reader will be standing.
@@ -172,8 +191,8 @@ Docstrings and a test in the Python package. Identical under both harnesses.
    resource exists, that a blank-but-existing artifact **is** returned, and names
    `artifacts()` as the surface that answers the other question.
 3. `tcw/store/fs.py`'s `_present` docstring no longer claims to be "the one
-   presence rule", names its callers, and gives the reason the read/write surface
-   differs.
+   presence rule", names all four of its callers, and gives the reason the
+   read/write surface differs.
 4. A test in `tests/test_work.py` asserts, on one whitespace-only artifact, all
    four measured facts: `artifacts()` reports absent; `read_artifact` returns a
    resource with a non-empty revision; `get_detail().artifact_revisions` contains
@@ -181,13 +200,15 @@ Docstrings and a test in the Python package. Identical under both harnesses.
 5. That test fails if `read_artifact` is changed to use `_present` — verified by
    making the change locally, watching it fail, and reverting.
 6. No behavior change: `python -m pytest -q` reports ≥ 1592 passed, 0 failed,
-   with no test modified other than the addition in criterion 4.
+   with no test modified other than the addition in criterion 4. The baseline is
+   **exactly 1592 passed in 284s**, measured on this tree today, so "≥ 1592"
+   means "no test was lost".
 7. `grep -n "the one presence rule" tcw/` returns nothing.
 
 ## Risks
 
 - **Documenting a split invites someone to keep adding to it.** Twelve surfaces
-  on one rule and three on the other is defensible only while the two questions
+  on one rule and four on the other is defensible only while the two questions
   stay distinct. Named ceiling: a *fourth* question ("exists but is blank" as its
   own state) is the trigger to model presence explicitly rather than write a
   third docstring.
@@ -214,4 +235,8 @@ Docstrings and a test in the Python package. Identical under both harnesses.
   (`docs/work/completed/2026-08-12-scaffold-lifecycle-artifacts-from-templates/refined-outcome.md`)
   was correct, and for a better reason than it knew: `artifacts()` is the right
   surface for a stage-presence question regardless of how this item resolved.
-- Every `file:line` above was re-resolved against the tree while writing this.
+- Every `file:line` above was re-resolved against the tree while writing this,
+  and again during self-review. That pass corrected the sweep table: the first
+  draft repeated the request's three-caller list, and `grep -n "_present"
+  tcw/store/fs.py` shows four call sites, one of which (`body_path`) was not a
+  caller at all. The two it had missed are the strongest evidence in the spec.
