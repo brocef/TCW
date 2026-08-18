@@ -221,18 +221,63 @@ and a template of your own *replaces* TCW's rather than extending it.
 Any binding can carry a `when:` condition (`tags:`, `not_tags:`, `type:`). A
 stage can carry a `pre:` check that must pass before its instructions are given.
 
-Two lessons from migrating TCW's own repository onto this, which will save you
-the same discovery:
+## If you are moving rules out of your agent guide
 
-- **A rule another skill reads out of `CLAUDE.md` by name cannot move into a
-  stage prompt.** TCW's own `documentation-sync` skill looks for a
-  `## Documentation Sync` section in `CLAUDE.md`; moving that section into a
-  stage prompt would break the skill. Check what reads your agent guide before
-  you empty it.
-- **A rule your source code cites needs a citable location.** Prefer `file:`
-  over `blob:` for anything referenced from outside the config — a comment can
-  point at `docs/lifecycle/abstraction.md`, but it cannot point at a string
-  buried in `tcw-config.yaml`.
+TCW's own repository did exactly this before 1.0.0 shipped: its `AGENTS.md` went
+from 80 lines to 54, with the prime directive, the implementation rules, and the
+harness-parity rule moving into `docs/lifecycle/*.md` files bound to the `spec`,
+`plan`, and `implement` stages. Five things it learned, in the order they hurt.
+
+**1. Find out what reads your agent guide before you empty it.** A rule another
+skill locates *by name* in `CLAUDE.md` cannot move into a stage prompt. TCW's own
+`documentation-sync` skill looks for a `## Documentation Sync` section there, and
+its version-cut path looks for a `## Versioning` section. Moving either would
+have broken the skill against the repository that ships it. Both stayed; the
+stage prompt points at them instead of copying them.
+
+This is the general shape: **stage prompts can carry your stage-scoped rules, but
+not your integration points.** Grep your skills and tooling for `CLAUDE.md` and
+`AGENTS.md` before you start.
+
+**2. A rule your source code cites needs a citable location.** Prefer `file:`
+over `blob:` for anything referenced from outside the config. A module docstring
+can point at `docs/lifecycle/abstraction.md`; it cannot point at a string buried
+in `tcw-config.yaml`. TCW's litmus test was cited from two module docstrings, two
+README sections, and six planning documents — ten sites, four of which an initial
+review sweep missed because they cited the *rule* without naming it. Grep for the
+guide's filename, not for the rule's title.
+
+**3. Templates replace; prompts compose.** Worth repeating because the
+asymmetry is easy to trip over. A `prompt:` list led by `builtin: true` extends
+TCW's instructions. An `artifacts:` template does **not** — first match wins, so
+your template replaces TCW's outright and must restate whatever of the built-in
+skeleton you still want. That copy will drift silently when a future release adds
+a section, so write a test that asserts every heading in the built-in still
+appears in yours. TCW's own is `tests/test_repo_lifecycle.py`.
+
+**4. Don't bind a template you haven't changed.** TCW wrote a `plan` template,
+found it byte-identical to the built-in, and deleted it. Binding an unchanged
+copy buys nothing and takes on the drift from point 3. Bind a template only where
+you are actually adding something.
+
+**5. Stage checks and transition checks have different strength.** A `pre:` under
+a **transition** is enforcing: it runs before the store is touched and a non-zero
+exit aborts the move. A `pre:` under a **stage** is advisory: it runs only when
+someone invokes `tcw work stage`, and neither `tcw work scaffold` nor any
+transition consults it. Both are useful — put the rule you must guarantee on a
+transition and the rule you want to prompt for on a stage — but do not read a
+stage check as a gate.
+
+Two practical notes on the checks themselves. Keep them fast: TCW put
+`tcw validate` (0.9s) on its `complete` transition and rejected `pytest -q`,
+which takes seven minutes on that repo and would simply have been routed around.
+And write a check that asks the CLI rather than the filesystem —
+`tcw work show "$TCW_SLUG" --json` reports which artifacts exist, so a check
+never has to know your store's directory layout.
+
+Finally, a caveat that is not about migration but will bite here: `tcw serve`
+runs **no** hooks, so a `pre` check on `complete` does not block completion from
+the local web app.
 
 ## What you don't have to do
 
