@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `versioning-section-has-the-same-defect-as-documentation-sync.md`
+
+## Inbox body
+
 # The `## Versioning` section has the same defect as `## Documentation Sync`
 
 Deferred out of scope by

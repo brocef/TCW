@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `tcw-work-new-may-block-reading-stdin-unverified.md`
+
+## Inbox body
+
 # `tcw work new` may block reading stdin when stdin is neither a TTY nor closed
 
 **Unverified.** The investigation was cut short, so this is an observation with a

@@ -1,0 +1,11 @@
+slug: 2026-08-18-fix-tcw-work-new-hanging-on-inherited-stdin
+title: Fix tcw work new hanging on inherited stdin
+created: '2026-08-18'
+resolution: null
+priority: 60
+effort: low
+complexity: medium
+tags:
+- bug
+- cli
+- work
