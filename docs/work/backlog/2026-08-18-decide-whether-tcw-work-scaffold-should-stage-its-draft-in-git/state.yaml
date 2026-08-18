@@ -1,0 +1,10 @@
+slug: 2026-08-18-decide-whether-tcw-work-scaffold-should-stage-its-draft-in-git
+title: Decide whether tcw work scaffold should stage its draft in git
+created: '2026-08-18'
+resolution: null
+priority: 25
+effort: low
+complexity: low
+tags:
+- cli
+- work
