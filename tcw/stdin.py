@@ -23,6 +23,13 @@ Three endings, deliberately distinct — conflating any two of them loses data:
 touches `sys.stdin`, and do not read `sys.stdin` afterwards: bytes are taken with
 `os.read` off the raw descriptor, so anything already pulled into the text
 layer's buffer would be lost.
+
+**Two paths, split on whether a real descriptor exists.** Everything above
+describes the descriptor path. A `sys.stdin` with no `fileno()` — an embedder
+substituting `io.StringIO`, pytest's captured stdin — is not an operating-system
+stream at all, so it cannot be the inherited pipe this module guards against, and
+it is read plainly. Getting that wrong is not theoretical: requiring a descriptor
+silently broke in-process `main()` callers, and the suite caught it.
 """
 
 from __future__ import annotations
@@ -72,9 +79,27 @@ def read_piped_stdin(timeout: float | None = None) -> str:
         stdin = sys.stdin
         if stdin is None or stdin.isatty():
             return ""                    # a terminal is never intake
+    except (OSError, ValueError):
+        return ""
+
+    try:
         fd = stdin.fileno()
     except (OSError, ValueError):
-        return ""                        # no real descriptor (e.g. captured stdin)
+        # No operating-system descriptor, so this cannot be the inherited pipe
+        # this module exists to survive — it is an in-memory or synthetic stream
+        # (an embedder substituting `io.StringIO`, pytest's captured stdin).
+        # Reading it cannot wait on an EOF from another process, so the plain
+        # read is both safe and the only thing that works.
+        #
+        # This is the *only* fallback to a blocking read, and the distinction is
+        # exact: a descriptor that exists but cannot be polled is still an OS
+        # stream and must never be read this way. Ceiling: a synthetic object
+        # that hides a real pipe behind a `read()` and no `fileno()` would still
+        # block. Nothing in TCW does that, and no caller can reach it by accident.
+        try:
+            return stdin.read()
+        except (AttributeError, OSError, ValueError):
+            return ""     # not readable at all
 
     chunks = bytearray()
     while True:

@@ -195,11 +195,28 @@ Every step can raise: `isatty()`, `fileno()` (pytest's captured stdin raises
 `(OSError, ValueError)` and yield `""` — no intake, treated as the
 nothing-at-all case.
 
-**The one thing the helper must never do is fall back to `sys.stdin.read()`.** An
-earlier draft did exactly that when `select` was unsupported, which reintroduces
-the hang this item exists to remove — a fallback that restores the bug is not a
-fallback. On a platform where `select` cannot poll stdin, piped intake is
-unavailable and the command proceeds without it, loudly.
+**A `select` failure must never become a blocking read.** An earlier draft fell
+back to `sys.stdin.read()` there, which reintroduces the hang this item exists to
+remove — a fallback that restores the bug is not a fallback. On a platform where
+`select` cannot poll a descriptor, piped intake is unavailable and the command
+proceeds without it, loudly.
+
+**Implementation corrected this into a sharper rule than the spec first stated.**
+"Never fall back to a blocking read" is too broad, and the suite proved it:
+`tests/test_work.py::test_cli_new_pipes_stdin_into_intake_not_a_request`
+substitutes `sys.stdin` with an `io.StringIO` and calls `main()` in-process. That
+object has no `fileno()`, so a descriptor-only helper returns `""` and the test
+fails — a real regression for anyone embedding the CLI, not a test artifact. The
+rule that survives distinguishes two cases the first draft merged:
+
+| `sys.stdin` | Can it be the inherited pipe? | Behavior |
+| ----------- | ----------------------------- | -------- |
+| has a `fileno()` | **yes** — it is an OS stream | bounded `select` loop; a `select` failure yields `""`, never a blocking read |
+| has no `fileno()` | **no** — in-memory or synthetic | read it plainly; it cannot wait on another process's EOF |
+
+Named ceiling: a synthetic object that hides a real pipe behind `read()` while
+refusing `fileno()` would still block. Nothing in TCW does that, and no caller
+reaches it by accident.
 
 ### The helper owns file descriptor 0
 

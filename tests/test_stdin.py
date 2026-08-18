@@ -31,6 +31,11 @@ class _Stdin:
             raise ValueError("redirected stdin is pseudofile, has no fileno()")
         return self._fd
 
+    def read(self, *a):
+        # Mirrors pytest's own `DontReadFromInput`: no descriptor, and reading
+        # it raises rather than returning text.
+        raise OSError("reading from stdin while output is captured!")
+
 
 @pytest.fixture
 def at(monkeypatch):
@@ -139,10 +144,40 @@ def test_a_closed_descriptor_yields_no_intake(at, capsys):
     assert read_piped_stdin(FAST) == ""
 
 
-def test_stdin_without_a_descriptor_yields_no_intake(at):
-    """What pytest's own captured stdin does."""
+def test_an_unreadable_stdin_without_a_descriptor_yields_no_intake(at):
+    """What pytest's own captured stdin does: no `fileno()`, and `read()` raises."""
     at(None)
     assert read_piped_stdin(FAST) == ""
+
+
+def test_an_in_memory_stdin_is_still_read(monkeypatch):
+    """An embedder calling `main()` in-process may substitute a file-like object.
+    It has no descriptor, so it cannot be the inherited pipe this module guards
+    against — and reading it is the only thing that works.
+
+    Regression: the first implementation required a real descriptor and silently
+    returned "" here, which the suite caught as
+    `test_cli_new_pipes_stdin_into_intake_not_a_request`.
+    """
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO("please fix the thing\n"))
+    assert read_piped_stdin(FAST) == "please fix the thing\n"
+
+
+def test_a_descriptor_that_cannot_be_polled_is_not_read_blockingly(at, monkeypatch):
+    """The distinction the fallback turns on: something with a real descriptor is
+    an OS stream, so a `select` failure must NOT become a blocking read."""
+    import select as select_module
+    r, w = _pipe()
+
+    def refuse(*a, **kw):
+        raise OSError("select unsupported on this descriptor")
+
+    monkeypatch.setattr(select_module, "select", refuse)
+    at(r)
+    assert read_piped_stdin(FAST) == ""      # no intake, and crucially no hang
+    os.close(r)
+    os.close(w)
 
 
 # -- streaming --------------------------------------------------------------

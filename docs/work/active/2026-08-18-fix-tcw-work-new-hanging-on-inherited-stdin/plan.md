@@ -41,8 +41,14 @@ float, else `2.0`. Unparseable or negative falls back to the default silently �
 a malformed environment variable must not break item creation.
 
 Every exception path returns `""` (`OSError`, `ValueError` from `isatty`,
-`fileno`, `select`, `os.read`). **No fallback to `sys.stdin.read()`** — a
-fallback that reintroduces the hang is not a fallback.
+`select`, `os.read`). **No fallback to `sys.stdin.read()` once a descriptor
+exists** — a fallback that reintroduces the hang is not a fallback.
+
+*Corrected during implementation:* a `sys.stdin` with **no** `fileno()` is read
+plainly, because it is not an OS stream and cannot be the inherited pipe. The
+first version returned `""` there and broke in-process `main()` callers; the
+suite caught it as `test_cli_new_pipes_stdin_into_intake_not_a_request`. See the
+spec's two-row table.
 
 The docstring states the fd-0 exclusivity contract: call before anything touches
 `sys.stdin`; do not read `sys.stdin` after.
@@ -127,14 +133,26 @@ Evaluated against this repo's four entries. All four fire:
 | `README.md` | Public-API | **Yes** | New user-facing environment variable `TCW_STDIN_TIMEOUT`, and a new failure mode (truncated intake is refused). Both are things a user must be able to look up. |
 | `docs/release-notes/upcoming.md` | Public-API | **Yes** | A hang that stranded automation is fixed — the most user-visible kind of change there is. Plain language: no `select`, no file descriptors. |
 | `docs/changelogs/upcoming.md` | Any-Code-Change | **Yes** | Behavior-affecting code in `tcw/`. Grouped Fixed (the hang, the hook stdin inheritance) and Added (the environment variable). |
-| `skills/tcw-work/SKILL.md` | Skill-Driven-Component | **Yes** | The work component's intake guardrails change. The concrete edit is `skills/tcw-work/references/commands.md:42-43`, which today tells an agent how piped intake behaves and would be wrong afterwards. |
+| `skills/<component>/SKILL.md` | Skill-Driven-Component | **Yes — for all three components** | Intake guardrails change for `work`, `taxonomy`, *and* `capabilities`. |
 
-The fourth is the one worth stating explicitly, because the entry names
-`SKILL.md` while the stale text is in a `references/` file the skill routes to.
-The trigger is about the skill drifting from the tool, so the reference counts.
+Two things about the fourth entry, **the second of which this plan got wrong and
+implementation corrected:**
+
+- The entry names `SKILL.md` while some stale text lives in `references/` files
+  the skill routes to. The trigger is about the skill drifting from the tool, so
+  the reference counts.
+- **The entry's path is a pattern, `skills/<component>/SKILL.md`, not a single
+  file.** This plan originally named only `tcw-work`, because the reported bug
+  was in `tcw work new`. But the fix touches all five intake entry points, so the
+  taxonomy and capabilities skills document changed behavior too —
+  `skills/tcw-taxonomy/SKILL.md:63` and
+  `skills/tcw-capabilities/references/init.md:27` both instruct piping on stdin.
+  Caught at the documentation gate by re-reading the entry rather than the plan's
+  summary of it. Recorded in `outcome.md`.
 
 **Modifies:** `README.md`, `docs/release-notes/upcoming.md`,
-`docs/changelogs/upcoming.md`, `skills/tcw-work/references/commands.md`
+`docs/changelogs/upcoming.md`, `skills/tcw-work/references/commands.md`,
+`skills/tcw-taxonomy/SKILL.md`, `skills/tcw-capabilities/references/init.md`
 
 **Commit:** `docs: README, release notes, changelog and skill for stdin handling`
 
