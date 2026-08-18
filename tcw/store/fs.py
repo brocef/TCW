@@ -3,7 +3,8 @@
 `git_root`/`init` (Phase 1) scaffold; `FsTaxonomyStore` (Phase 2) realizes the
 `TaxonomyStore` interface over `docs/taxonomy/`. The capabilities and work
 adapters land here in their phases; the genuinely-shared primitives get factored
-into a tree-store core in Phase 4 (don't pre-abstract — AGENTS.md).
+into a tree-store core in Phase 4 (don't pre-abstract —
+`docs/lifecycle/implementation.md`).
 """
 
 # Defer annotation evaluation (PEP 563) so forward refs like `"TermDetail" | None`

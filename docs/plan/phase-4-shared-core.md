@@ -6,7 +6,7 @@
 
 ## Why this phase exists — and why _here_
 
-`AGENTS.md` is explicit: _"extract the shared tree-store core only once two components are real (don't pre-abstract)."_ Phases 2 and 3 deliberately ship their own `FsTaxonomyStore` / `FsCapabilitiesStore` with whatever each needs. This phase is where the duplication, now visible in real code, gets factored into one primitive — **after** two implementations exist to generalize from, **before** the third component, **work** (Phase 5), is written so it can reuse rather than re-duplicate.
+[`docs/lifecycle/implementation.md`](../lifecycle/implementation.md) is explicit: _"extract the shared tree-store core only once two components are real (don't pre-abstract)."_ Phases 2 and 3 deliberately ship their own `FsTaxonomyStore` / `FsCapabilitiesStore` with whatever each needs. This phase is where the duplication, now visible in real code, gets factored into one primitive — **after** two implementations exist to generalize from, **before** the third component, **work** (Phase 5), is written so it can reuse rather than re-duplicate.
 
 This is a **refactor phase**, not a feature phase. No new `tcw` surface area; the CLI behaves identically before and after.
 

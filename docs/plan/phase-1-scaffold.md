@@ -10,7 +10,7 @@ The bootstrap that turns this planning repo into a working Python project. (Fold
 ## Repo scaffolding
 
 - [x] `README.md` — what TCW is, install, quickstart.
-- [x] `AGENTS.md` (+ `CLAUDE.md` symlink) — present; carries the prime directive.
+- [x] `AGENTS.md` (+ `CLAUDE.md` symlink) — present; the prime directive now lives in `docs/lifecycle/abstraction.md`, bound to the `spec` and `plan` stages.
 - [x] `LICENSE` — present.
 - [x] `.gitignore` (Python).
 - [x] `CHANGELOG.md` — single changelog (the decided docs convention; no release-notes/changelogs split until there's something to release).
@@ -31,7 +31,7 @@ The bootstrap that turns this planning repo into a working Python project. (Fold
       work/             # Phase 5
     tests/              # pytest over tmp_path git repos
     ```
-    _(Per `AGENTS.md`: do **not** pre-abstract a shared tree-store core now. `store/base.py` starts with only what Phase 2 needs; the common primitive is extracted in Phase 4 once two components are real.)_
+    _(Per [`../lifecycle/implementation.md`](../lifecycle/implementation.md): do **not** pre-abstract a shared tree-store core now. `store/base.py` starts with only what Phase 2 needs; the common primitive is extracted in Phase 4 once two components are real.)_
 
 ## CLI skeleton + `tcw init`
 
@@ -59,7 +59,7 @@ Files shipped: `pyproject.toml`, `tcw/{__init__,cli}.py`, `tcw/store/{__init__,f
 
 **Deliberately deferred (YAGNI — nothing in Phase 1 exercises them):**
 
-- `tcw/store/base.py` — no abstract operation exists yet. The `TaxonomyStore` ABC is introduced in **Phase 2**; the shared tree-store core is extracted in **Phase 4** (per AGENTS.md: don't pre-abstract).
+- `tcw/store/base.py` — no abstract operation exists yet. The `TaxonomyStore` ABC is introduced in **Phase 2**; the shared tree-store core is extracted in **Phase 4** (per `docs/lifecycle/implementation.md`: don't pre-abstract).
 - Component packages `tcw/taxonomy/`, `tcw/capabilities/`, `tcw/work/` — created by their own phases when they hold real code. The CLI stubs "not yet implemented" inline, so empty packages aren't needed now.
 - `PyYAML` dependency — added in Phase 2 (front-matter parsing) where it's first imported.
 - `find_node()` (component-dir-aware node detection) — Phase 2, the first node-resolving component op. `git_root()` ships now because `init` needs it.

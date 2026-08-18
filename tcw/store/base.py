@@ -1,6 +1,6 @@
 """Abstract store interfaces — the portable spine the CLI depends on.
 
-Per AGENTS.md (the litmus test) the model is storage-abstracted: a tree of
+Per `docs/lifecycle/abstraction.md` (the litmus test) the model is storage-abstracted: a tree of
 named nodes with cross-links is implementable by any backend. The filesystem
 adapters in `fs.py` are the only realization shipped; remote adapters stay
 possible but unbuilt. Phase 2 introduces `TaxonomyStore`; capabilities and work

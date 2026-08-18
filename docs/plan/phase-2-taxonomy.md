@@ -5,7 +5,7 @@
 **Depends on:** Phase 1 (package + CLI skeleton + node detection).
 **Build checklist:** `TaxonomyStore` interface → `FsTaxonomyStore` over `docs/taxonomy/` → the six subcommands (B.2) → `extends` resolution (B.6) → `check` → tests (B.8).
 
-> Spec **and** build plan for component 1. Part A is the model; Part B is the buildable tool; B.9 records the resolved open questions. Framework-wide rules: [`../../AGENTS.md`](../../AGENTS.md).
+> Spec **and** build plan for component 1. Part A is the model; Part B is the buildable tool; B.9 records the resolved open questions. Framework-wide rules: [`../../AGENTS.md`](../../AGENTS.md) and [`../lifecycle/`](../lifecycle/).
 > **Date:** 2026-06-18
 > **Scope:** the conceptual model (Part A) plus the buildable `tcw taxonomy` tool (Part B). Sibling components: [`phase-5-work`](phase-5-work.md), [`phase-3-capabilities`](phase-3-capabilities.md).
 

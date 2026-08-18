@@ -76,7 +76,8 @@ So the CLI talks to abstract store interfaces (`TaxonomyStore`,
 filesystem superpowers — co-located docs, atomic commits, grep/diff/PR
 legibility, `mv`-as-transition — are _bonuses layered on top_, never
 load-bearing assumptions of the model. The full rules live in
-[`AGENTS.md`](AGENTS.md).
+[`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md), which TCW's own
+repository binds to its `spec` and `plan` stages.
 
 ## Who it's for
 
@@ -1207,6 +1208,7 @@ by re-running the job.
 
 ## Further reading
 
-- [`AGENTS.md`](AGENTS.md) — the working rules and the prime directive (read first).
+- [`AGENTS.md`](AGENTS.md) — the working rules (read first).
+- [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — the prime directive: the abstraction litmus test.
 - `tcw work list` — current and pending work; this repo tracks its own work via `tcw work` (`docs/work/`).
 - [`docs/plan/phase-2-taxonomy.md`](docs/plan/phase-2-taxonomy.md) · [`phase-3-capabilities.md`](docs/plan/phase-3-capabilities.md) · [`phase-5-work.md`](docs/plan/phase-5-work.md) — the per-component source-of-truth designs.
