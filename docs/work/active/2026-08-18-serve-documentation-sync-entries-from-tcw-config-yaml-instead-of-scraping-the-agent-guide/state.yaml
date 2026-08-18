@@ -1,0 +1,15 @@
+slug: 2026-08-18-serve-documentation-sync-entries-from-tcw-config-yaml-instead-of-scraping-the-agent-guide
+title: Serve documentation-sync entries from tcw-config.yaml instead of scraping the
+  agent guide
+created: '2026-08-18'
+resolution: null
+priority: 90
+effort: medium
+complexity: medium
+tags:
+- cli
+- docs
+- skills
+- work
+owner: brocef@users.noreply.github.com
+started: '2026-08-18T21:20:46.689594Z'

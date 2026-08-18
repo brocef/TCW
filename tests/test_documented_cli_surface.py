@@ -197,3 +197,22 @@ def test_documented_verbs_and_flags_exist(doc, tree):
         f"{doc.relative_to(REPO)} documents a nonexistent CLI surface:\n  "
         + "\n  ".join(problems)
     )
+
+
+# ── the other direction: a shipped verb must be documented ───────────────────
+
+# Verbs whose absence from the docs is the defect. This runs the *opposite*
+# direction from everything above — that catches a documented verb the CLI does
+# not have, and nothing caught a verb the CLI has and the docs do not mention.
+# Not derived from the CLI: a list of every subcommand would make this a
+# documentation mandate for `tcw work path`, which nobody needs a paragraph for.
+# Entries are added when a verb is worth finding by reading rather than by
+# `--help`.
+DOCUMENTED_VERBS = ("tcw work stage", "tcw work scaffold")
+
+
+@pytest.mark.parametrize("verb", DOCUMENTED_VERBS)
+@pytest.mark.parametrize("doc", ("README.md", "skills/tcw-work/references/commands.md"))
+def test_a_shipped_verb_is_findable_in_the_docs(verb, doc):
+    assert verb in (REPO / doc).read_text(encoding="utf-8"), \
+        f"{doc} never mentions `{verb}`"

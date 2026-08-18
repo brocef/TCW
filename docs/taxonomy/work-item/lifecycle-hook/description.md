@@ -1,0 +1,1 @@
+One configured instruction attached to a lifecycle-stage or transition: a role saying what it is for (a check that runs and may fail, a prompt that resolves to instructions, an artifact template), a kind saying where its text or command comes from (inline, a file, a script the node owns, or TCW's own default), and an optional condition deciding which work-items it applies to.

@@ -10,9 +10,11 @@ Every rejection is tested for the *message*, not just the count. An unparseable
 config whose error does not name the offending key is barely better than no
 check at all.
 """
+import re
+
 from tcw.store.base import (
-    DEFAULT_HOOK_TIMEOUT, STAGE_IDS, TRANSITION_IDS, Binding,
-    parse_lifecycle_policy,
+    DEFAULT_HOOK_TIMEOUT, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, STAGE_IDS,
+    TRANSITION_IDS, WORK_ARTIFACTS, Binding, parse_lifecycle_policy,
 )
 
 
@@ -41,6 +43,32 @@ def test_transition_ids_match_the_epic_contract():
     assert TRANSITION_IDS == ("start", "submit", "complete", "rework", "discard")
 
 
+def test_produces_is_a_tuple_of_artifact_names():
+    """One artifact per stage was never true — `inbox` produces none and `verify`
+    produces one of two — so the field holds names, not a sentence."""
+    for step in LIFECYCLE_STEPS:
+        assert isinstance(step.produces, tuple), step.id
+        assert set(step.produces) <= set(WORK_ARTIFACTS), step.id
+    assert LIFECYCLE_STEPS_BY_ID["verify"].produces == ("refined-outcome", "rework")
+    assert LIFECYCLE_STEPS_BY_ID["inbox"].produces == ()
+
+
+def test_every_artifact_but_intake_is_produced_by_a_stage():
+    """`intake` is raw input — no stage writes it, which is why `tcw work
+    scaffold intake` has no stage legality row to look up."""
+    produced = {n for s in LIFECYCLE_STEPS for n in s.produces}
+    assert produced == set(WORK_ARTIFACTS) - {"intake"}
+
+
+def test_produces_and_produces_note_describe_the_same_artifacts():
+    """Two fields carrying one fact drift silently. `produces_note` is prose and
+    `produces` is machine-readable; the filenames in the prose must be exactly
+    the tuple's, `inbox`'s empty pair included."""
+    for step in LIFECYCLE_STEPS:
+        in_note = set(re.findall(r"\b([a-z][a-z0-9-]*\.md)\b", step.produces_note))
+        assert in_note == {f"{n}.md" for n in step.produces}, step.id
+
+
 def test_every_transition_id_except_discard_is_a_cli_verb():
     """`discard` is the one transition with no verb of its own — it is reached as
     `complete --resolution <not-done>`, because the resolution picks the
@@ -63,7 +91,7 @@ def test_an_absent_policy_is_empty_and_clean():
 def test_a_stage_binding_parses():
     policy, problems = parse({"stages": {"spec": [{"skill": "superpowers:brainstorming"}]}})
     assert problems == []
-    assert policy.stage("spec") == [Binding(skill="superpowers:brainstorming")]
+    assert policy.stage("spec") == [Binding("skill", "superpowers:brainstorming")]
     assert policy.stage("spec")[0].kind == "skill"
     assert policy.stage("spec")[0].ref == "superpowers:brainstorming"
 
@@ -71,7 +99,7 @@ def test_a_stage_binding_parses():
 def test_a_command_binding_parses():
     policy, problems = parse({"transitions": {"complete": {"pre": [{"command": "pytest -q"}]}}})
     assert problems == []
-    assert policy.transition("complete").pre == [Binding(command="pytest -q")]
+    assert policy.transition("complete").pre == [Binding("command", "pytest -q")]
     assert policy.transition("complete").pre[0].kind == "command"
 
 
@@ -107,7 +135,7 @@ def test_a_custom_timeout_parses():
 
 def test_binding_values_are_stripped():
     policy, _ = parse({"stages": {"spec": [{"skill": "  a:b  "}]}})
-    assert policy.stage("spec")[0].skill == "a:b"
+    assert policy.stage("spec")[0].ref == "a:b"
 
 
 # ── the rejections, each naming its offender ─────────────────────────────────
@@ -172,12 +200,12 @@ def test_a_bare_string_binding_is_never_inferred():
 
 def test_a_binding_with_neither_key_is_rejected():
     p = only_problem({"stages": {"spec": [{}]}})
-    assert "neither" in p
+    assert "declares no kind" in p
 
 
 def test_a_binding_with_both_keys_is_rejected():
     p = only_problem({"stages": {"spec": [{"skill": "a", "command": "b"}]}})
-    assert "both" in p
+    assert "declares skill and command" in p and "choose one" in p
 
 
 def test_an_unknown_binding_key_is_rejected():
@@ -290,7 +318,7 @@ def test_the_adapter_round_trips_a_policy_in_declared_order(tmp_path):
     })
     policy = FsWorkStore.open(root).lifecycle_policy()
     assert [b.ref for b in policy.stage("spec")] == ["z", "a"]
-    assert policy.transition("complete").pre[0].command == "pytest -q"
+    assert policy.transition("complete").pre[0].ref == "pytest -q"
 
 
 def test_a_malformed_policy_does_not_break_reading_the_board(tmp_path):

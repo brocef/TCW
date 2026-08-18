@@ -5,7 +5,7 @@
 **Depends on:** Phase 1 (package/CLI), Phase 2 (taxonomy — `check` validates `Subject:` refs against the `TaxonomyStore`).
 **Build checklist:** `CapabilitiesStore` interface → `FsCapabilitiesStore` → the five subcommands (B.2) → identifier resolution (A.6) → `check` incl. cross-component `Subject` validation → tests (B.7).
 
-> Spec **and** build plan for component 2 — a capability is a **miniature user story** ("_as a user, I can…_"). Built **second, right after taxonomy**: it depends only on taxonomy (its `check` validates `Subject:` refs against the `TaxonomyStore`) and is its near-clone, so the shared tree-store core is extracted from the two (Phase 4) before work is built. Framework rules: [`../../AGENTS.md`](../../AGENTS.md).
+> Spec **and** build plan for component 2 — a capability is a **miniature user story** ("_as a user, I can…_"). Built **second, right after taxonomy**: it depends only on taxonomy (its `check` validates `Subject:` refs against the `TaxonomyStore`) and is its near-clone, so the shared tree-store core is extracted from the two (Phase 4) before work is built. Framework rules: [`../../AGENTS.md`](../../AGENTS.md) and [`../lifecycle/`](../lifecycle/).
 > **Date:** 2026-06-18
 > **Scope:** the conceptual model (Part A) plus the buildable `tcw capabilities` tool (Part B). Sibling components: [`phase-2-taxonomy`](phase-2-taxonomy.md), [`phase-5-work`](phase-5-work.md). This spec formalizes the **artifact half** of the absorbed `skill-cefailures:capabilities-sdlc` skill (its v2 design) as a TCW component; the **process half** is already structural in the work lifecycle (the work phase's A.7).
 

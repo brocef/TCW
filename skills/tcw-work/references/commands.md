@@ -6,7 +6,7 @@
 | triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`; `<entry>` is either identifier `list` printed (ref or title) |
 | locate stores            | `tcw work path` (configured work root) · `tcw work inbox path` (its inbox); both print only the absolute resolved path                          |
 | the board                | `tcw work list [--status <s>] [--tag <t>] [--all] [-i]` — hides resolved; `-i` adds descendant boards                                           |
-| read an item             | `tcw work show <slug>` · `tcw work path <slug>`                                                                                                 |
+| read an item             | `tcw work show <slug> [--json]` · `tcw work path <slug>`                                                                                        |
 | the lifecycle contract   | `tcw work lifecycle [work-ref] [--json]` · `--stage <id> --directive`                                                                           |
 | start work               | `tcw work start <slug> [--worktree] [--force]`                                                                                                  |
 | submit for verification  | `tcw work submit <slug>`                                                                                                                        |
@@ -23,6 +23,8 @@
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
 | hand work down / up      | `tcw work delegate <child-project-id> "<title>"` · `tcw work escalate "<title>"` — the ID `tcw work nodes` lists, never a path              |
 | topology                 | `tcw work nodes`                                                                                                                                |
+| a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
+| start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 
 **Not CLI subcommands.** Two workflows are AI-driven reviews with no `tcw` verb
@@ -32,6 +34,20 @@ behind them — the CLI cannot run them, and asking it to is an argparse error:
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | audit the backlog      | [`audit-backlog.md`](audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude        |
 | migrate external plans | [`consolidate-plans.md`](consolidate-plans.md) — any harness · `/tcw-consolidate-plans` in Claude |
+
+## The body surface
+
+An item's body resolves to `initial-request.md` when it exists and non-empty, and
+to `intake.md` otherwise — the raw input the item started from, written by
+`tcw work new` from piped stdin or by `tcw work inbox accept` from the entry.
+Neither is created empty: `tcw work new "<title>"` with nothing piped leaves an
+item with no body file at all, which is why `R` on the board means the `request`
+stage has run and `i` means raw input is waiting for it.
+
+Writes never follow that fallback. A body edit always targets
+`initial-request.md`; on an intake-only item it **promotes** the item, creating
+the request and leaving `intake.md` byte-identical. Edit `intake.md` only as a
+named artifact — raw input that quietly changes is not raw input.
 
 ## Addressing
 

@@ -102,18 +102,25 @@ def _git(root: Path, *args: str) -> None:
 def rotate_upcoming(root: Path, version: str) -> None:
     """`git mv` each upcoming.md → v{version}.md, then recreate a fresh upcoming.md.
 
-    The rotated file is retitled `# v{version}`. Without this every released
-    document keeps the `# Upcoming` placeholder it was drafted under, which is
-    how 84 of the first 92 shipped files came to be titled "Upcoming"."""
+    The rotated file is retitled `# v{version}` and **the working-file preamble is
+    dropped**. Without the retitle every released document keeps the `# Upcoming`
+    placeholder it was drafted under, which is how 84 of the first 92 shipped
+    files came to be titled "Upcoming". Without dropping the preamble the shipped
+    file still says it is "for the next version" and still carries the
+    drafting instructions ("Plain language — no jargon"), which are addressed to
+    whoever writes the notes, not to whoever reads the release."""
     for rel, header in UPCOMING.items():
         src = root / rel
         dst = src.with_name(f"v{version}.md")
         _git(root, "mv", str(src), str(dst))
         text = dst.read_text(encoding="utf-8")
-        if text.startswith("# Upcoming\n"):
-            dst.write_text(
-                f"# v{version}\n" + text[len("# Upcoming\n"):], encoding="utf-8"
-            )
+        if text.startswith(header):
+            # The whole working-file header goes, preamble included.
+            text = f"# v{version}\n" + text[len(header):]
+        elif text.startswith("# Upcoming\n"):
+            # Preamble edited or absent — retitle only, never guess at prose.
+            text = f"# v{version}\n" + text[len("# Upcoming\n"):]
+        dst.write_text(text, encoding="utf-8")
         src.write_text(header, encoding="utf-8")
 
 

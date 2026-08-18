@@ -236,7 +236,7 @@ def test_reconcile_rollup_keys_by_node_and_is_idempotent(tmp_path):
     assert "| child-a | 2026-01-01-slice |" in block
     assert "| child-b | 2026-01-01-slice |" in block
     assert reconcile(parent, epic.slug) == block          # idempotent
-    content = (FsWorkStore.open(parent).path(epic.slug) / "initial-request.md").read_text()
+    content = FsWorkStore.open(parent).read_sidecar(epic.slug, "rollup.md").content
     assert content.count("<!-- tcw:rollup -->") == 1      # no duplicate block
 
 
@@ -264,7 +264,7 @@ def test_reconcile_commits_external_rollup_in_store_repository(tmp_path):
 
     reconcile(parent, epic.slug, commit=True)
 
-    content = epic_store.path(epic.slug) / "initial-request.md"
+    content = epic_store.path(epic.slug) / "rollup.md"
     changed = subprocess.run(
         ["git", "-C", str(stores), "show", "--name-only", "--format="],
         capture_output=True, text=True, check=True,
@@ -333,9 +333,9 @@ def test_cli_reconcile_reports_a_refused_commit(tmp_path, monkeypatch, capsys):
     assert "policy: no" in err                     # git's own words reached the user
     assert "staged" in err                         # the rollup is in the index, not lost
 
-    content = (FsWorkStore.open(parent).path(epic) / "initial-request.md").read_text()
+    content = FsWorkStore.open(parent).read_sidecar(epic, "rollup.md").content
     assert "<!-- tcw:rollup -->" in content        # written...
-    assert "initial-request.md" in porcelain(parent)    # ...and staged
+    assert "rollup.md" in porcelain(parent)             # ...and staged
 
 
 def test_reconcile_without_commit_ignores_a_refusing_hook(tmp_path, monkeypatch, capsys):
@@ -754,11 +754,15 @@ def test_complete_aborts_on_merge_conflict(tmp_path, monkeypatch, capsys):
     main(["work", "start", slug, "--worktree"]); capsys.readouterr()
     wt = root / ".worktrees" / slug
     item_doc = ["docs", "work", "active", slug, "initial-request.md"]
-    # diverging edits to the SAME tracked file → conflicting merge
+    # Diverging content at the SAME path → conflicting merge. `add -A` rather
+    # than `commit -am`: `work new` no longer leaves a request behind, so this
+    # file is new on both sides (an add/add conflict, which merges just as badly).
     (wt.joinpath(*item_doc)).write_text("worktree side\n")
-    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-am", "wt"], check=True)
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "wt"], check=True)
     (root.joinpath(*item_doc)).write_text("main side\n")
-    subprocess.run(["git", "-C", str(root), "commit", "-q", "-am", "main"], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "main"], check=True)
 
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
     err = capsys.readouterr().err
@@ -793,3 +797,70 @@ def test_reconcile_counts_a_discarded_child_as_resolved(tmp_path):
     block = reconcile(parent, epic.slug)
     assert "ready-to-close" in block or "ready to close" in block.lower()
     assert epic_store.complete(epic.slug, "done", []).status == "completed"
+
+
+# ── the rollup is a sidecar, not the request ─────────────────────────────────
+
+def test_reconcile_writes_a_sidecar_and_never_the_request(tmp_path):
+    """Reconciling is not the `request` stage. A machine writing a table into
+    `initial-request.md` lit `R` on the board for an item nobody wrote up."""
+    parent, epic = _epic_with_a_slice(tmp_path)
+    store = FsWorkStore.open(parent)
+
+    block = reconcile(parent, epic)
+
+    # Listed, not probed: the point is that nothing else was created either.
+    assert {p.name for p in store.path(epic).iterdir()} == {
+        "state.yaml", "rollup.md"}
+    assert block in store.read_sidecar(epic, "rollup.md").content
+    # The board letter follows from the artifact's absence, so absence is what
+    # gets asserted. An earlier version of this line looked for "R" among the
+    # names `artifacts()` yields, which are `initial-request`, `spec`, … — a set
+    # that cannot contain a board letter, so the check passed either way.
+    assert store.read_artifact(epic, "initial-request") is None
+
+
+def test_reconcile_migrates_a_legacy_rollup_out_of_the_request(tmp_path):
+    """Every epic reconciled before this wrote its rollup into the request."""
+    parent, epic = _epic_with_a_slice(tmp_path)
+    store = FsWorkStore.open(parent)
+    reconcile(parent, epic)
+    legacy = store.read_sidecar(epic, "rollup.md").content
+    store._rm(store.path(epic) / "rollup.md")
+    store.write_artifact(epic, "initial-request",
+                         f"# Redesign\n\nWhat a human wrote.\n\n{legacy}")
+
+    reconcile(parent, epic)
+
+    request = store.read_artifact(epic, "initial-request").content
+    assert "What a human wrote." in request                # prose survives
+    assert "<!-- tcw:rollup -->" not in request            # the block does not
+    assert "<!-- tcw:rollup -->" in store.read_sidecar(epic, "rollup.md").content
+
+
+def test_reconcile_migration_leaves_no_empty_request(tmp_path):
+    """A request holding only the rollup was never a request. Stripping it must
+    remove the file, not leave a husk that reads as a written-up item."""
+    parent, epic = _epic_with_a_slice(tmp_path)
+    store = FsWorkStore.open(parent)
+    reconcile(parent, epic)
+    legacy = store.read_sidecar(epic, "rollup.md").content
+    store._rm(store.path(epic) / "rollup.md")
+    store.write_artifact(epic, "initial-request", f"\n\n{legacy}\n")
+
+    reconcile(parent, epic)
+
+    assert not (store.path(epic) / "initial-request.md").exists()
+    assert store.read_artifact(epic, "initial-request") is None
+
+
+def test_reconcile_stages_nothing_when_the_rollup_is_unchanged(tmp_path):
+    """Idempotence is load-bearing: an unchanged rollup that still staged would
+    make every `--commit` reconcile a no-op commit attempt."""
+    parent, epic = _epic_with_a_slice(tmp_path)
+    reconcile(parent, epic, commit=True)
+    assert porcelain(parent) == ""
+
+    reconcile(parent, epic)
+
+    assert porcelain(parent) == ""

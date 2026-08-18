@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tcw-cli"
-version = "0.21.1"
+version = "1.0.0"
 description = "Taxonomy · Capabilities · Work — a storage-abstracted framework for describing and evolving a software project."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,13 +15,18 @@ dependencies = ["PyYAML>=6"]
 tcw = "tcw.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+# jsonschema validates the work item projection against its declared schema.
+# Tests only — nothing TCW ships imports it, and runtime dependencies stay at
+# PyYAML alone. Writing the validator by hand would let the test and the
+# projection share a bug.
+dev = ["pytest", "jsonschema"]
 
 [tool.setuptools.packages.find]
 include = ["tcw*"]
 
 [tool.setuptools.package-data]
 "tcw.serve" = ["dist/*", "dist/**/*"]
+"tcw.work" = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

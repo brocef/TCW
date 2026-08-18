@@ -1,8 +1,15 @@
 As a user, I run `tcw work reconcile <epic>` to refresh the epic's own account of
 its slices. TCW walks the registered descendants, collects every item whose
-`initiative` points at this epic, and rewrites a managed block in the epic's
-`initial-request.md` between `<!-- tcw:rollup -->` markers. Everything outside
-those markers is mine and is never touched.
+`initiative` points at this epic, and writes the result to the epic's own
+`rollup.md`. Nothing I wrote is touched: the rollup is generated, so it gets its
+own file instead of being folded into a document I am credited with. An epic that
+has only ever been reconciled still shows no `R` on the board, because no one has
+written its request yet.
+
+An epic whose rollup was written into `initial-request.md` by an older release
+migrates the first time I reconcile it: the block moves to `rollup.md` and the
+request keeps only my own prose. If the block was all the request ever held, TCW
+removes the file rather than leaving an empty document behind.
 
 The block holds a slice table — node, slug, status, blockers — grouped by project
 and ordered so a slice appears after whatever blocks it; the capability deltas the

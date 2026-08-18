@@ -1,13 +1,15 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    RESOLVED_STATUSES, WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
+    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
+    WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
@@ -19,13 +21,17 @@ from tcw.store.fs import (
     remove_worktree, resolve_qualified_work_ref,
 )
 from tcw.store.project import worktree_anchors
-from tcw.work.hooks import run_post, run_pre
+from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
+from tcw.work.projection import work_item_json
+from tcw.work.resolve import (
+    ResolveError, load_builtins, resolve_artifact, resolve_prompts, select,
+)
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
                "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
-               "escalate", "tags", "lifecycle"}
+               "escalate", "tags", "lifecycle", "stage", "scaffold"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 # TransitionCommitError is included deliberately: the item *did* move, and its
@@ -221,7 +227,7 @@ def _new(args: argparse.Namespace) -> int:
     try:
         detail = st.create_work(
             args.title,
-            body=_stdin_body(),
+            intake=_stdin_body(),      # piped text is raw input, not a request
             priority=args.priority,
             effort=args.effort or "",
             complexity=args.complexity or "",
@@ -312,7 +318,12 @@ def _visible_board_items(st: FsWorkStore, status: str | None, show_all: bool,
 
 
 def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -> None:
+    # Display order, not registry order: WORK_ARTIFACTS is append-only so that
+    # adding a name never shifts an existing item's letters, which leaves the
+    # newest entry last no matter where it belongs in the lifecycle. `intake`
+    # comes before the request, so the string still reads chronologically.
     labels = {
+        "intake": "i",
         "initial-request": "R",
         "spec": "S",
         "plan": "P",
@@ -321,12 +332,10 @@ def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -
         "rework": "W",
         "post-mortem": "M",
     }
-    stages = ""
-    for artifact in st.artifacts(it.slug):
-        if artifact.present:
-            # `.get` rather than `[]`: WORK_ARTIFACTS is the registry, and a name
-            # added there without a letter here should not crash the board.
-            stages += labels.get(artifact.name, "?")
+    present = {a.name for a in st.artifacts(it.slug) if a.present}
+    stages = "".join(letter for name, letter in labels.items() if name in present)
+    # A name in the registry with no letter here must not vanish silently.
+    stages += "?" * len(present - labels.keys())
     blockers = st.unresolved_blockers(it)
     suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
     ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""
@@ -454,6 +463,20 @@ def _show(args: argparse.Namespace) -> int:
     if item is None:
         print(f"tcw work show: no such work item: {args.slug}", file=sys.stderr)
         return 1
+    if getattr(args, "json", False):
+        # Built and encoded before anything is printed, so a projection failure
+        # leaves stdout empty rather than half a document for `jq` to choke on.
+        # No `default=`: the DTO is JSON-native by construction, and allow_nan
+        # is the guard for the case where it turns out not to be.
+        try:
+            doc = work_item_json(item, st.artifacts(bare))
+            text = json.dumps(doc, indent=2, sort_keys=True, allow_nan=False)
+        except (ValueError, TypeError) as e:
+            print(f"tcw work show: cannot project {bare} as JSON: {e}",
+                  file=sys.stderr)
+            return 1
+        print(text)
+        return 0
     _print_item(item)
     return 0
 
@@ -508,7 +531,8 @@ def _start(args: argparse.Namespace) -> int:
     # `pre` hooks run before the store is touched at all — not merely before the
     # move. A hook is allowed to refuse the transition, and a refusal has to mean
     # nothing happened; evaluating one after any store call would make that false.
-    if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog")):
+    if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog",
+                       st.get(bare))):
         print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
         return 1
     owner = (args.owner or os.environ.get("TCW_WORK_OWNER", "")).strip()
@@ -528,7 +552,8 @@ def _start(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
-    post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active")
+    post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active",
+                        st.get(bare))
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
@@ -595,7 +620,8 @@ def _submit(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
-    if (err := run_pre(st.lifecycle_policy(), "submit", st.node_root, bare, "active")):
+    if (err := run_pre(st.lifecycle_policy(), "submit", st.node_root, bare, "active",
+                       st.get(bare))):
         print(f"tcw work submit: {err}; {bare} not moved", file=sys.stderr)
         return 1
     try:
@@ -603,7 +629,8 @@ def _submit(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
-    post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review")
+    post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review",
+                        st.get(bare))
     print(f"submitted {args.slug} → review")
     print(f"→ next: verify the work, then either "
           f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
@@ -617,7 +644,8 @@ def _rework(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
-    if (err := run_pre(st.lifecycle_policy(), "rework", st.node_root, bare, "review")):
+    if (err := run_pre(st.lifecycle_policy(), "rework", st.node_root, bare, "review",
+                       st.get(bare))):
         print(f"tcw work rework: {err}; {bare} not moved", file=sys.stderr)
         return 1
     try:
@@ -625,7 +653,8 @@ def _rework(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
-    post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active")
+    post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
+                        st.get(bare))
     print(f"reworking {args.slug} → active")
     print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
           file=sys.stderr)
@@ -640,8 +669,8 @@ def _lifecycle_lines(step, bindings_for) -> list[str]:
         out.append(f"  moves:    {step.moves}")
     if step.inputs:
         out.append(f"  inputs:   {', '.join(step.inputs)}")
-    if step.produces:
-        out.append(f"  produces: {step.produces}")
+    if step.produces_note:
+        out.append(f"  produces: {step.produces_note}")
     if step.gates:
         out.append(f"  gates:    {'; '.join(step.gates)}")
     for label, bindings in bindings_for(step):
@@ -651,24 +680,229 @@ def _lifecycle_lines(step, bindings_for) -> list[str]:
     return out
 
 
-def _directive_text(step, bindings) -> str:
+def _directive_text(step, bindings, grouped: bool = True) -> str:
     """One complete instruction, or "" when nothing is bound.
 
     Never a bare value: this is injected verbatim into an agent's context, so an
     unbound id has to render as *nothing* rather than as a broken sentence.
+
+    `grouped` is the **legacy** rendering: all skills ahead of all commands,
+    regardless of declaration order. That is what a bare stage list has always
+    produced, so a naive move to declaration order would silently change output
+    this repo's own criterion requires to be byte-identical. An explicit
+    `prompt:` list is new syntax and renders in the order it was written.
     """
     if not bindings:
         return ""
-    skills = [b.ref for b in bindings if b.kind == "skill"]
-    commands = [b.ref for b in bindings if b.kind == "command"]
-    parts = []
-    if skills:
-        parts.append(f"invoke the {' then '.join(skills)} skill"
-                     f"{'s' if len(skills) > 1 else ''}")
-    if commands:
-        parts.append("run " + " then ".join(f"`{c}`" for c in commands))
     where = "this stage" if step.kind == "stage" else f"the {step.id} transition"
-    return f"For {where}, {' and '.join(parts)}."
+    if grouped:
+        skills = [b.ref for b in bindings if b.kind == "skill"]
+        commands = [b.ref for b in bindings if b.kind == "command"]
+        parts = []
+        if skills:
+            parts.append(f"invoke the {' then '.join(skills)} skill"
+                         f"{'s' if len(skills) > 1 else ''}")
+        if commands:
+            parts.append("run " + " then ".join(f"`{c}`" for c in commands))
+        return f"For {where}, {' and '.join(parts)}."
+
+    # Declaration order. The text-producing kinds (blob/file/generate/builtin)
+    # cannot be inlined here: `tcw work lifecycle` executes nothing, so naming a
+    # `generate` script's output would mean running it. They collapse into one
+    # clause, at the position of the first one.
+    parts: list[str] = []
+    named_text = False
+    for b in bindings:
+        if b.kind == "skill":
+            parts.append(f"invoke the {b.ref} skill")
+        elif b.kind == "command":
+            parts.append(f"run `{b.ref}`")
+        elif not named_text:
+            parts.append("read this node's configured instructions")
+            named_text = True
+    return f"For {where}, {' and '.join(parts)}." if parts else ""
+
+
+def _binding_json(b) -> dict:
+    """A binding as `--json` reports it.
+
+    `{kind: value}` is the shape this payload has always had, so a legacy
+    `skill`/`command` binding serializes exactly as before. `builtin` reports
+    `true` — its configured form — rather than the empty string it parses to,
+    and `when` appears only when there is one. A legacy config has neither, so
+    its payload is byte-identical.
+    """
+    out: dict = {b.kind: True if b.kind == "builtin" else b.ref}
+    if b.when is not None:
+        w: dict = {}
+        if b.when.tags:
+            w["tags"] = list(b.when.tags)
+        if b.when.not_tags:
+            w["not_tags"] = list(b.when.not_tags)
+        if b.when.type is not None:
+            w["type"] = b.when.type
+        out["when"] = w
+    return out
+
+
+def _stage(args: argparse.Namespace) -> int:
+    """`tcw work stage <id> [ref]` — what to do at a lifecycle stage.
+
+    Order matters and is the contract: id → item → legality → checks → resolve →
+    print. Legality is decided **before any hook runs** — not before any read,
+    which is impossible, since the item's status is the thing being judged.
+
+    stdout carries the resolved prompt and nothing else, emitted once at the end
+    after everything that could fail has succeeded. An agent piping this gets
+    either the whole instruction or nothing, never a fragment.
+    """
+    step = LIFECYCLE_STEPS_BY_ID.get(args.stage_id)
+    if step is None or step.kind != "stage":
+        legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
+        print(f"tcw work stage: unknown stage '{args.stage_id}'; expected one of "
+              f"{', '.join(legal)}", file=sys.stderr)
+        return 1
+    if not STAGE_STATUSES[step.id]:
+        # `inbox` — rejected with the reason rather than printing nothing, which
+        # would read as "no instructions configured".
+        print(f"tcw work stage: '{step.id}' runs before an item exists, so there "
+              f"is no item to resolve a stage against; use `tcw work inbox list` "
+              f"and `tcw work inbox accept`", file=sys.stderr)
+        return 1
+
+    resolved = _resolve(args.slug, "stage")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work stage: {e}", file=sys.stderr)
+        return 1
+    if item is None:
+        print(f"tcw work stage: no such work item: {args.slug}", file=sys.stderr)
+        return 1
+
+    legal = STAGE_STATUSES[step.id]
+    if item.status not in legal:
+        print(f"tcw work stage: '{step.id}' is not legal for an item in "
+              f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
+        return 1
+
+    policy = st.lifecycle_policy()
+    if not args.no_exec:
+        checks = select(policy.stage_checks(step.id), item)
+        err = run_bindings(checks, st.node_root,
+                           hook_env(st.node_root, bare, item.status, step.id),
+                           policy.timeout, f"{step.id} pre")
+        if err:
+            print(f"tcw work stage: {err}; nothing resolved", file=sys.stderr)
+            return 1
+
+    try:
+        res = resolve_prompts(policy, step.id, item, st.node_root,
+                              load_builtins(),
+                              artifacts=st.artifacts(bare), env=dict(os.environ),
+                              execute=not args.no_exec)
+    except ResolveError as e:
+        print(f"tcw work stage: {e}", file=sys.stderr)
+        return 1
+
+    if args.no_exec:
+        # The plan is a diagnostic, so it goes to stderr: a caller piping stdout
+        # should get the (partial) prompt, never a plan they might act on.
+        print(f"tcw work stage {step.id}: --no-exec, nothing was executed",
+              file=sys.stderr)
+        for b in select(policy.stage_checks(step.id), item):
+            print(f"  pre check would run: {b.ref}", file=sys.stderr)
+        for entry in res.plan:
+            state = "matched" if entry.matched else "skipped (condition)"
+            detail = f": {entry.ref}" if entry.kind != "builtin" else ""
+            print(f"  prompt {entry.kind} — {state}{detail}", file=sys.stderr)
+
+    if res.text:
+        print(res.text)
+    return 0
+
+
+# Which stage writes each artifact, inverted from the one table that says so.
+# `intake` is absent on purpose: no stage produces it, so it has no legality row
+# and scaffolding it is legal wherever the item is.
+_STAGE_FOR_ARTIFACT = {name: step.id for step in LIFECYCLE_STEPS
+                       for name in step.produces}
+
+
+def _scaffold(args: argparse.Namespace) -> int:
+    """Write a starting point for a lifecycle document — never the document.
+
+    The draft is a resource of its own, named for its artifact and reported by
+    nothing as one, so `tcw work list` still shows the stage as unwritten until
+    someone writes it. The store owns that naming; this verb composes no path.
+
+    **Resolve fully, then write.** A hook failure leaves nothing behind and a
+    retry is clean; a write failure puts nothing on stdout, so a caller reading
+    stdout for a path never gets one for a file that does not exist.
+    """
+    if args.artifact not in WORK_ARTIFACTS:
+        print(f"tcw work scaffold: unknown artifact '{args.artifact}'; expected "
+              f"one of {', '.join(WORK_ARTIFACTS)}", file=sys.stderr)
+        return 1
+
+    resolved = _resolve(args.slug, "scaffold")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work scaffold: {e}", file=sys.stderr)
+        return 1
+    if item is None:
+        print(f"tcw work scaffold: no such work item: {args.slug}", file=sys.stderr)
+        return 1
+
+    # The canonical presence rule, through `artifacts()` — the same answer the
+    # board gives. A whitespace-only `spec.md` reads as absent there, so it must
+    # read as absent here too, or the two disagree about what exists.
+    artifacts = st.artifacts(bare)
+    if any(a.name == args.artifact and a.present for a in artifacts):
+        print(f"tcw work scaffold: {args.artifact} is already written "
+              f"({st.artifact_locator(bare, args.artifact)}); a draft beside it "
+              f"would only compete with it", file=sys.stderr)
+        return 1
+
+    stage = _STAGE_FOR_ARTIFACT.get(args.artifact)
+    if stage is not None and item.status not in STAGE_STATUSES[stage]:
+        print(f"tcw work scaffold: '{args.artifact}' is written by the "
+              f"'{stage}' stage, which is not legal for an item in "
+              f"'{item.status}'; it runs in "
+              f"{', '.join(STAGE_STATUSES[stage])}", file=sys.stderr)
+        return 1
+
+    policy = st.lifecycle_policy()
+    builtins = load_builtins()
+    try:
+        res = resolve_artifact(policy, args.artifact, item, st.node_root,
+                               builtins, artifacts=artifacts,
+                               env=dict(os.environ))
+    except ResolveError as e:
+        print(f"tcw work scaffold: {e}; nothing written", file=sys.stderr)
+        return 1
+
+    # `resolve_artifact` has no implicit fallback: a project that declares no
+    # binding gets an empty `Resolution`, which is every project today. The
+    # built-in is the fallback when *nothing won* — a binding that won and
+    # resolved to empty text asked for an empty template and keeps it.
+    text = (res.text if any(e.matched for e in res.plan)
+            else builtins.artifact_templates.get(args.artifact, ""))
+
+    try:
+        locator = st.write_draft(bare, args.artifact, text, force=args.force)
+    except (*_ERRORS, OSError) as e:
+        print(f"tcw work scaffold: {e}", file=sys.stderr)
+        return 1
+    print(locator)
+    return 0
 
 
 def _lifecycle(args: argparse.Namespace) -> int:
@@ -689,11 +923,45 @@ def _lifecycle(args: argparse.Namespace) -> int:
         print(f"tcw work lifecycle: {e}", file=sys.stderr)
         return 1
 
+    # `--phase` filters what is reported. Legal phases differ by kind: a stage has
+    # `pre` checks and `prompt` bindings and no `post` at all (exit checks live on
+    # the next stage's `pre`), while a transition has `pre` and `post`. An illegal
+    # combination is an error naming the reason rather than empty output, because
+    # silence reads as "nothing is configured".
+    phase = getattr(args, "phase", None)
+    if phase:
+        wanted_kind = "stage" if args.stage else "transition" if args.transition else None
+        legal = {"stage": ("pre", "prompt"), "transition": ("pre", "post")}
+        if wanted_kind is None:
+            print("tcw work lifecycle: --phase needs --stage or --transition",
+                  file=sys.stderr)
+            return 1
+        if phase not in legal[wanted_kind]:
+            reason = ("stages have no 'post' phase — a stage's exit checks belong "
+                      "on the next stage's 'pre'"
+                      if wanted_kind == "stage" and phase == "post" else
+                      f"transitions have no '{phase}' phase")
+            print(f"tcw work lifecycle: --phase {phase} is not valid for a "
+                  f"{wanted_kind}: {reason}; expected one of "
+                  f"{', '.join(legal[wanted_kind])}", file=sys.stderr)
+            return 1
+
     def bindings_for(step):
         if step.kind == "stage":
-            return [("bind:", policy.stage(step.id))]
-        tb = policy.transition(step.id)
-        return [("pre:", tb.pre), ("post:", tb.post)]
+            # "bind:" keeps its exact meaning — the stage's prompts. Stage
+            # bindings were never executed, so what they always were is what
+            # `prompt` names; the label stays so legacy output does not move.
+            rows = [("bind:", policy.stage(step.id))]
+            checks = policy.stage_checks(step.id)
+            if checks:                        # new key, absent from legacy output
+                rows.insert(0, ("pre:", checks))
+        else:
+            tb = policy.transition(step.id)
+            rows = [("pre:", tb.pre), ("post:", tb.post)]
+        if not phase:
+            return rows
+        want = "bind:" if (step.kind == "stage" and phase == "prompt") else f"{phase}:"
+        return [(label, bs) for label, bs in rows if label == want]
 
     if args.directive:
         # Exactly one of --stage/--transition, enforced by argparse; an unknown
@@ -708,7 +976,8 @@ def _lifecycle(args: argparse.Namespace) -> int:
                   f"of {', '.join(legal)}", file=sys.stderr)
             return 1
         flat = [b for _label, bs in bindings_for(step) for b in bs]
-        text = _directive_text(step, flat)
+        grouped = step.kind != "stage" or policy.stage_is_legacy(step.id)
+        text = _directive_text(step, flat, grouped)
         if text:                                   # empty = print nothing at all
             print(text)
         return 0
@@ -723,15 +992,24 @@ def _lifecycle(args: argparse.Namespace) -> int:
         return 1
 
     if args.json:
-        import json
         payload = [{
             "id": s.id, "kind": s.kind, "objective": s.objective,
             "moves": s.moves, "inputs": list(s.inputs),
-            "produces": s.produces, "gates": list(s.gates),
-            "bindings": {label.rstrip(":"): [{b.kind: b.ref} for b in bs]
+            "produces": s.produces_note, "gates": list(s.gates),
+            "bindings": {label.rstrip(":"): [_binding_json(b) for b in bs]
                          for label, bs in bindings_for(s)},
         } for s in steps]
-        print(json.dumps({"timeout": policy.timeout, "steps": payload}, indent=2))
+        # A superset, the same discipline the JSON projection applied to `serve`:
+        # every key a legacy config produced is still here with the same value,
+        # and the new ones appear only when the feature is configured — so a
+        # legacy node's payload is byte-identical.
+        doc = {"timeout": policy.timeout, "steps": payload}
+        if policy.output_cap != DEFAULT_OUTPUT_CAP:
+            doc["output-cap"] = policy.output_cap
+        if policy.artifacts:
+            doc["artifacts"] = {name: [_binding_json(b) for b in bs]
+                                for name, bs in policy.artifacts.items()}
+        print(json.dumps(doc, indent=2))
         return 0
 
     for i, step in enumerate(steps):
@@ -934,7 +1212,8 @@ def _complete(args: argparse.Namespace) -> int:
     # Last thing before the store is touched. A `pre` hook may refuse the
     # completion, and a refusal has to mean the item is untouched — so the hook
     # runs before `complete()` is entered at all, not somewhere inside it.
-    if (err := run_pre(policy, transition_id, st.node_root, bare, item.status)):
+    if (err := run_pre(policy, transition_id, st.node_root, bare, item.status,
+                       item)):
         print(f"tcw work complete: {err}; {bare} not closed", file=sys.stderr)
         return 1
     try:
@@ -943,7 +1222,7 @@ def _complete(args: argparse.Namespace) -> int:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
     post_err = run_post(policy, transition_id, st.node_root, bare,
-                        "completed" if shipping else "discarded")
+                        "completed" if shipping else "discarded", item)
     loc = st.locate(bare)
     print(f"{'completed' if shipping else 'discarded'} {args.slug} "
           f"({args.resolution})" + (f" → {loc}" if loc else ""))
@@ -1071,6 +1350,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     psh = g.add_parser("show", help="resolve slug → item; print state + body")
     psh.add_argument("slug")
+    psh.add_argument("--json", action="store_true",
+                     help="emit the item as a versioned JSON document")
     psh.set_defaults(func=_show)
 
     pp = g.add_parser("path", help="print the work store or a work item folder path")
@@ -1101,6 +1382,25 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     plc.add_argument("--json", action="store_true", help="machine-readable output")
     plc.add_argument("--directive", action="store_true",
                      help="emit one instruction line for an agent, or nothing when unbound")
+    pstg = g.add_parser("stage",
+                        help="print a stage's instructions after its checks pass")
+    pstg.add_argument("stage_id", metavar="stage")
+    pstg.add_argument("slug")
+    pstg.add_argument("--no-exec", action="store_true",
+                      help="report what would run and run none of it")
+    pstg.set_defaults(func=_stage)
+
+    pscf = g.add_parser("scaffold",
+                        help="write a draft of a lifecycle artifact from its template")
+    pscf.add_argument("artifact", help=f"one of: {', '.join(WORK_ARTIFACTS)}")
+    pscf.add_argument("slug")
+    pscf.add_argument("--force", action="store_true",
+                      help="replace a draft that is already there")
+    pscf.set_defaults(func=_scaffold)
+
+    plc.add_argument("--phase", choices=("pre", "post", "prompt"),
+                     help="limit to one phase; a stage has 'pre' and 'prompt', "
+                          "a transition has 'pre' and 'post'")
     sel = plc.add_mutually_exclusive_group()
     sel.add_argument("--stage", help="limit to one stage id")
     sel.add_argument("--transition", help="limit to one transition id")

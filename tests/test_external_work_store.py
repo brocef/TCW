@@ -268,7 +268,9 @@ def test_board_artifact_flags_survive_a_concurrent_claim(tmp_path, monkeypatch):
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     store = FsWorkStore.open(code)
-    item = store.create("Claim me", created="2026-08-08")
+    # An explicit body: creation no longer templates one, and this test needs a
+    # real file for the vanish to land inside its guard.
+    item = store.create("Claim me", created="2026-08-08", body="# Claim me\n")
 
     # The window is between `is_file()` and the `read_text()` it guards — a
     # folder already gone just reads as absent, so the vanish has to land

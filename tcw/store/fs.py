@@ -3,7 +3,8 @@
 `git_root`/`init` (Phase 1) scaffold; `FsTaxonomyStore` (Phase 2) realizes the
 `TaxonomyStore` interface over `docs/taxonomy/`. The capabilities and work
 adapters land here in their phases; the genuinely-shared primitives get factored
-into a tree-store core in Phase 4 (don't pre-abstract — AGENTS.md).
+into a tree-store core in Phase 4 (don't pre-abstract —
+`docs/lifecycle/implementation.md`).
 """
 
 # Defer annotation evaluation (PEP 563) so forward refs like `"TermDetail" | None`
@@ -34,7 +35,7 @@ from tcw.store.base import (
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
-    parse_lifecycle_policy,
+    Binding, parse_lifecycle_policy,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -512,6 +513,10 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
 
 
 RESOLVED_IGNORE_COMMENT = "# Resolved work: kept on disk and in history, out of the tracked tree."
+
+# Read-resolution order for a work item's body surface. The request wins when
+# both exist; an item that has only raw intake still shows a body.
+_BODY_ORDER = ("initial-request", "intake")
 
 
 def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None) -> list[str]:
@@ -2210,9 +2215,30 @@ class FsWorkStore(FsTreeStore, WorkStore):
         except ValueError:
             return str(p)                             # outside node_root: absolute, don't crash
 
+    @staticmethod
+    def _present(p: Path) -> bool:
+        """The one presence rule: exists and non-empty. Mere existence would let
+        an empty file claim its stage ran, which is what `intake` made visible."""
+        return p.is_file() and bool(p.read_text(encoding="utf-8").strip())
+
+    def _resolve_body(self, d: Path) -> tuple[str | None, str]:
+        """The body surface: (artifact name, text), or (None, "") when neither is
+        present. Reads fall back request → intake; writes never do (`update_work`)."""
+        for name in _BODY_ORDER:
+            p = d / self._artifact_filename(name)
+            try:
+                if self._present(p):
+                    return name, p.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                continue                              # claimed out from under us
+        return None, ""
+
     def body_path(self, slug: str) -> Path | None:
-        d = self._find(slug)                          # initial-request.md: FS realization of body surface
-        return d / "initial-request.md" if d is not None else None
+        d = self._find(slug)                          # FS realization of the body surface
+        if d is None:
+            return None
+        name, _ = self._resolve_body(d)
+        return d / self._artifact_filename(name) if name else None
 
     @staticmethod
     def _artifact_filename(name: str) -> str:
@@ -2226,7 +2252,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         for name in WORK_ARTIFACTS:
             p = d / self._artifact_filename(name)
             try:
-                present = p.is_file() and bool(p.read_text(encoding="utf-8").strip())
+                present = self._present(p)
             except FileNotFoundError:
                 return []                             # claimed out from under us
             out.append(Artifact(name=name, present=present))
@@ -2431,7 +2457,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def _read_item(self, d: Path) -> WorkItem:
         state = self._safe_yaml(d / "state.yaml")
-        request = d / "initial-request.md"
+        _, body_text = self._resolve_body(d)
         caps = d / "capabilities.yaml"
         capabilities = None
         if caps.exists():
@@ -2450,7 +2476,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             effort=state.get("effort") or "",        # `or ""`: bare YAML `effort:` (null) → ""
             complexity=state.get("complexity") or "",
             tags=list(state.get("tags") or []),
-            body=request.read_text(encoding="utf-8") if request.exists() else "",
+            body=body_text,
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=capabilities,
             initiative=state.get("initiative", ""),
@@ -2616,8 +2642,47 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def lifecycle_problems(self) -> list[str]:
         """Policy problems, prefixed with the file they came from — for `check`."""
-        _policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        problems += self._file_binding_problems(policy)
         return [f"{SENTINEL}: {p}" for p in problems]
+
+    def _file_binding_problems(self, policy: LifecyclePolicy) -> list[str]:
+        """`file:` bindings that do not exist or leave the node.
+
+        Here rather than in `parse_lifecycle_policy` because the parser is pure —
+        it takes a loaded object and touches no filesystem, which is what lets
+        `lifecycle_policy` and `tcw validate` share it. Resolving a path is
+        adapter knowledge by definition, and `file:` is declared a node-local
+        source kind for the same reason: a remote policy store can hold a named
+        prompt resource but cannot honor an arbitrary local path.
+
+        Confinement resolves **both** sides with symlinks followed. A lexical
+        `..` check passes a symlink inside the node that points out of it, and
+        then reads exactly the file the check exists to prevent.
+        """
+        problems: list[str] = []
+        root = self.node_root.resolve()
+
+        def check(b: "Binding", where: str) -> None:
+            if b.kind != "file":
+                return
+            target = (root / b.value).resolve()
+            if target != root and root not in target.parents:
+                problems.append(f"{where}: file '{b.value}' resolves outside the "
+                                f"node root ({target})")
+            elif not target.is_file():
+                problems.append(f"{where}: file '{b.value}' does not exist "
+                                f"({target})")
+
+        for sid, sb in policy.stages.items():
+            for i, b in enumerate(sb.prompt):
+                check(b, f"work.lifecycle.stages.{sid}[{i}]")
+            for i, b in enumerate(sb.pre):
+                check(b, f"work.lifecycle.stages.{sid}.pre[{i}]")
+        for name, bindings in policy.artifacts.items():
+            for i, b in enumerate(bindings):
+                check(b, f"work.lifecycle.artifacts.{name}[{i}]")
+        return problems
 
     def trunk_branch(self) -> str | None:
         """The branch transitions are expected to land on, or None when unset.
@@ -2907,7 +2972,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         else:
             for name, path in self._folder_files(source):
                 if name == primary:
-                    manifest.append("initial-request.md")
+                    manifest.append("intake.md")
                 else:
                     manifest.append(f"attachments/{name}")
                     attachments.append((name, path))
@@ -2915,17 +2980,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         origin = primary or source.name
         manifest_lines = []
         for name in manifest:
-            suffix = f" — accepted from `{origin}`" if name == "initial-request.md" else ""
+            suffix = f" — accepted from `{origin}`" if name == "intake.md" else ""
             manifest_lines.append(f"- `{name}`{suffix}")
         body = detail.body if detail.body is not None else "Binary intake preserved as an attachment."
-        request = (
-            f"# {accepted_title}\n\n## Product changes\n\nTBD\n\n"
-            "## Technical changes\n\nTBD\n\n## Meta changes\n\nTBD\n\n"
-            "## Inbox contents\n\n### Inbox manifest\n\n"
-            + "\n".join(manifest_lines) + "\n\n### Inbox body\n\n" + body
-        )
-        if not request.endswith("\n"):
-            request += "\n"
+        # Intake, not a request: accepting an entry preserves what arrived and
+        # leaves the `request` stage still to run. The manifest and the binary
+        # fallback above are the parts worth keeping — this used to wrap them in
+        # a three-heading TBD skeleton that made the item look already written up.
+        intake = ("## Inbox manifest\n\n" + "\n".join(manifest_lines)
+                  + "\n\n## Inbox body\n\n" + body)
+        if not intake.endswith("\n"):
+            intake += "\n"
         temp = Path(tempfile.mkdtemp(prefix=f".{slug}-", dir=self.root / "backlog"))
         try:
             state = {"slug": slug, "title": accepted_title,
@@ -2933,7 +2998,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if initiative:                   # absent key when there is none, as before
                 state["initiative"] = initiative
             dump_yaml(temp / "state.yaml", state)
-            (temp / "initial-request.md").write_text(request, encoding="utf-8")
+            (temp / "intake.md").write_text(intake, encoding="utf-8")
             for name, path in attachments:
                 target = temp / "attachments" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -2960,7 +3025,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # -- writes --
 
     def create(self, title: str, created: str | None = None, body: str = "",
-               priority: int | None = None, parent: str | None = None) -> WorkItem:
+               priority: int | None = None, parent: str | None = None,
+               intake: str = "") -> WorkItem:
         """Create a work item — the `WorkItem`-returning face over `create_work`.
 
         `get_detail(...).item` *is* the `self.get(slug)` this used to end with —
@@ -2974,7 +3040,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # `create_work`, not hardening a duplicate.
         """
         return self.create_work(title, created=created, body=body,
-                                priority=priority, parent=parent).item
+                                priority=priority, parent=parent,
+                                intake=intake).item
 
     def set_field(self, slug: str, key: str, value) -> None:
         self._set_fields_at(self._require_dir(slug), {key: value})
@@ -3118,11 +3185,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         d = self._find(slug)
         if d is None:                                  # moved out from under us
             raise _Moved
-        # Core revision = hash of state.yaml + body (initial-request.md)
+        # Core revision = state.yaml + *which* file the body resolved to + its
+        # text. The name matters: promoting an intake to a request with identical
+        # text changes the editable resource, and a revision that ignored the name
+        # would let a guarded write succeed against a stale view of what it edits.
         state_text = (d / "state.yaml").read_text(encoding="utf-8")
-        body_path = d / "initial-request.md"
-        body_text = body_path.read_text(encoding="utf-8") if body_path.exists() else ""
-        core_rev = _revision_multi(state_text, body_text)
+        body_name, body_text = self._resolve_body(d)
+        core_rev = _revision_multi(state_text, body_name or "", body_text)
 
         # Artifact revisions
         art_revs: dict[str, str] = {}
@@ -3155,7 +3224,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     parent: str | None = None,
                     initiative: str = "",
                     type: str = "",
-                    tags: list[str] | None = None) -> "WorkDetail":
+                    tags: list[str] | None = None,
+                    intake: str = "") -> "WorkDetail":
         """Composite create: all fields validated before any write."""
         if not title:
             raise ValueError("title is required and must be non-empty")
@@ -3228,11 +3298,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
         state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
 
-        # Build body content
-        body_content = (
-            f"# {title}\n\n## Product changes\n\n## Technical changes\n\n## Meta changes\n\n"
-            f"{body}\n"
-        )
+        # Only what the caller actually supplied gets a file. Creation used to
+        # template a three-heading request unconditionally, which made every
+        # item look like its `request` stage had run.
+        written = {"state.yaml": state_text}
+        if body:
+            written["initial-request.md"] = body if body.endswith("\n") else body + "\n"
+        if intake:
+            written["intake.md"] = intake if intake.endswith("\n") else intake + "\n"
 
         # Write atomically (both files must succeed). `mkdir` without
         # `exist_ok` proves the directory did not exist, so the rollback is
@@ -3244,12 +3317,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # it). Staging stays outside — see `_write_node`.
         d.mkdir(parents=True)
         try:
-            _atomic_write(d / "state.yaml", state_text)
-            _atomic_write(d / "initial-request.md", body_content)
+            for name, content in written.items():
+                _atomic_write(d / name, content)
         except BaseException:
             shutil.rmtree(d, ignore_errors=True)
             raise
-        self._stage(d / "state.yaml", d / "initial-request.md")
+        self._stage(*(d / name for name in written))
 
         return _require_detail(self.get_detail(slug), "work item", slug)
 
@@ -3269,9 +3342,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     f"stale revision for work item '{slug}' "
                     f"(expected {core_revision}, got {detail.core_revision})")
 
-        # Read current state
+        # Read current state. A body write always targets the request, never the
+        # read fallback: following it would either mutate raw intake or quietly
+        # satisfy the `request` stage with text the author meant as an edit.
         state = load_yaml(d / "state.yaml")
         body_path = d / "initial-request.md"
+        had_request = self._present(body_path)
         body_text = body_path.read_text(encoding="utf-8") if body_path.exists() else ""
 
         # Validate effort / complexity before applying
@@ -3386,7 +3462,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
             move_to.parent.mkdir(parents=True, exist_ok=True)
             self._mv(d, move_to)
 
-        return _require_detail(self.get_detail(slug), "work item", slug)
+        detail = _require_detail(self.get_detail(slug), "work item", slug)
+        if body is not _UNSET and not had_request and bool(body_text.strip()):
+            detail.promoted = True          # this write created the request
+        return detail
 
     # -- artifact read / write --
 
@@ -3440,6 +3519,34 @@ class FsWorkStore(FsTreeStore, WorkStore):
             media_type="text/markdown",
             revision=_revision(content),
         )
+
+    def write_draft(self, slug: str, artifact: str, content: str, *,
+                    force: bool = False) -> str:
+        if artifact not in WORK_ARTIFACTS:
+            raise ValueError(
+                f"unknown artifact '{artifact}' "
+                f"(choose from {', '.join(WORK_ARTIFACTS)})")
+        d = self._require_dir(slug)
+        # The one place this filename shape exists. `artifacts()` looks up
+        # `<name>.md` from the registry and never sees it, so presence stays
+        # honest with no new machinery.
+        p = d / f"{artifact}.draft.md"
+        if not force and self._present(p):
+            raise ValueError(
+                f"a draft is already there: {p} — type into it, or pass "
+                f"--force to replace it")
+        _atomic_write(p, content)
+        self._stage(p)
+        return str(p)
+
+    def delete_artifact(self, slug: str, name: str) -> None:
+        if name not in WORK_ARTIFACTS:
+            raise ValueError(
+                f"unknown artifact '{name}' "
+                f"(choose from {', '.join(WORK_ARTIFACTS)})")
+        p = self._require_dir(slug) / self._artifact_filename(name)
+        if p.is_file():
+            self._rm(p)
 
     # -- sidecar read / write --
 

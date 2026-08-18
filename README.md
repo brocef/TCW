@@ -76,7 +76,8 @@ So the CLI talks to abstract store interfaces (`TaxonomyStore`,
 filesystem superpowers — co-located docs, atomic commits, grep/diff/PR
 legibility, `mv`-as-transition — are _bonuses layered on top_, never
 load-bearing assumptions of the model. The full rules live in
-[`AGENTS.md`](AGENTS.md).
+[`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md), which TCW's own
+repository binds to its `spec` and `plan` stages.
 
 ## Who it's for
 
@@ -371,7 +372,10 @@ edit** any object directly from the browser:
   Request, Spec, and Implementation Plan in first-class content tabs; edit
   other lifecycle artifacts and the `capabilities.yaml` sidecar using a
   Markdown editor with live preview; and run lifecycle actions (start,
-  complete, drop).
+  complete, drop). Each content tab shows only its own document: on an item
+  whose request has not been written, the tab says so and the editor opens
+  empty rather than pre-filling it with the item's raw intake. Saving a body
+  that creates the request says that it did.
   Completing as `done` requires resolving blockers and acknowledging every
   Definition-of-Done item, plus a capabilities reconciliation reminder;
   discarding drops all three for a single confirmation.
@@ -616,10 +620,104 @@ work:
                 pre: [{ command: "pytest -q" }]
 ```
 
-A binding is a `skill:` **or** a `command:` — never a bare string, because
-guessing which one was meant is a class of bug bought for nothing. `tcw validate`
-rejects an unknown id, a malformed shape, a blank or duplicated reference, and a
-binding declaring neither or both.
+A binding declares **what it is for** and **where its text or command comes
+from** — never a bare string, because guessing which one was meant is a class of
+bug bought for nothing. `tcw validate` rejects an unknown id, a malformed shape,
+a blank or duplicated reference, a kind used in the wrong position, and a
+condition with an unknown key or an impossible value.
+
+**Three roles.** A `pre:` binding is a **check** — it runs, and a non-zero exit
+matters. A `prompt:` binding resolves to **text an agent reads**; every match is
+concatenated in the order you wrote them. An entry under `artifacts:` is a
+**template** for one of the lifecycle documents; the first match wins, so a
+`builtin` fallback belongs last.
+
+**Six kinds.** `blob:` is text written inline. `file:` is a path in your node —
+normalized and confined to it, so a typo cannot quietly read something else.
+`generate:` is a script you own, under the contract below. `builtin: true` is
+TCW's own default for that stage or artifact — TCW ships instructions for each of
+the six lifecycle stages (`inbox` runs before an item exists, so it has none) and
+a template for each lifecycle document, and **a stage you have configured nothing
+for resolves to them**. `skill:` names an agent skill, which is a name rather than
+instructions and is the weakest option. `command:` is for checks.
+
+```yaml
+work:
+    lifecycle:
+        stages:
+            spec:
+                pre: [{ command: "./bin/ready.sh" }]
+                prompt:
+                    - builtin: true
+                    - blob: "In this repo, specs name their rejected options."
+                    - generate: ./bin/spec-prompt.py
+                      when: { tags: [bug] }
+        artifacts:
+            spec:
+                - blob: "# Spec\n\n## Repro\n"
+                  when: { tags: [bug] }
+                - builtin: true
+```
+
+**Conditions.** Any binding may carry `when:` with `tags:` (any of), `not_tags:`
+(none of), and `type:` — so a bug gets different instructions and a different
+template than a feature. Three keys, deliberately; anything harder belongs in a
+`generate:` script, which decides in real code.
+
+**The `generate:` contract**, enforced rather than hoped for: stdin is
+`{"item": …, "hook": …}` where `item` is the same document
+`tcw work show --json` prints; the script's environment carries `TCW_HOOK_ROLE`,
+`TCW_HOOK_KIND`, `TCW_HOOK_ID`, and `TCW_HOOK_PHASE` so a one-liner needs no JSON
+parser; output is capped (`work.lifecycle.output-cap`, 64 KiB by default) and the
+timeout applies; and a script that **exits non-zero contributes nothing at all**,
+so half a prompt never reaches your agent. Generators re-run on every
+resolution — including every scaffold retry and under `--force` — so write them
+side-effect-free.
+
+Your existing configuration keeps working exactly as it did: a bare list under a
+stage id is still valid, still means "prompt", and still renders identically.
+One exception, and it is the only one: an **empty** prompt list is now rejected
+by `tcw validate`, in both spellings — `prompt: []` and a bare
+`stages.<id>: []`. It never said anything, and now that an unconfigured stage
+falls back to TCW's own instructions it reads as an opt-out it is not. A stage
+that should genuinely say nothing binds `{blob: ""}`.
+
+**Reading a stage's instructions** is `tcw work stage <id> <ref>`. With nothing
+configured it prints TCW's own instructions for that stage, so the command is
+useful before you have written any lifecycle configuration at all; those shipped
+instructions include a short self-review pass at the stages where one earns its
+place — `spec`, `plan`, and `implement`. It refuses a stage that makes no sense
+for the item's current status, runs the stage's `pre` checks, resolves its
+prompts, and prints the result — **on stdout, alone**, so you can pipe it. Every
+check's output goes to stderr, and any failure prints nothing on stdout at all,
+so a pipeline gets the whole instruction or none of it.
+
+It **writes nothing**: no document, no draft, no status change. Running it purely
+to find out what to do is safe, which is the point. The one thing it does run is
+your own `pre` checks and `generate` scripts — and `--no-exec` skips even those,
+printing what would have run instead. That is how you read an unfamiliar
+repository's lifecycle before triggering it.
+
+**Starting the document itself** is `tcw work scaffold <artifact> <ref>`. It
+resolves that artifact's template — yours if you configured one under
+`artifacts:`, TCW's own otherwise — and writes it to `<artifact>.draft.md`,
+printing the draft's path on stdout and nothing else.
+
+A draft is **a file to type into, never the document**. `spec.draft.md` is not
+`spec.md`: the board still shows the spec as unwritten, `tcw work show --json`
+still reports it absent, and the local web app does not list it. Writing the real
+document is your job, and until you do it nothing claims you have.
+
+Two things it refuses, both so nothing you have is destroyed. It refuses once the
+real artifact exists, because a draft beside a finished document only competes
+with it. And it refuses a draft that already has something in it — run it twice
+out of habit and your half-written spec survives. `--force` replaces one
+deliberately. An *empty* draft is regenerated with no flag, which is why
+`tcw work scaffold intake` — whose template is empty on purpose — works like
+everything else.
+
+Nothing is written until the whole template has resolved, so a failed `generate:`
+script leaves no file behind and fixing it and running again is clean.
 
 `pre` hooks run **before** anything is written: a non-zero exit aborts the
 transition and the item does not move. `post` hooks run after, and a failure
@@ -703,6 +801,14 @@ tcw work lifecycle --stage spec --directive
                                        # one instruction line for an agent, or nothing if unbound
 
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
+tcw work show "$slug" --json           # the item as a versioned JSON document
+
+tcw work stage spec "$slug"            # what to do at this stage: checks, then instructions
+tcw work stage spec "$slug" --no-exec  # what *would* run, running none of it
+
+tcw work scaffold spec "$slug"         # write spec.draft.md from its template — a starting
+                                       # point to type into, never the spec itself
+tcw work scaffold spec "$slug" --force # replace a draft you already have
 tcw work path                           # absolute, resolved work-store folder
 tcw work path "$slug"                  # current filesystem path of the slug
 tcw work inbox path                     # absolute, resolved inbox folder
@@ -762,8 +868,10 @@ carrying a tag that was later unregistered. Tags don't affect board ordering.
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
-`tcw work new` also prints an "→ edit: …/initial-request.md" line (stderr) pointing
-at the new item's body so you can open it for editing right away.
+`tcw work new` also prints an "→ edit: …" line (stderr) pointing at the new
+item's body file when it has one — piped stdin lands in `intake.md`, so that is
+what the hint points at. Created with nothing piped, an item has no body file
+yet and the line is simply omitted.
 Every command that moves an item also names where it now lives, as a path
 relative to the project root — `tcw work start` and `tcw work complete` on
 stdout ("started my-item → docs/work/active/my-item"), `tcw work new` and
@@ -775,11 +883,26 @@ may be any standalone file, or a folder with exactly one `INDEX.md` or
 Hidden files and empty directories are ignored, symlinks are not followed, and
 binary contents are never printed. See the optional
 [`docs/work-inbox-template.md`](docs/work-inbox-template.md) for a useful request
-shape; the command does not require or parse that template.
+shape; the command does not require or parse that template. Accepting an entry
+records what arrived as the item's `intake.md` — the entry body, a manifest
+naming every preserved resource and the entry it came from, and a note standing
+in for a primary resource that is not text — and leaves the item's `request`
+stage still to run.
 
-`initial-request.md` is always-present — it is the item body/overview surface and
-the canonical request lifecycle artifact, seeded with title, the three-axis scaffold
-(Product / Technical / Meta changes), and any piped stdin.
+An item's **body surface** resolves to `initial-request.md` when it exists, and
+otherwise to `intake.md` — the raw, unprocessed input the item started from
+(piped stdin, or an accepted inbox entry with its manifest and attachments).
+An item created with neither has no body yet, which is a state rather than a
+defect: `initial-request.md` is the `request` stage's own artifact, so it exists
+once that stage has run and not before. Presence everywhere means *exists and is
+non-empty*.
+
+Editing an item's body always writes `initial-request.md`, never the intake. On
+an item that has only intake, that edit **promotes** it — the request is created,
+the intake is left byte-for-byte as it arrived, and the tool says a promotion
+happened rather than letting it look like an ordinary save. Raw input that
+quietly changes is not raw input, so `intake.md` is editable only as a named
+artifact.
 
 For large implementations, `plan.md` may optionally declare a bounded DAG of
 stage documents in YAML frontmatter. Each declaration has a lowercase kebab-case
@@ -792,10 +915,12 @@ Legacy single-file plans remain valid.
 
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
 `slug | status | stages | priority | title` (priority is the integer, or `-`
-when unspecified). `stages` is a compact lifecycle artifact string: `R` for
-`initial-request.md`, `S` for `spec.md`, `P` for `plan.md`, `O` for
-`outcome.md`, and `F` for `refined-outcome.md`; missing or empty artifacts do
-not contribute letters, and `-` means no lifecycle artifacts are present. The
+when unspecified). `stages` is a compact lifecycle artifact string: a lowercase `i` for
+`intake.md`, then `R` for `initial-request.md`, `S` for `spec.md`, `P` for
+`plan.md`, `O` for `outcome.md`, and `F` for `refined-outcome.md`; the letters
+read in lifecycle order. Missing or empty artifacts do not contribute letters,
+and `-` means no lifecycle artifacts are present — so `R` means the `request`
+stage has actually run. The
 board shows the live columns (backlog and active) and hides both closed
 columns by default — pass `--status completed` or `--status discarded` to list
 one, or `--all` for everything.
@@ -803,6 +928,13 @@ It sorts by priority first (higher integer above lower, unspecified-priority
 items keeping creation order), then topologically — blockers appear before the
 items they block, since a priority preference can't jump a hard dependency —
 and annotates blocked items with their unresolved blockers.
+
+`tcw work show <slug> --json` prints the item as a machine-readable document
+instead of the human-readable summary: an explicit `schema` version, every field
+at a documented JSON type, and an `artifacts` map saying which lifecycle
+documents exist. It is the same document `tcw serve`'s API returns, so a script
+and the web app cannot disagree about what an item is. Errors go to stderr and
+leave stdout empty, so piping into `jq` fails cleanly rather than on a fragment.
 
 Pass `-i`, `--incl-desc`, or `--include-descendants` to list every **registered
 descendant work node**. The output is grouped by project ID (`# .` for the
@@ -916,10 +1048,12 @@ elsewhere still blocks. If a process dies holding a claim, reads report an
 interrupted claim and point at `tcw work start <slug> --take-over --owner <id>`
 rather than pretending the item is gone.
 
-`reconcile` consolidates every child task for an initiative into a managed
-rollup block in the epic's `initial-request.md` — a slice table, surfaced capability
-deltas, and the next ready actions — and is **read-only** on the capabilities
-ledger. `delegate`/`escalate` only ever write a request into the target node's
+`reconcile` consolidates every child task for an initiative into the epic's
+`rollup.md` — a slice table, surfaced capability deltas, and the next ready
+actions — and is **read-only** on the capabilities ledger. The rollup is
+generated, so it lives in its own file rather than inside a document someone
+wrote; an epic that has only ever been reconciled still shows no `R` on the
+board. `delegate`/`escalate` only ever write a request into the target node's
 `inbox/`, never its tracked work, respecting the node write-boundary — into the
 target's *configured* inbox, and they fail loudly rather than inventing a
 `docs/work/` folder when that store cannot be reached. `delegate` addresses its
@@ -1074,6 +1208,7 @@ by re-running the job.
 
 ## Further reading
 
-- [`AGENTS.md`](AGENTS.md) — the working rules and the prime directive (read first).
+- [`AGENTS.md`](AGENTS.md) — the working rules (read first).
+- [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — the prime directive: the abstraction litmus test.
 - `tcw work list` — current and pending work; this repo tracks its own work via `tcw work` (`docs/work/`).
 - [`docs/plan/phase-2-taxonomy.md`](docs/plan/phase-2-taxonomy.md) · [`phase-3-capabilities.md`](docs/plan/phase-3-capabilities.md) · [`phase-5-work.md`](docs/plan/phase-5-work.md) — the per-component source-of-truth designs.

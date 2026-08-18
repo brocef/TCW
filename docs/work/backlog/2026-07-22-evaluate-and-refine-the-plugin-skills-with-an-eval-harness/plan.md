@@ -165,17 +165,25 @@ Independent of phases 1–5; can run any time.
 
 - ~~**`README.md`** [Public-API] — list all eight commands in the install
   section.~~ **Done 2026-07-28, outside this item.** The install section now
-  lists all 13 commands but currently omits `tcw-post-mortem` from its eight-skill
-  catalog. Restore that entry during this item, and re-touch README again if a
-  refinement in phase 5 changes documented skill behavior.
+  lists all 13 commands, and **`tcw-post-mortem` is present** in the eight-skill
+  catalog (`README.md:111-113`) — an earlier draft of this bullet claimed it was
+  missing; corrected by the C8 audit. Re-touch README only if a refinement in
+  phase 5 changes documented skill behavior.
 - **`docs/changelogs/upcoming.md`** [Any-Code-Change] — Added: the eval harness
   and its fixture guard. Changed: any skill refinements. Include the commit hash
   range.
-- **`docs/release-notes/upcoming.md`** [Public-API] — only if a refinement
-  changes user-visible skill behavior. A harness that ships in the repo but not
-  in the wheel is not a user-facing change; say nothing rather than pad.
-- **`skills/*/SKILL.md`** [Skill-Driven-Component] — the phase 5 refinements
-  themselves.
+- **`docs/release-notes/upcoming.md`** [Public-API] — the harness ships in the
+  repo, not the wheel, so it earns no note; but a **stage-prompt** refinement
+  does ship in the wheel and always earns one. (Rescoped by the C8 audit.)
+- **`skills/*/SKILL.md`** and **`tcw/work/prompts/*.md`**
+  [Skill-Driven-Component] — the phase 5 refinements themselves. The prompts
+  join the touched set: since C6 they carry the methodology the skills used to.
+
+**Two mechanical signals for phase 4's grading**, which did not exist when this
+plan was written and are both visible in the transcript and the diff: did the
+agent run `tcw work stage <id> <slug>` at stage entry, and did it use
+`tcw work scaffold` rather than hand-writing the artifact. (Added by the C8
+audit.)
 - **`AGENTS.md`** — a short pointer that the skill layer is measured by `evals/`
   and how to re-run it. Without this the harness is undiscoverable and rots.
 - Invoke `skill-cefailures:documentation-sync` before declaring the item

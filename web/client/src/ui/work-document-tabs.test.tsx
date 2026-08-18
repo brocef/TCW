@@ -155,3 +155,17 @@ test("resets to Initial Request when the work item changes", async () => {
         screen.getByRole("heading", { name: "Second request" })
     ).toBeVisible()
 })
+
+test("does not render the intake fallback under the request's name", () => {
+    // `item.body` falls back to the intake, so an absent request would otherwise
+    // show raw intake labelled "Initial Request".
+    renderTabs({ present: ["spec", "plan"] })
+
+    expect(screen.queryByRole("heading", { name: "Initial body" })).toBeNull()
+    expect(
+        screen.getByText("Initial Request is not yet present.")
+    ).toBeVisible()
+    expect(
+        screen.getByRole("button", { name: "Edit Initial Request" })
+    ).toBeVisible()
+})

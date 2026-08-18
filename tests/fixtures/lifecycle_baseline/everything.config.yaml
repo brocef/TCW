@@ -1,0 +1,17 @@
+timeout: 120
+stages:
+  request:
+  - skill: x
+  spec:
+  - command: c
+  - skill: y
+  implement: []
+transitions:
+  start:
+    pre:
+    - command: a
+  complete:
+    pre:
+    - command: b
+    post:
+    - skill: z

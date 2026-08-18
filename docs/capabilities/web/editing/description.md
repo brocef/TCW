@@ -5,6 +5,11 @@ editor while preserving canonical identifiers and free-form entry. Every saved
 object is immediately checked with TCW's standard validation rules, with any
 findings shown as post-save warnings.
 
+A sidecar a command writes rather than a person — `rollup.md`, produced by
+`tcw work reconcile` — is listed and labelled generated, and offers no edit
+control. The app declines to take an edit it knows the next run of that command
+would discard.
+
 The Work detail presents Initial Request, Spec, and Implementation Plan as
 first-class tabs. Present documents render and can be edited without leaving
 the browser; missing later-stage documents remain visible as not-yet-present

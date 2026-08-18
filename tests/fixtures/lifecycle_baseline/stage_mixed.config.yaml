@@ -1,0 +1,5 @@
+stages:
+  plan:
+  - skill: a
+  - command: b
+  - skill: c

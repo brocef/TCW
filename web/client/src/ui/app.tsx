@@ -403,6 +403,14 @@ export function App() {
         if (axis === "work") {
             const payload = detail as WorkDetail
             const item = payload.item
+            // `item.body` falls back to the intake. Seeding the editor with it
+            // would make saving copy raw intake into the request it is meant to
+            // replace — the editor writes the request, so with none present it
+            // opens empty.
+            const requestPresent =
+                payload.artifacts.find(
+                    (artifact) => artifact.name === "initial-request"
+                )?.present ?? false
             draft = {
                 title: item.title ?? "",
                 priority: item.priority ?? "",
@@ -414,7 +422,7 @@ export function App() {
                     .map((blocker) => blocker.slug ?? blocker.external ?? "")
                     .filter(Boolean),
                 tags: item.tags ?? [],
-                body: item.body ?? "",
+                body: requestPresent ? (item.body ?? "") : "",
             }
             ref = item.slug
             revision = payload.coreRevision
@@ -628,7 +636,15 @@ export function App() {
                     ])
                     return
                 }
-                showSaveResult("Saved", result.data)
+                // A body write on an item with no request creates one. Say so:
+                // the request tab reads "not yet present" until this moment, and
+                // on an intake-only item the intake is left untouched beside it.
+                showSaveResult(
+                    result.data?.promoted === true
+                        ? "Saved — Initial Request created"
+                        : "Saved",
+                    result.data
+                )
             } else {
                 const result = await requestJson<
                     ResourceDetail & TMutationResponse

@@ -89,3 +89,28 @@ def test_main_end_to_end(tmp_path):
     dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
                            capture_output=True, text=True).stdout
     assert dirty == "", f"cut left uncommitted changes:\n{dirty}"
+
+
+def test_rotation_drops_the_working_file_preamble(tmp_path):
+    """A shipped release note must not carry the drafting instructions.
+
+    The `upcoming.md` header says the file is "for the next version" and tells
+    its *author* to use plain language — text addressed to whoever writes the
+    notes, not to whoever reads the release. Retitling `# Upcoming` alone left
+    that preamble in every published file from v0.6.2 through v1.0.0.
+    """
+    root = make_repo(tmp_path, "0.2.2")
+    # The real templates the script recreates, not the fixture's short stand-in.
+    for rel, header in cv.UPCOMING.items():
+        (root / rel).write_text(header + "\n## Added\n\n- a thing\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "commit", "-aqm", "real headers"], check=True)
+
+    cv.main(["minor"], root=root)
+
+    for rel in cv.UPCOMING:
+        shipped = (root / rel).with_name("v0.3.0.md").read_text(encoding="utf-8")
+        assert shipped.startswith("# v0.3.0\n"), shipped[:40]
+        assert "for the next version" not in shipped
+        assert "## Added" in shipped and "- a thing" in shipped
+        # the fresh working file keeps its preamble — it is drafting guidance
+        assert "for the next version" in (root / rel).read_text(encoding="utf-8")

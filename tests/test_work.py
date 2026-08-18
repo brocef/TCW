@@ -82,16 +82,73 @@ def test_slug_generation_collision_and_immutability(tmp_path):
 
 def test_body_path_points_at_initial_request_md(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
+    item = st.create("Task", created="2026-01-01", body="request\n")
     body = st.body_path(item.slug)
     assert body == st.path(item.slug) / "initial-request.md"
     assert body.exists()
     assert st.body_path("no-such-slug") is None
+    # an item created with nothing has no body file to point at
+    empty = st.create("Empty", created="2026-01-01")
+    assert st.body_path(empty.slug) is None
+
+
+@pytest.mark.parametrize(
+    "request_text, intake_text, expect_file, expect_body",
+    [
+        ("request\n", None, "initial-request.md", "request\n"),   # request only
+        (None, "raw\n", "intake.md", "raw\n"),                    # intake only
+        ("request\n", "raw\n", "initial-request.md", "request\n"), # both: request wins
+        (None, None, None, ""),                                   # neither
+        ("   \n", "raw\n", "intake.md", "raw\n"),                 # empty request is absent
+    ],
+)
+def test_body_surface_resolves_by_one_presence_rule(
+    tmp_path, request_text, intake_text, expect_file, expect_body
+):
+    """Presence is exists-and-non-empty, and every reader uses the same rule:
+    the resolved body, the board letters, and `body_path` cannot disagree."""
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create("Task", created="2026-01-01")
+    d = st.path(item.slug)
+    for name, text in (("initial-request.md", request_text), ("intake.md", intake_text)):
+        if text is not None:
+            (d / name).write_text(text, encoding="utf-8")
+
+    assert st.get(item.slug).body == expect_body
+    body = st.body_path(item.slug)
+    assert body == (d / expect_file if expect_file else None)
+
+    present = {a.name: a.present for a in st.artifacts(item.slug)}
+    assert present["initial-request"] is (expect_file == "initial-request.md")
+    assert present["intake"] is bool(intake_text and intake_text.strip())
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        ({}, {"state.yaml"}),
+        ({"body": "request"}, {"state.yaml", "initial-request.md"}),
+        ({"intake": "raw"}, {"state.yaml", "intake.md"}),
+        ({"body": "request", "intake": "raw"},
+         {"state.yaml", "initial-request.md", "intake.md"}),
+    ],
+)
+def test_create_writes_only_what_it_was_given(tmp_path, kwargs, expected):
+    """The folder contents are the assertion, not two path checks: creation used
+    to template a request for every item, which is what made `R` meaningless."""
+    st = FsWorkStore.open(node(tmp_path))
+    item = st.create_work("Task", created="2026-01-01", **kwargs).item
+    d = st.path(item.slug)
+    assert {p.name for p in d.iterdir()} == expected
+    if "intake" in kwargs:
+        assert (d / "intake.md").read_text() == "raw\n"
+    if "body" in kwargs:
+        assert (d / "initial-request.md").read_text() == "request\n"
 
 
 def test_modified_timestamp_tracks_only_bounded_work_resources(tmp_path):
     st = FsWorkStore.open(node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
+    item = st.create("Task", created="2026-01-01", body="request\n")
     folder = st.path(item.slug)
     assert folder is not None
     request = folder / "initial-request.md"
@@ -129,7 +186,21 @@ def test_inbox_list_and_show_standalone_text(tmp_path):
     assert detail.resources[0].readable is True
 
 
-def test_inbox_accept_folder_generates_request_and_attachments(tmp_path):
+def test_inbox_accept_text_file_writes_intake_only(tmp_path):
+    """The third entry shape. A standalone text file has no attachments, so the
+    whole record is the manifest naming the source plus the text that arrived."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/request.txt").write_text("please fix it\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+    item = st.inbox_accept("request.txt", title="Fix it")
+    created = st.path(item.slug)
+    assert {p.name for p in created.iterdir()} == {"state.yaml", "intake.md"}
+    intake = (created / "intake.md").read_text()
+    assert "- `request.txt`" in intake
+    assert intake.endswith("please fix it\n")
+
+
+def test_inbox_accept_folder_generates_intake_and_attachments(tmp_path):
     root = node(tmp_path)
     entry = root / "docs/work/inbox/big-request"
     (entry / "nested").mkdir(parents=True)
@@ -147,8 +218,9 @@ def test_inbox_accept_folder_generates_request_and_attachments(tmp_path):
     assert (created / "attachments/asset.bin").read_bytes() == b"\0\1"
     assert (created / "attachments/nested/notes.txt").read_text() == "notes\n"
     assert not (created / "attachments/.ignored").exists()
-    body = (created / "initial-request.md").read_text()
-    assert "- `initial-request.md` — accepted from `INDEX.md`" in body
+    assert not (created / "initial-request.md").exists()   # accept no longer writes one
+    body = (created / "intake.md").read_text()
+    assert "- `intake.md` — accepted from `INDEX.md`" in body
     assert "- `attachments/asset.bin`" in body
     assert "- `attachments/nested/notes.txt`" in body
     assert body.endswith("Original request\n")
@@ -163,7 +235,13 @@ def test_inbox_accept_binary_file_does_not_render_binary(tmp_path):
     item = st.inbox_accept("sample.dat")
     created = st.path(item.slug)
     assert (created / "attachments/sample.dat").read_bytes() == b"\0secret"
-    assert "secret" not in (created / "initial-request.md").read_text()
+    assert not (created / "initial-request.md").exists()
+    # An attachments-only entry still produces an intake: the manifest plus the
+    # fallback prose is the record of what arrived.
+    intake = (created / "intake.md").read_text()
+    assert "secret" not in intake
+    assert "- `attachments/sample.dat`" in intake
+    assert intake.endswith("Binary intake preserved as an attachment.\n")
 
 
 @pytest.mark.parametrize("indexes", [("INDEX.md",), ("INDEX.txt",)])
@@ -306,8 +384,8 @@ def test_inbox_accept_keeps_the_original_markdown_in_the_body(tmp_path):
     _delegated(root, "req.md", "from: parent\ninitiative: 2026-01-01-epic")
 
     item = st.inbox_accept("req.md")
-    request = (st.path(item.slug) / "initial-request.md").read_text()
-    assert "from: parent" in request and "details" in request
+    intake = (st.path(item.slug) / "intake.md").read_text()
+    assert "from: parent" in intake and "details" in intake
 
 
 def test_cli_inbox_list_show_accept(tmp_path, monkeypatch, capsys):
@@ -346,6 +424,7 @@ def test_artifacts_report_bounded_presence_and_locator(tmp_path):
         "refined-outcome": False,
         "rework": False,
         "post-mortem": False,
+        "intake": False,
     }
     assert st.artifact_locator(item.slug, "plan") == str(d / "plan.md")
     assert st.artifact_locator(item.slug, "../plan") is None
@@ -1025,7 +1104,8 @@ def test_cli_edit_title_keeps_slug_and_body(tmp_path, monkeypatch):
     from tcw.cli import main
     root = node(tmp_path)
     monkeypatch.chdir(root)
-    item = FsWorkStore.open(root).create("Old title", created="2026-01-01")
+    item = FsWorkStore.open(root).create("Old title", created="2026-01-01",
+                                         body="# Old title\n\nprose\n")
     body_path = root / "docs" / "work" / "backlog" / item.slug / "initial-request.md"
     before = body_path.read_bytes()
 
@@ -1064,6 +1144,27 @@ def test_cli_edit_blocks_nonexistent_errors(tmp_path, monkeypatch):
     monkeypatch.chdir(root)
     a = FsWorkStore.open(root).create("A", created="2026-01-01")
     assert main(["work", "edit", a.slug, "--blocks", "nope"]) == 1
+
+
+def test_cli_new_pipes_stdin_into_intake_not_a_request(tmp_path, monkeypatch, capsys):
+    """Piped text is raw input. It lands in intake.md, and nothing synthesizes a
+    request around it — the promise is the *decoded* stdin text, since
+    `_stdin_body` reads str and swallows read errors as empty."""
+    import io
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("please fix the thing\n"))
+    assert main(["work", "new", "Piped"]) == 0
+    d = FsWorkStore.open(root).path(capsys.readouterr().out.strip())
+    assert {p.name for p in d.iterdir()} == {"state.yaml", "intake.md"}
+    assert (d / "intake.md").read_text() == "please fix the thing\n"
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))          # piped, but empty
+    assert main(["work", "new", "Empty pipe"]) == 0
+    d = FsWorkStore.open(root).path(capsys.readouterr().out.strip())
+    assert {p.name for p in d.iterdir()} == {"state.yaml"}
 
 
 def test_cli_new_blocked_by(tmp_path, monkeypatch):
@@ -1313,6 +1414,33 @@ def test_cli_list_shows_lifecycle_stage_letters(tmp_path, monkeypatch, capsys):
     assert row[2] == "RSP"
 
 
+def test_cli_list_shows_intake_before_the_request(tmp_path, monkeypatch, capsys):
+    """`R` now means the request stage ran. All four states in one place: nothing
+    for a fresh item, `i` for raw intake, `iR` once a request exists, and `R` for
+    a legacy item that predates intake entirely."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+
+    fresh = st.create("Fresh", created="2026-01-01")
+    piped = st.create("Piped", created="2026-01-01", intake="raw\n")
+    legacy = st.create("Legacy", created="2026-01-01", body="request\n")
+
+    def letters(slug):
+        assert main(["work", "list"]) == 0
+        rows = capsys.readouterr().out.strip().splitlines()
+        row = next(r for r in rows if r.startswith(slug))
+        return row.split(" | ")[2]
+
+    assert letters(fresh.slug) == "-"          # the board's existing "no stages" mark
+    assert letters(piped.slug) == "i"
+    assert letters(legacy.slug) == "R"
+
+    (st.path(piped.slug) / "initial-request.md").write_text("req\n", encoding="utf-8")
+    assert letters(piped.slug) == "iR"
+
+
 def test_cli_list_ignores_empty_lifecycle_artifacts(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
@@ -1333,7 +1461,7 @@ def test_cli_list_shows_outcome_and_refined_outcome_stages(tmp_path, monkeypatch
     root = node(tmp_path)
     monkeypatch.chdir(root)
     st = FsWorkStore.open(root)
-    item = st.create("Finished", created="2026-01-01")
+    item = st.create("Finished", created="2026-01-01", body="request\n")
     d = st.path(item.slug)
     (d / "outcome.md").write_text("outcome\n", encoding="utf-8")
     (d / "refined-outcome.md").write_text("refined\n", encoding="utf-8")

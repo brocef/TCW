@@ -111,7 +111,7 @@ def test_reconcile_complete_when_ready(tmp_path):
     st2 = FsWorkStore.open(root)
     assert st2.get(epic).status == "completed"
     # the persisted rollup must not keep a stale "Ready to close" instruction
-    assert "Ready to close" not in (st2.path(epic) / "initial-request.md").read_text()
+    assert "Ready to close" not in st2.read_sidecar(epic, "rollup.md").content
 
 
 def test_reconcile_complete_when_ready_noop_if_open(tmp_path):

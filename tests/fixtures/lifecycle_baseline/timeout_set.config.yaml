@@ -1,0 +1,4 @@
+timeout: 42
+stages:
+  implement:
+  - skill: tdd

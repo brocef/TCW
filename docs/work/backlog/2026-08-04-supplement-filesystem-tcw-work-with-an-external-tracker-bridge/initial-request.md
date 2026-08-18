@@ -70,8 +70,14 @@ list` and inspects a candidate with `tracker show`.
    tracker identity and atomically transitions it from ready to claimed/in
    progress.
 4. TCW creates a local backlog item, records the ticket binding, and snapshots
-   the ticket's product content into `initial-request.md` with attribution and a
-   stable origin link.
+   the ticket's product content into the item's **intake** — the `intake`
+   argument on `create` / `create_work`, realized as `intake.md` by the
+   filesystem adapter — with attribution and a stable origin link. The ordinary
+   `request` stage then promotes that intake into `initial-request.md`; the
+   import does not write the request itself. (Rescoped by the C8 audit: a
+   tracker snapshot is raw unprocessed input, so writing it to the request
+   would light the board's `R` for an item nobody has written up — the defect
+   `2026-08-12-unify-raw-intake-into-a-single-artifact` closed.)
 5. The ordinary TCW request, specification, plan, implementation, verification,
    and completion lifecycle proceeds in Git. Existing `start --worktree` creates
    code branches/worktrees as it does today.
@@ -227,7 +233,15 @@ Strict mode also changes existing behavior:
 - unconfigured projects behave exactly as they do today.
 
 `work show` and `work list` should surface the provider/ticket and whether the
-remote state is current, pending, or conflicting. The local web application is
+remote state is current, pending, or conflicting. **`tcw work show --json` now
+emits a versioned, closed document** (`tcw/work/projection.py`), and
+`test_the_schema_declares_exactly_the_model_plus_two` pins its properties to
+`WorkItem`'s fields. Surfacing tracker state there is therefore an explicit
+modelling decision for the spec — either a `WorkItem` field, which flows into
+the document automatically and forces the matching schema entry in the same
+change, or a `SCHEMA_VERSION` bump. It is not a free-form addition to the
+payload. (Rescoped by the C8 audit, after
+`2026-08-12-project-a-work-item-as-json`.) The local web application is
 read-only for this tracker metadata in the first delivery; it does not gain
 tracker mutation controls.
 

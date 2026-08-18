@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from tcw.work.projection import work_item_json
 from tcw.store.base import (
     CAP_FIELDS, CAP_STATUSES, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
     IllegalTransition, RefError, StaleRevision, TransitionCommitError,
@@ -64,6 +65,21 @@ def _jsonable(value):
 
 def _json_bytes(value) -> bytes:
     return json.dumps(_jsonable(value), default=str).encode("utf-8")
+
+
+def _item_payload(work, slug: str, item, qslug: str | None = None) -> dict:
+    """The one work-item projection, for every response that carries an item.
+
+    `_jsonable` stays for taxonomy and capabilities; work items go through the
+    versioned DTO so the CLI, the API, and (in C3) `generate` hooks cannot drift
+    apart. `qslug` echoes the *qualified* slug back to a UI that derives
+    subresource URLs from `item.slug` — the payload is built from the bare slug
+    the store knows, then relabelled.
+    """
+    data = work_item_json(item, work.artifacts(slug))
+    if qslug:
+        data["slug"] = qslug
+    return data
 
 
 def _valid_sidecar_token(supplied: str, expected: str | None) -> bool:
@@ -412,16 +428,25 @@ class TcwHandler(BaseHTTPRequestHandler):
 
     def _board(self) -> list:
         """The board; with --include-descendants, the anchor plus every descendant
-        node's board, each descendant item's slug qualified (`sub/proj/<slug>`)."""
+        node's board, each descendant item's slug qualified (`sub/proj/<slug>`).
+
+        Rows go through the same versioned projection as every other work-item
+        payload. That costs one `artifacts()` call per row, which the CLI's own
+        `list` already pays (`work/cli.py:331`); the alternative is a board whose
+        items are shaped differently from the items every other route returns,
+        which is the drift the projection exists to prevent.
+        """
         anchor = self.server.node_root.resolve()
-        if not self.server.include_descendants:
-            return FsWorkStore.open(anchor).board()
+        roots = [anchor]
+        if self.server.include_descendants:
+            roots += descendant_nodes(anchor)
         items = []
-        for root in [anchor, *descendant_nodes(anchor)]:
+        for root in roots:
             prefix = "" if root == anchor else f"{registered_project_id(anchor, root)}/"
-            for it in FsWorkStore.open(root).board():
-                it.slug = f"{prefix}{it.slug}"        # fresh WorkItems — safe to mutate
-                items.append(it)
+            work = FsWorkStore.open(root)
+            for it in work.board():
+                items.append(_item_payload(work, it.slug, it,
+                                           f"{prefix}{it.slug}" if prefix else None))
         return items
 
     # ── HTTP method dispatchers ───────────────────────────────────────────
@@ -599,6 +624,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "mediaType": sc_info["media_type"],
                     "present": present,
                     "revision": revision,
+                    "generated": bool(sc_info.get("generated")),
                 })
             self._send_json(HTTPStatus.OK, sidecars)
             return
@@ -628,8 +654,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             # Build response with revision-bearing detail. Echo the *qualified*
             # slug so the (unchanged) web UI keeps addressing this descendant item
             # when it derives artifact/sidecar/action URLs from item.slug.
-            item_data = _jsonable(detail.item)
-            item_data["slug"] = qslug
+            item_data = _item_payload(work, slug, detail.item, qslug)
             artifacts_list = []
             for name in WORK_ARTIFACTS:
                 try:
@@ -654,6 +679,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "mediaType": sc_info["media_type"],
                     "present": present,
                     "revision": detail.sidecar_revisions.get(sc_name, ""),
+                    "generated": bool(sc_info.get("generated")),
                 })
             self._send_json(HTTPStatus.OK, {
                 "item": item_data,
@@ -784,7 +810,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     tags=tags,
                 )
                 response = {
-                    "item": _jsonable(detail.item),
+                    "item": _item_payload(work, detail.item.slug, detail.item),
                     "coreRevision": detail.core_revision,
                     "artifactRevisions": detail.artifact_revisions,
                     "sidecarRevisions": detail.sidecar_revisions,
@@ -814,8 +840,10 @@ class TcwHandler(BaseHTTPRequestHandler):
                 force = bool(body.get("force", False))
                 try:
                     item = _transition_ok(work, slug, lambda: work.start(slug, force=force))
-                    item.slug = qslug             # echo the qualified slug to the UI
-                    self._send_json(HTTPStatus.OK, _jsonable(item))
+                    # Payload built from the bare slug the store knows, then
+                    # relabelled with the qualified one the UI addresses by.
+                    self._send_json(HTTPStatus.OK,
+                                    _item_payload(work, slug, item, qslug))
                 except (ValueError, StaleRevision, IllegalTransition, RefError) as e:
                     sc, bb = _map_store_error(e)
                     self._send(sc, bb, "application/json; charset=utf-8")
@@ -837,8 +865,10 @@ class TcwHandler(BaseHTTPRequestHandler):
                     item = _transition_ok(
                         work, slug,
                         lambda: work.complete(slug, resolution, dod_ack, force=force))
-                    item.slug = qslug             # echo the qualified slug to the UI
-                    self._send_json(HTTPStatus.OK, _jsonable(item))
+                    # Payload built from the bare slug the store knows, then
+                    # relabelled with the qualified one the UI addresses by.
+                    self._send_json(HTTPStatus.OK,
+                                    _item_payload(work, slug, item, qslug))
                 except (ValueError, StaleRevision, IllegalTransition, RefError) as e:
                     sc, bb = _map_store_error(e)
                     self._send(sc, bb, "application/json; charset=utf-8")
@@ -989,13 +1019,16 @@ class TcwHandler(BaseHTTPRequestHandler):
 
             try:
                 detail = work.update_work(slug, **kw)
-                item_data = _jsonable(detail.item)
-                item_data["slug"] = qslug         # echo the qualified slug to the UI
+                item_data = _item_payload(work, slug, detail.item, qslug)
                 response = {
                     "item": item_data,
                     "coreRevision": detail.core_revision,
                     "artifactRevisions": detail.artifact_revisions,
                     "sidecarRevisions": detail.sidecar_revisions,
+                    # An edit that created the request on an intake-only item is
+                    # a promotion; the UI says so rather than letting it look
+                    # like an ordinary body save.
+                    "promoted": detail.promoted,
                 }
                 self._send_json(HTTPStatus.OK, _with_warnings(
                     response, work.node_root, "work", slug))

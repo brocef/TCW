@@ -158,3 +158,58 @@ test("the complete modal opens in its completion form, not its discard form", as
 // The discard form is reached by picking a non-`done` resolution from a Radix
 // Select in a portal, which jsdom drives poorly — that half is covered by the
 // browser pass instead of faked here.
+
+test("offers no Edit button on a generated sidecar", () => {
+    // `rollup.md` is written by `tcw work reconcile`. The sidecar list is built
+    // from the registry, so it arrived here editable for free — and an edit
+    // saved through it is discarded by the next reconcile.
+    const { container } = render(
+        <ThemeProvider>
+            <DetailView
+                axis="work"
+                detail={
+                    {
+                        item: {
+                            slug: "epic",
+                            title: "Epic",
+                            status: "active",
+                            modified,
+                        },
+                        coreRevision: "",
+                        artifacts: [],
+                        planStages: [],
+                        sidecars: [
+                            {
+                                name: "capabilities.yaml",
+                                present: true,
+                                generated: false,
+                            },
+                            {
+                                name: "rollup.md",
+                                present: true,
+                                generated: true,
+                            },
+                        ],
+                    } as TDetail
+                }
+                onEdit={() => undefined}
+                onResource={() => undefined}
+                onOpen={() => undefined}
+                onReadArtifact={async (_slug, name) => ({
+                    name,
+                    content: "",
+                    revision: "",
+                })}
+                onDeletePlanStage={() => undefined}
+                onAction={() => undefined}
+            />
+        </ThemeProvider>
+    )
+
+    // Still listed — hiding the file would be a worse answer than hiding the
+    // button, and one Edit button survives, so this is not vacuously true.
+    expect(screen.getByText("rollup.md")).toBeVisible()
+    expect(screen.getByText("generated")).toBeVisible()
+    // One button, for `capabilities.yaml` — so this is not vacuously true.
+    expect(container.querySelectorAll(".sidecar-edit-btn")).toHaveLength(1)
+})
