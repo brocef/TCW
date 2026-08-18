@@ -6,6 +6,11 @@
 the storage-abstracted interface and pins it with a test; nothing a user can do
 becomes possible, impossible, or different. Nothing to reconcile at completion.
 
+That verdict survived review only after the user-facing surface was examined
+properly — see *The one place a user can already see the split*, which finds a
+real three-way disagreement, decides it is intended, and files the affordance gap
+as a follow-up rather than absorbing it here.
+
 ## Problem
 
 The request is accurate: TCW has two answers to "does this artifact exist", and
@@ -63,14 +68,24 @@ lifecycle judgments rather than resource lookups:
   `if not force and self._present(p)`. A blank draft is not something worth
   refusing to overwrite.
 
-Both would be *wrong* with `is_file()`, exactly as the twelve would be wrong with
-`_present`. The split is not accidental; it is applied correctly at all sixteen
-decision points.
+Both would be *wrong* with `is_file()`, exactly as `read_artifact` would be
+wrong with `_present`.
 
-### Why they must differ — the deciding evidence
+**What the sweep does and does not establish.** It proves two rules exist and
+that the four `_present` sites are each defensible on their own terms. It does
+*not* prove all sixteen assignments were individually chosen — review pushed back
+on that, correctly. Two are arguably on the wrong side: `write_draft` `:3534` is a
+clobber check, which is a resource question answered with the lifecycle rule
+(defensible only because a blank draft is not worth protecting), and
+`PlanStage.present` `:2366` is a field literally named *present* answered with
+mere existence. Neither is changed here — plan stages and drafts are named
+non-goals — but claiming every site was deliberate would be exactly the kind of
+unverified assertion this repository treats as a defect.
 
-Adopting `_present` in `read_artifact` **breaks the optimistic-concurrency
-protocol**, and this was executed, not argued:
+### Why they must differ
+
+Adopting `_present` in `read_artifact` **makes the paired read/write surface
+contradict itself**, and this was executed, not argued:
 
 1. `read_artifact` returns `None`, so a client concludes the artifact has not
    been written.
@@ -78,19 +93,78 @@ protocol**, and this was executed, not argued:
    exist yet" means send `revision=""`.
 3. `write_artifact` still tests `p.is_file()` (`:3500`), sees the file, computes
    its revision, and raises `StaleRevision: expected '', got 743b2cb5…`.
-4. The client cannot recover: the only surface that yields the right revision is
-   the one now returning `None`.
 
-A read that says "absent" while the paired write says "stale" is a deadlock. The
-escape would be to change `write_artifact`, `delete_artifact`, `get_detail`, both
-sidecar methods and all four plan-stage methods to agree — twelve surfaces — and
-the result would silently overwrite a file the caller never saw. That is a much
-larger and worse change than the one being contemplated.
+A read that says "absent" while the paired write says "stale" is incoherent: the
+two calls a client is meant to use together stop agreeing about what exists.
 
-It also destroys a legitimate operation the request itself anticipated: **reading
-a file in order to see that it is blank.** With `_present`, a blank artifact is
-unreadable, unversioned, and indistinguishable from one that was never created —
-while still occupying the path.
+**It is not, however, a deadlock — the first draft of this spec said it was, and
+that was wrong.** Adversarial review found the recovery route, and it is on the
+abstract interface rather than being a filesystem escape hatch:
+`WorkStore.get_detail`'s own contract (`tcw/store/base.py:1424-1431`) promises a
+revision map covering "every lifecycle artifact", and it is built from
+`p.is_file()` (`fs.py:3199-3201`), so `detail.artifact_revisions["spec"]` still
+yields the token a client needs. Three further escapes exist:
+`write_artifact(..., revision=None)` writes unguarded (`fs.py:3498-3514`),
+`delete_artifact` removes without a revision (`fs.py:3542-3549`), and
+`artifact_locator` hands back a path.
+
+The honest claim is therefore narrower and still sufficient: a client using only
+the paired `read_artifact`/`write_artifact` calls has no way forward, and every
+route out requires knowing about the split. **A contract whose documented happy
+path cannot be completed without secret knowledge of a second contract is a bad
+contract** — which is an argument for writing the split down, exactly what this
+item does, rather than an argument that the code must change.
+
+Adopting `_present` also destroys a legitimate operation the request itself
+anticipated: **reading a file in order to see that it is blank.** With `_present`,
+a blank artifact is unreadable and unversioned through its own read call, while
+still occupying the path.
+
+### The strongest evidence is a test that already exists
+
+Review turned up something the sweep missed, and it settles the question more
+directly than any reasoning here: `tests/test_scaffold.py:220-229` is already
+named `test_a_whitespace_only_artifact_does_not_block_scaffolding`, and its
+docstring states the rule outright —
+
+> *"The board says no spec exists, so the verb must agree — an implementation
+> using `.exists()` fails here."*
+
+It asserts that `tcw work scaffold spec` on a whitespace-only `spec.md` exits 0,
+writes `spec.draft.md`, and leaves `spec.md` byte-identical. So the split is not
+merely tolerated: one surface's choice of rule was deliberately made, argued in a
+docstring, and pinned by a passing test. What is missing is that the *reasoning*
+lives in a test for one verb instead of in the interface every verb implements.
+
+### The one place a user can already see the split
+
+The first draft asserted that "no user-facing path currently reaches the
+disagreement", inheriting that claim from the request. **Review disproved it**,
+and the correction matters more than the claim did. On a whitespace-only
+`spec.md`, three surfaces disagree today:
+
+| Surface | Says | Why |
+| ------- | ---- | --- |
+| the board, `tcw work show`, stage gating | **absent** | `artifacts()` → `_present` |
+| the web app's item view | **present**, and offers an editable Spec tab | `tcw/serve/__init__.py:658-662` builds its artifact list from `read_artifact`, not from `detail.artifact_revisions` |
+| `tcw work scaffold spec` | **absent** — writes a `spec.draft.md` beside the untouched blank `spec.md` | `write_draft` → `_present` |
+
+So a user can save a blank Spec in the editor, refresh, and see the tab still
+populated while the board reports the stage never ran — and then scaffold a draft
+that sits next to it.
+
+**Decided, rather than dismissed: this is intended, and none of the three is
+wrong.** A blank artifact *is* a real editable resource — refusing to show it
+would strand a user who blanked a file and wants it back. The stage *did not*
+run, so the board is right to say so. And scaffolding is right to proceed,
+because there is nothing worth preserving. Each surface answers the question its
+own job asks.
+
+What is genuinely missing is an **affordance**, not a rule: nothing tells the user
+that the file exists but does not count. That is a UI change in `tcw serve`, it
+has nothing to do with which rule `read_artifact` uses, and folding it in here
+would turn a documentation item into a web-app item. **Filed as a follow-up at
+completion**, named in the outcome.
 
 ### So what is actually wrong
 
@@ -191,18 +265,23 @@ Docstrings and a test in the Python package. Identical under both harnesses.
    resource exists, that a blank-but-existing artifact **is** returned, and names
    `artifacts()` as the surface that answers the other question.
 3. `tcw/store/fs.py`'s `_present` docstring no longer claims to be "the one
-   presence rule", names all four of its callers, and gives the reason the
-   read/write surface differs.
+   presence rule", says which *question* it answers (did a stage produce
+   anything), and states that the read/write/revision surface deliberately
+   answers a different one. It does **not** enumerate its callers: a list of call
+   sites in a docstring rots the first time one moves, and the semantic boundary
+   is what needs recording.
 4. A test in `tests/test_work.py` asserts, on one whitespace-only artifact, all
    four measured facts: `artifacts()` reports absent; `read_artifact` returns a
    resource with a non-empty revision; `get_detail().artifact_revisions` contains
    it; `write_artifact(..., revision="")` raises `StaleRevision`.
 5. That test fails if `read_artifact` is changed to use `_present` — verified by
    making the change locally, watching it fail, and reverting.
-6. No behavior change: `python -m pytest -q` reports ≥ 1592 passed, 0 failed,
-   with no test modified other than the addition in criterion 4. The baseline is
-   **exactly 1592 passed in 284s**, measured on this tree today, so "≥ 1592"
-   means "no test was lost".
+6. No behavior change, checked two ways rather than by a count alone:
+   `git diff --stat` touches no file under `tcw/` other than docstrings — asserted
+   by `git diff -G'^[^#]*\S' -- tcw/` being empty of non-comment changes — and
+   `python -m pytest -q` reports 1593 passed, 0 failed: today's 1592 plus exactly
+   the one test criterion 4 adds. An exact number, not a floor, because this item
+   changes no behavior and so has no reason to move the count by anything else.
 7. `grep -n "the one presence rule" tcw/` returns nothing.
 
 ## Risks
@@ -216,11 +295,17 @@ Docstrings and a test in the Python package. Identical under both harnesses.
   it.** Accepted deliberately — the deadlock evidence says the behavior is right,
   and the test's name and docstring say what it is protecting so it can be
   changed on purpose rather than by accident.
-- **The whitespace-only artifact is still reachable through the web editor**,
-  which can save a blank body and produce an item whose board row says the stage
-  did not run while the editor shows a file. That is confusing but correct under
-  the split, and it is not what this item was filed to fix. Recorded rather than
-  fixed.
+- **The web app shows a blank artifact as present with no indication that the
+  stage has not run.** Decided above as intended-but-under-communicated, and
+  filed as a follow-up. The risk of *not* fixing it now is that a user reads the
+  populated tab as "the spec exists" and is contradicted by the board; the risk
+  of fixing it here is scope creep into the web app on an item whose whole
+  premise is that no behavior changes. The second is worse.
+- **Two of the sixteen call sites sit on arguably the wrong rule**
+  (`write_draft`, `PlanStage.present`). Documenting the boundary makes them
+  easier to spot, which is good, and also easier to "fix" without understanding
+  why, which is not. The characterization test covers artifacts only; neither of
+  those two is pinned by this item.
 
 ## Notes
 
@@ -235,6 +320,34 @@ Docstrings and a test in the Python package. Identical under both harnesses.
   (`docs/work/completed/2026-08-12-scaffold-lifecycle-artifacts-from-templates/refined-outcome.md`)
   was correct, and for a better reason than it knew: `artifacts()` is the right
   surface for a stage-presence question regardless of how this item resolved.
+- **Reviewed by `codex`; five findings, three accepted as material, one accepted
+  in part, one rejected.** Dispositions:
+  - *The "deadlock" is false as stated* (High) — **accepted**, and it was the
+    spec's own internal contradiction: the measured table on this page shows
+    `get_detail()` carrying the revision, and the argument three paragraphs later
+    claimed no route to it existed. `WorkStore.get_detail`'s abstract docstring
+    promises revisions for "every lifecycle artifact", so the escape is part of
+    the published interface, not a filesystem trick. The claim is now the narrower
+    and true one.
+  - *The user-visible disagreement was dismissed without a decision* (Medium) —
+    **accepted**. The claim that nothing routes a user into it was inherited from
+    the request and is wrong; `tcw serve` and `tcw work scaffold` both do. Now
+    decided explicitly, with the affordance gap filed as a follow-up.
+  - *"All sixteen assignments are deliberate" overstates the sweep* (Medium) —
+    **accepted**, and narrowed. Its two counter-examples (`write_draft`,
+    `PlanStage.present`) are real and now named as such.
+  - *Acceptance criteria weaknesses* (Low) — **accepted in part.** Criterion 3 no
+    longer enumerates callers (a docstring listing call sites rots), and
+    criterion 6 became two concrete checks with an exact count. **Rejected:** the
+    observation that criterion 7's grep target exists today. That is what an
+    acceptance criterion *is* — a statement about the tree after the change, not
+    before.
+  - *Abstraction and harness verdicts sound* (Low) — no action.
+- **`bllm-review` produced nothing on either spec.** On the sibling stdin item it
+  waited 1440s on a workload lock and gave up, exiting `0` with no review — filed
+  to `/Users/brian/llama/docs/work/inbox/` per the user's standing instruction,
+  because an exit code of 0 for "never ran" is indistinguishable from "clean" to
+  any caller that gates on it. Both specs have had one external reviewer.
 - Every `file:line` above was re-resolved against the tree while writing this,
   and again during self-review. That pass corrected the sweep table: the first
   draft repeated the request's three-caller list, and `grep -n "_present"
