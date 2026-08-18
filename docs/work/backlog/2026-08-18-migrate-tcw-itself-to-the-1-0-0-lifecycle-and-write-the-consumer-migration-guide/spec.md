@@ -14,7 +14,9 @@ Two problems, related by the same cause.
 
 **1. 1.0.0 ships a back-compat break with no upgrade document.** The break is
 narrow — `_parse_stage` now appends a problem for an empty `prompt:` list, in
-both spellings (`tcw/store/base.py:974`, and the `## Removed` section of
+both spellings (`_empty_prompt` at `tcw/store/base.py:992-994` for the legacy
+bare list, and again for the explicit `prompt:` key; see also the `## Removed`
+section of
 `docs/changelogs/v1.0.0.md`) — but it is real: a config that validated under
 0.21.1 can fail `tcw validate` under 1.0.0. Beyond it sit a dozen behavior
 changes that break no config yet quietly change what a consumer's scripts and
@@ -163,11 +165,11 @@ composed with rather than replaced.
 surface treats them differently and this repo should demonstrate both:
 
 - The `complete` **transition** check is *enforcing*. `run_pre` is called before
-  the store is touched (`tcw/work/cli.py:1212-1215`) and a non-zero exit aborts
+  the store is touched (`tcw/work/cli.py:1215-1216`) and a non-zero exit aborts
   the move. `tcw validate` is the right command here: it exits 0 in 0.9s on this
   repo today, so it costs nothing on the happy path. `pytest -q` was considered
-  and rejected — it exceeds 120 seconds on this repo, and a gate that slow gets
-  routed around.
+  and rejected — the full suite takes 417 seconds (measured, see `## Notes`), and
+  a gate that slow gets routed around rather than obeyed.
 - The `plan` **stage** check is *advisory*. Stage checks run only from
   `tcw work stage` (`tcw/work/cli.py:793-799`); `tcw work scaffold` resolves
   templates without running them, and no transition consults them. So it can
@@ -216,6 +218,32 @@ This limit is the item's most interesting result and belongs in the migration
 guide: **a project can move its stage-scoped rules into lifecycle prompts, but
 not rules that another skill reads out of `CLAUDE.md` by name.**
 
+### The prime directive is cited from source, so it moves rather than vanishes
+
+The abstraction litmus test is not only stage guidance. Six places outside
+`AGENTS.md` point at it to explain why something is the way it is:
+`README.md:78-79` ("The full rules live in `AGENTS.md`"), `README.md:1210`,
+`tcw/store/base.py:3` ("Per AGENTS.md (the litmus test) the model is
+storage-abstracted"), `tcw/store/fs.py:6` ("don't pre-abstract — AGENTS.md"),
+`docs/plan/phase-5-work.md:177`, and `docs/plan/phase-1-scaffold.md:13`.
+
+Deleting the prose without redirecting them would leave six references pointing
+at a section that no longer exists. So the rule is that **the prose moves to a
+citable file and every reference follows it** to `docs/lifecycle/abstraction.md`.
+`AGENTS.md` keeps exactly one line naming that file and the stages it is bound
+to — a pointer is not the prose, and a reader who lands on `AGENTS.md` must not
+be left unable to find the prime directive at all.
+
+This is the second finding worth carrying into the migration guide, and it
+generalizes past this repo: **a rule that source code cites needs a stable
+location, and a stage prompt binding does not by itself provide one.** The
+`file:` kind does, which is why all three prompt files are `file:` bindings and
+none are `blob:` — inline text in `tcw-config.yaml` would have been unciteable.
+
+`tests/test_documentation_sync_wiring.py:30` also reads `AGENTS.md`, but only to
+assert the absence of `skill-cefailures` references; it makes no claim about any
+section this item moves, so it is unaffected. Verified, not assumed.
+
 ### Ordering
 
 Guide first, configuration second. The guide is written from the release notes,
@@ -246,9 +274,18 @@ migration's conveniences leak into a guide meant for consumers who have none.
 10. `AGENTS.md` no longer contains the phrases "abstraction litmus test",
     "Abstract spine", or "Harness compatibility" as section headings, and still
     contains `## Documentation Sync` and `## Versioning`.
+10a. No file in the repo references a section of `AGENTS.md` that this item
+    removed. Specifically `README.md:78-79`, `README.md:1210`,
+    `tcw/store/base.py:3`, `tcw/store/fs.py:6`, `docs/plan/phase-5-work.md:177`,
+    and `docs/plan/phase-1-scaffold.md:13` each point at
+    `docs/lifecycle/abstraction.md` instead, and `AGENTS.md` retains a one-line
+    pointer to it. (Criterion 13 is unaffected: these are docstring comments,
+    not code.)
 11. `python -m pytest -q tests/test_repo_lifecycle.py` passes.
-12. `python -m pytest -q` passes with no new failures relative to the current
-    tree.
+12. `python -m pytest -q` reports **at least 1581 passed and 0 failed** — the
+    baseline measured on this tree at spec time, recorded in `## Notes`. The
+    count may exceed 1581 by the tests this item adds; it may not fall below it,
+    and no test may fail.
 13. No file under `tcw/` is modified by this item.
 
 ## Risks
@@ -286,3 +323,17 @@ migration's conveniences leak into a guide meant for consumers who have none.
 - Criteria 4, 5, 6, 7, 8, 9, 11 are executable and will be run at the implement
   stage. Criterion 12's baseline must be captured *before* any change, since the
   suite exceeds two minutes and its current state is unverified.
+- **Baseline for criterion 12, measured before any change on `8d9450a`:**
+  `python -m pytest -q` → `1581 passed in 416.84s`, exit 0. No failures, no
+  skips reported. `tcw validate` → `validate OK` in 0.89s.
+- `tests/test_documentation_sync_wiring.py:30` includes `AGENTS.md` in
+  `NO_CEFAILURES_ROOTS`; read, and it asserts only that no `skill-cefailures`
+  string appears. It does not pin any section heading.
+- This spec was reviewed by `codex` before the plan stage. Four findings, all
+  verified against the tree and all accepted: the stale-reference problem (now
+  its own Design section and criterion 10a), two imprecise line citations (fixed
+  above), and criterion 12 being uncheckable without a recorded baseline (fixed
+  above). Codex independently confirmed the two load-bearing claims — that
+  `prompt:` lists concatenate while `artifacts:` is first-match-wins
+  (`tcw/work/resolve.py`), and that stage `pre` checks run only from
+  `tcw work stage` (`tcw/work/cli.py:793-800`, `882-887`).
