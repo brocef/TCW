@@ -104,7 +104,7 @@ that `tcw validate` surfaces and the adapter discards.
 `trigger` / `description`, a `path` that is absolute or escapes the node, a
 `trigger` containing whitespace, and a duplicate `path`. It does **not** check
 the trigger against a closed vocabulary, because
-`skills/documentation-sync/SKILL.md:54` explicitly declares the set open —
+`skills/documentation-sync/SKILL.md:56` explicitly declares the set open —
 "Projects may define additional named triggers… Treat any such project-defined
 trigger as authoritative for that project." A whitespace check catches the
 realistic typo (`Public API`, a dropped bracket) without closing a set the design
@@ -256,8 +256,8 @@ requires no capability of the store.
   `source` is `config`, but nothing warns about the stale section. Accepted;
   a warning is a follow-up, not a blocker.
 - **Folding into v1.0.0 rewrites a tag.** Safe only because the tag is local —
-  `scripts/unpushed-version.sh` in the skill exists to prove that, and it is run
-  before the fold rather than assumed.
+  `skills/documentation-sync/scripts/unpushed-version.sh` exists to prove that
+  (exit 0 = still local), and it is run before the fold rather than assumed.
 
 ## Notes
 
@@ -273,3 +273,13 @@ requires no capability of the store.
   3's fixture must be captured **before** the prompts are edited, or it records
   the new behavior and proves nothing — the same discipline
   `tests/fixtures/lifecycle_baseline/capture.py` documents.
+- **Criterion 9's assumption was tested, not reasoned.** No row in
+  `tests/fixtures/lifecycle_baseline/self.json` contains the string
+  "Evaluate every Documentation Sync" — `tcw work lifecycle --stage plan
+  --directive` reports which bindings are configured and resolves no `builtin`.
+  So editing built-in prompt text cannot move the corpus, and criterion 9 asserts
+  that rather than hoping for it.
+- All other spec citations re-resolved before commit. Two were wrong and are
+  fixed above: the open-trigger-set statement is at `SKILL.md:56`, not `:54`
+  (`:54` is the partition rule), and `unpushed-version.sh` ships inside the skill
+  at `skills/documentation-sync/scripts/`, not in the repo's top-level `scripts/`.
