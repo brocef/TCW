@@ -2046,12 +2046,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return self.store_git_root          # may differ from the node's (work.path)
 
     def _stage(self, *paths: Path) -> None:
+        self._require_repository()
         git_stage(self.store_git_root, *paths)
 
     def _rm(self, path: Path) -> None:
+        self._require_repository()
         git_rm(self.store_git_root, path)
 
     def _mv(self, src: Path, dst: Path) -> None:
+        self._require_repository()
         git_mv(self.store_git_root, src, dst)
 
     # -- discovery (state.yaml-keyed, depth-agnostic) --
@@ -2082,6 +2085,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def start(self, slug: str, force: bool = False, *, owner: str = "",
               take_over: bool = False) -> WorkItem:
         """Publish a stamped backlog claim with a single atomic source rename."""
+        # The literal first statement, not merely an early one: both the
+        # take-over branch and the main claim call `git_stage` directly rather
+        # than through `_stage`, and both rename before they stage, so `_mv`'s
+        # guard reaches neither.
+        self._require_repository()
         started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         # `_get_now`: the take-over branch below exists precisely for the state
         # the stabilizing `get` raises on, so probing through `get` would make
@@ -2439,6 +2447,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def write_plan_stage(self, slug: str, stage_id: str, content: str,
                          revision: str | None = None) -> PlanStageResource:
+        self._require_repository()
         if not isinstance(content, str):
             raise ValueError("stage content must be text")
         path = self._plan_stage_path(slug, stage_id)
@@ -2763,6 +2772,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """Read-modify-write `work.tags` (preserving other config keys), stage
         the file. `dump_yaml` rewrites the sentinel wholesale, dropping its stub
         comments — accepted per plan."""
+        self._require_repository()
         config = self._config()
         work = config.get("work")
         if not isinstance(work, dict):
@@ -3021,6 +3031,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return str(value).strip() or None
 
     def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
+        self._require_repository()
         ref = self._resolve_inbox_ref(ref)   # once — both reads must see one entry
         source = self._inbox_path(ref)
         detail, primary = self._inbox_detail(ref)
@@ -3125,6 +3136,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         Multi-key so a pair like `owner`/`started` cannot be torn across two
         locations by a move landing between them.
         """
+        self._require_repository()
         state = load_yaml(d / "state.yaml")
         state.update(fields)
         dump_yaml(d / "state.yaml", state)
@@ -3132,6 +3144,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def _effect_transition(self, slug: str, to_status: str,
                            fields: dict | None = None) -> None:
+        self._require_repository()
         # Read the item *before* the move: afterwards `_find` points at the new
         # location and the pre-move branch/worktree fields are what the
         # trunk-branch check needs.
@@ -3297,6 +3310,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     tags: list[str] | None = None,
                     intake: str = "") -> "WorkDetail":
         """Composite create: all fields validated before any write."""
+        self._require_repository()
         if not title:
             raise ValueError("title is required and must be non-empty")
 
@@ -3512,6 +3526,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not changed and parent is _UNSET:
             return _require_detail(self.get_detail(slug), "work item", slug)
 
+        # Here rather than at the top of the method: the no-change return above
+        # writes nothing, and guarding before it would turn a read-shaped call
+        # into a refusal outside a repository.
+        self._require_repository()
+
         # Write atomically
         state_text = yaml.safe_dump(state, sort_keys=False, allow_unicode=True)
         writes = [(d / "state.yaml", state_text)]
@@ -3560,6 +3579,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def write_artifact(self, slug: str, name: str, content: str,
                        revision: str | None = None) -> "ArtifactResource":
+        self._require_repository()
         if name not in WORK_ARTIFACTS:
             raise ValueError(
                 f"unknown artifact '{name}' "
@@ -3594,6 +3614,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def write_draft(self, slug: str, artifact: str, content: str, *,
                     force: bool = False) -> str:
+        self._require_repository()
         if artifact not in WORK_ARTIFACTS:
             raise ValueError(
                 f"unknown artifact '{artifact}' "
@@ -3643,6 +3664,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def write_sidecar(self, slug: str, name: str, content: str,
                       media_type: str | None = None,
                       revision: str | None = None) -> "SidecarResource":
+        self._require_repository()
         if name not in WORK_SIDECARS:
             raise ValueError(
                 f"unknown sidecar '{name}' "

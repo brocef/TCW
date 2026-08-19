@@ -308,22 +308,29 @@ def test_a_second_transition_attempt_creates_no_empty_commit(tmp_path):
     assert log_count(root) == after_first
 
 
-def test_a_transition_outside_a_repository_fails_in_git_mv_as_it_always_has(tmp_path):
-    """Not a regression from auto-commit, and worth pinning so nobody "fixes" it.
+def test_a_write_outside_a_repository_is_refused_before_it_writes(tmp_path):
+    """This test used to pin the opposite, and the reversal is deliberate.
 
-    Every write stages, and staging is `git add` with `check=True`, so a non-git
-    node fails at item *creation* — long before any transition or commit. The
-    not-a-repo branch in `git_commit_result` is defensive depth for a store
-    handed a path whose repo vanished mid-run, not support for a non-git node;
-    it is tested directly at the function level above.
+    It read: "worth pinning so nobody 'fixes' it" — a non-git node died at item
+    *creation* with a raw `CalledProcessError` out of `git_stage`, after the
+    item folder and its `state.yaml` had already landed. That traceback, and the
+    half-item it left behind, is what
+    `2026-07-30-fix-non-git-write-paths-work-new-and-init-fail-outside-a-git-repository`
+    was filed to fix. The git-required contract is unchanged; only the shape of
+    the refusal is.
 
-    `tcw init` refuses outside a repo for exactly this reason."""
+    What still holds from the original: the not-a-repo branch in
+    `git_commit_result` is defensive depth for a store handed a path whose repo
+    vanished mid-run, not support for a non-git node, and it is tested directly
+    at the function level above. `tcw init` refuses outside a repo for exactly
+    this reason, and now says so in the same words."""
     root = tmp_path / "plain"
     root.mkdir()
     init(["work"], root, "plain")
     st = FsWorkStore.open(root)
-    with pytest.raises(subprocess.CalledProcessError):
-        st.create("Task", created="2026-01-01")     # even creation stages
+    with pytest.raises(ValueError, match="not inside a git repository"):
+        st.create("Task", created="2026-01-01")
+    assert not any((root / "docs" / "work" / "backlog").glob("2026-*"))
 
 
 def test_a_refused_commit_reports_but_leaves_the_item_moved(tmp_path):
