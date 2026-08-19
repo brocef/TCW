@@ -11,7 +11,7 @@ from tcw.store.base import (
     STAGE_IDS, STAGE_STATUSES, WORK_STATUSES, WorkStore,
 )
 from tcw.store.fs import FsWorkStore, init
-from tcw.work.resolve import load_builtins
+from tcw.work.resolve import load_builtins, substitute_documentation
 
 
 def _node(tmp_path: Path, name: str = "repo") -> Path:
@@ -307,14 +307,23 @@ def test_no_exec_reports_a_condition_that_did_not_match(tmp_path):
 def test_an_unconfigured_node_prints_tcws_own_instructions(one_of_each):
     """The demonstration. A node with no `work.lifecycle` key at all — which is
     the state every node starts in — gets TCW's instructions for the stage
-    rather than exit 0 and silence."""
+    rather than exit 0 and silence.
+
+    The shipped prompt is a *template*: `plan` and `implement` wrap their
+    documentation instruction in `{{tcw:documentation}}…{{/tcw:documentation}}`.
+    With nothing configured that span resolves to its own inner text, so the
+    comparison is against the resolved source rather than the raw file. The bytes
+    an unconfigured node actually receives are pinned independently, against a
+    fixture captured before any of this existed, in `test_prompt_fallback.py`.
+    """
     root, slugs = one_of_each
     shipped = load_builtins().stage_prompts
     for stage in sorted(set(STAGE_IDS) - {"inbox"}):
         status = STAGE_STATUSES[stage][0]
         r = _cli(root, stage, slugs[status])
         assert r.returncode == 0, r.stderr
-        assert r.stdout == shipped[stage].rstrip() + "\n"
+        expected = substitute_documentation(shipped[stage], ())
+        assert r.stdout == expected.rstrip() + "\n"
 
 
 def test_inbox_still_ships_no_prompt(one_of_each):

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, STAGE_IDS, Binding, LifecyclePolicy, WorkItem,
+    DEFAULT_OUTPUT_CAP, STAGE_IDS, Binding, DocEntry, LifecyclePolicy, WorkItem,
 )
 from tcw.work.generate import GenerateError, run_generate
 from tcw.work.projection import work_item_json
@@ -211,6 +211,72 @@ def _resolve_one(b: Binding, *, role: str, hook_id: str, phase: str,
     raise ResolveError(f"cannot resolve a '{b.kind}' binding in a {role} position")
 
 
+DOC_OPEN = "{{tcw:documentation}}"
+DOC_CLOSE = "{{/tcw:documentation}}"
+
+
+def render_documentation(entries: Sequence[DocEntry]) -> str:
+    """A project's documentation entries as a Markdown list.
+
+    **A list, not a table.** A table row is delimited by `|`, and a description
+    containing one would break it silently. A list has no load-bearing
+    delimiter, so no escaping rule is needed. `path` and `trigger` are validated
+    to hold no newline; a `description` written as a YAML block scalar has its
+    internal newlines collapsed here, so it cannot break out of its bullet.
+    """
+    lines = ["The project's own documentation entries — evaluate every one "
+             "whose trigger fires:", ""]
+    for entry in entries:
+        description = " ".join(entry.description.split())
+        lines.append(f"- `{entry.path}` — **[{entry.trigger}]**")
+        lines.append(f"  {description}")
+    return "\n".join(lines)
+
+
+def substitute_documentation(text: str, entries: Sequence[DocEntry]) -> str:
+    """Replace each `{{tcw:documentation}}…{{/tcw:documentation}}` span.
+
+    **The span carries its own fallback, and that is the design.** With entries
+    configured the whole span becomes `render_documentation`; with none it
+    becomes its own inner text, unchanged. So a project that configures nothing
+    gets byte-identical bytes *by construction* rather than by a Python constant
+    that has to be kept in agreement with the prompt.
+
+    That matters because the two built-in prompts word the instruction
+    differently — `plan` says "and name a task for each trigger that will fire",
+    `implement` says "once, against the whole finished diff" — so a single
+    hardcoded fallback could not reproduce both. Keeping prompt prose in the
+    prompt file is also simply where it belongs.
+
+    Continuation lines are indented to match whatever precedes the token on its
+    line, so a span inside a numbered list item renders as part of that item.
+
+    An unterminated open token is left **verbatim**: a malformed prompt should
+    look wrong, not silently swallow the rest of the text.
+    """
+    out: list[str] = []
+    rest = text
+    while True:
+        start = rest.find(DOC_OPEN)
+        if start < 0:
+            out.append(rest)
+            break
+        end = rest.find(DOC_CLOSE, start)
+        if end < 0:
+            out.append(rest)                      # unterminated: leave it alone
+            break
+        out.append(rest[:start])
+        fallback = rest[start + len(DOC_OPEN):end]
+        if entries:
+            indent = " " * (start - (rest.rfind("\n", 0, start) + 1))
+            rendered = render_documentation(entries).replace("\n", "\n" + indent)
+            out.append(rendered + "\n" + indent)
+        else:
+            out.append(fallback)
+        rest = rest[end + len(DOC_CLOSE):]
+    return "".join(out)
+
+
 def _join(parts: Sequence[str]) -> str:
     """Exactly how prompt text composes.
 
@@ -226,7 +292,8 @@ def _join(parts: Sequence[str]) -> str:
 def resolve_prompts(policy: LifecyclePolicy, stage_id: str,
                     item: WorkItem | None, node_root: Path, builtins: Builtins,
                     artifacts: Sequence = (), env: dict | None = None, *,
-                    execute: bool = True) -> Resolution:
+                    execute: bool = True,
+                    documentation: Sequence[DocEntry] = ()) -> Resolution:
     """A stage's prompt text: **every** matching binding, in declaration order.
 
     A stage with **no prompt bindings** resolves as if it bound
@@ -251,7 +318,14 @@ def resolve_prompts(policy: LifecyclePolicy, stage_id: str,
             execute=execute)
         res.plan.append(PlanEntry(b.kind, b.ref, True, ran))
         parts.append(text)
-    res.text = _join(parts)
+    # Substituted here, over the joined text, and deliberately **not** in
+    # `_resolve_one`: that is shared with `resolve_artifact`, so substituting
+    # there would rewrite artifact templates too — and inconsistently, because
+    # `tcw work scaffold`'s implicit built-in fallback bypasses `_resolve_one`
+    # entirely. Doing it here also means a project's own `file:` or `blob:`
+    # prompt can use the token, which is what makes this prompt generation
+    # rather than a built-in-only special case.
+    res.text = substitute_documentation(_join(parts), documentation)
     return res
 
 

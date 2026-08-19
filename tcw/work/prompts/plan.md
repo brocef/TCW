@@ -17,9 +17,9 @@ the suite cannot check. Optional `## Notes`.
    leaves the tree broken for the next one is two tasks.
 2. Put the riskiest change where it is _isolated_, not where it is convenient —
    typically after its infrastructure exists and its tests are already written.
-3. Evaluate every Documentation Sync entry in the project's agent guide
+3. {{tcw:documentation}}Evaluate every Documentation Sync entry in the project's agent guide
    (`AGENTS.md` or `CLAUDE.md`) and name a task for each trigger that will
-   fire. **Schedule them as one block at the end**, after the code tasks —
+   fire.{{/tcw:documentation}} **Schedule them as one block at the end**, after the code tasks —
    implementation answers them in one pass over the finished diff. If the scope
    is too exploratory to predict per file, name one final "re-evaluate
    Documentation Sync triggers" task instead.

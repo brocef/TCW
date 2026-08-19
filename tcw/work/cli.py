@@ -32,7 +32,7 @@ from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
                "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
-               "escalate", "tags", "lifecycle", "stage", "scaffold"}
+               "escalate", "tags", "lifecycle", "stage", "scaffold", "docs"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 # TransitionCommitError is included deliberately: the item *did* move, and its
@@ -796,7 +796,8 @@ def _stage(args: argparse.Namespace) -> int:
         res = resolve_prompts(policy, step.id, item, st.node_root,
                               load_builtins(),
                               artifacts=st.artifacts(bare), env=dict(os.environ),
-                              execute=not args.no_exec)
+                              execute=not args.no_exec,
+                              documentation=st.documentation())
     except ResolveError as e:
         print(f"tcw work stage: {e}", file=sys.stderr)
         return 1
@@ -895,6 +896,48 @@ def _scaffold(args: argparse.Namespace) -> int:
         print(f"tcw work scaffold: {e}", file=sys.stderr)
         return 1
     print(locator)
+    return 0
+
+
+def _docs(args: argparse.Namespace) -> int:
+    """`tcw work docs` — the node's documentation entries, read-only.
+
+    Exists because the documentation gate runs at **three** points and only two
+    are stages: `plan`, the end of `implement`, and the version offer *after*
+    `complete`. The third has no stage to hang off — `tcw work stage implement`
+    on a completed item is refused by the status check, correctly — so it needs a
+    verb of its own.
+
+    `source` is what lets a caller branch without guessing: `agent-guide` means
+    the node configured nothing and the old behavior applies unchanged.
+    """
+    st = _store()
+    if st is None:
+        return 1
+    entries = st.documentation()
+    source = "config" if entries else "agent-guide"
+
+    if args.json:
+        print(json.dumps({"schema": 1, "source": source,
+                          "entries": [{"path": e.path, "trigger": e.trigger,
+                                       "description": e.description}
+                                      for e in entries]}, indent=2))
+        return 0
+
+    if not entries:
+        # stdout stays empty: there is nothing to list, and a caller piping this
+        # should get no rows rather than a sentence pretending to be one.
+        print("tcw work docs: this node declares no `work.documentation`; "
+              "documentation entries come from the project's agent guide "
+              "(`AGENTS.md` or `CLAUDE.md`).", file=sys.stderr)
+        return 0
+
+    width = max(len(e.path) for e in entries)
+    trigger_width = max(len(e.trigger) for e in entries) + 2
+    for e in entries:
+        description = " ".join(e.description.split())
+        print(f"{e.path:<{width}}  {'[' + e.trigger + ']':<{trigger_width}}  "
+              f"{description}")
     return 0
 
 
@@ -1375,6 +1418,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     plc.add_argument("--json", action="store_true", help="machine-readable output")
     plc.add_argument("--directive", action="store_true",
                      help="emit one instruction line for an agent, or nothing when unbound")
+    pdoc = g.add_parser("docs",
+                        help="print the node's documentation entries")
+    pdoc.add_argument("--json", action="store_true", help="machine-readable output")
+    pdoc.set_defaults(func=_docs)
     pstg = g.add_parser("stage",
                         help="print a stage's instructions after its checks pass")
     pstg.add_argument("stage_id", metavar="stage")

@@ -14,7 +14,7 @@ from tcw.store.base import (
 from tcw.work.projection import WORK_ITEM_SCHEMA
 from tcw.work.resolve import (
     Builtins, ResolveError, hook_payload, load_builtins, resolve_artifact,
-    resolve_prompts, select,
+    resolve_prompts, select, substitute_documentation,
 )
 
 ENV = dict(os.environ)
@@ -336,8 +336,10 @@ def test_an_unconfigured_stage_resolves_to_the_builtin(sid, tmp_path):
     repo has no `work.lifecycle` key at all — and it gets TCW's instructions."""
     b = load_builtins()
     res = resolve_prompts(LifecyclePolicy(), sid, item(), tmp_path, b, env=ENV)
-    # `_join` rstrips each part; the text is otherwise byte-for-byte the file's.
-    assert res.text == b.stage_prompts[sid].rstrip()
+    # `_join` rstrips each part, and a `{{tcw:documentation}}` span with nothing
+    # configured resolves to its own inner text; the result is otherwise
+    # byte-for-byte the file's.
+    assert res.text == substitute_documentation(b.stage_prompts[sid], ()).rstrip()
     assert [(p.kind, p.matched, p.executed) for p in res.plan] == [
         ("builtin", True, False)]
 

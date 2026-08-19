@@ -614,7 +614,6 @@ class TransitionBindings:
     post: list[Binding] = field(default_factory=list)
 
 
-@dataclass
 @dataclass(frozen=True)
 class DocEntry:
     """One `work.documentation` entry: a document, when it must be updated, and
@@ -629,6 +628,7 @@ class DocEntry:
     description: str
 
 
+@dataclass
 class StageBindings:
     """A stage's checks and prompts.
 
