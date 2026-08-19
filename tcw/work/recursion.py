@@ -263,6 +263,13 @@ def _inbox_write(store: FsWorkStore, title: str, body: str, origin: str,
     success in a directory nobody reads."""
     if not store.root.is_dir():
         raise ValueError(f"work store root does not exist: {store.root}")
+    # The one write in the adapter that never stages, so it is also the one the
+    # `_stage` guard cannot reach. Left unguarded it "succeeds" outside a
+    # repository by dropping an untracked note into a store whose own
+    # `inbox accept` will refuse it — a request that can never become work.
+    # Checked against the *destination* store, which for `delegate` is the
+    # child's repository and for `escalate` the parent's.
+    store._require_repository()
     inbox = store.root / "inbox"
     inbox.mkdir(exist_ok=True)
     base = f"{date.today().isoformat()}-{slugify(title)}"

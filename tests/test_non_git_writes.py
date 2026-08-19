@@ -12,6 +12,7 @@ traceback, and the public write methods whose first mutation *precedes* their
 staging call, so nothing lands before the refusal.
 """
 import hashlib
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -308,3 +309,148 @@ def test_a_git_subprocess_failure_is_a_message_not_a_traceback(
         assert "Traceback" not in err, argv
         seen.add(err)
     assert seen == {"tcw: git command failed (exit 128): git add x\n"}
+
+
+# ── Every public CLI write, end to end ───────────────────────────────────────
+
+
+REFUSAL = re.compile(
+    r"^tcw[a-z ]*: not inside a git repository\. Run `git init` first\.$")
+
+
+@pytest.fixture
+def graph(tmp_path):
+    """A connected parent/child pair, seeded and committed, then de-gitted.
+
+    Both repositories lose `.git`, because `delegate` writes into the child's
+    store and `escalate` into the parent's — a half-git graph would prove the
+    wrong thing.
+    """
+    parent, child = repo(tmp_path, "parent"), repo(tmp_path, "child")
+    (parent / "tcw-config.yaml").write_text(
+        "id: parent\nconnected-projects:\n  children:\n    child: ../child\n",
+        encoding="utf-8")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    parent: ../parent\n",
+        encoding="utf-8")
+    work = FsWorkStore.open(parent)
+    work.create("Backlog item", created="2026-01-01")
+    review = work.create("Review item", created="2026-01-02")
+    work.start(review.slug, owner="t")
+    work.submit(review.slug)
+    active = work.create("Active item", created="2026-01-04")
+    work.start(active.slug, owner="t")
+    epic = work.create_work("Epic item", created="2026-01-03", type="epic").item
+    FsTaxonomyStore.open(parent).add("Widget", slug="widget")
+    FsCapabilitiesStore.open(parent).add("seeded/cap", "Seeded cap")
+    (parent / "docs" / "work" / "inbox" / "raw.md").write_text(
+        "# Raw\n\nbody\n", encoding="utf-8")
+    for root in (parent, child):
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
+        shutil.rmtree(root / ".git")
+    return parent, child, epic.slug
+
+
+def test_every_cli_write_refuses_with_one_wording_and_writes_nothing(
+    graph, monkeypatch, capsys
+):
+    parent, child, epic = graph
+    st = FsWorkStore.open(parent)
+    backlog = [i.slug for i in st.query("backlog") if i.slug != epic][0]
+    review = st.query("review")[0].slug
+    active = st.query("active")[0].slug
+    monkeypatch.chdir(parent)
+
+    commands = [
+        ["init", "--id", "parent"],
+        ["work", "init"],
+        ["taxonomy", "init"],
+        ["capabilities", "init"],
+        ["work", "new", "T"],
+        ["work", "start", backlog],
+        ["work", "start", backlog, "--worktree"],
+        ["work", "start", backlog, "--take-over", "--owner", "me"],
+        ["work", "edit", backlog, "--title", "Renamed"],
+        ["work", "rework", review],
+        ["work", "submit", active],
+        ["work", "complete", review, "--resolution", "done", "--confirm"],
+        ["work", "complete", review, "--resolution", "wontfix", "--confirm"],
+        ["work", "drop", backlog, "--confirm"],
+        ["work", "tags", "add", "demo"],
+        ["work", "tags", "rm", "demo"],
+        ["work", "scaffold", "spec", backlog],
+        ["work", "inbox", "accept", "raw.md"],
+        ["work", "reconcile", epic],
+        ["work", "delegate", "child", "T"],
+        ["taxonomy", "add", "Gadget", "--slug", "gadget"],
+        ["taxonomy", "rm", "widget"],
+        ["taxonomy", "extends", "add", "child"],
+        ["taxonomy", "extends", "rm", "child"],
+        ["capabilities", "add", "other/thing", "Other"],
+        ["capabilities", "set", "seeded/cap", "--status", "Supported"],
+        ["capabilities", "extends", "child"],          # not `extends add`
+        ["capabilities", "extends", "child", "--rm"],
+    ]
+    graph_before = manifest(parent.parent)
+    for argv in commands:
+        assert main(argv) == 1, argv
+        err = capsys.readouterr().err
+        assert "Traceback" not in err, (argv, err)
+        assert [ln for ln in err.splitlines() if ln] == [
+            ln for ln in err.splitlines() if ln and REFUSAL.match(ln)], (argv, err)
+        assert manifest(parent.parent) == graph_before, argv
+
+    monkeypatch.chdir(child)                     # escalate writes the parent's inbox
+    assert main(["work", "escalate", "T"]) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert any(REFUSAL.match(ln) for ln in err.splitlines())
+    assert manifest(parent.parent) == graph_before
+
+
+def test_start_leaves_the_item_in_backlog(graph, monkeypatch, capsys):
+    """The sharpest regression: `start` used to move the item and *then* fail."""
+    parent, _, epic = graph
+    st = FsWorkStore.open(parent)
+    backlog = [i.slug for i in st.query("backlog") if i.slug != epic][0]
+    monkeypatch.chdir(parent)
+    assert main(["work", "start", backlog]) == 1
+    capsys.readouterr()
+    assert (parent / "docs" / "work" / "backlog" / backlog).is_dir()
+    assert not (parent / "docs" / "work" / "active" / backlog).exists()
+
+
+# ── Reads, byte-for-byte against the pre-change tree ─────────────────────────
+
+
+GOLDEN = Path(__file__).parent / "fixtures" / "non_git_reads"
+READS = [
+    ["work", "list"], ["work", "nodes"], ["validate"],
+    ["taxonomy", "list"], ["taxonomy", "show", "widget"],
+    ["capabilities", "list"], ["capabilities", "show", "seeded/cap"],
+]
+
+
+def _normalize(text: str, root: Path) -> str:
+    """Only what cannot be reproduced: the tmp root, the minted capability id,
+    and the claim's wall-clock timestamp."""
+    text = text.replace(str(root), "<ROOT>")
+    text = re.sub(r"cap-[0-9a-f]{6}", "cap-<ID>", text)
+    return re.sub(r"\d{4}-\d{2}-\d{2}T[\d:.]+Z", "<TS>", text)
+
+
+@pytest.mark.parametrize("argv", READS, ids=lambda a: "-".join(a))
+def test_read_output_is_unchanged_outside_a_repository(argv, unrepo, monkeypatch,
+                                                       capsys):
+    """Goal 4, pinned against output captured from the tree *before* the guard.
+
+    The golden files in `fixtures/non_git_reads/` were produced by running these
+    same commands at the pre-change commit in this same fixture (see the item's
+    outcome.md). No historical checkout is needed to check them.
+    """
+    monkeypatch.chdir(unrepo)
+    assert main(argv) == 0
+    got = _normalize(capsys.readouterr().out, unrepo)
+    name = "-".join(argv).replace("/", "_") + ".txt"
+    assert got == (GOLDEN / name).read_text(encoding="utf-8")

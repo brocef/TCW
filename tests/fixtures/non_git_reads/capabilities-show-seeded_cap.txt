@@ -1,0 +1,3 @@
+## Seeded cap  (seeded/cap)
+**id:** cap-<ID>
+**Status:** Missing
