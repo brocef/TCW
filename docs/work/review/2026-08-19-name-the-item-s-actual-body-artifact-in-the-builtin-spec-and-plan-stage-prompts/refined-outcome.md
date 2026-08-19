@@ -66,6 +66,36 @@ this change instead (`ccf42ef`).
   `… read as filed. An` dangling. `substitute_body`'s docstring states the rule
   for the next prompt author, since nothing re-flows a resolved prompt.
 
+## Dual review of the implementation diff
+
+Requested at `verify` and run over `d75c10e~1..HEAD` (excluding `docs/work/`).
+**It found real defects, two of them introduced by this item's own sweep**, all
+fixed in `22c952e` before closeout. Full reasoning in that commit message.
+
+| Severity | Finding                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------- |
+| High     | `tcw-triage-issues` §5 piped only the issue body into `tcw work new`, storing none of the `## Origin` provenance the same section promises and §3/§8 read back. An issue accepted that way would resurface on every later sweep. |
+| High     | `cross-node-deltas.md` told agents to write the epic link into a slice's `intake.md`, contradicting the canonical rule in `commands.md` that a body write always targets `initial-request.md`. |
+| Medium   | The `spec` prompt claimed an intake categorically has no `## References` (it is arbitrary text), and called the intake "the request" — contradicting the `work-item/intake` term added in this same change. |
+| Medium   | `stub_desktop_opener` left `os.startfile` trapped, so it only worked on the POSIX branch; the opener match was on `argv[0]` rather than its basename; the browser guard's thread limitation was undocumented. |
+| Low      | `resolved_body`'s `getattr` default masked an adapter contract violation; the documentation→body substitution order could rewrite a body token injected by a documentation entry. |
+| Low      | The "nobody asked" scoping test passed vacuously if the clause vanished; nothing focused asserted the `postmortem` spine names both artifacts. |
+
+Verified and dismissed: nothing consumes `LIFECYCLE_STEPS.inputs` as a
+prerequisite gate — only the renderer and the `--json` projection — so listing
+both body artifacts cannot block a stage.
+
+**How the review was run, and a process note.** The `targeted-code-reviewer`
+agent was dispatched and went idle without returning findings; asked directly, it
+still did not report. This is the **same failure mode this repository already
+recorded** for the C5 spec review during the polymorphic-lifecycle epic ("agent
+dispatched three times, never returned findings"). Rather than re-dispatch, the
+two external passes were run directly via `codex exec` and `bllm-review`, which
+is what produced the table above. Worth treating the agent as unreliable until
+someone looks at why; the direct invocations work.
+
+Suite after the fixes: **1763 passed**, `validate OK`.
+
 ## Closeout choices
 
 - **Version: keep `1.0.0`.** No cut. `v1.0.0` is **published** — the tag
