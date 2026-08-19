@@ -19,6 +19,10 @@ internal module names.
   item's raw intake looks identical to one you wrote on purpose. Set
   `TCW_STDIN_TIMEOUT` to a number of seconds to wait longer, or `0` to never
   wait at all.
+- **The web view no longer offers a tab it cannot open.** If a document existed
+  but was empty, `tcw serve` listed it as written and then failed to open it when
+  you clicked. The list and the tab now agree: an empty document reads as not yet
+  written, in both places.
 - **A lifecycle hook can no longer stall a transition by reading input it was
   never given.** Hooks now run with their input closed, so a hook that happens
   to read from stdin finishes immediately instead of consuming the text you

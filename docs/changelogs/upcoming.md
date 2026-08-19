@@ -105,7 +105,7 @@ category.
   implementing the interface: an adapter reporting a blank field as present from
   `artifacts()` was within the documented contract before and is not now.
 
-## Internal
+## Fixed
 
 - **`tcw serve` no longer reports two different presence answers in one payload.**
   Writing the rules down exposed that the work-detail endpoint derived its
@@ -113,6 +113,8 @@ category.
   is opened through the lifecycle rule — so a whitespace-only artifact rendered
   as present and then 404'd on click. The flag now comes from `artifacts()`.
   Reproduced over real HTTP before and after.
+
+## Internal
 
 - `tests/test_work.py::test_the_two_artifact_presence_rules_disagree_on_purpose`
   pins all four facts about a whitespace-only artifact in one test, so none can be
