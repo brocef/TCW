@@ -4,10 +4,12 @@
 summary — the question is _where would this have been cheapest to catch_.
 
 **Inputs.** The whole artifact spine, read **backwards**: `refined-outcome.md`
-and any `rework.md` first, then `outcome.md`, `plan.md`, `spec.md`,
-`initial-request.md`. **`## Notes` across the spine is the primary trail** —
-where each stage recorded what it knew at the time, and usually where the miss
-is visible in hindsight. Discovery is unrestricted, including git history.
+and any `rework.md` first, then `outcome.md`, `plan.md`, `spec.md`, and last the
+body the item started from — `initial-request.md`, or the `intake.md` beneath it
+when the `request` stage never ran. **`## Notes` across the spine is the primary
+trail** — where each stage recorded what it knew at the time, and usually where
+the miss is visible in hindsight. Discovery is unrestricted, including git
+history.
 
 **Produce** `post-mortem.md`, in the item's folder wherever that folder
 currently lives. Required: what went wrong; which stage could first have caught

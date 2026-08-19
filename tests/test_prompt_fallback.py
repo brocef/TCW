@@ -9,10 +9,10 @@ change.
 It passes trivially on the tree it was captured from. That is the point — it is a
 tripwire armed ahead of the change, not a description of it.
 
-The `spec` and `plan` entries were **re-baselined once**, by
+The `spec`, `plan`, and `postmortem` entries were **re-baselined once**, by
 `2026-08-19-name-the-item-s-actual-body-artifact-in-the-builtin-spec-and-plan-stage-prompts`,
-which rewrote those two prompts to name the item's own body artifact. Only those
-two stdouts were replaced, and only after asserting the other four were
+which rewrote those prompts to name the item's own body artifact. Only those
+stdouts were replaced, and only after asserting the remaining stages were
 byte-identical — so what this fixture still proves about the documentation
 substitution is intact. A prompt rewrite is the one reason to touch these bytes;
 a *substitution* changing them is the regression, and re-baselining to hide that
