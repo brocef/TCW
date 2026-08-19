@@ -76,10 +76,15 @@ category.
 - `tests/test_stdin.py` drives real descriptors (pipe, devnull, regular file,
   socketpair, closed fd) rather than mocks. `tests/test_stdin_cli.py` shells out,
   because a parent holding a pipe's write end open is not reproducible in-process.
-- **Known gap, deliberately out of scope:** roughly twenty `subprocess.run` calls
-  to `git` in `tcw/store/fs.py` and `tcw/work/cli.py` still inherit stdin and
-  carry no timeout. None contacts a remote, so no credential helper can prompt;
-  the residual exposure is a user's own git hook. Tracked as a follow-up item.
+- **Every `subprocess` spawn under `tcw/` now declares its stdin**, and
+  `tests/test_subprocess_stdin.py` walks the package AST to keep it that way.
+  `tcw/store/fs.py` gained a `_git()` helper covering its 19 git calls; four
+  singletons in `store/project.py`, `work/cli.py`, `serve/__init__.py` and
+  `serve/runtime.py` close it inline. This closes **no known hang** — git
+  redirects its own hooks' stdin (measured), no TCW git call contacts a remote,
+  and none takes input on stdin. It is an explicitness invariant with a test
+  behind it, and the test earned its place: it found the `tcw serve` node server
+  holding fd 0. Timeouts on git calls remain out of scope.
 
 ## Changed
 
@@ -94,13 +99,20 @@ category.
   the same resource rule; `FsWorkStore._present` no longer calls itself "the one
   presence rule".
 
-  **No behavior changes** — verified structurally by comparing the ASTs of
-  `tcw/store/base.py` and `tcw/store/fs.py` before and after with docstrings
-  stripped; both are identical. This is a contract change for anyone implementing
-  the interface: an adapter reporting a blank field as present from `artifacts()`
-  was within the documented contract before and is not now.
+  **No behavior change in the store layer** — verified structurally by comparing
+  the ASTs of `tcw/store/base.py` and `tcw/store/fs.py` before and after with
+  docstrings stripped; both are identical. This is a contract change for anyone
+  implementing the interface: an adapter reporting a blank field as present from
+  `artifacts()` was within the documented contract before and is not now.
 
 ## Internal
+
+- **`tcw serve` no longer reports two different presence answers in one payload.**
+  Writing the rules down exposed that the work-detail endpoint derived its
+  `present` flag from `read_artifact` returning content, while the tab it gates
+  is opened through the lifecycle rule — so a whitespace-only artifact rendered
+  as present and then 404'd on click. The flag now comes from `artifacts()`.
+  Reproduced over real HTTP before and after.
 
 - `tests/test_work.py::test_the_two_artifact_presence_rules_disagree_on_purpose`
   pins all four facts about a whitespace-only artifact in one test, so none can be
