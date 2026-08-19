@@ -655,6 +655,15 @@ class TcwHandler(BaseHTTPRequestHandler):
             # slug so the (unchanged) web UI keeps addressing this descendant item
             # when it derives artifact/sidecar/action URLs from item.slug.
             item_data = _item_payload(work, slug, detail.item, qslug)
+            # `present` is the **lifecycle** rule — `artifacts()`, the same one
+            # `_item_payload` and the `/open` gate use. `read_artifact` answers a
+            # different question (is there a resource at this name), and mixing
+            # the two put both answers in one payload: a whitespace-only artifact
+            # read `present: true` here and `false` in `item.artifacts`, so the
+            # client drew an Open button whose handler then refused it with 404.
+            # `read_artifact` still supplies revision and media type, so a blank
+            # artifact stays loadable and safely editable.
+            lifecycle_present = {a.name for a in work.artifacts(slug) if a.present}
             artifacts_list = []
             for name in WORK_ARTIFACTS:
                 try:
@@ -662,7 +671,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     if res is not None:
                         artifacts_list.append({
                             "name": res.name,
-                            "present": True,
+                            "present": name in lifecycle_present,
                             "revision": res.revision,
                             "mediaType": res.media_type,
                         })

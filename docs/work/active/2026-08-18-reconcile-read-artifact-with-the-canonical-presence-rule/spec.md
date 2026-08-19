@@ -2,14 +2,14 @@
 
 ## Capability changes
 
-**None.** No user-visible behavior changes. This settles an unstated contract in
-the storage-abstracted interface and pins it with a test; nothing a user can do
-becomes possible, impossible, or different. Nothing to reconcile at completion.
+**Changed.** `work/read-a-work-item` gains one fact: the web app now reports a
+whitespace-only artifact as **absent**, consistently with the board, instead of
+offering an action that could not work.
 
-That verdict survived review only after the user-facing surface was examined
-properly — see *The one place a user can already see the split*, which finds a
-real three-way disagreement, decides it is intended, and files the affordance gap
-as a follow-up rather than absorbing it here.
+The first version of this spec said *None*, on the reasoning that no user-facing
+path reached the rule disagreement. **That was wrong twice over, and `verify`
+caught it** — see *The one place a user can already see the split*. The store
+change is still nil; the serve layer's change is not.
 
 ## Problem
 
@@ -153,18 +153,38 @@ So a user can save a blank Spec in the editor, refresh, and see the tab still
 populated while the board reports the stage never ran — and then scaffold a draft
 that sits next to it.
 
-**Decided, rather than dismissed: this is intended, and none of the three is
-wrong.** A blank artifact *is* a real editable resource — refusing to show it
-would strand a user who blanked a file and wants it back. The stage *did not*
-run, so the board is right to say so. And scaffolding is right to proceed,
-because there is nothing worth preserving. Each surface answers the question its
-own job asks.
+**Two of the three are right. The web app was broken, and this item fixes it.**
 
-What is genuinely missing is an **affordance**, not a rule: nothing tells the user
-that the file exists but does not count. That is a UI change in `tcw serve`, it
-has nothing to do with which rule `read_artifact` uses, and folding it in here
-would turn a documentation item into a web-app item. **Filed as a follow-up at
-completion**, named in the outcome.
+The board is right that the stage did not run. Scaffolding is right to proceed,
+because there is nothing worth preserving. But `tcw serve` was not answering a
+third question — it was answering *the same* question twice, in one payload, with
+two different answers, and its own `/open` handler believed the other one:
+
+```
+top-level artifacts[] 'outcome'.present = True    <- what the UI binds to
+item.artifacts['outcome']              = False    <- the lifecycle rule
+POST .../artifacts/outcome/open -> 404 'artifact is not present'
+```
+
+Measured over real HTTP, not read. The client
+(`web/client/src/ui/content-views.tsx:395-412`) filters the top-level list on
+`present` and draws an **Open** button; the handler
+(`tcw/serve/__init__.py:1334`) gates on `artifacts()`. A blank artifact therefore
+produced a button that could never work.
+
+**The fix is in the serve layer, not the store.** The top-level list's `present`
+flag now comes from `work.artifacts(slug)` — the lifecycle rule its own gate
+uses — while `read_artifact` continues to supply `revision` and `mediaType`, so a
+blank artifact stays loadable and safely editable. One response, one answer.
+
+This *strengthens* the item's conclusion rather than weakening it: the two store
+rules were never the problem. The problem was a consumer mixing them, which is
+exactly the failure mode an unwritten contract produces, and exactly what writing
+it down is meant to prevent.
+
+The **affordance** question — whether the UI should explain that a file exists but
+its stage has not run — is still separate and still a follow-up. Reporting
+`present: false` consistently is not the same as saying why.
 
 ### So what is actually wrong
 
@@ -193,7 +213,9 @@ catch it.
    split rather than guessing.
 3. Pin the split with a test, so a future "consistency" fix has to argue with a
    red suite instead of a comment.
-4. Change no behavior.
+4. Change no **store** behavior. The serve layer's presence flag is corrected;
+   `read_artifact`, `write_artifact`, `_present` and every rule they implement
+   are untouched.
 
 ## Non-goals
 
@@ -295,12 +317,15 @@ Docstrings and a test in the Python package. Identical under both harnesses.
   it.** Accepted deliberately — the deadlock evidence says the behavior is right,
   and the test's name and docstring say what it is protecting so it can be
   changed on purpose rather than by accident.
-- **The web app shows a blank artifact as present with no indication that the
-  stage has not run.** Decided above as intended-but-under-communicated, and
-  filed as a follow-up. The risk of *not* fixing it now is that a user reads the
-  populated tab as "the spec exists" and is contradicted by the board; the risk
-  of fixing it here is scope creep into the web app on an item whose whole
-  premise is that no behavior changes. The second is worse.
+- **The serve fix changes a published API field.** A client that relied on the
+  top-level `artifacts[].present` meaning "a resource exists at this name" now
+  sees "this stage produced something". Accepted: the only in-tree client is the
+  bundled web app, the previous value contradicted the same payload's
+  `item.artifacts`, and the `/open` gate already implemented the new meaning.
+- **A blank artifact is now harder to reach in the web app**, because the Open
+  button is no longer drawn for it. That is the correct trade — the button
+  404'd — but it means the affordance follow-up is the thing that makes such a
+  file recoverable through the UI, and it is not built here.
 - **Two of the sixteen call sites sit on arguably the wrong rule**
   (`write_draft`, `PlanStage.present`). Documenting the boundary makes them
   easier to spot, which is good, and also easier to "fix" without understanding

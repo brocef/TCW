@@ -247,3 +247,60 @@ def test_private_sidecar_rejects_direct_requests(seeded_node):
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=2)
+
+
+def test_a_blank_artifact_is_absent_in_both_places_of_one_payload(server, seeded_node):
+    """One response must not carry two answers to "does this artifact exist".
+
+    `item.artifacts` comes from `artifacts()` (the lifecycle rule) and the
+    top-level `artifacts[]` used to come from `read_artifact` (the resource
+    rule). A whitespace-only artifact was `False` in one and `True` in the
+    other — and since the web client binds to the top-level list, filters on
+    `present`, and renders an Open button whose handler gates on the *other*
+    rule, that button always answered 404.
+    """
+    base, slug = server
+    root, _ = seeded_node
+    FsWorkStore.open(root).write_artifact(slug, "outcome", "   \n\t\n")
+
+    payload = get_json(base, f"/api/work/{slug}")
+    top = {a["name"]: a["present"] for a in payload["artifacts"]}
+    assert top["outcome"] is False, "the UI would draw an Open button for it"
+    assert payload["item"]["artifacts"]["outcome"] is False
+    assert top["outcome"] == payload["item"]["artifacts"]["outcome"]
+
+
+def test_the_open_gate_agrees_with_what_the_payload_advertises(server, seeded_node):
+    """The gate and the flag must never disagree: anything reported present must
+    be openable, and anything openable must be reported present."""
+    base, slug = server
+    root, _ = seeded_node
+    work = FsWorkStore.open(root)
+    work.write_artifact(slug, "outcome", "   \n\t\n")        # blank
+    work.write_artifact(slug, "post-mortem", "# Real\n")     # real
+
+    advertised = {a["name"] for a in get_json(base, f"/api/work/{slug}")["artifacts"]
+                  if a["present"]}
+    for name in ("outcome", "post-mortem"):
+        try:
+            post(base, f"/api/work/{slug}/artifacts/{name}/open")
+            openable = True
+        except HTTPError as e:
+            assert e.code == 404
+            openable = False
+        assert openable == (name in advertised), (
+            f"{name}: advertised={name in advertised} openable={openable}")
+
+
+def test_a_blank_artifact_still_reads_back_with_its_revision(server, seeded_node):
+    """The store's split is untouched: `read_artifact` still returns the blank
+    resource, so the editor can load it and a caller can still get its revision.
+    Only serve's *presence* flag changed."""
+    base, slug = server
+    root, _ = seeded_node
+    FsWorkStore.open(root).write_artifact(slug, "outcome", "   \n\t\n")
+
+    entry = next(a for a in get_json(base, f"/api/work/{slug}")["artifacts"]
+                 if a["name"] == "outcome")
+    assert entry["present"] is False
+    assert entry.get("revision"), "revision must survive so edits stay safe"
