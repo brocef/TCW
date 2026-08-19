@@ -1,0 +1,1 @@
+The unprocessed input a work item started from, preserved exactly as it arrived. Not a request: it is what someone filed, and the request stage is what turns it into one.

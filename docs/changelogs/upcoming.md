@@ -36,6 +36,10 @@ category.
 
 ## Added
 
+- Taxonomy: `work-item/body-surface` and `work-item/intake` are registered
+  Vocabulary terms. Both were load-bearing model concepts with no entry in the
+  registry — the body surface especially, since it is the rule `tcw work show`,
+  the `R`/`i` board letters, and now the stage prompts all resolve through.
 - `{{tcw:body}}` … `{{/tcw:body}}` — a prompt span replaced by the item's
   resolved body artifact, or by its own inner text when the item has no body.
   Inline replacement, deliberately not `substitute_documentation`'s block walk,
@@ -60,6 +64,14 @@ category.
   `plan`, and `postmortem` only, after asserting the remaining stages are
   byte-identical — what that tripwire proves about the documentation
   substitution is intact.
+- The `spec` prompt's `**Inputs.**` line breaks after the span's own sentence.
+  Nothing re-flows a resolved prompt, so a span whose sentence ran past the
+  source line break stranded a fragment (`… read as filed. An`) whenever it
+  resolved to something shorter than its fallback. `substitute_body`'s docstring
+  now states the rule for anyone writing a prompt with the span.
+- The capability description for `work/run-a-lifecycle-stage` states that the
+  shipped `spec` and `plan` instructions name the item's own body rather than a
+  fixed filename.
 
 ## Internal
 

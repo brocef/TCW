@@ -1,0 +1,1 @@
+The item's request text as any reader resolves it: the written-up request when the request stage has produced one, and the raw intake it arrived as otherwise. A read-side resolution, never a write target — writing a body always targets the request.

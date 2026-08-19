@@ -333,6 +333,12 @@ def substitute_body(text: str, artifacts: Sequence) -> str:
 
     Nesting the two token pairs is not supported and is not given defined
     behavior; they are substituted independently, documentation first.
+
+    **Wrapping is the prompt author's job.** Nothing re-flows the line, so a
+    span whose sentence continues past the source line break leaves a stranded
+    fragment when it resolves to something shorter than its fallback — put the
+    span so its sentence *ends* at the line break and every resolution reads as
+    a whole sentence.
     """
     label = resolved_body(artifacts)
     out: list[str] = []
