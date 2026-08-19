@@ -23,11 +23,19 @@ four docstrings and one comment, where an adapter author will look.
 
 All seven met.
 
-- **1, 2, 3, 7** — `tcw/store/base.py`'s `artifacts` and `read_artifact` state
-  their rules and cross-reference each other; `read_sidecar` and
-  `read_plan_stage` carry the resource rule; `_present` no longer claims to be
-  "the one presence rule" and does not enumerate its callers.
-  `grep -rn "the one presence rule" tcw/` returns nothing.
+- **1, 2, 3** — `tcw/store/base.py`'s `artifacts` and `read_artifact` state their
+  rules and cross-reference each other; `read_sidecar` and `read_plan_stage`
+  carry the resource rule; `_present` no longer claims to be "the one presence
+  rule" and does not enumerate its callers.
+- **7 — the criterion was vacuous and I reported it as passing.** It said
+  `grep -rn "the one presence rule" tcw/` returns nothing. It does. It also
+  returned nothing **before the change**, because the docstring read *"The* one
+  presence rule" with a capital T (`fs.py:2220` at `6825a76^`). The grep was
+  case-sensitive and could never have matched, so running it proved nothing at
+  all. Re-checked case-insensitively: `grep -rin "the one presence rule" tcw/`
+  now returns nothing and did match before, so **the docstring genuinely did
+  change** — the outcome is right, the check was worthless. Found by review, not
+  by me; I ran the grep, saw no output, and ticked it.
 - **4** — `test_the_two_artifact_presence_rules_disagree_on_purpose` asserts all
   four facts about one whitespace-only artifact.
 - **5** — verified by mutation, below.

@@ -78,11 +78,16 @@ anywhere in the package. Stdin is the only blocking-read surface.
 
 `tcw/work/hooks.py:61-63` runs a project's `command:` bindings with
 `subprocess.run(..., capture_output=True, text=True, timeout=timeout)` and no
-`stdin=`, so every hook **inherits the parent's stdin**. Two consequences: a
-hook that reads stdin steals the piped intake out from under `work new`, and a
-hook that blocks on it stalls for the full hook timeout. It is bounded, so it is
-a stall rather than a hang — but it is the same rule being broken (*read only the
-stdin you asked for*) and the fix is one keyword argument.
+`stdin=`, so every hook **inherits the parent's stdin**. A hook that reads it
+stalls for the full hook timeout — and, as implementation showed, that stall
+**aborts the transition** rather than merely delaying it. The fix is one keyword
+argument.
+
+*Corrected after review:* an earlier draft also claimed a hook could "steal the
+piped intake out from under `work new`". That is false. `_new`
+(`tcw/work/cli.py:223-253`) runs no hooks at all — every hook call site is in a
+transition or stage path (`:534, 555, 623, 632, 647, 656, 795, 1215, 1224`), none
+of which reads stdin. The stall is real; the theft was invented.
 
 `tcw/work/generate.py:107-111` is **not** in scope and must not be changed: it
 passes `stdin=subprocess.PIPE` deliberately and writes the payload, which is the
