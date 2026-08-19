@@ -821,12 +821,15 @@ class FsTreeStore:
         require_repository(self._write_git_root())
 
     def _stage(self, *paths: Path) -> None:
+        self._require_repository()
         git_stage(self.node_root, *paths)
 
     def _rm(self, path: Path) -> None:
+        self._require_repository()
         git_rm(self.node_root, path)
 
     def _mv(self, src: Path, dst: Path) -> None:
+        self._require_repository()
         git_mv(self.node_root, src, dst)
 
     # -- shared folder-node anatomy (meta.yaml + description.md + attachments) --
@@ -867,6 +870,7 @@ class FsTreeStore:
         exists) rather than on who created the directory, or you will delete
         files that were written fine. Same applies to `_write_meta`.
         """
+        self._require_repository()          # ahead of the mkdir, not the stage
         existed = d.exists()
         d.mkdir(parents=True, exist_ok=True)
         try:
@@ -1065,6 +1069,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         self._rm(self.root / term.slug)
 
     def extends_add(self, project_id: str) -> None:
+        self._require_repository()
         project_id = validate_project_id(project_id)
         extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
         if project_id in extends:
@@ -1086,6 +1091,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         self._stage(cfg)
 
     def extends_remove(self, project_id: str) -> None:
+        self._require_repository()
         extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
         if project_id not in extends:
             raise ValueError(f"no such extends project: {project_id}")
@@ -1614,6 +1620,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return out
 
     def _write_meta(self, d: Path, meta: dict) -> None:
+        self._require_repository()
         # Stages internally — see the rollback warning on `_write_node`.
         _atomic_write(d / "meta.yaml",
                       yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
@@ -1667,6 +1674,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return meta
 
     def set(self, identifier: str, fields: dict) -> Capability:
+        self._require_repository()
         norm = self._validate_fields(fields)           # validate before touching disk
         d, meta, is_override = self._write_target(identifier)
         existed = d.exists()
@@ -1687,6 +1695,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     # -- federation config --
 
     def extends_add(self, project_id: str) -> None:
+        self._require_repository()
         project_id = validate_project_id(project_id)
         extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
         if project_id in extends:
@@ -1706,6 +1715,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         self._stage(cfg)
 
     def extends_remove(self, project_id: str) -> None:
+        self._require_repository()
         extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
         if project_id not in extends:
             raise ValueError(f"no such extends project: {project_id}")
@@ -1939,6 +1949,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     def update_capability(self, identifier, *, body=_UNSET, fields=_UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
+        self._require_repository()
         norm = self._validate_fields(fields) \
             if fields is not _UNSET and fields is not None else {}
 

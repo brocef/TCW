@@ -19,7 +19,8 @@ from pathlib import Path
 import pytest
 
 from tcw.store.fs import (
-    NOT_A_REPOSITORY, FsTaxonomyStore, FsTreeStore, FsWorkStore, init,
+    NOT_A_REPOSITORY, FsCapabilitiesStore, FsTaxonomyStore, FsTreeStore,
+    FsWorkStore, init,
     require_repository,
 )
 
@@ -75,6 +76,7 @@ def unrepo(tmp_path):
     active = work.create("Active item", created="2026-01-02")
     work.start(active.slug, owner="t")
     FsTaxonomyStore.open(root).add("Widget", slug="widget")
+    FsCapabilitiesStore.open(root).add("seeded/cap", "Seeded cap")
     (root / "docs" / "work" / "inbox" / "raw.md").write_text(
         "# Raw\n\nbody\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
@@ -209,3 +211,53 @@ def test_reads_do_not_acquire_a_repository_precondition(unrepo):
     assert st.inbox_show("raw.md") is not None
     assert st.registered_tags() == []
     assert st._validation_resources(slug)          # targeted `tcw validate`
+
+
+# ── The taxonomy and capabilities stores ─────────────────────────────────────
+
+
+def test_every_taxonomy_write_is_refused_and_writes_nothing(unrepo):
+    st = FsTaxonomyStore.open(unrepo)
+    refuses(st, lambda: st.add("Gadget", slug="gadget"))
+    assert not (unrepo / "docs" / "taxonomy" / "gadget").exists()
+    refuses(st, lambda: st.update_term("widget", name="Renamed"))
+    refuses(st, lambda: st.remove("widget"))
+    refuses(st, lambda: st.extends_add("other"))
+    refuses(st, lambda: st.extends_remove("other"))
+
+
+def test_every_capability_write_is_refused_and_writes_nothing(unrepo):
+    st = FsCapabilitiesStore.open(unrepo)
+    refuses(st, lambda: st.add("doing/a-thing", "Do a thing"))
+    assert not (unrepo / "docs" / "capabilities" / "doing").exists()
+    refuses(st, lambda: st.set("seeded/cap", {"Status": "Supported"}))
+    refuses(st, lambda: st.update_capability("seeded/cap", body="new"))
+    refuses(st, lambda: st.remove("seeded/cap"))
+    # `reset` is not here: it refuses a *local* capability on its own terms
+    # ("not an override") before any git path, and reaching its `_rm` needs a
+    # federated override. That `_rm` is the same Tier-1 guard `remove` exercises
+    # one line above.
+    refuses(st, lambda: st.extends_add("other"))
+    refuses(st, lambda: st.extends_remove("other"))
+
+
+def test_tree_store_reads_do_not_acquire_a_repository_precondition(unrepo):
+    """Goal 4, the other two stores: `_write_node`'s guard must not reach a read."""
+    tax = FsTaxonomyStore.open(unrepo)
+    assert [t.slug for t in tax.list_all(local_only=True)] == ["widget"]
+    assert tax.get("widget") is not None
+    assert tax.get_term_detail("widget") is not None
+    assert tax.search("widget")
+    assert tax.check() == []
+    assert tax.relators("widget") == []
+    assert tax.__class__.__mro__          # sanity: store constructed at all
+    assert tax._validation_resources("widget")
+
+    cap = FsCapabilitiesStore.open(unrepo)
+    assert [c.path for c in cap.list_all(local_only=True)] == ["seeded/cap"]
+    assert cap.get("seeded/cap") is not None
+    assert cap.get_capability_detail("seeded/cap") is not None
+    assert cap.search("cap")
+    assert cap.check(taxonomy=tax) == []
+    assert cap.unreviewed_inherited() == []
+    assert cap._validation_resources("seeded/cap")
