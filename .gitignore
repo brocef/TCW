@@ -30,3 +30,6 @@ docs/work/completed/*
 !docs/work/completed/.gitkeep
 docs/work/discarded/*
 !docs/work/discarded/.gitkeep
+
+# Working directory the fixture capture scripts build their throwaway nodes in.
+tests/fixtures/*/_scratch/

@@ -7,7 +7,8 @@ this document carries only what the CLI cannot.
 
 ## Inputs
 
-`initial-request.md`.
+The item's body — `initial-request.md` when the `request` stage has written
+one, `intake.md` otherwise. See `commands.md` § The body surface.
 
 ## Produce
 

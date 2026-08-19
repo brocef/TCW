@@ -7,8 +7,9 @@ the methodology; this document carries only what the CLI cannot.
 
 ## Inputs
 
-`refined-outcome.md`, `rework.md`, `outcome.md`, `plan.md`, `spec.md`,
-`initial-request.md`.
+`refined-outcome.md`, `rework.md`, `outcome.md`, `plan.md`, `spec.md`, and the
+body the item started from — `initial-request.md`, or the `intake.md` beneath it
+when the `request` stage never ran.
 
 ## Produce
 

@@ -723,12 +723,14 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
     LifecycleStep(
         id="spec", kind="stage",
         objective="Decide what to build and why, before deciding how.",
-        inputs=("initial-request.md",),
+        # Both, because `inputs` is what a stage *may* read, not a checklist:
+        # the resolved prompt names whichever one the item actually has.
+        inputs=("initial-request.md", "intake.md"),
         produces=("spec",), produces_note="spec.md"),
     LifecycleStep(
         id="plan", kind="stage",
         objective="Decide how to build it, in ordered, checkable steps.",
-        inputs=("initial-request.md", "spec.md"),
+        inputs=("initial-request.md", "intake.md", "spec.md"),
         produces=("plan",), produces_note="plan.md"),
     LifecycleStep(
         id="implement", kind="stage",
@@ -745,8 +747,8 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
         id="postmortem", kind="stage",
         objective="Find which stage first missed a problem. Out-of-band: legal "
                   "in review or after completion, and never changes status.",
-        inputs=("initial-request.md", "spec.md", "plan.md", "outcome.md",
-                "refined-outcome.md", "rework.md"),
+        inputs=("initial-request.md", "intake.md", "spec.md", "plan.md",
+                "outcome.md", "refined-outcome.md", "rework.md"),
         produces=("post-mortem",), produces_note="post-mortem.md"),
     LifecycleStep(
         id="start", kind="transition",
