@@ -4,11 +4,18 @@ Six tasks. The spec settled every design question; this orders them so the suite
 is green at each commit boundary and names the exact strings that prove "one
 renderer" at implementation time rather than at review time.
 
-**Line numbers are navigation hints, not identity.** They are as of `c0b340e`,
-which landed the non-git item's first task *while this plan was being written*
-and moved every `FsCapabilitiesStore` symbol by ~25 lines. Two more items are
-editing `tcw/store/fs.py` concurrently (see `## Notes`). **Locate every target
-by symbol.**
+**This plan addresses code by symbol, not by line.** That is not a style
+preference: `FsCapabilitiesStore.set` moved three times *while this plan was
+being written* — `:1644` → `:1669` → `:1673` — because a sibling item is
+committing into `tcw/store/fs.py` right now (see `## Notes`). Every symbol named
+below is unique within `FsCapabilitiesStore`, so the name is a complete address
+and a line number would only rot. Where a line is genuinely useful for
+navigation it is marked *as of `b59ffbd`* and should be re-derived, not trusted.
+
+Anchors as of `b59ffbd`, for orientation only: `add` `:1567`,
+`_validate_fields` `:1606`, `_write_target` `:1626`, `_merge_meta` `:1659`,
+`set` `:1673`, `check` `:1745`, `_ref_error` `:1873`, `_check_globals` `:1881`,
+`_check_subject` `:1894`, `_check_feature` `:1907`, `update_capability` `:1944`.
 
 ## Caller walk
 
@@ -17,13 +24,13 @@ extracts a fourth block out of `check`. Before ordering that, every caller:
 
 | Symbol | Callers (whole repo, `tcw/` + `tests/`) | What it needs |
 | --- | --- | --- |
-| `_check_globals` | **one**: `check`, `fs.py:1805` | prefix moves to the caller |
-| `_check_subject` | **one**: `check`, `fs.py:1806` | same |
-| `_check_feature` | **one**: `check`, `fs.py:1807` | same |
-| `_ref_error` | **two**: `check` inline for `Superseded by`/`Blocked by` (`fs.py:1801`, `:1803`), and `_check_globals` (`fs.py:1886`) | unchanged — keep it as-is, it already returns an unprefixed tail |
-| `_validate_fields` | **two**: `set` (`fs.py:1670`), `update_capability` (`fs.py:1942`) | both gain ref refusal for free; this is the seam |
-| `_merge_meta` | **two**: `set` (`fs.py:1675`), `update_capability` (`fs.py:1955`) | untouched |
-| `_write_target` | **two**: `set` (`fs.py:1671`), `update_capability` (`fs.py:1950`) | untouched by this item; **the symlink item guards it** |
+| `_check_globals` | **one**: `check` | prefix moves to the caller |
+| `_check_subject` | **one**: `check` | same |
+| `_check_feature` | **one**: `check` | same |
+| `_ref_error` | **two**: `check`, inline for `Superseded by`/`Blocked by`; and `_check_globals` | unchanged — keep it as-is, it already returns an unprefixed tail |
+| `_validate_fields` | **two**: `set`, `update_capability` | both gain ref refusal for free; this is the seam |
+| `_merge_meta` | **two**: `set`, `update_capability` | untouched |
+| `_write_target` | **two**: `set`, `update_capability` | untouched by this item; **the symlink item guards it** |
 
 **The walk turned up something the spec did not predict, and it makes Task 1
 safer than the spec assumed: no test calls any of the four helpers directly.**
@@ -45,7 +52,8 @@ Do not "fix" the committed spec — note it in `outcome.md`.
 
 ## The six message strings, byte for byte
 
-These are what `check` emits today (`fs.py:1801-1807`, `:1869-1914`), and what
+These are what `check` emits today — its inline `Superseded by`/`Blocked by`
+block, plus `_check_globals`, `_check_subject` and `_check_feature` — and what
 the refusal must emit after Task 1, minus the `f"{where}: "` prefix. **Copy them
 from here into the test, not from memory.** `{tok}`/`{ref}`/`{subj}`/`{feature}`
 are the caller's raw value; `{kind}` is `Term.kind`.
@@ -73,11 +81,11 @@ Three shapes worth noticing before writing the extraction:
 - **`Roles`/`When` have a non-`→` variant.** The prefix rule (`must be a
   roles/ slug`) is not a ref problem in the `→` family, but it lives in the same
   loop and is refused on the same write. Do not drop it.
-- **`Roles`/`When` are comma-split and `!`-negatable** (`fs.py:1880-1884`): the
+- **`Roles`/`When` are comma-split and `!`-negatable** (in `_check_globals`): the
   token keeps its `!` in the "must be a … slug" message, and loses it (`ref =
   tok.lstrip("!")`) in the `→` messages. Preserve both.
-- **`Feature`'s wrong-kind string is written across two source lines**
-  (`fs.py:1912-1913`) and concatenates to one line with a single space before
+- **`Feature`'s wrong-kind string is written across two source lines** in
+  `_check_feature` and concatenates to one line with a single space before
   `{kind}`. Keep the join exact.
 
 ## Ordering rationale
@@ -90,6 +98,26 @@ depends on Task 3 (it needs `_validate_fields` to already refuse) and is the
 only task touching a file outside `tcw/store/fs.py`. Tasks 5 and 6 close.
 
 Tasks 2 and 3 were **measured, not predicted** — see each task's "Verified by".
+
+## Criterion coverage
+
+Every acceptance criterion, and the task that discharges it — the spec's
+self-review requirement, made explicit so nothing rides on prose.
+
+| Criteria | Task |
+| --- | --- |
+| 1-7 (CLI refusals, all six fields, multi-problem, byte-identical wording) | 3 |
+| 8 (PATCH 422, `meta.yaml` unchanged) | 3 — `update_capability` shares the seam; no serve edit |
+| 9, 10 (POST refused leaves nothing; valid POST still 201) | 4 |
+| 11 (existing bad data stays repairable via `--status Omitted`) | 3 |
+| 12 (taxonomy-less node still accepts `Subject`, still refuses `Blocked by`) | 3 |
+| 13 (`check()` fallback; falsey injected taxonomy still wins) | 2 |
+| 14 (one renderer, checked behaviorally) | 1 builds it, 3 asserts it |
+| 15 (suite green; exactly one rewritten test) | 3 |
+| 16 (this repo still clean) | 5, and `## Verification` |
+| 17 (documentation, per document) | 5 (the two capability bodies), 6 (the four entries) |
+
+No task exists that no criterion needs; no criterion lacks a task.
 
 ## Tasks
 
@@ -113,7 +141,7 @@ def _ref_problems(self, f: dict, taxonomy) -> list[str]:
                + self._check_feature(f, taxonomy)
 ```
 
-`check`'s seven lines (`fs.py:1801-1807`) collapse to one:
+`check`'s seven ref lines collapse to one:
 
 ```python
 problems += [f"{where}: {p}" for p in self._ref_problems(f, taxonomy)]
@@ -129,7 +157,8 @@ editing, the extraction changed behavior and is wrong.
 **Verified by** `python -m pytest -q` green with a clean `git diff --stat
 tests/` — zero test files touched. The wordings are asserted at
 `tests/test_capabilities.py:207-256` and
-`tests/test_capabilities_federation.py:156-200`.
+`tests/test_capabilities_federation.py:156-200`. Criterion 14's behavioral
+one-renderer test is written in Task 3, once there are two paths to compare.
 
 ### 2. `_taxonomy()` accessor, and `check` falls back to it
 
@@ -146,7 +175,7 @@ def _taxonomy(self) -> "FsTaxonomyStore | None":
     return FsTaxonomyStore.open(self.node_root) if d.is_dir() else None
 ```
 
-and in `check` (`fs.py:1741`), as the first statement:
+and in `check`, as the first statement:
 
 ```python
 taxonomy = taxonomy if taxonomy is not None else self._taxonomy()
@@ -163,8 +192,8 @@ Net deletion, and one place decides where a taxonomy comes from.
 
 **Verified by** — measured, not asserted. The fallback was simulated against the
 whole suite via a pytest plugin that monkeypatches `check` without editing
-`tcw/`, at this task's exact semantics: **green, no failures**. Reproduce with
-`/private/tmp/claude-501/…/scratchpad/simfallback.py` (`python -m pytest -q -p
+`tcw/`, at this task's exact semantics: **1772 passed, 0 failed** on the tree at
+`c0b340e`. Reproduce with `scratchpad/simfallback.py` (`python -m pytest -q -p
 simfallback`). Also criterion 13, as a new test: on a node whose
 `docs/taxonomy/` exists and lacks the ref, bare `check()` reports
 `Subject → dangling ref …`; and a stub whose `__bool__` returns `False`, passed
@@ -187,7 +216,7 @@ Four details are load-bearing, all from spec Design §2 and §3:
 
 - **`out`, not `fields`** — `Subject` must be checked after `_as_list`
   normalization, so `Subject=a,b` is two refs.
-- **`v is not None`** — `None` is the clear sentinel (`fs.py:1607-1608`).
+- **`v is not None`** — `None` is `_validate_fields`'s clear sentinel.
   Passing it through makes `_check_globals` stringify it
   (`str(None).split(",")` → a bogus `must be a roles/ slug` for a field the
   caller just cleared).
@@ -198,8 +227,10 @@ Four details are load-bearing, all from spec Design §2 and §3:
   at 422 rather than 404.
 
 `set` and `update_capability` need **no edit**: both already call
-`_validate_fields` before their first `mkdir` (`fs.py:1670` before `:1673`;
-`:1942` before `:1958`).
+`_validate_fields` ahead of their first `mkdir` — `set` on its first line, and
+`update_capability` before its revision check, `_write_target` and `mkdir`.
+Re-confirm that order at `implement` rather than assuming it; the non-git item
+is inserting a `_require_repository()` line into both.
 
 **The test this breaks, rewritten in the same commit.**
 `tests/test_environment_hardness.py::TestLoneProject::test_capability_check_dangling_subject`
@@ -219,8 +250,15 @@ def test_capability_check_dangling_subject(self, tmp_path):
 suite (`scratchpad/simwrite.py`, `python -m pytest -q -p simwrite`) on the
 post-`c0b340e` tree: **`1 failed, 1766 passed`**, and the one failure is exactly
 the test named above, with `ValueError: Subject → dangling ref 'ghost'`. So
-"exactly one casualty" is a measurement, not a prediction. Also criteria 1-7,
-11, 12 as new tests.
+"exactly one casualty" is a measurement, not a prediction.
+
+Compare totals across runs with care rather than treating them as a constant:
+the non-git item is landing tests as it goes, so the suite grew from 1763
+(`aff0cbb`) to 1767 to 1772 during this planning stage. The durable claim is
+**one failure, and it is that test** — re-run the simulation at `implement`
+rather than trusting the absolute number.
+
+Also criteria 1-8, 11, 12, 14 and 15 as new or re-run tests.
 
 ### 4. `add` takes its fields, so `POST /api/capabilities` is one write
 
@@ -256,16 +294,17 @@ self._write_node(d, meta, body)
 Field values win over the `status` parameter — precisely what add-then-`set`
 does today, so the happy path is byte-identical. A `None` sentinel is skipped:
 on a node being created there is nothing to clear, and `_merge_meta` pops the
-key today (`fs.py:1655-1667`), so the resulting `meta.yaml` matches.
+key today on a non-override node, so the resulting `meta.yaml` matches.
 
-**`tcw/serve/__init__.py:940-942`** — three lines become one:
+**`tcw/serve/__init__.py`**, the `POST /api/capabilities` handler — three lines
+become one:
 
 ```python
 capabilities.add(cap_path, name=name, status=status, body=body_text, fields=fields)
 ```
 
 Delete the `if fields: capabilities.set(cap_path, fields)` that followed. The
-handler's existing `except (ValueError, RefError)` (`:950-952`) already maps to
+handler's existing `except (ValueError, RefError)` already maps to
 422 — no error-handling change.
 
 **Every existing caller of `add`, verified compatible** (none passes a fifth
@@ -465,9 +504,27 @@ from the task bodies rather than assuming they survive. Their value is that
 "exactly one existing test breaks" is a number this plan measured, not a
 prediction it made.
 
-### Blockers
+### Blockers — to be recorded before `start`, not by this plan
 
-None recorded via `tcw work edit --blocked-by`: the two items ahead are ordering
-preferences within one batch, not hard preconditions. This item's code compiles
-and its tests pass against the tree with or without them — only the merged `add`
-shape above depends on the order, and it is documented rather than enforced.
+The stage asks for dependencies as blockers rather than prose, and "implements
+third" is a real dependency: the merged `add` above only works if this item goes
+last of the three that touch it. The two commands:
+
+```
+tcw work edit 2026-07-30-validate-capability-subject-and-feature-refs-at-write-time \
+  --blocked-by 2026-07-30-fix-non-git-write-paths-work-new-and-init-fail-outside-a-git-repository
+tcw work edit 2026-07-30-validate-capability-subject-and-feature-refs-at-write-time \
+  --blocked-by 2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically
+```
+
+**Deliberately not run from this stage.** `tcw work edit` writes through
+`FsWorkStore`, and the non-git item is committing into `tcw/store/fs.py`'s write
+paths as this is written (three commits landed during the plan). Driving a store
+write through a half-modified adapter is the one avoidable risk here, so the
+commands are handed over rather than executed — matching this repo's standing
+rule about not driving the CLI while `tcw/` is being modified.
+
+The dependency is an ordering constraint, not a compile-time one: this item's
+code and tests pass against the tree with or without the other two. What depends
+on the order is the merged `add`, and a dropped guard there is silent, which is
+why it is both blocked and documented.
