@@ -129,3 +129,53 @@ rather than a pattern cost a correction.
 - Reviewed by `codex` at `spec`. `bllm-review` was not attempted; it produced
   nothing on the first item of this session after 1440s on a workload lock, and
   the bug is filed to `/Users/brian/llama/docs/work/inbox/`.
+
+---
+
+# Rework outcome — the recommended form, said once
+
+`rework.md` holds the analysis. Two things changed; one thing was checked and
+found not to be a problem at all.
+
+## The rework's own premise did not hold
+
+I sent this back to resolve a "two sources of truth" collision between the
+`work.documentation` config block and the `## Documentation Sync` heading the
+skill name-matches. **There is no collision.** The skill asks `tcw work docs
+--json` first and is told, for `source: "config"`, to "use it and read no
+Markdown"; this node reports `source: config` with all four entries; and the
+Markdown section that remains contains no entries to be confused by.
+
+Third time in this release that I argued from a failure I had not executed.
+Recorded in `rework.md` and carried to the post-mortem.
+
+## What did change
+
+**`skills/documentation-sync/SKILL.md`.** The heading `## The Documentation Sync
+Section` opened with "Project owners add this section to their `CLAUDE.md`" — read
+cold, a recommendation for the legacy form, contradicting both the top of the same
+file and `references/setup.md`. Retitled to name itself the fallback and led with
+the config form and a pointer to `setup.md`. The bullet-list example stays; it is
+the fallback's format reference and is still needed outside a TCW node.
+
+This is a real gap in the acceptance criteria, not just wording. Criterion 11a
+required that no file instruct a reader to **find** entries in Markdown except as
+the fallback. It was met. Nothing covered instructing a reader to **create** them
+there.
+
+**`tests/test_documentation_sync_wiring.py`** gains two tests, written red first:
+one asserts the section names itself the fallback and points at the config form,
+the other that `SKILL.md` and `setup.md` do not contradict each other. Without a
+test the framing drifts straight back — it already had.
+
+**`spec.md` criterion 11 amended.** It required the section be gone entirely;
+implementation kept it minus the entries and filed a deviation arguing the
+directive line has nowhere else to live. The argument is right, so the criterion
+is corrected. A criterion the work knowingly does not meet, with the reasoning
+parked in `outcome.md`, reads at a glance like a gap.
+
+## Scope held
+
+No production code. Nothing under `tcw/` changed, and the Markdown fallback stays
+— it is the only option outside a TCW node, and this skill ships to projects that
+are not TCW nodes.
