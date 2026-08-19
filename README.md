@@ -686,7 +686,10 @@ that should genuinely say nothing binds `{blob: ""}`.
 configured it prints TCW's own instructions for that stage, so the command is
 useful before you have written any lifecycle configuration at all; those shipped
 instructions include a short self-review pass at the stages where one earns its
-place — `spec`, `plan`, and `implement`. It refuses a stage that makes no sense
+place — `spec`, `plan`, and `implement`. The `spec` and `plan` instructions name
+the item's **own** body artifact rather than a fixed filename: `initial-request.md`
+once the `request` stage has written one, and the `intake.md` it arrived as
+otherwise, resolved exactly the way `tcw work show` resolves a body. It refuses a stage that makes no sense
 for the item's current status, runs the stage's `pre` checks, resolves its
 prompts, and prints the result — **on stdout, alone**, so you can pipe it. Every
 check's output goes to stderr, and any failure prints nothing on stdout at all,
