@@ -46,3 +46,13 @@ The reporter's text, verbatim:
 >
 > Have the stage prompt resolve the body artifact the same way `tcw work show` does (request when present, intake otherwise) and name what it found — the resolution logic already exists, since `show` does exactly this and `--json` already reports the `artifacts` map.
 >
+
+## Notes
+
+Added during triage, not by the reporter: the same drift is in the
+`tcw-triage-issues` skill (`skills/tcw-triage-issues/SKILL.md` §5), which still
+tells the triager to write `initial-request.md` at intake time and *then* run
+the `request` stage over it — backwards on 1.0.0, where raw arrival is
+`intake.md` and `request` is what produces `initial-request.md`. The four items
+from the 2026-08-19 sweep were filed with `intake.md` instead. Sweep the skills
+for the same assumption alongside the builtin prompts.
