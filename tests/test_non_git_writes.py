@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from tcw.cli import main
 from tcw.store.fs import (
     NOT_A_REPOSITORY, FsCapabilitiesStore, FsTaxonomyStore, FsTreeStore,
     FsWorkStore, init,
@@ -261,3 +262,49 @@ def test_tree_store_reads_do_not_acquire_a_repository_precondition(unrepo):
     assert cap.check(taxonomy=tax) == []
     assert cap.unreviewed_inherited() == []
     assert cap._validation_resources("seeded/cap")
+
+
+# ── The CLI boundary ─────────────────────────────────────────────────────────
+
+
+def test_init_refuses_with_the_shared_wording(tmp_path, monkeypatch, capsys):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    monkeypatch.chdir(plain)
+    assert main(["init", "--id", "x"]) == 1
+    assert capsys.readouterr().err == (
+        "tcw init: not inside a git repository. Run `git init` first.\n")
+
+
+def test_a_git_subprocess_failure_is_a_message_not_a_traceback(
+    tmp_path, monkeypatch, capsys
+):
+    """The generic handler, checked behaviorally rather than by reading source.
+
+    The same injected git failure through three different components produces
+    the identical line. That is what "carries no per-command policy" means; an
+    assertion about the handler's source text would pass or fail for reasons
+    that have nothing to do with coupling.
+    """
+    root = repo(tmp_path)
+    FsWorkStore.open(root).create("Task", created="2026-01-01")
+    monkeypatch.chdir(root)
+
+    def boom(*args, **kwargs):
+        raise subprocess.CalledProcessError(128, ["git", "add", "x"])
+
+    # `git_stage`, not `_git`: patching `_git` would break `git_root` too, and
+    # the repository guard would answer first. The failure being modelled here
+    # is a repository that exists and refuses — a held `index.lock`, a rejecting
+    # hook, a path git will not stage — which is exactly what reaches staging.
+    monkeypatch.setattr("tcw.store.fs.git_stage", boom)
+
+    seen = set()
+    for argv in (["work", "new", "T"],
+                 ["taxonomy", "add", "Gadget", "--slug", "gadget"],
+                 ["capabilities", "add", "a/b", "Thing"]):
+        assert main(argv) != 0, argv
+        err = capsys.readouterr().err
+        assert "Traceback" not in err, argv
+        seen.add(err)
+    assert seen == {"tcw: git command failed (exit 128): git add x\n"}

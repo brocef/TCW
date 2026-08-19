@@ -5,13 +5,17 @@ implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
 """
 
 import argparse
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
 from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
-from tcw.store.fs import COMPONENTS, SENTINEL, find_node_root, git_root, init
+from tcw.store.fs import (
+    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, find_node_root, git_root, init,
+)
 from tcw.store.project import FsProjectRegistry
 import yaml
 from tcw.taxonomy import cli as taxonomy_cli
@@ -29,7 +33,9 @@ def run_init(components: list[str], project_id: str | None = None,
     node, and report. Shared by `tcw init` and each `tcw <component> init`."""
     root = Path.cwd()
     if git_root(root) is None:                 # returns the repo root for any dir inside it
-        print("tcw init: not inside a git repository. Run `git init` first.", file=sys.stderr)
+        # Checked here rather than in the store, because init runs before one
+        # exists. The wording is the store's, so every write says the same thing.
+        print(f"tcw init: {NOT_A_REPOSITORY}", file=sys.stderr)
         return 1
     unknown = [c for c in components if c not in COMPONENTS]
     if unknown:
@@ -180,6 +186,14 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except ValueError as error:
         print(f"tcw: {error}", file=sys.stderr)
+        return 1
+    except subprocess.CalledProcessError as error:
+        # Deliberately generic: the only policy here is "a git subprocess
+        # failed", which is true of every component. git's own diagnostic has
+        # already reached the terminal — no `check=True` call in the filesystem
+        # adapter captures output — so re-printing `error.stderr` would double it.
+        print(f"tcw: git command failed (exit {error.returncode}): "
+              f"{shlex.join(str(a) for a in error.cmd)}", file=sys.stderr)
         return 1
 
 
