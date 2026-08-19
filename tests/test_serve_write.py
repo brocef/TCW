@@ -1600,3 +1600,61 @@ class TestWorkTags:
         status, _body = _req(base, "PATCH", f"/api/work/{slug}",
                              {"revision": rev, "fields": {"tags": ["ghost"]}})
         assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+# ── Non-git node: every write route refuses, nothing lands ───────────────────
+
+
+def _manifest(root: Path) -> dict[str, str]:
+    """Every path under `root`, directories included — an empty directory left
+    behind is a partial write too."""
+    import hashlib
+    return {
+        str(p.relative_to(root)):
+            "<dir>" if p.is_dir() else hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted(root.rglob("*"))
+    }
+
+
+def test_every_write_route_refuses_outside_a_repository(tmp_path):
+    """Serve inherits the store's guard, so the browser gets the refusal itself.
+
+    It used to get HTTP 500 whose body was a raw `git add …` command line, and
+    the node kept whatever the store had written before staging failed.
+    """
+    import shutil
+
+    root = _node(tmp_path)
+    slug = _seed(root)
+    shutil.rmtree(root / ".git")
+    httpd, base = _start_server(root)
+    before = _manifest(root)
+    try:
+        calls = [
+            ("POST", "/api/work", {"title": "New"}),
+            ("POST", f"/api/work/{slug}/actions/start", {}),
+            ("POST", "/api/taxonomy", {"name": "Gadget", "slug": "gadget"}),
+            ("POST", "/api/capabilities", {"path": "a/b", "name": "Thing"}),
+            ("PATCH", f"/api/work/{slug}", {"fields": {"title": "Renamed"}}),
+            ("PUT", f"/api/work/{slug}/artifacts/spec", {"content": "# New\n"}),
+            ("PUT", f"/api/work/{slug}/sidecars/capabilities.yaml",
+             {"content": "changed: []\n"}),
+            ("PUT", f"/api/work/{slug}/plan-stages/one", {"content": "# Stage\n"}),
+            # No plan-stage DELETE row: it refuses an undeclared stage before
+            # any git path, and declaring one needs a plan manifest. Its `_rm`
+            # is the same Tier-1 guard the work DELETE below exercises.
+            ("DELETE", f"/api/work/{slug}", None),          # drop → _delete → _rm
+        ]
+        for method, path, body in calls:
+            # Raw bytes, not parsed JSON: the routes disagree about whether an
+            # error body is JSON or plain text, and that is not this test's
+            # business — the message reaching the browser is.
+            data = json.dumps(body).encode("utf-8") if body is not None else b""
+            status, raw = _req_raw(base, method, path, data,
+                                   {"Content-Type": "application/json"})
+            assert 400 <= status < 500, (method, path, status, raw)
+            assert b"not inside a git repository" in raw, (method, path, raw)
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert _manifest(root) == before
