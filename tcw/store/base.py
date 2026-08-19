@@ -1214,6 +1214,13 @@ DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
 WORK_ARTIFACTS = ("initial-request", "spec", "plan", "outcome", "refined-outcome",
                   "rework", "post-mortem", "intake")
 
+# The read-resolution order for an item's body surface: the written-up request
+# wins when present, the raw intake is the fallback. Abstract because every
+# adapter answers "what is this item's body?" and must answer it the same way —
+# and because `tcw work stage` resolves the same order to name the artifact a
+# stage should actually read.
+BODY_ORDER = ("initial-request", "intake")
+
 # Bounded sidecar registry — each entry declares the expected media type and
 # the validation rule applied before persistence.  New sidecars are added here.
 WORK_SIDECARS: dict[str, dict[str, str]] = {

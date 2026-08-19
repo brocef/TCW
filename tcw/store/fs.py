@@ -28,7 +28,8 @@ from typing import NoReturn
 import yaml
 
 from tcw.store.base import (
-    CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, DEFAULT_DOD,
+    BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
+    DEFAULT_DOD,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
     WORK_STATUSES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
@@ -530,11 +531,6 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
 
 
 RESOLVED_IGNORE_COMMENT = "# Resolved work: kept on disk and in history, out of the tracked tree."
-
-# Read-resolution order for a work item's body surface. The request wins when
-# both exist; an item that has only raw intake still shows a body.
-_BODY_ORDER = ("initial-request", "intake")
-
 
 def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None) -> list[str]:
     """The .gitignore rules that make the end-state work folders untracked while
@@ -2254,7 +2250,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _resolve_body(self, d: Path) -> tuple[str | None, str]:
         """The body surface: (artifact name, text), or (None, "") when neither is
         present. Reads fall back request → intake; writes never do (`update_work`)."""
-        for name in _BODY_ORDER:
+        for name in BODY_ORDER:
             p = d / self._artifact_filename(name)
             try:
                 if self._present(p):
