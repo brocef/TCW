@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, STAGE_IDS, Binding, DocEntry, LifecyclePolicy, WorkItem,
+    BODY_ORDER, DEFAULT_OUTPUT_CAP, STAGE_IDS, Binding, DocEntry,
+    LifecyclePolicy, WorkItem,
 )
 from tcw.work.generate import GenerateError, run_generate
 from tcw.work.projection import work_item_json
@@ -287,6 +288,71 @@ def substitute_documentation(text: str, entries: Sequence[DocEntry]) -> str:
     return "".join(out)
 
 
+BODY_OPEN = "{{tcw:body}}"
+BODY_CLOSE = "{{/tcw:body}}"
+
+
+def resolved_body(artifacts: Sequence) -> str | None:
+    """The artifact label a stage should actually read, or `None` when the item
+    has no body at all.
+
+    `BODY_ORDER` is the store's own read-resolution rule — the same one behind
+    `tcw work show` and the `R`/`i` letters on the board — so a prompt and the
+    body surface cannot disagree about which document is the request. Rendered
+    as `<name>.md` to match how every prompt and `LifecycleStep.produces_note`
+    already name an artifact; that is a rendering convention here, not a field
+    on `Artifact`.
+    """
+    present = {a.name for a in artifacts if getattr(a, "present", False)}
+    for name in BODY_ORDER:
+        if name in present:
+            return f"`{name}.md`"
+    return None
+
+
+def substitute_body(text: str, artifacts: Sequence) -> str:
+    """Replace each `{{tcw:body}}…{{/tcw:body}}` span with the resolved body.
+
+    **Inline, and deliberately not `substitute_documentation`'s walk.** That one
+    substitutes a multi-line bullet list, so it always follows the rendered text
+    with a newline and the span's indent, and eats one following space. Applying
+    that here would turn
+
+        **Inputs.** {{tcw:body}}the item's body artifact{{/tcw:body}}. On an …
+
+    into a line break in the middle of a sentence. This replaces the span in
+    place: no inserted newline, no indent, no following-space adjustment.
+
+    With no body artifact present the span becomes its own inner text unchanged,
+    which is the same fallback contract the documentation span carries — a
+    prompt keeps its own prose for the case the resolver cannot fill.
+
+    An unterminated open token is left **verbatim**, matching
+    `substitute_documentation`: a malformed prompt should look wrong rather than
+    silently swallow the rest of the text.
+
+    Nesting the two token pairs is not supported and is not given defined
+    behavior; they are substituted independently, documentation first.
+    """
+    label = resolved_body(artifacts)
+    out: list[str] = []
+    rest = text
+    while True:
+        start = rest.find(BODY_OPEN)
+        if start < 0:
+            out.append(rest)
+            break
+        end = rest.find(BODY_CLOSE, start)
+        if end < 0:
+            out.append(rest)                      # unterminated: leave it alone
+            break
+        out.append(rest[:start])
+        fallback = rest[start + len(BODY_OPEN):end]
+        out.append(label if label is not None else fallback)
+        rest = rest[end + len(BODY_CLOSE):]
+    return "".join(out)
+
+
 def _join(parts: Sequence[str]) -> str:
     """Exactly how prompt text composes.
 
@@ -335,7 +401,8 @@ def resolve_prompts(policy: LifecyclePolicy, stage_id: str,
     # entirely. Doing it here also means a project's own `file:` or `blob:`
     # prompt can use the token, which is what makes this prompt generation
     # rather than a built-in-only special case.
-    res.text = substitute_documentation(_join(parts), documentation)
+    res.text = substitute_body(
+        substitute_documentation(_join(parts), documentation), artifacts)
     return res
 
 
