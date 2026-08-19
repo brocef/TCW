@@ -532,6 +532,7 @@ def _start(args: argparse.Namespace) -> int:
     if not owner:
         for key in ("user.email", "user.name"):
             probe = subprocess.run(["git", "-C", str(st.node_root), "config", "--get", key],
+                                   stdin=subprocess.DEVNULL,
                                    capture_output=True, text=True)
             if probe.returncode == 0 and probe.stdout.strip():
                 owner = probe.stdout.strip()

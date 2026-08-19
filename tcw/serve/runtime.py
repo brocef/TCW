@@ -45,7 +45,7 @@ def find_compatible_node() -> str:
     try:
         result = subprocess.run(
             [executable, "--version"], check=True, capture_output=True, text=True,
-            timeout=5,
+            timeout=5, stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise RuntimeError(f"could not run `{executable} --version`: {error}") from error
@@ -169,6 +169,9 @@ def run_server(*, port: int, open_browser: bool, node_root: Path | None,
             process = subprocess.Popen(
                 [node, str(server_entry)], env=environment, stdout=subprocess.PIPE,
                 text=True,
+                # A web server reads no stdin; leaving fd 0 inherited would let
+                # it compete with the supervising `tcw serve` for the terminal.
+                stdin=subprocess.DEVNULL,
             )
             public_port = _await_readiness(process)
             url = f"http://{HOST}:{public_port}/"

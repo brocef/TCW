@@ -152,7 +152,8 @@ def test_work_detail_includes_artifacts_without_paths(server):
 def test_open_endpoint_validates_inputs_without_popen(server, monkeypatch):
     base, slug = server
     calls = []
-    monkeypatch.setattr("tcw.serve.subprocess.Popen", lambda argv: calls.append(argv))
+    monkeypatch.setattr("tcw.serve.subprocess.Popen",
+                        lambda argv, **kw: calls.append((argv, kw)))
 
     with pytest.raises(HTTPError) as bad_name:
         post(base, f"/api/work/{slug}/artifacts/../../etc/open")
@@ -174,7 +175,8 @@ def test_open_endpoint_rejects_non_json_content_type(server, monkeypatch):
     dispatch, and the opener must never run."""
     base, slug = server
     calls = []
-    monkeypatch.setattr("tcw.serve.subprocess.Popen", lambda argv: calls.append(argv))
+    monkeypatch.setattr("tcw.serve.subprocess.Popen",
+                        lambda argv, **kw: calls.append((argv, kw)))
     req = Request(f"{base}/api/work/{slug}/artifacts/spec/open", method="POST")
     req.add_header("Content-Type", "text/plain")
     with pytest.raises(HTTPError) as err:
@@ -186,20 +188,24 @@ def test_open_endpoint_rejects_non_json_content_type(server, monkeypatch):
 def test_open_endpoint_launches_present_artifact(server, monkeypatch):
     base, slug = server
     calls = []
-    monkeypatch.setattr("tcw.serve.subprocess.Popen", lambda argv: calls.append(argv))
+    monkeypatch.setattr("tcw.serve.subprocess.Popen",
+                        lambda argv, **kw: calls.append((argv, kw)))
 
     status, body = post(base, f"/api/work/{slug}/artifacts/spec/open")
 
     assert status == 204
     assert body == b""
     assert len(calls) == 1
-    assert isinstance(calls[0], list) and calls[0][-1].endswith("spec.md")
+    argv, kwargs = calls[0]
+    assert isinstance(argv, list) and argv[-1].endswith("spec.md")
+    # The opener is a detached GUI launch: it must not hold the terminal's stdin.
+    assert kwargs["stdin"] == subprocess.DEVNULL
 
 
 def test_open_endpoint_opener_failure_is_500(server, monkeypatch):
     base, slug = server
 
-    def fail(_argv):
+    def fail(_argv, **_kw):
         raise FileNotFoundError("missing opener")
 
     monkeypatch.setattr("tcw.serve.subprocess.Popen", fail)

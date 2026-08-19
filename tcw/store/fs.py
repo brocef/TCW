@@ -68,6 +68,23 @@ def _capability_resources(folder: Path, meta: dict) -> list[Path]:
 
 # ── git + node helpers (FS-adapter local details, not store-interface ops) ──
 
+def _git(*args, **kwargs):
+    """Run a `git` command with stdin closed.
+
+    None of these calls take input on stdin and none contact a remote, so this
+    closes no *known* hang — git redirects its own hooks' stdin, which was the
+    failure this was first written for and which turned out not to exist.
+
+    It stands as an invariant instead: a child process that reads no stdin does
+    not get the parent's. Every `subprocess` call in this module is a git call,
+    so this is the single place that has to hold it, and
+    `tests/test_subprocess_stdin.py` enforces the same rule package-wide — which
+    is what caught the three `serve` spawns that do matter.
+    """
+    stdin = kwargs.pop("stdin", subprocess.DEVNULL)
+    return subprocess.run(*args, stdin=stdin, **kwargs)
+
+
 def git_root(start: Path | None = None) -> Path | None:
     """Top of the git work-tree containing `start` (cwd by default), or None.
 
@@ -76,7 +93,7 @@ def git_root(start: Path | None = None) -> Path | None:
     """
     start = (start or Path.cwd()).resolve()
     try:
-        out = subprocess.run(
+        out = _git(
             ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
             capture_output=True, text=True, check=True,
         ).stdout.strip()
@@ -285,17 +302,17 @@ def git_stage(node_root: Path, *paths: Path) -> None:
     than no-opping."""
     live = [str(p) for p in paths if not git_ignored(node_root, p)]
     if live:
-        subprocess.run(["git", "-C", str(node_root), "add", "--", *live], check=True)
+        _git(["git", "-C", str(node_root), "add", "--", *live], check=True)
 
 
 def git_rm(node_root: Path, path: Path) -> None:
     # -f so a term staged-but-not-yet-committed (just `add`ed) can still be removed.
-    subprocess.run(["git", "-C", str(node_root), "rm", "-rfq", "--", str(path)], check=True)
+    _git(["git", "-C", str(node_root), "rm", "-rfq", "--", str(path)], check=True)
 
 
 def git_ignored(node_root: Path, path: Path) -> bool:
     """Whether `.gitignore` excludes `path`. False outside a repository."""
-    return subprocess.run(
+    return _git(
         ["git", "-C", str(node_root), "check-ignore", "-q", "--", str(path)],
         capture_output=True).returncode == 0
 
@@ -320,12 +337,12 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
         # legitimately differs from both HEAD and the worktree, which `rm`
         # otherwise refuses. With --cached it still only touches the index; the
         # files stay on disk.
-        subprocess.run(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
-                        "--ignore-unmatch", "--", str(src)], check=True)
+        _git(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
+              "--ignore-unmatch", "--", str(src)], check=True)
         shutil.move(str(src), str(dst))
         return
-    subprocess.run(["git", "-C", str(node_root), "add", "--", str(src)], check=True)
-    subprocess.run(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
+    _git(["git", "-C", str(node_root), "add", "--", str(src)], check=True)
+    _git(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
 
 
 WORKTREES_DIR = ".worktrees"
@@ -344,7 +361,7 @@ def git_commit(node_root: Path, message: str, *paths: str) -> None:
     cmd = ["git", "-C", str(node_root), "commit", "-q", "-m", message]
     if paths:
         cmd += ["--", *paths]
-    subprocess.run(cmd, check=True)
+    _git(cmd, check=True)
 
 
 def _has_committable_changes(node_root: Path, path: str) -> bool:
@@ -356,7 +373,7 @@ def _has_committable_changes(node_root: Path, path: str) -> bool:
     would then be misreported as a real one. Callers wanting untracked content
     committed stage it first, which is what `git_mv` already does.
     """
-    r = subprocess.run(
+    r = _git(
         ["git", "-C", str(node_root), "status", "--porcelain", "--", path],
         capture_output=True, text=True)
     if r.returncode != 0:                              # unknown to git — nothing to record
@@ -396,8 +413,8 @@ def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
     benignly and would be reported as a real error. Callers that want untracked
     content committed must stage it first, which is what `git_mv` already does.
     """
-    if subprocess.run(["git", "-C", str(node_root), "rev-parse", "--git-dir"],
-                      capture_output=True).returncode != 0:
+    if _git(["git", "-C", str(node_root), "rev-parse", "--git-dir"],
+            capture_output=True).returncode != 0:
         return None                                    # not a repo — nothing to commit into
     # Filter to the pathspecs git actually has committable changes for, and pass
     # only those. `git commit` fails outright if *any* pathspec matches nothing,
@@ -407,7 +424,7 @@ def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
     live = [p for p in paths if _has_committable_changes(node_root, p)]
     if not live:
         return None                                    # genuinely nothing to commit
-    r = subprocess.run(
+    r = _git(
         ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *live],
         capture_output=True, text=True)
     if r.returncode != 0:
@@ -417,8 +434,8 @@ def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
 
 def git_current_branch(node_root: Path) -> str | None:
     """The checked-out branch name, or None outside a repo / on a detached HEAD."""
-    r = subprocess.run(["git", "-C", str(node_root), "rev-parse", "--abbrev-ref", "HEAD"],
-                       capture_output=True, text=True)
+    r = _git(["git", "-C", str(node_root), "rev-parse", "--abbrev-ref", "HEAD"],
+             capture_output=True, text=True)
     if r.returncode != 0:
         return None
     name = r.stdout.strip()
@@ -454,8 +471,8 @@ def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
     """Create the item's git worktree + branch from HEAD. Returns (path, branch)."""
     wt = node_root / WORKTREES_DIR / slug
     branch = f"work/{slug}"
-    subprocess.run(["git", "-C", str(node_root), "worktree", "add", "-q",
-                    "-b", branch, str(wt)], check=True)
+    _git(["git", "-C", str(node_root), "worktree", "add", "-q",
+          "-b", branch, str(wt)], check=True)
     return wt, branch
 
 
@@ -470,8 +487,8 @@ def merge_worktree(node_root: Path, branch: str) -> str | None:
     merge failure aborts the half-merge and returns an error so teardown is
     skipped and the branch is left intact. Returns None on success, else an error
     message."""
-    if subprocess.run(["git", "-C", str(node_root), "rev-parse", "--verify", "--quiet",
-                       f"refs/heads/{branch}"], capture_output=True).returncode != 0:
+    if _git(["git", "-C", str(node_root), "rev-parse", "--verify", "--quiet",
+             f"refs/heads/{branch}"], capture_output=True).returncode != 0:
         return None                                   # branch already gone — nothing to merge
     # `merge.directoryRenames` defaults to `conflict` for merges: git works out
     # that a file added under a renamed directory belongs at the new path, stages
@@ -481,13 +498,13 @@ def merge_worktree(node_root: Path, branch: str) -> str | None:
     # config: where TCW's own lifecycle moved the folder, relocating is the answer
     # on every machine. `true`, not `false` — `false` disables rename detection
     # and would strand the file in a directory the transition deleted.
-    r = subprocess.run(["git", "-C", str(node_root),
-                        "-c", "merge.directoryRenames=true",
-                        "merge", "--no-edit", branch],
-                       capture_output=True, text=True)
+    r = _git(["git", "-C", str(node_root),
+              "-c", "merge.directoryRenames=true",
+              "merge", "--no-edit", branch],
+             capture_output=True, text=True)
     if r.returncode != 0:
-        subprocess.run(["git", "-C", str(node_root), "merge", "--abort"],
-                       capture_output=True, text=True)
+        _git(["git", "-C", str(node_root), "merge", "--abort"],
+             capture_output=True, text=True)
         return (f"merge of {branch} into the primary checkout failed; branch left "
                 f"intact — resolve and re-run:\n{(r.stderr or r.stdout).strip()}")
     return None
@@ -499,14 +516,14 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
     warnings (empty == clean)."""
     warns: list[str] = []
     wt = node_root / WORKTREES_DIR / slug
-    r = subprocess.run(["git", "-C", str(node_root), "worktree", "remove", str(wt)],
-                       capture_output=True, text=True)
+    r = _git(["git", "-C", str(node_root), "worktree", "remove", str(wt)],
+             capture_output=True, text=True)
     if r.returncode != 0:
         if "is not a working tree" not in r.stderr:   # already absent — tolerate quietly
             warns.append(f"worktree remove failed for {slug}: {r.stderr.strip()}")
     elif branch:
-        rb = subprocess.run(["git", "-C", str(node_root), "branch", "-D", branch],
-                            capture_output=True, text=True)
+        rb = _git(["git", "-C", str(node_root), "branch", "-D", branch],
+                  capture_output=True, text=True)
         if rb.returncode != 0:
             warns.append(f"branch delete failed for {branch}: {rb.stderr.strip()}")
     return warns
@@ -3034,7 +3051,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 shutil.copy2(path, target, follow_symlinks=False)
             os.replace(temp, destination)
             self._stage(destination)
-            tracked = subprocess.run(
+            tracked = _git(
                 ["git", "-C", str(self.store_git_root), "ls-files", "--error-unmatch", "--", str(source)],
                 capture_output=True,
             ).returncode == 0

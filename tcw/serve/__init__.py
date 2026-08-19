@@ -94,7 +94,7 @@ def _open_locator(locator: str) -> dict | None:
         os.startfile(locator)  # type: ignore[attr-defined]
         return None
     opener = "open" if sys.platform == "darwin" else "xdg-open"
-    subprocess.Popen([opener, locator])
+    subprocess.Popen([opener, locator], stdin=subprocess.DEVNULL)
     return None
 
 
