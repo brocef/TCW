@@ -276,9 +276,15 @@ def test_a_blank_artifact_is_absent_in_both_places_of_one_payload(server, seeded
     assert top["outcome"] == payload["item"]["artifacts"]["outcome"]
 
 
-def test_the_open_gate_agrees_with_what_the_payload_advertises(server, seeded_node):
+def test_the_open_gate_agrees_with_what_the_payload_advertises(server, seeded_node,
+                                                               stub_desktop_opener):
     """The gate and the flag must never disagree: anything reported present must
-    be openable, and anything openable must be reported present."""
+    be openable, and anything openable must be reported present.
+
+    The opener is stubbed because this test reaches the *success* path on a real
+    artifact — unstubbed, it launched the developer's GUI editor on a temp
+    `post-mortem.md` on every run. `tests/conftest.py` now fails the suite rather
+    than letting that happen silently again."""
     base, slug = server
     root, _ = seeded_node
     work = FsWorkStore.open(root)
