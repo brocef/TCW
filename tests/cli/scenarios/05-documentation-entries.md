@@ -30,9 +30,9 @@ out of the agent guide.
 | 10 | `tcw work docs` outside a node exits non-zero with empty stdout. |
 | 11 | A description containing a `|` character survives rendering intact in `stage plan` output. (It renders as a list, not a table, for exactly this reason.) |
 | 12 | A multi-line YAML block-scalar description is collapsed to one line and does not break out of its bullet. |
-| 13 | A malformed entry (missing `trigger`, or `documentation:` given a mapping instead of a list) is reported by `tcw validate` as a problem; `tcw work docs` does **not** crash. |
+| 13 | A malformed entry is reported by `tcw validate` and does **not** crash `tcw work docs` — measured with `[{path: README.md}]` (no trigger, no description): `validate` reports one problem per missing field, and `docs` exits 0 falling back to the agent-guide message. |
 | 14 | An entry whose `path` does not exist on disk is accepted — validation is shape-only, because a path may legitimately be a pattern like `skills/<component>/SKILL.md`. |
-| 15 | An **empty** `documentation: []` list behaves as unconfigured (`source: "agent-guide"`) — or as configured-but-empty. Pin whichever it is. |
+| 15 | An **empty** `documentation: []` list behaves exactly as unconfigured — measured: `{"schema": 1, "source": "agent-guide", "entries": []}`, exit 0. Declaring the key with no entries is not a way to suppress the agent-guide fallback. |
 
 ## Refusals asserted
 
@@ -52,4 +52,6 @@ touched (`tests/fixtures/prompt_fallback/`). The shell version should compare
 fixture**, not against a fresh capture — a fresh capture would pass even if both
 sides drifted together.
 
-Assertion 15 is genuinely unknown to the author of this document. Find out.
+Assertions 13 and 15 were open questions when this was drafted and have been
+answered by observation against a scratch node. The measured strings are in the
+table; assert on the `source` field, not on the human-readable message wording.

@@ -15,7 +15,7 @@ one write path where a node's config can substitute a whole document.
 
 | # | Assertion |
 | - | --------- |
-| 1 | `tcw work scaffold spec $SLUG` writes `spec.md` into the item folder and prints its **path on stdout** — usable as `$(…)` for a follow-on `$EDITOR`. |
+| 1 | `tcw work scaffold spec $SLUG` writes **`spec.draft.md`** — *not* `spec.md` — into the item folder, and prints that path on **stdout**, usable as `$(…)` for a follow-on `$EDITOR`. The `.draft.` infix is the whole point: scaffolding produces a draft, and the artifact does not count as written until it is renamed. Assert the exact filename; an assertion on `spec.md` would be wrong **and** would mask the distinction. |
 | 2 | The scaffolded file is non-empty and carries the built-in template's headings. |
 | 3 | Re-running without `--force` is **refused** non-zero and does not overwrite; the existing content is unchanged byte-for-byte. |
 | 4 | `--force` replaces it. |
@@ -27,8 +27,8 @@ one write path where a node's config can substitute a whole document.
 | 10 | A `file:` template resolves relative to the node root; a missing file exits non-zero naming the path. |
 | 11 | A `{{tcw:documentation}}` span inside an **artifact template** is written **verbatim**, token and all — substitution is a prompt-role behaviour. Asserted on a node that *does* configure documentation entries, so a passing test means "deliberately not substituted", not "nothing to substitute". |
 | 12 | The same node's `tcw work stage plan` **does** substitute. Both in one scenario, because the pair is the contract. |
-| 13 | Scaffolding respects stage legality, or does not — pin whichever. (Scaffolding `outcome` on a `backlog` item: refused, or allowed as a draft?) |
-| 14 | Whether the scaffolded draft is staged in git is a **known open question** (`2026-08-18-decide-whether-tcw-work-scaffold-should-stage-its-draft-in-git`). Assert and record the current behaviour without endorsing it. |
+| 13 | Scaffolding **does** respect stage legality — measured. `tcw work scaffold outcome $SLUG` on a `backlog` item exits 1 with `'outcome' is written by the 'implement' stage, which is not legal for an item in 'backlog'; it runs in active`. Pair it with the same call succeeding once the item is `active`. |
+| 14 | The scaffolded draft **is staged in git** — measured: `git status --porcelain` shows `A  …/spec.draft.md` immediately after scaffolding, with no commit. This is a **known open question**, not a settled design (`2026-08-18-decide-whether-tcw-work-scaffold-should-stage-its-draft-in-git`). Assert the current behaviour so a future decision to change it is a visible test change rather than a silent one, and mark the assertion in the script as pinning-not-endorsing. |
 
 ## Refusals asserted
 
@@ -46,5 +46,10 @@ implicit built-in fallback path that bypasses the shared resolver, so the two
 scaffold paths must be shown to agree. Test both — the configured-template path
 *and* the unconfigured fallback path — with the token present in each.
 
-Assertions 13 and 14 are open questions. Answer them by observation, encode the
-answer, and flag 14 to the user rather than deciding it in a test.
+Assertions 1, 13 and 14 are measured, not assumed — assertion 1 in particular
+corrects an error in this document's first draft, which said `spec.md`. Take the
+filenames from the CLI's own stdout rather than constructing them, and the same
+goes for every other artifact id in assertion 5.
+
+Assertion 14 pins a behaviour the project has not yet decided it wants. Say so in
+the script, so nobody reads a passing test as an endorsement.

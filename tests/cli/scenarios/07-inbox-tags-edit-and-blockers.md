@@ -22,7 +22,7 @@ item's fields change after creation.
 | 5 | The raw document's text survives onto the item as its intake artifact — accepting does not discard the original wording. |
 | 6 | `tcw work inbox accept no-such-entry` exits non-zero, stdout empty, and creates no item. |
 | 7 | `tcw work tags add bug cli` registers both; `tcw work tags list` shows them. |
-| 8 | `tcw work new "T" --tag bug` succeeds; `--tag not-registered` is **refused** non-zero and creates nothing. (If unregistered tags are instead accepted with a warning, pin that — but pin one of the two.) |
+| 8 | `tcw work new "T" --tag bug` succeeds; `--tag not-registered` is **refused**, exit 1, creating nothing — measured. The message names the fix: `unregistered tag 'x'; register it with \`tcw work tags add x\``. Assert the refusal and that no item folder appeared. |
 | 9 | `tcw work tags rm bug` unregisters it; an item already carrying `bug` is unaffected (removal is from the registry, not from items). |
 | 10 | `tcw work list --tag bug` filters; two `--tag` flags match **any**, not all. |
 | 11 | `tcw work edit $SLUG --title "New title"` changes the title and **leaves the slug unchanged** — asserted by re-resolving the original slug afterwards. |
@@ -38,7 +38,7 @@ item's fields change after creation.
 ## Refusals asserted
 
 - unknown inbox entry (6)
-- unregistered tag, or its pinned alternative (8)
+- unregistered tag (8)
 - invalid effort/complexity value (12)
 
 ## Explicitly not covered here

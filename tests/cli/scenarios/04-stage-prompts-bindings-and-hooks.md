@@ -30,7 +30,7 @@ The 1.0.0 headline: the lifecycle is polymorphic and CLI-driven. A node's
 | 12 | A `command:` hook that **reads stdin** does not stall the transition: the transition completes within the timeout with the hook's stdin closed. (Regression for the inherited-stdin fix.) |
 | 13 | A hook that exceeds its configured timeout aborts the transition non-zero, and the item's status is unchanged. |
 | 14 | `tcw work stage <stage> <slug> --no-exec` prints what **would** run and executes none of it — proven by having the hook create a sentinel file and asserting the file does not exist. |
-| 15 | A malformed `work.lifecycle` block is reported by `tcw validate` as a problem, and the affected stage still behaves (advisory, not fatal) **or** fails closed — whichever the implementation does, the scenario pins it explicitly rather than leaving it undefined. |
+| 15 | A malformed `work.lifecycle` block is **advisory, not fatal** — measured. `work.lifecycle.stages.spec.prompt: "not-a-list"` makes `tcw validate` exit 1 reporting `expected a list of bindings, got str`, while `tcw work stage spec $SLUG` still exits **0** and prints the built-in instructions. Both halves asserted: a config error must be *reported* without bricking the lifecycle. |
 
 ## Refusals asserted
 
@@ -46,11 +46,10 @@ it has its own back-compat contract.
 
 ## Notes for the implementer
 
-Assertion 15 is deliberately open. Find out what the implementation does, then
-write the assertion to match **and say so in a comment** — an unpinned behaviour
-is how the next refactor changes it silently. Do not change the implementation to
-suit the test; if the behaviour looks wrong, report it rather than encoding a
-preference.
+Assertion 15 was an open question when this document was drafted and has since
+been answered by observation against a scratch node — the numbers in the table
+are measured, not assumed. Keep both halves: asserting only the `validate`
+failure would pass against a build that also refused to run the stage.
 
 Assertion 12 needs a hook whose stdin would block: `cat` or `read -r line`. Run
 the transition with a **held-open pipe** as `tcw`'s stdin (a background `sleep`
