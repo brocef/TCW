@@ -229,15 +229,39 @@ harness-parity rule moving into `docs/lifecycle/*.md` files bound to the `spec`,
 `plan`, and `implement` stages. Five things it learned, in the order they hurt.
 
 **1. Find out what reads your agent guide before you empty it.** A rule another
-skill locates *by name* in `CLAUDE.md` cannot move into a stage prompt. TCW's own
-`documentation-sync` skill looks for a `## Documentation Sync` section there, and
-its version-cut path looks for a `## Versioning` section. Moving either would
-have broken the skill against the repository that ships it. Both stayed; the
-stage prompt points at them instead of copying them.
+skill locates *by name* in `CLAUDE.md` cannot move into a stage prompt just by
+being copied there — the skill would still go looking for the heading. TCW's own
+`documentation-sync` skill did this for a `## Documentation Sync` section, and
+its version-cut path still does it for a `## Versioning` section.
 
-This is the general shape: **stage prompts can carry your stage-scoped rules, but
-not your integration points.** Grep your skills and tooling for `CLAUDE.md` and
-`AGENTS.md` before you start.
+**Documentation entries are now configuration, and that is the better answer.**
+Declare them in `tcw-config.yaml` under `work.documentation` and `tcw validate`
+checks their shape, `tcw work docs` prints them, and `tcw work stage plan` /
+`tcw work stage implement` include them in the stage's instructions:
+
+```yaml
+work:
+    documentation:
+        - path: README.md
+          trigger: Public-API
+          description: >-
+              Public-facing overview and CLI usage. Update when the public
+              surface or user-facing behavior changes.
+        - path: docs/changelogs/upcoming.md
+          trigger: Any-Code-Change
+          description: Developer changelog; technical, grouped by category.
+```
+
+Three required keys, all non-empty strings. A `path` need not exist yet, and a
+`trigger` may be any name your project defines — the vocabulary is open. A
+project that declares nothing keeps the old behavior exactly: the stage prompts
+still tell the agent to read the `## Documentation Sync` section, byte for byte.
+
+The general lesson survives, and still applies to `## Versioning`: **stage prompts
+can carry your stage-scoped rules, but not your integration points.** Grep your
+skills and tooling for `CLAUDE.md` and `AGENTS.md` before you start — and where an
+integration point has a configuration form, prefer it, because a heading someone
+renames is not a contract.
 
 **2. A rule your source code cites needs a citable location.** Prefer `file:`
 over `blob:` for anything referenced from outside the config. A module docstring
