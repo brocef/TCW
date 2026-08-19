@@ -24,9 +24,11 @@ This is a cross-cutting process skill: it does not drive a `tcw` axis, it govern
 
 One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
-## The Documentation Sync Section
+## The Documentation Sync Section — the fallback form
 
-Project owners add this section to their `CLAUDE.md`:
+This is the **fallback**, not the recommended form. In a TCW node, declare the entries in `tcw-config.yaml` under `work.documentation` instead: `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage plan` / `implement` put them in front of the agent directly, so the gate does not depend on anyone remembering to open a file and parse prose. `references/setup.md` walks through both forms.
+
+Use the section below when the project is **not** a TCW node, or when the user prefers Markdown. Project owners add it to their `CLAUDE.md`:
 
 ```markdown
 ## Documentation Sync

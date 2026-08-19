@@ -308,9 +308,19 @@ requires no capability of the store.
 10. `skills/documentation-sync/SKILL.md` names `tcw work docs` and no longer
     instructs the reader to find entries in `CLAUDE.md` except as the documented
     fallback. `tests/test_documentation_sync_wiring.py` passes.
-11. This repository's `AGENTS.md` has no `## Documentation Sync` section, its
-    `tcw-config.yaml` carries the four entries, and `tcw work stage implement`
-    on a real item prints all four.
+11. This repository's `AGENTS.md` `## Documentation Sync` section carries **no
+    entry list** — the four entries live in `tcw-config.yaml`, and `tcw work
+    stage implement` on a real item prints all four. The section itself stays,
+    holding the directive to invoke the skill and the reasoning for why these
+    four documents exist.
+
+    *Amended at rework.* As first written this criterion required the section to
+    be **gone entirely**. Implementation kept it and recorded a deviation, on the
+    grounds that the skill's own `references/setup.md` says to "**always**
+    include the opening directive line" and that directive is not an entry and
+    has nowhere else to live. That argument is right, so the criterion is
+    corrected rather than left standing as an unmet one — a deviation parked in
+    `outcome.md` reads at a glance like a gap.
 11a. No file in the repository instructs a reader to find documentation entries
     in a Markdown section except as the named fallback — specifically
     `skills/documentation-sync/SKILL.md:62,101`,

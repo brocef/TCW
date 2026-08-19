@@ -102,3 +102,33 @@ def test_commands_route_into_the_skill():
         body = cmd.read_text(encoding="utf-8")
         assert "documentation-sync" in body, f"{cmd} does not name the skill"
         assert ref in body, f"{cmd} does not route to {ref}"
+
+
+# ── which form the skill recommends ────────────────────────────────────────
+
+def test_the_skill_presents_the_markdown_section_as_the_fallback():
+    """`SKILL.md` and `references/setup.md` must agree on which form is
+    recommended. `setup.md` already says "prefer config in a TCW project"; the
+    section in `SKILL.md` that shows the Markdown format must not read as the
+    default, or a project owner arriving at that heading sets up the legacy form
+    without ever learning the config one exists.
+    """
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    heading, _, body = skill.partition("## The Documentation Sync Section")
+    assert body, "the section that documents the Markdown format has been renamed"
+    intro = body.split("```", 1)[0]
+    assert "fallback" in intro.lower(), (
+        "the Markdown-section documentation must name itself the fallback:\n"
+        f"{intro.strip()}")
+    assert "tcw-config.yaml" in intro or "work docs" in intro, (
+        "it must point at the recommended form, not just describe itself")
+
+
+def test_the_skill_and_setup_reference_do_not_contradict_each_other():
+    """Both name the config form as the recommended one."""
+    setup = (SKILL_DIR / "references" / "setup.md").read_text(encoding="utf-8")
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    for name, text in (("setup.md", setup), ("SKILL.md", skill)):
+        assert "work.documentation" in text, f"{name} never names the config form"
+    # setup.md's framing is the one SKILL.md has to match.
+    assert "prefer config" in setup.lower()
