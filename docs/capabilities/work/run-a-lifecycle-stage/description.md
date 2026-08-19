@@ -12,6 +12,15 @@ project does configure replaces them outright; writing `builtin: true` in that
 stage's `prompt:` list puts them back, composed with my own in the order I
 declared them.
 
+**The shipped instructions name my item's own body, not a fixed filename.** The
+`spec` and `plan` instructions resolve it the same way `tcw work show` does —
+`initial-request.md` once the `request` stage has written one, and the
+`intake.md` the item arrived as otherwise — so an item created from a pipe or
+adopted from the inbox is never sent after a document nobody wrote. On an item
+with neither, they name no file at all rather than inventing one, and the `spec`
+instructions say to read a raw intake as the request instead of drawing
+conclusions from the request that is missing.
+
 They come out on **stdout alone**, so I can pipe them straight into an agent.
 Every check's own output, and every error, goes to stderr — and any failure
 prints *nothing* on stdout, so a pipeline receives the whole instruction or none
