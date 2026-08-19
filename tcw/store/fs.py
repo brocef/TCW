@@ -311,6 +311,22 @@ def git_rm(node_root: Path, path: Path) -> None:
     _git(["git", "-C", str(node_root), "rm", "-rfq", "--", str(path)], check=True)
 
 
+NOT_A_REPOSITORY = "not inside a git repository. Run `git init` first."
+
+
+def require_repository(root: Path) -> None:
+    """Refuse a filesystem-store write outside git.
+
+    A filesystem-adapter precondition, not a model concept — a remote store has
+    no repository to require, so nothing about this belongs in the abstract
+    interface. `ValueError` because that is already how the store interface says
+    "this write is refused", which means every existing CLI and HTTP handler
+    reports it without new plumbing.
+    """
+    if git_root(root) is None:
+        raise ValueError(NOT_A_REPOSITORY)
+
+
 def git_ignored(node_root: Path, path: Path) -> bool:
     """Whether `.gitignore` excludes `path`. False outside a repository."""
     return _git(
@@ -794,6 +810,15 @@ class FsTreeStore:
     @classmethod
     def open(cls, node_root: Path):
         return cls(node_root / "docs" / cls.COMPONENT)
+
+    def _write_git_root(self) -> Path:
+        """The repository a write here has to land in. Overridden where the
+        store's own repository can differ from its node's."""
+        return self.node_root
+
+    def _require_repository(self) -> None:
+        """Deliberately stateless — see `test_non_git_writes.py`'s no-state pin."""
+        require_repository(self._write_git_root())
 
     def _stage(self, *paths: Path) -> None:
         git_stage(self.node_root, *paths)
@@ -2016,6 +2041,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if repository is None and configured is not None:
             raise ValueError(f"{config_path}: work.path is not inside a Git repository: {root}")
         return cls(root, node_root=node_root, store_git_root=repository or node_root)
+
+    def _write_git_root(self) -> Path:
+        return self.store_git_root          # may differ from the node's (work.path)
 
     def _stage(self, *paths: Path) -> None:
         git_stage(self.store_git_root, *paths)
