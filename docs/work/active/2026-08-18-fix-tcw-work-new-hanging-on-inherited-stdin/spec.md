@@ -96,19 +96,21 @@ with non-interactive arguments; none reads stdin.
 
 ## Goals
 
-1. None of the **five intake entry points**, and no lifecycle `command:` hook,
-   blocks indefinitely on a stdin it was not asked to read.
+1. No process `tcw` launches inherits a stdin it was not asked to read, and no
+   intake entry point or lifecycle `command:` hook blocks indefinitely on one.
 
-   *Deliberately narrower than "no `tcw` invocation", which the first draft
-   claimed and this change does not deliver.* Review verified the gap: TCW makes
-   roughly twenty `subprocess.run` calls to `git` (`tcw/store/fs.py:288, 293,
-   298, …`, `tcw/work/cli.py:541`) with neither a timeout nor `stdin=`, so each
-   inherits the caller's stdin. None of them contacts a remote — they are
-   `add`, `mv`, `rm`, `commit`, `rev-parse`, `ls-files`, `check-ignore`,
-   `worktree` — so no credential helper can prompt; the residual exposure is a
-   user's own `pre-commit`-style git hook reading inherited stdin during
-   `git commit`. Real, unaddressed here, and recorded in Risks with a follow-up
-   rather than smuggled under a goal this item does not meet.
+   *Restored to its full form at rework* (see `rework.md`). The first draft
+   claimed this; the implementation narrowed it to the five intake entry points
+   plus `command:` hooks, because ~21 `subprocess.run` calls to `git` inherited
+   fd 0. The rework closes them — but on a smaller claim than the narrowing
+   implied and than the rework first offered. **Git redirects its own hooks'
+   stdin** (measured: a `pre-commit` hook running `cat` sees EOF immediately),
+   no TCW git call contacts a remote, and none takes input on stdin, so the
+   inheritance was never a reachable hang. What the second half of this goal
+   now buys is *explicitness enforced by a test* — `tests/test_subprocess_stdin.py`
+   fails any spawn under `tcw/` that does not declare `stdin=`, which is what
+   caught the three `tcw serve` spawns nobody had looked at, including a
+   long-running node server that genuinely did compete for the terminal.
 2. `echo "…" | tcw work new "…"` keeps working, byte-for-byte, including when the
    producer is slow to start.
 3. Interactive use is unchanged.
@@ -411,14 +413,14 @@ Arms below mean the three from the Problem section, re-run as tests.
 - **Mixing `os.read(0, …)` with `sys.stdin`.** Correct only because nothing reads
   `sys.stdin` before the helper; if a future caller reads it first, buffered
   bytes would be lost. The helper is called once, at the top of a command.
-- **~20 git subprocesses still inherit stdin and carry no timeout**
-  (`tcw/store/fs.py:288, 293, 298, 323, 327, 328, 347, …`,
-  `tcw/work/cli.py:541`). None contacts a remote, so no credential prompt can
-  arise; the live exposure is a user's own git hook reading stdin during
-  `git commit`. Out of scope by the narrowed Goal 1, and a follow-up item to be
-  filed at completion rather than folded in here — closing it means touching
-  every git call site, which is a different change with a different blast
-  radius.
+- ~~**~20 git subprocesses still inherit stdin and carry no timeout.**~~
+  **Closed at rework**, not deferred. All 21 now declare `stdin=DEVNULL`, via a
+  `_git()` helper in `fs.py` plus two inline sites. The stated exposure — a
+  user's own git hook reading inherited stdin during `git commit` — turned out
+  not to exist, because git closes hook stdin; the change stands as an
+  explicitness invariant with a package-wide guard test, not as a bug fix. The
+  *timeout* half of this risk remains open and out of scope: a hung `git` is a
+  different failure, and bounding every git call has real blast radius.
 - **Refusing on partial input turns a silent corruption into a hard failure**,
   and a hard failure is a worse outcome for anyone whose producer legitimately
   stalls past the bound. Accepted: the knob raises the bound, the error names it,
@@ -455,9 +457,10 @@ Arms below mean the three from the Problem section, re-run as tests.
     the original `ValueError` catch was not in fact wrong. Catching both is free
     and clearer, so the recommendation is taken even though the reasoning behind
     it was not right.
-  - *Goal 1 broader than the delivery* (Medium) — **accepted and narrowed**, with
-    the git-subprocess gap measured and recorded in Risks rather than quietly
-    dropped.
+  - *Goal 1 broader than the delivery* (Medium) — **accepted and narrowed** at
+    implementation, then **reversed at `verify`**: the reviewer was right that
+    the narrowing was the wrong call, and the gap was closed rather than
+    deferred. See `rework.md`.
   - *Timing criteria assert more than the design guarantees* (Medium) —
     **accepted**; process-level timing became a hang tripwire and the real
     assertion moved to the helper.
