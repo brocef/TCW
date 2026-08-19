@@ -2,14 +2,24 @@
 
 ## Capability changes
 
-**Changed — one capability, no status change.**
+**Changed — two capabilities, neither changing status.**
 
-`work/manage-the-work-inbox` (`docs/capabilities/work/manage-the-work-inbox/`,
-`id: cap-e3d385`, Status `Supported`, Feature `work-inbox`). Its
-`description.md` describes what accepting an entry *produces* — the item, the
-attachments, the `intake.md` — but never says where the item's **title** comes
-from, so the defect below was never contradicted by the ledger. The description
-gains a sentence naming the derivation precedence. Status stays `Supported`.
+1. `work/manage-the-work-inbox` (`docs/capabilities/work/manage-the-work-inbox/`,
+   `id: cap-e3d385`, Status `Supported`, Feature `work-inbox`). Its
+   `description.md` describes what accepting an entry *produces* — the item, the
+   attachments, the `intake.md` — but never says where the item's **title** comes
+   from, so the defect below was never contradicted by the ledger. The
+   description gains a sentence naming the derivation precedence.
+
+2. `work/open-a-work-item` (`docs/capabilities/work/open-a-work-item/`, Status
+   `Supported`). Its description says `tcw work new` "prints its generated slug"
+   without stating any bound on that slug. The sweep found that the same
+   `_unique_slug` this item must harden is shared with `tcw work new`, where a
+   title that slugifies to nothing or is very long produces a degenerate slug or
+   an uncaught `OSError` **today** — so the fix is user-visible on this
+   capability too, and its description gains the floor.
+
+Both stay `Supported`.
 
 **No taxonomy delta.** `tcw taxonomy list` already registers the Feature
 `work-inbox` ("the intake surface through which users inspect and accept raw
@@ -281,9 +291,10 @@ The existing empty-title guard (`tcw/store/fs.py:3003-3004`) stays as the floor.
 Scanning `InboxEntryDetail.body`, in order:
 
 - **Frontmatter is skipped, by exactly the same boundary rule `_frontmatter`
-  already uses** (`tcw/store/fs.py:2296-2310`), not a second parser: the body
-  qualifies only if it `startswith("---\n")`, and the block ends at the first
-  `"\n---\n"` found from offset 4; scanning starts five characters after that.
+  already uses** (`tcw/store/fs.py:2296`), not a second parser: the body
+  qualifies only if it `startswith("---\n")` (`tcw/store/fs.py:2303`), and the
+  block ends at the first `"\n---\n"` found from offset 4
+  (`tcw/store/fs.py:2305`); scanning starts five characters after that.
   If either test fails, the whole body is scanned from the top. This is what
   makes the delegate/escalate shape work (`tcw/work/recursion.py:274-276`), and
   the parity is load-bearing rather than cosmetic — two definitions of "leading
@@ -573,7 +584,7 @@ Not fresh-node behavior; verified by reading the files.
   `# Request title`.** A user who copies the template and edits the body without
   editing the heading now gets an item titled "Request title" instead of a
   slug-shaped one. Arguably still an improvement — it is at least prose — but
-  the template should tell them to replace it. Folded into criterion 14.
+  the template should tell them to replace it. Folded into criterion 24.
 - **The heading scan is a heuristic, not a Markdown parser.** Deliberate (see
   Non-goals). The known misses are setext headings, indented headings, and
   `# ` lines inside HTML blocks or blockquote-indented content. Every miss falls
