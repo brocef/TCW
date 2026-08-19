@@ -110,9 +110,7 @@ Classified as **not** defects, deliberately:
 3. The prompts stay honest when neither artifact is present.
 4. The `postmortem` spine and the `LIFECYCLE_STEPS` `inputs` agree with 1–3.
 5. Rows 5–17 of the sweep table are corrected.
-6. The resolution rule is stated once, in the storage-abstract layer, so the
-   filesystem adapter and the prompt resolver cannot disagree about it.
-7. `{{tcw:documentation}}` rendering is byte-identical before and after.
+6. `{{tcw:documentation}}` rendering is byte-identical before and after.
 
 ## Non-goals
 
@@ -184,7 +182,7 @@ newline, no indent, and no following-space adjustment.
 Shared code is limited to what is genuinely identical — locating an
 open/close pair and computing the fallback slice. The replacement policy stays
 per-token. If factoring that out cannot be done without changing
-`substitute_documentation`'s output, it is not factored out: goal 7 wins over
+`substitute_documentation`'s output, it is not factored out: goal 6 wins over
 tidiness, and two twelve-line loops are cheaper than a regression in shipped
 prompt rendering.
 
@@ -311,7 +309,7 @@ Criteria 1–8 are **automated tests added by this change**, not manual checks;
   (`tests/test_shipped_prompts.py:40-49`). *Mitigation:* the design substitutes
   one value instead of spelling out both branches, which is net-neutral.
 - **Refactoring `substitute_documentation`.** Its block-replacement behavior is
-  subtle and shipped. *Mitigation:* goal 7 and criterion 3 make byte-identity a
+  subtle and shipped. *Mitigation:* goal 6 and criterion 3 make byte-identity a
   gate; the design authorizes duplicating the loop rather than sharing it.
 - **Baseline churn.** Regenerating `tests/fixtures/lifecycle_baseline/` touches
   large JSON blobs where an unintended change hides easily. *Mitigation:*

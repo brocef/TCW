@@ -29,7 +29,7 @@ not touch it, so no `--blocked-by` edge is needed in either direction.
 - `grep -c "_BODY_ORDER" tcw/store/fs.py` → `0`.
 - `python -c "from tcw.store.base import BODY_ORDER; assert BODY_ORDER == ('initial-request','intake')"`.
 
-Pure move; no behavior change. Covers spec goal 6.
+Pure move; no behavior change.
 
 ---
 
