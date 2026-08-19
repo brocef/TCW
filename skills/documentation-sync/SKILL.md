@@ -1,11 +1,18 @@
 ---
 name: documentation-sync
-description: Use when completing a coding task and deciding whether documentation needs updating. Use when code changes have been made and you need to check if README, changelog, guides, or other docs should reflect those changes. Use when a project's CLAUDE.md has a Documentation Sync section listing files and triggers. Use after completing development work to update release notes and changelogs. Use when offering to cut a new version of a project.
+description: Use when completing a coding task and deciding whether documentation needs updating. Use when code changes have been made and you need to check if README, changelog, guides, or other docs should reflect those changes. Use when a project declares documentation entries — in `tcw-config.yaml` under `work.documentation`, or as a `## Documentation Sync` section in its CLAUDE.md. Use after completing development work to update release notes and changelogs. Use when offering to cut a new version of a project.
 ---
 
 # Documentation Sync
 
-After completing code changes, check the project's `CLAUDE.md` for a `## Documentation Sync` section and evaluate each listed file's trigger before reporting the task complete. If the section is missing, ask the user whether to add one — read `references/setup.md` to walk them through it.
+After completing code changes, get the project's documentation entries and evaluate each one's trigger before reporting the task complete.
+
+**Ask `tcw work docs --json` first.** It returns `{"schema", "source", "entries"}`, and `source` tells you which world you are in without guessing:
+
+- `"config"` — the entries are declared in `tcw-config.yaml` under `work.documentation`, validated by `tcw validate`, and the `entries` array is authoritative. Use it and read no Markdown.
+- `"agent-guide"` — the project has declared nothing, so fall back to the legacy convention: a `## Documentation Sync` section in the project's `CLAUDE.md` / `AGENTS.md`, holding a bullet list of `- path [Trigger] — description`.
+
+Outside a TCW node the command does not exist; use the legacy convention directly. If neither is present, ask the user whether to add entries — read `references/setup.md` to walk them through it.
 
 This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `tcw-work` lifecycle invokes it at three points:
 
@@ -51,15 +58,15 @@ Each entry has three parts:
 | `Any-Code-Change`   | A **behavior-affecting** code change — anything that alters runtime behavior, build output, or visible API surface. **Does not fire** for cosmetic-only edits (formatting, whitespace, comments, lint autofixes, test-fixture rearrangement that doesn't change assertions). | Internal refactor, dependency bump that changes behavior, bugfix                                          |
 | `Only-Breaking`     | Reverse-incompatible changes are introduced                                                                                                                                                                                                                                  | Removed a parameter, changed return type, dropped support                                                 |
 
-**Partition rule for `Public-API` and `Public-{Name}-API`:** When a Documentation Sync section lists both, the named entries carve their areas out of the generic `Public-API`. A CLI flag change fires `Public-CLI-API` only, not both. If no named entry covers the change, fall back to `Public-API`.
+**Partition rule for `Public-API` and `Public-{Name}-API`:** When a project declares both, the named entries carve their areas out of the generic `Public-API`. A CLI flag change fires `Public-CLI-API` only, not both. If no named entry covers the change, fall back to `Public-API`.
 
-**Projects may define additional named triggers.** The four triggers above are a base vocabulary, not a closed set. A project can add its own bracketed trigger, defined by the entry's description, when none of the four fit. Read the definition where it's used and apply it literally. TCW's own section, for example, defines `[Skill-Driven-Component]` — "always update the matching driving skill (`tcw-work`, `tcw-capabilities`, …) whenever the component it drives changes: its CLI surface, model/fields, lifecycle, or guardrails" — a trigger that doesn't fit the `Public-{Name}-API` shape. Treat any such project-defined trigger as authoritative for that project.
+**Projects may define additional named triggers.** The four triggers above are a base vocabulary, not a closed set. A project can add its own bracketed trigger, defined by the entry's description, when none of the four fit. Read the definition where it's used and apply it literally. TCW's own entries, for example, define `[Skill-Driven-Component]` — "always update the matching driving skill (`tcw-work`, `tcw-capabilities`, …) whenever the component it drives changes: its CLI surface, model/fields, lifecycle, or guardrails" — a trigger that doesn't fit the `Public-{Name}-API` shape. Treat any such project-defined trigger as authoritative for that project.
 
 **Public-surface judgment call:** A symbol may be technically exported (e.g., re-exported by a barrel file) but have no documented public consumer — no mention in README, no entry in changelogs, no external callers visible. Renaming such a symbol is a fuzzy case: it triggers `Public-API` literally, but the user-facing impact is zero. **Ask the user** before treating these as Public-API rather than auto-updating public docs for a change nobody outside the codebase will notice.
 
 ### How to Evaluate
 
-For each file listed in the Documentation Sync section:
+For each of the project's documentation entries (`tcw work docs`, or the agent guide's `## Documentation Sync` section when `source` is `agent-guide`):
 
 1. **Read the trigger** in brackets
 2. **Assess your code changes** against the trigger definition
@@ -98,7 +105,7 @@ After a substantial set of changes has settled — a feature, a bug fix, a refac
 3. Patch version bump
 4. Keep the current version and update the applicable changelog files
 
-"Changelog files" means the release-note and developer-changelog working files listed in the project's `## Documentation Sync` section, such as `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md`. Update only the files whose triggers fire.
+"Changelog files" means the release-note and developer-changelog working files among the project's documentation entries (`tcw work docs`, or its `## Documentation Sync` section when `source` is `agent-guide`), such as `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md`. Update only the files whose triggers fire.
 
 **A fifth option appears only when the last version was cut but never published.** Before presenting the list, run this skill's gate script from inside the repo:
 

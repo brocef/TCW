@@ -2,9 +2,9 @@
 
 Load this reference when the project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure **and** you're writing into those files (appending entries, rotating `upcoming.md`, migrating an existing `CHANGELOG.md`, or evaluating version drift before an append).
 
-**This structure is opt-in.** The `docs/release-notes/` and `docs/changelogs/` layout described below applies only when the project's `## Documentation Sync` section explicitly lists `upcoming.md` files (or when the user asks you to set the structure up — read `setup.md`). Don't create `docs/release-notes/upcoming.md` or `docs/changelogs/upcoming.md` in a project that hasn't adopted them. Some projects use only GitHub Releases, only a root `CHANGELOG.md`, or have no version-history files at all — that's a valid choice.
+**This structure is opt-in.** The `docs/release-notes/` and `docs/changelogs/` layout described below applies only when the project's documentation entries explicitly list `upcoming.md` files — from `tcw work docs`, or from a `## Documentation Sync` section when `source` is `agent-guide` (or when the user asks you to set the structure up — read `setup.md`). Don't create `docs/release-notes/upcoming.md` or `docs/changelogs/upcoming.md` in a project that hasn't adopted them. Some projects use only GitHub Releases, only a root `CHANGELOG.md`, or have no version-history files at all — that's a valid choice.
 
-For monorepos, each package may carry its own `docs/release-notes/` and `docs/changelogs/` directories, or the repo may share a single set at the root. Follow whatever the project's `## Documentation Sync` section points to; don't infer a structure that isn't listed.
+For monorepos, each package may carry its own `docs/release-notes/` and `docs/changelogs/` directories, or the repo may share a single set at the root. Follow whatever the project's documentation entries point to; don't infer a structure that isn't listed.
 
 ## Directory Structure
 
