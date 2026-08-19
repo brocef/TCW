@@ -28,3 +28,8 @@ at the moment it accepted an issue, which made every triaged item look like a
 stage had run that had not. Triage now files the reporter's words as intake and
 leaves the request to the stage that writes it.
 
+If you script against `tcw work lifecycle` — or its `--json` — note that the
+`spec`, `plan`, and `postmortem` stages now list `intake.md` alongside
+`initial-request.md` in their inputs. Inputs are what a stage *may* read, not a
+checklist, so a stage naming one of them and listing both is the intended shape.
+

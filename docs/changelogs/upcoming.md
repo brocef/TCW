@@ -78,4 +78,3 @@ category.
 - `tests/fixtures/*/_scratch/` is gitignored; the fixture capture scripts build
   a throwaway git node there by default, which otherwise lands a nested
   repository in the tree.
-

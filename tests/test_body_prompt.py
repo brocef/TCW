@@ -78,6 +78,24 @@ def test_an_unterminated_token_is_left_verbatim():
     assert substitute_body(text, []) == text
 
 
+def test_a_body_token_inside_rendered_documentation_is_substituted():
+    """The sharp edge of the substitution order, pinned so it stays deterministic.
+
+    `resolve_prompts` renders documentation first, so a body token that only
+    exists because a `work.documentation` description contained one is text the
+    body pass then sees and rewrites. Documented on `substitute_body`; asserted
+    here so an accidental reordering is a failing test rather than a surprise.
+    """
+    from tcw.store.base import DocEntry
+    from tcw.work.resolve import substitute_documentation
+    entries = [DocEntry(path="README.md", trigger="Public-API",
+                        description=f"Mentions {SPAN} verbatim.")]
+    rendered = substitute_documentation(
+        "{{tcw:documentation}}nothing configured{{/tcw:documentation}}", entries)
+    assert SPAN in rendered
+    assert "`intake.md`" in substitute_body(rendered, [INTAKE])
+
+
 def test_text_with_no_span_is_untouched():
     text = "**Inputs.** `spec.md` and `plan.md`.\n"
     assert substitute_body(text, [INTAKE]) == text
@@ -180,13 +198,30 @@ def test_the_nobody_asked_conclusion_is_scoped_to_the_request(node):
     para = _inputs_paragraph(_tcw(node, "work", "stage", "spec", slug))
 
     flat = " ".join(para.split())
-    for sentence in flat.split(". "):
-        if "nobody asked" in sentence:
-            assert "`initial-request.md`" in sentence, (
-                f"unscoped conclusion: {sentence}")
+    carriers = [s for s in flat.split(". ") if "nobody asked" in s]
+    # Asserted non-empty first: the scoping loop below is vacuous if the clause
+    # disappears entirely, and a prompt that simply dropped the guidance would
+    # otherwise pass this test.
+    assert carriers, f"the 'nobody asked' guidance is gone entirely: {flat}"
+    for sentence in carriers:
+        assert "`initial-request.md`" in sentence, (
+            f"unscoped conclusion: {sentence}")
 
-    assert "the intake *is* the request" in flat
+    # The intake branch, asserted positively.
+    assert "work from the" in flat and "intake itself" in flat
     assert "the `request` stage has not run" in flat
+
+
+def test_the_postmortem_spine_names_the_intake(node):
+    """`postmortem` carries no span — it reads whatever the item has, so it names
+    both artifacts in prose. The fixture in `test_prompt_fallback.py` pins its
+    bytes; this asserts the intent, so a re-baseline cannot quietly drop it."""
+    slug = _new(node, "Intake only item", intake="# Raw\n")
+    for transition in ("start", "submit"):
+        _tcw(node, "work", transition, slug)
+    out = _tcw(node, "work", "stage", "postmortem", slug)
+    assert "intake.md" in out
+    assert "initial-request.md" in out
 
 
 @pytest.mark.parametrize("stage", ["spec", "plan"])

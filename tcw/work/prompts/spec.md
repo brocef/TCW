@@ -4,11 +4,11 @@
 describes an implementation has skipped its own job.
 
 **Inputs.** {{tcw:body}}the item's body artifact{{/tcw:body}}, read as filed.
-An `intake.md` is raw arrival — the `request` stage has not run, so it has no
-`## References` and the intake *is* the request. In an `initial-request.md`,
-`## References` is the research starting set, not its limit; with neither it nor
-an "asked; none provided" note, nobody asked — research from scratch rather than
-reading silence as "nothing to point at". Repository discovery is unrestricted.
+An `intake.md` is raw arrival: the `request` stage has not run, so work from the
+intake itself, and expect no `## References` unless whoever filed it wrote one.
+In an `initial-request.md` that section is the research starting set, not its
+limit; with neither it nor an "asked; none provided" note, nobody asked — so
+research from scratch, not from silence. Repository discovery is unrestricted.
 
 **Produce** `spec.md`, in the item's folder, with seven required sections:
 **Capability changes** (planned ledger deltas only — no records are written

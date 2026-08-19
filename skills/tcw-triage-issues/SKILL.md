@@ -130,16 +130,13 @@ Say which outcome you think fits and why, and let them decide — especially for
 ## 5. Accept: create the work item
 
 Per `stage-inbox.md` — retitle, pick tags, split if it is really several items.
-**An issue is raw arrival, so it is filed as the item's `intake.md`**, which is
-what piping it into `tcw work new` writes:
+**An issue is raw arrival, so it is filed as the item's `intake.md`**, and what
+you pipe into `tcw work new` is stored as that intake verbatim.
 
-```bash
-gh issue view <n> --json body --jq .body \
-  | tcw work new "<retitled as a change>" --tag <tag> [--priority N] [--effort M]
-```
-
-The intake opens with an **`## Origin`** section — the heading `docs/work/`
-items already use to say where a request came from — recording two things:
+Compose the intake first — piping the bare issue body is not enough, because it
+carries none of the provenance the later steps read back. It opens with an
+**`## Origin`** section — the heading `docs/work/` items already use to say
+where a request came from — recording two things:
 
 1. **The issue's number, URL, and reporter.** The URL is what §3 reads on the
    next sweep; without it the issue resurfaces forever.
@@ -148,7 +145,12 @@ items already use to say where a request came from — recording two things:
    distinction is what `verify` needs later to check the work against what was
    actually reported.
 
-```markdown
+Read the issue with `gh issue view <n> --json number,url,author,body`, then pipe
+the composed document in — a quoted heredoc, so nothing in the reporter's text
+is expanded by the shell:
+
+```bash
+tcw work new "<retitled as a change>" --tag <tag> [--priority N] [--effort M] <<'MD'
 # <retitled as a change>
 
 ## Origin
@@ -157,7 +159,11 @@ GitHub issue [#42](https://github.com/owner/repo/issues/42), filed 2026-07-18
 by @octocat.
 
 > <the reporter's text, verbatim>
+MD
 ```
+
+Tags must already be registered (`tcw work tags add <tag>`) or the command
+refuses.
 
 If the project already has its own convention for recording provenance, follow
 that one instead — a second heading that means the same thing is drift.

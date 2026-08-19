@@ -4,6 +4,7 @@ Nothing here shapes a test's subject; it only stops the suite from reaching out
 of the process.
 """
 
+import os
 import subprocess
 
 import pytest
@@ -36,9 +37,18 @@ def _no_desktop_opener(monkeypatch):
 
     `monkeypatch.setattr` raises on a missing attribute, so renaming the
     browser call site fails here loudly instead of leaving an inert guard.
+
+    **The browser half stops the launch but may not fail the test.**
+    `tcw/serve/runtime.py` opens the browser from a daemon thread, and
+    `pytest.fail` raised off the main thread surfaces as
+    `PytestUnhandledThreadExceptionWarning` rather than a failure. Preventing
+    the window is the point; treat a warning in the log as the signal.
     """
     def guarded(argv, *args, **kwargs):
-        if argv and argv[0] in _OPENERS:
+        # basename, not argv[0]: the call site passes a bare command name today,
+        # but resolving it through `shutil.which` would hand us an absolute path
+        # and silently defeat the guard.
+        if argv and os.path.basename(str(argv[0])) in _OPENERS:
             pytest.fail(f"test spawned the desktop opener: {argv}")
         return _real_popen(argv, *args, **kwargs)
 
@@ -63,10 +73,16 @@ def stub_desktop_opener(_no_desktop_opener, monkeypatch):
     calls: list[list[str]] = []
 
     def recording(argv, *args, **kwargs):
-        if argv and argv[0] in _OPENERS:
+        if argv and os.path.basename(str(argv[0])) in _OPENERS:
             calls.append(list(argv))
             return None
         return _real_popen(argv, *args, **kwargs)
 
     monkeypatch.setattr("tcw.serve.subprocess.Popen", recording)
+    # `os.startfile` too, or this fixture only works on the POSIX branch:
+    # `_open_locator` takes the `os.name == "nt"` path on Windows, where the
+    # guard's `pytest.fail` would still fire and fail the very test that asked
+    # to reach the success path.
+    monkeypatch.setattr("os.startfile", lambda path: calls.append([str(path)]),
+                        raising=False)
     return calls

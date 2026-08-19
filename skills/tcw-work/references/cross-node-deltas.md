@@ -17,8 +17,10 @@ Use `--parent` children only when the slices are work items in the same project.
 
     The adopted slice carries the epic's bare slug in its `state.yaml`, which is
     machine-tracked but invisible to a human reading the request. Link the epic in
-    prose too, at the top of the slice's body — its `initial-request.md`, or its
-    `intake.md` when the `request` stage has not run yet:
+    prose too, at the top of the slice's `initial-request.md` — never in its
+    `intake.md`: a body write always targets the request, promoting an
+    intake-only slice and leaving its raw intake byte-identical
+    (`commands.md` § The body surface):
 
     ```
     Epic: [<epic title>](tcw://W/<orchestrator-project-id>/<epic-slug>)

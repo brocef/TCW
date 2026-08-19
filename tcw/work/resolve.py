@@ -303,7 +303,11 @@ def resolved_body(artifacts: Sequence) -> str | None:
     already name an artifact; that is a rendering convention here, not a field
     on `Artifact`.
     """
-    present = {a.name for a in artifacts if getattr(a, "present", False)}
+    # `a.present` directly, not `getattr(..., False)`: `WorkStore.artifacts`
+    # promises `list[Artifact]` and `present` is mandatory, so an adapter that
+    # breaks that contract should raise here rather than quietly resolve every
+    # item to "no body".
+    present = {a.name for a in artifacts if a.present}
     for name in BODY_ORDER:
         if name in present:
             return f"`{name}.md`"
@@ -332,7 +336,12 @@ def substitute_body(text: str, artifacts: Sequence) -> str:
     silently swallow the rest of the text.
 
     Nesting the two token pairs is not supported and is not given defined
-    behavior; they are substituted independently, documentation first.
+    behavior; they are substituted independently, documentation first. That
+    order has one sharp edge worth knowing: because documentation renders
+    first, a body token appearing *inside a rendered documentation entry* —
+    a project whose `work.documentation` description happens to contain the
+    literal `{{tcw:body}}` — is text this pass will then substitute. Keep the
+    tokens out of documentation descriptions.
 
     **Wrapping is the prompt author's job.** Nothing re-flows the line, so a
     span whose sentence continues past the source line break leaves a stranded
