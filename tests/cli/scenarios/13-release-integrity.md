@@ -17,9 +17,10 @@ that every in-process test misses.
 | # | Assertion |
 | - | --------- |
 | 1 | `python -m build` produces a wheel and an sdist without error. |
-| 2 | The wheel installed into a **fresh virtualenv** with no other dependencies present gives a working `tcw` on `PATH`. |
+| 2 | The wheel installed into a **fresh virtualenv** gives a working `tcw` on `PATH`. Install with `pip --no-index --find-links <local wheelhouse>` so "no network" and "clean environment" are enforced by the same command, and assert every resolved dependency came from the wheelhouse. |
+| 2a | The **sdist** installed into another fresh venv also yields a working `tcw --version` and at least one built-in stage prompt. A wheel can be complete while the sdist fails to build or omits package data. |
 | 3 | In that clean venv, from a temp dir, the full scenario-02 happy path runs green. This is the assertion that catches a data file missing from the wheel. |
-| 4 | Every shipped stage prompt and artifact template is reachable from the installed package — enumerate them via the CLI (`tcw work lifecycle --json`, `tcw work scaffold` over every artifact id) rather than by listing files in the source tree. |
+| 4 | Every shipped stage prompt and artifact template is reachable **and non-empty** from the installed package. Enumerate via the CLI (`tcw work lifecycle --json`, then `tcw work scaffold` over every artifact id) rather than by listing source-tree files — but assert the *content*: each stage emits non-empty built-in instructions, and each scaffolded draft carries its distinguishing heading, `intake` excepted (legitimately empty). Exit 0 alone passes against a package whose templates were all dropped. |
 | 5 | `tcw --version` in the clean venv matches the version in `pyproject.toml`. |
 | 6 | All **five** version-bearing files agree: `pyproject.toml`, `tcw/__init__.py`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`. |
 | 7 | `.agents/plugins/marketplace.json` carries **no** version key — deliberately, and a well-meaning addition would be a regression. |
@@ -40,12 +41,22 @@ Publishing to PyPI. That requires credentials and MFA and is a human step.
 
 ## Notes for the implementer
 
-Assertion 8 must run against a **copy**, never this repository — it commits and
-tags. `git clone` the repo into the temp dir (a local clone is fine and fast) and
-operate there. Getting this wrong tags the developer's real repo, which is the
-single most damaging thing any script in this suite could do. Guard it: assert
-the working directory is under the temp dir before invoking the script, and fail
-hard if it is not.
+**This is the scenario that can damage the developer's real repository.** Both
+`python -m build` and every `cut_version.py` probe run inside a **local clone**
+under the temp root — `build` alone would otherwise drop `dist/`, `build/` and
+egg metadata into the working checkout, and the version cut commits and tags.
+
+A "cwd is under the temp dir" check is **not sufficient**. Before invoking the
+release script assert all three, and abort hard if any fails:
+
+1. `git rev-parse --show-toplevel` equals the expected clone path.
+2. `realpath scripts/cut_version.py` is below that same clone.
+3. The **original** repository's `HEAD`, tag list and porcelain status are
+   snapshotted before and compared after — the backstop that catches a mistake
+   the first two miss.
+
+Each of `patch`, `minor`, `major` and the explicit `X.Y.Z` case needs its own
+fresh clone. Never reuse a clone after it has been tagged once.
 
 Assertion 3 is the highest-value line in the whole suite. Everything else tests
 behaviour that source-tree tests also see; this one tests the artifact users

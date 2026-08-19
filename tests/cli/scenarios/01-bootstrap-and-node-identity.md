@@ -23,10 +23,11 @@ decides it is a node.
 | 4 | `tcw init --id demo work` creates **only** `docs/work/`; the other two component roots are absent. |
 | 5 | Re-running `tcw init --id demo` on an initialised node is idempotent: exit 0, and no tracked file's content changes. |
 | 6 | `tcw work init` after `tcw init --id demo taxonomy` adds the work store without disturbing the taxonomy tree. |
-| 7 | Every command run from a **nested subdirectory** (`mkdir -p a/b/c && cd a/b/c`) finds the node and behaves as it does from the root. |
+| 7 | Node discovery works from a **nested subdirectory** (`mkdir -p a/b/c && cd a/b/c`). Assert a named list, not "every command": `tcw work list`, `tcw work path`, `tcw taxonomy list`, `tcw capabilities list`, `tcw validate`, and `tcw work docs`. Each must produce the same output as from the node root. |
 | 8 | Outside any node, `tcw work list` exits non-zero and names `tcw init` in the message. |
 | 9 | `tcw --version` exits 0 and prints a string matching `^tcw \d+\.\d+\.\d+$` (or the argparse default form — assert the shape, not the number). |
-| 10 | `tcw init --id demo --work-path ../external-store` puts the work store at the external path; `tcw work path` prints that path, and `docs/work/` is **not** created inside the node. |
+| 10 | `tcw init --id demo --work-path ../external-store` puts the work store at the external path; `tcw work path` prints it, and `docs/work/` is **not** created inside the node. **The external path must itself be inside a git repository** — `git init` it first. Otherwise `tcw init` refuses with `work.path target is not inside a Git repository`, which is assertion 10a. |
+| 10a | `--work-path` pointing at a plain directory that is **not** a git repository is refused, naming the path. Measured; this is why 10 needs the extra `git init`. |
 | 11 | With an external work store, `tcw work new` creates the item under the external path and the node repo stays clean of work folders. |
 | 12 | `tcw work path <slug>` prints the item folder; `tcw work path` with no slug prints the store root. Both paths exist on disk. |
 | 13 | `tcw taxonomy path` and `tcw capabilities path` print existing directories. |

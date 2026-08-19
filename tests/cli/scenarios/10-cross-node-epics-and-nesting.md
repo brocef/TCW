@@ -16,11 +16,11 @@ Work that spans more than one item or more than one repository.
 | # | Assertion |
 | - | --------- |
 | 1 | `tcw work new "Child" --parent $EPIC` nests the child under the parent; `tcw work path` for the child resolves inside the parent's folder. |
-| 2 | `tcw work show $EPIC` lists its children; `tcw work list` renders the nesting. |
+| 2 | `tcw work list` renders the nesting, and each child's `tcw work path` resolves beneath the parent's folder. **Human `tcw work show` does not enumerate children** — do not assert that it does. |
 | 3 | `--epic` marks `type: epic`, visible in `show --json`. |
-| 4 | An epic's `complete` is gated on its children: with a child still open, `complete --resolution done --confirm` is refused; once every child is resolved, it completes. |
+| 4 | **The gate is on `--initiative` children, not `--parent` children** — measured, and the distinction is deliberate. An epic with an open child created via `--initiative $EPIC` is refused, naming the open child; once that child is resolved it completes. An epic whose only open child was created with `--parent $EPIC` **completes anyway, exit 0**. Assert both halves: they look identical from the outside and mean different things. |
 | 5 | `--initiative <epic-slug>` stamps the back-pointer, and it round-trips through `show --json`. |
-| 6 | **Two nodes on disk**, parent and child, registered through the CLI. `tcw work nodes` in the parent lists the child, and in the child lists the parent. |
+| 6 | **Two nodes on disk**, parent and child, wired by writing reciprocal `connected-projects` blocks (see the note below — there is no registration CLI). `tcw work nodes` in the parent lists the child, and in the child lists the parent. |
 | 7 | `tcw work delegate <child-id> "Please do X"` writes a request into the **child node's** inbox, not the parent's. Asserted by reading the child's `tcw work inbox list`. |
 | 8 | The delegated entry records the **originating project id** correctly (fixed defect: `2026-07-20-fix-delegate-inbox-origin-project-id`). |
 | 9 | `tcw work escalate "Please decide Y"` from the child writes into the **parent's** inbox. |
@@ -44,9 +44,24 @@ Three-level node chains, and cross-node epic slices linking upward — a known
 open item (`2026-07-23-cross-node-epic-slices-cannot-link-their-parent-epic-...`).
 Recorded here as a gap so nobody reads its absence as coverage.
 
+
+## Node registration has no CLI — read this before implementing
+
+Both this scenario and scenario 08 originally said to register nodes "through the
+CLI". **There is no registration command.** `tcw`'s verbs are `init`, `validate`,
+`serve` and the three component groups; `tcw work nodes` only *reports* the graph.
+The in-tree tests write the reciprocal `connected-projects` blocks into each
+node's `tcw-config.yaml` directly, and these scenarios must do the same.
+
+Write the config, then **verify the wiring through the CLI** — `tcw work nodes`
+in each direction, and `tcw validate` — so the setup is hand-written but the
+assertions stay black-box. Note the gap in the script's header comment: a
+registration verb is a plausible future addition, and whoever adds it should find
+this note.
+
 ## Notes for the implementer
 
-Build the node graph entirely through the CLI. Assertion 17 needs the child to be
+Assertion 17 needs the child to be
 a genuine nested git repo (`git init` inside the parent's tree, with the path in
 the parent's `.gitignore`) — that is the real-world layout and the one that broke
 before.

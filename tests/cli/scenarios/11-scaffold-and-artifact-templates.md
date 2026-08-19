@@ -19,7 +19,7 @@ one write path where a node's config can substitute a whole document.
 | 2 | The scaffolded file is non-empty and carries the built-in template's headings. |
 | 3 | Re-running without `--force` is **refused** non-zero and does not overwrite; the existing content is unchanged byte-for-byte. |
 | 4 | `--force` replaces it. |
-| 5 | Every artifact id in the `--help` list scaffolds successfully — table-driven, so a newly added artifact with no template is caught. |
+| 5 | Every artifact id in the `--help` list scaffolds, **and the draft carries its template's distinguishing heading** — `intake` excepted, which is legitimately empty (0 bytes, measured). Exit 0 alone proves nothing here: a missing template resolves to an empty string and scaffolds "successfully", so a content assertion is what actually catches a template dropped from the registry. |
 | 6 | An unknown artifact id exits non-zero and lists the valid ids. |
 | 7 | A node binding `artifacts.spec: [{blob: "CUSTOM"}]` gets `CUSTOM` instead of the built-in — `artifacts:` is **first-match-wins**, so a bound template replaces rather than composes. |
 | 8 | A `when: {tags: [bug]}` binding applies only to items carrying that tag; an item without it gets the built-in. Both branches asserted. |

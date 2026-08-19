@@ -63,6 +63,9 @@ scenario if review thinks the risk is real.
 
 Assertion 22 is the one worth the setup cost: recursion-by-default is a 1.0.0
 behaviour change, and a child node whose links are broken must fail the parent's
-validate. Build the two nodes as siblings under the temp dir and register them
-through the CLI — never by hand-editing `tcw-config.yaml`, since the registration
-path is itself under test.
+validate. Build the two nodes as siblings under the temp dir. **There is no registration
+CLI** — see the note in scenario 10 — so write the reciprocal `connected-projects`
+blocks into each `tcw-config.yaml` by hand, then verify the wiring through
+`tcw work nodes` and `tcw validate`. An earlier draft of this document said to
+register them through the CLI and never to hand-edit the config. That was wrong,
+and following it would have blocked assertions 17–23 outright.

@@ -24,8 +24,8 @@ artifacts and commits that go with it.
 | 8 | After each transition, `git status --porcelain` in the node is **clean** — TCW commits its own status moves. |
 | 9 | The commit count increases by exactly one per transition, and each message names the slug and the destination status. |
 | 10 | `tcw work list` (no flags) **omits** the completed item; `tcw work list --all` and `tcw work list --status completed` include it. |
-| 11 | `tcw work show --json $SLUG` emits parseable JSON carrying a schema version, the slug, the status, and the artifact list. Parsed with `python -m json.tool` or `jq`, not grepped. |
-| 12 | Artifacts written into the item folder (`initial-request.md`, `spec.md`, …) appear in both `show` and `show --json` as present. |
+| 11 | `tcw work show --json $SLUG` emits parseable JSON carrying `schema`, `slug`, `status`, and `artifacts`. **`artifacts` is an object keyed by artifact name with boolean values** — `{"spec": true, "plan": false, …}`, not an array of objects. Parsed with `jq`/`json.tool`, never grepped. |
+| 12 | An artifact written into the item folder reports `true` in `show --json`, and the item's lifecycle letters on the `work list` board change accordingly. **Human `tcw work show` does not enumerate artifacts at all** — it prints slug, status, title and metadata — so do not assert artifact names in its output. |
 | 13 | A **whitespace-only** artifact reports `present: false` — the lifecycle presence rule. (Regression: the two presence rules disagreeing is a fixed defect.) |
 | 14 | `tcw work new --priority 5 --effort high --complexity M --tag bug` records all four; `--effort H` and `--effort high` produce the same stored value. |
 

@@ -53,8 +53,27 @@ tests/cli/
   run-all.sh         runs every scenario, reports a summary
 ```
 
+## Cross-cutting assertions every script owes
+
+Two contracts are easy to leave implicit and are worth asserting wherever they
+apply, rather than in a scenario of their own:
+
+- **`path`-style commands emit exactly one absolute path and a newline on
+  stdout, and nothing on stderr.** `tcw work path`, `tcw taxonomy path`,
+  `tcw capabilities path`, `tcw work inbox path` and `tcw work scaffold` are all
+  consumed as `$(…)`. "Prints a directory that exists" is a weaker claim than the
+  one callers actually depend on.
+- **Stream discipline.** Any command whose stdout is captured must keep progress
+  and warnings on stderr. Assert stdout exactly, not with `grep`.
+
 ## Status
 
-Scenarios are written and under review. **No scripts exist yet** — that is
-deliberate: the scenarios are the specification, and they get reviewed by Codex
-and a local model before anything is implemented against them.
+Scenarios are written and **reviewed**. Codex's pass found seven blocking
+specification errors, three tautological assertions, three ways a script could
+damage the developer's machine, and one product gap that made two scenarios
+unimplementable as written; all were verified against the source or a scratch
+node before being accepted, and all are folded in. A local-model pass is
+outstanding.
+
+**No scripts exist yet** — that is deliberate. The scenarios are the
+specification, and an error here becomes thirteen wrong scripts.
