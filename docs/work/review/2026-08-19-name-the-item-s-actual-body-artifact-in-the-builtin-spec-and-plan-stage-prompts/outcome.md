@@ -63,7 +63,7 @@ Re-classified, unchanged, as the spec set out: `skills/tcw-work/SKILL.md:30,43`
 | 9     | Met — every prompt ≤ 50; `spec.md` at 49, `postmortem.md` at 42. `tests/test_shipped_prompts.py` unmodified.   |
 | 10    | Met — all three stages list `intake.md`; the fixture diff was 55 lines across 11 files, every one an `inputs` line. |
 | 11    | Met — table above.                                                                                            |
-| 12    | Met — 1759 passed, `validate OK`, all three capability descriptions read back correctly.                       |
+| 12    | **Not met as claimed when this was written.** 1759 passed and `validate OK` were true, but only **two** of the three capability wording deltas had shipped — `work/run-a-lifecycle-stage` was missed. Caught at `verify` reconciling the ledger; fixed in `696da94`. |
 
 ## What the plan and spec got wrong
 
