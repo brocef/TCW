@@ -3,11 +3,12 @@
 **Purpose.** Decide _what_ to build and why, before deciding how. A spec that
 describes an implementation has skipped its own job.
 
-**Inputs.** `initial-request.md` and its `## References` — the starting set for
-research, not the limit of it. With neither that section nor an "asked; none
-provided" note in `## Notes`, nobody asked: research from scratch rather than
-reading silence as "there was nothing to point at". Repository discovery is
-unrestricted; a spec written without reading the code it changes is a guess.
+**Inputs.** {{tcw:body}}the item's body artifact{{/tcw:body}}, read as filed. An
+`intake.md` is raw arrival — the `request` stage has not run, so it has no
+`## References` and the intake *is* the request. In an `initial-request.md`,
+`## References` is the research starting set, not its limit; with neither it nor
+an "asked; none provided" note, nobody asked — research from scratch rather than
+reading silence as "nothing to point at". Repository discovery is unrestricted.
 
 **Produce** `spec.md`, in the item's folder, with seven required sections:
 **Capability changes** (planned ledger deltas only — no records are written
@@ -19,7 +20,7 @@ criteria**, **Risks**. Optional `## Notes`.
 1. **Product-first.** On any user-facing delta, check the project's taxonomy
    for the Vocabulary and Feature entries it touches, and the standing
    capability ledger, before writing the technical design.
-2. Read the request's references first, then the code the change touches.
+2. Read the body's references first, then the code the change touches.
    **Ground every claim about current behavior in the code, with file and
    line.** A claim recalled rather than checked is how a spec starts lying.
 3. Write acceptance criteria that are _checkable_ by someone else without

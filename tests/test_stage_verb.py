@@ -8,10 +8,11 @@ import pytest
 import yaml
 
 from tcw.store.base import (
-    STAGE_IDS, STAGE_STATUSES, WORK_STATUSES, WorkStore,
+    STAGE_IDS, STAGE_STATUSES, WORK_STATUSES, Artifact, WorkStore,
 )
 from tcw.store.fs import FsWorkStore, init
-from tcw.work.resolve import load_builtins, substitute_documentation
+from tcw.work.resolve import (
+    load_builtins, substitute_body, substitute_documentation)
 
 
 def _node(tmp_path: Path, name: str = "repo") -> Path:
@@ -310,19 +311,24 @@ def test_an_unconfigured_node_prints_tcws_own_instructions(one_of_each):
     rather than exit 0 and silence.
 
     The shipped prompt is a *template*: `plan` and `implement` wrap their
-    documentation instruction in `{{tcw:documentation}}…{{/tcw:documentation}}`.
-    With nothing configured that span resolves to its own inner text, so the
-    comparison is against the resolved source rather than the raw file. The bytes
-    an unconfigured node actually receives are pinned independently, against a
-    fixture captured before any of this existed, in `test_prompt_fallback.py`.
+    documentation instruction in `{{tcw:documentation}}…{{/tcw:documentation}}`,
+    and `spec` and `plan` name their input through `{{tcw:body}}…{{/tcw:body}}`.
+    With nothing configured the documentation span resolves to its own inner
+    text; the body span resolves against the item, and `one_of_each` builds every
+    item with a `body=`, so it resolves to the request. The comparison is against
+    the resolved source rather than the raw file. The bytes an unconfigured node
+    actually receives are pinned independently, against a fixture captured before
+    any of this existed, in `test_prompt_fallback.py`.
     """
     root, slugs = one_of_each
     shipped = load_builtins().stage_prompts
+    has_request = [Artifact("initial-request", True)]
     for stage in sorted(set(STAGE_IDS) - {"inbox"}):
         status = STAGE_STATUSES[stage][0]
         r = _cli(root, stage, slugs[status])
         assert r.returncode == 0, r.stderr
-        expected = substitute_documentation(shipped[stage], ())
+        expected = substitute_body(
+            substitute_documentation(shipped[stage], ()), has_request)
         assert r.stdout == expected.rstrip() + "\n"
 
 

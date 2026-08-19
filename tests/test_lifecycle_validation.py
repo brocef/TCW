@@ -275,12 +275,15 @@ def test_the_rejected_spelling_still_resolves_to_the_builtin(tmp_path):
     discards it. So the config `validate` now refuses still *runs*, and what it
     runs as is the built-in — which is the ambiguity the rejection exists to
     make visible rather than to change."""
-    from tcw.work.resolve import load_builtins, resolve_prompts
+    from tcw.work.resolve import (
+        load_builtins, resolve_prompts, substitute_body)
 
     policy, found = parse_lifecycle_policy({"stages": {"spec": []}})
     assert found
     res = resolve_prompts(policy, "spec", None, tmp_path, load_builtins())
-    assert res.text == load_builtins().stage_prompts["spec"].rstrip()
+    # No artifacts are passed, so `{{tcw:body}}` resolves to its own inner text.
+    assert res.text == substitute_body(
+        load_builtins().stage_prompts["spec"], ()).rstrip()
 
 
 def test_the_legacy_corpus_config_is_the_one_now_rejected():

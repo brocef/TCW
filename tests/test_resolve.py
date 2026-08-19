@@ -14,7 +14,7 @@ from tcw.store.base import (
 from tcw.work.projection import WORK_ITEM_SCHEMA
 from tcw.work.resolve import (
     Builtins, ResolveError, hook_payload, load_builtins, resolve_artifact,
-    resolve_prompts, select, substitute_documentation,
+    resolve_prompts, select, substitute_body, substitute_documentation,
 )
 
 ENV = dict(os.environ)
@@ -336,10 +336,12 @@ def test_an_unconfigured_stage_resolves_to_the_builtin(sid, tmp_path):
     repo has no `work.lifecycle` key at all — and it gets TCW's instructions."""
     b = load_builtins()
     res = resolve_prompts(LifecyclePolicy(), sid, item(), tmp_path, b, env=ENV)
-    # `_join` rstrips each part, and a `{{tcw:documentation}}` span with nothing
-    # configured resolves to its own inner text; the result is otherwise
+    # `_join` rstrips each part, and a span with nothing to fill it resolves to
+    # its own inner text — `{{tcw:documentation}}` with no entries configured,
+    # `{{tcw:body}}` with no artifacts passed. The result is otherwise
     # byte-for-byte the file's.
-    assert res.text == substitute_documentation(b.stage_prompts[sid], ()).rstrip()
+    assert res.text == substitute_body(
+        substitute_documentation(b.stage_prompts[sid], ()), ()).rstrip()
     assert [(p.kind, p.matched, p.executed) for p in res.plan] == [
         ("builtin", True, False)]
 
@@ -368,7 +370,8 @@ def test_builtin_composes_with_the_nodes_own_text(tmp_path):
     policy = policy_of({"stages": {"spec": {"prompt": [
         {"builtin": True}, {"blob": "X"}]}}})
     res = resolve_prompts(policy, "spec", item(), tmp_path, b, env=ENV)
-    assert res.text == b.stage_prompts["spec"].rstrip() + "\n\n" + "X"
+    assert res.text == substitute_body(
+        b.stage_prompts["spec"], ()).rstrip() + "\n\n" + "X"
 
 
 def test_a_stage_whose_only_binding_does_not_match_stays_empty(tmp_path):
