@@ -2,14 +2,33 @@
 
 ## Capability changes
 
-**None.** No capability gains, loses, or changes status. The Git-required write
-contract already stands and is documented in prose, not in the ledger:
-`README.md:186` ("It refuses outside a git repo (write transitions need git)")
-and `README.md:1076` ("a **node** is a git repo with a usable work store").
-`cli/scaffold-the-doc-trees` already says "scaffold component trees in the
-current git work tree". Nothing in the ledger asserts that a write outside a
-repository works, so nothing there becomes false or newly true — only the
-failure's shape changes. No taxonomy Vocabulary or Feature entry changes either.
+**Three entries change; none is added, removed, or restatused.** Recorded in this
+item's `capabilities.yaml` sidecar under `changed:`. The test applied was not "is
+this user-observable" — every write command is — but "does a ledger **body** state
+something this change makes newly true or newly false":
+
+| Entry | The sentence in its body | Why it changes |
+| --- | --- | --- |
+| `taxonomy/add-a-term` | "A refused add exits non-zero and **writes nothing**" | False today outside git: `tcw taxonomy add` leaves the term folder behind (Problem §1). The promise becomes unconditional. |
+| `work/start-a-work-item` | "**Starting work is an atomic claim.**" | False today outside git: the claim's `os.replace` lands and the command dies, so the item is in `active/` while the user sees a traceback (Reproduction). Becomes atomic in outcome. |
+| `web/editing` | "Every saved object is immediately checked with TCW's standard validation rules, with any findings shown as post-save warnings" | The editor's write failure changes from HTTP 500 carrying a raw `git add …` command line, after a partial write, to a 4xx carrying the refusal, with nothing written. |
+
+**Deliberately not listed**, with reasons from the ledger rather than from README:
+
+- `cli/scaffold-the-doc-trees` — `tcw init`'s message, exit code and behavior are
+  byte-identical after this change; it is the entry the others are aligned *to*.
+- `capabilities/add-a-capability`, `capabilities/set-a-capabilitys-status`, and
+  the other ~20 write entries — their bodies describe *what* the write does and
+  which refusals it already has; none promises anything about a failed write's
+  filesystem residue, so none becomes true or false here. Listing all of them
+  would record the diff, not the ledger delta.
+- `cli/run-from-a-git-worktree` — its "nothing changes for a project that is not
+  in a git repository at all" is scoped to that item's re-anchoring change, not a
+  standing guarantee about writes. Judged out; a reviewer who disagrees should add
+  it to the sidecar rather than reword the body.
+
+No status flips (all three stay `Supported`), no capability is added or removed,
+and no taxonomy Vocabulary or Feature entry changes.
 
 ## Reproduction
 
@@ -87,7 +106,7 @@ node. "Mutated" is a recursive file-level `diff -rq` against the pre-command tre
 | `tcw work tags add` / `tags rm` | **traceback**, rc 1 | **yes** — `tcw-config.yaml` rewritten |
 | `tcw work scaffold spec <backlog-slug>` | **traceback**, rc 1 | **yes** — `spec.draft.md` written |
 | `tcw work reconcile <epic>` | **traceback**, rc 1 | **yes** |
-| `tcw work submit <slug>` | **traceback**, rc 1 | no (`git_mv` stages first, `tcw/store/fs.py:345`) |
+| `tcw work submit <slug>` | **traceback**, rc 1 | no (`git_mv` runs `git add` at `tcw/store/fs.py:345` before the `git mv` at `:346`, so it fails before moving) |
 | `tcw work complete <slug> --resolution done --confirm` | **traceback**, rc 1 | no |
 | `tcw work complete <slug> --resolution wontfix --confirm` | **traceback**, rc 1 | no |
 | `tcw work drop <slug> --confirm` | **traceback**, rc 1 | no (`_delete` → `_rm`) |
@@ -121,11 +140,11 @@ Every filesystem-store write ends at `git_stage` (`fs.py:299-306`), `git_rm`
 (`:309-311`) or `git_mv` (`:321-346`), all of which run `git` with `check=True`.
 Outside a repository `git add` exits 128 and `subprocess.CalledProcessError`
 propagates uncaught. The adapter already knows this: `_effect_transition`
-comments at `fs.py:3143-3146` that "`CalledProcessError` is not in the CLI's
+comments at `fs.py:3143-3147` that "`CalledProcessError` is not in the CLI's
 handled set and would exit as a traceback", and works around it locally for one
 case by re-raising as `TransitionCommitError`.
 
-`git_ignored` (`fs.py:314-319`) returns `False` outside a repository by design,
+`git_ignored` (`fs.py:314-318`) returns `False` outside a repository by design,
 so `git_stage` builds a non-empty pathspec and then fails — there is no accidental
 no-op that would save the caller.
 
@@ -150,8 +169,13 @@ ever seen for this condition, and it is the natural single source for the rest.
 
 ## Goals
 
-1. **Every** filesystem-backed write entry point — CLI and `tcw serve` alike —
-   refuses outside a git repository **before its first filesystem mutation**.
+1. **Every public write entry point** — every CLI subcommand and every `tcw serve`
+   HTTP write route, enumerated in Problem §1 — refuses outside a git repository
+   **before its first filesystem mutation**. Scope is the *store operations* those
+   surfaces call. Module-level adapter helpers reached only by a direct in-process
+   caller (`write_sentinel`, `init`, `ensure_worktree_ignored`) are **excluded by
+   name**, with the reasoning in Design; the CLI guard already covers their public
+   route, and giving them their own guard would refuse `tcw init` twice.
 2. **One wording and one exit code** across every write, `tcw init` included, and
    `tcw init`'s current message and exit code are what the others adopt.
 3. **No Python traceback from any `git` subprocess failure** reaches a user, not
@@ -186,7 +210,7 @@ ever seen for this condition, and it is the natural single source for the rest.
   repository — for reads as well as writes. Pre-existing, differently scoped,
   untouched.
 - **`tcw serve`'s HTTP status taxonomy.** The refusal rides the existing
-  `ValueError` → 422 mapping (`serve/__init__.py:194-217`); no new exception type
+  `ValueError` → 422 mapping (`serve/__init__.py:196-217`); no new exception type
   and no new status code.
 - **The abstract store interfaces** (`tcw/store/base.py`). Nothing there changes.
 - **Lifecycle hooks** (`tcw/work/hooks.py:61`) — user shell, no `check=True`,
@@ -230,23 +254,38 @@ On the stores, mirroring the existing `_stage`/`_rm`/`_mv` override triple
 
 ```python
 # FsTreeStore
+def _require_repository(self) -> None:
+    require_repository(self._write_git_root())
+
 def _write_git_root(self) -> Path:
     return self.node_root
-
-def _require_repository(self) -> None:
-    if not self._repo_ok:                       # memoized: git_root costs ~6.6 ms
-        require_repository(self._write_git_root())
-        self._repo_ok = True
 
 # FsWorkStore — the work store's git root can be a different repository
 def _write_git_root(self) -> Path:
     return self.store_git_root
 ```
 
-Memoized because `git_root` shells out: measured **6.6 ms** per call on this
-machine, in-repo and out. A store instance is per-command, so one call per
-command is the right budget; a multi-write command (`reconcile`, `inbox accept`)
-would otherwise pay it per staged path. Only success is cached.
+**Not memoized, deliberately**, though `git_root` shells out at a measured
+**6.6 ms** per call. Two reasons, both fatal to a cache:
+
+1. **There is nowhere correct to initialize it.** `FsWorkStore.__init__`
+   (`fs.py:1980-1985`) does **not** call `super().__init__()` — it assigns
+   `root`, `node_root`, `store_git_root` and `config` itself — so a `_repo_ok`
+   attribute added to `FsTreeStore.__init__` (`fs.py:789-792`) would be absent on
+   every work store and the first work write would raise `AttributeError`.
+2. **A store is not per-command.** `tcw serve` opens stores through `_stores()`
+   (`serve/__init__.py:396`) *and* reopens work stores through `_resolve_work()`
+   (`:404`), and tests routinely hold one instance across several writes
+   (`tests/test_environment_hardness.py:832` does `create` → `start` → `complete`
+   on one store). Caching only success misses the dangerous direction: a
+   repository removed *after* a cached success would let a retained store mutate
+   files and reach `git add` without re-checking. Caching both directions is
+   worse — it freezes repository membership for the store's lifetime.
+
+The cost is a handful of `git rev-parse` calls per command on top of the one
+`git_root` already makes at store open. Accepted; if a real command ever shows
+this in a profile, the fix is to make the *check* cheaper, not to remember its
+answer.
 
 ### Tier 1 — the guarantee: no traceback, ever
 
@@ -254,13 +293,32 @@ would otherwise pay it per staged path. Only success is cached.
 `FsTreeStore._stage`/`_rm`/`_mv` (`fs.py:798`, `:801`, `:804`) and
 `FsWorkStore._stage`/`_rm`/`_mv` (`fs.py:2020`, `:2023`, `:2026`).
 
-Every filesystem-store write in the codebase funnels through these three names,
-so this is structural: a write method added tomorrow that forgets Tier 2 still
-fails with the right message rather than a traceback. It also makes the guard
-sufficient on its own for the delete-shaped methods, whose only mutation *is* the
-`_rm`/`_mv` — taxonomy `remove` (`:1033`), capabilities `remove` (`:1551`) and
-`reset` (`:1560`), work `_delete` (`:3199`), `delete_artifact` (`:3586`),
-`delete_plan_stage` (`:2426`). Those need nothing else.
+Nearly every filesystem-store write funnels through these three names, so this is
+structural: a write method added tomorrow that forgets Tier 2 still fails with
+the right message rather than a traceback. It also makes the guard sufficient on
+its own for the delete-shaped methods, whose only mutation *is* the `_rm` call —
+taxonomy `remove` (`_rm` at `:1040`), capabilities `remove` (`:1558`) and `reset`
+(`:1575`), work `_delete` (`:3201`), `delete_artifact` (`:3593`),
+`delete_plan_stage` (`:2433`), and `inbox_accept`'s consumption of the source
+entry (`:3055`). Those need nothing else.
+
+**Three calls bypass the methods and must be named, not assumed away** — a
+`grep -n '^\s*git_\(stage\|rm\|mv\)(' tcw/store/fs.py` finds every one:
+
+- `FsWorkStore.start` calls the module-level `git_stage` directly at `fs.py:2076`
+  (take-over branch) and `:2145` (main claim path), because both stage a
+  `src`/`dst` pair the claim already renamed. **Tier 1 therefore does not reach
+  either.** The guard must be the literal first statement of `start` (`:2054`),
+  ahead of the take-over branch's `dump_yaml` (`:2072`) and `os.replace`
+  (`:2074`) — not merely "early in the method". This is the one place where the
+  two tiers do not overlap, so the plan owns a test that exercises `--take-over`
+  outside a repository, not only the ordinary path.
+- `ensure_worktree_ignored` (`fs.py:460-468`) is the only filesystem-store write
+  outside the store classes: it writes `.gitignore` and then stages it. It is
+  unreachable outside a repository because its single caller runs it *after*
+  `st.start(...)` (`work/cli.py:545` then `:557`), which Tier 2 has already
+  refused. Verified by reading the call order, and pinned by criterion 1's
+  `--worktree` row; no guard of its own.
 
 ### Tier 2 — fail closed: no partial write
 
@@ -272,24 +330,52 @@ existing "validate before touching disk" checks already live:
 | --- | --- | --- |
 | `FsTreeStore._write_node` (`:836`) | `d.mkdir` (`:846`) | taxonomy `add` (`:1006`), `update_term` (`:1232`), capabilities `add` (`:1538`) |
 | `FsTaxonomyStore.extends_add` (`:1042`) / `extends_remove` (`:1063`) | `dump_yaml` (`:1060`, `:1073`) | — |
+| `FsCapabilitiesStore._write_meta` (`:1591`) | `_atomic_write` (`:1593`) | the second write-before-stage funnel; guarded so Tier 1's structural claim holds for future callers |
 | `FsCapabilitiesStore.set` (`:1644`) | `d.mkdir` (`:1648`) | — |
-| `FsCapabilitiesStore.update_capability` (`:1915`) | its own `mkdir` ahead of `_write_node`/`_write_meta` | — |
+| `FsCapabilitiesStore.update_capability` (`:1915`) | its own `mkdir` (`:1933`) ahead of `_write_node`/`_write_meta` | — |
 | `FsCapabilitiesStore.extends_add` (`:1664`) / `extends_remove` (`:1683`) | `dump_yaml` | — |
-| `FsWorkStore.start` (`:2054`) | `os.replace` (`:2074`) and the main claim path (`:2145`) | — |
+| `FsWorkStore.start` (`:2054`) — **first statement**, see below | take-over `dump_yaml` (`:2072`), `os.replace` (`:2074`), `git_stage` (`:2076`); main path `:2145` | — |
 | `FsWorkStore.write_plan_stage` (`:2412`) | `path.parent.mkdir` (`:2421`) | — |
 | `FsWorkStore._write_tags` (`:2734`) | `dump_yaml` (`:2745`) | `register_tags` (`:2749`), `unregister_tags` (`:2753`) |
-| `FsWorkStore.inbox_accept` (`:2995`) | its destination writes | — |
+| `FsWorkStore.inbox_accept` (`:2995`) | `dump_yaml`, attachment `mkdir`, `shutil.copy2`, `os.replace` (`:3042-3048`) | — |
 | `FsWorkStore._set_fields_at` (`:3091`) | `dump_yaml` (`:3102`) | `set_field` (`:3088`) |
 | `FsWorkStore._effect_transition` (`:3105`) | `mkdir` (`:3131`) | `submit`/`rework`/`complete`/`drop` via `WorkStore.transition` |
 | `FsWorkStore.create_work` (`:3259`) | `d.mkdir` (`:3360`) | `create` (`:3069`), which delegates |
-| `FsWorkStore.update_work` (`:3371`) | its state/body writes | — |
-| `FsWorkStore.write_artifact` (`:3533`) / `write_draft` (`:3567`) / `write_sidecar` (`:3615`) | `_atomic_write` | `tcw work scaffold`, artifact PUTs |
+| `FsWorkStore.update_work` (`:3371`) — **not at the top**, see below | `_atomic_write_all` (`:3494`) and the reparent `move_to.parent.mkdir` (`:3504`) | — |
+| `FsWorkStore.write_artifact` (`:3533`) / `write_draft` (`:3567`) / `write_sidecar` (`:3615`) | `_atomic_write` (`:3557`, `:3582`, `:3655`) | `tcw work scaffold`, artifact and sidecar PUTs |
 
-Eighteen one-line insertions in one file. Six of them (`extends_add` ×2,
+Nineteen one-line insertions in one file. Six of them (`extends_add` ×2,
 `extends_remove` ×2, `_write_tags`, `_set_fields_at`) are the identical
 `dump_yaml(p, x); self._stage(p)` shape; folding those into one
 `FsTreeStore._write_yaml(path, data)` helper that carries the guard is a net
 deletion and the plan's call, not a requirement.
+
+**Two rows are placement-sensitive and must not be read as "at the top":**
+
+- **`update_work`** returns early without writing anything when nothing changed
+  (`fs.py:3484-3485`). A guard at the top would make that no-op fail outside git,
+  turning a read-shaped call into a refusal. The guard belongs **after** the
+  no-change decision and immediately before `_atomic_write_all` (`:3494`), and
+  the reparent branch's `mkdir` (`:3504`) is downstream of that point.
+- **`start`**, for the opposite reason — see the bypass note below.
+
+Any other Tier-2 method with a "nothing to do" path needs the same treatment.
+Walking the list, the only other one is `delete_artifact` (`:3592-3593` skips
+`_rm` when the file is absent), and it is Tier-1-only anyway; the remaining
+seventeen mutate unconditionally once they pass validation.
+
+**Excluded module-level helpers, named rather than silently skipped** (Goal 1's
+narrowing):
+
+| Helper | Writes | Why no guard |
+| --- | --- | --- |
+| `write_sentinel` (`:107`) | `dump_yaml` (`:127`), never stages | Reached from `init`, itself reached from `run_init`, which already refuses. No independent public route. |
+| `init` (`:548`) | `shutil.rmtree` (`:580`), `dump_yaml` (`:585`), `mkdir`/`.gitkeep` (`:592-593`) | `run_init` (`cli.py:30-32`) guards its only public route. Guarding it again would probe git twice on the one command that must probe it first anyway. |
+| `ensure_worktree_ignored` (`:460`) | `.gitignore` via `ensure_ignored` (`:455-456`) before staging (`:467`) | Unreachable outside a repository: its single caller runs it *after* `st.start(...)` (`work/cli.py:545` then `:557`), which Tier 2 has already refused. Verified by reading the call order; pinned by criterion 1's `--worktree` row. |
+
+A direct in-process caller of any of the three bypasses the guarantee. That is the
+scope Goal 1 states, and it is honest: these three are adapter scaffolding, not
+store operations, and the CLI is the only shipped caller of each.
 
 ### The CLI boundary
 
@@ -323,7 +409,7 @@ same no-partial-write property. The already-present blanket handlers
 (`serve/__init__.py:462-491`) mean serve never showed a traceback; what improves
 is the response — from `500 server error: Command '[…git add…]' returned non-zero
 exit status 128` to a `422` whose JSON body is the one-line message, routed by
-the existing `ValueError` branch of `_map_store_error` (`serve/__init__.py:213-216`).
+the existing `ValueError` branch of `_map_store_error` (`serve/__init__.py:211-215`).
 
 ## Abstraction litmus test
 
@@ -348,54 +434,89 @@ the existing `ValueError` branch of `_map_store_error` (`serve/__init__.py:213-2
 
 Criteria 1-4 are checked against the Reproduction fixture: a node scaffolded and
 committed inside a repository, then `.git` removed, under a directory tree with
-no repository above it.
+no repository above it. A **manifest** below means a recursive `path → sha256`
+map of the node, `.git` excluded.
 
-1. **One wording, one code.** Each of these exits **1**, prints exactly one line
-   on stderr matching `^tcw[a-z ]*: not inside a git repository\. Run `git init`
-   first\.$`, and prints no line containing `Traceback`:
-   `tcw init` · `tcw work init` · `tcw work new "T"` · `tcw work start <slug>` ·
-   `tcw work start <slug> --worktree` · `tcw work edit <slug> --title X` ·
-   `tcw work submit <slug>` · `tcw work complete <slug> --resolution done --confirm` ·
-   `tcw work drop <slug> --confirm` · `tcw work tags add t` ·
-   `tcw work scaffold spec <backlog-slug>` · `tcw work inbox accept <ref>` ·
+1. **One wording, one code, on every public write.** Each command below exits
+   **1**, prints exactly one line on stderr matching
+   ``^tcw[a-z ]*: not inside a git repository\. Run `git init` first\.$``, and
+   prints no line containing `Traceback`. The list is Problem §1's table with no
+   row omitted, which is what makes it evidence for Goal 1:
+
+   `tcw init` · `tcw work init` · `tcw taxonomy init` · `tcw capabilities init` ·
+   `tcw work new "T"` · `tcw work start <slug>` · `tcw work start <slug> --worktree` ·
+   `tcw work start <slug> --take-over --owner me` · `tcw work edit <slug> --title X` ·
+   `tcw work submit <slug>` · `tcw work rework <review-slug>` ·
+   `tcw work complete <slug> --resolution done --confirm` ·
+   `tcw work complete <slug> --resolution wontfix --confirm` ·
+   `tcw work drop <backlog-slug> --confirm` · `tcw work tags add t` ·
+   `tcw work tags rm demo` · `tcw work scaffold spec <backlog-slug>` ·
+   `tcw work inbox accept <ref>` · `tcw work reconcile <epic-slug>` ·
+   `tcw work delegate <child> "T"` · `tcw work escalate "T"` ·
    `tcw taxonomy add N --slug s` · `tcw taxonomy rm <existing-slug>` ·
-   `tcw capabilities add p/q N` · `tcw capabilities set p/q --status Supported`.
-2. **No partial mutation.** A recursive `path → sha256` manifest of the node
-   (excluding `.git`, which is absent) taken before each command in criterion 1 is
-   byte-identical to the manifest taken after it. (Eight of those commands fail
-   this today — measured: `work new`, `work start`, `work start --worktree`,
-   `work edit`, `work tags add`, `work scaffold`, `taxonomy add`,
-   `capabilities add`, `capabilities set`.)
+   `tcw taxonomy extends add <registered-id>` · `tcw taxonomy extends rm <id>` ·
+   `tcw capabilities add p/q N` · `tcw capabilities set p/q --status Supported` ·
+   `tcw capabilities reset <override-path>` ·
+   `tcw capabilities extends add <registered-id>` ·
+   `tcw capabilities extends rm <id>`.
+
+   The last eight rows and `delegate`/`escalate`/`reconcile` need fixture setup
+   the Reproduction tree does not have (a registered sibling project, a parent and
+   a child node, an epic, an inherited override); building it is the plan's job,
+   and a row that cannot be set up is reported as such rather than dropped.
+2. **No partial mutation.** For each command in criterion 1, the node's manifest
+   before the command is byte-identical to the manifest after it. **Eleven** of
+   those commands fail this today, measured one at a time: `work new`,
+   `work start`, `work start --worktree`, `work edit`, `work tags add`,
+   `work tags rm`, `work scaffold`, `work reconcile`, `taxonomy add`,
+   `capabilities add`, `capabilities set`.
 3. **The `start` regression specifically.** After `tcw work start <slug>` fails,
    `docs/work/backlog/<slug>/` exists and `docs/work/active/<slug>/` does not.
-   (Today the item is in `active/` after the traceback.)
-4. **Reads unaffected.** In the same tree, each of `tcw work list`,
-   `tcw work show <slug>`, `tcw work nodes`, `tcw validate`, `tcw taxonomy list`,
-   `tcw taxonomy show <slug>`, `tcw capabilities list`,
-   `tcw capabilities show <path>` exits **0**, and each one's stdout is
-   byte-identical to the same command run before the guard landed.
+   Today the item is in `active/` after the traceback. Repeat for
+   `--take-over`, which reaches `git_stage` by a different route (`fs.py:2076`).
+4. **Reads unaffected, pinned literally.** In the same tree, each of
+   `tcw work list`, `tcw work show <slug>`, `tcw work nodes`, `tcw validate`,
+   `tcw taxonomy list`, `tcw taxonomy show <slug>`, `tcw capabilities list`,
+   `tcw capabilities show <path>` exits **0**. Their stdout is compared against
+   golden files captured from the **pre-change tree** by the plan and committed
+   with the fixture — not against a remembered baseline. Concretely, the plan runs
+   the eight commands at the merge-base commit, writes the outputs into the test
+   fixture, and the test diffs against those files.
 5. `tests/test_environment_hardness.py::TestWorktreeNode::test_non_git_graph_is_unaffected`
-   passes **unmodified**.
-6. `tests/test_smoke.py::test_init_refuses_outside_git` passes **unmodified**, and
-   `tcw init`'s stderr outside a repository is byte-identical to today's.
+   passes **unmodified**. (Verified green at spec time.)
+6. `tests/test_smoke.py::test_init_refuses_outside_git` passes **unmodified**
+   (verified green at spec time), and `tcw init`'s stderr outside a repository is
+   exactly the literal
+   ``tcw init: not inside a git repository. Run `git init` first.`` — pinned as a
+   string, not as a comparison against an earlier checkout.
 7. `tests/test_work_autocommit.py::test_a_transition_outside_a_repository_fails_in_git_mv_as_it_always_has`
    (`:311-326`) is **rewritten**, not deleted: it expects `ValueError` from
    `st.create("Task", …)` instead of `subprocess.CalledProcessError`, additionally
    asserts `docs/work/backlog/` gained no folder, and its docstring records that
    this item deliberately reverses the behavior its old docstring pinned.
-8. **The generic handler.** With a `subprocess.CalledProcessError` injected from
-   inside a command (monkeypatch a git helper to raise it), `main([...])` returns
-   nonzero, stderr is one line beginning `tcw: git command failed`, and no
-   traceback is printed. The handler's source in `tcw/cli.py` contains no
-   component name (`work`, `taxonomy`, `capabilities`) and no subcommand name.
-9. **`tcw serve`.** `POST /api/work` against a node whose repository has been
-   removed returns a 4xx (not 500) whose JSON body contains
-   `not inside a git repository`, and the node's file manifest is unchanged by the
-   request.
-10. **Memoization holds.** With `tcw.store.fs.git_root` counted by monkeypatch, a
-    single `FsWorkStore` instance performing several writes calls it at most once
-    from `_require_repository`.
-11. `pytest` is green in full.
+8. **The generic handler is generic — checked behaviorally.** With a
+   `subprocess.CalledProcessError` injected by monkeypatching one git helper to
+   raise it, `main([...])` returns nonzero, prints no traceback, and prints one
+   line beginning `tcw: git command failed`. The **same** injected failure through
+   three different components — a `work` write, a `taxonomy` write and a
+   `capabilities` write — produces the identical message modulo the git argv it
+   quotes. That is the checkable form of "carries no per-command policy"; no
+   assertion is made about the handler's source text.
+9. **`tcw serve`, every write route.** Against a served node whose repository has
+   been removed, each of `POST /api/work`, `POST /api/work/<slug>/actions/start`,
+   `POST /api/taxonomy`, `POST /api/capabilities`, `PATCH /api/work/<slug>`,
+   `PUT` on a work artifact, and `DELETE` on a work artifact returns **4xx, not
+   500**, with `not inside a git repository` in the JSON body, and the node's
+   manifest is unchanged across the whole sequence.
+10. **No frozen repository membership.** A single `FsWorkStore` instance performs
+    one successful guarded write inside a repository; the repository is then
+    removed; the next write on that **same instance** is refused with the
+    criterion-1 message and mutates nothing. (This is the test the earlier
+    memoized design would have failed.)
+11. **`pytest` from the repository root is green** — the bare command CI runs
+    (`.github/workflows/test.yml:37`, after `pip install -e .[dev]`), with
+    `testpaths = ["tests"]` from `pyproject.toml:32`. Run outside any sandbox that
+    restricts `git`, since the suite creates throwaway repositories.
 
 ## Risks
 
@@ -404,7 +525,10 @@ no repository above it.
   walking every `mkdir`, `_atomic_write`, `dump_yaml`, `os.replace` and
   `shutil.move` in `tcw/store/fs.py` and naming the guard that precedes each one,
   rather than trusting this spec's table. The sibling symlink item's plan found
-  two sites its spec had missed by doing exactly that walk — treat 18 as a floor.
+  two sites its spec had missed by doing exactly that walk, and an adversarial
+  review of *this* spec found four more (`_write_meta`, `update_work`'s reparent
+  `mkdir`, and the two module-level helpers now excluded by name) — treat 19 as a
+  floor.
 - **Overturning a deliberately pinned test.** `test_a_transition_outside_a_
   repository_fails_in_git_mv_as_it_always_has` says in its docstring "worth
   pinning so nobody 'fixes' it." This item *is* that fix, sanctioned by the
@@ -414,19 +538,27 @@ no repository above it.
   init` first.", which is misleading. It is strictly better than today's
   `FileNotFoundError` traceback, and detecting the binary separately costs a
   second probe on every write. Named rather than fixed.
-- **Stale memoization** if a long-lived process holds a store across a `git init`.
-  `tcw serve` builds its stores per request (`self._stores()`); the plan must
-  confirm that before keeping the cache, or scope the cache to the store instance
-  serve actually discards.
+- **Guard placement, not guard presence, is the subtle part.** Two of the
+  nineteen Tier-2 sites are placement-sensitive in opposite directions
+  (`update_work` must be after its no-change return, `start` must be the literal
+  first statement). A mechanical "first line of every write method" pass gets one
+  of them wrong and turns a no-op into a refusal. The plan must place each by
+  reading the method, and criterion 1 must include `--take-over`.
+- **The excluded module-level helpers** (`write_sentinel`, `init`,
+  `ensure_worktree_ignored`) leave a real hole for a direct in-process caller —
+  tests, and any future code that skips the CLI. Accepted and named in Goal 1
+  rather than papered over; the mitigation is that all three are adapter
+  scaffolding whose only shipped caller is already guarded.
 - **Serve's 422** for what is really an environment fault. Accepted: the operator
   reading the message is the person who can act on it, and minting an exception
   type to earn a different status code buys nothing.
-- **Per-write cost** if memoization is dropped or missed: 6.6 ms × every staged
-  path. `tcw work reconcile` and `tcw work inbox accept` are the commands where
-  that would show.
-- **`git rev-parse` in an enormous or network-mounted repository** could exceed
-  the measured 6.6 ms. Same call `git_root` already makes at store open, so the
-  guard adds at most one more per command, not a new class of cost.
+- **Per-write cost, accepted rather than cached:** 6.6 ms × one `git rev-parse`
+  per guarded call. `tcw work reconcile` and `tcw work inbox accept` are the
+  commands where it would show first, and the plan should record the measured
+  before/after wall time for one of them rather than assuming it is noise. An
+  enormous or network-mounted repository makes each call slower; the same call
+  `git_root` already makes at store open, so this is more of a known cost, not a
+  new class of one.
 
 ## Notes
 
@@ -450,9 +582,10 @@ Every `subprocess` use in `tcw/` was checked, not only the reported path:
 - `tcw/serve/__init__.py:97` — `Popen` for the browser opener, fire-and-forget.
 
 **Partial-write-then-fail paths** are all the same shape and all fixed by the same
-guard: staging sits outside four documented rollbacks (`_write_node` `:869`,
-`create_work` `:3359`, `capabilities.set` `:1651`, `update_capability` `:1948`),
-and `FsWorkStore.start` renames before staging (`:2074`, `:2145`). Non-git
+guard: staging sits outside four documented rollbacks (`_write_node` `:869-872`,
+`create_work` `:3364-3367`, `capabilities.set` `:1651-1659`,
+`update_capability` `:1948-1963`), and `FsWorkStore.start` renames before staging
+(`:2074`/`:2076` take-over, `:2145` main path). Non-git
 triggers for those (held `index.lock`, hooks) remain and are out of scope by
 design — `_effect_transition` already handles its own instance by re-raising as
 `TransitionCommitError` (`fs.py:3140-3151`), which is the pattern to leave alone.
@@ -465,7 +598,7 @@ filesystem-backed write entry point", which the request already set and which
 
 - `docs/changelogs/upcoming.md` and `docs/release-notes/upcoming.md` — user-facing
   error behavior, as the request's Meta section says.
-- `tests/cli/scenarios/01-bootstrap-and-node-identity.md:42-45` currently reads
+- `tests/cli/scenarios/01-bootstrap-and-node-identity.md:43-45` currently reads
   "Explicitly not covered here: Behaviour outside a git repository — that is a
   known open backlog item (`2026-07-30-fix-non-git-write-paths-…`)". That
   exclusion, and the pointer to this item, must be replaced with assertions once
@@ -474,11 +607,25 @@ filesystem-backed write entry point", which the request already set and which
 
 ### Assumptions
 
-- `FsWorkStore.__init__` (`fs.py:1980`) chains to `FsTreeStore.__init__`
-  (`fs.py:789`), so a `_repo_ok` attribute initialized in the base is present on
-  every store. Read as true from the code but not executed; the plan should
-  confirm before relying on it.
+- **Corrected from an earlier draft of this spec:** `FsWorkStore.__init__`
+  (`fs.py:1980-1985`) does **not** call `super().__init__()` — it assigns `root`,
+  `node_root`, `store_git_root` and `config` itself. Verified by reading it. Any
+  design that adds state to `FsTreeStore.__init__` and expects work stores to
+  inherit it is wrong; that is one of the two reasons the guard holds no state
+  (see Design).
 - `tcw work delegate` and `tcw work escalate` were not reachable in the fixture
   (they need a child or parent node) and are inferred from their store calls
-  (`work/cli.py:173-201`) rather than measured. Everything else in §1's table was
-  run.
+  (`work/cli.py:173-201`) rather than measured. Same for `taxonomy`/`capabilities
+  extends` (needs a registered sibling project) and `capabilities reset` (needs an
+  inherited override). Everything else in §1's table was run. Criterion 1 requires
+  the plan to build the fixtures and close these gaps.
+
+### Review history
+
+This spec was revised after an adversarial review found two critical defects in
+its first version: the memoized guard would have raised `AttributeError` on every
+`FsWorkStore` write (`FsWorkStore.__init__` does not chain to the base), and the
+cache could go stale in the dangerous direction. The memoization is gone. The
+review also added `_write_meta`, `update_work`'s reparent `mkdir`, `start`'s
+take-over bypass, and the three excluded module-level helpers to the inventory,
+and forced Goal 1 to state its scope instead of claiming "every".
