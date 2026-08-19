@@ -96,10 +96,11 @@ called solely to lift the `initiative` back-pointer
 
 ### Why the cross-node epic path always hits it
 
-`_inbox_write` (`tcw/work/recursion.py:257-276`), the single writer behind both
-`tcw work delegate` and `tcw work escalate` (`tcw/work/recursion.py:279`, `:292`),
-names its entry `f"{date.today().isoformat()}-{slugify(title)}"`
-(`tcw/work/recursion.py:268`) and writes the body as
+`_inbox_write` (`tcw/work/recursion.py:258-276`), the single writer behind both
+`tcw work delegate` and `tcw work escalate` (which call it at
+`tcw/work/recursion.py:288` and `:299`), names its entry
+`f"{date.today().isoformat()}-{slugify(title)}"` (`tcw/work/recursion.py:268`)
+and writes the body as
 `"---\n" + front + "\n---\n\n" + f"# {title}\n\n{body}\n"`
 (`tcw/work/recursion.py:274-276`).
 
@@ -125,19 +126,57 @@ tcw/ --include=*.py` returns exactly the sites below; there are no others.
 | `tcw/store/fs.py:3002` | inbox entry filename → item title | **the defect** |
 | `tcw/store/fs.py:2940`, `:2969` | inbox entry filename → `InboxEntry.title` | **correct as-is, do not change.** This label is the entry's addressable identifier: `_resolve_inbox_ref` step 3 resolves an entry by its listed title (`tcw/store/fs.py:2894`), and `tests/test_work.py:275` pins that. Making it the H1 would move ambiguity from filenames (unique by construction) to headings (not unique) and break addressing by stem. |
 | `tcw/work/recursion.py:268` | title → dated entry filename | correct: it prefixes a date to a slug that has none. The inverse of the defect, and the reason the H1 is authoritative. |
-| `tcw/store/fs.py:3311` (`create_work`, behind `tcw work new`) | caller-supplied title → dated slug | correct: the title is a required positional argument the user typed. `tcw work new "2026-08-19-foo"` would double-date, but that is the user's own string, not a TCW naming convention leaking. Non-goal. |
+| `tcw/store/fs.py:3311` (`create_work`, behind `tcw work new`) | caller-supplied title → dated slug | **date handling correct; slug construction shares the defect found below.** `tcw work new "2026-08-19-foo"` would double-date, but that is the user's own string, not a TCW naming convention leaking — non-goal. It does, however, route through the same `_unique_slug`, and therefore carries the unbounded-slug crash described in *Sibling defect: `_unique_slug` does not bound its output*. |
 | `tcw/store/fs.py:1009` (`FsTaxonomyStore.add`) | term name → slug, no date involved | not affected |
 | `tcw/store/fs.py:2802` | `path.stem` compared against declared plan stages | not a title/slug derivation |
+| `tcw work edit --title` (`tcw/store/fs.py:3455`) | new title → **no re-slug** | not affected, and correct: `docs/capabilities/work/retitle-a-work-item/description.md:2` states the slug is the stable ID and does not change on retitle. Retitling therefore cannot reach the slug hazards below. |
+
+#### Sibling defect: `_unique_slug` does not bound its output
+
+Found by the sweep, not by the report, and **in scope** because this change is
+what makes it easy to reach. `_unique_slug` (`tcw/store/fs.py:2441-2445`) builds
+`f"{created}-{slugify(title)}"` and loops only on collisions with existing
+items. It never checks that `slugify(title)` is non-empty or of bounded length.
+Today the inbox path always feeds it a filename stem, which is already
+slug-shaped and bounded by the filesystem's own 255-byte component limit, so the
+hazard is nearly unreachable there. `create_work` has no such protection, and
+after this change neither does the inbox path — an H1 is prose.
+
+Both failures reproduce today, in the scratch node, through `tcw work new`:
+
+```
+$ tcw work new "東京"
+→ created at docs/work/backlog/2026-08-19-      # trailing-hyphen slug
+$ tcw work new "東京"
+→ created at docs/work/backlog/2026-08-19--2    # and it collides with itself
+$ tcw work new "$(python3 -c 'print("a"*300)')"
+OSError: [Errno 63] File name too long: '.../backlog/2026-08-19-aaaa…'
+```
+
+The `OSError` escapes as a traceback because `_ERRORS` (`tcw/work/cli.py:41`)
+lists `ValueError, IllegalTransition, MultipleMatch, TransitionCommitError,
+AlreadyClaimed` — not `OSError`. On the inbox path the same crash lands one line
+earlier, at `tempfile.mkdtemp(prefix=f".{slug}-", ...)` (`tcw/store/fs.py:3036`),
+whose prefix makes the component ten characters longer than the slug itself.
+
+The fix belongs in `_unique_slug`, the single choke point both callers share —
+one guard there is a smaller diff than a guard in each caller, and guarding only
+the inbox path would leave `tcw work new` still crashing. See `## Design`.
 
 **`tcw work scaffold`**: derives nothing from a filename. `_scaffold`
 (`tcw/work/cli.py:830-897`) takes an explicit artifact name and an item slug.
 Not affected.
 
-**The `serve` HTTP surface**: has **no** inbox surface at all —
-`grep -rn "inbox_accept\|inbox_list\|inbox_show" tcw/` returns hits only in
-`tcw/work/cli.py`, `tcw/store/fs.py` and `tcw/store/base.py`. `tcw/serve/` never
-reaches the inbox, so it cannot carry a sibling of this defect. This is the only
-narrowing in the sweep, and it is a narrowing by absence rather than by choice.
+**The `serve` HTTP surface**: has **no** inbox surface at all. The evidence is
+not a grep for three method names — that would only prove the server does not
+call *those*, leaving a differently-implemented inbox route possible. The string
+`inbox`, case-insensitively, appears **zero** times anywhere under `tcw/serve/`:
+not in `runtime.py` or `__init__.py`, not in the bundled server
+(`tcw/serve/dist/server.cjs`), and not in the client bundle
+(`dist/client/index.html`, `theme-init.js`, `assets/*.js`, `assets/*.css`).
+There is no inbox route, no inbox view, and no inbox label to render. `serve`
+therefore cannot carry a sibling of this defect. This is the only narrowing in
+the sweep, and it is a narrowing by absence rather than by choice.
 
 **Harness parity**: there is no built-in `inbox` stage prompt —
 `load_builtins` derives its stage set as `set(STAGE_IDS) - {"inbox"}`
@@ -167,9 +206,14 @@ CLI, which behaves identically under both.
    longer re-dates it into the slug.
 3. The reporter's reproduction produces slug `2026-08-19-another-raw-request`
    and title `Another Raw Request`, with no `--title`.
-4. Entries written by `tcw work delegate` / `tcw work escalate` — frontmatter
-   first, H1 second — resolve to their H1.
-5. The `--title` override, and every other observable behavior of
+4. For entries written by `tcw work delegate` / `tcw work escalate` — frontmatter
+   first, H1 second — the derived title is the text of that H1 line. This is
+   *not* a guarantee that the title round-trips back to the string passed to
+   `delegate`: see `## Non-goals` for the two cases where it does not.
+5. No title, from any source, can produce an empty, degenerate, or
+   filesystem-rejected slug. `tcw work inbox accept` and `tcw work new` both
+   stop crashing on a title that slugifies to nothing or is very long.
+6. The `--title` override, and every other observable behavior of
    `inbox accept` (atomicity, attachments, `intake.md` contents, `initiative`
    handling, entry consumption), is unchanged.
 
@@ -180,21 +224,39 @@ CLI, which behaves identically under both.
   addressable identifier. A consequence is a visible mismatch — `list` shows
   `2026-08-19-another-raw-request` while `accept` produces
   `Another Raw Request` — which is accepted here and noted in `## Risks`.
-- **Reusing the entry's dated filename stem as the item's slug.** The issue's
-  expected slug (`2026-08-19-another-raw-request`) falls out of the existing
-  `<accept-date>-<slugified-title>` rule once the title is right — no slug rule
-  changes. Reusing the stem would desynchronize the slug's date from
-  `state.yaml: created` (`tcw/store/fs.py:3005`, `:3038`) whenever an entry is
-  accepted on a day after it was filed, and would bypass `_unique_slug`'s
-  collision suffix. Verified: `_unique_slug("2026-08-19", "Another Raw Request")`
-  → `2026-08-19-another-raw-request`.
+- **Reusing the entry's dated filename stem as the item's slug.** The slug keeps
+  its existing rule: `<acceptance-date>-<slugified-title>`. Stated precisely,
+  because the earlier draft overclaimed here: the issue's expected slug
+  `2026-08-19-another-raw-request` falls out of that rule **only because the
+  reporter filed and accepted on the same day, with no colliding item**. An entry
+  filed on the 1st and accepted on the 19th becomes `2026-08-19-…`, not
+  `2026-08-01-…`, and that is intended. Reusing the stem would desynchronize the
+  slug's date from `state.yaml: created` (`tcw/store/fs.py:3005`, `:3038`) and
+  would bypass `_unique_slug`'s collision suffix. Both divergent cases are
+  pinned as acceptance criteria rather than left implied.
 - **Stripping a date prefix from an H1-derived or `--title`-supplied title.**
   Those are human-authored strings; a heading is not TCW's naming convention.
 - **Full CommonMark heading support** — setext headings (`Title` / `=====`),
   indented ATX headings, ATX closing sequences (`# Title #`), inline emphasis
-  stripping. Out of scope; the fallback covers what these miss.
-- Any change to `tcw work new`, `delegate`, `escalate`, `scaffold`, or the
-  `serve` surface.
+  stripping. Out of scope; the fallback covers what these miss. Two consequences
+  are accepted rather than fixed, and both are pinned as criteria:
+  `tcw work delegate "Fix auth #"` yields the title `Fix auth #`, and a delegated
+  title containing a newline (`_inbox_write` interpolates it into `# {title}`
+  unvalidated, `tcw/work/recursion.py:274-276`) yields only its first line. Both
+  are still strictly better than today's dated-slug title.
+- **Teaching `slugify` about non-ASCII.** `slugify` (`tcw/store/fs.py:640-641`)
+  keeps only `[a-z0-9]`, so `Café déjà vu` → `caf-d-j-vu` and `C++ / C#` → `c-c`
+  (distinct headings can collide, which `_unique_slug` then resolves with `-2`).
+  This is an **inherited limitation, declared not fixed**: the slug is an
+  identifier, the title itself stays correct, and `slugify` is shared with the
+  taxonomy and capability axes, so changing it would re-slug far more than this
+  item. A one-line stdlib upgrade exists —
+  `unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()` before
+  the substitution, giving `cafe-deja-vu` — and is worth its own item. What is
+  *not* left inherited is the crashing and degenerate cases; see `## Design`.
+- Any change to `delegate`, `escalate`, `scaffold`, or the `serve` surface.
+  `tcw work new` is touched only through the shared `_unique_slug` guard
+  (Goal 5); its title handling, arguments, and output are otherwise unchanged.
 - The reporter's side note about `pip show tcw` reporting stale metadata
   (`0.10.3`) while `tcw --version` reports `1.0.0`. Unrelated to this defect;
   it is an install-metadata problem, not a TCW behavior.
@@ -218,14 +280,53 @@ The existing empty-title guard (`tcw/store/fs.py:3003-3004`) stays as the floor.
 
 Scanning `InboxEntryDetail.body`, in order:
 
-- **Frontmatter is skipped.** If the body's first line is exactly `---`, scanning
-  starts after the next line that is exactly `---`. This is what makes the
-  delegate/escalate shape work (`tcw/work/recursion.py:274-276`).
-- **Fenced code blocks are skipped.** A line whose stripped form opens with
-  ```` ``` ```` or `~~~` toggles a fence; lines inside a fence are not
-  candidates. Without this, a shell comment (`# tcw version: ...`) inside a
-  ```` ```sh ```` block in a pasted bug report becomes the item's title — a shape
-  this very item's `intake.md` demonstrates.
+- **Frontmatter is skipped, by exactly the same boundary rule `_frontmatter`
+  already uses** (`tcw/store/fs.py:2296-2310`), not a second parser: the body
+  qualifies only if it `startswith("---\n")`, and the block ends at the first
+  `"\n---\n"` found from offset 4; scanning starts five characters after that.
+  If either test fails, the whole body is scanned from the top. This is what
+  makes the delegate/escalate shape work (`tcw/work/recursion.py:274-276`), and
+  the parity is load-bearing rather than cosmetic — two definitions of "leading
+  frontmatter" would drift. The implementation must share one boundary
+  computation with `_frontmatter`, not restate it.
+
+  Parity means these four cases are *decided*, not accidental. All four were
+  checked against `FsWorkStore._frontmatter` directly:
+
+  | body shape | `_frontmatter` | title scan |
+  | --- | --- | --- |
+  | CRLF (`---\r\n…`) | not frontmatter (no `---\n` prefix), returns `None` | whole body scanned; `from: parent` is not an H1, so the real H1 still wins |
+  | UTF-8 BOM before `---` | not frontmatter, returns `None` | same — H1 still wins |
+  | opening `---` never closed (EOF) | **raises** `malformed YAML frontmatter` | unreachable: `_inbox_initiative` runs at `tcw/store/fs.py:3001`, one line *before* title derivation, so acceptance already failed |
+  | leading thematic-break `---`, an H1, then another `---` | parses `\n# Swallowed\n` as YAML → all comment → returns `None` | that first H1 is **skipped**; the entry falls back to a later H1 or to the filename |
+
+  The last row is a real, accepted miss — documented in `## Risks`, not fixed. A
+  Markdown body that opens with a horizontal rule is rare, and distinguishing it
+  from frontmatter is exactly the ambiguity CommonMark itself has.
+- **Fenced code blocks are skipped**, matching on the delimiter's **character
+  and run length**, not on a bare toggle. An unfenced line matching
+  `^(`{3,}|~{3,})` after stripping opens a fence and the match is remembered; a
+  fence closes only on a line whose delimiter is the *same character* with a run
+  *at least as long*. Without the fence skip at all, a shell comment
+  (`# tcw version: ...`) inside a ```` ```sh ```` block in a pasted bug report
+  becomes the item's title — a shape this very item's `intake.md` demonstrates.
+  Without the run-length rule, this valid Markdown selects the wrong heading:
+
+  ~~~markdown
+  ````
+  # Example inside documentation
+  ```
+  # Still inside the four-backtick fence
+  ````
+
+  # Real request title
+  ~~~
+
+  A bare toggle closes at the inner three-backtick line and returns
+  `Still inside the four-backtick fence`. The char-and-length rule returns
+  `Real request title`. Both outcomes were run against a prototype. (A `~~~`
+  line inside a backtick fence is *already* handled by remembering the opening
+  delimiter, and was never the problem; the run length is.)
 - **A candidate is a line that starts at column 0 with `#` followed by a space.**
   `##` is not an H1. Indented headings are not candidates.
 - **The title is the rest of the line, stripped.** If that is empty (`#`, `# `,
@@ -246,6 +347,48 @@ Scanning `InboxEntryDetail.body`, in order:
 - If stripping would leave an empty string (a file literally named
   `2026-08-19-.md`), the **unstripped** label is kept. Erroring on an entry that
   does have a name would be worse than an odd title the user can override.
+
+### Slug safety for a derived title
+
+Feeding `slugify` a human-written heading is new. Until now the inbox path fed
+it a filename stem — already `[a-z0-9-]`-shaped and already bounded by the
+filesystem — so `_unique_slug` had nothing to mangle. Two of the resulting
+hazards are fixed here; the third is declared inherited in `## Non-goals`.
+
+**1. Empty slug body — fixed at the shared choke point.** `_unique_slug`
+(`tcw/store/fs.py:2441-2445`) uses `slugify(title) or "untitled"` in place of
+`slugify(title)`. `# 東京` then yields title `東京` and slug
+`2026-08-19-untitled`; a second such item collides and the *existing* loop makes
+it `2026-08-19-untitled-2`. No new collision logic.
+
+Why here and not in `inbox_accept`: `tcw work new "東京"` produces the
+trailing-hyphen slug `2026-08-19-` **today** (reproduced above). One guard in the
+function both callers share fixes both; a guard in the inbox path alone leaves
+`tcw work new` broken. This is the same reason the sweep pulled `_unique_slug`
+into scope.
+
+**Additionally, inbox-side:** when the derived title slugifies to empty but the
+entry's date-stripped label does not, `inbox_accept` passes that label as the
+slug source while keeping the H1 as the *title*. So `# 東京` in
+`2026-08-19-tokyo-request.md` gives title `東京` and the readable slug
+`2026-08-19-tokyo-request` rather than `2026-08-19-untitled`. This is one
+conditional at the call site, it cannot reach `create_work`, and `untitled`
+remains the floor beneath it for when the label is non-ASCII too.
+
+**2. Unbounded length — fixed at the same choke point.** `_unique_slug`
+truncates the slugified body to **120 characters**, then `rstrip("-")` so a cut
+never lands on a hyphen. The number is grounded, not round-guessed: the
+filesystem component limit is 255 bytes; the slug adds an 11-character date
+prefix; `tempfile.mkdtemp(prefix=f".{slug}-", ...)` (`tcw/store/fs.py:3036`) adds
+ten more characters on the inbox path; `_unique_slug`'s collision suffix can add
+a few. 120 leaves well over 100 characters of headroom, and it truncates nothing
+real — the longest slug body in this repo's own `docs/work/` today is 97
+characters. Two long titles sharing a 120-character prefix collide, and the
+existing loop appends `-2`.
+
+**3. Unicode and punctuation loss** (`Café déjà vu` → `caf-d-j-vu`, `C++ / C#` →
+`c-c`) is **not** fixed — see `## Non-goals`. It mangles the identifier, never
+the title, and it is reachable today through filenames and `tcw work new`.
 
 ### Interaction with `--title ""`
 
@@ -286,15 +429,23 @@ override is enough.
 | `inbox_accept(ref, title=None)` — existing abstract operation (`tcw/store/base.py:1545`). Its **contract** gains a documented title-derivation precedence; its signature does not change. | **Model / store interface.** "Prefer the title the entry's body declares" is expressible against `InboxEntryDetail.body`, which the abstract interface already provides. A non-filesystem store can implement it — a Jira issue's summary field or a wiki page's first heading is the same read, less elegantly. |
 | Extracting the first ATX H1 from a body string. | **Model-adjacent, shared.** A pure function over `body`, with no filesystem dependency. Lives beside the store contract, not inside the FS adapter, so a second adapter reuses it. |
 | Stripping a leading `YYYY-MM-DD-` from `InboxEntry.title` before using it as a fallback. | **Filesystem-adapter private detail.** The prefix exists only because `_inbox_write` puts it in a *filename*. There is no abstract analog — an abstract store's entry label carries no TCW date convention — so it stays private to `FsWorkStore`. |
-| Slug construction (`_unique_slug`, `tcw/store/fs.py:2441`). | **No change.** Named here because a reader may expect one: the issue's expected slug is produced by the existing rule once the title is corrected. |
+| Slug **derivation rule** — `<acceptance-date>-<slugified-title>`. | **No change.** Named because a reader may expect one: the issue's expected slug is produced by the existing rule once the title is corrected. |
+| Slug **safety floor** — `_unique_slug` (`tcw/store/fs.py:2441`) gaining an `or "untitled"` default and a 120-character cap. | **Filesystem-adapter private detail.** These bounds exist because a slug becomes a *directory name* subject to a 255-byte component limit and to `mkdtemp`'s prefix. An abstract store minting an ID has no such constraint, so nothing about this belongs in the interface. It stays inside `FsWorkStore`, where `_unique_slug` already lives as a private method. |
+| Preferring the entry's date-stripped label as the *slug source* when the derived title slugifies to empty. | **Filesystem-adapter private detail**, for the same reason as the date-prefix strip above: it reads a filename-derived label that no abstract store has. |
 
-No new abstract operation is added.
+No new abstract operation is added. The two slug changes are additions to an
+existing private method, not to the store interface — which is the correct
+verdict precisely because they are motivated by filesystem limits.
 
 ## Acceptance criteria
 
-Each is checkable by running the named command against a fresh node. Criteria
-1-4 correspond to shapes reproduced above; 9-12 are executable against the tree
-today and were run while writing this spec.
+Criteria 1-23 are checkable by running the named command against a fresh node or
+the test suite; 24-26 are documentation deliverables, verified by reading files,
+and are grouped under their own heading. Where a criterion records a value
+already observed on the tree today, it says so — those were run while writing
+this spec.
+
+### Title derivation
 
 1. In a fresh node, an inbox entry `2026-08-19-another-raw-request.md` whose
    first line is `# Another Raw Request`, accepted with
@@ -319,35 +470,97 @@ today and were run while writing this spec.
    `Real`: a heading with no text is not a match.
 8. `tcw work inbox accept <entry> --title "Clean Title"` produces title
    `Clean Title` and slug `<today>-clean-title` for every entry shape above,
-   including one with a competing H1 — the override wins and no H1 is read.
-9. `tcw work inbox list` output is byte-identical before and after the change
-   for the entries above: `2026-08-19-another-raw-request.md | file | 2026-08-19-another-raw-request`.
-   `InboxEntry.title` is unchanged. (Run: current output confirmed.)
-10. `python -m pytest tests/test_work.py -k inbox` passes with no test modified
-    to accommodate the change. (Run: `21 passed, 161 deselected` on the tree
-    today; every one of those tests either supplies an explicit `title=` or uses
-    a body with no H1, except the four `_delegated` tests at
-    `tests/test_work.py:341-390`, which assert only `initiative`, `intake.md`
-    contents and non-consumption — never the slug or title literal.)
-11. `python -m pytest` passes in full. (Baseline run while writing this spec:
-    `1763 passed in 298.70s`. Any failure after the change is caused by it.)
-12. An entry named `2026-08-19.md` (no trailing hyphen) with no H1 produces
+   including an entry whose body declares `# A Competing Heading` — the
+   resulting title is `Clean Title`, never `A Competing Heading`.
+9. `tcw work inbox list`, run on an inbox holding
+   `2026-08-19-another-raw-request.md` (H1 `# Another Raw Request`), prints
+   exactly `2026-08-19-another-raw-request.md | file | 2026-08-19-another-raw-request`.
+   `InboxEntry.title` stays filename-derived even though the entry has an H1.
+   (Run: this is the current output, and it must not change.)
+
+### Delegate / escalate and slug construction
+
+10. **Delayed acceptance.** An entry `2026-08-01-do-the-thing.md` written by
+    `_inbox_write` (H1 `# Do the thing`), accepted on 2026-08-19, produces slug
+    `2026-08-19-do-the-thing` and `state.yaml: created: '2026-08-19'`. The
+    entry's own `2026-08-01` date does **not** survive into the slug, and the
+    slug's date and `created` agree.
+11. **Duplicate delegated requests.** Two `tcw work delegate` calls with the
+    same title on the same day produce `<date>-do-it.md` and `<date>-do-it-2.md`
+    (`_inbox_write`'s own collision loop, `tcw/work/recursion.py:269-271`), both
+    carrying the identical H1 `# Do it`. Accepting both produces titles `Do it`
+    and `Do it`, and slugs `<date>-do-it` and `<date>-do-it-2` — the second
+    suffix coming from `_unique_slug`'s item-collision loop, not from the
+    filename suffix, which acceptance ignores.
+12. **Newline in a delegated title.** `tcw work delegate <child> "$(printf 'Fix
+    auth\nurgently')"` writes `# Fix auth` / `urgently`; accepting it yields
+    title `Fix auth`. This pins the accepted limitation, not a fix.
+13. **ATX closing sequence.** An entry whose H1 is `# Fix auth #` yields the
+    literal title `Fix auth #` and slug `<today>-fix-auth`.
+
+### Slug safety
+
+14. An entry whose H1 is `# 東京`, accepted with no `--title`, does not crash.
+    In a file named `2026-08-19-tokyo-request.md` it produces title `東京` and
+    slug `2026-08-19-tokyo-request`. In a file whose label also slugifies to
+    empty, it produces title `東京` and slug `2026-08-19-untitled`; a second such
+    entry produces `2026-08-19-untitled-2`.
+15. An entry whose H1 is `# !!! ???` (punctuation only, slugifies to empty)
+    behaves the same way as criterion 14 — no `<date>-` slug is ever created.
+16. An entry whose H1 is 300 characters produces a slug whose final path
+    component is at most 131 characters (`11` date + `120` cap) and does not
+    raise `OSError`/`ENAMETOOLONG`. The title in `state.yaml` is the **full**
+    300-character heading — only the slug is truncated.
+17. `tcw work new "$(python3 -c 'print("a"*300)')"` and `tcw work new "東京"`
+    both succeed and print a usable slug. (Both **fail today**:
+    the first with an uncaught `OSError: [Errno 63] File name too long`, the
+    second with the degenerate slug `2026-08-19-`. Verified in the scratch node.
+    These are the regression tests for the sibling defect.)
+18. `tcw work new` on a normal title is unchanged: `tcw work new "Another Raw
+    Request"` still yields `2026-08-19-another-raw-request`.
+
+### Existing behavior that must not move
+
+19. An entry named `2026-08-19.md` (no trailing hyphen) with no H1 produces
     title `2026-08-19`; an entry named `2026-08-19-.md` with no H1 produces
     title `2026-08-19-`. Neither raises "title is required and must be
     non-empty".
-13. A binary entry (`sample.dat`, no readable body) accepted with no `--title`
+20. A binary entry (`sample.dat`, no readable body) accepted with no `--title`
     produces title `sample` — the stem, undated because the name is undated —
     and does not raise. (`tests/test_work.py:229` covers the surrounding
     behavior.)
-14. `skills/tcw-work/references/stage-inbox.md` step 5 no longer instructs
+21. **The existing filename-fallback assertions remain valid.**
+    `tests/test_work.py:286-287` accepts `example.md` with no `title=` and
+    asserts the accepted title is exactly `"example"` — so the fallback *is*
+    pinned by an existing test, and it must still pass, unchanged, because that
+    body (`"do it\n"`) has no H1. Correcting an earlier draft of this spec,
+    which implied nothing depended on filename derivation.
+22. `python -m pytest tests/test_work.py -k inbox` passes. (Baseline on the tree
+    today: `21 passed, 161 deselected`.) Of those, the delegated-entry tests
+    (`_delegated` helper at `tests/test_work.py:337`, its callers through
+    `:388`, one of them parameterized over three frontmatter shapes) assert only
+    `initiative`, `intake.md` contents and non-consumption — never a slug or
+    title literal — so the title they now derive (`Do the thing`) does not
+    affect them.
+23. `python -m pytest` passes. (Baseline on the tree today: `1763 passed`. A
+    failure is a signal to investigate, not proof of causation — the count is
+    recorded so the implementer can tell a new failure from a pre-existing one.)
+
+### Documentation deliverables
+
+Not fresh-node behavior; verified by reading the files.
+
+24. `skills/tcw-work/references/stage-inbox.md` step 5 no longer instructs
     `--title` as mandatory, and `README.md:930` /
     `docs/work-inbox-template.md` no longer claim the command never parses the
     template, since it now reads the template's `# ` heading.
-15. `docs/capabilities/work/manage-the-work-inbox/description.md` states the
-    three-step precedence, and `tcw validate` still reports `validate OK`
-   (baseline run while writing this spec).
-16. `docs/changelogs/upcoming.md` (Fixed) and
-    `docs/release-notes/upcoming.md` carry an entry for this change.
+25. `docs/capabilities/work/manage-the-work-inbox/description.md` states the
+    three-step title precedence and
+    `docs/capabilities/work/open-a-work-item/description.md` reflects the slug
+    floor; `tcw validate` exits `0`.
+26. `docs/changelogs/upcoming.md` (Fixed) and
+    `docs/release-notes/upcoming.md` carry an entry for this change, covering
+    both the title derivation and the slug floor.
 
 ## Risks
 
@@ -367,36 +580,72 @@ today and were run while writing this spec.
   back to the filename, which is the current behavior minus the date prefix —
   so the worst case is no worse than today.
 - **Fence tracking is line-prefix based**, so a fence opened inside a list item
-  with indentation, or an unclosed fence, mis-scopes. An unclosed fence
-  suppresses every heading after it and falls back to the filename; that is the
-  safe direction.
+  with indentation, or an unclosed fence, mis-scopes. An earlier draft of this
+  spec claimed fence errors "only fail in the safe direction" — **that was
+  wrong**, and it is why the delimiter char and run length are now part of the
+  rule (`## Design`): a bare toggle closes a four-backtick fence at an inner
+  three-backtick line and *selects* a heading from inside a code block rather
+  than merely suppressing one. With the corrected rule the residual misses are
+  an unclosed fence (suppresses every later heading → falls back to the
+  filename, genuinely the safe direction) and an indented fence opener (not
+  recognized, so a heading inside it could still be selected). The latter is
+  accepted: an inbox entry that indents a fenced block inside a list *and* puts
+  a column-0 `# ` line inside it is not a shape worth a Markdown parser.
+- **A leading thematic-break `---` swallows the first H1.** Pinned in
+  `## Design`; the entry falls back to a later H1 or to the filename.
 - **`2026-08-19-.md` with no H1** still yields the doubled-date slug
   `2026-08-19-2026-08-19`, because the fallback keeps the unstripped label
   rather than erroring. Pathological filename; `--title` covers it.
-- **Test-suite risk is low but not zero.** Criterion 10 is the guard: if any
-  existing test needs editing to pass, the derivation is doing something the
-  spec did not intend, and that is a signal to stop rather than to edit the
-  test.
+- **Slug truncation can collide.** Two titles sharing a 120-character slugified
+  prefix produce the same base, and `_unique_slug`'s loop distinguishes them
+  only with `-2`, `-3`. Acceptable: the slug is an opaque ID, the full title is
+  in `state.yaml`, and this is already how same-titled items behave.
+- **The `_unique_slug` guard is a wider blast radius than the reported bug.** It
+  changes slug construction for `tcw work new` as well as the inbox. That is
+  deliberate — the alternative leaves `tcw work new "東京"` producing
+  `2026-08-19-` — but it means criteria 17-18 are load-bearing regression
+  checks, not nice-to-haves. Existing slugs are untouched: nothing re-slugs an
+  item that already exists (`docs/capabilities/work/retitle-a-work-item/description.md:2`).
+- **Test-suite risk is low but not zero.** Criteria 21-23 are the guard: the
+  existing filename-fallback assertion at `tests/test_work.py:286-287` must pass
+  unchanged. If it needs editing, the derivation is doing something this spec
+  did not intend — investigate before editing the test. (Editing a test is not
+  *per se* a defect signal, which is why this is a risk note rather than an
+  acceptance criterion.)
 
 ## Notes
 
 **Prototype.** The precedence and every pinned edge case above were implemented
-as a standalone ~25-line function and run against 15 assertions covering all of
-them (frontmatter, fences, `##`, empty headings, `body is None`, the degenerate
-filenames, `--title ""`, and a title ending in `#`). All passed. The prototype
-lives in the session scratchpad, not in the repo — it is evidence the rule is
-coherent, not the implementation.
+as a standalone function and run as assertions: first pass covered frontmatter,
+fences, `##`, empty headings, `body is None`, the degenerate filenames,
+`--title ""`, and a title ending in `#`; a second pass, added after review,
+covered the nested four-backtick fence (demonstrating the bare toggle picks the
+wrong heading and the char-plus-run-length rule picks the right one), the four
+frontmatter-parity shapes, and the `untitled`/120-character slug floor. All
+passed. The prototype lives in the session scratchpad, not in the repo — it is
+evidence the rule is coherent, not the implementation.
 
 **On the "reuse the dated stem as the slug" reading.** The issue's *Remediation*
 paragraph can be read as asking for the entry's filename stem to become the
 slug. It does not need to be: correcting the title alone yields exactly the slug
-the issue's *Expected* section names, because the accept date and the entry's
-filed date coincide in the reproduction. Where they do not coincide — an entry
-filed on the 1st and accepted on the 19th — the two readings diverge, and this
-spec takes the smaller one (`## Non-goals`). If the reporter meant the slug must
-preserve the *filing* date rather than the *acceptance* date, that is a
-different change to `_unique_slug` and `state.yaml: created`, and it should be
-its own item.
+the issue's *Expected* section names — but, stated precisely, only because the
+accept date and the entry's filed date coincide in the reproduction and no item
+collides. Where they diverge — an entry filed on the 1st and accepted on the
+19th — the two readings differ, and this spec takes the smaller one
+(`## Non-goals`), pinning the divergence as criterion 10 rather than leaving it
+implied. If the reporter meant the slug must preserve the *filing* date rather
+than the *acceptance* date, that is a different change to `_unique_slug` and
+`state.yaml: created`, and it should be its own item.
+
+**Review disposition.** An adversarial review of the first draft raised the
+slug-safety gap, the fence run-length defect, the frontmatter-parity divergence,
+and several unverifiable criteria; all are folded in above. Two of its points
+are narrowed rather than accepted whole, and both narrowings are stated where
+they apply: a `~~~` line inside a backtick fence was never mis-handled by a
+toggle that remembers its opening delimiter (only the *run length* was the
+defect), and the claim that "no existing test depends on filename-derived
+titles" was misleading rather than false — `tests/test_work.py:286-287` pins it
+and still passes, which criterion 21 now says outright.
 
 **Open question, not blocking.** With `InboxEntry.title` deliberately unchanged,
 `tcw work inbox list` shows one string and `accept` produces another. A single
