@@ -1188,9 +1188,10 @@ changes` planning check, contradiction-detection, the `Missing → Supported`
   approve before anything is posted.
 - **[`documentation-sync`](skills/documentation-sync/SKILL.md)** — the cross-cutting
   process skill the work lifecycle invokes at its plan and completion gates:
-  evaluate a project's `## Documentation Sync` triggers so docs (README, changelog,
-  release notes, driving skills) move with the code that changes them. It also
-  sets a project's Documentation Sync section up in the first place
+  evaluate a project's documentation entries (`tcw work docs`, or a
+  `## Documentation Sync` section when none are declared) so docs (README,
+  changelog, release notes, driving skills) move with the code that changes them.
+  It also declares a project's entries in the first place
   (`/tcw-docs-sync-setup`) and runs the version cut when a change set is done
   (`/tcw-cut-version`) — including folding later work into a version that was
   cut locally but never pushed.

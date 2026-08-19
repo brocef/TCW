@@ -1,5 +1,5 @@
 ---
-description: Set up a Documentation Sync section in the project's CLAUDE.md, then create any tracked files (and parent directories) that don't yet exist.
+description: Declare the project's documentation entries — in tcw-config.yaml under work.documentation, or as a Documentation Sync section in its CLAUDE.md — then create any tracked files (and parent directories) that don't yet exist.
 ---
 
 Use the `documentation-sync` skill.
