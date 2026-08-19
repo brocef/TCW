@@ -9,9 +9,9 @@ gone. What is wrong is that **the item met its goal by shrinking the goal.**
 invocation blocks indefinitely on a stdin it was not asked to read* — was
 rewritten mid-spec to cover only the five intake entry points plus lifecycle
 `command:` hooks, because 21 `git` subprocesses inherit stdin and carry no
-timeout. That narrowing was recorded honestly and a follow-up was proposed, but
-review is the right place to say it is not enough: the residual is real, and it
-is small enough that deferring it costs more in explanation than in code.
+timeout. That narrowing was recorded honestly and a follow-up was proposed. The
+residual is small enough that deferring it costs more in explanation than in
+code — though **not** for the reason first given here.
 
 Measured — every `subprocess` call in the three files that shell out, and whether
 it constrains stdin:
@@ -22,11 +22,38 @@ it constrains stdin:
 | `tcw/store/project.py` | 1 | **0** |
 | `tcw/work/cli.py` | 1 | **0** |
 
-`git commit` (`fs.py:347`, `:410`) and `git merge` (`fs.py:484`) run the
-repository's own hooks, and those hooks inherit fd 0. A `pre-commit` hook that
-reads stdin therefore blocks a TCW transition forever — the exact failure this
-item exists to remove, one layer down, and *unbounded* because unlike TCW's own
-lifecycle hooks these carry no timeout.
+**The reason this rework first gave was false, and testing it is what found
+that out.** The claim was that `git commit` (`fs.py:347`, `:410`) and `git merge`
+(`fs.py:484`) run the repository's own hooks, that those hooks inherit fd 0, and
+that a `pre-commit` hook reading stdin therefore blocks a transition forever.
+Executed, with no TCW involved — a `pre-commit` hook running `cat`, and `git
+commit` given a held-open pipe as its stdin:
+
+```
+git commit: rc=0 in 0.14s
+  hook said: HOOK: drained fd0 and reached EOF
+```
+
+**Git closes its hooks' stdin.** The hook saw EOF immediately. A TCW-level probe
+agreed: `tcw work start` with a held-open pipe and a `cat` pre-commit hook
+completed in 0.28s **both before and after** the fix, so the probe I wrote to
+prove the bug does not discriminate — because there is no bug there to catch.
+
+So what is actually true, and what this rework is now for:
+
+- The 21 git subprocesses **do** inherit stdin. That is a fact, not a hang.
+- No reachable path turns it into a hang today: git redirects hook stdin, no TCW
+  git invocation contacts a remote (so no credential helper can prompt), and none
+  takes input on stdin (`-m` is always passed; nothing uses `--file=-`).
+- The one case that was never about git at all is real: `tcw serve` spawns a
+  long-running **node** process (`serve/runtime.py:169`) that inherited fd 0 and
+  would compete with the supervising `tcw serve` for the terminal.
+
+**The honest justification is explicitness, not a fixed hang.** Every process TCW
+launches should say what its stdin is, so that the *next* one — a git call that
+does reach a remote, a helper that does read input — cannot inherit it silently.
+That is a real invariant and it is now enforced by a test rather than by
+argument. It is a smaller claim than the one this document opened with.
 
 **Fix it where every caller routes through.** In `fs.py` every `subprocess`
 call is a git call, so one helper covers all nineteen at once; the two remaining
