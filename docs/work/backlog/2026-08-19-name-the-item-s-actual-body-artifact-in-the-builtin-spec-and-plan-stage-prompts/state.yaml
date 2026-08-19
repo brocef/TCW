@@ -1,0 +1,11 @@
+slug: 2026-08-19-name-the-item-s-actual-body-artifact-in-the-builtin-spec-and-plan-stage-prompts
+title: Name the item's actual body artifact in the builtin spec and plan stage prompts
+created: '2026-08-19'
+resolution: null
+priority: 70
+effort: low
+tags:
+- bug
+- work
+- cli
+- docs
