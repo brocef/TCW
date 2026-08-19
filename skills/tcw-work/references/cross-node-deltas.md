@@ -17,7 +17,8 @@ Use `--parent` children only when the slices are work items in the same project.
 
     The adopted slice carries the epic's bare slug in its `state.yaml`, which is
     machine-tracked but invisible to a human reading the request. Link the epic in
-    prose too, at the top of the slice's `initial-request.md`:
+    prose too, at the top of the slice's body — its `initial-request.md`, or its
+    `intake.md` when the `request` stage has not run yet:
 
     ```
     Epic: [<epic title>](tcw://W/<orchestrator-project-id>/<epic-slug>)
@@ -36,8 +37,9 @@ Use `--parent` children only when the slices are work items in the same project.
 5. **Roll up progress** from the orchestrator:
    `tcw work reconcile <epic-slug>` follows registered descendants for
    `initiative == <epic-slug>` and writes a consolidated table (node, slug,
-   status, blockers, next-ready) into the epic's `initial-request.md`. Re-run it to
-   refresh before deciding the next move.
+   status, blockers, next-ready) to the epic's own `rollup.md` sidecar — the
+   rollup is generated, so it never touches prose anyone is credited with.
+   Re-run it to refresh before deciding the next move.
 
 **Which path?** Same TCW project → `--parent` children
 ([`decompose.md`](decompose.md)). Multiple registered projects → an `--epic` +

@@ -6,7 +6,8 @@ audit-work-backlog`. Claude users can reach it as `/tcw-audit-work-backlog`;
 under any harness, this document is the procedure.
 
 Start with `tcw work list --status backlog`. Read each item folder via
-`tcw work path <slug>` — `initial-request.md`, `spec.md`, `plan.md`,
+`tcw work path <slug>` — `initial-request.md` **or** `intake.md` (the item's
+body; an inbox-adopted item has only the intake), `spec.md`, `plan.md`,
 `content.md`, `capabilities.yaml`, `state.yaml`, whichever exist.
 
 ## The two checklists

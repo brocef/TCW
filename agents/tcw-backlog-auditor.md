@@ -17,7 +17,8 @@ whole backlog. Do not speculate about them.
 A work item slug. Everything else you find yourself:
 
 - `tcw work path <slug>` → the item's folder.
-- `initial-request.md`, `spec.md`, `plan.md`, `content.md`, `capabilities.yaml`,
+- `initial-request.md` **or** `intake.md` (the item's body; an inbox-adopted
+  item has only the intake), `spec.md`, `plan.md`, `content.md`, `capabilities.yaml`,
   `state.yaml` — whichever exist.
 - The working tree, the git history, and the CLI.
 

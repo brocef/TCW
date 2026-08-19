@@ -95,9 +95,10 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   `capabilities reconciled`, `reviewed`, `version offered`) rather than extending
   them — omit one and it is gone, with no error.
 - **If the item came from a GitHub issue**, closing it out means saying so on the
-  issue and closing it — read `tcw-triage-issues` §8. `tcw work path <slug>` →
-  `initial-request.md` → `## Origin` is where the issue URL lives. Nothing is
-  posted without the user approving the exact text.
+  issue and closing it — read `tcw-triage-issues` §8. `tcw work show <slug>` →
+  the item's body → `## Origin` is where the issue URL lives; on an item filed
+  from an issue that body is its `intake.md`, not a request. Nothing is posted
+  without the user approving the exact text.
 
 A completable epic — every child resolved — may complete **directly from
 `backlog`**, with no throwaway `start`.

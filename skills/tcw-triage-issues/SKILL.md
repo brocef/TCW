@@ -129,15 +129,17 @@ Say which outcome you think fits and why, and let them decide — especially for
 
 ## 5. Accept: create the work item
 
-Per `stage-inbox.md` — retitle, pick tags, split if it is really several items:
+Per `stage-inbox.md` — retitle, pick tags, split if it is really several items.
+**An issue is raw arrival, so it is filed as the item's `intake.md`**, which is
+what piping it into `tcw work new` writes:
 
 ```bash
-tcw work new "<retitled as a change>" --tag <tag> [--priority N] [--effort M]
+gh issue view <n> --json body --jq .body \
+  | tcw work new "<retitled as a change>" --tag <tag> [--priority N] [--effort M]
 ```
 
-Then write its `initial-request.md`, opening with an **`## Origin`** section —
-the heading `docs/work/` items already use to say where a request came from —
-recording two things:
+The intake opens with an **`## Origin`** section — the heading `docs/work/`
+items already use to say where a request came from — recording two things:
 
 1. **The issue's number, URL, and reporter.** The URL is what §3 reads on the
    next sweep; without it the issue resurfaces forever.
@@ -160,8 +162,12 @@ by @octocat.
 If the project already has its own convention for recording provenance, follow
 that one instead — a second heading that means the same thing is drift.
 
-Then run the `request` stage (`tcw-work/references/stage-request.md`) over it to
-shape those words into an actual request, and commit the item.
+Commit the item. **Do not write `initial-request.md` here.** That file is the
+`request` stage's own artifact, and an item carrying one it never produced reads
+as a stage that ran. `tcw work list` shows `i` for an item holding raw intake and
+`R` once the request exists, and that distinction is the whole point. Run the
+`request` stage (`tcw-work/references/stage-request.md`) when the item is picked
+up, to shape the reporter's words into a request.
 
 ## 6. Reply to the reporter
 
@@ -211,7 +217,7 @@ carry a line naming the originating issue (see
 `tcw-work/references/transitions.md`). Find the issue:
 
 ```bash
-tcw work path <slug>      # → the item's folder; read initial-request.md's ## Origin
+tcw work show <slug>      # → the item's body, whichever artifact it is; read its ## Origin
 ```
 
 No `## Origin`, or no issue URL in it → the item did not come from an issue and

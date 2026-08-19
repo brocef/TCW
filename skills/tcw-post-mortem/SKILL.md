@@ -18,8 +18,9 @@ The question is always the same, and it is narrower than "what went wrong":
 ## Read the spine backwards
 
 `refined-outcome.md` and `rework.md` → `outcome.md` → `plan.md` → `spec.md` →
-`initial-request.md`. Backwards, because you know the outcome and are looking for
-the earliest point it was already determined.
+the body the item started from, `initial-request.md` or the `intake.md` beneath
+it. Backwards, because you know the outcome and are looking for the earliest
+point it was already determined.
 
 What each layer tends to reveal:
 

@@ -16,7 +16,8 @@ item's commits.
 ## How to look
 
 Read the spine **backwards** — `refined-outcome.md` / `rework.md`, then
-`outcome.md`, `plan.md`, `spec.md`, `initial-request.md`. You know the outcome;
+`outcome.md`, `plan.md`, `spec.md`, and the body the item started from —
+`initial-request.md`, or the `intake.md` beneath it. You know the outcome;
 you are looking for the earliest point at which it was already determined.
 
 `## Notes` on every artifact is the primary trail: it records what each stage knew
