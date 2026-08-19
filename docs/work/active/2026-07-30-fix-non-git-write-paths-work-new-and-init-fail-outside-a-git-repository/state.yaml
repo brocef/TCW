@@ -1,7 +1,9 @@
 slug: 2026-07-30-fix-non-git-write-paths-work-new-and-init-fail-outside-a-git-repository
 title: Fail fast with clear errors on non-Git writes
-created: "2026-07-30"
+created: '2026-07-30'
 resolution: null
 tags:
-    - cli
-    - bug
+- cli
+- bug
+owner: brocef@users.noreply.github.com
+started: '2026-08-19T20:48:48.966143Z'
