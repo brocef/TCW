@@ -730,6 +730,46 @@ default timeout (`work.lifecycle.timeout`).
 Skill bindings are **reported, never run** — `tcw` cannot invoke a skill, only
 your agent can. Run `tcw work lifecycle` to see what is bound.
 
+### Declaring which documents track which changes
+
+A project can list the documents that must move with code, so the lifecycle can
+put them in front of the agent instead of hoping it goes looking:
+
+```yaml
+# tcw-config.yaml
+work:
+    documentation:
+        - path: README.md
+          trigger: Public-API
+          description: >-
+              Public-facing overview and CLI usage. Update when the public
+              surface or user-facing behavior changes.
+        - path: docs/changelogs/upcoming.md
+          trigger: Any-Code-Change
+          description: Developer changelog; technical, grouped by category.
+```
+
+Three keys per entry, all required. `tcw validate` checks their shape — a blank
+field, an absolute path, a path escaping the node, whitespace inside a trigger, a
+duplicate path. It deliberately does **not** check that `path` exists (an entry
+routinely names a file you intend to create) or that `trigger` is one of the
+common names (the vocabulary is yours to extend).
+
+`tcw work docs` prints them, `--json` adds `source`, which is `config` when you
+have declared entries and `agent-guide` when you have not:
+
+```bash
+tcw work docs                          # path, trigger, and what to write
+tcw work docs --json                   # {"schema", "source", "entries"}
+```
+
+`tcw work stage plan` and `tcw work stage implement` include the entries inline,
+so the documentation gate is part of the stage's instructions rather than a
+convention an agent has to remember. **A project that declares nothing is
+unaffected** — those stages print exactly what they printed before, and the
+`documentation-sync` skill falls back to reading a `## Documentation Sync`
+section from your agent guide.
+
 Two things worth knowing: `tcw-config.yaml` is a file in your own repository and
 is trusted exactly as much as any other file there — this is not a sandbox. And
 `tcw serve` does **not** run hooks, so a `pre` hook that would block a transition
@@ -796,6 +836,7 @@ tcw work list --all                    # include completed and discarded items t
 tcw work list --status discarded       # only the items closed without shipping
 tcw work list -i                       # descendant boards; --incl-desc and --include-descendants are aliases
 tcw work lifecycle                     # the stage/transition contract + this node's bindings
+tcw work docs [--json]                 # the documents this project keeps in sync with code
 tcw work lifecycle --json              # the same, machine-readable
 tcw work lifecycle --stage spec --directive
                                        # one instruction line for an agent, or nothing if unbound

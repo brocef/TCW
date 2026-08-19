@@ -8,6 +8,7 @@
 | the board                | `tcw work list [--status <s>] [--tag <t>] [--all] [-i]` — hides resolved; `-i` adds descendant boards                                           |
 | read an item             | `tcw work show <slug> [--json]` · `tcw work path <slug>`                                                                                        |
 | the lifecycle contract   | `tcw work lifecycle [work-ref] [--json]` · `--stage <id> --directive`                                                                           |
+| the documentation gate   | `tcw work docs [--json]` — the documents this project keeps in sync with code                                                                   |
 | start work               | `tcw work start <slug> [--worktree] [--force]`                                                                                                  |
 | submit for verification  | `tcw work submit <slug>`                                                                                                                        |
 | send back for rework     | `tcw work rework <slug>` (refused while `refined-outcome.md` exists)                                                                            |
@@ -51,6 +52,22 @@ starts and then stalls is **refused** (exit 1, nothing created) rather than
 stored truncated. `TCW_STDIN_TIMEOUT` sets the bound in seconds; `0` never waits.
 The same holds for `tcw work delegate`, `tcw work escalate`, `tcw taxonomy add`,
 and `tcw capabilities add`.
+
+## The documentation gate
+
+`tcw work docs` prints the project's documentation entries — what must be updated
+when code changes, and what to write there. They are configuration
+(`tcw-config.yaml` → `work.documentation`), so `tcw validate` checks them.
+
+`--json` adds `source`, and that field is the whole point: `config` means the
+entries are authoritative and no Markdown needs reading; `agent-guide` means the
+node declared nothing and the `documentation-sync` skill falls back to a
+`## Documentation Sync` section in the agent guide, exactly as before.
+
+You rarely need the verb during a stage — `tcw work stage plan` and
+`tcw work stage implement` already include the entries inline. It exists for the
+third invocation point, the version offer *after* `complete`, which has no stage
+to hang off.
 
 Writes never follow that fallback. A body edit always targets
 `initial-request.md`; on an intake-only item it **promotes** the item, creating

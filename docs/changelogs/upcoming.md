@@ -108,3 +108,55 @@ category.
   `_present`, **388 tests across the work-store, scaffold, serve, projection and
   show-json suites passed and only this one failed**.
 
+## Added
+
+- **`work.documentation` in `tcw-config.yaml`** — a list of `{path, trigger,
+  description}` entries. `DocEntry` and `parse_documentation_entries` in
+  `tcw/store/base.py` mirror `parse_lifecycle_policy`: pure, filesystem-free,
+  never raises, advisory problem list. Validation is **shape-only** by design:
+  the trigger vocabulary is explicitly open, and `path` is not required to exist
+  (this repo's own entry is the pattern `skills/<component>/SKILL.md`).
+- **`WorkStore.documentation()`** on the abstract interface, with
+  `FsWorkStore.documentation()` / `documentation_problems()` reading through the
+  existing `_work_config` helper. On the ABC rather than the adapter for the same
+  reason `lifecycle_policy()` is: it is node configuration, and an adapter that
+  cannot report it cannot serve the gate.
+- **`tcw work docs [--json]`** — read-only; `{"schema": 1, "source":
+  "config"|"agent-guide", "entries": [...]}`. Serves the skill's third invocation
+  point (the version offer after `complete`), which has no stage to hang off
+  because `tcw work stage implement` on a completed item is correctly refused.
+- **`{{tcw:documentation}}…{{/tcw:documentation}}`** in stage prompts, with
+  `render_documentation` and `substitute_documentation` in `tcw/work/resolve.py`.
+
+## Changed
+
+- `tcw/work/prompts/plan.md` and `implement.md` wrap their documentation
+  instruction in the new span. `resolve_prompts` gained
+  `documentation: Sequence[DocEntry] = ()`, defaulted so every existing caller
+  compiles unchanged.
+- This repository's four documentation entries moved from `AGENTS.md` into
+  `tcw-config.yaml`; `docs/lifecycle/implementation.md` lost the paragraph
+  explaining that they could not move. `skills/documentation-sync/` and its
+  references now take entries from `tcw work docs`, naming the Markdown section
+  only as the fallback.
+
+## Internal
+
+- **The span carries its own fallback, which is a change from the spec's design.**
+  The spec assumed one token with a fallback string held in Python. The two
+  prompts word the instruction differently, so one constant could not reproduce
+  both byte-for-byte. Putting the fallback inside the span makes back-compat
+  hold *by construction* and keeps prompt prose in the prompt file.
+- Substitution runs in `resolve_prompts` over the joined text, **not** in
+  `_resolve_one`, which `resolve_artifact` also uses and which
+  `tcw work scaffold`'s implicit built-in fallback bypasses. So an artifact
+  template containing the token is left verbatim by both scaffold paths, while a
+  project's own `file:`/`blob:` prompt gets substitution. Both pinned by tests.
+- `tests/fixtures/prompt_fallback/` was captured **before** any prompt was
+  touched, in its own commit, and `tests/test_prompt_fallback.py` replays it —
+  the back-compat guarantee is evidence rather than an assertion.
+- Rendering is a list, not a table: a `|` in a description would break a table
+  silently. Continuation lines are indented to the token's column, and the prose
+  after a span resumes at the list indent rather than one column deeper — at four
+  spaces after a list, CommonMark reads it as a code block.
+

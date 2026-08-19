@@ -57,7 +57,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 
 ## Read on demand
 
-- [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, slash commands
+- [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, slash commands, the documentation gate (`tcw work docs`)
 - [`delegation.md`](references/delegation.md) — dispatching stages to subagents
 - [`tags.md`](references/tags.md) — the node's tag vocabulary
 - [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences

@@ -23,3 +23,17 @@ internal module names.
   never given.** Hooks now run with their input closed, so a hook that happens
   to read from stdin finishes immediately instead of consuming the text you
   piped in, or timing out and aborting the transition.
+
+## New
+
+- **Your project can now declare which documents must be kept in step with code
+  changes**, in `tcw-config.yaml` rather than as a section of prose in your agent
+  guide. Each entry names a file, when it needs updating, and what to write
+  there. TCW checks the list for mistakes, and the planning and implementation
+  steps now show the list to your agent directly instead of relying on it to go
+  and find one.
+- **`tcw work docs`** prints that list. It changes nothing and is safe to run any
+  time; `--json` gives the machine-readable form.
+- **If you declare nothing, nothing changes.** The planning and implementation
+  instructions read exactly as before, word for word.
+
