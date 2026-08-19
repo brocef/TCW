@@ -82,3 +82,39 @@ def test_the_moved_rules_are_reachable():
     assert "Abstract spine, filesystem leverage" in text
     assert "don't pre-abstract" in (LIFECYCLE / "implementation.md").read_text()
     assert "Agentskills specification" in (LIFECYCLE / "harness.md").read_text()
+
+
+# ── this repository's own documentation entries ──────────────────────────────
+
+def test_this_repos_documentation_entries_parse():
+    """Acceptance criterion 11. The four entries that used to be a Markdown
+    bullet list in `AGENTS.md` are now configuration `tcw validate` checks."""
+    from tcw.store.base import parse_documentation_entries
+    config = yaml.safe_load((REPO / "tcw-config.yaml").read_text(encoding="utf-8"))
+    entries, problems = parse_documentation_entries(
+        config["work"]["documentation"])
+    assert problems == []
+    assert [e.path for e in entries] == [
+        "README.md",
+        "docs/release-notes/upcoming.md",
+        "docs/changelogs/upcoming.md",
+        "skills/<component>/SKILL.md",
+    ]
+    assert {e.trigger for e in entries} == {
+        "Public-API", "Any-Code-Change", "Skill-Driven-Component"}
+
+
+def test_the_agent_guide_no_longer_carries_the_entry_list():
+    """The migration the previous item could not finish. The *section* stays —
+    it explains why the entries exist — but the entries themselves are config."""
+    guide = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+    for trigger in ("[Public-API]", "[Any-Code-Change]", "[Skill-Driven-Component]"):
+        assert trigger not in guide, f"{trigger} still listed in AGENTS.md"
+
+
+def test_a_path_placeholder_survives_this_repos_own_config():
+    """`skills/<component>/SKILL.md` is a pattern, not a resolvable path.
+    Requiring entry paths to exist would reject the node that wrote the rule."""
+    from tcw.store.fs import FsWorkStore
+    entries = FsWorkStore.open(REPO).documentation()
+    assert any("<component>" in e.path for e in entries)

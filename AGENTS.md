@@ -32,12 +32,17 @@ full in [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md).
 
 ## Documentation Sync
 
-Before reporting any code change complete, invoke the `documentation-sync` skill to evaluate the entries below. When writing an implementation plan, include explicit documentation-update tasks for every entry whose trigger is expected to fire.
+Before reporting any code change complete, invoke the `documentation-sync` skill
+to evaluate this project's documentation entries. They are **configuration, not
+prose**: they live in `tcw-config.yaml` under `work.documentation`, `tcw validate`
+checks their shape, and `tcw work docs` prints them. `tcw work stage plan` and
+`tcw work stage implement` include them inline, so a plan should already name a
+task for every trigger expected to fire.
 
-- `README.md` [Public-API] — Public-facing overview and `tcw` CLI usage (install, commands, quickstart); plain, high-readability. Update when the public CLI surface or user-facing behavior changes.
-- `docs/release-notes/upcoming.md` [Public-API] — User-facing release notes for the next version; plain language, no jargon or internal module names.
-- `docs/changelogs/upcoming.md` [Any-Code-Change] — Developer changelog for the next version; technical, grouped (Added/Changed/Fixed/Removed/Internal).
-- `skills/<component>/SKILL.md` [Skill-Driven-Component] — The driving skills (`tcw-work`, `tcw-capabilities`, …) that teach agents to operate each component through its CLI. Always update the matching skill whenever the component it drives changes — its CLI surface, model/fields, lifecycle, or guardrails — so the skill never drifts from the tool.
+The reasoning stays here; the facts live in config. The version is duplicated
+across five files for the reason given below, and the documentation entries are
+what they are because this project ships a CLI, a plugin, and a set of skills
+that drift from each other if nobody is told to look.
 
 ## Versioning
 

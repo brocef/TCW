@@ -267,13 +267,23 @@ def substitute_documentation(text: str, entries: Sequence[DocEntry]) -> str:
             break
         out.append(rest[:start])
         fallback = rest[start + len(DOC_OPEN):end]
+        tail = rest[end + len(DOC_CLOSE):]
         if entries:
             indent = " " * (start - (rest.rfind("\n", 0, start) + 1))
-            rendered = render_documentation(entries).replace("\n", "\n" + indent)
-            out.append(rendered + "\n" + indent)
+            rendered = "\n".join(
+                indent + line if line else ""      # never indent a blank line:
+                for line in render_documentation(entries).splitlines())
+            out.append(rendered.lstrip() + "\n" + indent)
+            # The span ends mid-sentence, so whatever follows resumes on its own
+            # line. Drop the single space that separated it from the close token,
+            # or the continuation lands one column deeper than the list indent —
+            # and at four spaces after a list, CommonMark reads it as a code
+            # block rather than prose.
+            if tail.startswith(" ") and not tail.startswith("  "):
+                tail = tail[1:]
         else:
             out.append(fallback)
-        rest = rest[end + len(DOC_CLOSE):]
+        rest = tail
     return "".join(out)
 
 

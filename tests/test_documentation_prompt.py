@@ -260,3 +260,30 @@ def test_a_span_in_a_project_prompt_binding_is_substituted(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "README.md" in r.stdout
     assert "fallback" not in r.stdout
+
+
+def test_blank_lines_in_the_rendered_block_carry_no_indent():
+    """Trailing whitespace on an otherwise-empty line is invisible and wrong."""
+    out = substitute_documentation(TEMPLATE, ENTRIES)
+    assert not any(line.strip() == "" and line != "" for line in out.splitlines())
+
+
+def test_text_after_the_span_resumes_at_the_list_indent():
+    """Not one column deeper. At four spaces after a list, CommonMark reads the
+    continuation as a code block rather than prose — so this is a rendering
+    correctness check, not a cosmetic one."""
+    out = substitute_documentation(TEMPLATE, ENTRIES)
+    tail = out.splitlines()[-1]
+    assert tail == "   Then more.", repr(tail)
+
+
+def test_the_shipped_prompts_render_without_a_code_block_hazard():
+    """The same check against the real `implement` prompt, which is the one that
+    carries prose after its span."""
+    shipped = load_builtins().stage_prompts["implement"]
+    out = substitute_documentation(shipped, ENTRIES)
+    for line in out.splitlines():
+        assert not line.startswith("    - "), "list item indented into a code block"
+        if line.strip() and not line.startswith(("-", "#", "*", "|")):
+            assert not line.startswith("    ") or line.startswith("     "), (
+                f"prose at a code-block indent: {line!r}")

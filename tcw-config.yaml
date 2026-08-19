@@ -11,6 +11,31 @@ work:
         - tech-debt
         - web
         - work
+    documentation:
+        - path: README.md
+          trigger: Public-API
+          description: >-
+              Public-facing overview and `tcw` CLI usage (install, commands,
+              quickstart); plain, high-readability. Update when the public CLI
+              surface or user-facing behavior changes.
+        - path: docs/release-notes/upcoming.md
+          trigger: Public-API
+          description: >-
+              User-facing release notes for the next version; plain language, no
+              jargon or internal module names.
+        - path: docs/changelogs/upcoming.md
+          trigger: Any-Code-Change
+          description: >-
+              Developer changelog for the next version; technical, grouped
+              (Added/Changed/Fixed/Removed/Internal).
+        - path: skills/<component>/SKILL.md
+          trigger: Skill-Driven-Component
+          description: >-
+              The driving skills (`tcw-work`, `tcw-capabilities`, …) that teach
+              agents to operate each component through its CLI. Always update the
+              matching skill whenever the component it drives changes — its CLI
+              surface, model/fields, lifecycle, or guardrails — so the skill never
+              drifts from the tool.
     lifecycle:
         stages:
             spec:

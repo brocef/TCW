@@ -17,7 +17,7 @@ After planning concludes, and implementation is about to begin, use `tcw work st
 
 ## Before reporting complete
 
-Evaluate the Documentation Sync entries in [`../../AGENTS.md`](../../AGENTS.md)
-by invoking the `documentation-sync` skill. That section stays in `AGENTS.md`
-rather than moving here: the skill locates it by name in `CLAUDE.md`, so a copy
-in this file would be a second copy, not a move.
+Evaluate this project's documentation entries by invoking the
+`documentation-sync` skill. The entries themselves come from `tcw work docs`;
+they live in `tcw-config.yaml` under `work.documentation`, where `tcw validate`
+checks them.
