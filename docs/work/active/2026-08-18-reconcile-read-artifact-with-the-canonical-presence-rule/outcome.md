@@ -121,3 +121,57 @@ because an empty section here is a claim.
 - **Reviewed by `codex`. `bllm-review` was not attempted for this item**, having
   produced nothing on the sibling item after 1440s on a workload lock; the bug is
   filed to `/Users/brian/llama/docs/work/inbox/`.
+
+---
+
+# Rework outcome — the live 404 in `tcw serve`
+
+Rejected at `verify` because the spec's premise — "no user-facing path reaches
+the disagreement" — was disproved over real HTTP. `rework.md` holds the analysis.
+
+## What changed — `08cc7e0`
+
+`tcw/serve/__init__.py`, the work-detail handler. The top-level `artifacts[]`
+list built its `present` flag from whether `read_artifact` returned content — the
+*resource* rule — while the `/open` endpoint that the UI's button posts to gates
+on `artifacts()`, the *lifecycle* rule. A whitespace-only artifact therefore
+rendered an **Open** button that could only ever 404.
+
+```python
+lifecycle_present = {a.name for a in work.artifacts(slug) if a.present}
+...
+"present": name in lifecycle_present,
+```
+
+`read_artifact` is still called, for `revision` and `mediaType` — the two things
+only the resource rule can answer. Nothing in the store layer moved; the item's
+conclusions about the two rules stand and are better supported by this than by
+the argument the spec made.
+
+## Evidence
+
+Three tests written red first in `tests/test_serve.py`: a blank artifact reports
+`present: false` in **both** places of one payload, and the `/open` gate agrees
+with the list. The original reproduction now prints
+`CONTRADICTION IN ONE PAYLOAD: False`. All 155 serve tests pass; 205 across
+`test_serve.py` + `test_work.py` + `test_repo_lifecycle.py` after the stdin
+rework landed on top.
+
+## Records corrected
+
+- `spec.md` — the "decided: intended" section and the `## Risks` entry now say a
+  real defect was found and fixed, not that the disagreement is harmless.
+- `docs/changelogs/upcoming.md` — "**No behavior changes**" was false once this
+  landed. Narrowed to "no behavior change in the store layer" (still true, still
+  AST-verified) and the serve fix filed separately under `## Fixed`, with a
+  plain-language entry in `docs/release-notes/upcoming.md`.
+- A verification error in the original outcome is recorded there and stands:
+  acceptance criterion 7 grepped for `"the one presence rule"`, which returned
+  nothing *before* the change too — the docstring did change, but the check
+  proved nothing. Found by review, not by me.
+
+## Still out of scope
+
+Whether the UI should distinguish "this file exists but its stage has not run"
+from "this file does not exist". Reporting `present: false` consistently is not
+the same as explaining why. Filed as a follow-up at completion.
