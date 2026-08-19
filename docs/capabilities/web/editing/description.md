@@ -3,7 +3,9 @@ artifacts, and bounded sidecars in the local web app. Structured reference
 fields provide accessible live search over the objects already loaded by the
 editor while preserving canonical identifiers and free-form entry. Every saved
 object is immediately checked with TCW's standard validation rules, with any
-findings shown as post-save warnings.
+findings shown as post-save warnings. A save the store refuses — editing a
+project that is not in a Git repository, say — comes back as that refusal in
+plain words, and nothing is written.
 
 A sidecar a command writes rather than a person — `rollup.md`, produced by
 `tcw work reconcile` — is listed and labelled generated, and offers no edit
