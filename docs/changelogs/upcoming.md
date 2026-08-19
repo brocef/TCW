@@ -5,6 +5,35 @@ category.
 
 ## Fixed
 
+- Writes to a filesystem-backed store outside a git repository raised an
+  unhandled `subprocess.CalledProcessError` out of `git_stage` — a traceback,
+  after the item folder, the moved item, or the rewritten config had already
+  landed. A `require_repository` precondition (`tcw/store/fs.py`) now refuses
+  first, raising `ValueError` so every existing CLI and HTTP handler reports it
+  unchanged. It is applied at both `FsTreeStore`'s and `FsWorkStore`'s
+  `_stage`/`_rm`/`_mv`, so no git failure escapes as a traceback and the
+  delete-shaped methods need nothing else, and at the nineteen public write
+  methods that mutate the filesystem before they stage. Two placements are
+  load-bearing: `FsWorkStore.start` guards as its literal first statement,
+  because both its take-over branch and its main claim call `git_stage`
+  directly and both rename before staging; `update_work` guards *after* its
+  no-change early return, which writes nothing. The guard is deliberately
+  stateless — `FsWorkStore.__init__` does not chain to `FsTreeStore.__init__`,
+  so a cached flag on the base would be absent on every work store, and a store
+  instance outlives one write in `tcw serve` and in tests.
+- `tcw work delegate` and `tcw work escalate` *succeeded* outside a git
+  repository, writing a complete but untracked request into the destination
+  node's inbox that its own `inbox accept` would then refuse. `_inbox_write`
+  (`tcw/work/recursion.py`) is the only adapter write that never stages, so the
+  `_stage` guard could not reach it; it now checks the destination store's
+  repository directly.
+- `main()` caught only `ValueError`, so any `CalledProcessError` from the
+  adapter's seven `check=True` git calls exited as a traceback. A generic
+  handler now renders `tcw: git command failed (exit N): <argv>` and exits
+  non-zero. It names no component or subcommand, and does not re-print
+  `error.stderr` — no `check=True` git call captures output, so git's own
+  diagnostic has already reached the terminal. `run_init` prints the shared
+  `NOT_A_REPOSITORY` constant rather than its own copy of the sentence.
 - The built-in `spec` and `plan` stage prompts named `initial-request.md` as
   their input unconditionally. Since 1.0.0 stopped creating that file on every
   item, an item from piped stdin or `tcw work inbox accept` carries only

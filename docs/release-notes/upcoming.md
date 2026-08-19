@@ -3,6 +3,34 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## Running outside a Git repository tells you so, and changes nothing
+
+TCW has always needed Git to write and never needed it to read. But only
+`tcw init` said so. Every other write — `tcw work new`, `tcw work start`,
+`tcw taxonomy add`, `tcw capabilities set`, and the rest — printed a Python
+traceback instead, and several of them printed it *after* half the work was
+done: `tcw work new` left an item folder holding nothing but its state file,
+`tcw taxonomy add` left the whole term, and `tcw work start` moved the item into
+`active/` and then failed, so the item had moved and nothing told you.
+
+Now every write says the same sentence, exits the same way, and leaves the
+project exactly as it found it:
+
+    tcw work new: not inside a git repository. Run `git init` first.
+
+Reading is unaffected — `tcw work list`, `tcw work show`, `tcw validate`,
+`tcw taxonomy show` and the rest print exactly what they always printed.
+
+Two smaller things came with it. `tcw work delegate` and `tcw work escalate`
+used to appear to work outside a repository, dropping a request into the other
+project's inbox that nothing tracked and that project could never accept; they
+now refuse up front. And when Git itself fails for some other reason — a lock
+left behind by another process, a hook that says no — you get one line naming
+the command that failed instead of a stack trace.
+
+In the local web app, a save the store refuses now comes back as that refusal
+in plain words, rather than a server error, and nothing is written.
+
 ## Stage instructions name the file your item actually has
 
 When you ask `tcw work stage spec` or `tcw work stage plan` what to do, the

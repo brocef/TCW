@@ -112,3 +112,13 @@ and `tcw work inbox path` are the only correct answers, and they are what
 `docs/work/` folder sitting next to a configured store is a leftover, not the
 store; TCW ignores it. Conversely, a default-layout store missing `inbox` or any
 status folder counts as *no* store at all — `tcw work init` restores it.
+
+**Every write needs a Git repository; every read does not.** Outside one, any
+writing command refuses with `not inside a git repository. Run `git init`
+first.`, exits non-zero, and changes nothing on disk — including `delegate` and
+`escalate`, which need a repository at the *destination* node. That is a
+refusal to act on (run `git init`, or move to the right directory), never a
+crash to retry or to route around by writing the files by hand. `tcw work list`,
+`show`, `nodes` and `tcw validate` keep working. A different message —
+`tcw: git command failed (exit N): …` — means the repository is there but Git
+refused: a lock another process holds, a hook that said no.
