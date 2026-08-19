@@ -112,3 +112,70 @@ original probe had failed for want of `--id`. Both corrected.
 - The v1.0.0 fold gate was re-run against the network at the close of
   implementation: `STATUS: FOLDABLE`, exit `0` — the tag is still absent from
   `origin`, so this work can still join it.
+
+---
+
+# Rework outcome — closing the inherited-stdin gap
+
+Rejected at `verify` for meeting Goal 1 by shrinking it. The gap is now closed.
+`rework.md` holds the analysis; this records what shipped.
+
+## What changed — `8d69daa`
+
+| File | Change |
+| ---- | ------ |
+| `tcw/store/fs.py` | New `_git()` helper defaulting `stdin=DEVNULL`; all **19** git calls in the module routed through it |
+| `tcw/store/project.py` | `_probe_worktree`'s `rev-parse` — inline `stdin=DEVNULL` |
+| `tcw/work/cli.py` | `_start`'s `git config --get` probe — inline |
+| `tcw/serve/__init__.py` | `_open_locator`'s desktop-opener `Popen` |
+| `tcw/serve/runtime.py` | `node --version`, and the **node server `Popen`** |
+| `tests/test_subprocess_stdin.py` | New: AST walk over every module under `tcw/`, failing any `subprocess` spawn without an explicit `stdin=` |
+| `tests/test_serve.py` | Three `Popen` stubs took one positional; they now accept kwargs, and the opener test asserts `stdin=DEVNULL` |
+
+25 lines of source, 24 tests. Suites re-run: 205 pass across
+`test_serve.py` + `test_work.py` + `test_repo_lifecycle.py`; 55 across the three
+stdin suites.
+
+## The justification changed, and that matters more than the diff
+
+The rework was authorised on a premise I had not executed: that a repository
+`pre-commit` hook reading stdin would block a transition forever. **It is
+false.** Git redirects its hooks' stdin — measured directly, hook running `cat`,
+`git commit` handed a held-open pipe:
+
+```
+git commit: rc=0 in 0.14s
+  hook said: HOOK: drained fd0 and reached EOF
+```
+
+A TCW-level probe agreed: `tcw work start` completed in 0.28s **both before and
+after** the fix. The probe written to prove the bug does not discriminate,
+because there is no bug on that path. Surfaced to the user, who chose to keep
+the change on the corrected justification.
+
+So what the 21 git changes actually buy: **explicitness, enforced by a test.**
+No reachable hang existed on them — git closes hook stdin, no TCW git call
+reaches a remote, none takes input on stdin. The invariant is still worth
+holding for the *next* call site, and a test holds it better than a helper
+anyone can bypass.
+
+**The guard test is the part that paid for itself.** It found three `tcw serve`
+spawns neither review had looked at, one of which is a genuine defect and was
+never about git: `serve/runtime.py:169` launches a long-running node server that
+inherited fd 0 and competed with the supervising `tcw serve` for the terminal.
+
+## Second false premise in this item
+
+This is the second argument in this work item built on an untested failure
+story — the first was the spec's "a hook steals the piped intake out from under
+`work new`" (corrected at `2d7768f`; `_new` runs no hooks at all). Both were
+plausible mechanisms; both dissolved on execution. Recorded here rather than in
+the post-mortem because it is a pattern within one item, not across the release.
+
+## Still open, deliberately
+
+Timeouts on git subprocesses. A hung `git` is a different failure with a
+different fix, and bounding every git call is a change with real blast radius —
+`git commit` on a large tree is legitimately slow. Not filed as a follow-up
+either: nothing has been observed to hang, and a speculative item is backlog
+weight. If it is ever seen, the fix has one obvious home now — `_git()`.
