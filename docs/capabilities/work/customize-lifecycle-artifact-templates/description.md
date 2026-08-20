@@ -37,3 +37,5 @@ clean one rather than a fragment. That does mean my generator runs again on each
 retry and under `--force`, so it has to be side-effect-free. A failure reports on
 stderr and puts nothing on stdout, so a script reading stdout for a path never
 receives one for a file that does not exist.
+
+A write that Git refuses — a lock another process holds, a hook that says no — is rolled back: whatever the command created is removed, and whatever was already there is left as it was. So a failure leaves the project as it found it, with nothing to clean up by hand.

@@ -1,0 +1,8 @@
+changed:
+    - taxonomy/add-a-term                            # a Git-refused add rolls back too
+    - capabilities/add-a-capability                  # same, for a capability
+    - capabilities/override-inherited                # a refused stage removes the materialized override
+    - capabilities/set-a-capabilitys-status          # same, via `set`
+    - work/open-a-work-item                          # a refused `work new` leaves no item folder
+    - work/customize-lifecycle-artifact-templates    # a refused scaffold leaves no draft
+    - web/editing                                    # the same rollback under `tcw serve`

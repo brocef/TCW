@@ -18,3 +18,5 @@ Only the references a write supplies are checked, never the capability's
 existing ones — so a capability that already stores a bad reference can still
 be repaired with `--status Omitted`, which is the route completing a work item
 recommends.
+
+A write that Git refuses — a lock another process holds, a hook that says no — removes the override folder it had just materialized, rather than leaving an empty one behind. An override that already existed keeps what the write put in it.
