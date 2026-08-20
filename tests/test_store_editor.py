@@ -1538,3 +1538,80 @@ def test_a_failing_undo_does_not_mask_the_original_error(tmp_path, monkeypatch):
 
     with pytest.raises(subprocess.CalledProcessError):
         st._write_staged([(d / "state.yaml", "x")])
+
+
+# ── what the rollback must never touch ───────────────────────────────────────
+#
+# Every case below is a path that existed before the call. Found by adversarial
+# review of the finished diff, each reproduced before being fixed.
+
+def test_write_staged_keeps_a_pre_existing_dangling_symlink(tmp_path, monkeypatch):
+    """`exists()` follows the link, so a dangling symlink read as absent, was
+    replaced by a real file, and was then unlinked — destroying a path this call
+    did not create."""
+    root = _work_node(tmp_path)
+    st = _tree_store(root)
+    d = root / "docs" / "work" / "backlog" / "danglecheck"
+    d.mkdir(parents=True)
+    link = d / "spec.md"
+    link.symlink_to("../../../../nowhere.md")
+    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        st._write_staged([(link, "new content")])
+
+    # The path survives. Atomic promotion replaces the link with a regular file
+    # holding what this call wrote — the ordinary "an update keeps what it
+    # wrote" rule. What must not happen is the path vanishing, which is what
+    # `exists()`-follows-symlinks caused: the link read as absent, so the
+    # rollback treated it as this call's own and unlinked it.
+    assert link.exists() or link.is_symlink()
+
+
+def test_atomic_write_all_does_not_consume_an_existing_tmp_path(tmp_path):
+    """The temp name used to be `<target>.tmp` — a real path a user or a symlink
+    can already occupy, which this would truncate, promote, and delete."""
+    target = tmp_path / "state.yaml"
+    squatter = tmp_path / "state.yaml.tmp"
+    squatter.write_text("PRECIOUS", encoding="utf-8")
+
+    _atomic_write_all([(target, "written\n")])
+
+    assert target.read_text() == "written\n"
+    assert squatter.read_text() == "PRECIOUS"
+
+
+def test_atomic_write_all_keeps_the_targets_mode(tmp_path):
+    """Promotion replaces the directory entry, so a file someone chmod'ed would
+    silently come back with default permissions."""
+    target = tmp_path / "config.yaml"
+    target.write_text("a: 1\n", encoding="utf-8")
+    os.chmod(target, 0o600)
+
+    _atomic_write_all([(target, "a: 2\n")])
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_the_body_clear_branch_stages_once_and_rolls_back(tmp_path, monkeypatch):
+    """`update_capability`'s body-clear branch used to stage twice — the meta
+    write, then the directory, to record the `description.md` it deleted. The
+    second call sat outside the rollback, so a refusal there left the freshly
+    materialized override behind. Staging the directory now rides inside the
+    same protected call, so there is no second `git add` to refuse."""
+    base, child = child_of(tmp_path, {
+        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
+    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+    calls = []
+
+    def counting_boom(*a, **kw):
+        calls.append(a)
+        raise subprocess.CalledProcessError(128, ["git", "add", "x"])
+
+    monkeypatch.setattr("tcw.store.fs.git_stage", counting_boom)
+    with pytest.raises(subprocess.CalledProcessError):
+        FsCapabilitiesStore.open(child).update_capability(
+            "moderation/report-content", body="")
+
+    assert len(calls) == 1, "the branch staged twice; the second is unprotected"
+    assert not d.exists()

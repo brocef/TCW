@@ -34,4 +34,4 @@ When a work item's plan declares stage documents, users can inspect their
 metadata and dependencies and create, edit, delete, or open each declared
 document individually with revision-conflict protection.
 
-A write that Git refuses — a lock another process holds, a hook that says no — is rolled back: whatever the command created is removed, and whatever was already there is left as it was. So a failure leaves the project as it found it, with nothing to clean up by hand.
+A write that Git refuses — a lock another process holds, a hook that says no — no longer leaves a half-made object behind: whatever that save *created* is removed. A save that *changed* something already there is a different case and is not undone — the edit stays on disk, and re-saving once Git is happy is the fix.

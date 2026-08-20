@@ -927,6 +927,13 @@ def _safe_store_id(value: str, label: str) -> str:
     return v
 
 
+def _umask() -> int:
+    """The process umask, read without leaving it changed."""
+    current = os.umask(0)
+    os.umask(current)
+    return current
+
+
 def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
     """Write several files as one unit: stage every temp, then promote each.
 
@@ -934,7 +941,9 @@ def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
     closes is content production — ENOSPC, EACCES, a serialization error — which
     can only happen in the staging phase, before anything is promoted, so the
     targets are left untouched. One handler spans both phases and unlinks every
-    temp, so no `.tmp` is left beside a real file in the user's git tree.
+    temp, so no temp file is left beside a real file in the user's git tree.
+    Temps are `mkstemp`-unique rather than `<target>.tmp`, so an existing file
+    or symlink at a predictable name is never truncated, promoted, or deleted.
     `BaseException` on purpose: a `KeyboardInterrupt` mid-batch still cleans up.
 
     # ponytail: the promote loop is not atomic across files — a process death
@@ -942,10 +951,27 @@ def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
     # a journal or a whole-directory swap (the `accept_inbox` shape, fs.py:2246);
     # neither is worth its cost for the failure class actually reachable here.
     """
-    staged = [(p.with_suffix(p.suffix + ".tmp"), p, c) for p, c in pairs]
+    staged = []
     try:
-        for tmp, _, content in staged:
+        for path, content in pairs:
+            # A unique temp beside the target, not `<target>.tmp`: the
+            # deterministic name is a real path a user (or a symlink) can
+            # already occupy, and this would truncate it, promote it over the
+            # target, and delete it on failure. `mkstemp` refuses to reuse an
+            # existing name and never follows a symlink.
+            fd, tmp_name = tempfile.mkstemp(dir=path.parent,
+                                            prefix=path.name + ".", suffix=".tmp")
+            os.close(fd)                     # mkstemp is for the *name*
+            tmp = Path(tmp_name)
+            staged.append((tmp, path, content))
             tmp.write_text(content, encoding="utf-8")
+            # `mkstemp` is 0600 by design. Carry the target's mode when it has
+            # one, so promoting does not silently re-permission a file someone
+            # chmod'ed; otherwise fall back to what an ordinary write would give.
+            try:
+                os.chmod(tmp, path.stat().st_mode)
+            except OSError:
+                os.chmod(tmp, 0o666 & ~_umask())
         for tmp, path, _ in staged:
             tmp.replace(path)
     except BaseException:
@@ -1062,7 +1088,8 @@ class FsTreeStore:
         git_stage(self.node_root, *paths)
 
     def _write_staged(self, pairs: list[tuple[Path, str]], *,
-                      owned_dir: Path | None = None) -> None:
+                      owned_dir: Path | None = None,
+                      also_stage: tuple[Path, ...] = ()) -> None:
         """Write every `(path, content)` and stage the lot, undoing what *this
         call* created if either half fails, then re-raising.
 
@@ -1077,13 +1104,23 @@ class FsTreeStore:
         caller proved it created (`_mkdir_owned`) and is removed whole;
         everything else is per file, and only files absent when this call began.
 
+        `also_stage` are paths to stage alongside the written ones but not to
+        write — a deletion this call made, which git records by staging the path
+        it used to occupy. They ride inside the same `try` on purpose: staging
+        them afterwards would put a second `git add` outside the rollback, and a
+        refusal there would leave the write standing.
+
         Best-effort and silent: the undo must not mask the original error, and
         must not add a second line to a refusal whose one-line shape is pinned.
         """
-        new = [p for p, _ in pairs if not p.exists()]
+        # `exists() or is_symlink()`: `exists()` follows the link, so a
+        # pre-existing *dangling* symlink read as absent, was replaced by a real
+        # file, and was then unlinked here — destroying a path this call did not
+        # create. Same idiom `init`'s ancestor walk uses for the same reason.
+        new = [p for p, _ in pairs if not (p.exists() or p.is_symlink())]
         try:
             _atomic_write_all(pairs)
-            self._stage(*(p for p, _ in pairs))
+            self._stage(*(p for p, _ in pairs), *also_stage)
         except BaseException:
             if owned_dir is not None:
                 shutil.rmtree(owned_dir, ignore_errors=True)
@@ -1954,7 +1991,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             raise ValueError("; ".join(problems))
         return out
 
-    def _write_meta(self, d: Path, meta: dict) -> None:
+    def _write_meta(self, d: Path, meta: dict, *,
+                    also_stage: tuple[Path, ...] = ()) -> None:
         """Write a node's meta, staged, rolling back what this call created.
 
         Owns the `mkdir` so it can prove whether the directory is its own:
@@ -1968,7 +2006,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         self._write_staged(
             [(d / "meta.yaml",
               yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))],
-            owned_dir=d if owned else None)
+            owned_dir=d if owned else None, also_stage=also_stage)
 
     def _write_target(self, identifier: str) -> tuple[Path, dict, bool]:
         """Resolve a write to `(folder, meta, is_override)`.
@@ -2351,8 +2389,12 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             # an override's body drops the delta and re-inherits, rather than
             # leaving an empty file that silently means the same thing.
             desc.unlink(missing_ok=True)
-            self._write_meta(d, meta)
-            self._stage(d)                     # picks up the removal
+            # `also_stage=(d,)` rather than a second `self._stage(d)` after the
+            # write: staging the directory is what records the unlink above, and
+            # a separate call would sit outside `_write_meta`'s rollback — so a
+            # refusal there left a freshly materialized override behind, which
+            # is the class this item exists to close.
+            self._write_meta(d, meta, also_stage=(d,))
         elif body is _UNSET and not desc.exists():
             self._write_meta(d, meta)          # pure delta — no empty body file
         else:

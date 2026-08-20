@@ -128,10 +128,11 @@ refusal to act on (run `git init`, or move to the right directory), never a
 crash to retry or to route around by writing the files by hand. `tcw work list`,
 `show`, `nodes` and `tcw validate` keep working. A different message —
 `tcw: git command failed (exit N): …` — means the repository is there but Git
-refused: a lock another process holds, a hook that said no. The write is rolled
-back to what it found, so there is nothing to clean up by hand: whatever that
-command created is removed, and whatever already existed is left alone. Fix the
-Git problem and re-run.
+refused: a lock another process holds, a hook that said no. Whatever that
+command *created* is removed, so there is no half-made item to clean up. An
+*edit* to something that already existed is not undone — the change is on disk
+and the item may already have moved — so fix the Git problem and re-run the
+command; re-running is the fix in both cases.
 
 **With an external `work.path`, two repositories are in play** — the store's and
 the code node's — and a command can need both. `tcw work start --worktree`
