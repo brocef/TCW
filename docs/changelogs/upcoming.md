@@ -137,8 +137,11 @@ category.
   entry's `# ` heading was ignored, although `_inbox_write` (`delegate`,
   `escalate`) writes exactly that heading into every entry it creates. The title
   is now `--title`, else the first ATX H1 of the entry's body, else the entry's
-  name with a leading `YYYY-MM-DD-` removed; only the filename fallback is
-  stripped, since an H1 or a `--title` is a human-authored string. The slug rule
+  name with a leading `YYYY-MM-DD-` removed — kept when stripping it would leave
+  nothing, so an entry named `2026-08-19-.md` still has a title. Only the
+  filename fallback is stripped, since an H1 or a `--title` is a human-authored
+  string. The slug never falls back to the *unstripped* label, so no entry name
+  can put a second date in it. The slug rule
   is unchanged (`<acceptance-date>-<slugified-title>`), and `InboxEntry.title`
   stays filename-derived, so `inbox list` prints the same addressable label. The
   standing "always pass `--title`" workaround is retired. (#20)
@@ -158,6 +161,15 @@ category.
   `create_work` and `inbox_accept` route through it, so guarding only the inbox
   path would have left `tcw work new` broken. `state.yaml` keeps the full title;
   only the slug is bounded.
+
+- `FsWorkStore.create_work` took its `created` argument on trust, and it
+  prefixes the slug: `tcw serve`'s `POST` body passes the field straight
+  through, so a long or non-date value produced a rejected path
+  (`OSError: [Errno 63]`) or a `state.yaml` holding a non-date. It is parsed
+  with `date.fromisoformat` now, which both validates and canonicalizes it, so
+  the slug's prefix is bounded as well as its body. (Found reviewing this
+  change's own claim that `_unique_slug` bounds its output — it bounded only
+  the half derived from the title.)
 
 ## Added
 

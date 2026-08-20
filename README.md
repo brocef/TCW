@@ -929,7 +929,8 @@ binary contents are never printed. See the optional
 [`docs/work-inbox-template.md`](docs/work-inbox-template.md) for a useful request
 shape; the command does not require that template, but it does read the first
 `# ` heading of an entry's body as the accepted item's title — `--title`, then
-that heading, then the entry's own name with a leading `YYYY-MM-DD-` removed.
+that heading, then the entry's own name with a leading `YYYY-MM-DD-` removed
+(unless removing it would leave nothing).
 Accepting an entry records what arrived as the item's `intake.md` — the entry body, a manifest
 naming every preserved resource and the entry it came from, and a note standing
 in for a primary resource that is not text — and leaves the item's `request`

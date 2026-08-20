@@ -40,7 +40,8 @@ entry does not write one, so an accepted item shows `i` and not `R`.
    materially applicable tag. Register a new one only if it will be useful beyond
    this item. — agent `[judgment]`
 5. `tcw work inbox accept <entry>`. The item is named after the entry's first
-   `# ` heading, or its filename minus the `YYYY-MM-DD-` prefix; pass
+   `# ` heading, or its filename minus the `YYYY-MM-DD-` prefix (kept when
+   stripping it would leave nothing); pass
    `--title "<clear title>"` when that heading is missing or poor. The tool
    consumes the entry, creates the item, and prints its slug; it refuses an
    entry that does not exist. — agent `[gated]`

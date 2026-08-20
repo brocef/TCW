@@ -67,7 +67,8 @@ and requests sent between projects with `tcw work delegate` and
 
 Now the request's own `# ` heading names the item. If it has no heading, the
 filename is still used, but without the leading date — one date, in the slug,
-where it belongs. Passing `--title` still wins over both, so nothing you already
+where it belongs. (A request filed under nothing but a date keeps it: there
+would be no name left otherwise.) Passing `--title` still wins over both, so nothing you already
 do stops working; you just no longer have to.
 
 If you write requests by hand, the first line is now worth getting right; the
@@ -76,11 +77,15 @@ optional template in `docs/work-inbox-template.md` shows the shape.
 ## Unusual titles no longer break `tcw work new`
 
 A title with no Latin letters in it — `tcw work new "東京"` — produced an item
-with no name at all, and every such item collided with the last one. A very long
-title failed outright with a filename error, after printing a stack trace. Both
-now work: the folder name falls back to `untitled` when there is nothing to
-build one from, and is shortened when it would be too long. The title you typed
-is kept in full either way.
+whose folder name was just the date with nothing after it, and every such item
+collided with the last one. A very long title failed outright with a filename
+error, after printing a stack trace. Both now work: the folder name falls back
+to `untitled` when there is nothing to build one from, and is shortened when it
+would be too long. The title you typed is kept in full either way.
+
+Relatedly, the local web app's "new item" call used to accept any text at all as
+the creation date, which then became part of the item's folder name; it now says
+no to anything that is not a date.
 
 ## Stage instructions name the file your item actually has
 
