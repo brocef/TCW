@@ -15,4 +15,7 @@ work store until I restore it with `tcw work init`.
 
 I can scaffold this layout with `tcw work init --path <path>` or `tcw init
 --work-path <path> work`. TCW refuses broken, invalid, non-Git, or colliding
-stores and never moves an existing non-pristine store automatically.
+stores — including a store whose items the repository's own ignore rules would
+hide, which would otherwise look like a working store holding untracked work —
+and never moves an existing non-pristine store automatically. Those refusals
+leave nothing behind.

@@ -16,3 +16,10 @@ For the work component I may instead pass `--work-path <path>` at top level or
 scaffolds the target repository, and writes ignore rules relative to the target
 repository. It replaces only an exactly pristine generated default scaffold;
 existing work requires a manual migration.
+
+Every refusal `init` makes happens before it writes anything at all — no marker,
+no config entry, no folders. It turns down a target outside a Git repository, one
+whose items the repository's ignore rules would hide (so nothing filed there
+would be tracked), one behind a broken symlink, a status folder that is really a
+file, and a `docs/work` that is a symlink elsewhere. A `tcw-config.yaml` it
+cannot read reports that plainly rather than failing part-way through.
