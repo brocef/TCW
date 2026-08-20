@@ -952,6 +952,17 @@ class FsTreeStore:
         """
         return self.root.resolve()
 
+    def _node_readable(self, d: Path) -> bool:
+        """Whether `d` is a node this store may read — folder *and* own meta.
+
+        Two questions, because they fail apart: the folder can be reached
+        through a symlink out of the store, or the folder can be ordinary while
+        its `meta.yaml` is the symlink. Guarding only the folder leaves the
+        second open, and an escaped meta reads as `{}`, which `_term` would turn
+        into a *phantom* term named after its own slug rather than a miss.
+        """
+        return self._within_store(d) and self._within_store(d / "meta.yaml")
+
     def _within_store(self, path: Path) -> bool:
         """True iff `path` stays inside the store root once symlinks resolve.
 
@@ -1012,13 +1023,23 @@ class FsTreeStore:
 
         Attachments are the folder's non-reserved, non-dot files (bounded set).
         """
-        meta = load_yaml(d / "meta.yaml")
+        # Containment per resource, not just per folder. A folder can be
+        # legitimately inside the store while a file in it is a symlink pointing
+        # out, and the folder guards upstream cannot see that. A resource that
+        # escapes reads as *absent* — the same fail-closed shape `get_local`
+        # already uses for the folder. An empty meta is what makes the node stop
+        # resolving: `_is_capability` and the `overrides` test both read falsey,
+        # and a taxonomy node with no kind is not a term.
+        meta_path = d / "meta.yaml"
+        meta = load_yaml(meta_path) if self._within_store(meta_path) else {}
         desc = d / "description.md"
-        description = desc.read_text(encoding="utf-8") if desc.exists() else ""
+        description = (desc.read_text(encoding="utf-8")
+                       if desc.exists() and self._within_store(desc) else "")
         reserved = self._node_reserved()
         attachments = sorted(
             f.name for f in d.iterdir()
-            if f.is_file() and f.name not in reserved and not f.name.startswith("."))
+            if f.is_file() and f.name not in reserved and not f.name.startswith(".")
+            and self._within_store(f))
         return meta, description, attachments
 
     def _write_node(self, d: Path, meta: dict, description: str) -> None:
@@ -1127,7 +1148,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             slug = _safe_store_id(slug, "term ref")
         except ValueError:
             return None
-        return self._term(slug) if (self.root / slug).is_dir() else None
+        d = self.root / slug
+        # Order matters: the cheap stat first, so a miss pays no `resolve()`;
+        # containment second; the read (`_term`) only after both.
+        return self._term(slug) if d.is_dir() and self._node_readable(d) else None
 
     def _local_slugs(self) -> list[str]:
         return sorted(
@@ -1579,15 +1603,17 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     def _compose_body(self, d: Path, meta: dict, raw_desc: str) -> str:
         """Effective body = prependedDocs + description + appendedDocs (bounded lists)."""
         parts = []
+        # `_within_store` on each attachment: these are read by name from meta,
+        # so they never pass through `_load_node`'s filtered name list.
         for fn in _as_list(meta.get("prependedDocs")):
             f = d / fn
-            if f.is_file():
+            if f.is_file() and self._within_store(f):
                 parts.append(f.read_text(encoding="utf-8").strip())
         if raw_desc.strip():
             parts.append(raw_desc.strip())
         for fn in _as_list(meta.get("appendedDocs")):
             f = d / fn
-            if f.is_file():
+            if f.is_file() and self._within_store(f):
                 parts.append(f.read_text(encoding="utf-8").strip())
         return "\n\n".join(parts)
 
@@ -1652,8 +1678,14 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         )
 
     def get_local(self, path: str) -> Capability | None:
-        return self._capability(path) if path and self._is_capability(self.root / path) \
-            and not load_yaml(self.root / path / "meta.yaml").get("overrides") else None
+        d = self.root / path
+        # Reordered rather than extended: the old one-expression form called
+        # `load_yaml` inside the condition, so a containment test appended to
+        # the end would parse a meta.yaml outside the store before rejecting it.
+        # The stat stays first so a miss pays no `resolve()`.
+        if not (path and self._is_capability(d) and self._node_readable(d)):
+            return None
+        return None if load_yaml(d / "meta.yaml").get("overrides") else self._capability(path)
 
     def get_by_id(self, cap_id: str) -> Capability | None:
         """Resolve an opaque id to its local capability (keyed lookup)."""

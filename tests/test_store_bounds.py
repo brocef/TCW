@@ -101,3 +101,65 @@ def test_within_store_accepts_a_store_opened_through_a_symlinked_spelling(tmp_pa
     link.symlink_to("real")
     store = FsTaxonomyStore.open(link)
     assert store._within_store(store.root / "alpha") is True
+
+
+# ── resource containment: the files *inside* an in-store folder ──────────────
+#
+# A folder can be legitimately inside the store while a file inside it is a
+# symlink pointing out. Every directory-level guard passes, and the external
+# file is read in full. The work store already gets this treatment for a
+# symlinked `state.yaml`; these are the symmetric cases for the other two.
+
+def _outside(root, name, text):
+    """A file outside every store, for a planted symlink to point at."""
+    d = root.parent / "outside"
+    d.mkdir(exist_ok=True)
+    (d / name).write_text(text)
+    return d / name
+
+
+def test_taxonomy_node_with_a_symlinked_meta_does_not_resolve(tmp_path):
+    root = _repo(tmp_path)
+    target = _outside(root, "meta.yaml", "kind: Vocabulary\nname: Stolen\n")
+    d = root / "docs" / "taxonomy" / "victim"
+    d.mkdir()
+    (d / "meta.yaml").symlink_to(target)
+    (d / "description.md").write_text("body")
+    assert FsTaxonomyStore.open(root).get_local("victim") is None
+
+
+def test_capability_node_with_a_symlinked_meta_does_not_resolve(tmp_path):
+    root = _repo(tmp_path)
+    target = _outside(root, "meta.yaml", "id: cap-stolen\nname: Stolen\nStatus: Supported\n")
+    d = root / "docs" / "capabilities" / "victim"
+    d.mkdir()
+    (d / "meta.yaml").symlink_to(target)
+    (d / "description.md").write_text("body")
+    assert FsCapabilitiesStore.open(root).get_local("victim") is None
+
+
+def test_a_symlinked_description_reads_empty_not_external(tmp_path):
+    """The node still resolves — its meta is real — but the external body must
+    not appear in it."""
+    root = _repo(tmp_path)
+    target = _outside(root, "description.md", "SECRET BODY")
+    d = root / "docs" / "capabilities" / "partly"
+    d.mkdir()
+    (d / "meta.yaml").write_text("id: cap-partly\nname: Partly\nStatus: Supported\n")
+    (d / "description.md").symlink_to(target)
+    cap = FsCapabilitiesStore.open(root).get_local("partly")
+    assert cap is not None
+    assert "SECRET BODY" not in (cap.body or "")
+
+
+def test_an_in_store_node_still_reads_normally(tmp_path):
+    """The control. Without it, a broken fixture is indistinguishable from a
+    working guard — every assertion above is about something *not* happening."""
+    root = _repo(tmp_path)
+    d = root / "docs" / "capabilities" / "ordinary"
+    d.mkdir()
+    (d / "meta.yaml").write_text("id: cap-ord\nname: Ordinary\nStatus: Supported\n")
+    (d / "description.md").write_text("REAL BODY")
+    cap = FsCapabilitiesStore.open(root).get_local("ordinary")
+    assert cap is not None and cap.name == "Ordinary"
+    assert "REAL BODY" in cap.body
