@@ -31,6 +31,17 @@ the command that failed instead of a stack trace.
 In the local web app, a save the store refuses now comes back as that refusal
 in plain words, rather than a server error, and nothing is written.
 
+If your work store lives in a different repository from your code — the
+`work.path` setting — three commands used to get this half right, because they
+write to *both* repositories and only checked one. Starting an item with
+`--worktree` would move it to active and edit your `.gitignore` before failing;
+completing a worktree item whose code repository had gone missing would report
+success while quietly skipping the merge-back, leaving the work branch
+unmerged; and pointing `tcw init --work-path` at a folder outside any repository
+would build the entire store and rewrite your config before telling you no. All
+three now check first and leave nothing behind. Starting *without* `--worktree`
+is unchanged: it only needs the work store's repository.
+
 ## Stage instructions name the file your item actually has
 
 When you ask `tcw work stage spec` or `tcw work stage plan` what to do, the

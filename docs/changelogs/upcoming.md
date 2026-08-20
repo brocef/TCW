@@ -27,6 +27,26 @@ category.
   (`tcw/work/recursion.py`) is the only adapter write that never stages, so the
   `_stage` guard could not reach it; it now checks the destination store's
   repository directly.
+- Three writes reached a repository other than the one their guard checked, all
+  of them only when `work.path` puts the work store in a different repository
+  from the code node (found by adversarial review at `verify`; see the item's
+  `rework.md`). `tcw work start --worktree` guarded the store and then called
+  `ensure_worktree_ignored` on the *node*, so the item moved to `active/` and
+  `.gitignore` gained `.worktrees/` before `git add` failed — `_start` now
+  requires the node's repository ahead of the pre-hooks. `merge_worktree` read
+  any non-zero `rev-parse --verify --quiet` as "branch already gone" and
+  returned success, so `complete` skipped the merge-back and exited 0 with the
+  branch unmerged — it now returns its existing error-message form when the
+  primary checkout has no repository. `init` checked `git_root(base)` *after*
+  writing the sentinel, rewriting `tcw-config.yaml` with `work.path`, and
+  scaffolding every status folder — the check moved above all of it, probing the
+  nearest *existing* ancestor of the target because `git_root` shells out to
+  `git -C <path>` and fails on a path this call has not created yet.
+- `main()`'s `CalledProcessError` handler rendered a string-valued `error.cmd`
+  character by character (`g i t ' ' s t a t u s`) — `shlex.join` over a string
+  iterates it. Latent, since every `check=True` git call in the adapter passes an
+  argv list, but the handler's justification is that it assumes nothing about its
+  caller.
 - `main()` caught only `ValueError`, so any `CalledProcessError` from the
   adapter's seven `check=True` git calls exited as a traceback. A generic
   handler now renders `tcw: git command failed (exit N): <argv>` and exits

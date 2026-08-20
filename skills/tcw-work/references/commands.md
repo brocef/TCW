@@ -122,3 +122,12 @@ crash to retry or to route around by writing the files by hand. `tcw work list`,
 `show`, `nodes` and `tcw validate` keep working. A different message —
 `tcw: git command failed (exit N): …` — means the repository is there but Git
 refused: a lock another process holds, a hook that said no.
+
+**With an external `work.path`, two repositories are in play** — the store's and
+the code node's — and a command can need both. `tcw work start --worktree`
+writes the node's `.gitignore` and creates the worktree there, so it refuses
+unless the *node* is in a repository even when the store is fine; a plain
+`start` needs only the store. `tcw work complete` on a worktree item merges the
+work branch back in the node's repository, and refuses rather than completing
+if that repository is gone — a completion that skipped its merge-back would
+leave the branch stranded with nothing to say so.
