@@ -350,10 +350,13 @@ def git_stage(node_root: Path, *paths: Path) -> None:
     # folder as a deletion, and warning about one that no longer exists would
     # be false. Sound as well as convenient — plain `check-ignore` reports a
     # tracked path as not ignored, so a dropped path is always untracked.
-    _warn_hidden(node_root, *(p for p in ignored if p.exists() or p.is_symlink()))
     live = [str(p) for p in paths if p not in ignored]
     if live:
         _git(["git", "-C", str(node_root), "add", "--", *live], check=True)
+    # After the `git add`, not before: if staging the live paths is refused the
+    # caller rolls the whole write back, and a warning already on stderr saying
+    # the dropped path "is on disk" would be false by the time it is read.
+    _warn_hidden(node_root, *(p for p in ignored if p.exists() or p.is_symlink()))
 
 
 def git_rm(node_root: Path, path: Path) -> None:

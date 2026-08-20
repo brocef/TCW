@@ -745,3 +745,33 @@ def test_the_resolved_destinations_stay_silent_through_git_mv(tmp_path, capsys):
     git_mv(root, root / "docs" / "work" / "active" / slug,
            root / "docs" / "work" / "completed" / slug)
     assert ".gitignore" not in capsys.readouterr().err
+
+
+def test_a_rolled_back_write_does_not_leave_a_false_warning(tmp_path, capsys,
+                                                            monkeypatch):
+    """The warning says the dropped path "is on disk". If staging the *live*
+    paths is then refused, the caller rolls the whole write back and that claim
+    would be false by the time anyone reads it — so the warning comes after the
+    `git add`, not before.
+
+    Needs a genuinely mixed write: one ignored path and one live path in the
+    same call. A rule naming a file (rather than the item folder) gives that —
+    `initial-request.md` is hidden while `state.yaml` beside it is not.
+    """
+    root = node(tmp_path)
+    _ignore(root, "**/initial-request.md\n")
+    real = subprocess.run
+
+    def refuse_add(cmd, *a, **kw):
+        if isinstance(cmd, list) and "add" in cmd:
+            raise subprocess.CalledProcessError(128, cmd)
+        return real(cmd, *a, **kw)
+
+    st = FsWorkStore.open(root)
+    monkeypatch.setattr("tcw.store.fs.subprocess.run", refuse_add)
+    with pytest.raises(subprocess.CalledProcessError):
+        st.create("Task", created="2026-08-20", body="a body\n")
+    monkeypatch.undo()
+
+    assert ".gitignore" not in capsys.readouterr().err
+    assert not (root / "docs" / "work" / "backlog" / "2026-08-20-task").exists()
