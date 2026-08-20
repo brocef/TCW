@@ -253,3 +253,36 @@ def test_capabilities_validation_resources_refuses_an_escaping_ref(tmp_path):
     _cap_link(root)
     store = FsCapabilitiesStore.open(root)
     assert store._validation_resources("link") == []
+
+
+# ── work store: a symlinked state.yaml, not a symlinked item folder ──────────
+#
+# `Path.rglob` does not descend into a symlinked *directory*, so a symlinked
+# item folder is already invisible. A symlink *named* `state.yaml` sitting in
+# an ordinary in-store item folder matches the glob by name, and its parent is
+# then accepted as an item folder.
+
+def test_work_item_with_a_symlinked_state_is_not_discovered(tmp_path):
+    root = _repo(tmp_path)
+    outside = root / "outside"
+    outside.mkdir()
+    (outside / "state.yaml").write_text(
+        "slug: sneaky\ntitle: OUTSIDE\nstatus: backlog\ntype: task\n")
+    d = root / "docs" / "work" / "backlog" / "sneaky"
+    d.mkdir(parents=True)
+    (d / "state.yaml").symlink_to("../../../../outside/state.yaml")
+    store = FsWorkStore.open(root)
+    assert [i.slug for i in store.query()] == []
+
+
+def test_work_item_folder_that_is_itself_a_symlink_stays_undiscovered(tmp_path):
+    """The pre-existing `rglob` property, pinned so a future switch to
+    `os.walk(followlinks=True)` fails loudly instead of silently reopening it."""
+    root = _repo(tmp_path)
+    outside = root / "outside" / "sneaky"
+    outside.mkdir(parents=True)
+    (outside / "state.yaml").write_text(
+        "slug: sneaky\ntitle: OUTSIDE\nstatus: backlog\ntype: task\n")
+    (root / "docs" / "work" / "backlog" / "sneaky").symlink_to("../../../outside/sneaky")
+    store = FsWorkStore.open(root)
+    assert [i.slug for i in store.query()] == []

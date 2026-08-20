@@ -1011,6 +1011,12 @@ class FsTreeStore:
     # read/write mechanics live here so they are defined once. (Abstract spine:
     # body + named fields + named attachments — bounded, never globbed open.)
 
+    def _node_texts(self, d: Path) -> list[str]:
+        """A folder node's [meta, description] texts; empty strings when absent."""
+        return [f.read_text(encoding="utf-8")
+                if f.is_file() and self._within_store(f) else ""
+                for f in (d / "meta.yaml", d / "description.md")]
+
     def _node_reserved(self) -> set[str]:
         """Filenames in a node folder that are not attachments."""
         names = {"meta.yaml", "description.md"}
@@ -1159,7 +1165,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         # can be one — but that is the case this filter is for.
         return sorted(
             str(p.relative_to(self.root)) for p in self.root.rglob("*")
-            if p.is_dir() and self._within_store(p))
+            if p.is_dir() and self._node_readable(p))
 
     def _inherited_stores(self) -> dict[str, "FsTaxonomyStore"]:
         """Every inherited taxonomy keyed by its owning project ID.
@@ -1239,7 +1245,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         # fail-closed contract below (a rejected write leaves no partial folder).
         if not self._within_store(d):
             raise ValueError(f"parent term does not exist: {parent or full}")
-        if d.exists():
+        if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
             raise ValueError(f"term already exists: {full}")
         # Fail closed on refs *before* the first mkdir: a rejected write must
         # leave no partial folder behind. The same rules `check` applies, so a
@@ -1406,7 +1412,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             return []
         local_folder = self.root / identifier
         if local_folder.is_dir() and self._within_store(local_folder):
-            folder = local_folder
+            owner, folder = self, local_folder
         else:
             term = self.get(identifier)
             if term is None:
@@ -1416,8 +1422,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                 else self._inherited_stores()[term.origin]
             )
             folder = owner.root / term.slug
+        # Asked of the *owning* store: an inherited term's files are bounded by
+        # its own root, not this one.
         return [path for path in (folder / "meta.yaml", folder / "description.md")
-                if path.is_file()]
+                if path.is_file() and owner._within_store(path)]
 
     def _cycles(self, taxonomy_root: Path, seen: set[Path]) -> bool:
         if taxonomy_root in seen:
@@ -1449,8 +1457,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             else self._inherited_stores()[term.origin]
         )
         d = owner.root / term.slug
-        meta_text = (d / "meta.yaml").read_text(encoding="utf-8")
-        desc_text = (d / "description.md").read_text(encoding="utf-8")
+        meta_text, desc_text = owner._node_texts(d)
         return TermDetail(term=term, core_revision=_revision_multi(meta_text, desc_text))
 
     def update_term(self, ref: str, *,
@@ -1485,8 +1492,9 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                     f"(expected {core_revision}, got {detail.core_revision})")
 
         # Read current state
-        meta = load_yaml(d / "meta.yaml")
-        desc_text = (d / "description.md").read_text(encoding="utf-8")
+        meta, desc_text = load_yaml(d / "meta.yaml"), ""
+        if (d / "description.md").is_file() and self._within_store(d / "description.md"):
+            desc_text = (d / "description.md").read_text(encoding="utf-8")
 
         # Apply changes
         if "name" in provided:
@@ -1589,7 +1597,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             rel = p.relative_to(self.root)
             if any(part.startswith(".") for part in rel.parts):
                 continue
-            if not self._within_store(p):
+            if not self._node_readable(p):
                 continue                      # before the _is_capability stat
             if self._is_capability(p):
                 out.append(str(rel))
@@ -1664,10 +1672,13 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 merged.pop(k, None)                       # null clears inherited field
             else:
                 merged[k] = _as_list(v) if k == "Subject" else v
-        up_desc = self.extends[alias].root / base.path / "description.md"
-        upstream_raw = up_desc.read_text(encoding="utf-8") if up_desc.exists() else ""
+        up_store = self.extends[alias]
+        up_desc = up_store.root / base.path / "description.md"
+        upstream_raw = (up_desc.read_text(encoding="utf-8")
+                        if up_desc.exists() and up_store._within_store(up_desc) else "")
         child_desc = d / "description.md"
-        child_raw = child_desc.read_text(encoding="utf-8") if child_desc.exists() else ""
+        child_raw = (child_desc.read_text(encoding="utf-8")
+                     if child_desc.exists() and self._within_store(child_desc) else "")
         mid = child_raw if child_raw.strip() else upstream_raw
         return Capability(
             path=base.path,
@@ -1777,7 +1788,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         d = self.root / path
         if not self._within_store(d):
             raise ValueError(f"no such capability: {path}")
-        if d.exists():
+        if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
             raise ValueError(f"capability already exists: {path}")
         display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
         meta = {"id": _mint_cap_id(), "name": display, "Status": status}
@@ -2032,6 +2043,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             meta_dirs = [selected.path]
         for p in meta_dirs:
             d = self.root / p
+            if not self._node_readable(d):
+                continue          # `selected` bypasses the _all_meta_dirs filter
             meta = load_yaml(d / "meta.yaml")
             listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
             for fn in listed:
@@ -2054,7 +2067,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return []
         local_folder = self.root / identifier
         if (local_folder / "meta.yaml").is_file() and self._node_readable(local_folder):
-            folder = local_folder
+            owner, folder = self, local_folder
         else:
             cap = self.get(identifier)
             if cap is None:
@@ -2067,7 +2080,12 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             meta = {}
         names = ["meta.yaml", "description.md", *_as_list(meta.get("prependedDocs")),
                  *_as_list(meta.get("appendedDocs"))]
-        return [folder / name for name in names if (folder / name).is_file()]
+        # `validate()` parses and reads whatever comes back, so a listed
+        # attachment that is a symlink out of the store would be read there —
+        # the folder guard above cannot see it. Asked of the *owning* store,
+        # because an inherited folder is bounded by its own root, not this one.
+        return [folder / name for name in names
+                if (folder / name).is_file() and owner._within_store(folder / name)]
 
     def _override_problem(self, target: str) -> str | None:
         """Validate an `overrides: <target>` pointer (dangling / ambiguous / local)."""
@@ -2136,11 +2154,6 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return []
 
     # -- revision-bearing detail + update --
-
-    def _node_texts(self, d: Path) -> list[str]:
-        """A folder node's [meta, description] texts; empty strings when absent."""
-        return [f.read_text(encoding="utf-8") if f.is_file() else ""
-                for f in (d / "meta.yaml", d / "description.md")]
 
     def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:
         cap = self.get(identifier)
@@ -2297,6 +2310,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     p.parent
                     for status in WORK_STATUSES
                     for p in (self.root / status).rglob("state.yaml")
+                    # `rglob` never descends a symlinked *directory*, so a
+                    # symlinked item folder is already invisible. A symlink
+                    # *named* state.yaml matches by name, and its parent would
+                    # then be read as an item folder.
+                    if self._within_store(p)
                 )
             except FileNotFoundError:
                 if attempt == 4:
