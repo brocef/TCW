@@ -84,6 +84,57 @@ spec errors, and the plan's §4 and §5 did the measuring):
   left an `if True:` where the `try` had been. Dedented properly — a wart in a
   file this size is how the next reader loses trust in the rest of it.
 
+## What the adversarial review of the finished diff found
+
+Five defects, all reproduced before being accepted, all fixed. Three were High,
+and the first is the one that matters most: **it violated the single boundary
+this whole item is built on.**
+
+1. **The rollback deleted a pre-existing dangling symlink.** `Path.exists()`
+   follows the link, so a dangling symlink read as *absent*, went into the
+   "created by this call" list, was replaced by a real file, and was unlinked on
+   failure. A path that existed before the call, destroyed by the mechanism
+   whose entire promise is that it never does that. Fixed with
+   `exists() or is_symlink()`.
+
+   Worth naming plainly: **this is the same trap the sibling symlink-containment
+   item fixed elsewhere in this same file**, in this same batch, days apart. I
+   knew the idiom, wrote the comment explaining it there, and did not carry it
+   across. No test would have caught it — the suite has no dangling symlink at a
+   write target, and adding one is not an obvious thing to think of.
+
+2. **The temp file name was a real path someone else could own.**
+   `<target>.tmp` is predictable: an existing file or symlink there was
+   truncated, promoted over the target, and deleted on failure. Pre-existing in
+   `_atomic_write_all`, but this change newly exposed it at the six sites that
+   used to write directly with `dump_yaml`. `tempfile.mkstemp` now picks a
+   unique name beside the target and refuses to reuse an existing one.
+
+3. **`update_capability`'s body-clear branch could still strand a fresh
+   override.** It staged twice — the meta write inside `_write_meta`'s
+   protection, then the directory afterwards to record the deleted
+   `description.md`. A refusal on the *second* left the freshly materialized
+   override standing, because ownership had already been forgotten. Closed by
+   `_write_staged(..., also_stage=…)`, so both ride in one protected call; the
+   test asserts there is exactly **one** staging call, since the window is now
+   closed by construction rather than by handling.
+
+4. **Promotion lost the target's file mode.** A `config.yaml` someone had
+   `chmod 600`'d came back `0644`, because replacing the directory entry
+   replaces the inode. The target's mode is now carried onto the temp.
+
+5. **A rolled-back write could leave a false warning on stderr.** The sibling
+   gitignore item warns before running `git add`; on a *mixed* write — one path
+   an ignore rule hides, another it does not — a refused `git add` rolls the
+   write back, leaving a line claiming the dropped path "is on disk". Fixed by
+   warning after the stage succeeds, which costs nothing and keeps the claim
+   true. This is a cross-item interaction neither item's plan predicted.
+
+**And one documentation defect of my own making.** Three capability bodies and a
+skill reference said a Git-refused write "leaves the project as it found it" and
+that whatever existed "is left as it was". That is false for an update: the edit
+stays on disk deliberately, as the release notes correctly say. Corrected.
+
 ## Abstraction litmus test
 
 Passes. `_write_staged` and `_mkdir_owned` are private to the filesystem
