@@ -771,6 +771,9 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
+_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+
+
 def _extends_ids(config: dict, config_path: Path) -> list[str]:
     value = config.get("extends") or []
     if isinstance(value, dict):
@@ -3169,11 +3172,19 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # Before anything is created or consumed: a bad initiative must not leave
         # a half-accepted item behind.
         initiative = self._inbox_initiative(detail.body, ref)
-        accepted_title = (title or detail.entry.title).strip()
+        # `--title` wins, then the entry's own H1, then its name with TCW's
+        # `YYYY-MM-DD-` filing prefix removed — that prefix is our convention,
+        # not a title, and re-dating it into the slug is what dated it twice.
+        label = _DATE_PREFIX.sub("", detail.entry.title).strip() or detail.entry.title
+        accepted_title = (title or body_title(detail.body) or label).strip()
         if not accepted_title:
             raise ValueError("title is required and must be non-empty")
         created = date.today().isoformat()
-        slug = self._unique_slug(created, accepted_title)
+        # Slug from the label when the title has no ASCII to slugify — the H1
+        # stays the title, but `<date>-untitled` is a worse identifier than the
+        # entry's own name.
+        slug = self._unique_slug(
+            created, accepted_title if slugify(accepted_title) else label)
         destination = self.root / "backlog" / slug
         manifest: list[str] = []
         attachments: list[tuple[str, Path]] = []

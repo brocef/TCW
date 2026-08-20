@@ -1582,7 +1582,13 @@ class WorkStore(ABC):
 
     @abstractmethod
     def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
-        """Atomically consume raw intake into a new backlog work item."""
+        """Atomically consume raw intake into a new backlog work item.
+
+        The title is ``title`` when given, else the first ATX H1 the entry's
+        body declares (``body_title``), else a store-provided label for the
+        entry. The body read is the contract; how a store labels an entry is
+        its own business.
+        """
 
     # -- revision-bearing reads --
 

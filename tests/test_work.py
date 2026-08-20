@@ -2410,3 +2410,206 @@ def test_work_new_ordinary_title_is_unchanged(tmp_path, monkeypatch):
     assert main(["work", "new", "Another Raw Request"]) == 0
     slug = f"{date.today().isoformat()}-another-raw-request"
     assert (root / "docs/work/backlog" / slug).is_dir()
+
+
+# -- accepted-item title derivation ----------------------------------------
+
+
+def test_inbox_accept_derives_the_title_from_the_h1(tmp_path):
+    """The reported bug. The entry's own heading names the item, and the
+    filename's date is not re-applied on top of the acceptance date."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-another-raw-request.md").write_text(
+        "# Another Raw Request\n\nBody.\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-19-another-raw-request")
+    assert item.title == "Another Raw Request"
+    assert item.slug == f"{date.today().isoformat()}-another-raw-request"
+    assert (root / "docs/work/backlog" / item.slug).is_dir()
+
+
+def test_inbox_accept_finds_the_h1_after_frontmatter(tmp_path):
+    """The `_inbox_write` shape: `delegate`/`escalate` put frontmatter first, so
+    the heading is line 5. Neither `req` nor the dated stem may win."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-req.md").write_text(
+        "---\nfrom: parent\n---\n\n# Do the thing\n\ndetails\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    assert st.inbox_accept("2026-08-19-req").title == "Do the thing"
+
+
+@pytest.mark.parametrize("index", ["INDEX.md", "INDEX.txt"])
+def test_inbox_accept_reads_a_folder_index_h1(tmp_path, index):
+    root = node(tmp_path)
+    entry = root / "docs/work/inbox/2026-08-19-folder-request"
+    entry.mkdir()
+    (entry / index).write_text("# Folder Request Title\n\nbody\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    assert st.inbox_accept("2026-08-19-folder-request").title == "Folder Request Title"
+
+
+def test_inbox_accept_strips_the_date_prefix_from_the_fallback(tmp_path):
+    """No H1: the filename still names the item, but `YYYY-MM-DD-` is TCW's own
+    convention and must not appear in a human title — or twice in the slug."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-no-heading.md").write_text("body\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-19-no-heading")
+    assert item.title == "no-heading"
+    assert item.slug == f"{date.today().isoformat()}-no-heading"
+    assert "2026-08-19-2026-08-19" not in item.slug
+
+
+def test_inbox_accept_ignores_a_heading_inside_a_fence(tmp_path):
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-fenced.md").write_text(
+        "Repro:\n\n```sh\n# not a title\ntcw work list\n```\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    assert st.inbox_accept("2026-08-19-fenced").title == "fenced"
+
+
+def test_inbox_accept_skips_non_h1_and_empty_headings(tmp_path):
+    root = node(tmp_path)
+    inbox = root / "docs/work/inbox"
+    (inbox / "sub.md").write_text("## Sub\n\n# Real\n", encoding="utf-8")
+    (inbox / "empty.md").write_text("#\n\n#   \n\n# Real\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    assert st.inbox_accept("sub").title == "Real"
+    assert st.inbox_accept("empty").title == "Real"
+
+
+def test_inbox_accept_title_override_beats_a_competing_h1(tmp_path):
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-req.md").write_text(
+        "# A Competing Heading\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-19-req", title="Clean Title")
+    assert item.title == "Clean Title"
+    assert item.slug == f"{date.today().isoformat()}-clean-title"
+
+
+def test_inbox_list_still_shows_the_filename_label(tmp_path, monkeypatch, capsys):
+    """`InboxEntry.title` is the entry's addressable identifier, not a preview of
+    the accepted title. Deriving one must not move the other."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-another-raw-request.md").write_text(
+        "# Another Raw Request\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "inbox", "list"]) == 0
+    assert capsys.readouterr().out == (
+        "2026-08-19-another-raw-request.md | file | 2026-08-19-another-raw-request\n")
+
+
+def test_inbox_accept_dates_the_slug_when_accepted_not_when_filed(tmp_path):
+    """An entry filed on the 1st and accepted today becomes today's slug — the
+    slug's date and `state.yaml: created` must agree."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-01-do-the-thing.md").write_text(
+        "---\nfrom: parent\n---\n\n# Do the thing\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-01-do-the-thing")
+    today = date.today().isoformat()
+    assert item.slug == f"{today}-do-the-thing"
+    assert not item.slug.startswith("2026-08-01")
+    state = yaml.safe_load((st.path(item.slug) / "state.yaml").read_text())
+    assert state["created"] == today
+
+
+def test_inbox_accept_disambiguates_duplicate_delegated_requests(tmp_path):
+    """`_inbox_write`'s own collision loop names the second entry `-2`; the
+    accepted slug's suffix comes from `_unique_slug`, not from that filename."""
+    root = node(tmp_path)
+    today = date.today().isoformat()
+    inbox = root / "docs/work/inbox"
+    for name in (f"{today}-do-it.md", f"{today}-do-it-2.md"):
+        (inbox / name).write_text("---\nfrom: parent\n---\n\n# Do it\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    first = st.inbox_accept(f"{today}-do-it")
+    second = st.inbox_accept(f"{today}-do-it-2")
+    assert (first.title, second.title) == ("Do it", "Do it")
+    assert (first.slug, second.slug) == (f"{today}-do-it", f"{today}-do-it-2")
+
+
+def test_inbox_accept_takes_only_the_first_line_of_a_multiline_heading(tmp_path):
+    """`delegate` interpolates its title into `# {title}` unvalidated. A newline
+    in it costs the remainder — an accepted limitation, pinned."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-req.md").write_text(
+        "# Fix auth\nurgently\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    assert st.inbox_accept("2026-08-19-req").title == "Fix auth"
+
+
+def test_inbox_accept_keeps_an_atx_closing_sequence(tmp_path):
+    """No CommonMark closing-sequence handling: the `#` is part of the title."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-req.md").write_text("# Fix auth #\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-19-req")
+    assert item.title == "Fix auth #"
+    assert item.slug == f"{date.today().isoformat()}-fix-auth"
+
+
+def test_inbox_accept_uses_the_label_when_the_title_has_no_slug(tmp_path):
+    """`slugify` is ASCII-only. The H1 stays the title; the filename is the
+    better identifier when the title leaves nothing to slugify."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-tokyo-request.md").write_text("# 東京\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-19-tokyo-request")
+    assert item.title == "東京"
+    assert item.slug == f"{date.today().isoformat()}-tokyo-request"
+
+
+def test_inbox_accept_falls_back_to_untitled_when_nothing_slugifies(tmp_path):
+    root = node(tmp_path)
+    inbox = root / "docs/work/inbox"
+    (inbox / "東京.md").write_text("# 京都\n", encoding="utf-8")
+    (inbox / "大阪.md").write_text("# 名古屋\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+    today = date.today().isoformat()
+
+    first = st.inbox_accept("東京")
+    second = st.inbox_accept("大阪")
+    assert (first.title, second.title) == ("京都", "名古屋")
+    assert (first.slug, second.slug) == (f"{today}-untitled", f"{today}-untitled-2")
+
+
+def test_inbox_accept_truncates_a_long_h1_in_the_slug_only(tmp_path):
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-19-long.md").write_text(
+        f"# {'a' * 300}\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-19-long")
+    assert item.title == "a" * 300
+    assert len(item.slug) == 131                       # 11 date + 120 body
+    assert (root / "docs/work/backlog" / item.slug).is_dir()
+
+
+def test_inbox_accept_degenerate_dated_filenames(tmp_path):
+    """The prefix is a shape, not a calendar. A name that *is* a date keeps it;
+    stripping one to nothing falls back to the unstripped label rather than
+    raising "title is required"."""
+    root = node(tmp_path)
+    inbox = root / "docs/work/inbox"
+    (inbox / "2026-08-19.md").write_text("body\n", encoding="utf-8")
+    (inbox / "2026-08-19-.md").write_text("body\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    assert st.inbox_accept("2026-08-19.md").title == "2026-08-19"
+    assert st.inbox_accept("2026-08-19-.md").title == "2026-08-19-"
