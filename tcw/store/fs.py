@@ -1589,6 +1589,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             rel = p.relative_to(self.root)
             if any(part.startswith(".") for part in rel.parts):
                 continue
+            if not self._within_store(p):
+                continue                      # before the _is_capability stat
             if self._is_capability(p):
                 out.append(str(rel))
         return out
@@ -1773,6 +1775,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             raise ValueError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")
         d = self.root / path
+        if not self._within_store(d):
+            raise ValueError(f"no such capability: {path}")
         if d.exists():
             raise ValueError(f"capability already exists: {path}")
         display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
@@ -1858,6 +1862,11 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             raise ValueError(
                 f"cannot override '{cap.qualified}': both '{cap.path}' and "
                 f"'{cap.origin}/{cap.path}' are already taken")
+        # The mirror is the one write not downstream of a guarded lookup: a local
+        # symlink shadowing the first segment of the upstream path would have it
+        # create the folder and its meta.yaml outside the store.
+        if not self._within_store(d):
+            raise ValueError(f"no such capability: {identifier}")
         return d, {"overrides": f"{cap.origin}/{cap.id}"}, True
 
     def _merge_meta(self, meta: dict, norm: dict, is_override: bool) -> dict:
@@ -2044,7 +2053,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         except ValueError:
             return []
         local_folder = self.root / identifier
-        if (local_folder / "meta.yaml").is_file():
+        if (local_folder / "meta.yaml").is_file() and self._node_readable(local_folder):
             folder = local_folder
         else:
             cap = self.get(identifier)

@@ -201,3 +201,55 @@ def test_taxonomy_validation_resources_refuses_an_escaping_ref(tmp_path):
     (secret / "victim" / "meta.yaml").write_text("kind: Vocabulary\nname: Victim\n")
     store = FsTaxonomyStore.open(root)
     assert store._validation_resources("alpha/link/victim") == []
+
+
+# ── capabilities: listing, write target, targeted check ──────────────────────
+
+def _cap_link(root, target_has_meta=True):
+    """`docs/capabilities/link -> ../../outside`, with a capability behind it.
+
+    The symlink must resolve to a folder that *itself* holds a meta.yaml, or
+    `rglob` — which never descends a symlinked directory — hides it from
+    `list_all` today too, and the test passes on the unfixed tree.
+    """
+    outside = root / "outside"
+    outside.mkdir(exist_ok=True)
+    if target_has_meta:
+        (outside / "meta.yaml").write_text(
+            "id: cap-outside\nname: Outside\nStatus: Supported\n")
+        (outside / "description.md").write_text("OUTSIDE BODY")
+    (root / "docs" / "capabilities" / "link").symlink_to("../../outside")
+    return outside
+
+
+def test_capabilities_list_does_not_advertise_a_symlinked_entry(tmp_path):
+    root = _repo(tmp_path)
+    _cap_link(root)
+    store = FsCapabilitiesStore.open(root)
+    assert "link" not in [c.path for c in store.list_all(local_only=True)]
+
+
+def test_capabilities_set_through_a_symlink_mutates_nothing_outside(tmp_path):
+    root = _repo(tmp_path)
+    outside = _cap_link(root)
+    before = (outside / "meta.yaml").read_bytes()
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError):
+        store.set("link", {"Status": "Omitted"})
+    assert (outside / "meta.yaml").read_bytes() == before
+
+
+def test_capabilities_add_through_a_symlink_creates_nothing_outside(tmp_path):
+    root = _repo(tmp_path)
+    outside = _cap_link(root, target_has_meta=False)
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError):
+        store.add("link/planted", name="Planted")
+    assert not (outside / "planted").exists()
+
+
+def test_capabilities_validation_resources_refuses_an_escaping_ref(tmp_path):
+    root = _repo(tmp_path)
+    _cap_link(root)
+    store = FsCapabilitiesStore.open(root)
+    assert store._validation_resources("link") == []
