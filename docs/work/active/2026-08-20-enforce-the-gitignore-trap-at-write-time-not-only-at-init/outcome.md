@@ -118,6 +118,27 @@ itself as a filesystem-adapter precondition rather than a model concept.
   ceiling is what this item exists to cover at write time, not to remove at
   configure time.
 
+## Amended after the sibling item's review
+
+The adversarial review of
+`2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write`
+found a cross-item interaction that belongs here, and it is now fixed in this
+item's code:
+
+**`git_stage` warned before running `git add`.** On a *mixed* write — one path an
+ignore rule hides, another it does not — the warning printed, the `git add` on
+the live path was then refused, and the sibling's rollback removed the whole
+write. The line saying the dropped path "is on disk" was false by the time
+anyone read it. The warning now comes **after** the stage succeeds, which costs
+nothing (a drop is still reported whenever the stage works, and when every path
+is dropped there is no `git add` to run) and keeps the claim true. Pinned by
+`test_a_rolled_back_write_does_not_leave_a_false_warning`, verified red against
+the pre-reorder source.
+
+Neither item's plan predicted this. It is only reachable once both had landed,
+which is an argument for reviewing a batch's diffs against each other rather
+than only item by item.
+
 ## Notes
 
 - `_warn_off_trunk`, the stderr-advisory precedent this design copies, has **no
