@@ -1,13 +1,23 @@
 # Plan — Enforce the gitignore trap at write time, not only at init
 
-Verified against **`a875de9`** (`git rev-parse --short HEAD`, working tree clean
-apart from an unrelated item's `spec.md`). Every line number below is written
-`file:NNN (a875de9)` and every one was re-derived against this tree, not copied
-from the spec. Address the code by **symbol** first; the line numbers are a
-convenience that will rot.
+Line numbers verified against **`406b043`**. Every one below is written
+`file:NNN (406b043)` and every one was re-derived against that tree, not copied
+from the spec. **Address the code by symbol first** — `tcw/store/fs.py` moved
+twice while this plan was being written (`a875de9` → `7a7d735` → `406b043`,
+shifting `_warn_off_trunk` by +117 lines), and it will move again before Task 1
+starts. Re-derive before editing; the symbols are stable, the numbers are not.
 
-Baseline suite size on this tree: **N = 1859 passed** (`python -m pytest -q`,
-7m17s). Criterion 10's `≥ N` therefore means **≥ 1859**.
+The empirical checks in the next section were run against **`a875de9`**. The
+commits since (`0d6ac4d` "containment: bound work-item resources", plus two
+work-tracking commits) touched `tcw/store/fs.py` and added
+`tests/test_store_bounds.py`; none of them touched `git_stage`, `git_mv`,
+`git_ignored`, or `tests/test_work_autocommit.py`, and every citation in those
+checks was re-verified against `406b043`. The findings stand.
+
+**Baseline suite size: re-measure it, do not copy it.** At `a875de9` it was
+**1859 passed** (7m17s); at `406b043` `pytest --collect-only -q` reports **1883
+collected**. Run `python -m pytest -q` immediately before Task 1 and use *that*
+number as criterion 10's `N`.
 
 ---
 
@@ -73,7 +83,7 @@ Two independent checks:
    All eight are either read-only commands or unit tests of `read_piped_stdin`,
    with **no write** anywhere in the test body:
 
-   | Site (a875de9) | What it runs | Writes? |
+   | Site (406b043) | What it runs | Writes? |
    | --- | --- | --- |
    | `tests/test_capabilities.py:76` | `tcw capabilities path` | no |
    | `tests/test_work.py:579,584` | `tcw work path`, `tcw work inbox path` | no |
@@ -82,12 +92,20 @@ Two independent checks:
    | `tests/test_stdin.py:61,106,117,261` | `read_piped_stdin` unit tests | no |
 
 2. **Dynamic.** The full change was prototyped on `/tmp/tcwcopy` (a
-   `git archive HEAD` copy) and the whole suite run against it:
-   **`1859 passed`, 0 failed, 0 errors.** The `git_stage`-only prototype was run
-   first (`1859 passed`); the corrected prototype carrying **both** guards was
-   re-run and is recorded in Verification below.
+   `git archive HEAD` copy) and the whole suite run against it — twice:
 
-   `tests/test_work_autocommit.py:606` — the one existing test that deliberately
+   | Prototype | Result |
+   | --- | --- |
+   | `git_stage` guard only | **1859 passed**, 0 failed, 0 errors (437s) |
+   | `git_stage` **+** `git_mv` guards (the shipping shape) | **1858 passed, 1 skipped**, 0 failed, 0 errors (432s) |
+
+   The one skip is **environmental, not caused by the change**:
+   `tests/test_session_bootstrap.py:353` — _"no editable tcw install here —
+   nothing for the guard to protect"_. The `/tmp` copy is not an editable
+   install; in the primary checkout that test runs, which is why the `a875de9`
+   baseline was 1859. Confirmed by `-rs`.
+
+   `tests/test_work_autocommit.py:606 (406b043)` — the one existing test that deliberately
    gitignores a destination folder — makes **no** stderr assertion, so it is
    unaffected.
 
@@ -110,7 +128,7 @@ Neither changes the design. Both change what a test may be written against.
 
 - **There is no `tcw work discard` command.** Goal 3 names one. The real route
   to `docs/work/discarded/` is **`tcw work complete <slug> --resolution wontfix
-  --confirm`** (`tcw/work/cli.py:1273,1480 (a875de9)` — "anything else →
+  --confirm`** (`tcw/work/cli.py:1273,1480 (406b043)` — "anything else →
   discarded"). `tcw work drop` is a *hard delete*: it removed the item from disk
   entirely and left `docs/work/discarded/` empty. Criterion 4's own wording
   ("Same as (3) with `--resolution wontfix`") is already correct; only Goal 3's
@@ -166,22 +184,22 @@ that no later task calls.
 **Modifies:** `tcw/store/fs.py`, `tests/test_work_autocommit.py`.
 
 1. Add a module-level `_warn_hidden(node_root: Path, *paths: Path) -> None`
-   immediately above `git_stage` (`tcw/store/fs.py:300 (a875de9)`). It:
+   immediately above `git_stage` (`tcw/store/fs.py:301 (406b043)`). It:
    - drops any `p` where `set(p.parts) & set(RESOLVED_STATUSES)` — the
      **absolute** path's components, per the spec's Design;
    - returns early if nothing survives;
    - renders each survivor via `p.relative_to(node_root)` inside
      `try/except ValueError`, falling back to `str(p)`;
    - emits **the exact string above**, once, to `sys.stderr`.
-     `sys` is already imported (`tcw/store/fs.py:20 (a875de9)`);
-     `RESOLVED_STATUSES` is already imported (`tcw/store/fs.py:33 (a875de9)`,
-     from `tcw/store/base.py:453 (a875de9)`).
+     `sys` is already imported (`tcw/store/fs.py:20 (406b043)`);
+     `RESOLVED_STATUSES` is already imported (`tcw/store/fs.py:34 (406b043)`,
+     from `tcw/store/base.py:453 (406b043)`).
    - **It does not test existence** — see R4.
    - Carry the two `ponytail:` notes the spec calls for: the component-match
      ceiling (`# ponytail: component match, not store-relative — a repo path
      containing 'completed' silences the warning; take the store root as an
      argument if that ever bites.`) and the no-de-duplication note.
-2. In `git_stage` (`tcw/store/fs.py:300-307 (a875de9)`), compute the ignored set
+2. In `git_stage` (`tcw/store/fs.py:301-308 (406b043)`), compute the ignored set
    once instead of twice, and warn about the ones that exist:
 
    ```python
@@ -191,12 +209,12 @@ that no later task calls.
    ```
 
    `p.exists() or p.is_symlink()` is the idiom already used at
-   `tcw/store/fs.py:672-673 (a875de9)` for the dangling-symlink case. The
+   `tcw/store/fs.py:674 (406b043)` for the dangling-symlink case. The
    `git add` invocation and the paths it receives are unchanged — that is
    criterion 7.
 3. Tests go in `tests/test_work_autocommit.py`, in a **new section appended
    after** the existing `# ── a gitignored destination status folder ──` block
-   (`tests/test_work_autocommit.py:604-632 (a875de9)`). Reuse that file's
+   (`tests/test_work_autocommit.py:604-632 (406b043)`). Reuse that file's
    existing `node()`, `make_item()`, `committed()`, `porcelain()` helpers — its
    `node()` already runs the **real** `init`, so the default resolved-ignore
    rules are present, which is exactly what the silencing tests need. **No new
@@ -236,7 +254,7 @@ caller.
 
 **Modifies:** `tcw/store/fs.py`, `tests/test_work_autocommit.py`.
 
-1. In `git_mv`'s ignored-destination branch (`tcw/store/fs.py:359 (a875de9)`),
+1. In `git_mv`'s ignored-destination branch (`tcw/store/fs.py:360 (406b043)`),
    **before** the `git rm --cached`:
 
    ```python
@@ -343,7 +361,7 @@ Every criterion has a task; every task is required by a criterion.
 | 7 | No behavioural change (disk + `git status --porcelain`) | **Task 1** step 2 and **Task 2** step 1 keep the git invocations byte-identical; asserted by the `porcelain()` / `ls-files` checks in both tasks' tests |
 | 8 | A vacated source does not warn | **Task 1**, `test_a_vacated_source_does_not_warn` |
 | 9 | Chokepoint, not per-caller | **Tasks 1 and 2** are scoped to `tcw/store/fs.py` + one test file; checked in Verification (V1) |
-| 10 | Suite green and grew (≥ 1859) | **Tasks 1 and 2** (red-first discipline, six new tests); checked in Verification (V2) |
+| 10 | Suite green and grew (≥ the freshly measured `N`) | **Tasks 1 and 2** (red-first discipline, six new tests); checked in Verification (V2) |
 | 11 | `tcw validate` and `tcw capabilities check` pass; both capability texts updated | **Task 3** |
 | 12 | Changelog + release notes carry an entry; README and the work SKILL evaluated and the evaluation recorded | **Task 4** + the Documentation Sync section below |
 
@@ -353,7 +371,7 @@ No task exists that no criterion needs.
 
 ## Documentation Sync
 
-`tcw work docs` on `a875de9` returns four entries. All four evaluated:
+`tcw work docs` on `406b043` returns four entries. All four evaluated:
 
 | Entry | Trigger | Fires? | Reason |
 | --- | --- | --- | --- |
@@ -375,11 +393,12 @@ What `pytest` cannot prove, to be done by hand before `tcw work submit`.
   commits must list **exactly** `tcw/store/fs.py` and
   `tests/test_work_autocommit.py`. Then `git diff main...HEAD -- tcw/store/fs.py`
   and confirm the hunks fall only inside `_warn_hidden`, `git_stage`, and
-  `git_mv` — no `_stage`/`_mv` override at `tcw/store/fs.py:940,948,2176,2184
-  (a875de9)`, no `FsWorkStore` method, no `tcw/work/cli.py`, no `tcw/cli.py`,
+  `git_mv` — no `_stage`/`_mv` override at `tcw/store/fs.py:994,1002,2282,2290
+  (406b043)`, no `FsWorkStore` method, no `tcw/work/cli.py`, no `tcw/cli.py`,
   no `tcw/serve/`. A test suite cannot assert the *shape* of a diff.
 - **V2 — criterion 10 (grew, and the red runs were real).** `python -m pytest -q`
-  reports `≥ 1859 passed`, `0 failed`. Separately, record for each of the
+  reports `≥ N passed` (with `N` measured on the branch point, not copied from
+  this plan — see the header), `0 failed`. Separately, record for each of the
   criterion-1 and criterion-5 tests what the **red** run printed, and confirm
   the failure was an empty/short `err`, not a fixture error. A green suite
   cannot prove a test was ever red.
@@ -412,19 +431,19 @@ What `pytest` cannot prove, to be done by hand before `tcw work submit`.
 - **Reuse, don't create.** `tests/test_work_autocommit.py` already has
   `node()` (running the real `init`, so the resolved-ignore rules are live),
   `make_item()`, `committed()`, `porcelain()`, and a section dedicated to a
-  gitignored destination folder (`:604-632 (a875de9)`). Six new tests append to
+  gitignored destination folder (`:604-632 (406b043)`). Six new tests append to
   it. No new test module, no new conftest fixture.
-- `_warn_off_trunk` (`tcw/store/fs.py:3362-3384 (a875de9)`, printing at `:3383`)
+- `_warn_off_trunk` (`tcw/store/fs.py:3479-3501 (406b043)`, printing at `:3500`)
   is the precedent for shape only. It has **no test** — grepping `tests/` for
   `trunk-branch is` returns nothing. Copy the shape, not the coverage.
-- The `init` guard's `ponytail:` note (`tcw/store/fs.py:696-700 (a875de9)`)
+- The `init` guard's `ponytail:` note (`tcw/store/fs.py:697-701 (406b043)`)
   names this exact gap and says "Catching those means checking at write time, in
   `git_stage`". Once Task 1 lands, that sentence describes something that now
   exists. Updating it is a two-word edit inside `tcw/store/fs.py`, so it stays
   within criterion 9's scope — do it in Commit 1 or leave it; it is not an
   acceptance criterion either way.
 - `tcw serve`'s help text still calls it "a local **read-only** web viewer"
-  (`tcw/cli.py:156 (a875de9)`), which has not been true since the editing
+  (`tcw/cli.py:156 (406b043)`), which has not been true since the editing
   endpoints landed. A reader checking V4 will trip over it. Not this item's
   business; noted so nobody fixes it here and blows criterion 9.
 - Version cut is **not** this item's decision — batched with the other four
