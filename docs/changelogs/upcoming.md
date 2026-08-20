@@ -21,6 +21,40 @@ category.
   stateless — `FsWorkStore.__init__` does not chain to `FsTreeStore.__init__`,
   so a cached flag on the base would be absent on every work store, and a store
   instance outlives one write in `tcw serve` and in tests.
+- Taxonomy, capabilities and work store ids resolved **lexically only**, so a
+  symlink planted inside a store was clean to `_safe_store_id` and the join
+  landed wherever it pointed. `FsTreeStore._within_store` (with a cached
+  `_resolved_root`) now bounds every id, and `_node_readable` bounds a node
+  folder together with its own `meta.yaml`. Applied at taxonomy `get_local`,
+  `add`, `_local_slugs` and `_validation_resources`; capabilities `get_local`,
+  `add`, `_all_meta_dirs`, `_write_target`, `check`'s targeted branch and
+  `_validation_resources`; and work `_item_dirs`. The escape was **not**
+  read-only as first reported — `tcw taxonomy add --parent`, `tcw capabilities
+  set`, and a fresh federated override all created or mutated files outside the
+  store; only the `git add` failed, and it failed after the write.
+- Containment reaches a node's **resources**, not just its folder — a folder can
+  be legitimately inside a store while a file in it is a symlink out, which the
+  folder guard cannot see. `_load_node`, `_compose_body`, `_node_texts` (moved
+  up to `FsTreeStore`, since both components read a node the same way),
+  `get_term_detail`, `update_term`, `_apply_override` and both component
+  `_validation_resources` now ask the **owning** store before reading, which
+  matters for an inherited entry whose files are bounded by its own root. Found
+  by adversarial review after the first fix guarded only directories; an escaped
+  `meta.yaml` had been turning into a *phantom* term named after its own slug
+  rather than a miss.
+- Work items likewise: `_item_dirs` bounds discovery through `state.yaml` (a
+  symlink *named* `state.yaml` matches the glob by name — `rglob` never descends
+  a symlinked *directory*, so the file is the exposure, not the folder), and
+  `_present`, `read_artifact` and the work `_validation_resources` bound the
+  artifacts, sidecars and plan documents inside an item that discovery accepted.
+- `Path.exists()` follows symlinks, so a dangling or looping link at a write
+  target read as absent: the "already exists" refusal was skipped and `mkdir`
+  raised `FileExistsError` as a traceback out of both `tcw taxonomy add` and
+  `tcw capabilities add`. `is_symlink()` joins `exists()` — the idiom `init`'s
+  ancestor walk already uses. Note `_within_store` catches `RuntimeError` as
+  well as `OSError`: a symlink loop raises `RuntimeError` below Python 3.13 and
+  nothing at or above it, and the supported floor is 3.11.
+
 - `tcw work delegate` and `tcw work escalate` *succeeded* outside a git
   repository, writing a complete but untracked request into the destination
   node's inbox that its own `inbox accept` would then refuse. `_inbox_write`
