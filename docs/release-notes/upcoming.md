@@ -56,6 +56,37 @@ at all now says so instead of quietly falling back to the default location, and 
 `tcw-config.yaml` that is not a mapping gets a plain message instead of a stack
 trace.
 
+## Bad capability references are caught when you set them
+
+Setting a capability field that points at something that does not exist used to
+succeed. `tcw capabilities set billing/invoices --field Subject=no-such-term`
+exited 0 and wrote the value; you found out later, if you ran
+`tcw capabilities check`. Now the write is refused, with the same wording
+`check` would have given you, and nothing is written.
+
+**This is a behaviour change.** A script that set a batch of fields loosely and
+checked at the end will now stop at the first bad one. It also covers more
+fields than you might expect — `Subject`, `Feature`, `Superseded by`,
+`Blocked by`, `Roles` and `When`, six in all — so a script setting `Roles` or
+`When` is affected too. When a single write has several bad references, all of
+them are named in one message rather than one per attempt.
+
+One ordering consequence worth knowing: the taxonomy Feature has to exist
+before the capability that names it, and a `roles/…` capability before the
+capability that lists it. That was always the intent; it just was not enforced.
+
+Capabilities that already hold a bad reference are not stuck. Only the
+references a write actually supplies are checked, so
+`tcw capabilities set <path> --status Omitted` — the repair route completing a
+work item recommends — keeps working.
+
+On a project with no taxonomy, `Subject` and `Feature` have nothing to resolve
+against and still pass; the other four are checked everywhere.
+
+In the local web app, creating a capability with a bad field no longer leaves a
+half-created capability behind, and a bad field on save comes back as a refusal
+rather than a warning after the fact.
+
 ## Entries stay inside their own project
 
 A term, capability or work item reached through a symlink inside
