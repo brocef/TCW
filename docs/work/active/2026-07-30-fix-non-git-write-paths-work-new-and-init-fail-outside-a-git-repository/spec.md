@@ -314,11 +314,16 @@ entry (`:3055`). Those need nothing else.
   two tiers do not overlap, so the plan owns a test that exercises `--take-over`
   outside a repository, not only the ordinary path.
 - `ensure_worktree_ignored` (`fs.py:460-468`) is the only filesystem-store write
-  outside the store classes: it writes `.gitignore` and then stages it. It is
-  unreachable outside a repository because its single caller runs it *after*
-  `st.start(...)` (`work/cli.py:545` then `:557`), which Tier 2 has already
-  refused. Verified by reading the call order, and pinned by criterion 1's
-  `--worktree` row; no guard of its own.
+  outside the store classes: it writes `.gitignore` and then stages it.
+  **Corrected at rework:** this said it was unreachable outside a repository
+  because its single caller runs it *after* `st.start(...)`, which Tier 2 has
+  already refused. That reasoning assumes the node and the work store are the
+  same repository. They are not when `work.path` is external, and then the store
+  guard passes while the node has no repository at all. The guard belongs in
+  `_start`, ahead of the store call, because `--worktree` needs the *node's*
+  repository. Same correction applies to `merge_worktree` on the completion side,
+  which reads a failed branch lookup as "branch already gone" and so skips the
+  merge-back silently. See `rework.md` §1 and §2.
 
 ### Tier 2 — fail closed: no partial write
 
@@ -370,8 +375,8 @@ narrowing):
 | Helper | Writes | Why no guard |
 | --- | --- | --- |
 | `write_sentinel` (`:107`) | `dump_yaml` (`:127`), never stages | Reached from `init`, itself reached from `run_init`, which already refuses. No independent public route. |
-| `init` (`:548`) | `shutil.rmtree` (`:580`), `dump_yaml` (`:585`), `mkdir`/`.gitkeep` (`:592-593`) | `run_init` (`cli.py:30-32`) guards its only public route. Guarding it again would probe git twice on the one command that must probe it first anyway. |
-| `ensure_worktree_ignored` (`:460`) | `.gitignore` via `ensure_ignored` (`:455-456`) before staging (`:467`) | Unreachable outside a repository: its single caller runs it *after* `st.start(...)` (`work/cli.py:545` then `:557`), which Tier 2 has already refused. Verified by reading the call order; pinned by criterion 1's `--worktree` row. |
+| `init` (`:548`) | `shutil.rmtree` (`:580`), `dump_yaml` (`:585`), `mkdir`/`.gitkeep` (`:592-593`) | `run_init` (`cli.py:30-32`) guards its only public route for the *node's* repository. **Corrected at rework:** that is not the only repository `init` writes to. With `--work-path`, it scaffolds the external tree and rewrites `tcw-config.yaml` before its own `git_root(base)` check refuses, so the refusal leaves total residue. The check has to move above every mutation, resolved against the nearest **existing** ancestor of the target — `git_root` shells out to `git -C <path>` and fails on a path that does not exist yet, which is why it was written late. See `rework.md` §3. |
+| `ensure_worktree_ignored` (`:460`) | `.gitignore` via `ensure_ignored` (`:455-456`) before staging (`:467`) | **Corrected at rework — this row was wrong.** It said "unreachable outside a repository, because its single caller runs it *after* `st.start(...)`, which Tier 2 has already refused". That holds only when the node and the work store share a repository. With an external `work.path`, `st.start` is guarded against the *store's* repository and passes while the *node's* is absent, so `ensure_worktree_ignored` runs and writes `.gitignore` after the item has already moved. `_start` requires the node's repository before it touches the store; see `rework.md` §1. |
 
 A direct in-process caller of any of the three bypasses the guarantee. That is the
 scope Goal 1 states, and it is honest: these three are adapter scaffolding, not
