@@ -39,8 +39,15 @@ completing a worktree item whose code repository had gone missing would report
 success while quietly skipping the merge-back, leaving the work branch
 unmerged; and pointing `tcw init --work-path` at a folder outside any repository
 would build the entire store and rewrite your config before telling you no. All
-three now check first and leave nothing behind. Starting *without* `--worktree`
-is unchanged: it only needs the work store's repository.
+three now check first, and the two that refuse leave nothing behind. Starting
+*without* `--worktree` is unchanged: it only needs the work store's repository,
+and so is completing with `--already-integrated`, which says the merge-back
+already happened and so has none to protect.
+
+`tcw init --work-path` also got stricter about two stores it used to accept and
+should not have: one inside a folder your `.gitignore` excludes, where every
+item you filed would be real on disk and invisible to Git, and one behind a
+broken symlink.
 
 ## Stage instructions name the file your item actually has
 

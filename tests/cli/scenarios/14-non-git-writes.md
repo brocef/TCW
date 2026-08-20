@@ -41,6 +41,7 @@ node (also de-gitted, so `delegate` writes into a non-git store too).
 | 10 | Same fixture, both repositories present: start with `--worktree`, then remove the code node's `.git` and run `tcw work complete --resolution done --confirm`. It exits **1** naming the branch, and the item is still in `active/`. Reporting a completion whose merge-back was skipped is worse than any partial write, because nothing on disk says it happened. |
 | 11 | Still on the split fixture with the code node de-gitted, a **plain** `tcw work start <slug>` exits **0**. `--worktree` is what needs the node's repository; an external store is a supported configuration, not a broken one. |
 | 12 | `tcw init work --id <id> --work-path <dir outside any repository>` exits 1 and leaves *both* locations untouched — no `tcw-config.yaml`, no status folders, no `.gitkeep`. Then the same command with `--work-path <repo>/new/nested/dir`, whose directories do not exist yet, succeeds: the check resolves to the nearest existing ancestor. |
+| 13 | The other two `--work-path` refusals, both of which also have to leave nothing behind: a target under a directory the node's `.gitignore` excludes (accepted before, and every item filed there was invisible to git), and a target behind a **dangling** symlink (`Path.exists()` follows symlinks, so the ancestor walk used to skip it and accept the enclosing repository). A target whose parents merely do not exist yet still succeeds — assertion 12. |
 
 ## Refusals asserted
 

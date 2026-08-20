@@ -42,6 +42,17 @@ category.
   scaffolding every status folder — the check moved above all of it, probing the
   nearest *existing* ancestor of the target because `git_root` shells out to
   `git -C <path>` and fails on a path this call has not created yet.
+- `init` decided its remaining refusals next to the writes they protect rather
+  than ahead of all of them (second adversarial pass at `verify`). A `work.path`
+  under a gitignored directory was accepted, and `git_stage` drops ignored paths
+  from the `git add` it builds, so the store held items git never recorded;
+  refused now. `Path.exists()` follows symlinks, so a dangling one read as absent
+  and the nearest-existing-ancestor walk skipped past it to the enclosing
+  repository, leaving `mkdir` to die on `FileExistsError` with the sentinel
+  already written — `is_symlink()` joins `exists()` in the walk. And the
+  non-pristine-`docs/work` refusal ran after `write_sentinel`, so declining left a
+  new `tcw-config.yaml` behind; its check moved up, while the `shutil.rmtree` it
+  authorizes stayed put.
 - `main()`'s `CalledProcessError` handler rendered a string-valued `error.cmd`
   character by character (`g i t ' ' s t a t u s`) — `shlex.join` over a string
   iterates it. Latent, since every `check=True` git call in the adapter passes an
