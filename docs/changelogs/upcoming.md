@@ -140,15 +140,19 @@ category.
   name with a leading `YYYY-MM-DD-` removed — kept when stripping it would leave
   nothing, so an entry named `2026-08-19-.md` still has a title. Only the
   filename fallback is stripped, since an H1 or a `--title` is a human-authored
-  string. The slug never falls back to the *unstripped* label, so no entry name
-  can put a second date in it. The slug rule
+  string. The slug never falls back to the *unstripped* label, so no entry whose
+  heading fails to slugify can put a second date in it. (An entry named nothing
+  but a date and carrying no heading still can: the date *is* its title, and
+  keeping it is criterion 19's `2026-08-19-` case.) The slug rule
   is unchanged (`<acceptance-date>-<slugified-title>`), and `InboxEntry.title`
   stays filename-derived, so `inbox list` prints the same addressable label. The
   standing "always pass `--title`" workaround is retired. (#20)
 - `tcw.store.base.body_title` reads that heading, skipping leading frontmatter
-  and fenced code blocks (a fence closes only on a run of the same delimiter at
-  least as long as the opener, so a three-backtick line inside a four-backtick
-  fence does not end it). It sits in the store base, not the filesystem adapter:
+  and fenced code blocks (a fence closes only on a line that is nothing but a
+  run of the opener's own delimiter, at least as long as it — so neither a
+  three-backtick line inside a four-backtick fence nor a ```` ```not-a-fence ````
+  line ends one; a closing fence carries no info string). It sits in the store
+  base, not the filesystem adapter:
   reading a title out of a body is storage-neutral. `frontmatter_end`, beside it,
   is now the single definition of "leading frontmatter" —
   `FsWorkStore._frontmatter` parses the block it delimits instead of computing
