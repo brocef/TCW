@@ -158,9 +158,9 @@ verified on a fresh node — and `tcw taxonomy extends add` is what creates it.
 ### Where it lives
 
 The chokepoint is not a git helper — `git_stage` cannot know which of the paths
-it is given were just created. It is the **write-then-stage pair**, which is one
-shape repeated seventeen times in `tcw/store/fs.py` and nowhere else in the
-package (`grep -rn "write_text\|_atomic_write\|dump_yaml" tcw/ | grep -v store/fs.py`
+it is given were just created. It is the **write-then-stage pair**: one shape,
+fifteen `self._stage(...)` calls across fourteen methods of `tcw/store/fs.py`,
+and nowhere else in the package (`grep -rn "write_text\|_atomic_write\|dump_yaml" tcw/ | grep -v store/fs.py`
 returns exactly one line, `recursion.py:281`, which never stages). Collapse the
 pair into one private method on `FsTreeStore`, and the rollback is written once.
 
@@ -279,6 +279,15 @@ except two that do not stage written content:
 `tcw serve` composes the same store methods and inherits the rollback with no
 change to `tcw/serve/`.
 
+**`_atomic_write` (`:862-874`) then has no production caller** — all six of its
+call sites route through `_write_staged` → `_atomic_write_all`, which is the
+singular with a list around it. Delete it, and point its three direct tests
+(`tests/test_store_editor.py:960`, `:978`, `:990`, imported at `:23`) at
+`_atomic_write_all`; they assert temp-file cleanup, which the plural has too
+(`:899-902`). `dump_yaml` (`:766-767`) stays: `init` (`:718`), `write_sentinel`
+(`:128`), `inbox_accept` (`:3227`) and `start` (`:2236`, `:2302`) still use it,
+and none of those is a write-then-stage pair.
+
 ### Abstraction litmus test
 
 **The contract passes; the mechanism is filesystem-private.**
@@ -357,23 +366,30 @@ equivalently `monkeypatch.setattr("tcw.store.fs.git_stage", …)` to raise
 9. **A move is still not rolled back.** Under the fixture, `tcw work start
    <slug>` exits 1 and the item is in `docs/work/active/<slug>/` with `owner` and
    `started` written — the behavior measured today, pinned so the rollback does
-   not spread into transitions. `tests/test_external_work_store.py:838-856`
+   not spread into transitions. `tests/test_external_work_store.py:838-857`
    (`test_a_refused_stage_after_the_move_is_a_transition_commit_error`) passes
    unmodified.
 10. **One chokepoint, checkable structurally.** In `tcw/store/fs.py`,
     `grep -n "self\._stage("` returns exactly three sites: inside `_write_staged`,
     `update_capability`'s directory stage (`:2096` today), and `inbox_accept`'s
-    (`:3234` today). `grep -n "_atomic_write\|dump_yaml("` returns no call that is
-    followed by a `self._stage(...)` of the same path.
-11. **The undo cannot mask the original error.** With `Path.unlink` monkeypatched
-    to raise `PermissionError` and `git_stage` raising
-    `CalledProcessError(128, …)`, `FsWorkStore.create_work` raises the
-    `CalledProcessError` — not the `PermissionError` — and `main(["work", "new",
-    "T"])` still returns 1 with the criterion-8 line.
-12. **Nothing added to the abstract interface.**
-    `git diff --stat` touches `tcw/store/fs.py` and tests only; `tcw/store/base.py`
-    is unmodified, and `_write_staged` / `_mkdir_owned` appear nowhere outside
-    `tcw/store/fs.py`.
+    (`:3234` today). `grep -n "_atomic_write"` returns only `_atomic_write_all`'s
+    definition and its single call inside `_write_staged` — the singular
+    `_atomic_write` is gone. Every surviving `dump_yaml(` call (`:128`, `:718`,
+    `:2236`, `:2302`, `:3227` today) is followed by no `self._stage(...)` of the
+    same path.
+11. **The undo cannot mask the original error.** Per file: with `Path.unlink`
+    monkeypatched to raise `PermissionError` and `git_stage` raising
+    `CalledProcessError(128, …)`, `write_artifact(slug, "spec", "x")` on an item
+    with no `spec.md` raises the **`CalledProcessError`**, not the
+    `PermissionError`, and `main([...])` still prints the criterion-8 line and
+    returns 1. The folder branch needs no companion test:
+    `shutil.rmtree(..., ignore_errors=True)` swallows every error its own walk
+    raises, which is the same guarantee the three existing rollbacks already
+    rely on (`:1013`, `:1808`, `:2115`, `:3556`).
+12. **Nothing added to the abstract interface.** `tcw/store/base.py` is
+    unmodified, no file under `tcw/` other than `tcw/store/fs.py` is modified,
+    and `_write_staged` / `_mkdir_owned` appear nowhere outside
+    `tcw/store/fs.py`. (Docs, the capability sidecar and tests change as usual.)
 13. **`pytest` from the repository root is green** — the bare command CI runs
     (`.github/workflows/test.yml`, after `pip install -e .[dev]`). Run outside any
     sandbox that restricts `git`; the suite creates throwaway repositories.
@@ -419,7 +435,7 @@ sites** is the complete census of it. Two siblings found and dispositioned:
 
 - **`tcw taxonomy extends add` / `capabilities extends add` create their
   component `config.yaml`.** `init` writes only leaf directories and a
-  `.gitkeep` (`:717-723`) — confirmed on a fresh node: `docs/taxonomy/config.yaml`
+  `.gitkeep` (`:719-724`) — confirmed on a fresh node: `docs/taxonomy/config.yaml`
   does not exist after `tcw init taxonomy`. A refused stage there leaves a
   created file behind, the same defect wearing different clothes. **In scope**,
   via the same chokepoint.
@@ -440,7 +456,7 @@ touches that window. Leave the note where it is.
 
 Its cross-reference is stale, though: it cites _"the `accept_inbox` shape,
 fs.py:2246"_, and `inbox_accept` is now at `:3167` with the whole-directory swap
-at `:3238`. `:2246` is inside `start`'s take-over branch. Worth correcting while
+at `:3233`. `:2246` is inside `start`'s take-over branch. Worth correcting while
 the file is open.
 
 ### Assumptions
