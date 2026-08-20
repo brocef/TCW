@@ -513,6 +513,45 @@ def normalize_tag(value: str) -> str:
     return tag
 
 
+def frontmatter_end(content: str) -> int:
+    """Offset just past a leading ``---`` YAML block, or 0 when there is none.
+
+    The **single** definition of "leading frontmatter" in TCW:
+    ``FsWorkStore._frontmatter`` parses the block this delimits, and
+    ``body_title`` skips it. Two definitions would drift.
+    """
+    if not content.startswith("---\n"):
+        return 0
+    end = content.find("\n---\n", 4)
+    return 0 if end < 0 else end + 5
+
+
+_FENCE = re.compile(r"^(`{3,}|~{3,})")
+
+
+def body_title(body: str | None) -> str | None:
+    """The first ATX H1 in ``body``, or None.
+
+    Skips leading frontmatter and fenced code blocks; a fence closes only on
+    the same delimiter character with a run at least as long as the opener, so
+    a three-backtick line inside a four-backtick fence does not end it.
+    """
+    if body is None:
+        return None
+    fence = None
+    for line in body[frontmatter_end(body):].splitlines():
+        match = _FENCE.match(line.strip())
+        if fence:
+            if match and match[1][0] == fence[0] and len(match[1]) >= len(fence):
+                fence = None
+            continue
+        if match:
+            fence = match[1]
+        elif line.startswith("# ") and line[2:].strip():
+            return line[2:].strip()
+    return None
+
+
 # ── Lifecycle policy (stage/transition bindings) ─────────────────────────────
 #
 # Two ladders. A **stage** produces one lifecycle artifact; a **transition** moves

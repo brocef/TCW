@@ -36,7 +36,8 @@ from tcw.store.base import (
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
-    Binding, DocEntry, parse_documentation_entries, parse_lifecycle_policy,
+    Binding, DocEntry, body_title, frontmatter_end,
+    parse_documentation_entries, parse_lifecycle_policy,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -2462,11 +2463,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         if not content.startswith("---\n"):
             return None
-        end = content.find("\n---\n", 4)
-        if end < 0:
+        end = frontmatter_end(content)
+        if end == 0:
             raise ValueError(f"{label}: malformed YAML frontmatter")
         try:
-            metadata = yaml.safe_load(content[4:end])
+            metadata = yaml.safe_load(content[4:end - 5])
         except yaml.YAMLError as exc:
             raise ValueError(f"{label}: malformed YAML frontmatter: {exc}") from exc
         if metadata is None:
