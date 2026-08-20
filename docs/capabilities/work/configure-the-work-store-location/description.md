@@ -18,4 +18,6 @@ I can scaffold this layout with `tcw work init --path <path>` or `tcw init
 stores — including a store whose items the repository's own ignore rules would
 hide, which would otherwise look like a working store holding untracked work —
 and never moves an existing non-pristine store automatically. Those refusals
-leave nothing behind.
+leave nothing behind. A rule that arrives *after* I set the store up — written
+by hand, naming a single item, or pulled in from someone else — is no longer
+invisible either: the write itself tells me the item will not be recorded.

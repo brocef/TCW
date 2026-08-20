@@ -28,6 +28,13 @@ Nothing about this is specific to `completed/` or `discarded/`: any transition
 destination I have ignored behaves the same way, and a node that ignores nothing
 sees no change whatsoever.
 
+What differs now is what I am *told*. If I ignore a destination outside those
+two, the transition still behaves the same way but prints an advisory line on
+stderr saying the item is on disk and Git will not record it. TCW cannot tell a
+rule I meant from one that arrived by accident, so it says so rather than
+guessing. `completed/` and `discarded/` stay silent — those are TCW's own doing,
+and a line on every completion is one I would learn to ignore.
+
 It changes only what happens from here on. Items resolved before I adopted the
 ignore stay in the history that already recorded them; taking them out of past
 commits is a history rewrite, and TCW does not do that for me.
