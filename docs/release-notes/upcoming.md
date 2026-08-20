@@ -56,6 +56,35 @@ at all now says so instead of quietly falling back to the default location, and 
 `tcw-config.yaml` that is not a mapping gets a plain message instead of a stack
 trace.
 
+## Entries stay inside their own project
+
+A term, capability or work item reached through a symlink inside
+`docs/taxonomy/`, `docs/capabilities/` or `docs/work/` is no longer found,
+listed, or written to. Before this, a symlink placed in one of those folders
+pointed TCW at whatever was on the other end: `tcw taxonomy show` and
+`tcw capabilities show` printed it, `tcw capabilities check` called it clean,
+and — the part the original report missed — writes went through too.
+`tcw taxonomy add --parent`, `tcw capabilities set`, and creating an override of
+an inherited capability all created or changed files *outside* the project
+folder. Only the Git step failed, and it failed after the file was already
+written.
+
+The same now applies one level down, to the files inside an entry. An entry
+whose `meta.yaml`, `description.md`, or a listed attachment is a symlink
+pointing out is not read; a work item's spec, plan or other artifact behaves the
+same way. Previously an otherwise ordinary-looking entry could serve content
+from anywhere on disk.
+
+If you have a symlink inside one of these folders today, the entry behind it
+will stop appearing. Nothing supported is lost: writing through one already
+failed, and Git cannot track a file through a symlink anyway. To reference
+another project's taxonomy or capabilities, use `tcw taxonomy extends` /
+`tcw capabilities extends`, which is what that is for.
+
+One related crash is fixed while we were here: adding a term or capability whose
+name collided with a broken symlink printed a Python stack trace instead of
+saying the name was taken.
+
 ## Accepting an inbox request names it after its own heading
 
 Accepting a request used to name the item after the *file* the request arrived
