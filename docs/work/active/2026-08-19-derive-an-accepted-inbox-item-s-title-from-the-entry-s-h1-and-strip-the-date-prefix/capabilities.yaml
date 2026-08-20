@@ -1,0 +1,4 @@
+# Capability deltas this work item lands (work→capability back-pointers).
+changed:
+  - work/manage-the-work-inbox   # the accepted title's three-step precedence
+  - work/open-a-work-item        # the slug floor: no title yields an unusable slug
