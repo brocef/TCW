@@ -2029,13 +2029,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 problems.append(f"{where}: Partial requires Gaps")
             if status == "Blocked" and "Blocked by" not in f:
                 problems.append(f"{where}: Blocked requires Blocked by")
-            if "Superseded by" in f and (e := self._ref_error(str(f["Superseded by"]))):
-                problems.append(f"{where}: Superseded by → {e}")
-            if "Blocked by" in f and (e := self._ref_error(str(f["Blocked by"]))):
-                problems.append(f"{where}: Blocked by → {e}")
-            problems += self._check_globals(where, f)
-            problems += self._check_subject(where, f, taxonomy)
-            problems += self._check_feature(where, f, taxonomy)
+            problems += [f"{where}: {p}" for p in self._ref_problems(f, taxonomy)]
 
         # Override + attachment validation (every meta dir, incl. override folders).
         meta_dirs = self._all_meta_dirs()
@@ -2104,6 +2098,22 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return f"overrides → ambiguous id '{target}' (in {', '.join(hits)})"
         return None
 
+    def _ref_problems(self, f: dict, taxonomy) -> list[str]:
+        """Every cross-object ref problem in `f`, worded exactly as `check`
+        reports it, minus the `<path>: ` location prefix.
+
+        The single renderer: `check` prefixes these, the write path raises them.
+        Two callers cannot disagree about what a problem *is* because there is
+        only one place that says it.
+        """
+        out = []
+        for key in ("Superseded by", "Blocked by"):
+            if key in f and (e := self._ref_error(str(f[key]))):
+                out.append(f"{key} → {e}")
+        return (out + self._check_globals(f)
+                + self._check_subject(f, taxonomy)
+                + self._check_feature(f, taxonomy))
+
     def _ref_error(self, identifier: str) -> str | None:
         try:
             if self.get(identifier) is None:
@@ -2112,7 +2122,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             return f"ambiguous identifier '{identifier}'"
         return None
 
-    def _check_globals(self, where, f) -> list[str]:
+    def _check_globals(self, f) -> list[str]:
         out = []
         for ns, field in (("roles", "Roles"), ("conditions", "When")):
             raw = f.get(field, "")
@@ -2120,12 +2130,12 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             for tok in (str(s).strip() for s in toks if str(s).strip()):
                 ref = tok.lstrip("!")
                 if not ref.startswith(f"{ns}/"):
-                    out.append(f"{where}: {field} '{tok}' must be a {ns}/ slug")
+                    out.append(f"{field} '{tok}' must be a {ns}/ slug")
                 elif (e := self._ref_error(ref)):
-                    out.append(f"{where}: {field} → {e}")
+                    out.append(f"{field} → {e}")
         return out
 
-    def _check_subject(self, where, f, taxonomy) -> list[str]:
+    def _check_subject(self, f, taxonomy) -> list[str]:
         subjects = _as_list(f.get("Subject"))
         if not subjects or taxonomy is None:
             return []
@@ -2133,23 +2143,23 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         for subj in subjects:
             try:
                 if taxonomy.get(subj) is None:
-                    out.append(f"{where}: Subject → dangling ref '{subj}'")
+                    out.append(f"Subject → dangling ref '{subj}'")
             except AmbiguousRef:
-                out.append(f"{where}: Subject → ambiguous ref '{subj}'")
+                out.append(f"Subject → ambiguous ref '{subj}'")
         return out
 
-    def _check_feature(self, where, f, taxonomy) -> list[str]:
+    def _check_feature(self, f, taxonomy) -> list[str]:
         feature = f.get("Feature")
         if not feature or taxonomy is None:
             return []
         try:
             target = taxonomy.get(feature)
         except AmbiguousRef:
-            return [f"{where}: Feature → ambiguous ref '{feature}'"]
+            return [f"Feature → ambiguous ref '{feature}'"]
         if target is None:
-            return [f"{where}: Feature → dangling ref '{feature}'"]
+            return [f"Feature → dangling ref '{feature}'"]
         if target.kind != "Feature":
-            return [f"{where}: Feature → ref '{feature}' points to "
+            return [f"Feature → ref '{feature}' points to "
                     f"{target.kind}, expected Feature"]
         return []
 
