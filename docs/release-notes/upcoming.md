@@ -88,6 +88,38 @@ One thing to expect: a single command can print the warning twice, naming a
 folder and a file inside it. Both lines are true, and it only happens when
 something really is hidden.
 
+## A command that Git refuses now cleans up after itself
+
+TCW needs Git to write. When Git is missing entirely, every command now says so
+and changes nothing — that is the note above. But Git can also be *there* and
+still say no: another process holding a lock, a commit hook that rejects the
+change, a permissions problem. That was only discovered at the moment TCW tried
+to record the file, which is after the file had been written. You got a clear
+one-line error and a half-created item sitting in your project, with nothing
+telling you to remove it.
+
+Now the command puts things back. Whatever it created is removed, and the error
+is the same one you saw before:
+
+    tcw: git command failed (exit 128): git add -- docs/work/backlog/…
+
+Fix the Git problem — release the lock, sort out the hook — and run the command
+again. There is nothing to tidy up in between.
+
+**Two deliberate boundaries**, so you know what this does not cover. Editing
+something that already exists is not undone: if `tcw work edit --title` fails at
+the Git step, the new title is already in the file and stays there. And moving
+an item is not undone: if `tcw work start` fails, the item has already moved to
+`active/`. Both would mean putting back content that existed before the command
+ran, which is a different and riskier thing than removing something the command
+just made — so TCW does the safe half and leaves the rest to you. Re-running the
+command once Git is happy is the fix in both cases.
+
+One related change if you use federated capabilities: when `tcw capabilities set`
+creates a local override and Git then refuses, the new override folder is
+removed rather than left behind empty. An override that already existed keeps
+whatever the write put in it.
+
 ## Bad capability references are caught when you set them
 
 Setting a capability field that points at something that does not exist used to

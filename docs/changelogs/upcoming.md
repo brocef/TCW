@@ -280,6 +280,31 @@ category.
   whole class is fixed rather than the ref case alone. This is
   validation-atomicity, not atomicity: `_write_node` still stages after writing
   and keeps written files when `git add` fails.
+- A git refusal *after* the filesystem write left the partial write standing.
+  The non-git work made a write refuse before touching disk when the repository
+  is **absent**; one that exists and **refuses** — a held `index.lock`, a
+  rejecting hook, a permissions error, a corrupt `.git` — was still only
+  discovered when staging failed, which is after the content had landed.
+  `main()` rendered it as `tcw: git command failed` rather than a traceback, so
+  it was legible, and `docs/work/backlog/<slug>/` was still there afterwards. A
+  precondition cannot close this — it cannot predict a lock acquired a
+  millisecond later — so `FsTreeStore._write_staged` rolls back instead: it
+  writes, stages, and on either failure removes what *this call* created before
+  re-raising. Fifteen write-then-stage pairs across fourteen methods route
+  through it, so a refused stage no longer leaves a partial term, capability,
+  work item, draft, plan stage or config write behind.
+- **Nothing that already existed is ever removed**, which is the boundary the
+  whole design turns on. Ownership is proved two ways because a directory and a
+  file have different failure costs. `_mkdir_owned` uses
+  `mkdir(exist_ok=False)`, where exactly one process's call succeeds — an
+  ownership proof with no check-then-act window, which retires the
+  `existed = d.exists()` pattern at three sites along with the `ponytail:` note
+  that named its TOCTOU. A file is owned if it was absent at entry; that *is* a
+  check-then-act window, and it is acceptable where the directory one is not,
+  because our own write has already replaced any competitor's content, so
+  unlinking destroys nothing the call had not already overwritten. `rmtree` on a
+  directory has no such argument — it would take sibling files nobody touched.
+
 
 ## Added
 
@@ -303,6 +328,12 @@ category.
 
 ## Changed
 
+- `tcw capabilities set` and `update_capability` now **remove** an override
+  folder they materialized when staging is refused, reversing the previous
+  policy. The two tests that pinned the old behaviour are renamed
+  `test_{set,update_capability}_removes_override_when_staging_fails` and their
+  docstrings record the reversal, so `git log -S` finds it. An override folder
+  that already existed is still never removed.
 - `CapabilitiesStore.add` gains an optional trailing `fields` keyword
   (`tcw/store/base.py`). Backwards-compatible — every existing caller omits it —
   and it is the shape a remote adapter wants anyway, since a tracker creates an
@@ -326,6 +357,16 @@ category.
 
 ## Internal
 
+- `_atomic_write` is deleted: every production caller now routes through
+  `_write_staged` → `_atomic_write_all`, which is the singular with a list
+  around it and carries the same temp-file cleanup. Its three unit tests point
+  at the plural. `dump_yaml` stays — `init`, `write_sentinel`, `inbox_accept`
+  and `start` still use it, and none of those is a write-then-stage pair.
+- Exactly three `self._stage(` calls remain in `tcw/store/fs.py`: the one inside
+  `_write_staged`, `update_capability`'s directory stage (which records a
+  *removal*, so there is no written content to undo), and `inbox_accept`'s
+  (a whole-directory swap that already rolls back in its own `except`, and whose
+  writes go to a temp dir rather than where they will sit).
 - `tests/fixtures/*/_scratch/` is gitignored; the fixture capture scripts build
   a throwaway git node there by default, which otherwise lands a nested
   repository in the tree.
