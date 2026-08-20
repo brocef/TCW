@@ -7,6 +7,13 @@ findings shown as post-save warnings. A save the store refuses — editing a
 project that is not in a Git repository, say — comes back as that refusal in
 plain words, and nothing is written.
 
+A capability's reference-bearing fields are the exception to the post-save
+rule: one that does not resolve is refused **at** save rather than reported
+after it, in the same words `tcw capabilities check` uses. Creating a
+capability with such a field leaves no capability behind — the create and its
+fields are one write, so a rejected create is not half-made. Post-save warnings
+remain the rule for everything else.
+
 A sidecar a command writes rather than a person — `rollup.md`, produced by
 `tcw work reconcile` — is listed and labelled generated, and offers no edit
 control. The app declines to take an edit it knows the next run of that command
