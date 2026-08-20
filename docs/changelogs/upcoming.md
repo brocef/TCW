@@ -133,6 +133,34 @@ category.
   guard's ceiling is marked in the source: a configure-time check cannot see a
   `.gitignore` written after `init`, a rule naming one slug, or a rule arriving
   with a later pull — that would be a check in `git_stage`.
+- `git_stage` built its `git add` list by filtering out ignored paths with no
+  `else`, so a rule the `init` guard could not have seen — written after `init`,
+  naming a single slug, or arriving with a later pull — produced an item that is
+  real on disk, listed by `tcw work list`, and absent from every clone. A new
+  module-level `_warn_hidden` reports the drop where it happens, on stderr,
+  warn-and-proceed: the same shape as `_warn_off_trunk` and the channel
+  `tcw work` already uses for its `→ created at …` hints. Refusing was rejected
+  deliberately — `completed/`/`discarded/` are ignored on purpose and a node may
+  ignore another status folder on purpose too.
+- The same warning covers `git_mv`'s ignored-destination branch, which is the
+  sharper defect and was found by this item's sweep rather than reported: that
+  branch drops the source from the index and moves the folder outside git, so an
+  accidental rule on a live status folder turns `tcw work submit` into a silent
+  removal of an item git already tracked — auto-committed under a message
+  reading `→ review` whose entire content is a deletion. `git_stage` loses a
+  write that never landed; `git_mv` destroys a record that had.
+- Three details are load-bearing. The deliberate-versus-accidental test is a
+  component match on the **absolute** path (`set(p.parts) & set(RESOLVED_STATUSES)`)
+  rather than a store-relative one, because `FsWorkStore.root` is resolved while
+  `node_root` may not be, and a spurious `relative_to` raise would mean a
+  spurious warning on every `complete` — the one failure mode this must not
+  have; matching the absolute path can only fail toward silence. Existence is
+  tested at each call site, not inside the helper: `git_stage` skips a dropped
+  path that no longer exists (`start` stages the vacated source folder as a
+  deletion, and warning there would be false), while `git_mv` tests `src` and
+  reports `dst`, which does not exist yet. And there is no de-duplication — a
+  single `tcw work submit` into an ignored `review/` reaches both call sites and
+  prints two lines, one for the folder and one for the `state.yaml` in it.
 - `main()`'s `CalledProcessError` handler rendered a string-valued `error.cmd`
   character by character (`g i t ' ' s t a t u s`) — `shlex.join` over a string
   iterates it. Latent, since every `check=True` git call in the adapter passes an

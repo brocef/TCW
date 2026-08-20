@@ -56,6 +56,38 @@ at all now says so instead of quietly falling back to the default location, and 
 `tcw-config.yaml` that is not a mapping gets a plain message instead of a stack
 trace.
 
+## An item Git will not record now says so
+
+`tcw init` turns down a work store your `.gitignore` would hide. That check
+happens when you set the store up, so it never saw a rule added afterwards — one
+you wrote by hand, one naming a single item, or one that arrived with a
+`git pull`. In any of those, filing work appeared to succeed: the item was on
+disk, `tcw work list` showed it, and Git had never heard of it. A colleague
+cloning the project got nothing.
+
+Now the write says so:
+
+    tcw: a .gitignore rule hides docs/work/backlog/2026-08-20-secret-plan; it is
+    on disk but git will not record it. Remove the rule, or run `git add -f` on it.
+
+The item is still written and the command still succeeds — this is a warning,
+not a refusal. Ignoring a status folder can be a deliberate choice, and refusing
+would break the projects that made it.
+
+The same warning now covers a case that was quieter and worse. Moving an item
+into a status folder you have ignored — running `tcw work submit` where
+`review/` is ignored, say — takes the item *out* of Git, and records that
+removal in a commit whose message says the item moved. If you had that setup,
+items were leaving version control on every transition and nothing told you.
+
+`completed/` and `discarded/` stay quiet. TCW ignores those itself, on purpose —
+that is how resolved work leaves the tracked tree — so there is nothing to warn
+about, and a line on every `tcw work complete` is one you would learn to skip.
+
+One thing to expect: a single command can print the warning twice, naming a
+folder and a file inside it. Both lines are true, and it only happens when
+something really is hidden.
+
 ## Bad capability references are caught when you set them
 
 Setting a capability field that points at something that does not exist used to
