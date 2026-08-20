@@ -22,6 +22,7 @@ import tempfile
 import time
 import uuid
 from datetime import date, datetime, timezone
+from functools import cached_property
 from pathlib import Path
 from typing import NoReturn
 
@@ -927,6 +928,48 @@ class FsTreeStore:
     @classmethod
     def open(cls, node_root: Path):
         return cls(node_root / "docs" / cls.COMPONENT)
+
+    # -- containment: a store id never names a file outside its own store --
+    #
+    # `_safe_store_id` closes every *syntactic* escape and never touches the
+    # filesystem, so a symlink planted inside a store is lexically clean and the
+    # join lands wherever it points. These two restore the bound. Not race-safe
+    # and not claiming to be: nothing binds the later open()/mkdir to the object
+    # resolved here, so an attacker who can swap a directory for a symlink mid
+    # command defeats it — and one with write access to the store has cheaper
+    # attacks. What this restores is the stated property, against a symlink that
+    # is already on disk when the command runs.
+
+    @cached_property
+    def _resolved_root(self) -> Path:
+        """The store root with symlinks resolved.
+
+        A `cached_property` rather than an `__init__` assignment on purpose:
+        `FsWorkStore.__init__` does not chain to this class's, so anything set
+        in the base initializer would be missing there, while an inherited
+        descriptor resolves through normal MRO lookup. Cached for the life of
+        the instance — one CLI command, one HTTP request.
+        """
+        return self.root.resolve()
+
+    def _within_store(self, path: Path) -> bool:
+        """True iff `path` stays inside the store root once symlinks resolve.
+
+        Both sides are resolved: taxonomy and capabilities roots keep whatever
+        lexical spelling they were opened with, so comparing a resolved path to
+        an unresolved root would reject a checkout reached through a symlinked
+        ancestor.
+
+        `RuntimeError` as well as `OSError`: a symlink loop raises `RuntimeError`
+        on Python < 3.13 — not an `OSError` — and since 3.13 raises nothing,
+        returning the path unresolved. The floor is 3.11, so both eras are live.
+        A loop answering True is harmless and deliberately not pinned: every read
+        through one fails with ELOOP, and every caller stats before it reads.
+        """
+        try:
+            return path.resolve().is_relative_to(self._resolved_root)
+        except (OSError, RuntimeError):       # broken symlink; loop on < 3.13
+            return False
 
     def _write_git_root(self) -> Path:
         """The repository a write here has to land in. Overridden where the
