@@ -16,7 +16,8 @@ as raw intake, and the `request` stage is still to run.
 
 The accepted item's title is the `--title` I passed, or the first `# ` heading
 the entry's body declares, or the entry's own name with a leading `YYYY-MM-DD-`
-removed — in that order.
+removed — in that order. An entry named nothing *but* a date keeps it, since
+stripping it would leave no name at all.
 
 Requests I send across nodes with `tcw work delegate` and `tcw work escalate`
 land in the target project's configured inbox, wherever `work.path` puts it. If
