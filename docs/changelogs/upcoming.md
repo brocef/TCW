@@ -116,8 +116,18 @@ category.
 - That ignore check asked about each leaf's `.gitkeep`, which answered the wrong
   question (fifth adversarial pass): `<status>/*` with a `!<status>/.gitkeep`
   negation is TCW's own shape for the resolved statuses, and it leaves the marker
-  visible while hiding every item. It now probes a representative item path,
-  skipping `completed`/`discarded`. It also ran only for a configured
+  visible while hiding every item. It now probes **two differently-named**
+  representative item paths (`an-item` and `some-slug`) and refuses only when
+  **both** are ignored, skipping `completed`/`discarded`. One fixed name left the
+  question answerable by a rule naming that single literal — `an-item*` was
+  enough to refuse a store in which every real item would have been tracked —
+  while no plausible single glob matches both names unless it is the broad rule
+  the guard exists to catch. The *file* name is deliberately not varied:
+  `state.yaml` is fixed by the layout, so a rule hiding it hides every item's
+  status record and must still refuse. The refusal now names the outcome for
+  items rather than describing the folder as being inside an ignored path, which
+  was the wrong subject — the folder is usually fine and one rule is not. It also
+  ran only for a configured
   `work.path`, so the default `docs/work` got no check at all; `ignore_root`
   starts at the node's repository and moves only when the store does. The
   guard's ceiling is marked in the source: a configure-time check cannot see a
