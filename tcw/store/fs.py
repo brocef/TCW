@@ -587,26 +587,37 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         configured_work = existing_config.get("work") or {}
         if isinstance(configured_work, dict) and configured_work.get("path"):
             work_path = Path(configured_work["path"]).expanduser()
+    # Everything `init` can refuse over, decided before it writes anything at
+    # all — the sentinel included. It writes two locations, and each of these
+    # checks used to sit next to the write it protects rather than ahead of all
+    # of them, so a refusal left `tcw-config.yaml` rewritten with the bad path,
+    # or a new sentinel in a project that had none, or the whole status tree.
+    default_root = root / "docs" / "work"
+    replacing_default_store = False
     if work_path is not None and "work" in components:
-        # Ahead of every mutation, including the sentinel. `init` writes two
-        # locations and the repository check below runs *after* both, so a
-        # refusal used to leave `tcw-config.yaml` rewritten with the bad path and
-        # the whole status tree scaffolded.
-        #
-        # Probed at the nearest *existing* ancestor, not at the target: `git_root`
-        # shells out to `git -C <path>`, which fails on a path that does not
-        # exist — and the target usually does not, since this call is what creates
-        # it. Probing the target directly would refuse a good
-        # `--work-path <repo>/new/nested/dir`.
-        probe = work_path if work_path.is_absolute() else root / work_path
-        probe = next((c for c in (probe, *probe.parents) if c.exists()), root)
-        if git_root(probe) is None:
-            raise ValueError("work.path target is not inside a Git repository: "
-                             f"{work_path if work_path.is_absolute() else root / work_path}")
-    write_sentinel(root, project_id)
-    if work_path is not None and "work" in components:
-        default_root = root / "docs" / "work"
         target = work_path if work_path.is_absolute() else root / work_path
+        # Probed at the nearest *existing* ancestor, not at the target:
+        # `git_root` shells out to `git -C <path>`, which fails on a path that
+        # does not exist — and the target usually does not, since this call is
+        # what creates it. Probing the target directly would refuse a good
+        # `--work-path <repo>/new/nested/dir`. `is_symlink()` alongside
+        # `exists()` because the latter follows the link: a dangling symlink
+        # reads as absent, and skipping past it accepted a target that `mkdir`
+        # then died on.
+        probe = next((c for c in (target, *target.parents)
+                      if c.exists() or c.is_symlink()), root)
+        target_git = git_root(probe)
+        if target_git is None:
+            raise ValueError(f"work.path target is not inside a Git repository: {target}")
+        # Inside a repository is not the same as tracked by one. `git_stage`
+        # drops ignored paths from the `git add` it builds, so a store under an
+        # ignored path would hold items that are real on disk and invisible to
+        # git — the exact outcome the external-store contract exists to prevent.
+        if git_ignored(target_git, target):
+            raise ValueError(
+                f"work.path target is inside a gitignored path, so nothing written "
+                f"there would be tracked: {target}"
+            )
         if default_root.exists() and default_root.resolve() != target.resolve():
             expected = {"inbox", *WORK_STATUSES}
             actual = {entry.name for entry in default_root.iterdir()}
@@ -619,6 +630,10 @@ def init(components: list[str], root: Path, project_id: str | None = None,
                     f"refusing to replace non-pristine {default_root}; move existing work "
                     "manually, update work.path, then re-run init"
                 )
+            replacing_default_store = True
+    write_sentinel(root, project_id)
+    if work_path is not None and "work" in components:
+        if replacing_default_store:
             shutil.rmtree(default_root)
         config_path = root / SENTINEL
         config = load_yaml(config_path, unique=True)

@@ -21,7 +21,7 @@ import pytest
 
 from tcw.cli import main
 from tcw.store.fs import (
-    NOT_A_REPOSITORY, FsCapabilitiesStore, FsTaxonomyStore, FsTreeStore,
+    NOT_A_REPOSITORY, SENTINEL, FsCapabilitiesStore, FsTaxonomyStore, FsTreeStore,
     FsWorkStore, init,
     require_repository,
 )
@@ -57,12 +57,18 @@ def manifest(root: Path) -> dict[str, str]:
 
     A file-only map would call a run clean that left `docs/work/.claiming/`
     behind — `FsWorkStore.start` creates that directory before it renames
-    anything. An empty directory is a partial write too.
+    anything. An empty directory is a partial write too, and so is a symlink:
+    recorded by its target, before `is_dir()`/`read_bytes()` get a chance to
+    follow it into a file that may not be there.
     """
     out: dict[str, str] = {}
     for p in sorted(root.rglob("*")):
         rel = str(p.relative_to(root))
-        out[rel] = "<dir>" if p.is_dir() else hashlib.sha256(p.read_bytes()).hexdigest()
+        if p.is_symlink():
+            out[rel] = f"<symlink:{p.readlink()}>"
+        else:
+            out[rel] = "<dir>" if p.is_dir() else hashlib.sha256(
+                p.read_bytes()).hexdigest()
     return out
 
 
@@ -587,6 +593,59 @@ def test_init_refuses_an_external_work_path_before_it_writes_anything(tmp_path):
     with pytest.raises(ValueError, match="not inside a Git repository"):
         init(["work"], code, "demo", work_path=plain / "work")
     assert manifest(tmp_path) == before
+
+
+def test_init_refuses_a_work_path_git_would_never_track(tmp_path):
+    """Inside a repository is not the same as tracked by it.
+
+    A store under an ignored path passes every git-repository check and then
+    disappears: `git_stage` drops ignored paths from the `git add` it builds, so
+    every item written there is real on disk and invisible to git — the failure
+    mode the whole external-store contract exists to prevent.
+    """
+    code = git_init(tmp_path / "code")
+    (code / ".gitignore").write_text("external/\n", encoding="utf-8")
+    commit_all(code)
+    before = manifest(code)
+    with pytest.raises(ValueError, match="gitignored"):
+        init(["work"], code, "demo", work_path=code / "external" / "work")
+    assert manifest(code) == before
+
+
+def test_init_refuses_a_work_path_behind_a_broken_symlink(tmp_path):
+    """`Path.exists()` follows symlinks, so a dangling one looks absent.
+
+    The nearest-existing-ancestor walk then skipped it, found the enclosing
+    repository, accepted the target — and `mkdir` died on `FileExistsError`
+    *after* the sentinel was written. A broken symlink is a path that exists as
+    far as anything creating a directory is concerned.
+    """
+    code = git_init(tmp_path / "code")
+    (code / "link").symlink_to(tmp_path / "nowhere")
+    before = manifest(code)
+    with pytest.raises(ValueError, match="not inside a Git repository"):
+        init(["work"], code, "demo", work_path=code / "link" / "work")
+    assert manifest(code) == before
+
+
+def test_init_refuses_a_non_pristine_default_store_before_writing_the_sentinel(
+    tmp_path
+):
+    """The refusal was already right; its placement was not.
+
+    `write_sentinel` ran first, so declining to replace an existing `docs/work`
+    still left a new `tcw-config.yaml` in a project that had none.
+    """
+    code = git_init(tmp_path / "code")
+    store = git_init(tmp_path / "store")
+    item = code / "docs" / "work" / "backlog" / "existing"
+    item.mkdir(parents=True)
+    (item / "state.yaml").write_text("status: backlog\n", encoding="utf-8")
+    before = manifest(code)
+    with pytest.raises(ValueError, match="non-pristine"):
+        init(["work"], code, "demo", work_path=store / "work")
+    assert manifest(code) == before
+    assert not (code / SENTINEL).exists()
 
 
 def test_init_accepts_a_work_path_whose_directories_do_not_exist_yet(tmp_path):
