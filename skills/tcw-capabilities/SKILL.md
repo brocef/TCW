@@ -44,7 +44,14 @@ Before recording or altering a capability, check it against the standing ledger:
 When a capability describes behavior around a registered taxonomy feature, set
 `Feature=<feature-ref>` in addition to any useful `Subject=<taxonomy-ref>`.
 `tcw capabilities check` verifies that `Feature` resolves to a taxonomy entry
-whose kind is `Feature`.
+whose kind is `Feature`, and **`set` verifies it too** — a write carrying a
+reference that does not resolve is refused, in the same words, and writes
+nothing. That covers all six reference-bearing fields (`Subject`, `Feature`,
+`Superseded by`, `Blocked by`, `Roles`, `When`), so **ordering is now
+load-bearing**: register the taxonomy Feature before the capability naming it,
+and a `roles/…` capability before the capability listing it. Only the
+references a write supplies are checked, so a capability already holding a bad
+one is still repairable with `--status Omitted`.
 
 If no suitable Feature exists, do not invent an unregistered string in the
 capability. Use `tcw-taxonomy` to add or clarify the Feature first, then link it

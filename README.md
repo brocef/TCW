@@ -532,6 +532,14 @@ validates the metadata vocabulary, resolves each `Subject:` pointer against the
 taxonomy store, and verifies that each `Feature:` pointer resolves to a taxonomy
 feature. The tool never parses capability prose; it only follows pointers.
 
+`set` resolves those pointers too, and refuses a write carrying one that does
+not — with the same message `check` reports, from one shared renderer. Six
+fields carry references: `Subject`, `Feature`, `Superseded by`, `Blocked by`,
+`Roles` and `When`. All bad references in a write are named at once, and a
+refused write changes nothing. So **register a taxonomy Feature before the
+capability that names it**, and a `roles/…` capability before the one that
+lists it.
+
 **Federation.** Capabilities can `extends` another project's — so a web frontend
 and a mobile app that drive the same server declare their shared user stories
 once:
