@@ -504,6 +504,16 @@ def merge_worktree(node_root: Path, branch: str) -> str | None:
     merge failure aborts the half-merge and returns an error so teardown is
     skipped and the branch is left intact. Returns None on success, else an error
     message."""
+    # Ahead of the branch lookup, because that lookup cannot tell the two apart:
+    # `rev-parse --verify --quiet` exits non-zero both for "no such branch" and
+    # for "not a repository", and reading the second as the first turned a
+    # skipped merge-back into a reported completion — the item reached
+    # `completed` with the work branch unmerged and nothing said so. An external
+    # `work.path` is what makes this reachable: the store guard passes because
+    # the store's repository is fine, while the merge-back's is gone.
+    if git_root(node_root) is None:
+        return (f"the primary checkout at {node_root} is not in a git repository, "
+                f"so {branch} cannot be merged back — restore it and re-run")
     if _git(["git", "-C", str(node_root), "rev-parse", "--verify", "--quiet",
              f"refs/heads/{branch}"], capture_output=True).returncode != 0:
         return None                                   # branch already gone — nothing to merge
