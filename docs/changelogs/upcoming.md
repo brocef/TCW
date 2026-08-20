@@ -130,6 +130,35 @@ category.
   without stubbing the opener, so every `pytest` run executed
   `open <tmp>/post-mortem.md` and launched the developer's GUI editor.
 
+- `FsWorkStore.inbox_accept` derived the accepted item's title from the entry's
+  *filename*, date prefix and all, and then re-dated that filename-shaped title
+  into the slug — `2026-08-19-another-raw-request.md` became
+  `2026-08-19-2026-08-19-another-raw-request`, titled with its own slug. The
+  entry's `# ` heading was ignored, although `_inbox_write` (`delegate`,
+  `escalate`) writes exactly that heading into every entry it creates. The title
+  is now `--title`, else the first ATX H1 of the entry's body, else the entry's
+  name with a leading `YYYY-MM-DD-` removed; only the filename fallback is
+  stripped, since an H1 or a `--title` is a human-authored string. The slug rule
+  is unchanged (`<acceptance-date>-<slugified-title>`), and `InboxEntry.title`
+  stays filename-derived, so `inbox list` prints the same addressable label. The
+  standing "always pass `--title`" workaround is retired. (#20)
+- `tcw.store.base.body_title` reads that heading, skipping leading frontmatter
+  and fenced code blocks (a fence closes only on a run of the same delimiter at
+  least as long as the opener, so a three-backtick line inside a four-backtick
+  fence does not end it). It sits in the store base, not the filesystem adapter:
+  reading a title out of a body is storage-neutral. `frontmatter_end`, beside it,
+  is now the single definition of "leading frontmatter" —
+  `FsWorkStore._frontmatter` parses the block it delimits instead of computing
+  the boundary a second time.
+- `FsWorkStore._unique_slug` bounded neither end of its output, so
+  `tcw work new "東京"` created `<date>-` (every non-ASCII title collapsing to one
+  degenerate slug) and a 300-character title crashed with an uncaught
+  `OSError: [Errno 63] File name too long`. The slug body is now capped at 120
+  characters, right-stripped of hyphens, and falls back to `untitled`. Both
+  `create_work` and `inbox_accept` route through it, so guarding only the inbox
+  path would have left `tcw work new` broken. `state.yaml` keeps the full title;
+  only the slug is bounded.
+
 ## Added
 
 - Taxonomy: `work-item/body-surface` and `work-item/intake` are registered

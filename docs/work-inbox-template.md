@@ -1,4 +1,4 @@
-# Request title
+# <one-line title of this request>
 
 ## Desired outcome
 
@@ -16,4 +16,6 @@ List known limits, non-goals, dependencies, or decisions.
 
 For a folder inbox entry, save this file as `INDEX.md` and place supporting
 files beside it. TCW preserves those files as attachments when the entry is
-accepted. This template is optional; TCW does not parse or require its sections.
+accepted. This template is optional; TCW does not require these sections — but
+it does read the first `# ` heading as the accepted item's title, so replace
+the placeholder above.

@@ -56,6 +56,32 @@ at all now says so instead of quietly falling back to the default location, and 
 `tcw-config.yaml` that is not a mapping gets a plain message instead of a stack
 trace.
 
+## Accepting an inbox request names it after its own heading
+
+Accepting a request used to name the item after the *file* the request arrived
+in, date and all — so a request filed as `2026-08-19-another-raw-request.md`
+became an item called `2026-08-19-another-raw-request`, filed under a slug with
+the date in it twice. Passing `--title` was the only way to get a readable name,
+and requests sent between projects with `tcw work delegate` and
+`tcw work escalate` hit it every time.
+
+Now the request's own `# ` heading names the item. If it has no heading, the
+filename is still used, but without the leading date — one date, in the slug,
+where it belongs. Passing `--title` still wins over both, so nothing you already
+do stops working; you just no longer have to.
+
+If you write requests by hand, the first line is now worth getting right; the
+optional template in `docs/work-inbox-template.md` shows the shape.
+
+## Unusual titles no longer break `tcw work new`
+
+A title with no Latin letters in it — `tcw work new "東京"` — produced an item
+with no name at all, and every such item collided with the last one. A very long
+title failed outright with a filename error, after printing a stack trace. Both
+now work: the folder name falls back to `untitled` when there is nothing to
+build one from, and is shortened when it would be too long. The title you typed
+is kept in full either way.
+
 ## Stage instructions name the file your item actually has
 
 When you ask `tcw work stage spec` or `tcw work stage plan` what to do, the

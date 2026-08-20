@@ -39,9 +39,11 @@ entry does not write one, so an accepted item shows `i` and not `R`.
 4. Inspect the node's tag vocabulary (`tcw work tags list`) and choose every
    materially applicable tag. Register a new one only if it will be useful beyond
    this item. — agent `[judgment]`
-5. `tcw work inbox accept <entry> --title "<clear title>"`. The tool consumes the
-   entry, creates the item, and prints its slug; it refuses an entry that does
-   not exist. — agent `[gated]`
+5. `tcw work inbox accept <entry>`. The item is named after the entry's first
+   `# ` heading, or its filename minus the `YYYY-MM-DD-` prefix; pass
+   `--title "<clear title>"` when that heading is missing or poor. The tool
+   consumes the entry, creates the item, and prints its slug; it refuses an
+   entry that does not exist. — agent `[gated]`
 6. Apply tags and estimates with `tcw work edit`. If the entry carried links or
    attachments, make sure they survived into the item — collect them under
    `## References`, one line of _why it matters_ each, rather than leaving them
