@@ -13,6 +13,7 @@ every preserved resource and the entry it was accepted from, and a note in place
 of a primary resource that is not text — and consumes the original inbox entry.
 Accepting no longer writes the item's request: what the entry said is preserved
 as raw intake, and the `request` stage is still to run.
+
 The accepted item's title is the `--title` I passed, or the first `# ` heading
 the entry's body declares, or the entry's own name with a leading `YYYY-MM-DD-`
 removed — in that order.
