@@ -405,6 +405,15 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
     filters it out — the reason that filter exists.
     """
     if git_ignored(node_root, dst):
+        # Untracking is deliberate for `completed/`/`discarded/` — that is how a
+        # resolved item leaves the tracked tree — and indiscriminate about which
+        # destination. On a live status folder it turns a routine transition
+        # into a silent removal of something git already had, auto-committed
+        # under a message saying the item moved. The existence test is on `src`,
+        # what is on disk and about to become invisible; the path reported is
+        # `dst`, which is what the rule actually names and does not exist yet.
+        if src.exists() or src.is_symlink():
+            _warn_hidden(node_root, dst)
         # --ignore-unmatch: an item created but never committed is not in the
         # index at all, and that is not an error here. -f: an item's own writes
         # are staged as they are made (`create_work`, `set_field`), so the index

@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from tcw.store.fs import (
-    FsWorkStore, git_commit_result, git_current_branch, init,
+    FsWorkStore, git_commit_result, git_current_branch, git_mv, init,
 )
 
 
@@ -707,3 +707,41 @@ def test_a_vacated_source_does_not_warn(tmp_path, capsys):
         ["git", "-C", str(root), "ls-files", f"docs/work/active/{slug}/state.yaml"],
         capture_output=True, text=True, check=True).stdout
     assert tracked.strip() != ""              # `start` auto-commits; it is at HEAD
+
+
+def test_an_ignored_non_resolved_destination_warns(tmp_path, capsys):
+    """The sharper half of the defect. `git_mv` drops the source from the index
+    and moves the folder outside git when the destination is ignored — correct
+    for `completed/`/`discarded/`, and indiscriminate about which destination.
+    On a live status folder that turns a routine transition into a silent
+    removal of something git already had, auto-committed under a message saying
+    the item moved."""
+    root = node(tmp_path)
+    _ignore(root, "docs/work/review/*\n")
+    slug = make_item(root)
+    st = committed(root)
+    st.start(slug)
+    capsys.readouterr()
+    st.submit(slug)
+
+    # Substring over the whole err: this command reaches BOTH guards, so it
+    # emits two lines. The folder line is `git_mv`'s and the `state.yaml` line
+    # is `git_stage`'s — and the folder path is a prefix of the file path, so
+    # asserting the bare path passes on `git_stage`'s line alone and proves
+    # nothing about this guard. Match the terminator to pin the folder itself.
+    err = capsys.readouterr().err
+    assert ".gitignore" in err
+    assert f"hides docs/work/review/{slug};" in err, "the git_mv guard did not fire"
+    assert f"hides docs/work/review/{slug}/state.yaml;" in err
+
+
+def test_the_resolved_destinations_stay_silent_through_git_mv(tmp_path, capsys):
+    """A unit-level lock on top of the command-level coverage above."""
+    root = node(tmp_path)
+    slug = make_item(root)
+    st = committed(root)
+    st.start(slug)
+    capsys.readouterr()
+    git_mv(root, root / "docs" / "work" / "active" / slug,
+           root / "docs" / "work" / "completed" / slug)
+    assert ".gitignore" not in capsys.readouterr().err
