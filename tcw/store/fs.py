@@ -1400,8 +1400,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         # write; term *resolution* (self.extends) is load-time only — reopen to use.
         self.config["extends"] = extends
         cfg = self.root / "config.yaml"
-        dump_yaml(cfg, self.config)
-        self._stage(cfg)
+        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
+                                                 allow_unicode=True))])
 
     def extends_remove(self, project_id: str) -> None:
         self._require_repository()
@@ -1414,8 +1414,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         else:
             self.config.pop("extends", None)
         cfg = self.root / "config.yaml"
-        dump_yaml(cfg, self.config)
-        self._stage(cfg)
+        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
+                                                 allow_unicode=True))])
 
     def relators(self, slug: str) -> list[str]:
         """Local term slugs whose `relatesTo` points at `slug` (for rm warnings)."""
@@ -1912,9 +1912,15 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
         meta = {"id": _mint_cap_id(), "name": display, "Status": status}
         # Field values win over the `status` parameter — what create-then-set
-        # did. A None sentinel is skipped: on a node being created there is
-        # nothing to clear, and `_merge_meta` pops the key on a local node.
-        meta.update({k: v for k, v in norm.items() if v is not None})
+        # did. A None clears, rather than being skipped: there *is* something to
+        # clear, the Status seeded a line above, and `_merge_meta` pops the key
+        # on a local node. Skipping it would keep a Status the caller asked to
+        # remove, which create-then-set did not.
+        for k, v in norm.items():
+            if v is None:
+                meta.pop(k, None)
+            else:
+                meta[k] = v
         self._write_node(d, meta, body)
         return self._capability(path)
 
@@ -2078,8 +2084,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         extends.append(project_id)
         self.config["extends"] = extends
         cfg = self.root / self.CONFIG_NAME
-        dump_yaml(cfg, self.config)
-        self._stage(cfg)
+        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
+                                                 allow_unicode=True))])
 
     def extends_remove(self, project_id: str) -> None:
         self._require_repository()
@@ -2092,8 +2098,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         else:
             self.config.pop("extends", None)
         cfg = self.root / self.CONFIG_NAME
-        dump_yaml(cfg, self.config)
-        self._stage(cfg)
+        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
+                                                 allow_unicode=True))])
 
     # -- validation --
 
@@ -2300,7 +2306,10 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return out
 
     def _check_subject(self, f, taxonomy) -> list[str]:
-        subjects = _as_list(f.get("Subject"))
+        # `str(...)`, as the other four ref fields already do: a ref resolver
+        # takes a string, and a non-string here used to escape as AttributeError
+        # out of `taxonomy.get` rather than as a refusal the caller can read.
+        subjects = [str(s) for s in _as_list(f.get("Subject"))]
         if not subjects or taxonomy is None:
             return []
         out = []
@@ -2316,6 +2325,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         feature = f.get("Feature")
         if not feature or taxonomy is None:
             return []
+        feature = str(feature)          # see `_check_subject`
         try:
             target = taxonomy.get(feature)
         except AmbiguousRef:

@@ -9,6 +9,12 @@ The existing assertions in `tests/test_capabilities.py` are all substrings
 (`any("Subject" in p and "ghost" in p …)`), so the suite would stay green
 through a wording change. Copy the expected strings from the item's plan, not
 from the source: a test that mirrors the code asserts nothing.
+
+All fifteen rows of the plan's message table are covered. The four
+ambiguous-*identifier* variants needed a federated fixture rather than a plain
+one — capabilities are path-addressed, so "ambiguous" means the same path in two
+extended stores, never a leaf-slug clash. An earlier revision of this file
+claimed full coverage while omitting them; adversarial review caught the claim.
 """
 
 import hashlib
@@ -303,3 +309,80 @@ def test_add_without_fields_is_unchanged(tmp_path):
     store = FsCapabilitiesStore.open(root)
     store.add("plain/thing", name="Plain", status="Supported")
     assert FsCapabilitiesStore.open(root).get_local("plain/thing") is not None
+
+
+# ── the four ambiguous-identifier variants ───────────────────────────────────
+#
+# These four resolve against the capability store itself, and capabilities are
+# path-addressed — so "ambiguous" here is not a leaf-slug clash. It means the
+# same path exists in more than one *extended* store, which is why this needs a
+# child federating two bases rather than a plain fixture.
+
+def _two_bases(tmp_path):
+    """A child extending two projects that both hold the same capability path.
+
+    The child is the *anchor* with the bases as its children: a node may name at
+    most one parent, so two sources have to hang off it the other way round.
+    """
+    bases = []
+    for name in ("alpha", "beta"):
+        base = node(tmp_path, name)
+        for path in ("dup", "roles/dup", "conditions/dup"):
+            write_cap(base, path, Status="Supported")
+        bases.append(base)
+    child = node(tmp_path, "child")
+    children = "".join(f"    {b.name}: ../{b.name}\n" for b in bases)
+    (child / "tcw-config.yaml").write_text(
+        f"id: child\nconnected-projects:\n  children:\n{children}")
+    for base in bases:
+        (base / "tcw-config.yaml").write_text(
+            f"id: {base.name}\nconnected-projects:\n  parent:\n"
+            f"    child: ../child\n")
+    for name in ("alpha", "beta"):
+        FsCapabilitiesStore.open(child).extends_add(name)
+    return child
+
+
+@pytest.mark.parametrize("field,value,expected", [
+    ("Superseded by", "dup", "Superseded by \u2192 ambiguous identifier 'dup'"),
+    ("Blocked by", "dup", "Blocked by \u2192 ambiguous identifier 'dup'"),
+    ("Roles", "roles/dup", "Roles \u2192 ambiguous identifier 'roles/dup'"),
+    ("When", "conditions/dup", "When \u2192 ambiguous identifier 'conditions/dup'"),
+])
+def test_ambiguous_identifier_wording(tmp_path, field, value, expected):
+    child = _two_bases(tmp_path)
+    write_cap(child, "x", Status="Supported", **{field: value})
+    out = [p.removeprefix("x: ") for p in FsCapabilitiesStore.open(child).check()]
+    assert expected in out
+
+
+# ── field values that are not strings ────────────────────────────────────────
+
+def test_a_non_string_ref_is_refused_rather_than_crashing(tmp_path):
+    """`Feature: 1` used to reach the resolver untouched and escape as
+    AttributeError — an HTTP 500 rather than the documented 422 refusal."""
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError) as e:
+        store.set("web/editing", {"Feature": 1})
+    assert "Feature → dangling ref '1'" in str(e.value)
+
+
+def test_a_non_string_subject_is_refused_rather_than_crashing(tmp_path):
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError) as e:
+        store.set("web/editing", {"Subject": [1, 2]})
+    assert "Subject → dangling ref '1'" in str(e.value)
+
+
+def test_add_with_a_null_field_clears_it_as_add_then_set_did(tmp_path):
+    """`fields={"Status": None}` must pop the Status seeded by the `status`
+    argument. Skipping the sentinel would keep a value the caller asked to
+    clear, which the create-then-set sequence this replaced did not."""
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    store.add("new/thing", name="Thing", status="Supported", fields={"Status": None})
+    meta = yaml.safe_load(
+        (root / "docs" / "capabilities" / "new" / "thing" / "meta.yaml").read_text())
+    assert "Status" not in meta
