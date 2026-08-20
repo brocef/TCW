@@ -2600,7 +2600,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return None
 
     def _unique_slug(self, created: str, title: str) -> str:
-        base = f"{created}-{slugify(title)}"
+        # ponytail: 120 chars, not a computed budget. A path component holds 255
+        # bytes; the date prefix costs 11, `mkdtemp(prefix=f".{slug}-")`
+        # (inbox_accept) costs 10 more, and the collision suffix a few — so 120
+        # leaves >100 bytes spare. `slugify` emits only `[a-z0-9-]`, so a
+        # character is a byte here. Raise it if a real title ever gets clipped.
+        body = slugify(title)[:120].rstrip("-") or "untitled"
+        base = f"{created}-{body}"
         slug, n = base, 2
         while self._find(slug) is not None:
             slug, n = f"{base}-{n}", n + 1

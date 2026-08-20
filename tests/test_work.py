@@ -1,5 +1,6 @@
 import os
 import subprocess
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -2341,3 +2342,71 @@ def test_the_two_artifact_presence_rules_disagree_on_purpose(tmp_path):
 
     with pytest.raises(StaleRevision):            # "does not exist yet" is refused
         st.write_artifact(item.slug, "spec", "real content\n", revision="")
+
+
+# -- slug floor (`_unique_slug`) -------------------------------------------
+
+
+def test_work_new_survives_a_title_that_slugifies_to_nothing(tmp_path, monkeypatch):
+    """`slugify` is ASCII-only, so a title with no ASCII reduces to the empty
+    string. The slug body must not be empty — `<date>-` is not an identifier."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "new", "東京"]) == 0
+    assert (root / f"docs/work/backlog/{date.today().isoformat()}-untitled").is_dir()
+
+
+def test_work_new_disambiguates_repeated_untitled_slugs(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    today = date.today().isoformat()
+
+    assert main(["work", "new", "東京"]) == 0
+    assert main(["work", "new", "京都"]) == 0
+    assert (root / f"docs/work/backlog/{today}-untitled").is_dir()
+    assert (root / f"docs/work/backlog/{today}-untitled-2").is_dir()
+
+
+def test_work_new_survives_a_very_long_title(tmp_path, monkeypatch):
+    """ENAMETOOLONG is a crash, not a validation error. The slug is bounded."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "new", "a" * 300]) == 0
+    created = [p for p in (root / "docs/work/backlog").iterdir() if p.is_dir()]
+    assert len(created) == 1
+    assert len(created[0].name) == 131          # 11 date + 120 body
+
+
+def test_work_new_keeps_the_full_title_when_the_slug_is_truncated(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "new", "a" * 300]) == 0
+    item = FsWorkStore.open(root).query()[0]
+    assert item.title == "a" * 300              # only the slug is bounded
+
+
+def test_work_new_punctuation_only_title(tmp_path, monkeypatch):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "new", "!!! ???"]) == 0
+    assert (root / f"docs/work/backlog/{date.today().isoformat()}-untitled").is_dir()
+
+
+def test_work_new_ordinary_title_is_unchanged(tmp_path, monkeypatch):
+    """The guard rails must not fire on normal input."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+
+    assert main(["work", "new", "Another Raw Request"]) == 0
+    slug = f"{date.today().isoformat()}-another-raw-request"
+    assert (root / "docs/work/backlog" / slug).is_dir()
