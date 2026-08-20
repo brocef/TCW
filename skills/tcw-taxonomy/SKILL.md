@@ -56,6 +56,14 @@ viewers; it is not an editable taxonomy field.
   name it** — the ordering is now load-bearing. The leaf-slug convenience is
   write-time only: `tcw taxonomy show <ref>` and `rm <ref>` stay path-addressed,
   which is why what gets stored is the path.
+- **Entries stay inside their own store.** A ref is joined onto the store root,
+  so a symlink planted inside the store would otherwise carry it out. Every
+  lookup, listing, write and validation resolves the path first and refuses one
+  that lands outside — and the same holds for the files *inside* an entry, so a
+  node whose `meta.yaml` or `description.md` is a symlink out is not read. Such
+  an entry does not resolve, does not appear in `list`, and cannot be written
+  to; a stored ref of that shape reports as **dangling**. Federation (`extends`)
+  is the supported way to reference another project.
 - **Stop at the registry boundary.** A taxonomy Feature names the interaction
   area; it does not describe behavior, acceptance criteria, support status, or
   user stories. Put those details in capabilities.

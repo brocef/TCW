@@ -75,6 +75,15 @@ reachable in the registered graph, but a connection alone does not imply
 inheritance. `extends` is a list; legacy alias/path maps fail closed. Inherited
 capabilities use `<project-id>/<path>` and remain read-only in structure.
 
+**Capabilities stay inside their own store.** A path is joined onto the store
+root, so a symlink planted inside the store would otherwise carry the write out
+of it. Every lookup, listing, write target and validation resolves first and
+refuses a path landing outside — including the files inside a capability
+folder, so one whose `meta.yaml`, `description.md` or a listed attachment is a
+symlink out is not read. Such a capability does not resolve, does not appear in
+`list`, and cannot be written to. `extends` is the supported way to reference
+another project's capabilities.
+
 - **override metadata** — `set` materializes a local delta whose `overrides`
   pointer uses `<project-id>/<id>`; a YAML null clears an inherited field;
 - **compose the body** — a `description.md` in that override folder replaces the upstream body; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera"). The override body is a _delta_: an empty one means "no delta", so **clearing an override's body re-inherits the upstream body** rather than blanking it (that fallback is what makes append-only overrides work). To say "we deliberately don't have this", use `Status: Omitted`, not an empty body.
