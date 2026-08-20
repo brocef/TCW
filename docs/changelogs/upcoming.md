@@ -66,6 +66,19 @@ category.
   refuses a symlink. And reading the config ahead of `write_sentinel` moved its
   mapping check out from under that read, so a malformed config came back as
   `AttributeError`/`TypeError` rather than the `ValueError` the CLI renders.
+- The ignore check `init` gained above probed only the store root, so a rule
+  naming a single status folder (`external/work/backlog/`) left the root visible
+  and hid everything filed in that folder (fourth adversarial pass). Asked of
+  each leaf's `.gitkeep` now — the question that matters, and the only form that
+  reads TCW's own `completed/*` / `discarded/*` rules correctly, since
+  `check-ignore` matches a trailing-slash path against a `dir/*` rule and
+  querying the folder would make the scaffolding refuse itself.
+- A `work.path` present but not a non-empty string (`[]`, `false`) was skipped by
+  a truthiness test and fell through to the default store silently. Note the
+  remaining gap: `load_yaml` coerces any falsy YAML document to `{}`, so a
+  `tcw-config.yaml` whose whole content is `[]` or `false` still reads as an
+  empty config rather than a malformed one. That is `load_yaml`'s contract,
+  shared by every caller, and is left alone here.
 - `main()`'s `CalledProcessError` handler rendered a string-valued `error.cmd`
   character by character (`g i t ' ' s t a t u s`) — `shlex.join` over a string
   iterates it. Latent, since every `check=True` git call in the adapter passes an
