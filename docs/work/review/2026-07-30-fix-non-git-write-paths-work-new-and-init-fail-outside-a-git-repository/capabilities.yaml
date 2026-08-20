@@ -1,9 +1,0 @@
-changed:
-    - taxonomy/add-a-term
-    - work/start-a-work-item
-    - web/editing
-    - work/delegate-a-request-to-a-child-node
-    - work/escalate-a-request-to-the-parent-node
-    - work/complete-a-work-item
-    - cli/scaffold-the-doc-trees
-    - work/configure-the-work-store-location
