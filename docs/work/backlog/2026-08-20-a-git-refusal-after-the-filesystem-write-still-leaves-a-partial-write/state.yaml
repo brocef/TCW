@@ -1,0 +1,7 @@
+slug: 2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write
+title: A git refusal after the filesystem write still leaves a partial write
+created: '2026-08-20'
+resolution: null
+tags:
+- cli
+- bug

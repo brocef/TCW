@@ -1,0 +1,7 @@
+slug: 2026-08-20-enforce-the-gitignore-trap-at-write-time-not-only-at-init
+title: Enforce the gitignore trap at write time, not only at init
+created: '2026-08-20'
+resolution: null
+tags:
+- cli
+- bug

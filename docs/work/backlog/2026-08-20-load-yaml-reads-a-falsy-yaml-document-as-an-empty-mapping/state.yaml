@@ -1,0 +1,6 @@
+slug: 2026-08-20-load-yaml-reads-a-falsy-yaml-document-as-an-empty-mapping
+title: load_yaml reads a falsy YAML document as an empty mapping
+created: '2026-08-20'
+resolution: null
+tags:
+- cli
