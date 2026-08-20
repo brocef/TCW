@@ -613,7 +613,11 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # or a new sentinel in a project that had none, or the whole status tree.
     default_root = root / "docs" / "work"
     replacing_default_store = False
-    ignore_root: Path | None = None
+    # Which repository answers the ignore question for the work leaves. The
+    # node's own, unless `work.path` sends the store somewhere else — and it is
+    # asked for the default store too, which is the layout most projects use and
+    # the one the check originally skipped entirely.
+    ignore_root: Path | None = git_root(root)
     if work_path is not None and "work" in components:
         target = work_path if work_path.is_absolute() else root / work_path
         # Probed at the nearest *existing* ancestor, not at the target:
@@ -629,7 +633,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         target_git = git_root(probe)
         if target_git is None:
             raise ValueError(f"work.path target is not inside a Git repository: {target}")
-        ignore_root = target_git
+        ignore_root = target_git                      # the store's, not the node's
         if default_root.exists() and default_root.resolve() != target.resolve():
             expected = {"inbox", *WORK_STATUSES}
             actual = {entry.name for entry in default_root.iterdir()}
@@ -675,21 +679,33 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             # folder, not just the store root, because a rule naming one folder
             # leaves the root visible and hides only what lands inside it.
             #
-            # Asked of the `.gitkeep` this call is about to write, which is the
-            # question that matters — will a file written here be recorded? —
-            # and the only form that reads TCW's own rules correctly. They
-            # ignore `<prefix>/completed/*` and `<prefix>/discarded/*` on
-            # purpose, which is how a resolved item leaves the tracked tree, and
-            # negate `.gitkeep` back in so the empty folder survives. Querying
-            # the folder instead would trip on that: `git check-ignore` matches a
-            # trailing-slash path against a `dir/*` rule, so `completed/` reads
-            # as ignored and TCW's own scaffolding would refuse itself.
+            # Would an *item* written here be recorded? Asked of a representative
+            # payload rather than of the folder or its `.gitkeep`, both of which
+            # answer a different question: `<status>/*` with a `!<status>/.gitkeep`
+            # negation — TCW's own shape for the resolved statuses, and an
+            # ordinary thing for a person to write — leaves the marker visible
+            # while hiding every item, and `git check-ignore` matches a
+            # trailing-slash path against a `dir/*` rule, so asking about the
+            # folder would make TCW's own scaffolding refuse itself.
+            #
+            # `completed` and `discarded` are skipped because TCW ignores their
+            # contents deliberately: that is how a resolved item leaves the
+            # tracked tree.
+            #
+            # ponytail: a configure-time guard against a footgun, not a boundary.
+            # It cannot see a `.gitignore` written after `init`, a rule naming a
+            # specific slug, or one that arrives with a later `git pull`. Catching
+            # those means checking at write time, in `git_stage`, which is a
+            # different change.
             if component == "work" and ignore_root is not None \
-                    and git_ignored(ignore_root, leaf / ".gitkeep", no_index=True):
-                raise ValueError(
-                    f"work.path target is inside a gitignored path, so nothing "
-                    f"written there would be tracked: {leaf}"
-                )
+                    and leaf.name not in RESOLVED_STATUSES:
+                probe = (leaf / "an-item.md" if leaf.name == "inbox"
+                         else leaf / "an-item" / "state.yaml")
+                if git_ignored(ignore_root, probe, no_index=True):
+                    raise ValueError(
+                        f"work store folder is inside a gitignored path, so items "
+                        f"written there would not be tracked: {leaf}"
+                    )
     write_sentinel(root, project_id)
     if work_path is not None and "work" in components:
         if replacing_default_store:

@@ -687,6 +687,40 @@ def test_init_refuses_a_store_whose_status_folder_the_rules_hide(tmp_path):
     assert manifest(code) == before
 
 
+def test_init_refuses_a_store_whose_items_the_rules_hide(tmp_path):
+    """`.gitkeep` surviving proves nothing about the items beside it.
+
+    `backlog/*` with `!backlog/.gitkeep` is not an exotic rule — it is TCW's own
+    shape for the resolved statuses — and it leaves the marker visible while
+    hiding every item. The probe has to be a representative *item* path, which
+    is the only thing the guard actually cares about.
+    """
+    code = git_init(tmp_path / "code")
+    (code / ".gitignore").write_text(
+        "external/work/backlog/*\n!external/work/backlog/.gitkeep\n", encoding="utf-8")
+    commit_all(code)
+    before = manifest(code)
+    with pytest.raises(ValueError, match="gitignored"):
+        init(["work"], code, "demo", work_path=code / "external" / "work")
+    assert manifest(code) == before
+
+
+def test_init_refuses_a_default_store_whose_items_the_rules_hide(tmp_path):
+    """The same guard, on the store that needs no `work.path` at all.
+
+    It only ran for a configured `work.path`, so the default `docs/work` — the
+    layout most projects use — got no ignore check whatsoever.
+    """
+    code = git_init(tmp_path / "code")
+    (code / ".gitignore").write_text(
+        "docs/work/backlog/*\n!docs/work/backlog/.gitkeep\n", encoding="utf-8")
+    commit_all(code)
+    before = manifest(code)
+    with pytest.raises(ValueError, match="gitignored"):
+        init(["work"], code, "demo")
+    assert manifest(code) == before
+
+
 def test_init_still_accepts_the_resolved_status_rules_it_writes_itself(tmp_path):
     """The counterweight to the leaf check, and the regression it risks.
 
