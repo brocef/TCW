@@ -29,13 +29,23 @@ from tcw.store.fs import (
 REFUSED = "not inside a git repository"
 
 
-def repo(tmp_path: Path, name: str = "repo") -> Path:
-    """A committed TCW node inside a git repository."""
-    root = tmp_path / name
+def git_init(root: Path) -> Path:
+    """An empty git repository at `root`, committer identity configured."""
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    return root
+
+
+def commit_all(root: Path, message: str = "seed") -> None:
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", message], check=True)
+
+
+def repo(tmp_path: Path, name: str = "repo") -> Path:
+    """A committed TCW node inside a git repository."""
+    root = git_init(tmp_path / name)
     init(["taxonomy", "capabilities", "work"], root, name.lower())
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "init"], check=True)
@@ -102,13 +112,21 @@ def test_require_repository_refuses_a_plain_directory(tmp_path):
     assert str(e.value) == NOT_A_REPOSITORY
 
 
-def test_each_store_checks_the_repository_it_actually_writes_to(tmp_path):
-    """A work store's repository can differ from its node's (`work.path`)."""
-    root = repo(tmp_path)
-    work = FsWorkStore.open(root)
+def test_each_store_checks_the_repository_it_actually_writes_to(split_repos):
+    """A work store's repository can differ from its node's (`work.path`).
+
+    Built on a genuinely external store: the earlier version of this test used a
+    default store, where `store_git_root == node_root`, so it passed whether or
+    not `FsWorkStore._write_git_root` overrode the base implementation — and that
+    blind spot is why the two split-ownership defects below reached `verify`.
+    """
+    code, store, _ = split_repos
+    work = FsWorkStore.open(code)
+    assert work.store_git_root != work.node_root          # the premise, asserted
+    assert work.store_git_root == store
     assert work._write_git_root() == work.store_git_root
-    taxonomy = FsTaxonomyStore.open(root)
-    assert taxonomy._write_git_root() == taxonomy.node_root
+    taxonomy = FsTaxonomyStore.open(code)
+    assert taxonomy._write_git_root() == taxonomy.node_root == code
 
 
 def test_the_guard_holds_no_state_because_it_could_not_be_initialized(tmp_path):
@@ -454,3 +472,161 @@ def test_read_output_is_unchanged_outside_a_repository(argv, unrepo, monkeypatch
     got = _normalize(capsys.readouterr().out, unrepo)
     name = "-".join(argv).replace("/", "_") + ".txt"
     assert got == (GOLDEN / name).read_text(encoding="utf-8")
+
+
+# ── Split ownership: a work store in another repository ──────────────────────
+#
+# Every defect in this section is the same mistake: a flow that writes to *two*
+# repositories, guarded against one. With a default store the two are the same
+# directory, so the 28-command matrix above — which removes every repository in
+# the graph at once — cannot see any of it.
+
+
+@pytest.fixture
+def split_repos(tmp_path):
+    """A node in one repository whose work store is in another (`work.path`).
+
+    Both repositories present and committed; the item is in `backlog/`. Tests
+    remove whichever `.git` the case needs.
+    """
+    store = git_init(tmp_path / "store")
+    subprocess.run(["git", "-C", str(store), "commit", "-q", "--allow-empty",
+                    "-m", "seed"], check=True)
+    code = git_init(tmp_path / "code")
+    init(["taxonomy", "capabilities", "work"], code, "demo",
+         work_path=store / "work")
+    commit_all(code)
+    commit_all(store)
+    item = FsWorkStore.open(code).create("A thing", created="2026-01-01")
+    commit_all(store, "item")
+    return code, store, item.slug
+
+
+def test_start_worktree_is_refused_when_only_the_node_has_no_repository(
+    split_repos, monkeypatch, capsys
+):
+    """`--worktree` writes the *node's* `.gitignore`, not the store's.
+
+    The store guard passes — `work.path` is still in its own repository — so
+    without a check of its own `start` moved the item to `active/`, wrote
+    `.worktrees/` into `.gitignore`, and only then died in `git add`.
+    """
+    code, store, slug = split_repos
+    shutil.rmtree(code / ".git")
+    monkeypatch.chdir(code)
+    before = manifest(code.parent)
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, err
+    assert [ln for ln in err.splitlines() if ln] == [
+        ln for ln in err.splitlines() if ln and REFUSAL.match(ln)], err
+    assert manifest(code.parent) == before
+    assert (store / "work" / "backlog" / slug).is_dir()
+    assert not (store / "work" / "active" / slug).exists()
+
+
+def test_a_plain_start_still_works_when_only_the_node_has_no_repository(
+    split_repos, monkeypatch, capsys
+):
+    """The guard above is scoped to `--worktree`, which is what needs the node.
+
+    A plain `start` writes only the store, so it must keep succeeding — the
+    external-store split is a supported configuration, not a broken one.
+    """
+    code, store, slug = split_repos
+    shutil.rmtree(code / ".git")
+    monkeypatch.chdir(code)
+    assert main(["work", "start", slug, "--owner", "t@t"]) == 0
+    capsys.readouterr()
+    assert (store / "work" / "active" / slug).is_dir()
+
+
+def test_complete_refuses_when_the_merge_back_has_no_repository(
+    split_repos, monkeypatch, capsys
+):
+    """A skipped merge-back must not be reported as a completion.
+
+    `merge_worktree` read *any* failed `rev-parse` as "branch already gone", and
+    outside a repository that lookup fails with 128 — so completion sailed past
+    the merge, exited 0, and left the work branch unmerged. A partial write
+    announces itself; a false completion does not.
+    """
+    code, store, slug = split_repos
+    monkeypatch.chdir(code)
+    assert main(["work", "start", slug, "--worktree", "--owner", "t@t"]) == 0
+    capsys.readouterr()
+    worktree = code / ".worktrees" / slug
+    assert worktree.is_dir()
+    shutil.rmtree(code / ".git")
+
+    assert main(["work", "complete", slug, "--resolution", "done",
+                 "--confirm", "--force"]) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, err
+    assert f"work/{slug}" in err, err                  # names the branch at risk
+    assert (store / "work" / "active" / slug).is_dir()  # not completed
+    assert not (store / "work" / "completed" / slug).exists()
+    assert worktree.is_dir()                            # teardown skipped too
+
+
+# ── `init --work-path`: two locations, checked last ───────────────────────────
+
+
+def test_init_refuses_an_external_work_path_before_it_writes_anything(tmp_path):
+    """`init` scaffolded both locations and *then* refused.
+
+    It wrote the sentinel, rewrote `tcw-config.yaml` with `work.path`, created
+    all six status folders and every `.gitkeep`, and only then checked whether
+    the target was in a repository — so the refusal was real and the residue was
+    total.
+    """
+    code = git_init(tmp_path / "code")
+    commit_all(code, "empty")
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    before = manifest(tmp_path)
+    with pytest.raises(ValueError, match="not inside a Git repository"):
+        init(["work"], code, "demo", work_path=plain / "work")
+    assert manifest(tmp_path) == before
+
+
+def test_init_accepts_a_work_path_whose_directories_do_not_exist_yet(tmp_path):
+    """Why the check was written late, and what the early one must not break.
+
+    `git_root` shells out to `git -C <path>`, which fails on a path that does not
+    exist — so an early check that probed the target itself would refuse a
+    perfectly good `--work-path <repo>/new/nested/dir`. It has to resolve to the
+    nearest *existing* ancestor.
+    """
+    code = git_init(tmp_path / "code")
+    store = git_init(tmp_path / "store")
+    target = store / "new" / "nested" / "work"
+    init(["work"], code, "demo", work_path=target)
+    assert (target / "backlog" / ".gitkeep").is_file()
+
+
+# ── The generic handler, on a `cmd` that is a string ─────────────────────────
+
+
+def test_a_string_valued_git_command_is_rendered_as_one_command(
+    tmp_path, monkeypatch, capsys
+):
+    """`CalledProcessError.cmd` is a sequence *or* a string (stdlib contract).
+
+    Given a string, `shlex.join(str(a) for a in cmd)` iterates characters and
+    prints `g i t ' ' s t a t u s`. No shipped raiser passes a string today, but
+    the handler's entire justification is that it carries no assumptions about
+    who raised.
+    """
+    root = repo(tmp_path)
+    FsWorkStore.open(root).create("Task", created="2026-01-01")
+    monkeypatch.chdir(root)
+
+    def boom(*args, **kwargs):
+        raise subprocess.CalledProcessError(128, "git status")
+
+    monkeypatch.setattr("tcw.store.fs.git_stage", boom)
+    assert main(["work", "new", "T"]) != 0
+    err = capsys.readouterr().err
+    assert err == "tcw: git command failed (exit 128): git status\n", err
+

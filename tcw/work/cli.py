@@ -15,10 +15,11 @@ from tcw.store.base import (
     normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
-    COMPONENTS, WORKTREES_DIR, FsWorkStore, add_worktree, child_nodes,
-    descendant_nodes, ensure_worktree_ignored, find_node, git_commit_result,
-    merge_worktree, parent_node, qualified_work_ref_problem, registered_project_id,
-    remove_worktree, resolve_qualified_work_ref,
+    COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
+    child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
+    git_commit_result, git_root, merge_worktree, parent_node,
+    qualified_work_ref_problem, registered_project_id, remove_worktree,
+    resolve_qualified_work_ref,
 )
 from tcw.stdin import read_piped_stdin
 from tcw.store.project import worktree_anchors
@@ -521,6 +522,16 @@ def _start(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
+    # `--worktree` writes the *node's* `.gitignore` and creates the worktree
+    # there. That is not always the repository the store guard checks: an
+    # external `work.path` splits ownership, and then `st.start` passes against
+    # the store's repository while the node has none — which used to move the
+    # item, write `.gitignore`, and only then die in `git add`. Checked here, so
+    # a refusal means nothing happened at all, and worded as the shared sentence
+    # so the single-repository case still refuses with one wording.
+    if args.worktree and git_root(st.node_root) is None:
+        print(f"tcw work start: {NOT_A_REPOSITORY}", file=sys.stderr)
+        return 1
     # `pre` hooks run before the store is touched at all — not merely before the
     # move. A hook is allowed to refuse the transition, and a refusal has to mean
     # nothing happened; evaluating one after any store call would make that false.
