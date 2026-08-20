@@ -79,6 +79,16 @@ category.
   `tcw-config.yaml` whose whole content is `[]` or `false` still reads as an
   empty config rather than a malformed one. That is `load_yaml`'s contract,
   shared by every caller, and is left alone here.
+- That ignore check asked about each leaf's `.gitkeep`, which answered the wrong
+  question (fifth adversarial pass): `<status>/*` with a `!<status>/.gitkeep`
+  negation is TCW's own shape for the resolved statuses, and it leaves the marker
+  visible while hiding every item. It now probes a representative item path,
+  skipping `completed`/`discarded`. It also ran only for a configured
+  `work.path`, so the default `docs/work` got no check at all; `ignore_root`
+  starts at the node's repository and moves only when the store does. The
+  guard's ceiling is marked in the source: a configure-time check cannot see a
+  `.gitignore` written after `init`, a rule naming one slug, or a rule arriving
+  with a later pull — that would be a check in `git_stage`.
 - `main()`'s `CalledProcessError` handler rendered a string-valued `error.cmd`
   character by character (`g i t ' ' s t a t u s`) — `shlex.join` over a string
   iterates it. Latent, since every `check=True` git call in the adapter passes an

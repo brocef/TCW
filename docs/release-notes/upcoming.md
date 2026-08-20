@@ -48,8 +48,9 @@ already happened and so has none to protect.
 refusal now happens before anything is written. It turns down a store your
 `.gitignore` excludes — every item you filed there would be real on disk and
 invisible to Git — whether the rule was there first or added after the store was
-created, and whether it covers the whole store or just one status folder inside
-it; a store behind a broken symlink; a status folder that is really a file; and a
+created, and whether it covers the whole store, one status folder inside it, or
+just the items in that folder — and it checks the default `docs/work` location
+too, not only a store you point elsewhere; a store behind a broken symlink; a status folder that is really a file; and a
 `docs/work` that is a symlink to somewhere else. A `work.path` that is not text
 at all now says so instead of quietly falling back to the default location, and a
 `tcw-config.yaml` that is not a mapping gets a plain message instead of a stack
