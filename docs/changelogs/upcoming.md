@@ -208,6 +208,40 @@ category.
   the slug's prefix is bounded as well as its body. (Found reviewing this
   change's own claim that `_unique_slug` bounds its output — it bounded only
   the half derived from the title.)
+- `tcw capabilities set` accepted a reference-bearing field whose value pointed
+  at nothing and exited 0; only a later `tcw capabilities check` found it. The
+  refusal now happens at write time, in `_validate_fields` — the one seam both
+  `set` and `update_capability` call before touching disk — so the CLI and
+  `tcw serve`'s PATCH inherit it without new plumbing. Six fields, not the two
+  reported: `Superseded by`, `Blocked by`, `Roles` and `When` resolve against the
+  capability store itself and were going through the same unvalidated call. All
+  problems in one write are reported at once rather than first-wins, and none of
+  the messages contains `no such`, so `_map_store_error` keeps them at 422.
+  A new `_ref_problems` is the single renderer both `check` and the write path
+  use, so the two cannot disagree about what a problem is; `_check_globals`,
+  `_check_subject` and `_check_feature` lose their `where` parameter and return
+  unprefixed tails. Only the refs a write *supplies* are validated, never the
+  merged node, so a capability already holding a bad ref stays repairable with
+  `--status Omitted`. A taxonomy store is opened only when `Subject` or `Feature`
+  is actually supplied.
+- `FsCapabilitiesStore.check()` called without a taxonomy silently skipped
+  `Subject` and `Feature`, so the write path and `check` could disagree about
+  *whether* a ref was checked even once they agreed about what a problem is. It
+  now falls back to `self._taxonomy()`, the node's own. `is not None` rather than
+  `or`, so an explicitly injected falsey store still wins. The two duplicate
+  wirings this replaces are deleted (`_taxonomy_for` in `tcw/capabilities/cli.py`
+  with its orphaned import, and the `tax = …` conditional in `tcw/validate.py`).
+  Note `tcw serve` was **not** a third divergent wiring, as the item's spec
+  claimed: it does construct a taxonomy store unconditionally, but never passes
+  it to `capabilities.check` — its post-save warnings route through `validate()`,
+  the guarded path — so the taxonomy-less behaviour was already aligned.
+- `POST /api/capabilities` did add-then-`set`, so a field the store refused
+  returned 422 with the capability already on disk — reachable before this change
+  with an unknown field or an invalid `Status`. `add` takes an optional `fields`
+  now and validates before `_write_node`, so the handler makes one call and the
+  whole class is fixed rather than the ref case alone. This is
+  validation-atomicity, not atomicity: `_write_node` still stages after writing
+  and keeps written files when `git add` fails.
 
 ## Added
 
@@ -231,6 +265,10 @@ category.
 
 ## Changed
 
+- `CapabilitiesStore.add` gains an optional trailing `fields` keyword
+  (`tcw/store/base.py`). Backwards-compatible — every existing caller omits it —
+  and it is the shape a remote adapter wants anyway, since a tracker creates an
+  issue with its fields in one API call rather than two.
 - `LIFECYCLE_STEPS` `inputs` for `spec`, `plan`, and `postmortem` now list
   `intake.md` alongside `initial-request.md`. `inputs` is what a stage *may*
   read, not a checklist. `tcw work lifecycle` and its `--json` change
