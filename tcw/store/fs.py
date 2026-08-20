@@ -2503,8 +2503,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         except ValueError:
             return str(p)                             # outside node_root: absolute, don't crash
 
-    @staticmethod
-    def _present(p: Path) -> bool:
+    def _present(self, p: Path) -> bool:
         """The **lifecycle** presence rule: exists and has non-whitespace content.
 
         Answers *did this stage produce anything?* Mere existence would let an
@@ -2520,7 +2519,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         on `WorkStore.artifacts` and `WorkStore.read_artifact`, which is where an
         adapter author will look; `tests/test_work.py` pins them against each
         other so neither can drift into the other by accident."""
-        return p.is_file() and bool(p.read_text(encoding="utf-8").strip())
+        # Containment before the read: `_item_dirs` bounds *discovery* via
+        # state.yaml, but a legitimately discovered item can still hold an
+        # artifact that is a symlink out of the store. An escaped resource is
+        # not present — the same fail-closed shape the node stores use.
+        return (p.is_file() and self._within_store(p)
+                and bool(p.read_text(encoding="utf-8").strip()))
 
     def _resolve_body(self, d: Path) -> tuple[str | None, str]:
         """The body surface: (artifact name, text), or (None, "") when neither is
@@ -3137,10 +3141,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return []
         names = ["state.yaml", *[f"{name}.md" for name in WORK_ARTIFACTS],
                  *WORK_SIDECARS]
-        resources = [folder / name for name in names if (folder / name).is_file()]
+        resources = [folder / name for name in names
+                     if (folder / name).is_file() and self._within_store(folder / name)]
         plan_folder = folder / "plan"
-        if plan_folder.is_dir():
-            resources.extend(sorted(plan_folder.glob("*.md")))
+        if plan_folder.is_dir() and self._within_store(plan_folder):
+            resources.extend(sorted(q for q in plan_folder.glob("*.md")
+                                    if self._within_store(q)))
         return resources
 
     # -- raw inbox intake (separate from formal WorkItem status) --
@@ -3827,7 +3833,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         p = d / self._artifact_filename(name)
         # Mere existence, not `_present`: this is the resource question, and a
         # blank artifact is a real resource. See `WorkStore.read_artifact`.
-        if not p.is_file():
+        if not (p.is_file() and self._within_store(p)):
             return None
         text = p.read_text(encoding="utf-8")
         return ArtifactResource(

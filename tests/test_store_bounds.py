@@ -286,3 +286,50 @@ def test_work_item_folder_that_is_itself_a_symlink_stays_undiscovered(tmp_path):
     (root / "docs" / "work" / "backlog" / "sneaky").symlink_to("../../../outside/sneaky")
     store = FsWorkStore.open(root)
     assert [i.slug for i in store.query()] == []
+
+
+# ── work store: resources inside a legitimately discovered item ──────────────
+#
+# `_item_dirs` bounds *discovery* via state.yaml. An ordinary item with a real
+# state.yaml can still hold a symlinked artifact or sidecar, and every read of
+# those follows the link out of the store.
+
+def _item_with_symlinked_artifact(root):
+    outside = root / "outside"
+    outside.mkdir(exist_ok=True)
+    (outside / "spec.md").write_text("OUTSIDE SPEC")
+    d = root / "docs" / "work" / "backlog" / "2026-08-20-victim"
+    d.mkdir(parents=True)
+    (d / "state.yaml").write_text(
+        "slug: 2026-08-20-victim\ntitle: Victim\nstatus: backlog\ntype: task\n")
+    (d / "spec.md").symlink_to("../../../../outside/spec.md")
+    return d
+
+
+def test_work_read_artifact_does_not_follow_a_symlink_out(tmp_path):
+    root = _repo(tmp_path)
+    _item_with_symlinked_artifact(root)
+    store = FsWorkStore.open(root)
+    got = store.read_artifact("2026-08-20-victim", "spec")
+    assert got is None or "OUTSIDE SPEC" not in got.content
+
+
+def test_work_validation_resources_returns_nothing_outside_the_store(tmp_path):
+    root = _repo(tmp_path)
+    _item_with_symlinked_artifact(root)
+    store = FsWorkStore.open(root)
+    for p in store._validation_resources("2026-08-20-victim"):
+        assert store._within_store(p), p
+
+
+def test_work_item_with_ordinary_artifacts_still_reads(tmp_path):
+    """The control."""
+    root = _repo(tmp_path)
+    d = root / "docs" / "work" / "backlog" / "2026-08-20-ordinary"
+    d.mkdir(parents=True)
+    (d / "state.yaml").write_text(
+        "slug: 2026-08-20-ordinary\ntitle: Ordinary\nstatus: backlog\ntype: task\n")
+    (d / "spec.md").write_text("REAL SPEC")
+    store = FsWorkStore.open(root)
+    got = store.read_artifact("2026-08-20-ordinary", "spec")
+    assert got is not None and "REAL SPEC" in got.content
