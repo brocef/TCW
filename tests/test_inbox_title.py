@@ -46,6 +46,10 @@ FENCES = [
     ("~~~\n# in tilde fence\n~~~\n\n# Real\n", "Real"),     # symmetric
     # An unclosed fence suppresses every later heading — the safe direction.
     ("```sh\n# comment\n\n# Real\n", None),
+    # A closing fence carries no info string, so this line does not close the
+    # `sh` fence and the heading under it stays inside the code block.
+    ("```sh\n```not-a-closing-fence\n# Fake title\n```\n# Real title\n", "Real title"),
+    ("```sh\n# comment\n```   \n\n# Real\n", "Real"),   # trailing space still closes
 ]
 
 

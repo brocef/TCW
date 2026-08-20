@@ -532,9 +532,10 @@ _FENCE = re.compile(r"^(`{3,}|~{3,})")
 def body_title(body: str | None) -> str | None:
     """The first ATX H1 in ``body``, or None.
 
-    Skips leading frontmatter and fenced code blocks; a fence closes only on
-    the same delimiter character with a run at least as long as the opener, so
-    a three-backtick line inside a four-backtick fence does not end it.
+    Skips leading frontmatter and fenced code blocks. A fence closes only on a
+    line that is *nothing but* a run of the opener's own delimiter, at least as
+    long as it — so neither a three-backtick line inside a four-backtick fence
+    nor a ```` ```not-a-fence ```` line ends one.
     """
     if body is None:
         return None
@@ -542,7 +543,8 @@ def body_title(body: str | None) -> str | None:
     for line in body[frontmatter_end(body):].splitlines():
         match = _FENCE.match(line.strip())
         if fence:
-            if match and match[1][0] == fence[0] and len(match[1]) >= len(fence):
+            if (match and match[1] == line.strip() and match[1][0] == fence[0]
+                    and len(match[1]) >= len(fence)):
                 fence = None
             continue
         if match:
