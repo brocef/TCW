@@ -20,8 +20,8 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore,
-    _revision, _revision_multi, _atomic_write, _atomic_write_all, init,
-    write_sentinel,
+    _revision, _revision_multi, _atomic_write, _atomic_write_all, _mkdir_owned,
+    init, write_sentinel,
 )
 # Federation setup is non-trivial and already written next door; the rollback
 # test that needs it belongs in this file, with the other fault-injection tests.
@@ -1440,3 +1440,87 @@ def test_add_rejects_duplicate_path(tmp_path):
     st.add("routes/login", name="Sign in")
     with pytest.raises(ValueError, match="already exists"):
         st.add("routes/login", name="Sign in")
+
+
+# ── the write-then-stage chokepoint ──────────────────────────────────────────
+#
+# A repository that exists and *refuses* — a held index.lock, a rejecting hook,
+# a permissions error — is only discovered when staging fails, which is after
+# the content is on disk. `_write_staged` undoes what the call created and
+# re-raises; it must never touch anything that was already there.
+
+def _tree_store(root: Path) -> FsWorkStore:
+    """Any FsTreeStore subclass will do — `_write_staged` is defined on the base."""
+    return FsWorkStore.open(root)
+
+
+def _boom(*a, **kw):
+    raise subprocess.CalledProcessError(128, ["git", "add", "x"])
+
+
+def test_mkdir_owned_reports_who_created_the_directory(tmp_path):
+    d = tmp_path / "a" / "b" / "c"
+    assert _mkdir_owned(d) is True          # creates parents too
+    assert d.is_dir()
+    assert _mkdir_owned(d) is False         # the race-shaped second call
+    assert d.is_dir()
+
+
+def test_write_staged_removes_a_directory_it_created(tmp_path, monkeypatch):
+    root = _work_node(tmp_path)
+    st = _tree_store(root)
+    d = root / "docs" / "work" / "backlog" / "brand-new"
+    assert _mkdir_owned(d) is True
+    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        st._write_staged([(d / "state.yaml", "slug: x\n"),
+                          (d / "spec.md", "body")], owned_dir=d)
+    assert not d.exists()
+
+
+def test_write_staged_removes_only_the_files_it_created(tmp_path, monkeypatch):
+    """The hard boundary: an update whose staging is refused keeps what it
+    wrote, and a pre-existing sibling is never touched."""
+    root = _work_node(tmp_path)
+    st = _tree_store(root)
+    d = root / "docs" / "work" / "backlog" / "existing"
+    d.mkdir(parents=True)
+    kept = d / "state.yaml"
+    kept.write_text("slug: existing\n", encoding="utf-8")
+    before = kept.read_bytes()
+    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        st._write_staged([(kept, "slug: rewritten\n"), (d / "spec.md", "new")])
+
+    assert not (d / "spec.md").exists()      # absent at entry → removed
+    assert kept.is_file()                    # pre-existing → kept …
+    assert kept.read_bytes() != before       # … with the content this call wrote
+    assert d.is_dir()
+
+
+def test_write_staged_leaves_no_temp_files(tmp_path, monkeypatch):
+    root = _work_node(tmp_path)
+    st = _tree_store(root)
+    d = root / "docs" / "work" / "backlog" / "tmpcheck"
+    _mkdir_owned(d)
+    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
+    with pytest.raises(subprocess.CalledProcessError):
+        st._write_staged([(d / "state.yaml", "x")], owned_dir=d)
+    assert list(root.rglob("*.tmp")) == []
+
+
+def test_a_failing_undo_does_not_mask_the_original_error(tmp_path, monkeypatch):
+    """Criterion 11. The rollback is best-effort; the staging failure is the
+    one the user needs to see."""
+    root = _work_node(tmp_path)
+    st = _tree_store(root)
+    d = root / "docs" / "work" / "backlog" / "maskcheck"
+    d.mkdir(parents=True)
+    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
+    monkeypatch.setattr(Path, "unlink",
+                        lambda self, **kw: (_ for _ in ()).throw(PermissionError("no")))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        st._write_staged([(d / "state.yaml", "x")])

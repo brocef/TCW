@@ -22,6 +22,7 @@ import tempfile
 import time
 import uuid
 from datetime import date, datetime, timezone
+from contextlib import suppress
 from functools import cached_property
 from pathlib import Path
 from typing import NoReturn
@@ -971,6 +972,21 @@ def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
 
 # ── Shared tree-store core (Phase 4) ─────────────────────────────────────────
 
+def _mkdir_owned(d: Path) -> bool:
+    """Create `d`, returning whether *this call* made it.
+
+    `exist_ok=False` is the ownership proof: exactly one process's `mkdir`
+    succeeds, so there is no check-then-act window. That is what lets a failed
+    write remove the folder outright — knowing it removes nothing it did not
+    create — where an `existed = d.exists()` probe beforehand could not.
+    """
+    try:
+        d.mkdir(parents=True)
+        return True
+    except FileExistsError:
+        return False
+
+
 class FsTreeStore:
     """Common FS-adapter base for the three bounded-tree stores.
 
@@ -1060,6 +1076,38 @@ class FsTreeStore:
     def _stage(self, *paths: Path) -> None:
         self._require_repository()
         git_stage(self.node_root, *paths)
+
+    def _write_staged(self, pairs: list[tuple[Path, str]], *,
+                      owned_dir: Path | None = None) -> None:
+        """Write every `(path, content)` and stage the lot, undoing what *this
+        call* created if either half fails, then re-raising.
+
+        A repository that exists and *refuses* — a held `index.lock`, a rejecting
+        hook, a permissions error — is only discovered when staging fails, which
+        is after the content is on disk. A precondition cannot help: it cannot
+        predict a lock acquired a millisecond later. So this rolls back instead.
+
+        **Never removes a path that was already there.** An update whose staging
+        is refused keeps what it just wrote, because deleting it would turn a
+        recoverable failure into real data loss. `owned_dir` is a directory the
+        caller proved it created (`_mkdir_owned`) and is removed whole;
+        everything else is per file, and only files absent when this call began.
+
+        Best-effort and silent: the undo must not mask the original error, and
+        must not add a second line to a refusal whose one-line shape is pinned.
+        """
+        new = [p for p, _ in pairs if not p.exists()]
+        try:
+            _atomic_write_all(pairs)
+            self._stage(*(p for p, _ in pairs))
+        except BaseException:
+            if owned_dir is not None:
+                shutil.rmtree(owned_dir, ignore_errors=True)
+            else:
+                for p in new:
+                    with suppress(OSError):
+                        p.unlink()
+            raise
 
     def _rm(self, path: Path) -> None:
         self._require_repository()
