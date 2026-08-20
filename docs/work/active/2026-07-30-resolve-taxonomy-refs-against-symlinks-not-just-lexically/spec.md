@@ -176,10 +176,17 @@ its own store.
   request's Notes) — pre-existing, not an escape, separate item if wanted.
 - Hardlinks, bind mounts, and case-insensitive filesystem aliasing. Symlinks are
   the reachable case; the others need privileges the threat model already grants.
-- **Work-store surfaces other than item discovery.** The `state.yaml` filter in
-  `_item_dirs` is in scope (Problem §4, Goal 4); the inbox needs no change
-  because it already rejects symlinks, and no other work-store path joins a
-  caller-supplied id onto the root without going through `_find`.
+- ~~**Work-store surfaces other than item discovery.**~~ **Withdrawn at
+  `implement`, on the user's decision.** Adversarial review round 2 showed the
+  reasoning behind this non-goal was wrong: it is true that no other work-store
+  path joins a caller-supplied id onto the root, but that was never the whole
+  exposure. An item discovered legitimately — real `state.yaml`, ordinary folder
+  — can hold an artifact, sidecar or plan document that is itself a symlink out
+  of the store, and every read followed it. That is the same defect as Problem
+  §4, one level down, so excluding it would have shipped containment that stops
+  at the item boundary. `_present`, `read_artifact` and the work
+  `_validation_resources` are now guarded too. The inbox still needs no change:
+  it rejects symlinks already.
 - The abstract `TaxonomyStore`/`CapabilityStore`/`WorkStore` interfaces. Per the
   litmus test, path containment is a filesystem-adapter private detail (a remote
   store has no paths to contain), exactly like the lexical guard it extends.
