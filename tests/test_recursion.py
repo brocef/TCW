@@ -3,6 +3,7 @@ the inbox channel, and worktrees. pytest over nested tmp_path git repos."""
 
 import shutil
 import subprocess
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -496,6 +497,32 @@ def test_delegate_unknown_child_errors(tmp_path):
     mk_node(parent, "child")
     with pytest.raises(ValueError):
         delegate(parent, "nope", "x")
+
+
+@pytest.mark.parametrize("title,expected_title,expected_body", [
+    ("Ship the exporter", "Ship the exporter", "ship-the-exporter"),
+    ("Fix auth\nurgently", "Fix auth", "fix-auth"),      # `# {title}` keeps line one
+    ("東京", "東京", "untitled"),                          # nothing to slugify
+    ("!!! ???", "!!! ???", "untitled"),
+])
+def test_delegated_titles_round_trip_through_inbox_accept(tmp_path, title,
+                                                          expected_title, expected_body):
+    """The whole point of the item, end to end through the real `delegate`.
+
+    `_inbox_write` names its entry `<date>-<slugified-title>.md`, so a title with
+    nothing to slugify produces a bare `<date>-.md` — the shape that put the date
+    in the accepted slug twice. Approximating these entries by hand is what let
+    that case through the first time.
+    """
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    delegate(parent, "child", title, body="details")
+
+    st = FsWorkStore.open(child)
+    entry, = st.inbox_list()
+    item = st.inbox_accept(entry.ref)
+    assert item.title == expected_title
+    assert item.slug == f"{date.today().isoformat()}-{expected_body}"
 
 
 def test_delegate_filename_collision_suffix(tmp_path):

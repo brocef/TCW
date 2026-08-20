@@ -2589,6 +2589,21 @@ def test_inbox_accept_falls_back_to_untitled_when_nothing_slugifies(tmp_path):
     assert (first.slug, second.slug) == (f"{today}-untitled", f"{today}-untitled-2")
 
 
+@pytest.mark.parametrize("heading", ["東京", "!!! ???"])
+def test_inbox_accept_never_reuses_the_dated_label_for_the_slug(tmp_path, heading):
+    """`delegate "東京"` names its entry `<date>-.md` — the title slugifies to
+    nothing, so the label is the slug source, and the *unstripped* label would
+    put the entry's date back beside the acceptance date."""
+    root = node(tmp_path)
+    (root / "docs/work/inbox/2026-08-01-.md").write_text(
+        f"---\nfrom: parent\n---\n\n# {heading}\n", encoding="utf-8")
+    st = FsWorkStore.open(root)
+
+    item = st.inbox_accept("2026-08-01-.md")
+    assert item.title == heading
+    assert item.slug == f"{date.today().isoformat()}-untitled"
+
+
 def test_inbox_accept_truncates_a_long_h1_in_the_slug_only(tmp_path):
     root = node(tmp_path)
     (root / "docs/work/inbox/2026-08-19-long.md").write_text(

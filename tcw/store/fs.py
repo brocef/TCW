@@ -3175,16 +3175,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # `--title` wins, then the entry's own H1, then its name with TCW's
         # `YYYY-MM-DD-` filing prefix removed — that prefix is our convention,
         # not a title, and re-dating it into the slug is what dated it twice.
-        label = _DATE_PREFIX.sub("", detail.entry.title).strip() or detail.entry.title
-        accepted_title = (title or body_title(detail.body) or label).strip()
+        stripped = _DATE_PREFIX.sub("", detail.entry.title).strip()
+        accepted_title = (title or body_title(detail.body)
+                          or stripped or detail.entry.title).strip()
         if not accepted_title:
             raise ValueError("title is required and must be non-empty")
         created = date.today().isoformat()
         # Slug from the label when the title has no ASCII to slugify — the H1
         # stays the title, but `<date>-untitled` is a worse identifier than the
         # entry's own name.
+        # The *stripped* label, never the dated one: falling back to the raw
+        # filename here would put the entry's date back into the slug beside
+        # the acceptance date, which is the bug this is all here to kill.
         slug = self._unique_slug(
-            created, accepted_title if slugify(accepted_title) else label)
+            created, accepted_title if slugify(accepted_title) else stripped)
         destination = self.root / "backlog" / slug
         manifest: list[str] = []
         attachments: list[tuple[str, Path]] = []
