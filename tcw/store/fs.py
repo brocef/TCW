@@ -1833,6 +1833,29 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 raise ValueError(f"invalid Status '{v}' "
                                  f"(choose: {', '.join(sorted(CAP_STATUSES))})")
             out[k] = _as_list(v) if k == "Subject" else v
+        # Fail closed on refs, in the one seam both `set` and `update_capability`
+        # call before touching disk — so the CLI, `tcw serve`'s PATCH and any
+        # future caller inherit it rather than each remembering to check.
+        #
+        # `out`, not `fields`: Subject must be resolved after `_as_list`, so
+        # `Subject=a,b` is two refs. `v is not None`: None is the documented
+        # clear sentinel, and passing it through would make `_check_globals`
+        # stringify it into a bogus problem about a field just cleared. Only the
+        # refs this write *supplies*, never the merged node, or a capability with
+        # one bad ref could not be repaired by the very command that repairs it.
+        supplied = {k: v for k, v in out.items() if v is not None}
+        # A taxonomy store is opened only when a field needing one was supplied:
+        # the other four resolve against `self`, and a status-only repair should
+        # not start failing because the node's taxonomy config is malformed.
+        needs_taxonomy = bool(supplied.get("Subject")) or bool(supplied.get("Feature"))
+        problems = self._ref_problems(
+            supplied, self._taxonomy() if needs_taxonomy else None)
+        if problems:
+            # All of them, joined — `check` reports every problem, and a write
+            # that reported one at a time would cost a round trip per bad ref.
+            # No message contains "no such", so `_map_store_error` keeps these
+            # at 422 rather than 404.
+            raise ValueError("; ".join(problems))
         return out
 
     def _write_meta(self, d: Path, meta: dict) -> None:

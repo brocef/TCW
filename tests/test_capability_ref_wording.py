@@ -180,3 +180,92 @@ def test_a_node_without_a_taxonomy_component_still_skips_subject(tmp_path):
     root = node(tmp_path)
     write_cap(root, "x", Status="Supported", Subject="ghost")
     assert FsCapabilitiesStore.open(root).check() == []
+
+
+# ── the write path refuses what check would report ───────────────────────────
+
+def _node_with_taxonomy(tmp_path):
+    """A node whose taxonomy holds `thing` (Vocabulary) and `real-feature`."""
+    root = node(tmp_path)
+    tax = root / "docs" / "taxonomy"
+    for slug, kind in (("thing", "Vocabulary"), ("real-feature", "Feature")):
+        d = tax / slug
+        d.mkdir(parents=True)
+        (d / "meta.yaml").write_text(f"name: {slug}\nkind: {kind}\nrelatesTo: []\n")
+        (d / "description.md").write_text("x")
+    write_cap(root, "web/editing", Status="Supported")
+    return root
+
+
+@pytest.mark.parametrize("field,value,expected", [
+    ("Subject", "no-such-term", "Subject → dangling ref 'no-such-term'"),
+    ("Feature", "also-bogus", "Feature → dangling ref 'also-bogus'"),
+    ("Feature", "thing", "Feature → ref 'thing' points to Vocabulary, expected Feature"),
+    ("Superseded by", "nope", "Superseded by → dangling identifier 'nope'"),
+    ("Blocked by", "nope2", "Blocked by → dangling identifier 'nope2'"),
+    ("Roles", "roles/admin", "Roles → dangling identifier 'roles/admin'"),
+    ("When", "conditions/offline", "When → dangling identifier 'conditions/offline'"),
+])
+def test_set_refuses_an_unresolvable_ref_and_writes_nothing(
+        tmp_path, field, value, expected):
+    root = _node_with_taxonomy(tmp_path)
+    meta = root / "docs" / "capabilities" / "web" / "editing" / "meta.yaml"
+    before = meta.read_bytes()
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError) as e:
+        store.set("web/editing", {field: value})
+    assert expected in str(e.value)
+    assert meta.read_bytes() == before, "a refused write must write nothing"
+
+
+def test_set_reports_every_bad_ref_not_just_the_first(tmp_path):
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError) as e:
+        store.set("web/editing", {"Subject": "no-such-term", "Feature": "also-bogus"})
+    parts = set(str(e.value).split("; "))
+    assert parts == {"Subject → dangling ref 'no-such-term'",
+                     "Feature → dangling ref 'also-bogus'"}
+
+
+def test_set_accepts_refs_that_resolve(tmp_path):
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    store.set("web/editing", {"Subject": "thing", "Feature": "real-feature"})
+    assert FsCapabilitiesStore.open(root).check() == []
+
+
+def test_a_capability_with_a_stored_bad_ref_stays_repairable(tmp_path):
+    """The route `tcw work complete` recommends. Validating the merged node
+    instead of the supplied fields would make bad data unrepairable through the
+    CLI that exists to repair it."""
+    root = _node_with_taxonomy(tmp_path)
+    write_cap(root, "broken", Status="Supported", Subject="ghost")
+    store = FsCapabilitiesStore.open(root)
+    store.set("broken", {"Status": "Omitted"})
+    assert store.get_local("broken").fields["Status"] == "Omitted"
+
+
+def test_the_refusal_and_check_agree_word_for_word(tmp_path):
+    """One renderer, checked behaviourally across both consumers."""
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError) as e:
+        store.set("web/editing", {"Subject": "no-such-term"})
+    write_cap(root, "mirror", Status="Supported", Subject="no-such-term")
+    from_check = [p.removeprefix("mirror: ")
+                  for p in FsCapabilitiesStore.open(root).check()
+                  if p.startswith("mirror: ")]
+    assert str(e.value) in from_check
+
+
+def test_a_taxonomy_less_node_still_accepts_subject_but_refuses_blocked_by(tmp_path):
+    """Goal 1's stated qualification: with nothing to resolve against,
+    Subject/Feature pass. The other four resolve against the store itself and
+    are validated regardless."""
+    root = node(tmp_path)
+    write_cap(root, "x", Status="Supported")
+    store = FsCapabilitiesStore.open(root)
+    store.set("x", {"Subject": "anything"})
+    with pytest.raises(ValueError, match="Blocked by"):
+        store.set("x", {"Blocked by": "nope"})

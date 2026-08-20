@@ -42,6 +42,7 @@ from tcw.store.fs import (
     child_nodes,
     descendant_nodes,
     init,
+    load_yaml,
     parent_node,
     write_sentinel,
 )
@@ -371,11 +372,19 @@ class TestLoneProject:
         assert caps.check(taxonomy=tax) == []
 
     def test_capability_check_dangling_subject(self, tmp_path):
+        """Invalid data is written directly, not through `set`: `set` refuses a
+        dangling ref at write time now. `check` must still report data that
+        predates that rule — which is what keeps an existing bad ref
+        repairable rather than stuck."""
         root = lone_project(tmp_path)
         tax = FsTaxonomyStore.open(root)
         caps = FsCapabilitiesStore.open(root)
         caps.add("routes/x", status="Supported")
-        caps.set("routes/x", {"Subject": "ghost"})
+        meta_path = root / "docs" / "capabilities" / "routes" / "x" / "meta.yaml"
+        meta = load_yaml(meta_path)
+        meta["Subject"] = ["ghost"]
+        meta_path.write_text(
+            yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
         problems = caps.check(taxonomy=tax)
         assert any("dangling" in p for p in problems)
 
