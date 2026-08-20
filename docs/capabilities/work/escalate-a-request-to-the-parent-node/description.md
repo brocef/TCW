@@ -11,7 +11,7 @@ boundary as its downward counterpart,
 the request lands in the parent's `inbox/` and nowhere else, carries my project's
 canonical ID as `from:`, goes to the parent's **configured** store wherever
 `work.path` puts it, and fails loudly rather than inventing a phantom inbox if
-that store cannot be reached.
+that store cannot be reached or is not in a Git repository.
 
 It is what I use when work in this project turns out to need a decision or a
 change that is not mine to make — a cross-repository scope question, an API another

@@ -19,7 +19,9 @@ The request goes to the child's **configured** inbox, wherever its `work.path`
 puts it, including another repository. If that store cannot be reached the command
 fails with a non-zero exit and an error rather than creating a plausible-looking
 `docs/work/inbox` folder in the child's code repository — a request I believe I
-sent is worse than one I know failed. See
+sent is worse than one I know failed. The same holds when that store is not in a
+Git repository: the command refuses and writes nothing, rather than leaving an
+untracked note the child's own inbox would never accept. See
 [Configure the work-store location](tcw://C/work/configure-the-work-store-location).
 
 Two requests with the same title on the same day do not collide; the second gets a
