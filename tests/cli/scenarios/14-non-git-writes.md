@@ -37,6 +37,10 @@ node (also de-gitted, so `delegate` writes into a non-git store too).
 | 6 | `tcw serve` against the same node: every write route (`POST /api/work`, `POST /api/work/<slug>/actions/start`, `POST /api/taxonomy`, `POST /api/capabilities`, `PATCH /api/work/<slug>`, `PUT` artifact, `PUT` sidecar, `PUT` plan-stage, `DELETE /api/work/<slug>`) answers **4xx, not 500**, with the refusal in the body, and the manifest is unchanged across the whole sequence. Read routes still answer 200. |
 | 7 | Inside a repository, nothing changes: the full scenario-02 happy path runs green against the installed binary. The guard costs one `git rev-parse` per guarded call and must not alter any successful command's output. |
 | 8 | A repository that **exists and refuses** — simulate with a `pre-commit`-independent failure, e.g. a `.git/index.lock` held for the duration — produces `tcw: git command failed (exit N): git …` on stderr, a non-zero exit, and no `Traceback`. |
+| 9 | **Split ownership.** Second fixture: a node in one repository whose `work.path` puts the work store in *another*, both committed, then `rm -rf` the **code node's** `.git` only. `tcw work start <slug> --worktree` exits 1 with the shared wording, the item stays in `backlog/`, and `.gitignore` is untouched. The store guard passes here — the store's repository is fine — so only a check on the node's repository catches it. |
+| 10 | Same fixture, both repositories present: start with `--worktree`, then remove the code node's `.git` and run `tcw work complete --resolution done --confirm`. It exits **1** naming the branch, and the item is still in `active/`. Reporting a completion whose merge-back was skipped is worse than any partial write, because nothing on disk says it happened. |
+| 11 | Still on the split fixture with the code node de-gitted, a **plain** `tcw work start <slug>` exits **0**. `--worktree` is what needs the node's repository; an external store is a supported configuration, not a broken one. |
+| 12 | `tcw init work --id <id> --work-path <dir outside any repository>` exits 1 and leaves *both* locations untouched — no `tcw-config.yaml`, no status folders, no `.gitkeep`. Then the same command with `--work-path <repo>/new/nested/dir`, whose directories do not exist yet, succeeds: the check resolves to the nearest existing ancestor. |
 
 ## Refusals asserted
 
@@ -44,6 +48,17 @@ node (also de-gitted, so `delegate` writes into a non-git store too).
 - `tcw work start --take-over` specifically, since it reaches `git_stage` by a
   different route than the ordinary claim
 - `tcw work delegate` and `tcw work escalate`, which write another node's inbox
+
+## The blind spot this scenario had
+
+Assertions 1-8 use one fixture with a **default** work store, where the node's
+repository and the store's are the same directory, and they remove every
+repository in the graph at once. Three writes touch *two* repositories — `start
+--worktree` and `complete` also write the code node's, and `init --work-path`
+writes both — so a matrix built on a single repository passes them whichever
+repository the guard actually checks. Assertions 9-12 exist because all three
+shipped broken and an adversarial review at `verify`, not this scenario, found
+them. Any future assertion about a guard should say which repository it pins.
 
 ## Explicitly not covered here
 
@@ -55,6 +70,10 @@ node (also de-gitted, so `delegate` writes into a non-git store too).
 - `git` missing from `PATH` entirely. It reports "not inside a git repository",
   which is misleading but harmless, and detecting it separately would cost a
   second probe on every write.
+- `remove_worktree` outside a repository on the **discard** path, which warns
+  rather than failing. It is reached only after the merge-back was skipped by
+  design (`--already-integrated`) or does not apply (a discard has no branch to
+  strand), so there is nothing to lose there.
 - Repository states other than "absent": corrupt `.git`, a rejecting hook, a
   `safe.directory` ownership refusal. Assertion 8 covers the shape of all of
   them; classifying git's failure modes is not TCW's job.
