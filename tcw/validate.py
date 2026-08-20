@@ -110,11 +110,8 @@ def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> lis
         except ValueError as e:                       # YAML-scan roots, so report it, don't crash
             return [f"work check: {e}"]
         return [f"work check: {p}" for p in problems]
-    tax = (FsTaxonomyStore.open(node_root)
-           if (node_root / "docs" / "taxonomy").is_dir() else None)
     return [f"capabilities check: {p}"
-            for p in FsCapabilitiesStore.open(node_root).check(
-                taxonomy=tax, identifier=identifier)]
+            for p in FsCapabilitiesStore.open(node_root).check(identifier=identifier)]
 
 
 def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:

@@ -6,7 +6,7 @@ import sys
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import Capability, RefError
 from tcw.store.base import AmbiguousRef
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_node, git_root
+from tcw.store.fs import FsCapabilitiesStore, find_node, git_root
 
 NAME = "capabilities"
 SUBCOMMANDS = {"init", "list", "show", "path", "add", "search", "check", "set", "reset", "extends", "drift"}
@@ -25,11 +25,6 @@ def _store() -> FsCapabilitiesStore | None:
               file=sys.stderr)
         return None
     return FsCapabilitiesStore.open(node)
-
-
-def _taxonomy_for(node):
-    """The node's taxonomy store, if it has one (for cross-component Subject check)."""
-    return FsTaxonomyStore.open(node) if (node / "docs" / "taxonomy").is_dir() else None
 
 
 def _fmt(v) -> str:
@@ -224,7 +219,7 @@ def _check(args: argparse.Namespace) -> int:
         print("tcw capabilities: no tcw capabilities node here — run `tcw init` in the project folder.",
               file=sys.stderr)
         return 1
-    problems = FsCapabilitiesStore.open(node).check(taxonomy=_taxonomy_for(node))
+    problems = FsCapabilitiesStore.open(node).check()
     for p in problems:
         print(p, file=sys.stderr)
     if problems:

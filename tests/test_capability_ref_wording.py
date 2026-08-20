@@ -130,3 +130,53 @@ def test_a_clean_capability_reports_nothing(tmp_path):
     assert problems_for(
         tmp_path, Subject="user", Feature="real",
         taxonomy=Tax({"user": "Vocabulary", "real": "Feature"})) == []
+
+
+# ── check's taxonomy fallback ────────────────────────────────────────────────
+
+class RecordingTax(Tax):
+    """A stub that records being consulted — and is falsey.
+
+    Both halves matter. Asserting only the output cannot tell "the injected
+    stub was used" from "the default store happened to agree", and `or` would
+    silently discard a falsey store where `is not None` keeps it.
+    """
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.calls = []
+
+    def __bool__(self):
+        return False
+
+    def get(self, ref):
+        self.calls.append(ref)
+        return super().get(ref)
+
+
+def test_check_without_a_taxonomy_resolves_against_the_nodes_own(tmp_path):
+    """Today this silently skips Subject/Feature entirely, so the two write
+    surfaces and `check` could disagree about *whether* a ref is checked."""
+    root = node(tmp_path)
+    (root / "docs" / "taxonomy").mkdir(parents=True)
+    write_cap(root, "x", Status="Supported", Subject="ghost")
+    problems = FsCapabilitiesStore.open(root).check()
+    assert any("Subject → dangling ref 'ghost'" in p for p in problems)
+
+
+def test_an_explicitly_passed_falsey_taxonomy_still_wins(tmp_path):
+    root = node(tmp_path)
+    (root / "docs" / "taxonomy").mkdir(parents=True)
+    write_cap(root, "x", Status="Supported", Subject="user")
+    stub = RecordingTax({"user": "Vocabulary"})
+    problems = FsCapabilitiesStore.open(root).check(taxonomy=stub)
+    assert stub.calls == ["user"], "the injected stub was not consulted"
+    assert problems == []
+
+
+def test_a_node_without_a_taxonomy_component_still_skips_subject(tmp_path):
+    """No `docs/taxonomy/` means nothing to resolve against — the existing
+    degradation, not a new one."""
+    root = node(tmp_path)
+    write_cap(root, "x", Status="Supported", Subject="ghost")
+    assert FsCapabilitiesStore.open(root).check() == []

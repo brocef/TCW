@@ -1969,7 +1969,25 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 return True
         return False
 
+    def _taxonomy(self) -> "FsTaxonomyStore | None":
+        """The sibling taxonomy store for this node, or None if it has none.
+
+        The FS adapter's answer to "where does this store's taxonomy live";
+        another adapter answers it from its own connection, so nothing about
+        this belongs on the abstract interface. Putting it on the store rather
+        than in the call is what makes it impossible to forget: `set`,
+        `update_capability` and `check` all reach the same handle.
+        """
+        return (FsTaxonomyStore.open(self.node_root)
+                if (self.node_root / "docs" / "taxonomy").is_dir() else None)
+
     def check(self, taxonomy=None, identifier: str | None = None) -> list[str]:
+        # `is not None`, not `or`: an explicitly injected store must win even
+        # when it is falsey. Without the fallback, `check()` called bare skips
+        # Subject/Feature entirely, so the write path and `check` could disagree
+        # about *whether* a ref is checked even once they agree about what a
+        # problem is.
+        taxonomy = taxonomy if taxonomy is not None else self._taxonomy()
         problems: list[str] = []
         cfg_path = self.root / self.CONFIG_NAME
         try:
