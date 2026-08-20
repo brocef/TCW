@@ -327,10 +327,18 @@ def require_repository(root: Path) -> None:
         raise ValueError(NOT_A_REPOSITORY)
 
 
-def git_ignored(node_root: Path, path: Path) -> bool:
-    """Whether `.gitignore` excludes `path`. False outside a repository."""
+def git_ignored(node_root: Path, path: Path, *, no_index: bool = False) -> bool:
+    """Whether `.gitignore` excludes `path`. False outside a repository.
+
+    `no_index=True` asks the ignore *rules* instead. Plain `check-ignore` reports
+    a tracked path as not ignored however the rules read, which is what the
+    staging callers want — it mirrors what `git add` is about to do — and the
+    wrong question for anyone asking whether files written there later will be
+    recorded at all.
+    """
     return _git(
-        ["git", "-C", str(node_root), "check-ignore", "-q", "--", str(path)],
+        ["git", "-C", str(node_root), "check-ignore", "-q",
+         *(["--no-index"] if no_index else []), "--", str(path)],
         capture_output=True).returncode == 0
 
 
@@ -582,11 +590,19 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     accumulating it there — `git_mv` untracks rather than moves when the
     destination is ignored. Unstaged, like everything else init writes.
     """
+    # Read ahead of `write_sentinel`, so its own mapping check no longer runs
+    # first — a malformed config used to come back from it as a `ValueError` and
+    # would otherwise surface here as an `AttributeError` from `.get`.
     existing_config = load_yaml(root / SENTINEL, unique=True)
+    if not isinstance(existing_config, dict):
+        raise ValueError(f"{root / SENTINEL}: config must be a mapping")
     if work_path is None and "work" in components:
         configured_work = existing_config.get("work") or {}
         if isinstance(configured_work, dict) and configured_work.get("path"):
-            work_path = Path(configured_work["path"]).expanduser()
+            configured_path = configured_work["path"]
+            if not isinstance(configured_path, str):
+                raise ValueError(f"{root / SENTINEL}: work.path must be a string")
+            work_path = Path(configured_path).expanduser()
     # Everything `init` can refuse over, decided before it writes anything at
     # all — the sentinel included. It writes two locations, and each of these
     # checks used to sit next to the write it protects rather than ahead of all
@@ -613,7 +629,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         # drops ignored paths from the `git add` it builds, so a store under an
         # ignored path would hold items that are real on disk and invisible to
         # git — the exact outcome the external-store contract exists to prevent.
-        if git_ignored(target_git, target):
+        if git_ignored(target_git, target, no_index=True):
             raise ValueError(
                 f"work.path target is inside a gitignored path, so nothing written "
                 f"there would be tracked: {target}"
@@ -621,7 +637,11 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         if default_root.exists() and default_root.resolve() != target.resolve():
             expected = {"inbox", *WORK_STATUSES}
             actual = {entry.name for entry in default_root.iterdir()}
-            pristine = actual == expected and all(
+            # `is_symlink` first: a symlinked `docs/work` reads as pristine
+            # through the link and then meets `shutil.rmtree`, which refuses a
+            # symlink. Replacing a default store means deleting it, and a symlink
+            # is someone else's directory.
+            pristine = not default_root.is_symlink() and actual == expected and all(
                 child.is_dir() and {entry.name for entry in child.iterdir()} <= {".gitkeep"}
                 for child in default_root.iterdir()
             )
@@ -631,6 +651,26 @@ def init(components: list[str], root: Path, project_id: str | None = None,
                     "manually, update work.path, then re-run init"
                 )
             replacing_default_store = True
+    # The exact directories this call will create, worked out before it creates
+    # any of them — the pre-flight below needs the list, and so does the loop
+    # that makes them, so there is only one of it.
+    plan: list[tuple[str, Path, list[Path]]] = []
+    for c in components:
+        base = ((work_path if work_path.is_absolute() else root / work_path)
+                if c == "work" and work_path is not None else root / "docs" / c)
+        plan.append((c, base, [base / "inbox", *(base / s for s in WORK_STATUSES)]
+                     if c == "work" else [base]))
+    for leaf in (leaf for _, _, leaves in plan for leaf in leaves):
+        # `mkdir(parents=True, exist_ok=True)` raises on a leaf that exists as a
+        # file and on a parent that does — and it raised after the sentinel and
+        # the earlier leaves had landed. The nearest path that exists decides:
+        # if it is a directory, everything below it is still to be created.
+        # `is_symlink` again, because a dangling one is not a directory to
+        # `mkdir` either.
+        occupied = next((c for c in (leaf, *leaf.parents)
+                         if c.exists() or c.is_symlink()), None)
+        if occupied is not None and not occupied.is_dir():
+            raise ValueError(f"cannot scaffold {leaf}: {occupied} is not a directory")
     write_sentinel(root, project_id)
     if work_path is not None and "work" in components:
         if replacing_default_store:
@@ -641,10 +681,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         config["work"] = {**work_config, "path": str(work_path)}
         dump_yaml(config_path, config)
     created: list[Path] = []
-    for c in components:
-        base = ((work_path if work_path.is_absolute() else root / work_path)
-                if c == "work" and work_path is not None else root / "docs" / c)
-        leaves = [base / "inbox", *(base / s for s in WORK_STATUSES)] if c == "work" else [base]
+    for c, base, leaves in plan:
         for leaf in leaves:
             leaf.mkdir(parents=True, exist_ok=True)
             (leaf / ".gitkeep").touch()

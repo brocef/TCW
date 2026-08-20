@@ -648,6 +648,102 @@ def test_init_refuses_a_non_pristine_default_store_before_writing_the_sentinel(
     assert not (code / SENTINEL).exists()
 
 
+def test_init_refuses_a_store_the_ignore_rules_hide_even_once_it_is_tracked(
+    tmp_path
+):
+    """`git check-ignore` answers about *this* path, not about the rules.
+
+    It reports a tracked path as not ignored however the rules read, which is
+    right for the staging callers — it mirrors what `git add` will do — and
+    wrong here, where the question is whether files written there *later* get
+    recorded. A store scaffolded, committed, and only then covered by a new
+    ignore rule reproduces round two's silent-untracked-work outcome exactly.
+    """
+    code = git_init(tmp_path / "code")
+    init(["work"], code, "demo", work_path=code / "external" / "work")
+    commit_all(code)
+    (code / ".gitignore").write_text("external/\n", encoding="utf-8")
+    commit_all(code, "ignore it")
+    before = manifest(code)
+    with pytest.raises(ValueError, match="gitignored"):
+        init(["work"], code, "demo", work_path=code / "external" / "work")
+    assert manifest(code) == before
+
+
+def test_init_re_runs_on_a_healthy_external_store(tmp_path):
+    """The other side of the check above, and the regression it could cause.
+
+    TCW's own scaffolding writes ignore rules for `completed/*` and
+    `discarded/*` under the store prefix. Those cover status folders, never the
+    store root — but an ignore check strict enough to catch the case above is
+    exactly the one that could start refusing TCW's own healthy store, so it is
+    re-run here both before and after the scaffold is committed.
+    """
+    code = git_init(tmp_path / "code")
+    store = git_init(tmp_path / "store")
+    init(["work"], code, "demo", work_path=store / "work")
+    init(["work"], code, "demo", work_path=store / "work")      # uncommitted
+    commit_all(code)
+    commit_all(store)
+    init(["work"], code, "demo", work_path=store / "work")      # tracked
+    assert (store / "work" / "backlog" / ".gitkeep").is_file()
+
+
+def test_init_refuses_when_a_status_folder_is_occupied_by_a_file(tmp_path):
+    """The leaves are known before any of them is created, so check them there.
+
+    `mkdir(parents=True, exist_ok=True)` raises on a leaf that exists as a file
+    and on a parent that does, and it raised *after* the sentinel and the
+    earlier leaves had landed — the same mutate-then-raise shape as every other
+    defect in this item, arriving through the filesystem rather than through git.
+    """
+    code = git_init(tmp_path / "code")
+    store = git_init(tmp_path / "store")
+    (store / "work").mkdir()
+    (store / "work" / "backlog").write_text("not a directory\n", encoding="utf-8")
+    before = manifest(code), manifest(store)
+    with pytest.raises(ValueError, match="not a directory"):
+        init(["work"], code, "demo", work_path=store / "work")
+    assert (manifest(code), manifest(store)) == before
+
+
+def test_init_refuses_a_default_store_that_is_a_symlink(tmp_path):
+    """A symlinked `docs/work` reads as pristine through the link.
+
+    It then reached `shutil.rmtree`, which refuses a symlink — after
+    `write_sentinel` had run. Replacing a default store means deleting it, and a
+    symlink is someone else's directory.
+    """
+    code = git_init(tmp_path / "code")
+    store = git_init(tmp_path / "store")
+    elsewhere = git_init(tmp_path / "elsewhere")
+    init(["work"], elsewhere, "other")
+    (code / "docs").mkdir()
+    (code / "docs" / "work").symlink_to(elsewhere / "docs" / "work")
+    before = manifest(code)
+    with pytest.raises(ValueError, match="non-pristine"):
+        init(["work"], code, "demo", work_path=store / "work")
+    assert manifest(code) == before
+    assert not (code / SENTINEL).exists()
+
+
+def test_init_reports_a_malformed_config_rather_than_raising_through_it(tmp_path):
+    """`init` reads the config before `write_sentinel` validates it.
+
+    That order is what lets every refusal land before the first write, and it
+    moved the mapping check out from under this read — a YAML list came back as
+    an `AttributeError` from `.get`, and a list-valued `work.path` as a
+    `TypeError` from `Path()`. Both are user-facing config mistakes and belong
+    in the `ValueError` channel the CLI already renders.
+    """
+    for text, message in (( "- a\n- b\n", "must be a mapping"),
+                          ("id: x\nwork:\n  path: [bad]\n", "must be a string")):
+        code = git_init(tmp_path / hashlib.sha256(text.encode()).hexdigest()[:8])
+        (code / SENTINEL).write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match=message):
+            init(["work"], code, "demo")
+
+
 def test_init_accepts_a_work_path_whose_directories_do_not_exist_yet(tmp_path):
     """Why the check was written late, and what the early one must not break.
 
