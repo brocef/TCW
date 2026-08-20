@@ -11,6 +11,7 @@ places — the `_stage`/`_rm`/`_mv` funnel, so no git failure can escape as a
 traceback, and the public write methods whose first mutation *precedes* their
 staging call, so nothing lands before the refusal.
 """
+import contextlib
 import hashlib
 import re
 import shutil
@@ -916,3 +917,102 @@ def test_init_still_refuses_every_broad_ignore_rule(tmp_path, rules):
     with pytest.raises(ValueError, match="gitignored"):
         init(["work"], code, "demo")
     assert manifest(code) == before
+
+
+# ── a repository that exists and refuses ─────────────────────────────────────
+#
+# The preconditions above refuse a write when the repository is *absent*. One
+# that exists and refuses — a held index.lock, a rejecting hook, a permissions
+# error — is only discovered when staging fails, which is after the content has
+# been written. A precondition cannot help: it cannot predict a lock acquired a
+# millisecond later. So the write rolls back what it created and re-raises.
+
+@contextlib.contextmanager
+def refusing(root: Path):
+    """`git add` fails; every read-only probe still answers.
+
+    A real lock rather than a patched `git_stage`, because these assertions are
+    about what the whole command leaves on disk. The repository must be real and
+    initialized — a repository precondition runs ahead of every write now, so an
+    absent `.git` would fail at the guard and the test would pass without ever
+    reaching staging.
+    """
+    lock = root / ".git" / "index.lock"
+    lock.touch()
+    try:
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _porcelain(root: Path) -> str:
+    return subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _tcw_lines(err: str) -> list[str]:
+    """Only our own output. Under a real lock git writes its own advice to fd 2."""
+    return [ln for ln in err.splitlines() if ln.startswith("tcw: ")]
+
+
+def test_a_refused_stage_leaves_no_work_item(tmp_path, monkeypatch, capsys):
+    root = repo(tmp_path)
+    monkeypatch.chdir(root)
+    with refusing(root):
+        assert main(["work", "new", "Task"]) == 1
+    err = capsys.readouterr().err
+    assert len(_tcw_lines(err)) == 1 and "git command failed" in _tcw_lines(err)[0]
+    assert "Traceback" not in err
+    assert [p.name for p in (root / "docs" / "work" / "backlog").iterdir()] == [".gitkeep"]
+    assert _porcelain(root) == ""
+    assert list(root.rglob("*.tmp")) == []
+
+
+def test_a_refused_stage_leaves_no_taxonomy_term(tmp_path, monkeypatch, capsys):
+    root = repo(tmp_path)
+    monkeypatch.chdir(root)
+    with refusing(root):
+        assert main(["taxonomy", "add", "Widget", "--slug", "widget"]) == 1
+    assert "Traceback" not in capsys.readouterr().err
+    assert not (root / "docs" / "taxonomy" / "widget").exists()
+    assert _porcelain(root) == ""
+    assert list(root.rglob("*.tmp")) == []
+
+
+def test_a_refused_stage_keeps_what_already_existed(tmp_path, monkeypatch, capsys):
+    """The hard boundary. An *update* that fails at staging keeps the content it
+    wrote — deleting it would turn a recoverable failure into data loss."""
+    root = repo(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "Task"]) == 0
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "item"], check=True)
+    slug = next(p.name for p in (root / "docs" / "work" / "backlog").iterdir()
+                if p.is_dir())
+    state = root / "docs" / "work" / "backlog" / slug / "state.yaml"
+
+    with refusing(root):
+        assert main(["work", "edit", slug, "--title", "Renamed"]) == 1
+    capsys.readouterr()
+
+    assert state.is_file()                                  # not deleted …
+    assert "Renamed" in state.read_text(encoding="utf-8")   # … and not reverted
+    assert list(root.rglob("*.tmp")) == []
+
+
+def test_a_refused_stage_does_not_roll_back_a_move(tmp_path, monkeypatch, capsys):
+    """Pinned, not fixed. `start` renames before it stages; undoing a move means
+    putting back content that existed before the call, and this item is a
+    rollback of what the call *created*."""
+    root = repo(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "Task"]) == 0
+    slug = next(p.name for p in (root / "docs" / "work" / "backlog").iterdir()
+                if p.is_dir())
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "item"], check=True)
+
+    with refusing(root):
+        assert main(["work", "start", slug]) == 1
+    assert "Traceback" not in capsys.readouterr().err
+    assert (root / "docs" / "work" / "active" / slug).is_dir()

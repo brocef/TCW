@@ -927,21 +927,6 @@ def _safe_store_id(value: str, label: str) -> str:
     return v
 
 
-def _atomic_write(path: Path, content: str) -> None:
-    """Write *content* to *path* via temp-file + atomic replace.
-
-    Cleans up the temp file on failure.  The caller is responsible for staging
-    the result with ``_stage()``.
-    """
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    try:
-        tmp.write_text(content, encoding="utf-8")
-        tmp.replace(path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-
-
 def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
     """Write several files as one unit: stage every temp, then promote each.
 
@@ -950,8 +935,7 @@ def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
     can only happen in the staging phase, before anything is promoted, so the
     targets are left untouched. One handler spans both phases and unlinks every
     temp, so no `.tmp` is left beside a real file in the user's git tree.
-    `BaseException` matches `_atomic_write`: a `KeyboardInterrupt` mid-batch
-    still cleans up.
+    `BaseException` on purpose: a `KeyboardInterrupt` mid-batch still cleans up.
 
     # ponytail: the promote loop is not atomic across files — a process death
     # between two replace() calls still leaves a partial update. Upgrade path is
@@ -1165,41 +1149,24 @@ class FsTreeStore:
     def _write_node(self, d: Path, meta: dict, description: str) -> None:
         """Create/overwrite a folder node's meta + description, atomically, staged.
 
-        **Callers wrapping this in a rollback:** it stages internally, so your
-        `except` also catches a `git add` failure that happened *after* both
-        files landed. Key the rollback on whether content landed (`meta.yaml`
-        exists) rather than on who created the directory, or you will delete
-        files that were written fine. Same applies to `_write_meta`.
+        Rollback is `_write_staged`'s, and it spans the staging phase too: a git
+        refusal after both files landed undoes this call's work rather than
+        leaving an untracked node behind. What it removes depends on who made
+        the directory — the whole folder when this call did, only the files it
+        created when the node already existed. Same applies to `_write_meta`.
         """
         self._require_repository()          # ahead of the mkdir, not the stage
-        existed = d.exists()
-        d.mkdir(parents=True, exist_ok=True)
-        try:
-            _atomic_write_all([
-                (d / "meta.yaml",
-                 yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)),
-                (d / "description.md", description),
-            ])
-        except BaseException:
-            # Only roll back a directory we created; on an existing node the
-            # staging phase is the protection. `ignore_errors=True` so a
-            # rollback that cannot proceed never masks the real failure.
-            #
-            # ponytail: `existed` is TOCTOU-racy — a second writer creating the
-            # node between our check and our failure would get its directory
-            # removed here. Closing it needs an ownership signal that survives
-            # the check-to-write gap (a create-only `mkdir(exist_ok=False)`, or
-            # a lock), which is the design of the separate
-            # `2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos`
-            # item — building it here would be that item, half-done, in the
-            # wrong place.
-            if not existed:
-                shutil.rmtree(d, ignore_errors=True)
-            raise
-        # Staging stays outside the rollback: a git failure after both files
-        # landed leaves a fully valid object on disk, and deleting it would
-        # destroy content the caller just wrote.
-        self._stage(d / "meta.yaml", d / "description.md")
+        # `_mkdir_owned` rather than `exist_ok=True` + a prior `d.exists()`:
+        # exactly one process's `mkdir` succeeds, so this is an ownership proof
+        # with no check-then-act window — retiring the TOCTOU the old `existed`
+        # probe carried, where a second writer creating the node between our
+        # check and our failure would have had its directory removed.
+        owned = _mkdir_owned(d)
+        self._write_staged(
+            [(d / "meta.yaml",
+              yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)),
+             (d / "description.md", description)],
+            owned_dir=d if owned else None)
 
 
 # ── FsTaxonomyStore ─────────────────────────────────────────────────────────
@@ -1988,11 +1955,20 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return out
 
     def _write_meta(self, d: Path, meta: dict) -> None:
+        """Write a node's meta, staged, rolling back what this call created.
+
+        Owns the `mkdir` so it can prove whether the directory is its own:
+        `set` materializing a *fresh* override is the path where a refused write
+        would otherwise leave an empty folder behind, and an update of an
+        existing capability is the path where removing the folder would take
+        files this call never wrote.
+        """
         self._require_repository()
-        # Stages internally — see the rollback warning on `_write_node`.
-        _atomic_write(d / "meta.yaml",
-                      yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
-        self._stage(d / "meta.yaml")
+        owned = _mkdir_owned(d)
+        self._write_staged(
+            [(d / "meta.yaml",
+              yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))],
+            owned_dir=d if owned else None)
 
     def _write_target(self, identifier: str) -> tuple[Path, dict, bool]:
         """Resolve a write to `(folder, meta, is_override)`.
@@ -2050,19 +2026,10 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         self._require_repository()
         norm = self._validate_fields(fields)           # validate before touching disk
         d, meta, is_override = self._write_target(identifier)
-        existed = d.exists()
-        d.mkdir(parents=True, exist_ok=True)           # _write_meta does not mkdir
-        try:
-            self._write_meta(d, self._merge_meta(meta, norm, is_override))
-        except BaseException:
-            # `_write_target` can materialize a *fresh* override directory, so a
-            # failed write would otherwise leave an empty one behind. Same guard
-            # as `update_capability`: roll back only a directory this call made,
-            # and only when nothing landed — `_write_meta` stages internally, so
-            # a failed `git add` must not delete a `meta.yaml` written fine.
-            if not existed and not (d / "meta.yaml").exists():
-                shutil.rmtree(d, ignore_errors=True)
-            raise
+        # `_write_meta` owns the mkdir and the rollback: `_write_target` can
+        # materialize a fresh override directory, and a refused write must not
+        # leave an empty one behind.
+        self._write_meta(d, self._merge_meta(meta, norm, is_override))
         return self.get(identifier)                    # the composed (post-merge) entry
 
     # -- federation config --
@@ -2372,38 +2339,24 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             desc_text = body if body is not None else ""
         meta = self._merge_meta(meta, norm, is_override)
 
-        existed = d.exists()
-        d.mkdir(parents=True, exist_ok=True)   # _write_meta does not mkdir
-        try:
-            if is_override and not desc_text.strip():
-                # An override's description.md is a *body delta*, and an empty one
-                # means "no delta" — `_apply_override` falls back to the upstream
-                # body (which is what makes append-only overrides work). So clearing
-                # an override's body drops the delta and re-inherits, rather than
-                # leaving an empty file that silently means the same thing.
-                desc.unlink(missing_ok=True)
-                self._write_meta(d, meta)
-                self._stage(d)                 # picks up the removal
-            elif body is _UNSET and not desc.exists():
-                self._write_meta(d, meta)      # pure delta — no empty body file
-            else:
-                self._write_node(d, meta, desc_text)
-        except BaseException:
-            # The rollback has to live here, not in `_write_node`: we made the
-            # directory, so `_write_node`'s own `existed` is True by the time it
-            # runs, and the two `_write_meta` branches roll nothing back at all.
-            # Fresh-override materialization is the path this covers. Same
-            # `ignore_errors=True` and TOCTOU caveats as `_write_node`.
-            #
-            # Keyed on whether content actually landed, not just on who made the
-            # directory: staging runs *inside* this guard (via `_write_node`),
-            # and a failed `git add` must not delete files that were written
-            # fine — the rest of this change is careful never to destroy content
-            # the caller just wrote. A content failure promotes nothing, so
-            # `meta.yaml` being absent is exactly "nothing landed".
-            if not existed and not (d / "meta.yaml").exists():
-                shutil.rmtree(d, ignore_errors=True)
-            raise
+        # No mkdir and no outer guard here any more: `_write_meta` and
+        # `_write_node` each own their directory and roll back what they
+        # created. Doing it here as well would double-delete — and, worse, the
+        # old guard had to key on `meta.yaml` being absent precisely because it
+        # wrapped a callee that stages internally.
+        if is_override and not desc_text.strip():
+            # An override's description.md is a *body delta*, and an empty one
+            # means "no delta" — `_apply_override` falls back to the upstream
+            # body (which is what makes append-only overrides work). So clearing
+            # an override's body drops the delta and re-inherits, rather than
+            # leaving an empty file that silently means the same thing.
+            desc.unlink(missing_ok=True)
+            self._write_meta(d, meta)
+            self._stage(d)                     # picks up the removal
+        elif body is _UNSET and not desc.exists():
+            self._write_meta(d, meta)          # pure delta — no empty body file
+        else:
+            self._write_node(d, meta, desc_text)
         return _require_detail(self.get_capability_detail(identifier),
                                "capability", identifier)
 
@@ -2882,9 +2835,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
             current = _revision(path.read_text(encoding="utf-8")) if path.is_file() else ""
             if current != revision:
                 raise StaleRevision(f"stale revision for plan stage '{stage_id}' of '{slug}'")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write(path, content)
-        self._stage(path)
+        owned = _mkdir_owned(path.parent)
+        self._write_staged([(path, content)],
+                           owned_dir=path.parent if owned else None)
         return PlanStageResource(stage_id, content, revision=_revision(content))
 
     def delete_plan_stage(self, slug: str, stage_id: str,
@@ -3213,8 +3166,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         result = sorted(tags)
         work["tags"] = result
         config["work"] = work
-        dump_yaml(self._config_path(), config)
-        self._stage(self._config_path())
+        self._write_staged([(self._config_path(),
+                             yaml.safe_dump(config, sort_keys=False,
+                                            allow_unicode=True))])
         return result
 
     def register_tags(self, tags: list[str]) -> list[str]:
@@ -3586,8 +3540,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         self._require_repository()
         state = load_yaml(d / "state.yaml")
         state.update(fields)
-        dump_yaml(d / "state.yaml", state)
-        self._stage(d / "state.yaml")
+        self._write_staged([(d / "state.yaml",
+                             yaml.safe_dump(state, sort_keys=False,
+                                            allow_unicode=True))])
 
     def _effect_transition(self, slug: str, to_status: str,
                            fields: dict | None = None) -> None:
@@ -3841,22 +3796,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if intake:
             written["intake.md"] = intake if intake.endswith("\n") else intake + "\n"
 
-        # Write atomically (both files must succeed). `mkdir` without
-        # `exist_ok` proves the directory did not exist, so the rollback is
-        # unconditional. `ignore_errors=True` is deliberate: if the rollback
-        # itself cannot proceed the caller still sees the real failure, at the
-        # price of a leftover directory. `parents=True` may also have created an
-        # intermediate `backlog/`; rollback removes only the leaf, and an empty
-        # `backlog/` is inert (git does not track it, every read path tolerates
-        # it). Staging stays outside — see `_write_node`.
+        # `mkdir` without `exist_ok` proves the directory did not exist, so the
+        # rollback is unconditional — and a slug collision keeps raising
+        # `FileExistsError`, which is how `_unique_slug` failures surface, so
+        # this site keeps its bare `mkdir` rather than adopting `_mkdir_owned`.
+        # `parents=True` may also have created an intermediate `backlog/`;
+        # rollback removes only the leaf, and an empty `backlog/` is inert (git
+        # does not track it, every read path tolerates it).
         d.mkdir(parents=True)
-        try:
-            for name, content in written.items():
-                _atomic_write(d / name, content)
-        except BaseException:
-            shutil.rmtree(d, ignore_errors=True)
-            raise
-        self._stage(*(d / name for name in written))
+        self._write_staged([(d / name, content) for name, content in written.items()],
+                           owned_dir=d)
 
         return _require_detail(self.get_detail(slug), "work item", slug)
 
@@ -3986,13 +3935,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         writes = [(d / "state.yaml", state_text)]
         if body is not _UNSET:
             writes.append((body_path, body_text))
-        # No directory rollback: the item directory already exists, so the
-        # staging phase is the protection.
-        _atomic_write_all(writes)
-
-        self._stage(d / "state.yaml")
-        if body is not _UNSET:
-            self._stage(body_path)
+        # `owned_dir=None`: the item directory already exists (`_require_dir`
+        # resolved it), so a refused stage undoes only the files this call
+        # created — `initial-request.md` when the item had no body — and leaves
+        # the rewritten `state.yaml` with what this call wrote.
+        self._write_staged(writes)
 
         # Effect the re-parent last: a git-aware folder rename that moves the
         # whole item directory (including any nested children) and stages it,
@@ -4052,8 +3999,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         f"artifact '{name}' of '{slug}' does not exist yet "
                         f"(revision {revision} has no target)")
 
-        _atomic_write(p, content)
-        self._stage(p)
+        self._write_staged([(p, content)])
 
         return ArtifactResource(
             name=name,
@@ -4078,8 +4024,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(
                 f"a draft is already there: {p} — type into it, or pass "
                 f"--force to replace it")
-        _atomic_write(p, content)
-        self._stage(p)
+        self._write_staged([(p, content)])
         return str(p)
 
     def delete_artifact(self, slug: str, name: str) -> None:
@@ -4152,8 +4097,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         f"sidecar '{name}' of '{slug}' does not exist yet "
                         f"(revision {revision} has no target)")
 
-        _atomic_write(p, content)
-        self._stage(p)
+        self._write_staged([(p, content)])
 
         return SidecarResource(
             name=name,

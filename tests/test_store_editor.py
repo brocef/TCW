@@ -20,7 +20,7 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore,
-    _revision, _revision_multi, _atomic_write, _atomic_write_all, _mkdir_owned,
+    _revision, _revision_multi, _atomic_write_all, _mkdir_owned,
     init, write_sentinel,
 )
 # Federation setup is non-trivial and already written next door; the rollback
@@ -957,7 +957,7 @@ def test_atomic_write_preserves_prior_on_failure(tmp_path):
 
     try:
         with pytest.raises(PermissionError):
-            _atomic_write(p, "key: new_value\n")
+            _atomic_write_all([(p, "key: new_value\n")])
         # Original content survives
         assert p.read_text() == original
     finally:
@@ -975,7 +975,7 @@ def test_atomic_write_temp_cleanup_on_failure(tmp_path):
 
     try:
         with pytest.raises(PermissionError):
-            _atomic_write(p, "content\n")
+            _atomic_write_all([(p, "content\n")])
     finally:
         os.chmod(d, stat.S_IRWXU)
 
@@ -987,7 +987,7 @@ def test_atomic_write_temp_cleanup_on_failure(tmp_path):
 def test_atomic_write_success_stages_file(tmp_path):
     """Successful atomic write produces the expected file content."""
     p = tmp_path / "out.yaml"
-    _atomic_write(p, "key: value\n")
+    _atomic_write_all([(p, "key: value\n")])
     assert p.read_text() == "key: value\n"
 
 
@@ -1124,10 +1124,18 @@ def test_update_capability_failure_removes_override_it_materialized(tmp_path,
     assert list(child.rglob("*.tmp")) == []
 
 
-def test_update_capability_keeps_override_when_staging_fails(tmp_path, monkeypatch):
-    """The other side of that rollback: a failed `git add` must not delete files
-    that were written fine. Staging runs inside the guard, so the rollback keys
-    on whether content landed, not just on who created the directory."""
+def test_update_capability_removes_override_when_staging_fails(tmp_path, monkeypatch):
+    """A refused stage removes the override folder this call materialized.
+
+    **This reverses what it used to assert.** Named
+    `test_update_capability_keeps_override_when_staging_fails` until
+    `2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write`,
+    it pinned the opposite: a failed `git add` left the freshly created folder
+    on disk, because the rollback keyed on whether content had landed. That was
+    the defect — a git refusal reported failure and left a partial write behind.
+    The folder was created by this call, so removing it destroys nothing the
+    caller had before. A folder that already existed is still never removed;
+    its sibling below pins that."""
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     d = child / "docs" / "capabilities" / "moderation" / "report-content"
@@ -1140,8 +1148,8 @@ def test_update_capability_keeps_override_when_staging_fails(tmp_path, monkeypat
         FsCapabilitiesStore.open(child).update_capability(
             "moderation/report-content", body="override body\n")
 
-    assert (d / "description.md").read_text(encoding="utf-8") == "override body\n"
-    assert (d / "meta.yaml").exists()
+    assert not d.exists()
+    assert list(child.rglob("*.tmp")) == []
 
 
 def test_set_failure_removes_override_it_materialized(tmp_path, monkeypatch):
@@ -1161,9 +1169,14 @@ def test_set_failure_removes_override_it_materialized(tmp_path, monkeypatch):
     assert list(child.rglob("*.tmp")) == []
 
 
-def test_set_keeps_override_when_staging_fails(tmp_path, monkeypatch):
-    """The other side: `_write_meta` stages internally, so a failed `git add`
-    must not delete the `meta.yaml` it just wrote."""
+def test_set_removes_override_when_staging_fails(tmp_path, monkeypatch):
+    """A refused stage removes the override folder `set` materialized.
+
+    **This reverses what it used to assert.** Named
+    `test_set_keeps_override_when_staging_fails` until
+    `2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write`;
+    it pinned the `meta.yaml` surviving a failed `git add`. Same reasoning as
+    its sibling above: the folder is this call's own."""
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     d = child / "docs" / "capabilities" / "moderation" / "report-content"
@@ -1176,7 +1189,8 @@ def test_set_keeps_override_when_staging_fails(tmp_path, monkeypatch):
         FsCapabilitiesStore.open(child).set(
             "moderation/report-content", {"Status": "Missing"})
 
-    assert (d / "meta.yaml").exists()
+    assert not d.exists()
+    assert list(child.rglob("*.tmp")) == []
 
 
 def test_update_work_body_failure_leaves_state_and_body_unchanged(tmp_path,
