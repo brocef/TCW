@@ -298,12 +298,59 @@ def qualified_work_ref_problem(anchor: Path, ref: str) -> str:
     return generic                                 # project resolved; the slug didn't
 
 
+def _warn_hidden(node_root: Path, *paths: Path) -> None:
+    """Say on stderr that an ignore rule is hiding a write we just made.
+
+    `init` refuses a store whose items the rules would hide, but only at
+    configure time — it cannot see a rule written afterwards, one naming a
+    single slug, or one arriving with a later pull. This is the write-time half:
+    the item is still written (a node may deliberately ignore a status folder,
+    and refusing would break that), the user is just told git has no record.
+
+    Advisory, on stderr, warn-and-proceed — the same shape as `_warn_off_trunk`,
+    and the channel `tcw work` already uses for its `→ created at …` hints.
+
+    `completed`/`discarded` are silent: TCW ignores their contents on purpose,
+    and a line on every `tcw work complete` would train the user to stop reading
+    this one. Existence is deliberately *not* tested here — `git_mv` warns about
+    a destination that does not exist yet — so each call site applies its own.
+
+    # ponytail: component match, not store-relative — a repo path containing
+    # 'completed' silences the warning; take the store root as an argument if
+    # that ever bites. Biased toward silence on purpose: the only way this can
+    # be wrong is by staying quiet, and a false warning on `complete` would be
+    # worse than the bug.
+    # ponytail: no de-duplication — a command staging two hidden paths in two
+    # calls prints two lines. Only happens in an already-broken setup, and a
+    # cache is state this function does not otherwise carry.
+    """
+    hidden = [p for p in paths if not set(p.parts) & set(RESOLVED_STATUSES)]
+    if not hidden:
+        return
+    shown = []
+    for p in hidden:
+        try:
+            shown.append(str(p.relative_to(node_root)))
+        except ValueError:
+            shown.append(str(p))
+    print(f"tcw: a .gitignore rule hides {', '.join(shown)}; it is on disk but "
+          f"git will not record it. Remove the rule, or run `git add -f` on it.",
+          file=sys.stderr)
+
+
 def git_stage(node_root: Path, *paths: Path) -> None:
     """Stage paths, dropping any git ignores. Ignored status folders are the
     default (see `resolved_ignore_rules`), so a write into `completed/` has
     nothing to stage — and `git add` on an ignored path fails outright rather
-    than no-opping."""
-    live = [str(p) for p in paths if not git_ignored(node_root, p)]
+    than no-opping. A drop outside those defaults is reported — see
+    `_warn_hidden`."""
+    ignored = [p for p in paths if git_ignored(node_root, p)]
+    # Only paths that are actually there: `start` stages the *vacated* source
+    # folder as a deletion, and warning about one that no longer exists would
+    # be false. Sound as well as convenient — plain `check-ignore` reports a
+    # tracked path as not ignored, so a dropped path is always untracked.
+    _warn_hidden(node_root, *(p for p in ignored if p.exists() or p.is_symlink()))
+    live = [str(p) for p in paths if p not in ignored]
     if live:
         _git(["git", "-C", str(node_root), "add", "--", *live], check=True)
 

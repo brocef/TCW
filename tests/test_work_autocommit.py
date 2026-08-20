@@ -631,3 +631,79 @@ def test_a_transition_into_an_ignored_destination_untracks_instead_of_moving(tmp
     assert tracked == ""                               # but out of the index
     assert porcelain(root) == ""                       # and nothing left dirty
     assert log_count(root) == before + 2               # start + complete committed
+
+
+# ── a rule that hides a write, at write time ─────────────────────────────────
+#
+# `init` refuses a store whose items the ignore rules would hide, but only at
+# configure time: it cannot see a rule written afterwards, one naming a single
+# slug, or one arriving with a later pull. In any of those the write goes ahead
+# and `git_stage` silently drops the path from the `git add` it builds, so the
+# item is real on disk and absent from version control. The warning goes where
+# the drop happens; the write is not refused, because `completed/`/`discarded/`
+# are ignored on purpose and a node may deliberately ignore another folder too.
+
+def _ignore(root: Path, rule: str) -> None:
+    """Append an ignore rule and commit it, as a later `git pull` would."""
+    gi = root / ".gitignore"
+    gi.write_text(gi.read_text(encoding="utf-8") + rule, encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "rule"], check=True)
+
+
+def test_a_hidden_write_warns_on_stderr_and_still_writes(tmp_path, capsys):
+    root = node(tmp_path)
+    _ignore(root, "docs/work/backlog/*-secret*\n")
+    item = FsWorkStore.open(root).create("Secret plan", created="2026-08-20")
+
+    err = capsys.readouterr().err
+    assert ".gitignore" in err
+    assert "docs/work/backlog/2026-08-20-secret-plan" in err
+    # Warned, not refused: the item is real and readable.
+    assert (root / "docs" / "work" / "backlog" / item.slug / "state.yaml").is_file()
+    assert item.slug in [i.slug for i in FsWorkStore.open(root).query()]
+
+
+@pytest.mark.parametrize("via_review", [False, True])
+def test_completing_into_the_ignored_default_is_silent(tmp_path, capsys, via_review):
+    """Both routes into `completed/` reach the guard — `active → completed`
+    clears owner/started and re-stages `state.yaml` after the move. A warning
+    here would fire on the most-run command in a store's life."""
+    root = node(tmp_path)
+    slug = make_item(root)
+    st = committed(root)
+    st.start(slug)
+    if via_review:
+        st.submit(slug)
+    capsys.readouterr()                       # discard the transitions' own output
+    st.complete(slug, "done", [])
+    assert ".gitignore" not in capsys.readouterr().err
+
+
+def test_discarding_into_the_ignored_default_is_silent(tmp_path, capsys):
+    root = node(tmp_path)
+    slug = make_item(root)
+    st = committed(root)
+    st.start(slug)
+    capsys.readouterr()
+    st.complete(slug, "wontfix", [])
+    assert ".gitignore" not in capsys.readouterr().err
+    assert (root / "docs" / "work" / "discarded" / slug).is_dir()
+
+
+def test_a_vacated_source_does_not_warn(tmp_path, capsys):
+    """`start` stages the vacated backlog folder as a deletion. With a
+    slug-scoped rule that path is dropped, but nothing was lost there — the
+    folder is already gone — so warning about it would be false."""
+    root = node(tmp_path)
+    _ignore(root, "docs/work/backlog/*-secret*\n")
+    st = FsWorkStore.open(root)
+    slug = st.create("Secret plan", created="2026-08-20").slug
+    capsys.readouterr()                       # the creation's own warning
+    st.start(slug)
+
+    assert ".gitignore" not in capsys.readouterr().err
+    tracked = subprocess.run(
+        ["git", "-C", str(root), "ls-files", f"docs/work/active/{slug}/state.yaml"],
+        capture_output=True, text=True, check=True).stdout
+    assert tracked.strip() != ""              # `start` auto-commits; it is at HEAD
