@@ -581,7 +581,6 @@ def test_init_refuses_an_external_work_path_before_it_writes_anything(tmp_path):
     total.
     """
     code = git_init(tmp_path / "code")
-    commit_all(code, "empty")
     plain = tmp_path / "plain"
     plain.mkdir()
     before = manifest(tmp_path)

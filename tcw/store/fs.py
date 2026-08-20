@@ -582,12 +582,28 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     accumulating it there — `git_mv` untracks rather than moves when the
     destination is ignored. Unstaged, like everything else init writes.
     """
-    write_sentinel(root, project_id)
     existing_config = load_yaml(root / SENTINEL, unique=True)
     if work_path is None and "work" in components:
         configured_work = existing_config.get("work") or {}
         if isinstance(configured_work, dict) and configured_work.get("path"):
             work_path = Path(configured_work["path"]).expanduser()
+    if work_path is not None and "work" in components:
+        # Ahead of every mutation, including the sentinel. `init` writes two
+        # locations and the repository check below runs *after* both, so a
+        # refusal used to leave `tcw-config.yaml` rewritten with the bad path and
+        # the whole status tree scaffolded.
+        #
+        # Probed at the nearest *existing* ancestor, not at the target: `git_root`
+        # shells out to `git -C <path>`, which fails on a path that does not
+        # exist — and the target usually does not, since this call is what creates
+        # it. Probing the target directly would refuse a good
+        # `--work-path <repo>/new/nested/dir`.
+        probe = work_path if work_path.is_absolute() else root / work_path
+        probe = next((c for c in (probe, *probe.parents) if c.exists()), root)
+        if git_root(probe) is None:
+            raise ValueError("work.path target is not inside a Git repository: "
+                             f"{work_path if work_path.is_absolute() else root / work_path}")
+    write_sentinel(root, project_id)
     if work_path is not None and "work" in components:
         default_root = root / "docs" / "work"
         target = work_path if work_path.is_absolute() else root / work_path
