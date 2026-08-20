@@ -1780,7 +1780,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     # -- writes --
 
-    def add(self, identifier, name=None, status="Missing", body="") -> Capability:
+    def add(self, identifier, name=None, status="Missing", body="",
+            fields=None) -> Capability:
         path = _safe_store_id(identifier, "path")
         if status not in CAP_STATUSES:
             raise ValueError(f"invalid Status '{status}' "
@@ -1790,8 +1791,16 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             raise ValueError(f"no such capability: {path}")
         if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
             raise ValueError(f"capability already exists: {path}")
+        # After the cheap string and stat refusals, because this one may open a
+        # taxonomy store — and before `_write_node`, which is the point: a create
+        # carrying a field the store would reject must leave nothing behind.
+        norm = self._validate_fields(fields or {})
         display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
         meta = {"id": _mint_cap_id(), "name": display, "Status": status}
+        # Field values win over the `status` parameter — what create-then-set
+        # did. A None sentinel is skipped: on a node being created there is
+        # nothing to clear, and `_merge_meta` pops the key on a local node.
+        meta.update({k: v for k, v in norm.items() if v is not None})
         self._write_node(d, meta, body)
         return self._capability(path)
 

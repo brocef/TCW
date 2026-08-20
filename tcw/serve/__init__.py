@@ -937,9 +937,8 @@ class TcwHandler(BaseHTTPRequestHandler):
                 status = body.get("status", "Missing")
                 body_text = body.get("body", "")
                 fields = body.get("fields")
-                capabilities.add(cap_path, name=name, status=status, body=body_text)
-                if fields:
-                    capabilities.set(cap_path, fields)
+                capabilities.add(cap_path, name=name, status=status,
+                                 body=body_text, fields=fields)
                 detail = capabilities.get_capability_detail(cap_path)
                 response = {
                     "capability": _jsonable(detail.capability),

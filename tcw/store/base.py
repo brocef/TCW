@@ -368,8 +368,10 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
-            body: str = "") -> Capability:
-        """Create a local capability folder at `identifier` (a path). Refuse a collision."""
+            body: str = "", fields: dict[str, Any] | None = None) -> Capability:
+        """Create a local capability folder at `identifier` (a path). Refuse a
+        collision. `fields` are validated as `set` validates them, before
+        anything is written, so a create carrying a bad field writes nothing."""
 
     @abstractmethod
     def remove(self, identifier: str) -> None:

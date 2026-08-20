@@ -269,3 +269,37 @@ def test_a_taxonomy_less_node_still_accepts_subject_but_refuses_blocked_by(tmp_p
     store.set("x", {"Subject": "anything"})
     with pytest.raises(ValueError, match="Blocked by"):
         store.set("x", {"Blocked by": "nope"})
+
+
+# ── a rejected create writes nothing ─────────────────────────────────────────
+
+@pytest.mark.parametrize("fields,status", [
+    ({"Feature": "also-bogus"}, "Missing"),
+    ({"NotAField": "x"}, "Missing"),
+    ({}, "InvalidStatus"),
+])
+def test_add_with_bad_fields_creates_no_folder(tmp_path, fields, status):
+    """One write, so validation happens before anything is created. Fixes the
+    class — bad ref, unknown field and invalid Status alike — not one input."""
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    with pytest.raises(ValueError):
+        store.add("new/thing", name="Thing", status=status, fields=fields)
+    assert not (root / "docs" / "capabilities" / "new" / "thing").exists()
+
+
+def test_add_with_valid_fields_writes_them(tmp_path):
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    store.add("new/thing", name="Thing", status="Supported",
+              fields={"Feature": "real-feature"})
+    cap = FsCapabilitiesStore.open(root).get_local("new/thing")
+    assert cap is not None and cap.fields.get("Feature") == "real-feature"
+
+
+def test_add_without_fields_is_unchanged(tmp_path):
+    """The control: every existing caller omits the new keyword."""
+    root = _node_with_taxonomy(tmp_path)
+    store = FsCapabilitiesStore.open(root)
+    store.add("plain/thing", name="Plain", status="Supported")
+    assert FsCapabilitiesStore.open(root).get_local("plain/thing") is not None
