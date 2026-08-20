@@ -53,6 +53,19 @@ category.
   non-pristine-`docs/work` refusal ran after `write_sentinel`, so declining left a
   new `tcw-config.yaml` behind; its check moved up, while the `shutil.rmtree` it
   authorizes stayed put.
+- `init`'s last mutate-then-raise paths (third adversarial pass). `git_ignored`
+  asks `check-ignore` about a path, and git calls a *tracked* path not ignored
+  however the rules read — correct for the `git_stage`/`git_mv` callers, which
+  mirror what `git add` will do, and the wrong question for `init`, so it now
+  passes `no_index=True` at that one site; a store scaffolded, committed, and
+  only then covered by an ignore rule was otherwise accepted. The status leaves
+  are worked out once before any is created and pre-flighted, so a leaf occupied
+  by a regular file refuses instead of raising from `mkdir` with the sentinel
+  already written. A symlinked default `docs/work` counts as non-pristine —
+  it read as pristine through the link and then met `shutil.rmtree`, which
+  refuses a symlink. And reading the config ahead of `write_sentinel` moved its
+  mapping check out from under that read, so a malformed config came back as
+  `AttributeError`/`TypeError` rather than the `ValueError` the CLI renders.
 - `main()`'s `CalledProcessError` handler rendered a string-valued `error.cmd`
   character by character (`g i t ' ' s t a t u s`) — `shlex.join` over a string
   iterates it. Latent, since every `check=True` git call in the adapter passes an

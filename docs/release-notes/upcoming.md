@@ -44,10 +44,13 @@ three now check first, and the two that refuse leave nothing behind. Starting
 and so is completing with `--already-integrated`, which says the merge-back
 already happened and so has none to protect.
 
-`tcw init --work-path` also got stricter about two stores it used to accept and
-should not have: one inside a folder your `.gitignore` excludes, where every
-item you filed would be real on disk and invisible to Git, and one behind a
-broken symlink.
+`tcw init --work-path` also got stricter about the stores it accepts, and every
+refusal now happens before anything is written. It turns down a store your
+`.gitignore` excludes — every item you filed there would be real on disk and
+invisible to Git — whether the rule was there first or added after the store was
+created; a store behind a broken symlink; a status folder that is really a file;
+and a `docs/work` that is a symlink to somewhere else. A malformed
+`tcw-config.yaml` now gets a plain message instead of a stack trace.
 
 ## Stage instructions name the file your item actually has
 
