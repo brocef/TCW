@@ -1,5 +1,75 @@
 # Plan — Resolve taxonomy refs against symlinks, not just lexically
 
+## Review round 1 — what changed, and why it matters
+
+This plan was adversarially reviewed at `5ddaa31` before implementation. It came
+back **NOT DONE** with three confirmed blockers, all verified against the tree by
+the coordinating session before acceptance. Read this section before the rest:
+it supersedes parts of what follows.
+
+1. **The helper is wrong on supported Pythons.** `except OSError` does not catch
+   what a symlink loop actually raises. `requires-python = ">=3.11"`
+   (`pyproject.toml:10`), and the behavior differs across that range: on the
+   3.14.6 interpreter in use, `Path("loop/child").resolve()` **returns the
+   unresolved lexical path** and raises nothing (reproduced directly); on 3.12 it
+   raises `RuntimeError`, which is **not** an `OSError` subclass. Task 1 is
+   rewritten below. The plan's stated test — "a symlink loop returns `False`
+   rather than raising" — is also wrong as an expectation; see Task 1.
+2. **The call-site walk missed a site — for the third time.** Targeted
+   validation, `check(identifier=…)`, replaces the filtered `_all_meta_dirs()`
+   result with `[selected.path]` and re-joins it under the **local** root. For an
+   *inherited* hit that path was never filtered by anything local, so a local
+   symlink shadow is followed and external YAML is parsed. The reviewer
+   reproduced this while simulating this plan's own guards: `base/link/thing` was
+   selected, the external `meta.yaml` was read, and `check()` returned no
+   problems. **New Task 3b.**
+3. **Guarding the directory does not stop the read.** The guards validate
+   `self.root / identifier`, but `_load_node` then opens `meta.yaml` and
+   `description.md` *inside* it, and `_compose_body` opens attachments. A
+   directory legitimately inside the store whose `meta.yaml` is a symlink out is
+   read in full. Spec Goal 1 ("without reading the external file first") and
+   criterion 7 ("no external read") are **not met** by directory guards alone.
+   The spec already caught this exact shape for the work store — a symlinked
+   `state.yaml`, Problem §4 — and missed the symmetric case for taxonomy and
+   capabilities. **Resolved by decision: guard the shared read chokepoint,
+   `FsTreeStore._load_node`. New Task 1b.** Narrowing the spec instead was
+   considered and rejected.
+
+Two further corrections, neither a blocker:
+
+- **Task 5 is historical, not pending.** The generic `CalledProcessError`
+  handler it defers to has **landed** (`tcw/cli.py:190`), and was since hardened
+  for string-valued commands. Its owning item is `completed`. The live
+  consequence is the opposite of what the task says: because that handler now
+  turns *any* git failure into exit 1, a containment test asserting only "exits
+  1" can pass on an unrelated git error. See the criteria fixes.
+- **The spec's symlinked-store-root non-goal is stale for work stores.**
+  `FsWorkStore.open` deliberately resolves a symlinked root
+  (`tcw/store/fs.py:2160`) and there is a passing fixture proving it
+  (`tests/test_external_work_store.py:74`). Restrict that non-goal to taxonomy
+  and capabilities roots.
+
+**Every line number below the fold is stale**, by +117 to +163 lines. Verified
+drift at `5ddaa31`: `_safe_store_id` `728`→`845`; `FsTreeStore` `790`→`907`;
+taxonomy `get_local` `956/966`→`1077/1087`; taxonomy `add` `1031/1044`→
+`1152/1165`; taxonomy `_validation_resources` `1202/1208`→`1325/1331`;
+`_all_meta_dirs` `1384/1393`→`1507/1516`; capabilities `get_local` `1488`→`1611`;
+`_write_target` `1622/1643/1648`→`1746/1767/1772`; capabilities
+`_validation_resources` `1829/1835`→`1956/1962`; `FsWorkStore.__init__`
+`2005`→`2133`; `_item_dirs` `2059/2075`→`2190/2206`; work `_validation_resources`
+`2878`→`3022`; `inbox_accept` `3035`→`3192`; `create_work` `3345`→`3508`. The
+guard-target functions **moved** rather than being rewritten, so the walk's
+verdicts still hold — but `inbox_accept`'s title/slug logic and `create_work`'s
+validation *were* rewritten, and the repository preflight is new. **Re-derive
+every citation at `implement`; do not trust one below.**
+
+**One consequence of the repository preflight for every new test in this item:**
+it now runs inside `_write_node` (`tcw/store/fs.py:990`) and at the head of
+capabilities `set` (`:1793`). A write-path fixture that is not a real
+initialized git repository fails on the precondition *before* reaching the
+containment guard under test — green, or red, for the wrong reason. The
+proposed `tests/test_store_bounds.py` must `git init` its fixtures.
+
 ## Call-site walk
 
 The spec's first risk requires walking **every** join that puts a runtime
@@ -101,15 +171,46 @@ def _within_store(self, path: Path) -> bool:
     spelling they were opened with, so a checkout under a symlinked ancestor
     would otherwise fail every check. Not race-safe — see the spec's threat
     model.
+
+    `RuntimeError` as well as `OSError`: a symlink loop raises `RuntimeError`
+    on Python < 3.13 and, since 3.13, raises nothing at all — `resolve()`
+    returns the path unresolved. Neither is an `OSError`. The floor is 3.11
+    (`pyproject.toml:10`), so both eras are live.
     """
     try:
         return path.resolve().is_relative_to(self._resolved_root)
-    except OSError:                       # broken or looping symlink
+    except (OSError, RuntimeError):       # broken symlink; loop on <3.13
         return False
 ```
 
 Non-strict `resolve()` resolves the existing prefix and appends the rest, so it
 is correct for a path being created as well as one being read.
+
+**The loop case, stated correctly** *(review round 1, blocker 1)*. The original
+plan asserted this helper "returns `False`" for a symlink loop and made that a
+test. That is not true on 3.13+, and chasing it would be wasted work. Measured on
+the 3.14.6 interpreter in use:
+
+```
+$ ln -s loopb loopa; ln -s loopa loopb
+>>> Path('loopa/child').resolve()
+PosixPath('…/looptest/loopa/child')      # unresolved, no exception
+```
+
+So a loop *inside* a store resolves to a path still lexically under the root, and
+the helper answers `True`. **That is harmless and the test must say so rather
+than demand `False`:** every read through a loop fails with `ELOOP` regardless,
+and the callers all gate on `is_dir()`/`is_file()` first, which a loop fails. The
+requirement this helper actually owes is **"never raises"** — on 3.12 the bare
+`except OSError` would have let `RuntimeError` escape and crash `list`.
+
+Write the test as: a looping candidate does not raise, and `list_all` over a
+store containing one still returns the ordinary entries. Do not assert the
+containment verdict for a loop; it is don't-care, and pinning it would pin a
+Python-version detail.
+
+`is_relative_to` needs no same-prefix guard: `/a/store-other` is correctly not
+relative to `/a/store` (confirmed in review).
 
 **Verified by** new `tests/test_store_bounds.py`: an ordinary child is within; a
 child reached through a symlink to a sibling store is not; a not-yet-created
@@ -122,6 +223,74 @@ One case per store class, since `_resolved_root` must exist on all three:
 instantiate `FsTaxonomyStore`, `FsCapabilitiesStore` and `FsWorkStore` and assert
 `_within_store` works on each — `FsWorkStore` is the one that would raise
 `AttributeError` if the cache were moved into `FsTreeStore.__init__`.
+
+### 1b. Contain the node's *resources*, not just its folder — `_load_node`
+
+**New in review round 1 (blocker 3), by explicit decision: guard the shared read
+chokepoint.** The directory guards in Tasks 2-4 answer "is this folder inside the
+store". They do not answer "is the file I am about to read inside the store", and
+that is a live escape: a folder legitimately in-store whose `meta.yaml` is a
+symlink pointing out passes every directory guard, and `get_local` reads the
+external file in full. Reproduced by the reviewer against both stores.
+
+This is the same defect the spec already found for the work store — Problem §4's
+symlinked `state.yaml`, guarded in Task 4 — applied to the two components the
+spec checked only at directory level. Fixing it there and not here would ship an
+inconsistency the spec's own reasoning contradicts.
+
+**Changes** `tcw/store/fs.py`, `FsTreeStore._load_node` (`:967`) — the one method
+both `FsTaxonomyStore._term` (`:1062`) and `FsCapabilitiesStore._capability`
+(`:1553`) read a node through, which is what makes this one edit rather than
+several:
+
+```python
+def _load_node(self, d: Path) -> tuple[dict, str, list[str]]:
+    # Containment per resource, not just per folder: an in-store folder can hold
+    # a `meta.yaml` or `description.md` that is a symlink out of the store, and
+    # the folder guard upstream cannot see it. A resource that escapes reads as
+    # absent — the same fail-closed shape `get_local` uses for the folder.
+    meta_path = d / "meta.yaml"
+    meta = load_yaml(meta_path) if self._within_store(meta_path) else {}
+    desc = d / "description.md"
+    description = (desc.read_text(encoding="utf-8")
+                   if desc.exists() and self._within_store(desc) else "")
+    reserved = self._node_reserved()
+    attachments = sorted(
+        f.name for f in d.iterdir()
+        if f.is_file() and f.name not in reserved and not f.name.startswith(".")
+        and self._within_store(f))
+    return meta, description, attachments
+```
+
+An escaped `meta.yaml` yielding `{}` is what makes the node fail closed without a
+second mechanism: `_is_capability` and the `overrides` test both read falsey, and
+a taxonomy node with no `meta.yaml` has no kind, so the entry stops resolving —
+`None`, not a raise, matching the established contract.
+
+**Also `_compose_body`** (`:1536-1548`), which reads attachment *contents* by
+name from `prependedDocs`/`appendedDocs` and never goes through `_load_node`'s
+filtered name list: add `and self._within_store(f)` to both `f.is_file()` tests.
+
+**Verify, do not assume, the four sibling reads that bypass `_load_node`.** Each
+reads `meta.yaml`/`description.md` directly and must be checked at `implement`
+against the current tree — guard the ones reachable with a caller-supplied
+identifier, and record a verdict for each in `outcome.md` either way:
+
+| Site (at `5ddaa31`) | What it reads | Note |
+| --- | --- | --- |
+| `get_detail` `:1376-1377` | both, via `owner.root / term.slug` | `read_text` with no `exists()` guard — an escaped path raises rather than returning empty |
+| `update_term` `:1412-1413` | both, local-only | write path; reached after a `get()` |
+| `_apply_override` `:1588-1591` | upstream + child `description.md` | upstream root is already resolved (`:692`); the **child** side is local and is the one to check |
+
+**Verified by** new tests in `tests/test_store_bounds.py`, one per store class:
+an in-store node whose `meta.yaml` is a symlink out resolves to `None`/absent and
+its external content never appears in any returned object; the same for a
+symlinked `description.md` (body comes back empty, not external); the same for a
+symlinked attachment named in `prependedDocs` (its text is absent from the
+composed body). Each needs an **in-store control** in the same test — an ordinary
+node whose `meta.yaml` and `description.md` are real files, asserted to still
+read normally — or the test cannot distinguish "guard worked" from "fixture
+broken".
 
 ### 2. Taxonomy guards
 
@@ -218,6 +387,65 @@ Existing federation/override tests (`test_capabilities_federation.py`,
 `test_capabilities_reset.py`) are the blast-radius check for the
 `_all_meta_dirs` filter.
 
+### 3b. Targeted capability validation — the eleventh guard
+
+**New in review round 1 (blocker 2).** This is the site the walk missed, and it
+is the third time this walk has missed one — after `_validation_resources` at
+plan time and `_write_target` at spec-review time. Treat the walk as evidence,
+never as a discharge.
+
+`check(identifier=…)` builds its meta-dir list by **replacing** the filtered
+listing (`tcw/store/fs.py:1937-1938` at `5ddaa31`):
+
+```python
+meta_dirs = self._all_meta_dirs()
+if selected is not None:
+    meta_dirs = [selected.path]          # ← the filter is discarded
+for p in meta_dirs:
+    d = self.root / p                    # :1941
+    meta = load_yaml(d / "meta.yaml")    # :1942 — external read
+    …
+    for f in d.iterdir():                # :1946 — external listing
+```
+
+The plan's table cleared this as "no — filtered listing; it `iterdir()`s `d`, so
+the filter is load-bearing". True for the `_all_meta_dirs()` branch, **false for
+the `selected` branch**, and false in exactly the case the guards create: Task 3's
+`get_local` guard rejects a local symlink shadow, so `get()` falls through to the
+**inherited** capability with the same `path` — and that inherited path is then
+re-joined under the **local** root here. The reviewer reproduced it while
+simulating this plan's own Task 3 guards: `base/link/thing` was selected, the
+local external `meta.yaml` was loaded, and `check()` returned **no problems** —
+a clean bill of health computed from a file outside the store.
+
+**Changes** `tcw/store/fs.py`, `FsCapabilitiesStore.check` — guard `d` before the
+`load_yaml`, skipping the entry rather than raising (`check` must not crash on
+bad data; that is criterion 4's whole point):
+
+```python
+for p in meta_dirs:
+    d = self.root / p
+    if not self._within_store(d):
+        continue
+```
+
+Placed before `load_yaml`, not appended to a later condition — the same
+read-ordering rule the spec sets out for capabilities `get_local`.
+
+Task 1b's `_load_node` guard does **not** cover this: the read here is a direct
+`load_yaml`, not a node load.
+
+**Verified by** a new test in `tests/test_capabilities_federation.py` (it needs
+the `child_of` helper): a federated `base` → `child`, an upstream capability at
+`link/thing`, a local `docs/capabilities/link -> ../../outside` shadow, and
+`check(identifier="link/thing")` must not read `outside/thing/meta.yaml` — spied
+with the same `load_yaml` recorder criterion 7 uses, plus an in-store control.
+**This test fails on today's tree and on the tree with Tasks 1-3 applied**, which
+is what distinguishes it from a test that merely passes.
+
+The reviewer also notes the existing criteria test taxonomy `check` but never the
+capability `check` path; this test closes that gap.
+
 ### 4. Work-store guard
 
 **Changes** `tcw/store/fs.py` — `_item_dirs` (`:2059-2076`): filter the scan with
@@ -236,13 +464,33 @@ nothing there.
   `rglob` property, locked in so a future switch to `os.walk(followlinks=True)`
   fails loudly instead of silently reopening the escape.
 
-### 5. Preserve the CLI error-boundary ownership split
+### 5. The CLI error boundary — satisfied, and now a trap to test against
 
-**Changes** none. The non-Git-writes item owns the generic
-`CalledProcessError` handler (`tcw/cli.py:174-182`) and is `active` on `fs.py`
-(it landed `require_repository` in `c0b340e`, `fs.py:314-327`). Keep containment
-regressions independent of that handler so either item can land first; rebase on
-it rather than merging the two diffs, and note the relationship in `outcome.md`.
+**Changes** none — but the reason is the opposite of what this task used to say.
+*(Rewritten in review round 1.)*
+
+The original text treats the generic `CalledProcessError` handler as owned by an
+in-flight sibling and asks this item to stay out of its way. That item is
+**completed**, and the handler has **landed** at `tcw/cli.py:190` (since hardened
+for a string-valued `error.cmd`). The dependency is satisfied; nothing to
+coordinate.
+
+What replaces it is a testing hazard, and it is sharper than the thing it
+replaces. **Every git failure now exits 1 with a clean one-line message.** So an
+assertion of the form "exits 1 with an error" no longer distinguishes:
+
+- the containment guard refusing the ref — what these criteria mean to prove; and
+- git refusing to stage *beyond a symlink* — which is how these same scenarios
+  fail on the **unfixed** tree, per spec Problem §2, §3 and §6.
+
+A criterion written that loosely therefore **passes before the fix**. Criteria 2,
+5 and 6 are written that loosely. They must assert the containment diagnostic
+specifically — the guard's own `ValueError` at the store level, or its exact
+message at the CLI — alongside the existing "nothing outside the store was
+created or mutated" assertions, which are the parts that carry real weight.
+
+Prefer asserting at the **store API** for containment, and use CLI-level
+assertions only where the criterion is about the CLI's own output.
 
 ### 6. Measurement pass
 
@@ -275,9 +523,76 @@ it is not the symlinked-root check (task 1's fixture is), because `tmp_path` on
 this machine is already a physical path (`/private/var/folders/…`, equal to its
 own `realpath`).
 
+## Criteria that pass before the fix — rewrite these before writing them
+
+*(Review round 1. Every item here is a test that would be **green on the unfixed
+tree**, for a reason unrelated to the guard. Watching a test fail red is the only
+protection, and three of the spec's criteria cannot fail red as written.)*
+
+The root cause is one property, worth stating once: **`Path.rglob` does not
+descend into a symlinked directory.** The spec relies on that correctly for the
+work store (Problem §4: only a symlinked *file* is discoverable) and then writes
+three capability/taxonomy criteria whose fixtures depend on the opposite.
+
+- **Criterion 3, descendant half.** `tcw taxonomy list` "lists neither
+  `alpha/link` nor any descendant". `rglob` never walks into `alpha/link`, so the
+  descendant assertion is already true today and proves nothing about
+  `_local_slugs`. The direct `alpha/link` assertion is the real one — keep it,
+  drop the descendant claim or mark it explicitly as a property of `rglob` rather
+  than of this change.
+- **Criterion 5, listing half.** Same defect: with `link -> ../outside` and the
+  capability at `outside/thing`, `list_all` cannot see `link/thing` today either,
+  because `link` itself holds no `meta.yaml` and `rglob` will not descend it. To
+  test `_all_meta_dirs` filtering at all, the fixture must make **`link` itself
+  resolve to a folder that contains `meta.yaml`** — then current `list_all`
+  demonstrably includes it and the guard demonstrably removes it.
+- **Criterion 7, `list_all` half.** Inherits the same broken fixture, so its
+  "no external read" assertion passes vacuously. Additionally it cannot see
+  `description.md` or attachment reads at all — a `load_yaml` spy only records
+  YAML — which is precisely the gap Task 1b exists to close.
+
+Rewritten, criterion 7 needs four things: a fixture where the symlink candidate
+itself resolves to a capability folder; separate cases for symlinked `meta.yaml`,
+`description.md` and attachments (spying `read_text` as well as `load_yaml`);
+coverage of targeted `check` (Task 3b); and an **in-store control** asserting the
+spy fires on an ordinary node, so a mis-installed spy reads as a pass.
+
+- **Criterion 8** ("a store reached through a symlink still works") says "behave
+  exactly as on the physical spelling" without naming a result, and two stores
+  over one physical tree cannot both perform the same `add`. Pin it: a
+  git-initialized fixture; `add` **succeeds** (not "both spellings fail
+  identically"); exact expected `get` and `list_all` results; and either
+  independent trees or a stated operation order.
+
+- **Criteria 2, 5, 6** — see Task 5: "exits 1 with an error" is satisfied by the
+  generic git handler on the unfixed tree. Assert the containment diagnostic.
+
+**The blast-radius claim needs its own controls.** A green 1859-test suite is
+weak evidence that the listing filters changed nothing, because almost none of
+those tests exercise a store containing a symlink. The review found no regression
+for ordinary terms, capability nodes, inherited stores, overrides, relators or
+symlink-reached roots — but add explicit unchanged-behavior controls for
+taxonomy `relators` and leaf-slug lookup, capability `get_by_id`, override
+composition, reset, inherited-status review, attachment validation, and targeted
+local + inherited `check`.
+
+**One accepted edge, recorded rather than fixed.** `_parent_slug`
+(`tcw/store/fs.py:2348`) independently treats any ancestor holding a `state.yaml`
+as an item, so a valid nested child under a folder that Task 4 excluded can still
+name that excluded folder as its parent. Confirmed code path; whether it violates
+intent is a spec question, not a bug this item is required to close. Add a
+nested-child test that pins whichever answer is chosen, and say which in
+`outcome.md`.
+
 ## Documentation Sync
 
-Evaluated all four entries in `CLAUDE.md` (`documentation-sync` skill):
+Evaluated all four declared entries. **Source correction (review round 1):**
+they are configuration, not prose — they live in `tcw-config.yaml` under
+`work.documentation` and are printed by `tcw work docs`. The line below used to
+cite `CLAUDE.md`, which is where the *reasoning* lives, not the entries. The four
+targets are unchanged: `README.md` `[Public-API]`,
+`docs/release-notes/upcoming.md` `[Public-API]`, `docs/changelogs/upcoming.md`
+`[Any-Code-Change]`, `skills/<component>/SKILL.md` `[Skill-Driven-Component]`.
 
 ### 7. `docs/changelogs/upcoming.md` — `[Any-Code-Change]` **fires**
 
