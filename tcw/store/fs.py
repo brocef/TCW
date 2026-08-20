@@ -3494,8 +3494,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         "blocker refs must be strings")
                 blocked_by.append(self._entry_for(ref))
 
-        # Generate slug
-        created_date = created or date.today().isoformat()
+        # Generate slug. `created` arrives from a caller (`tcw serve`'s POST
+        # body among them), and it prefixes the slug — parsing it bounds the
+        # slug's own prefix and keeps a non-date out of `state.yaml`.
+        created_date = date.fromisoformat(created).isoformat() if created \
+            else date.today().isoformat()
         slug = self._unique_slug(created_date, title)
 
         # Determine directory

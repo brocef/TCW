@@ -2401,6 +2401,18 @@ def test_work_new_punctuation_only_title(tmp_path, monkeypatch):
     assert (root / f"docs/work/backlog/{date.today().isoformat()}-untitled").is_dir()
 
 
+def test_create_work_refuses_a_created_that_is_not_a_date(tmp_path):
+    """`created` prefixes the slug and lands in `state.yaml`, and it arrives
+    from a caller — `tcw serve`'s POST body passes it straight through."""
+    st = FsWorkStore.open(node(tmp_path))
+
+    with pytest.raises(ValueError):
+        st.create_work("Ship it", created="x" * 200)     # was OSError: name too long
+    with pytest.raises(ValueError):
+        st.create_work("Ship it", created="not-a-date")
+    assert st.create_work("Ship it", created="20260819").item.slug == "2026-08-19-ship-it"
+
+
 def test_work_new_ordinary_title_is_unchanged(tmp_path, monkeypatch):
     """The guard rails must not fire on normal input."""
     from tcw.cli import main
