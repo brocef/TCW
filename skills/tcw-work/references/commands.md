@@ -113,6 +113,13 @@ and `tcw work inbox path` are the only correct answers, and they are what
 store; TCW ignores it. Conversely, a default-layout store missing `inbox` or any
 status folder counts as *no* store at all — `tcw work init` restores it.
 
+**Items stay inside their own store.** An item is discovered by its
+`state.yaml`, so a `state.yaml` that is a symlink out of the store is not an
+item, and an artifact, sidecar or plan document that is a symlink out reads as
+absent rather than being followed. Nothing supported is lost — Git cannot track
+a file through a symlink anyway. The same containment applies to taxonomy and
+capability entries and the files inside them.
+
 **Every write needs a Git repository; every read does not.** Outside one, any
 writing command refuses with `not inside a git repository. Run `git init`
 first.`, exits non-zero, and changes nothing on disk — including `delegate` and

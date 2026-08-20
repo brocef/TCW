@@ -47,11 +47,6 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 
 ## Always
 
-- **Items stay inside their own store.** An item is discovered by its
-  `state.yaml` and read through its own folder; a `state.yaml` that is a symlink
-  out of the store is not an item, and an artifact, sidecar or plan document
-  that is a symlink out is treated as absent rather than read. Nothing supported
-  is lost — git cannot track through a symlink anyway.
 - **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
   it. Never batch several stages into one commit. TCW commits the _transitions_
   itself; do not commit those by hand.
