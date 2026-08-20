@@ -12,7 +12,7 @@ below is unique within `FsCapabilitiesStore`, so the name is a complete address
 and a line number would only rot. Where a line is genuinely useful for
 navigation it is marked *as of `b59ffbd`* and should be re-derived, not trusted.
 
-Anchors as of `b59ffbd`, for orientation only: `add` `:1567`,
+Anchors as of `b59ffbd` — **all stale, drift ≈ +148 to +152 lines; re-derive at `implement`.** Current locations verified in review round 1 at `5ddaa31`: `add` `:1686`, `_validate_fields` `:1725`, `_write_target` `:1746`, `set` `:1793`, `check` `:1868`, ref block `:1928-1934`, `_ref_error` `:1996`, `_check_globals` `:2004`, `_check_subject` `:2017`, `_check_feature` `:2030`, `update_capability` `:2067`. Old anchors, for orientation only: `add` `:1567`,
 `_validate_fields` `:1606`, `_write_target` `:1626`, `_merge_meta` `:1659`,
 `set` `:1673`, `check` `:1745`, `_ref_error` `:1873`, `_check_globals` `:1881`,
 `_check_subject` `:1894`, `_check_feature` `:1907`, `update_capability` `:1944`.
@@ -119,6 +119,38 @@ self-review requirement, made explicit so nothing rides on prose.
 
 No task exists that no criterion needs; no criterion lacks a task.
 
+### Criteria the review corrected before they could be relied on
+
+*(Review round 1. Each was checkable-looking and would have passed for the wrong
+reason; the amendment is what the task must actually implement.)*
+
+- **7 — wording parity.** Comparing two consumers of one *newly shared* renderer
+  proves they agree, not that they agree with what shipped before. Parity alone
+  cannot catch the extraction changing both sides together. The fix is Task 1's
+  exact characterization tests, written **before** the extraction: parity
+  (criterion 7) plus literals (Task 1) together make the claim, and neither does
+  alone.
+- **9 — "`git status --porcelain docs/capabilities/` is empty".** Not valid
+  after the criteria's own bootstrap: `tcw capabilities add web/editing` stages
+  files, so that pathspec is *never* empty by the time the POST runs. Scope the
+  query to the path the POST would have created —
+  `git status --porcelain docs/capabilities/new/thing` — or diff against a
+  baseline captured immediately before the request.
+- **13 — the falsey stub.** Asserting only the final output cannot distinguish
+  "the injected stub was consulted" from "the default store happened to give the
+  same answer". The stub must record that `get()` was called on it, and the
+  test must assert that record.
+- **14 — "one renderer".** Output parity is not a structural property: a shared
+  renderer can drift and both sides still compare equal. Keep the behavioral
+  test, and carry the structural claim as a code-review invariant plus the
+  characterization literals. Do not present criterion 14 as proving structure.
+- **15 — the baseline.** The spec's `1763 passed` and the plan's `1772` are both
+  dead. Measured this session on `5ddaa31`: **1859 passed in 731s**, full run,
+  zero failures. The durable claim was never the absolute number — it is
+  *exactly one existing failure, and it is
+  `test_capability_check_dangling_subject`*. Re-measure at `implement`; cite the
+  identity, not the count.
+
 ## Tasks
 
 ### 1. Extract `_ref_problems` (no behavior change)
@@ -154,10 +186,28 @@ a second caller inside `_check_globals`.
 table above. The suite must pass with **no test modified**; if a test needs
 editing, the extraction changed behavior and is wrong.
 
-**Verified by** `python -m pytest -q` green with a clean `git diff --stat
-tests/` — zero test files touched. The wordings are asserted at
+**Characterization tests come FIRST, in this same commit — before the
+extraction.** *(Review round 1, finding 2 — accepted after verifying the tree.)*
+The original plan claimed the wordings are "asserted at
 `tests/test_capabilities.py:207-256` and
-`tests/test_capabilities_federation.py:156-200`. Criterion 14's behavioral
+`tests/test_capabilities_federation.py:156-200`", and **that claim is false**.
+Read at `5ddaa31`: every assertion in that first range is a *substring* test —
+`assert any("Subject" in p and "ghost" in p for p in problems)`
+(`tests/test_capabilities.py:209`), `… and "dangling" in p …` (`:234`),
+`… and "expected Feature" in p …` (`:249`), `… and "ambiguous" in p …` (`:256`).
+The federation range tests overrides, attachments and cycles — not these six
+fields at all. So the suite would stay green through a wording change, and
+"pure motion" would be unprotected precisely where it matters.
+
+Write, before touching `check`, one test that asserts the **exact** string for
+every row of the fifteen-row table above — `==`, not `in` — driving the public
+`check()` over a fixture built with `write_cap`. Copy the literals from the
+table, not from the source, so the test is an independent statement of the
+contract rather than a mirror of the code.
+
+**Verified by** those characterization tests passing **unchanged** across the
+extraction, plus `python -m pytest -q` green with `git diff --stat tests/`
+showing only the new characterization file. Criterion 14's behavioral
 one-renderer test is written in Task 3, once there are two paths to compare.
 
 ### 2. `_taxonomy()` accessor, and `check` falls back to it
@@ -190,14 +240,41 @@ Then delete the two duplicate wirings this replaces:
 conditional in `tcw/validate.py:113-117` (→ `.check(identifier=identifier)`).
 Net deletion, and one place decides where a taxonomy comes from.
 
-**Verified by** — measured, not asserted. The fallback was simulated against the
-whole suite via a pytest plugin that monkeypatches `check` without editing
-`tcw/`, at this task's exact semantics: **1772 passed, 0 failed** on the tree at
-`c0b340e`. Reproduce with `scratchpad/simfallback.py` (`python -m pytest -q -p
-simfallback`). Also criterion 13, as a new test: on a node whose
+**Also drop the now-unused import.** After `_taxonomy_for` goes,
+`FsTaxonomyStore` has no other use in `tcw/capabilities/cli.py` — verified at
+`5ddaa31`: `grep -n FsTaxonomyStore tcw/capabilities/cli.py` returns only the
+import (`:9`) and the line inside `_taxonomy_for` (`:32`). Trim it from the
+import list. `tcw/validate.py` keeps its own use; check before trimming there.
+
+**Correction to spec Design §4 — the "three divergent wirings" claim is false.**
+*(Review round 1, finding 1 — accepted after verifying the tree.)* The spec says
+`tcw/serve/__init__.py:396-402` opens the taxonomy store **unconditionally** and
+presents that as a third, behaviorally divergent capability-check wiring that
+`_taxonomy()` unifies. Half of that is true and the conclusion is not: `_stores()`
+really does construct `FsTaxonomyStore.open(root)` with no existence test
+(`tcw/serve/__init__.py:396-402`, unchanged) — **but it never passes that object
+to `capabilities.check()`.** `grep -n "\.check(" tcw/serve/__init__.py` returns
+no capability-check call at all; serve's post-save warnings go through
+`_validation_warnings` (`:160-165`) → `validate()`, which is the *guarded*
+wiring in `tcw/validate.py:113-114`. The spec's demonstration invokes
+`check(taxonomy=t)` by hand, which is not a path serve ever takes.
+
+What survives: `_taxonomy()` is still worth having, for write-time resolution
+and as `check`'s default. What must be struck: the claim that it unifies three
+divergent sites. It replaces **two** wirings, and the taxonomy-less behavior of
+the CLI, `validate`, and serve's warnings is **already aligned** today. Do not
+repeat the divergence claim in `outcome.md`, the changelog, or the release note.
+
+**Verified by** — the old simulation number is stale and is not the check.
+The fallback was simulated at `c0b340e` (**1772 passed**); the tree is now at
+`5ddaa31` with a **1859-passed** baseline (measured this session, full run,
+731s). Re-run the simulation at `implement` against the current tree rather than
+citing either number. Also criterion 13, as a new test: on a node whose
 `docs/taxonomy/` exists and lacks the ref, bare `check()` reports
 `Subject → dangling ref …`; and a stub whose `__bool__` returns `False`, passed
-explicitly, is still consulted.
+explicitly, is still consulted — and that stub must **record that it was
+called**, not merely produce the expected output, or the test passes through the
+wrong resolver (review round 1, criterion-13 finding).
 
 ### 3. `_validate_fields` refuses unresolvable refs
 
@@ -208,7 +285,12 @@ After the existing normalization loop, before `return out`:
 
 ```python
 supplied = {k: v for k, v in out.items() if v is not None}
-if problems := self._ref_problems(supplied, self._taxonomy()):
+# Open a taxonomy store only when a field that needs one was actually supplied.
+# The other four ref fields resolve against `self`, and `_check_subject` /
+# `_check_feature` already return [] for `taxonomy is None`.
+needs_taxonomy = bool(supplied.get("Subject")) or bool(supplied.get("Feature"))
+if problems := self._ref_problems(
+        supplied, self._taxonomy() if needs_taxonomy else None):
     raise ValueError("; ".join(problems))
 ```
 
@@ -222,6 +304,19 @@ Four details are load-bearing, all from spec Design §2 and §3:
   caller just cleared).
 - **`supplied`, never the merged node** — a `set --status Omitted` on a
   capability that already stores a bad ref must still succeed (criterion 11).
+- **A taxonomy store is opened only when `Subject` or `Feature` was supplied.**
+  *(Review round 1, finding 3 — accepted.)* The original text called
+  `self._taxonomy()` unconditionally, on every `set` and every
+  `update_capability`, including a `--status Omitted` repair and the empty
+  `fields or {}` that Task 4's `add` passes. Two costs, one of them a
+  correctness regression rather than a slowdown: a node with a malformed
+  taxonomy `config.yaml` would start refusing status-only writes that succeed
+  today, and criterion 11's repair route is exactly such a write. Verified safe
+  to skip at `5ddaa31`: `_check_subject` (`tcw/store/fs.py:2017-2019`) and
+  `_check_feature` (`:2030-2032`) both return `[]` on `taxonomy is None`, and
+  the other four ref fields resolve against `self` via `_ref_error` (`:1996`),
+  which never touches a taxonomy. This is also the more faithful reading of
+  spec Design §3 — only the refs this write supplies.
 - **All problems, joined `"; "`** — not first-wins. No message contains
   `no such`, so `_map_store_error` (`tcw/serve/__init__.py:196-216`) keeps them
   at 422 rather than 404.
@@ -307,8 +402,38 @@ Delete the `if fields: capabilities.set(cap_path, fields)` that followed. The
 handler's existing `except (ValueError, RefError)` already maps to
 422 — no error-handling change.
 
+**What this does and does not make atomic — say it precisely.** *(Review round 1,
+finding 4 — accepted; the spec and the original task both overclaimed.)* Moving
+validation ahead of `_write_node` eliminates the **validation** partial write:
+every refusal this item can produce — bad ref, unknown field, invalid Status —
+now happens before anything is created. That is the whole of criterion 9 and it
+is genuinely fixed.
+
+It does **not** make `POST` atomic in general. `_write_node` writes and *then*
+stages, and it deliberately keeps the fully-written files when `git add` fails
+(`tcw/store/fs.py:990`, `:1015` at `5ddaa31`) — so a staging failure still
+returns a 500 with a complete capability on disk. Today's shape is "422 plus a
+minimally created capability"; the new shape is "500 plus a fully created
+capability". Better, and still not atomic.
+
+So: strike "one write kills the whole class" and "POST is atomic" wherever they
+appear — including the spec's Design §5 heading, the changelog line drafted
+below, and `outcome.md`. The defensible sentence is **"a create whose fields are
+rejected now writes nothing."** The remaining staging-failure case belongs to
+the sibling item
+`2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write`,
+whose `_write_staged` rollback is precisely the mechanism this one lacks; note
+the hand-off in `outcome.md` rather than reaching for it here.
+
 **Every existing caller of `add`, verified compatible** (none passes a fifth
-positional, so the trailing keyword is invisible to all of them):
+positional, so the trailing keyword is invisible to all of them). **The table
+below is incomplete** *(review round 1)* — it omits callers in
+`tests/test_store_editor.py`, `tests/test_non_git_writes.py` and
+`tests/test_validate_target.py`. None of them passes an incompatible fifth
+positional either, so nothing breaks, but re-derive the list at `implement` with
+`grep -rn --include=*.py "\.add(" tcw/ tests/ | grep -i capab` rather than
+trusting these rows; an inventory presented as exhaustive and known not to be is
+worse than no inventory.
 
 | Caller | Call |
 | --- | --- |
@@ -504,27 +629,37 @@ from the task bodies rather than assuming they survive. Their value is that
 "exactly one existing test breaks" is a number this plan measured, not a
 prediction it made.
 
-### Blockers — to be recorded before `start`, not by this plan
+### Ordering — one live dependency, one retired
 
-The stage asks for dependencies as blockers rather than prose, and "implements
-third" is a real dependency: the merged `add` above only works if this item goes
-last of the three that touch it. The two commands:
+*(Rewritten in review round 1: the section below named two blockers, and one of
+them no longer exists.)*
 
-```
-tcw work edit 2026-07-30-validate-capability-subject-and-feature-refs-at-write-time \
-  --blocked-by 2026-07-30-fix-non-git-write-paths-work-new-and-init-fail-outside-a-git-repository
-tcw work edit 2026-07-30-validate-capability-subject-and-feature-refs-at-write-time \
-  --blocked-by 2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically
-```
+**Retired.** `2026-07-30-fix-non-git-write-paths-work-new-and-init-fail-outside-a-git-repository`
+is **completed** — it sits in `docs/work/completed/`, and its work is in the
+tree: the repository precondition now runs inside `_write_node`
+(`tcw/store/fs.py:990`) and at the head of capabilities `set` (`:1793`) and
+`update_capability` (`:2067`). The original plan described its call sites as
+"**not** landed"; that is stale. Do not file it as a blocker, and do not plan
+around a guard that is already there. One practical consequence for this item's
+new tests: **every write-path fixture must be a real initialized git
+repository**, or the write fails on the precondition before it reaches the ref
+validation under test — a green-for-the-wrong-reason trap.
 
-**Deliberately not run from this stage.** `tcw work edit` writes through
-`FsWorkStore`, and the non-git item is committing into `tcw/store/fs.py`'s write
-paths as this is written (three commits landed during the plan). Driving a store
-write through a half-modified adapter is the one avoidable risk here, so the
-commands are handed over rather than executed — matching this repo's standing
-rule about not driving the CLI while `tcw/` is being modified.
+**Live.** `2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically`
+must land **first**. Both items edit `FsCapabilitiesStore.add`, and the merged
+shape is written out above. Confirmed independently in review round 1: `add` is
+the *only* function both touch — the symlink item additionally edits
+`_write_target`, `get_local`, `_all_meta_dirs` and `_validation_resources`, none
+of which this item modifies. Landing the symlink item first also means
+write-time ref validation consumes containment-aware resolution from its first
+commit, rather than briefly resolving refs through a store that can still be
+escaped.
+
+Note that spec Design §6's headline — "Function-level overlap: none" — is
+**false**, and the original plan already contradicted it further down. `add` is
+the overlap. Carry the correction into `outcome.md`.
 
 The dependency is an ordering constraint, not a compile-time one: this item's
-code and tests pass against the tree with or without the other two. What depends
-on the order is the merged `add`, and a dropped guard there is silent, which is
-why it is both blocked and documented.
+code and tests pass with or without the other. What depends on the order is the
+merged `add`, and a dropped `_within_store(d)` guard there is silent — which is
+why it is written out rather than left to the rebase.
