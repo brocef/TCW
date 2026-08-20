@@ -866,3 +866,53 @@ def test_a_string_valued_git_command_is_rendered_as_one_command(
     err = capsys.readouterr().err
     assert err == "tcw: git command failed (exit 128): git status\n", err
 
+
+
+# ── the guard's probe names must not collide with a repository's own rules ────
+#
+# The guard asks whether an item written in a status folder would be tracked,
+# using a representative payload path. Built from a single fixed name, that
+# question is answerable "yes, ignored" by a rule that names only that one
+# literal — refusing a store every real item would be tracked in. Two
+# differently-named payloads, refusing only when both are hidden, keeps the
+# question honest: no plausible single glob matches both unless it is the broad
+# rule the guard exists to catch.
+
+def test_init_accepts_a_store_a_rule_names_one_item_slug_in(tmp_path):
+    code = git_init(tmp_path / "code")
+    (code / ".gitignore").write_text("an-item*\n", encoding="utf-8")
+    commit_all(code)
+    init(["work"], code, "demo")
+    assert (code / "docs" / "work" / "backlog" / ".gitkeep").is_file()
+
+
+def test_init_accepts_an_external_store_a_rule_names_one_item_slug_in(tmp_path):
+    code = git_init(tmp_path / "code")
+    (code / ".gitignore").write_text("an-item*\n", encoding="utf-8")
+    commit_all(code)
+    init(["work"], code, "demo", work_path=code / "external" / "work")
+    assert (code / "external" / "work" / "backlog" / ".gitkeep").is_file()
+
+
+@pytest.mark.parametrize("rules", [
+    "docs/work/\n",
+    "*\n",
+    "docs/**\n",
+    "docs/work/backlog/\n",
+    "docs/work/backlog/*\n!docs/work/backlog/.gitkeep\n",
+    "**/state.yaml\n",
+])
+def test_init_still_refuses_every_broad_ignore_rule(tmp_path, rules):
+    """Two probes make the guard *less* likely to fire, so each broad rule has
+    to be re-proved — a rule that genuinely hides items must still refuse."""
+    code = git_init(tmp_path / "code")
+    (code / ".gitignore").write_text(rules, encoding="utf-8")
+    # `-f`: a rule like `*` hides .gitignore itself, and `commit_all` would have
+    # nothing to commit. The guard asks the *rules* (`--no-index`), so what
+    # matters is that the rule is on disk, not that it is tracked.
+    subprocess.run(["git", "-C", str(code), "add", "-f", ".gitignore"], check=True)
+    subprocess.run(["git", "-C", str(code), "commit", "-qm", "rules"], check=True)
+    before = manifest(code)
+    with pytest.raises(ValueError, match="gitignored"):
+        init(["work"], code, "demo")
+    assert manifest(code) == before

@@ -690,6 +690,15 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             # trailing-slash path against a `dir/*` rule, so asking about the
             # folder would make TCW's own scaffolding refuse itself.
             #
+            # *Two* differently-named payloads, refused only when **both** are
+            # hidden. One fixed name makes the guard answerable by a rule naming
+            # that one literal (`an-item*`), which would refuse a store every
+            # real item would be tracked in. No plausible single glob matches
+            # both names unless it is the broad rule this exists to catch. The
+            # file name is deliberately not varied: `state.yaml` is fixed by the
+            # layout, so a rule hiding it hides every item's status record and
+            # must still refuse.
+            #
             # `completed` and `discarded` are skipped because TCW ignores their
             # contents deliberately: that is how a resolved item leaves the
             # tracked tree.
@@ -701,12 +710,13 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             # different change.
             if component == "work" and ignore_root is not None \
                     and leaf.name not in RESOLVED_STATUSES:
-                probe = (leaf / "an-item.md" if leaf.name == "inbox"
-                         else leaf / "an-item" / "state.yaml")
-                if git_ignored(ignore_root, probe, no_index=True):
+                probes = [leaf / f"{name}.md" if leaf.name == "inbox"
+                          else leaf / name / "state.yaml"
+                          for name in ("an-item", "some-slug")]
+                if all(git_ignored(ignore_root, p, no_index=True) for p in probes):
                     raise ValueError(
-                        f"work store folder is inside a gitignored path, so items "
-                        f"written there would not be tracked: {leaf}"
+                        f"items written in {leaf} would be gitignored, so work "
+                        f"filed there would not be tracked"
                     )
     write_sentinel(root, project_id)
     if work_path is not None and "work" in components:
