@@ -163,3 +163,41 @@ def test_an_in_store_node_still_reads_normally(tmp_path):
     cap = FsCapabilitiesStore.open(root).get_local("ordinary")
     assert cap is not None and cap.name == "Ordinary"
     assert "REAL BODY" in cap.body
+
+
+# ── writes must not land outside the store ───────────────────────────────────
+
+def _plant(root, component="taxonomy", link="link", to="../capabilities/secret"):
+    """A planted directory symlink, with a node already sitting behind it."""
+    (root / "docs" / "capabilities" / "secret").mkdir(parents=True, exist_ok=True)
+    (root / "docs" / component / "alpha").mkdir(parents=True, exist_ok=True)
+    (root / "docs" / component / "alpha" / link).symlink_to(f"../{to}")
+    return root / "docs" / "capabilities" / "secret"
+
+
+def test_taxonomy_add_through_a_symlinked_parent_writes_nothing_outside(tmp_path):
+    root = _repo(tmp_path)
+    secret = _plant(root)
+    store = FsTaxonomyStore.open(root)
+    with pytest.raises(ValueError, match="parent term does not exist"):
+        store.add("Planted", slug="planted", parent="alpha/link")
+    assert not (secret / "planted").exists()
+
+
+def test_taxonomy_list_does_not_advertise_a_symlinked_entry(tmp_path):
+    root = _repo(tmp_path)
+    secret = _plant(root)
+    (secret / "victim").mkdir()
+    (secret / "victim" / "meta.yaml").write_text("kind: Vocabulary\nname: Victim\n")
+    store = FsTaxonomyStore.open(root)
+    slugs = [t.slug for t in store.list_all(local_only=True)]
+    assert "alpha/link" not in slugs
+
+
+def test_taxonomy_validation_resources_refuses_an_escaping_ref(tmp_path):
+    root = _repo(tmp_path)
+    secret = _plant(root)
+    (secret / "victim").mkdir()
+    (secret / "victim" / "meta.yaml").write_text("kind: Vocabulary\nname: Victim\n")
+    store = FsTaxonomyStore.open(root)
+    assert store._validation_resources("alpha/link/victim") == []

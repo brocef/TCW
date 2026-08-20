@@ -1154,8 +1154,12 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         return self._term(slug) if d.is_dir() and self._node_readable(d) else None
 
     def _local_slugs(self) -> list[str]:
+        # `list` must not advertise what `show`/`rm` refuse. Note `rglob` does
+        # not descend into a symlinked directory, so only the final component
+        # can be one — but that is the case this filter is for.
         return sorted(
-            str(p.relative_to(self.root)) for p in self.root.rglob("*") if p.is_dir())
+            str(p.relative_to(self.root)) for p in self.root.rglob("*")
+            if p.is_dir() and self._within_store(p))
 
     def _inherited_stores(self) -> dict[str, "FsTaxonomyStore"]:
         """Every inherited taxonomy keyed by its owning project ID.
@@ -1230,6 +1234,11 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             raise ValueError(f"invalid taxonomy kind '{kind}' "
                              f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
         d = self.root / full
+        # Before `d.exists()` and before the first mkdir: one guard covers a
+        # symlinked `--parent` and a symlinked leaf alike, and it keeps the
+        # fail-closed contract below (a rejected write leaves no partial folder).
+        if not self._within_store(d):
+            raise ValueError(f"parent term does not exist: {parent or full}")
         if d.exists():
             raise ValueError(f"term already exists: {full}")
         # Fail closed on refs *before* the first mkdir: a rejected write must
@@ -1396,7 +1405,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         except ValueError:
             return []
         local_folder = self.root / identifier
-        if local_folder.is_dir():
+        if local_folder.is_dir() and self._within_store(local_folder):
             folder = local_folder
         else:
             term = self.get(identifier)
