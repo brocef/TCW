@@ -598,9 +598,12 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         raise ValueError(f"{root / SENTINEL}: config must be a mapping")
     if work_path is None and "work" in components:
         configured_work = existing_config.get("work") or {}
-        if isinstance(configured_work, dict) and configured_work.get("path"):
+        # `in`, not truthiness: `work.path: []` and `work.path: false` used to
+        # fall through to the default store without a word, so a configuration
+        # mistake read as a deliberate choice.
+        if isinstance(configured_work, dict) and "path" in configured_work:
             configured_path = configured_work["path"]
-            if not isinstance(configured_path, str):
+            if not isinstance(configured_path, str) or not configured_path:
                 raise ValueError(f"{root / SENTINEL}: work.path must be a string")
             work_path = Path(configured_path).expanduser()
     # Everything `init` can refuse over, decided before it writes anything at
@@ -610,6 +613,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # or a new sentinel in a project that had none, or the whole status tree.
     default_root = root / "docs" / "work"
     replacing_default_store = False
+    ignore_root: Path | None = None
     if work_path is not None and "work" in components:
         target = work_path if work_path.is_absolute() else root / work_path
         # Probed at the nearest *existing* ancestor, not at the target:
@@ -625,15 +629,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         target_git = git_root(probe)
         if target_git is None:
             raise ValueError(f"work.path target is not inside a Git repository: {target}")
-        # Inside a repository is not the same as tracked by one. `git_stage`
-        # drops ignored paths from the `git add` it builds, so a store under an
-        # ignored path would hold items that are real on disk and invisible to
-        # git — the exact outcome the external-store contract exists to prevent.
-        if git_ignored(target_git, target, no_index=True):
-            raise ValueError(
-                f"work.path target is inside a gitignored path, so nothing written "
-                f"there would be tracked: {target}"
-            )
+        ignore_root = target_git
         if default_root.exists() and default_root.resolve() != target.resolve():
             expected = {"inbox", *WORK_STATUSES}
             actual = {entry.name for entry in default_root.iterdir()}
@@ -660,17 +656,40 @@ def init(components: list[str], root: Path, project_id: str | None = None,
                 if c == "work" and work_path is not None else root / "docs" / c)
         plan.append((c, base, [base / "inbox", *(base / s for s in WORK_STATUSES)]
                      if c == "work" else [base]))
-    for leaf in (leaf for _, _, leaves in plan for leaf in leaves):
-        # `mkdir(parents=True, exist_ok=True)` raises on a leaf that exists as a
-        # file and on a parent that does — and it raised after the sentinel and
-        # the earlier leaves had landed. The nearest path that exists decides:
-        # if it is a directory, everything below it is still to be created.
-        # `is_symlink` again, because a dangling one is not a directory to
-        # `mkdir` either.
-        occupied = next((c for c in (leaf, *leaf.parents)
-                         if c.exists() or c.is_symlink()), None)
-        if occupied is not None and not occupied.is_dir():
-            raise ValueError(f"cannot scaffold {leaf}: {occupied} is not a directory")
+    for component, _, leaves in plan:
+        for leaf in leaves:
+            # `mkdir(parents=True, exist_ok=True)` raises on a leaf that exists as
+            # a file and on a parent that does — and it raised after the sentinel
+            # and the earlier leaves had landed. The nearest path that exists
+            # decides: if it is a directory, everything below it is still to be
+            # created. `is_symlink` again, because a dangling one is not a
+            # directory to `mkdir` either.
+            occupied = next((c for c in (leaf, *leaf.parents)
+                             if c.exists() or c.is_symlink()), None)
+            if occupied is not None and not occupied.is_dir():
+                raise ValueError(f"cannot scaffold {leaf}: {occupied} is not a directory")
+            # Inside a repository is not the same as tracked by one: `git_stage`
+            # drops ignored paths from the `git add` it builds, so items filed
+            # under one are real on disk and invisible to git — the outcome the
+            # external-store contract exists to prevent. Asked of each status
+            # folder, not just the store root, because a rule naming one folder
+            # leaves the root visible and hides only what lands inside it.
+            #
+            # Asked of the `.gitkeep` this call is about to write, which is the
+            # question that matters — will a file written here be recorded? —
+            # and the only form that reads TCW's own rules correctly. They
+            # ignore `<prefix>/completed/*` and `<prefix>/discarded/*` on
+            # purpose, which is how a resolved item leaves the tracked tree, and
+            # negate `.gitkeep` back in so the empty folder survives. Querying
+            # the folder instead would trip on that: `git check-ignore` matches a
+            # trailing-slash path against a `dir/*` rule, so `completed/` reads
+            # as ignored and TCW's own scaffolding would refuse itself.
+            if component == "work" and ignore_root is not None \
+                    and git_ignored(ignore_root, leaf / ".gitkeep", no_index=True):
+                raise ValueError(
+                    f"work.path target is inside a gitignored path, so nothing "
+                    f"written there would be tracked: {leaf}"
+                )
     write_sentinel(root, project_id)
     if work_path is not None and "work" in components:
         if replacing_default_store:

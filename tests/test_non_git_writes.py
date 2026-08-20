@@ -670,6 +670,54 @@ def test_init_refuses_a_store_the_ignore_rules_hide_even_once_it_is_tracked(
     assert manifest(code) == before
 
 
+def test_init_refuses_a_store_whose_status_folder_the_rules_hide(tmp_path):
+    """The store root being visible says nothing about the folders under it.
+
+    `.gitignore: external/work/backlog/` leaves the root unignored, so a
+    root-only check accepted it — and then every item filed in `backlog/` was
+    invisible to git. The same failure class as an ignored root, one level down,
+    which is why the check runs over the leaves `init` is about to create.
+    """
+    code = git_init(tmp_path / "code")
+    (code / ".gitignore").write_text("external/work/backlog/\n", encoding="utf-8")
+    commit_all(code)
+    before = manifest(code)
+    with pytest.raises(ValueError, match="gitignored"):
+        init(["work"], code, "demo", work_path=code / "external" / "work")
+    assert manifest(code) == before
+
+
+def test_init_still_accepts_the_resolved_status_rules_it_writes_itself(tmp_path):
+    """The counterweight to the leaf check, and the regression it risks.
+
+    TCW gitignores the *contents* of `completed/` and `discarded/` on purpose —
+    that is how a resolved item leaves the tracked tree. The rules name
+    `<prefix>/completed/*`, never the folder, so the folders stay visible and a
+    leaf-level check must not read TCW's own scaffolding as hostile.
+    """
+    code = git_init(tmp_path / "code")
+    store = git_init(tmp_path / "store")
+    init(["work"], code, "demo", work_path=store / "work")
+    commit_all(code)
+    commit_all(store)
+    init(["work"], code, "demo", work_path=store / "work")     # the rules now exist
+    assert (store / "work" / "completed" / ".gitkeep").is_file()
+
+
+def test_init_refuses_a_work_path_that_is_present_but_not_a_string(tmp_path):
+    """A falsy `work.path` was skipped by a truthiness test, not validated.
+
+    `work.path: []` and `work.path: false` fell through to the default store
+    without a word, so a configuration mistake read as a deliberate choice.
+    """
+    for value in ("[]", "false", "{}"):
+        code = git_init(tmp_path / f"code{abs(hash(value))}")
+        (code / SENTINEL).write_text(f"id: x\nwork:\n  path: {value}\n",
+                                     encoding="utf-8")
+        with pytest.raises(ValueError, match="work.path must be a string"):
+            init(["work"], code, "demo")
+
+
 def test_init_re_runs_on_a_healthy_external_store(tmp_path):
     """The other side of the check above, and the regression it could cause.
 
