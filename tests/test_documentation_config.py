@@ -77,6 +77,40 @@ def test_a_duplicate_path_is_reported():
     assert any("duplicate" in p for p in problems)
 
 
+# -- one file, several triggers ---------------------------------------------
+
+PAIR = [
+    {"path": "README.md", "trigger": "Public-CLI-API", "description": "d1"},
+    {"path": "README.md", "trigger": "Validation-Rules", "description": "d2"},
+]
+
+
+def test_one_path_may_carry_two_triggers():
+    """The identity is the pair, not the path — a README whose CLI section and
+    validation section answer to different triggers is the motivating case."""
+    entries, problems = parse_documentation_entries(PAIR)
+    assert problems == []
+    assert [e.trigger for e in entries] == ["Public-CLI-API", "Validation-Rules"]
+
+
+def test_the_same_path_and_trigger_twice_is_still_a_duplicate():
+    entries, problems = parse_documentation_entries(
+        [PAIR[0], dict(PAIR[1], trigger="Public-CLI-API")])
+    assert len(problems) == 1
+    assert all(needle in problems[0]
+               for needle in ("entry 1", "README.md", "Public-CLI-API"))
+    assert len(entries) == 1
+
+
+def test_a_duplicate_names_the_entry_that_first_declared_the_pair():
+    """Reported against the *stored* index, not a position in the kept list —
+    entry 2 collides with entry 0 even though entry 1 sits between them."""
+    entries, problems = parse_documentation_entries(PAIR + [dict(PAIR[0])])
+    assert len(problems) == 1
+    assert "entry 2" in problems[0] and "entry 0" in problems[0]
+    assert [e.trigger for e in entries] == ["Public-CLI-API", "Validation-Rules"]
+
+
 def test_every_problem_names_the_entry_index():
     problems = _problems([GOOD[0], {"path": "", "trigger": "", "description": ""}])
     assert problems and all("entry 1" in p for p in problems)
