@@ -1091,6 +1091,13 @@ def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
     else. `path` is likewise **not** required to exist: an entry routinely names
     a file the project intends to create, and this repository's own entry is the
     pattern `skills/<component>/SKILL.md`, which resolves to no file at all.
+
+    **Identity is `(path, trigger)`, not the path alone** — the same call
+    `_parse_bindings` makes for `(kind, value, when)`. One file large enough
+    that its sections answer to different triggers needs one entry per trigger:
+    a CLI-surface change fires the first, a validation-rule change touching no
+    CLI surface fires only the second. Keying on the path alone made the config
+    form less expressive than the Markdown section it replaced.
     """
     entries: list[DocEntry] = []
     problems: list[str] = []
@@ -1100,7 +1107,7 @@ def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
         return entries, [f"work.documentation: expected a list, "
                          f"got {type(raw).__name__}"]
 
-    seen: dict[str, int] = {}
+    seen: dict[tuple[str, str], int] = {}
     for index, item in enumerate(raw):
         where = f"work.documentation entry {index}"
         if not isinstance(item, dict):
@@ -1143,11 +1150,12 @@ def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
                             f"(got {trigger!r}) — a trigger is one bracketed name")
             continue
 
-        if path in seen:
-            problems.append(f"{where}: duplicate 'path' {path!r}, already "
-                            f"declared by entry {seen[path]}")
+        if (path, trigger) in seen:
+            problems.append(f"{where}: duplicate 'path' {path!r} under trigger "
+                            f"{trigger!r}, already declared by entry "
+                            f"{seen[(path, trigger)]}")
             continue
-        seen[path] = index
+        seen[(path, trigger)] = index
         entries.append(DocEntry(path=path, trigger=trigger,
                                 description=values["description"]))
 
