@@ -94,7 +94,7 @@ diffs clean — `IDENTICAL`.
 | 2 | Same path *and* trigger: 1 entry, 1 problem naming both | `test_the_same_path_and_trigger_twice_is_still_a_duplicate` |
 | 3 | `[A,B,C]` reports entry 2 → entry 0, keeps `[A,B]` | `test_a_duplicate_names_the_entry_that_first_declared_the_pair` + the scratch-node run |
 | 4 | `test_a_duplicate_path_is_reported` unchanged and passing | unmodified in the diff; green |
-| 5 | Suite green | `1955 passed in 638.48s`, exit 0 |
+| 5 | Suite green | `1955 passed in 388.00s`, exit 0 — final tree at `713e0a2` |
 | 6 | Reporter's pair passes `tcw validate` | `validate OK`, exit 0 |
 | 7 | Two rows, two JSON objects | above |
 | 8 | This repo's `tcw work docs` byte-identical | `diff` empty |
@@ -104,15 +104,20 @@ diffs clean — `IDENTICAL`.
 
 Little, but not nothing.
 
-- **The full-suite run predates the documentation commits.** `1955 passed` was
-  captured from a run started right after Task 2 and finishing ~10½ minutes
-  later, by which time Task 3's Markdown had landed. Rather than pay another
-  10½ minutes, the three suites that actually read those files —
-  `test_documented_cli_surface.py`, `test_plugin_manifests.py`,
-  `test_documentation_config.py` — were re-run against the final tree:
-  `239 passed`. No test in the suite parses `README.md` prose or
-  `skills/**/references/*.md`, so nothing else could have been affected. Stated
-  here rather than claimed as a clean single green run.
+- **The first full-suite run predated the documentation commits, and the
+  shortcut taken instead was wrong.** `1955 passed` was originally captured
+  from a run started right after Task 2 and finishing ~10½ minutes later, by
+  which time Task 3's Markdown had landed. Rather than pay another 10½ minutes,
+  three suites were re-run against the final tree (`239 passed`) on the claim
+  that no test parses `README.md` prose or `skills/**/references/*.md`.
+  **That claim was false.** `tests/test_documentation_sync_wiring.py:27-33`
+  globs `README.md` and all of `skills/` for stale plugin references, and
+  `:127-135` reads the edited `references/setup.md` directly — and it was not
+  among the three. Found by the Codex review at `verify`, not by this session.
+  Corrected by running both properly against the final tree at `713e0a2`, clean
+  working tree: `pytest tests/test_documentation_sync_wiring.py` → `7 passed`,
+  and the whole suite → **`1955 passed in 388.00s`, exit 0**. That is the run
+  criterion 5 rests on; the earlier one is superseded.
 - **Task 1 was committed red**, which the plan permitted in its opening
   paragraph but is still a boundary where the tree is not green. Deliberate: it
   is what makes the red observable in history.
@@ -129,3 +134,29 @@ Little, but not nothing.
   still open: the two capability records the `work.documentation` item planned
   do not exist, and `tcw capabilities drift` reports clean anyway. It belongs to
   its own item — raise at closeout.
+
+## Review round (added at `verify`)
+
+`codex exec --sandbox read-only` over `e4c5b22..760f9a8`, prompted to attack the
+duplicate guard, downstream path-keying consumers, the output contract, doc
+accuracy, test quality, and the abstraction litmus test.
+
+**One finding, Low, accepted:** the full-suite evidence recorded above was not
+from a stable final tree, and the reasoning used to justify skipping a re-run
+was factually wrong. Reproduced independently before accepting, and corrected in
+place — see the bullet above.
+
+**Explicitly cleared by the review:** index correctness across skipped entries;
+`render_documentation`, `substitute_documentation`, `_docs` (table widths and
+`--json`), the FS adapter, and the stage consumers all preserve both entries;
+the new tests fail against the old parser for the intended reasons and are
+non-vacuous; no documentation elsewhere still states the old rule; the error
+wording has no exact-string caller; the parser stays pure and storage-neutral.
+
+**Not a finding, checked separately:** `path` remains an exact string, so
+`README.md` vs `./README.md`, a trailing slash, case variants, and NFC/NFD
+variants are distinct entries. That predates this change and normalizing it
+would conflate genuinely different files on a case-sensitive store.
+`docs/work/backlog/2026-08-18-serve-version-cut-…/spec.md:188,272` also says
+"a duplicate path", but about `work.version.files` — a plain path list with no
+trigger — so it is correct as written and was left alone.
