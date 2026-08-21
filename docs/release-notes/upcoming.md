@@ -120,6 +120,19 @@ creates a local override and Git then refuses, the new override folder is
 removed rather than left behind empty. An override that already existed keeps
 whatever the write put in it.
 
+## Saving a file keeps the permissions you gave it
+
+TCW writes a file by building it beside the target and then moving it into
+place. That move replaced the file wholesale, so a file you had deliberately
+made read-only or group-writable — `tcw-config.yaml` is the usual one — came
+back with ordinary default permissions the next time TCW touched it. The
+permissions you set are now carried across.
+
+The temporary file TCW builds also used to have a predictable name: your file's
+name with `.tmp` on the end. If something of yours already sat at that name, it
+was overwritten and then deleted. The temporary name is now unique and never
+collides with a file that is already there.
+
 ## Bad capability references are caught when you set them
 
 Setting a capability field that points at something that does not exist used to

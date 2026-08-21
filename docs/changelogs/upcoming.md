@@ -304,6 +304,33 @@ category.
   because our own write has already replaced any competitor's content, so
   unlinking destroys nothing the call had not already overwritten. `rmtree` on a
   directory has no such argument — it would take sibling files nobody touched.
+- Four defects an adversarial review of the rollback found (`tcw/store/fs.py`).
+  (1) `_write_staged` decided file ownership with `Path.exists()`, which follows
+  symlinks, so a pre-existing **dangling** symlink at a write target read as
+  absent, was replaced by a real file, and was then unlinked on failure —
+  destroying a path the call did not create, which is exactly the boundary the
+  design turns on. `exists() or is_symlink()` now, the idiom `init`'s ancestor
+  walk already uses. (2) `_atomic_write_all` staged into `<target>.tmp`, a
+  predictable real path a user or a symlink can already occupy, and would
+  truncate it, promote it over the target, and delete it on failure —
+  pre-existing, and newly exposed at the six sites that used to write directly.
+  `tempfile.mkstemp(dir=path.parent)` picks a unique name beside the target and
+  never reuses or follows an existing one. (3) `update_capability`'s body-clear
+  branch staged twice — the meta write, then the directory, to record the
+  `description.md` it deleted — and the second `_stage` sat outside the
+  rollback, so a refusal there left a freshly materialized override standing.
+  `_write_staged` (and `_write_meta`) gain `also_stage`, so both ride inside one
+  protected call; the test asserts exactly one staging call. (4) Promotion
+  replaces the directory entry, so a file someone `chmod`'ed came back `0644`;
+  the target's mode is carried onto the temp, falling back to `0o666 & ~umask`
+  when the target is new.
+- `git_stage` warned about ignore-dropped paths *before* running `git add` on
+  the live ones. On a mixed write — one path an ignore rule hides, another it
+  does not — a refused `git add` makes the caller roll the whole write back,
+  leaving a line on stderr saying the dropped path "is on disk" when it no
+  longer is. The warning moved after the add, which costs nothing: a drop is
+  still reported whenever the stage succeeds, and when every path is dropped
+  there is no add to run.
 
 
 ## Added
