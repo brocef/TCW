@@ -761,10 +761,18 @@ work:
 ```
 
 Three keys per entry, all required. `tcw validate` checks their shape — a blank
-field, an absolute path, a path escaping the node, whitespace inside a trigger, a
-duplicate path. It deliberately does **not** check that `path` exists (an entry
-routinely names a file you intend to create) or that `trigger` is one of the
-common names (the vocabulary is yours to extend).
+field, an absolute path, a path escaping the node, whitespace inside a trigger,
+and the same path declared twice under the *same* trigger. It deliberately does
+**not** check that `path` exists (an entry routinely names a file you intend to
+create) or that `trigger` is one of the common names (the vocabulary is yours to
+extend).
+
+One file may appear in several entries as long as their triggers differ, which
+is how a large document whose sections answer to different changes is expressed
+— a `README.md` entry under `Public-CLI-API` for its command reference, and a
+second `README.md` entry under `Validation-Rules` for the section listing what
+the validator rejects. Each trigger is evaluated on its own, so a change that
+touches only one of them updates only that entry's material.
 
 `tcw work docs` prints them, `--json` adds `source`, which is `config` when you
 have declared entries and `agent-guide` when you have not:

@@ -22,6 +22,8 @@ work:
 
 Three required keys per entry, all non-empty strings. `path` need not exist yet — an entry naming a file the project intends to create is correct, and a placeholder like `skills/<component>/SKILL.md` is legal. `trigger` may be any project-defined name; only whitespace in it is rejected.
 
+The same `path` may appear in **several entries with different triggers** — an entry is identified by the `(path, trigger)` pair, not by the file alone. That is how a file large enough for its sections to answer to different changes is declared: one `README.md` entry under `Public-CLI-API`, another under `Validation-Rules`. Only two entries agreeing on *both* path and trigger are rejected as duplicates.
+
 **Fallback, and the only option outside a TCW node:** a `## Documentation Sync` section in the project's `CLAUDE.md`. Nothing validates it, and the entries are found by matching the heading — rename it and the gate silently stops working.
 
 Ask the user: "Would you like to set up documentation entries?" and which form they want.
