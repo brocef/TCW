@@ -1,9 +1,0 @@
-slug: 2026-08-20-the-init-ignore-guard-probes-fixed-path-names-that-a-rule-could-collide-with
-title: The init ignore guard probes fixed path names that a rule could collide with
-created: '2026-08-20'
-resolution: null
-tags:
-- cli
-- bug
-owner: brocef@users.noreply.github.com
-started: '2026-08-20T22:56:42.127587Z'
