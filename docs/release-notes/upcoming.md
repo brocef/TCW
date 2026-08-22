@@ -2,12 +2,3 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
-
-## Changed
-
-- A file can now be listed more than once in your documentation entries, as long
-  as each entry has a different trigger. A long README whose command reference
-  and validation section move for different reasons no longer has to choose one
-  trigger for the whole file — give it one entry per section, and each is
-  evaluated on its own. Listing the same file twice under the *same* trigger is
-  still reported as a duplicate.
