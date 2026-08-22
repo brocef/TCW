@@ -1,0 +1,10 @@
+slug: 2026-08-21-nothing-enforces-a-spec-s-declared-capability-deltas-without-a-capabilities-yaml
+title: Nothing enforces a spec's declared capability deltas without a capabilities.yaml
+created: '2026-08-21'
+resolution: null
+priority: 40
+effort: low
+tags:
+- cli
+- capabilities
+- work
