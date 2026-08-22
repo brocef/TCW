@@ -1,0 +1,7 @@
+id: cap-e9512e
+name: Read the documentation gate for a change
+Status: Supported
+Planning doc: 2026-08-18-serve-documentation-sync-entries-from-tcw-config-yaml-instead-of-scraping-the-agent-guide
+Subject:
+- work-item/lifecycle-stage
+- cli
