@@ -2,7 +2,7 @@
 
 ## Capability changes
 
-No new capability. The delta changes how an existing capability *behaves*, not
+No new capability. The delta changes how an existing capability _behaves_, not
 what a user can do: reading a document in `tcw serve` is already
 `web` (`cap-9d225a`), and writing the link is already
 `cli/reference-a-tcw-object` (`cap-65e549`). Both descriptions currently assert
@@ -11,7 +11,7 @@ the behavior this item removes, so both are `changed:` — a wording flip at
 
 - **changed — `web`.** `docs/capabilities/web/description.md:8` reads "unknown,
   unregistered, or dangling foreign targets remain inert." That sentence is what
-  this item contradicts: a *registered* target on another board is neither
+  this item contradicts: a _registered_ target on another board is neither
   unknown nor dangling, and after this change it does not render like one.
   New wording must say that a reference the board does not host is shown as
   off-board and names the project that owns it, while a malformed or dangling
@@ -27,7 +27,7 @@ feature (`connected-project-registry`) already exist and are unchanged.
 
 ## Problem
 
-`POST /api/resolve` computes both *why* a reference failed and *which project*
+`POST /api/resolve` computes both _why_ a reference failed and _which project_
 owns it, then throws both away. `tcw/serve/__init__.py:969-972`:
 
 ```python
@@ -59,15 +59,15 @@ rendered as gray, struck through, `cursor: not-allowed`
 
 So four different situations collapse into one pixel-identical result:
 
-| Situation | Truth | What the reader sees |
-| --- | --- | --- |
+| Situation                            | Truth                          | What the reader sees         |
+| ------------------------------------ | ------------------------------ | ---------------------------- |
 | Valid ref, project not on this board | Document correct; board narrow | struck-through gray, raw URI |
-| Malformed URI | Document broken | struck-through gray, raw URI |
-| Dangling item / unregistered project | Document broken | struck-through gray, raw URI |
-| Store error while resolving | Neither; a machine fault | struck-through gray, raw URI |
+| Malformed URI                        | Document broken                | struck-through gray, raw URI |
+| Dangling item / unregistered project | Document broken                | struck-through gray, raw URI |
+| Store error while resolving          | Neither; a machine fault       | struck-through gray, raw URI |
 
 Two consequences. A reader cannot act — "open the other board" and "fix this
-line" are indistinguishable. And the first row is *silent*: it is the expected
+line" are indistinguishable. And the first row is _silent_: it is the expected
 state of any cross-node document viewed from the wrong anchor, so it disappears
 into the noise. That is how four request documents in the reporter's
 orchestrator accumulated downgraded references nobody noticed.
@@ -96,7 +96,7 @@ Reproducible on HEAD in two shapes, both valid references to real items:
 - **`_hosted_projects()` is not touched.** Which projects a board serves is
   correct as it stands; this item is presentation of that decision. Carried
   forward explicitly from the intake.
-- **`tcw validate` gains no hostability check.** Settled *no* in the superseded
+- **`tcw validate` gains no hostability check.** Settled _no_ in the superseded
   item: hostability is a property of a `serve` invocation, not of stored data,
   so `validate` has no invocation to check against.
 - **The self-qualified-link symptom (GitHub #12)** stays fixed and untested-for
@@ -121,7 +121,7 @@ through the one `Markdown` component. One site, no siblings.
 ### Resolution response
 
 Keep the `ok` contract exactly as it is: `ok: true` iff the reference resolves
-*and* its destination is hosted. Only the failure branch grows, and it grows a
+_and_ its destination is hosted. Only the failure branch grows, and it grows a
 closed discriminator plus its payload:
 
 ```json
@@ -143,7 +143,7 @@ closed discriminator plus its payload:
 
 Nothing moves into `tcw/refs.py`. `resolve_tcw_ref` deliberately answers "does
 this resolve in the registered graph?" and leaves hostability to the caller
-(`tcw/refs.py:88-96`); classifying a *server's* hosting decision belongs in the
+(`tcw/refs.py:88-96`); classifying a _server's_ hosting decision belongs in the
 server. Litmus: any store adapter can report "resolved / did not resolve, and
 here is why," and any server over it can decide what it hosts — the split is
 storage-agnostic, and the new fields carry no filesystem concept.
@@ -159,10 +159,18 @@ mutating anchors after `marked`; no restructure.
   distinct from `tcw-inert`, and a sibling badge element carrying the project id
   is inserted immediately after it. Both are visible without interaction; the
   full sentence (`Project <id> is not included in this board`) goes in `title`
-  *and* in an accessible label so it is not hover-only.
+  _and_ in an accessible label so it is not hover-only.
 - **Broken** — today's `tcw-inert` gray, but `title` carries `detail` instead of
   the raw URI. The URI is still readable in the document source and in the link
   text; the diagnosis was the part the reader could not get.
+
+Both failure appearances must also **stop being clickable**, which today's
+`tcw-inert` is not: the delegated handler navigates only on `data-nav-key`
+(`web/client/src/ui/app.tsx:891`), so an anchor that keeps its `tcw://` href
+hands the click to the browser's protocol handling. `cursor: not-allowed` over a
+still-live href is a lie. The href is removed and the address preserved in a data
+attribute. (Added after the review, which caught that the item's own title —
+"non-link" — was not true of what shipped first.)
 
 The warning treatment must read as a warning in both themes: color from a Radix
 scale token (the amber/orange `-11` step), consistent with how `.tcw-inert` and
@@ -191,14 +199,17 @@ Server (`tests/test_serve_resolve.py`):
 3. With `include_descendants=True`, the same descendant reference from (1)
    returns `{"ok": true, …}` — unchanged from today.
 4. `tcw://garbage` returns `{"ok": false, "reason": "unresolved", "detail":
-   "malformed tcw:// uri"}`; `tcw://C/nope` returns `reason == "unresolved"` with
+"malformed tcw:// uri"}`; `tcw://C/nope` returns `reason == "unresolved"` with
    `detail == "no capability: nope"`; `tcw://W/ghost/2026-01-01-x` returns
    `detail == "no such project in this graph: ghost"`.
 5. Every failure object carries a `reason` that is one of exactly
    `{"unhosted-project", "unresolved"}`; `project` appears only with the former
    and is non-empty; `detail` appears only with the latter.
-6. The existing batch cap, non-loopback-origin rejection, and non-string-URI
-   skip in `tests/test_serve_resolve.py` still pass unmodified.
+6. The existing batch cap and non-loopback-origin rejection tests in
+   `tests/test_serve_resolve.py` still pass unmodified. (Corrected after the
+   review: there is no non-string-URI test to keep green — non-strings are
+   skipped at the loop head and were never covered. Not added here; the skip is
+   untouched by this change.)
 7. `tcw validate` output for a node containing an unhosted-but-valid reference
    is byte-identical before and after the change (an unhosted reference is not a
    validation problem).
@@ -223,13 +234,19 @@ Client (`web/client/src/ui/shared-components.test.tsx`, new coverage for
 
 Whole tree:
 
-12. `pytest` passes; `pnpm typecheck`, `pnpm lint`, `pnpm test` pass;
-    `pnpm prettify:check` is clean.
+12. `pytest`, `pnpm lint`, `pnpm test` pass, and `pnpm exec tsc --noEmit` is
+    clean. (Corrected after the review: `pnpm typecheck` runs `prettify:check`
+    first, and that is **red on `main`** for 104 pre-existing files, so it cannot
+    be a gate for this change. The gate is instead: the files this change touches
+    pass `pnpm prettier --check`, and the 104-file baseline count does not grow.)
 13. `pnpm check:build` reports the committed `tcw/serve/dist` matches a fresh
     build of the source in the same commit.
-14. `web/e2e/parity.spec.ts` passes with its existing snapshots unchanged — no
-    committed screenshot renders a document body containing a `tcw://` link, so
-    a snapshot diff means something unintended moved.
+14. No committed e2e screenshot moves. (Corrected after the review: the
+    original wording required the whole suite to pass, and it does **not** on
+    `main` — `parity.spec.ts:332` times out at line 392 and six tests then never
+    run. Confirmed pre-existing by running the suite against `5ecdb9a`. What this
+    change is accountable for is that the seven tests which do run still pass and
+    no snapshot changes.)
 15. The two capability descriptions no longer contain the sentence
     "unknown, unregistered, or dangling foreign targets remain inert" and
     `tcw capabilities check` exits `0`.
@@ -241,9 +258,21 @@ Whole tree:
   Weighed and accepted: `tcw serve` binds `127.0.0.1` only, `/api/resolve`
   rejects a non-loopback `Origin` and requires CSRF
   (`tests/test_serve_resolve.py:165-172`), and `tcw validate` already prints the
-  identical string to the same person's terminal on the same machine. This
-  discloses nothing to anyone who could not already read the store. The
+  identical string to the same person's terminal on the same machine. The
   requester chose the store's own message over a generic one.
+
+    **Corrected after the review:** the first version of this argument claimed it
+    "discloses nothing to anyone who could not already read the store." That is not
+    established. Loopback binding and the Origin/CSRF checks are network and CSRF
+    controls, not caller authentication — any local process that can reach the port
+    can query the server, including one running as an account with no read access
+    to the store. The accepted threat model is therefore narrower and is stated as
+    such: **anything the served node can read is readable by any local process that
+    can reach the port, and a store exception's message is part of that.** That is
+    already true of every other route's payload; this change does not widen it. The
+    values are inserted via `title`/`textContent`, never into
+    `dangerouslySetInnerHTML`, so there is no markup-injection path.
+
 - **A louder treatment is louder for the common case too.** A cross-node
   document read from the wrong anchor may now carry many warning markers. That
   is the requested behavior — the failure being fixed is that it was quiet — but

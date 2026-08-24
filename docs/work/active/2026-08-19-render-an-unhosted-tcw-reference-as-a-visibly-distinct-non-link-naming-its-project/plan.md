@@ -51,7 +51,7 @@ two-value discriminator, `project` is non-empty exactly when
 - `test_resolve_reports_an_unhosted_descendant` — anchor + connected child,
   a work item created in the child, `_start(anchor, include_descendants=False)`;
   assert the exact object from spec criterion 1.
-- `test_resolve_reports_an_unhosted_ancestor` — same graph, serve the *child*,
+- `test_resolve_reports_an_unhosted_ancestor` — same graph, serve the _child_,
   resolve the anchor's item; assert `reason == "unhosted-project"` and `project`
   is the anchor's id, parameterized over `include_descendants` in `(False, True)`
   (spec criterion 2).
@@ -97,7 +97,7 @@ and replace the single `else` at 70-73 with:
 (ends line 265):
 
 - `.body a.tcw-unhosted` — `color: var(--amber-11)`, `text-decoration:
-  line-through`, `cursor: not-allowed`, and a decorative
+line-through`, `cursor: not-allowed`, and a decorative
   `::before { content: "⚠ " }`. Amber's `-11` step is the Radix accessible-text
   step and is defined in both themes, matching how `--gray-11` / `--accent-11`
   are already used at lines 257-265.
@@ -190,7 +190,7 @@ One pass over the finished diff, after Task 4.
 What the suite cannot decide, for the `verify` stage:
 
 - **Legibility and loudness.** Task 4's manual look. The spec's stated risk is
-  that the new treatment is *too* loud on a cross-node document; the judgment
+  that the new treatment is _too_ loud on a cross-node document; the judgment
   call is whether a document with several off-board references reads as
   informative or as alarming. If it is alarming, the dial is the CSS.
 - **Wording.** `Project <id> is not included in this board` is a sentence a user
