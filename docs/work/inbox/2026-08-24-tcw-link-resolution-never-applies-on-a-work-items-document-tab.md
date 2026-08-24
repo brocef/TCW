@@ -61,7 +61,7 @@ useEffect(() => {
 }, [item.slug])
 ```
 
-runs *after* the child `Markdown` effect (children commit first) and sets a
+runs _after_ the child `Markdown` effect (children commit first) and sets a
 fresh `{}` object every time, forcing a parent re-render immediately after the
 resolve request is issued. That is the first thing to rule in or out; the root
 cause was not confirmed, and the fix should not be guessed at.

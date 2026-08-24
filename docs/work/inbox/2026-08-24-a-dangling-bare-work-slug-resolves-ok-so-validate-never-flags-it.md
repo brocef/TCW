@@ -28,7 +28,7 @@ tcw://W/backlog/2026-01-01-nope -> {"ok": false, ... "no such work item: ..."}  
 tcw://W/ghost/2026-01-01-x      -> {"ok": false, ... "no such project ..."}      # caught
 ```
 
-Only the *qualified* spellings are checked. The bare one — the spelling people
+Only the _qualified_ spellings are checked. The bare one — the spelling people
 actually write for a local item — is not.
 
 ## Consequences

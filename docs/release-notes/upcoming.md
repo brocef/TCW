@@ -13,3 +13,5 @@ internal module names.
 - A link that really is broken now says why — a misspelled address, or a
   document that no longer exists — instead of only repeating the address back
   to you.
+- Neither kind of dead link can be clicked any more. Both used to look
+  unclickable and still respond to a click; now they behave the way they look.
