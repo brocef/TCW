@@ -101,11 +101,12 @@ def test_resolve_descendant_work_gated(tmp_path):
     item = FsWorkStore.open(sub).create("Child", created="2026-01-01")
     uri = f"tcw://proj/W/{item.slug}"
 
-    # Not aggregating descendants -> unhosted.
+    # Not aggregating descendants -> unhosted, and it says so by name.
     httpd, base = _start(root, include_descendants=False)
     try:
         _, body = _resolve(base, [uri])
-        assert body[uri] == {"ok": False}
+        assert body[uri] == {
+            "ok": False, "reason": "unhosted-project", "project": "proj"}
     finally:
         httpd.shutdown()
 
@@ -128,23 +129,31 @@ def test_resolve_ancestor_work_is_unhosted(tmp_path):
     child = _node(tmp_path, "child")
     _connect(root, child)
     epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
-    httpd, base = _start(child, include_descendants=True)
-    try:
-        _, body = _resolve(base, [
-            f"tcw://W/root/{epic.slug}", f"tcw://root/W/{epic.slug}"])
-        assert body[f"tcw://W/root/{epic.slug}"] == {"ok": False}
-        assert body[f"tcw://root/W/{epic.slug}"] == {"ok": False}
-    finally:
-        httpd.shutdown()
+    unhosted = {"ok": False, "reason": "unhosted-project", "project": "root"}
+    for aggregating in (False, True):
+        httpd, base = _start(child, include_descendants=aggregating)
+        try:
+            _, body = _resolve(base, [
+                f"tcw://W/root/{epic.slug}", f"tcw://root/W/{epic.slug}"])
+            assert body[f"tcw://W/root/{epic.slug}"] == unhosted
+            assert body[f"tcw://root/W/{epic.slug}"] == unhosted
+        finally:
+            httpd.shutdown()
 
 
 def test_resolve_foreign_and_malformed(tmp_path):
     root = _node(tmp_path)
     httpd, base = _start(root)
     try:
-        _, body = _resolve(base, ["tcw://C/nope", "tcw://garbage"])
-        assert body["tcw://C/nope"] == {"ok": False}
-        assert body["tcw://garbage"] == {"ok": False}
+        _, body = _resolve(base, [
+            "tcw://C/nope", "tcw://garbage", "tcw://W/ghost/2026-01-01-x"])
+        assert body["tcw://C/nope"] == {
+            "ok": False, "reason": "unresolved", "detail": "no capability: nope"}
+        assert body["tcw://garbage"] == {
+            "ok": False, "reason": "unresolved", "detail": "malformed tcw:// uri"}
+        assert body["tcw://W/ghost/2026-01-01-x"] == {
+            "ok": False, "reason": "unresolved",
+            "detail": "no such project in this graph: ghost"}
     finally:
         httpd.shutdown()
 
@@ -168,5 +177,36 @@ def test_resolve_rejects_non_loopback_origin(tmp_path):
     try:
         status, _ = _resolve(base, ["tcw://C/x"], headers={"Origin": "http://evil.test"})
         assert status == HTTPStatus.BAD_REQUEST
+    finally:
+        httpd.shutdown()
+
+
+def test_resolve_failure_objects_share_one_shape(tmp_path):
+    """Every failure carries a `reason` from a closed two-value set, and the
+    field that goes with it: `project` for an unhosted destination, `detail` for
+    an unresolved one. The SPA branches on `reason`, so an object that carries
+    neither — or both — would leave it guessing."""
+    root = _node(tmp_path, "root")
+    child = _node(tmp_path, "child")
+    _connect(root, child)
+    epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
+    httpd, base = _start(child)
+    try:
+        _, body = _resolve(base, [
+            f"tcw://W/root/{epic.slug}",          # valid, not on this board
+            "tcw://garbage",                       # malformed
+            "tcw://C/nope",                        # dangling
+            "tcw://W/ghost/2026-01-01-x",          # unregistered project
+        ])
+        assert len(body) == 4
+        for uri, obj in body.items():
+            assert obj["ok"] is False, uri
+            assert obj["reason"] in ("unhosted-project", "unresolved"), uri
+            if obj["reason"] == "unhosted-project":
+                assert obj["project"], uri
+                assert "detail" not in obj, uri
+            else:
+                assert obj["detail"], uri
+                assert "project" not in obj, uri
     finally:
         httpd.shutdown()
