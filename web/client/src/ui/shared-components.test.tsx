@@ -94,12 +94,14 @@ test("renders modified subtext for every tree axis", () => {
 const URI = "tcw://W/orchestrator/2026-01-01-x"
 const OFF_BOARD = "Project orchestrator is not included in this board"
 
-function renderResolved(resolved: unknown) {
+function renderResolved(resolved: unknown, source?: string) {
     globalThis.fetch = vi.fn().mockImplementation(async () => ({
         ok: true,
         json: async () => ({ [URI]: resolved }),
     }))
-    return render(<Markdown source={`See [the epic](${URI}).`} resolveLinks />)
+    return render(
+        <Markdown source={source ?? `See [the epic](${URI}).`} resolveLinks />
+    )
 }
 
 test("marks an unhosted reference as off-board and names its project", async () => {
@@ -118,17 +120,56 @@ test("marks an unhosted reference as off-board and names its project", async () 
 })
 
 test("states why an unhosted reference is not a link, beyond the tooltip", async () => {
+    const { container } = renderResolved({
+        ok: false,
+        reason: "unhosted-project",
+        project: "orchestrator",
+    })
+    const anchor = await screen.findByText("the epic")
+    await waitFor(() => expect(anchor).toHaveAttribute("aria-describedby"))
+    // Assert the wiring, not just the sentence: `title` alone would satisfy an
+    // accessible-description query, so this test has to fail if the note or the
+    // reference to it is dropped.
+    const noteId = anchor.getAttribute("aria-describedby")!
+    const note = container.querySelector(`#${noteId}`)
+    expect(note).not.toBeNull()
+    expect(note).toHaveTextContent(OFF_BOARD)
+    expect(anchor).toHaveAttribute("title", OFF_BOARD)
+})
+
+test("leaves an unopenable reference unclickable, address still readable", async () => {
     renderResolved({
         ok: false,
         reason: "unhosted-project",
         project: "orchestrator",
     })
-    await waitFor(() =>
-        expect(
-            screen.getByRole("link", { description: OFF_BOARD })
-        ).toBeInTheDocument()
+    const anchor = await screen.findByText("the epic")
+    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+    // The click handler navigates only on data-nav-key; a surviving tcw:// href
+    // would hand the click to the browser instead of doing nothing.
+    expect(anchor).not.toHaveAttribute("href")
+    expect(anchor).toHaveAttribute("data-tcw-ref", URI)
+})
+
+test("authored markup cannot suppress the off-board note", async () => {
+    // `marked` passes authored HTML through, so a document can already contain
+    // an element carrying the badge class, or an id we would otherwise mint.
+    // Neither may cost the reference its accessible description.
+    const { container } = renderResolved(
+        {
+            ok: false,
+            reason: "unhosted-project",
+            project: "orchestrator",
+        },
+        `<span id="tcw-off-board-0">x</span>\n\nSee [the epic](${URI})<span class="tcw-project-badge">not ours</span>.`
     )
-    expect(screen.getByText(OFF_BOARD)).toBeInTheDocument()
+    const anchor = await screen.findByText("the epic")
+    await waitFor(() => expect(anchor).toHaveAttribute("aria-describedby"))
+    const noteId = anchor.getAttribute("aria-describedby")!
+    const note = container.querySelector(`#${noteId}`)
+    expect(note).toHaveTextContent(OFF_BOARD)
+    expect(note).not.toHaveTextContent("x")
+    expect(anchor.nextElementSibling).toHaveTextContent(/^orchestrator$/)
 })
 
 test("shows an unresolved reference inert, with the reason it failed", async () => {

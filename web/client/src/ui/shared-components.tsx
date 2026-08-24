@@ -50,23 +50,48 @@ type Resolution = {
 
 let offBoardNoteId = 0
 
+/** An id no element in the document already claims. The counter alone is not
+ * enough: `marked` passes authored HTML through, so a document may contain an
+ * element whose id collides with the next one we would mint. */
+function freeNoteId() {
+    let id = `tcw-off-board-${offBoardNoteId++}`
+    while (document.getElementById(id)) id = `tcw-off-board-${offBoardNoteId++}`
+    return id
+}
+
+/** Stop an unopenable reference from behaving like a link. The anchor keeps its
+ * text and its `<a>` semantics, but not its `href`: the click handler navigates
+ * only on `data-nav-key` (`app.tsx`), so a leftover `tcw://` href would hand the
+ * click to the browser's protocol handling — a "non-link" the user can still
+ * click. The address stays readable in `data-tcw-ref`. */
+function neutralize(anchor: HTMLAnchorElement, uri: string) {
+    anchor.dataset.tcwRef = uri
+    anchor.removeAttribute("href")
+}
+
 /** A reference that resolves in the graph but is not on the board being served:
  * a warning treatment rather than the broken-link one, the owning project named
  * beside the link text, and the sentence carried as an accessible description
  * (a `title` alone is announced inconsistently). Inserted DOM, matching how the
- * inert class is applied to this same `marked` output; the badge check keeps a
- * repeated pass over unchanged DOM from stacking duplicates. */
+ * inert class is applied to this same `marked` output. The guard keys off a
+ * marker we set ourselves, not off the class, so authored markup that happens to
+ * carry the badge class cannot suppress the note; a repeated pass over its own
+ * output rebuilds the badge and note rather than leaving a stale project. */
 function markOffBoard(anchor: HTMLAnchorElement, project: string) {
     anchor.classList.add("tcw-unhosted")
     anchor.title = `Project ${project} is not included in this board`
-    if (anchor.nextElementSibling?.classList.contains("tcw-project-badge"))
-        return
+    const previous = anchor.nextElementSibling
+    if (previous instanceof HTMLElement && previous.dataset.tcwBadge === "") {
+        previous.nextElementSibling?.remove()
+        previous.remove()
+    }
     const badge = document.createElement("span")
     badge.className = "tcw-project-badge"
+    badge.dataset.tcwBadge = ""
     badge.textContent = project
     const note = document.createElement("span")
     note.className = "tcw-sr-only"
-    note.id = `tcw-off-board-${offBoardNoteId++}`
+    note.id = freeNoteId()
     note.textContent = anchor.title
     anchor.setAttribute("aria-describedby", note.id)
     anchor.after(badge)
@@ -105,12 +130,15 @@ export function Markdown({
                     resolved?.reason === "unhosted-project" &&
                     resolved.project
                 ) {
+                    neutralize(anchor, uri)
                     markOffBoard(anchor, resolved.project)
                 } else {
-                    // The URI is still readable in the source and the link text;
-                    // the diagnosis is the part the reader could not get.
+                    // The diagnosis is the part the reader could not get; `||`
+                    // rather than `??` because a store exception can carry an
+                    // empty message, and an empty tooltip says less than the URI.
+                    neutralize(anchor, uri)
                     anchor.classList.add("tcw-inert")
-                    anchor.title = resolved?.detail ?? uri
+                    anchor.title = resolved?.detail || uri
                 }
             }
         })
