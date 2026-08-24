@@ -210,3 +210,44 @@ def test_resolve_failure_objects_share_one_shape(tmp_path):
                 assert "project" not in obj, uri
     finally:
         httpd.shutdown()
+
+
+def test_resolve_does_not_read_the_graph_for_a_batch_with_no_foreign_ref(tmp_path):
+    """The hosted-projects snapshot is taken on the first foreign ref, not up
+    front. A batch of purely local, malformed, or dangling refs must neither pay
+    for the descendant walk nor be able to fail on it — an unreadable graph is
+    not a reason for `tcw://garbage` to stop being classifiable."""
+    root = _node(tmp_path)
+    sub = root / "sub" / "proj"
+    sub.mkdir(parents=True)
+    init(["work"], sub, "proj")
+    _connect(root, sub)
+    item = FsWorkStore.open(root).create("Local", created="2026-01-01")
+    httpd, base = _start(root, include_descendants=True)
+    calls = []
+    handler = httpd.RequestHandlerClass
+    real = handler._hosted_projects
+
+    def counting(self):
+        calls.append(1)
+        return real(self)
+
+    handler._hosted_projects = counting
+    try:
+        status, body = _resolve(base, [])
+        assert status == HTTPStatus.OK and body == {}
+        assert calls == []                       # empty batch: no walk
+
+        _, body = _resolve(base, ["tcw://garbage", "tcw://C/nope",
+                                  f"tcw://W/{item.slug}"])
+        assert body["tcw://garbage"]["reason"] == "unresolved"
+        assert body[f"tcw://W/{item.slug}"]["ok"] is True
+        assert calls == []                       # no foreign ref: still no walk
+
+        uri = f"tcw://proj/W/{FsWorkStore.open(sub).create('C', created='2026-01-01').slug}"
+        _, body = _resolve(base, [uri, uri, uri])
+        assert body[uri]["ok"] is True
+        assert len(calls) == 1                   # three foreign refs, one walk
+    finally:
+        handler._hosted_projects = real
+        httpd.shutdown()

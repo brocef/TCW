@@ -962,30 +962,37 @@ class TcwHandler(BaseHTTPRequestHandler):
             if not isinstance(uris, list):
                 self._send_err(HTTPStatus.BAD_REQUEST, "uris must be a list")
                 return
-            # Hoisted out of the loop: the set is invariant across a batch, and
-            # the per-uri call walked the descendant nodes again for every foreign
-            # ref (up to RESOLVE_MAX_URIS times). Not aggregating returns the empty
-            # set without walking anything, so the hoist costs nothing there.
-            hosted = self._hosted_projects()
+            # Computed on the first foreign ref and reused for the rest of the
+            # batch: walking the descendant nodes once per foreign ref repeated
+            # it up to RESOLVE_MAX_URIS times, while hoisting it unconditionally
+            # would make a batch of purely local or malformed refs pay for — and
+            # fail on — a graph walk it never needed. A *snapshot*, not an
+            # invariant: registration is on disk and another request may be
+            # changing it, so one batch answers from one reading of the graph.
+            hosted: set[str] | None = None
             result = {}
             for uri in uris[:RESOLVE_MAX_URIS]:
                 if not isinstance(uri, str):
                     continue
                 r = resolve_tcw_ref(self.server.node_root, uri)
                 # Failure objects carry why, because the viewer renders "valid but
-                # not on this board" differently from "broken". The invariant the
-                # SPA branches on: `reason` is exactly one of two values, `project`
-                # is non-empty iff "unhosted-project", `detail` present iff
+                # not on this board" differently from "broken". The shape the SPA
+                # branches on: `reason` is exactly one of two values, `project` is
+                # non-empty iff "unhosted-project", `detail` present iff
                 # "unresolved". A bare {"ok": false} never occurs.
-                if r.ok and (not r.project or r.project in hosted):
-                    result[uri] = {"ok": True, "axis": _AXIS_WORD.get(r.axis),
-                                   "key": r.key}
-                elif r.ok:      # resolves in the graph; this board isn't serving it
-                    result[uri] = {"ok": False, "reason": "unhosted-project",
-                                   "project": r.project}
-                else:
+                if not r.ok:
                     result[uri] = {"ok": False, "reason": "unresolved",
                                    "detail": r.reason}
+                    continue
+                if r.project:
+                    if hosted is None:
+                        hosted = self._hosted_projects()
+                    if r.project not in hosted:   # real item, other board
+                        result[uri] = {"ok": False, "reason": "unhosted-project",
+                                       "project": r.project}
+                        continue
+                result[uri] = {"ok": True, "axis": _AXIS_WORD.get(r.axis),
+                               "key": r.key}
             self._send_json(HTTPStatus.OK, result)
             return
 
