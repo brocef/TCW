@@ -343,8 +343,10 @@ The app has tabs for the Taxonomy tree, Capabilities ledger, and Work board, and
 its **URL reflects the current view** (`/taxonomy`, `/work/<slug>`, …) so any state
 is deep-linkable and Back/Forward work. Any `tcw://` reference in an object's body
 (see [`tcw://` links](#tcw-links--reference-a-tcw-object)) renders as a **clickable
-in-app link** that navigates to the target object; a link to something this viewer
-isn't hosting renders inert. The list/detail divider and the
+in-app link** that navigates to the target object. A reference to a real object on
+a board this viewer isn't serving is marked as **off-board**, with the name of the
+project that owns it shown beside the link text; a reference that doesn't resolve
+at all is shown inert with the reason it failed. The list/detail divider and the
 editor/preview split are **drag-resizable**. The object list is a **collapsible
 tree** that mirrors each axis's hierarchy — nested paths for taxonomy terms and
 capabilities (a path segment with no item of its own is a plain folder label),
@@ -430,7 +432,10 @@ See [Read a capability](tcw://C/capabilities/read-a-capability) and the
 ```
 
 These are inline Markdown links, so they render as normal links in any viewer and
-become **in-app navigation** in `tcw serve`. They're additive — they don't replace
+become **in-app navigation** in `tcw serve`. The viewer distinguishes the two ways
+a reference can fail to become a link: one that points at a real object on another
+project's board is marked off-board and names that project, while a malformed or
+dangling one says what is wrong with it. They're additive — they don't replace
 the structured pointers (a capability's `Subject`/`Feature`, a work item's
 `blocked_by`). Stored Markdown is never rewritten.
 
