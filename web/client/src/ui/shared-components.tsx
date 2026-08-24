@@ -39,6 +39,40 @@ import { parseThemePreference } from "../theme-preference"
 import { itemKey, itemTitle, pathFor } from "./route-utils"
 import { beginResize } from "./ui-state"
 
+type Resolution = {
+    ok: boolean
+    axis?: Axis
+    key?: string
+    reason?: string
+    project?: string
+    detail?: string
+}
+
+let offBoardNoteId = 0
+
+/** A reference that resolves in the graph but is not on the board being served:
+ * a warning treatment rather than the broken-link one, the owning project named
+ * beside the link text, and the sentence carried as an accessible description
+ * (a `title` alone is announced inconsistently). Inserted DOM, matching how the
+ * inert class is applied to this same `marked` output; the badge check keeps a
+ * repeated pass over unchanged DOM from stacking duplicates. */
+function markOffBoard(anchor: HTMLAnchorElement, project: string) {
+    anchor.classList.add("tcw-unhosted")
+    anchor.title = `Project ${project} is not included in this board`
+    if (anchor.nextElementSibling?.classList.contains("tcw-project-badge"))
+        return
+    const badge = document.createElement("span")
+    badge.className = "tcw-project-badge"
+    badge.textContent = project
+    const note = document.createElement("span")
+    note.className = "tcw-sr-only"
+    note.id = `tcw-off-board-${offBoardNoteId++}`
+    note.textContent = anchor.title
+    anchor.setAttribute("aria-describedby", note.id)
+    anchor.after(badge)
+    badge.after(note)
+}
+
 export function Markdown({
     source,
     resolveLinks = false,
@@ -57,9 +91,9 @@ export function Markdown({
         ]
         if (!anchors.length) return
         const uris = anchors.map((anchor) => anchor.getAttribute("href")!)
-        void requestJson<
-            Record<string, { ok: boolean; axis?: Axis; key?: string }>
-        >("/api/resolve", "POST", { uris }).then((result) => {
+        void requestJson<Record<string, Resolution>>("/api/resolve", "POST", {
+            uris,
+        }).then((result) => {
             for (const anchor of anchors) {
                 const uri = anchor.getAttribute("href")!
                 const resolved = result.data?.[uri]
@@ -67,9 +101,16 @@ export function Markdown({
                     anchor.href = pathFor(resolved.axis, resolved.key)
                     anchor.dataset.navAxis = resolved.axis
                     anchor.dataset.navKey = resolved.key
+                } else if (
+                    resolved?.reason === "unhosted-project" &&
+                    resolved.project
+                ) {
+                    markOffBoard(anchor, resolved.project)
                 } else {
+                    // The URI is still readable in the source and the link text;
+                    // the diagnosis is the part the reader could not get.
                     anchor.classList.add("tcw-inert")
-                    anchor.title = uri
+                    anchor.title = resolved?.detail ?? uri
                 }
             }
         })

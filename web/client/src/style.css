@@ -263,6 +263,37 @@ p {
     text-decoration: line-through;
     cursor: not-allowed;
 }
+/* Valid, just not on this board — a warning, not a broken link. The glyph is
+   decorative: the sentence lives in the anchor's accessible description. */
+.body a.tcw-unhosted {
+    color: var(--amber-11);
+    text-decoration: line-through;
+    cursor: not-allowed;
+}
+.body a.tcw-unhosted::before {
+    content: "⚠ ";
+    display: inline-block;
+    text-decoration: none;
+}
+.tcw-project-badge {
+    margin-left: var(--space-1);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-2);
+    background: var(--amber-3);
+    color: var(--amber-11);
+    font-size: var(--font-size-1);
+}
+.tcw-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
 .artifacts {
     display: flex;
     flex-wrap: wrap;
