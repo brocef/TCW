@@ -218,3 +218,49 @@ test("rewrites a resolvable reference into in-app navigation", async () => {
     expect(anchor).not.toHaveClass("tcw-inert")
     expect(anchor).not.toHaveClass("tcw-unhosted")
 })
+
+test("a superseded response never touches the document that replaced it", async () => {
+    // Source A's request is still in flight when source B renders, and A's answer
+    // arrives FIRST. Without the cleanup guard, A re-queries B's anchors, finds no
+    // entry for B's uri, marks it unresolved and strips its href — and B's own
+    // answer, arriving after, finds nothing left to repair.
+    const URI_A = "tcw://W/other/2026-01-01-a"
+    const gate: Record<string, () => void> = {}
+    const waits: Record<string, Promise<void>> = {}
+    for (const key of ["a", "b"])
+        waits[key] = new Promise<void>((resolve) => {
+            gate[key] = resolve
+        })
+    globalThis.fetch = vi.fn().mockImplementation(async (_url, init) => {
+        const { uris } = JSON.parse((init as RequestInit).body as string)
+        const forA = uris.includes(URI_A)
+        await waits[forA ? "a" : "b"]
+        return {
+            ok: true,
+            json: async () =>
+                forA
+                    ? { [URI_A]: { ok: true, axis: "work", key: "2026-01-01-a" } }
+                    : {
+                          [URI]: {
+                              ok: false,
+                              reason: "unhosted-project",
+                              project: "orchestrator",
+                          },
+                      },
+        }
+    })
+    const { rerender } = render(
+        <Markdown source={`See [other](${URI_A}).`} resolveLinks />
+    )
+    rerender(<Markdown source={`See [the epic](${URI}).`} resolveLinks />)
+    const anchor = await screen.findByText("the epic")
+
+    gate.a()                                   // the stale answer lands first
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(anchor).not.toHaveClass("tcw-inert")
+    expect(anchor).toHaveAttribute("href", URI)
+
+    gate.b()                                   // the current answer still applies
+    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+    expect(anchor).toHaveAttribute("data-tcw-ref", URI)
+})

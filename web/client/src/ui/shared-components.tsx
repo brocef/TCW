@@ -116,9 +116,18 @@ export function Markdown({
         ]
         if (!anchors.length) return
         const uris = anchors.map((anchor) => anchor.getAttribute("href")!)
+        // Superseded by the next render: React runs this cleanup before the next
+        // effect, so a response that arrives after the source changed is dropped
+        // rather than applied to a document it never asked about. Without it, a
+        // slow response for source A re-queries source B's anchors, finds no
+        // answer for B's uris, and marks them all unresolved — and B's own
+        // response then finds nothing left to repair, because that pass already
+        // stripped their hrefs.
+        let superseded = false
         void requestJson<Record<string, Resolution>>("/api/resolve", "POST", {
             uris,
         }).then((result) => {
+            if (superseded) return
             // Re-query instead of reusing the anchors captured above. A render
             // between the request and the response can replace this content with
             // identical HTML, which leaves those nodes detached while the effect
@@ -153,6 +162,9 @@ export function Markdown({
                 }
             }
         })
+        return () => {
+            superseded = true
+        }
     }, [html, resolveLinks])
     return (
         <article
