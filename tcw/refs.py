@@ -122,6 +122,16 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
             return ResolveResult(
                 False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
         store, bare = resolved
+        # Locating the store that would hold the item is not the item existing.
+        # `resolve_qualified_work_ref` answers "which store addresses this ref",
+        # which is what `tcw serve`'s routing wants; `ok` answers "does this
+        # reference resolve", the same question asked of T and C above, so it has
+        # to look. Only the status-path spelling checked before, which left
+        # `tcw://W/<slug>` reporting ok for a slug nobody ever created — passing
+        # `tcw validate` and rendering as a link that 404s.
+        if store.get(bare) is None:
+            return ResolveResult(
+                False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
         if store.node_root == node_root.resolve():        # landed locally
             return ResolveResult(True, "W", bare, "")
         # Foreign: the qualifier is a project id (a status-path locator is always

@@ -204,6 +204,27 @@ def test_resolve_parent_work_from_child(tmp_path):
     assert r.ok and r.axis == "W" and r.project == "repo"
 
 
+def test_resolve_dangling_work_slug(tmp_path):
+    """A work ref must answer the same question T and C answer: does the thing
+    exist? Locating the store that *would* hold the item is not the same as the
+    item being there, and only the status-path spelling ever checked. Left
+    unchecked, `tcw validate` passes a dangling local reference and the viewer
+    rewrites it into a link that 404s."""
+    root = node(tmp_path)
+    r = resolve_tcw_ref(root, "tcw://W/2026-01-01-never-created")
+    assert r.ok is False
+    assert r.reason == "no such work item: 2026-01-01-never-created"
+
+
+def test_resolve_dangling_work_slug_in_a_registered_project(tmp_path):
+    """Same question one node over: the project resolves, the item does not."""
+    root = node(tmp_path)
+    subnode(root, "proj")
+    r = resolve_tcw_ref(root, "tcw://W/proj/2026-01-01-never-created")
+    assert r.ok is False
+    assert r.reason == "no such work item: proj/2026-01-01-never-created"
+
+
 def test_resolve_unregistered_project_names_the_cause(tmp_path):
     root = node(tmp_path)
     r = resolve_tcw_ref(root, "tcw://W/ghost/2026-01-01-x")
