@@ -410,3 +410,68 @@ adding response ownership/cancellation and an overlapping-source test is
 worthwhile." Both of those now exist, which is precisely what round 4 would be
 reviewing. That decision is the user's, and is put to them rather than taken
 here.
+
+---
+
+# Third pass — the absorbed resolver defect
+
+The user absorbed the second filed defect too. `docs/work/inbox/` is now empty of
+this item's findings; both are in the item.
+
+## What was wrong
+
+`resolve_tcw_ref` asked "does this exist?" of two axes and not the third
+(`tcw/refs.py`):
+
+- `T` → `FsTaxonomyStore.get(ref)`, `None` → not ok
+- `C` → `FsCapabilitiesStore.get(ref)`, `None` → not ok
+- `W` → `resolve_qualified_work_ref(...)`, whose answer is **which store
+  addresses this ref**, not whether the item is in it
+
+Only the status-path spelling ever checked, inside
+`resolve_qualified_work_ref` itself. The bare spelling — the one people actually
+write for a local item — did not, and neither did the cross-node one. Both
+returned `ok`:
+
+```
+tcw://W/2026-01-01-never-created              -> ok=True   key='2026-01-01-never-created'
+tcw://W/proj/2026-01-01-never-created         -> ok=True   key='proj/2026-01-01-never-created'
+```
+
+Wider than the filed note said, which claimed only the bare form. So
+`tcw validate` passed a dangling work reference without comment, and the viewer
+rewrote it into an in-app link that 404s — the dead-end link `resolve_tcw_ref`'s
+own docstring says the design exists to prevent.
+
+This is not a decoration on the rest of the item: the failure-reason work is
+worth less while the resolver is wrong about _which_ references are broken.
+
+## The fix
+
+The `W` branch confirms the item exists and, when it does not, returns the
+message `qualified_work_ref_problem` already produces. `resolve_qualified_work_ref`
+is deliberately untouched — it answers store location, which is what
+`tcw serve`'s `_work_store_for` wants, and changing it would have altered routing
+for a question about resolution.
+
+## Evidence
+
+- Two tests in `tests/test_refs.py`, written first and watched red:
+  `assert True is False … ResolveResult(ok=True, axis='W', key='2026-01-01-never-created')`
+  and the same for the registered-project spelling.
+- End to end, on the fixture:
+
+    ```
+    [orchestrator] docs/capabilities/viewer/follow-a-reference/description.md:
+      tcw:// tcw://W/2026-01-01-never-created → no such work item: 2026-01-01-never-created
+    ```
+
+    `tcw validate` did not report that before. It is the defect's headline
+    consequence and now it is caught.
+
+- `tcw validate` on **this** repo still exits `0` — the stricter resolver finds
+  nothing dangling in a tree it now checks properly, so the change is not
+  retroactively breaking the repo's own documents.
+- `pytest` — **1961 passed** in 459s. Making a core resolver stricter is exactly
+  the change that breaks something elsewhere; nothing broke, and the run is the
+  evidence rather than the reasoning.
