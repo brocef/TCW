@@ -533,3 +533,16 @@ tree. In this checkout (148 items), 100 distinct missing references took about
 URIs. Correctness is retained here, and a request/validation-scoped index or
 batch resolver is filed as
 `2026-08-25-avoid-rescanning-work-items-for-every-tcw-work-reference`.
+
+## Final verification
+
+Fresh at the final-review tip:
+
+- `python -m pytest -q` — **1961 passed** in 476.87 seconds.
+- `pnpm test` — **61 passed**, 11 files.
+- `pnpm exec tsc --noEmit`, `pnpm lint`, and `pnpm check:build` — exit 0;
+  the committed bundle matches a fresh production build.
+- Focused Prettier checks for the five final documentation/capability files —
+  clean.
+- `tcw capabilities check`, `tcw taxonomy check`, recursive `tcw validate`, and
+  `git diff --check` — clean.
