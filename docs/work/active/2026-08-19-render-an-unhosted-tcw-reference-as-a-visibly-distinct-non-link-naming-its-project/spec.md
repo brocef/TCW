@@ -5,21 +5,19 @@
 No new capability. The delta changes how an existing capability _behaves_, not
 what a user can do: reading a document in `tcw serve` is already
 `web` (`cap-9d225a`), and writing the link is already
-`cli/reference-a-tcw-object` (`cap-65e549`). Both descriptions currently assert
-the behavior this item removes, so both are `changed:` — a wording flip at
-`complete`, statuses stay `Supported`.
+`cli/reference-a-tcw-object` (`cap-65e549`). Before closeout, both descriptions
+omitted the new distinction, so both are `changed:` — a wording extension at
+`complete`; statuses stay `Supported`.
 
-- **changed — `web`.** `docs/capabilities/web/description.md:8` reads "unknown,
-  unregistered, or dangling foreign targets remain inert." That sentence is what
-  this item contradicts: a _registered_ target on another board is neither
-  unknown nor dangling, and after this change it does not render like one.
-  New wording must say that a reference the board does not host is shown as
-  off-board and names the project that owns it, while a malformed or dangling
-  reference reports why it failed.
-- **changed — `cli/reference-a-tcw-object`.** Its body says "`tcw validate`
-  checks resolution and `tcw serve` turns hosted targets into in-app
-  navigation." True but silent on the other half; extend it to say what `serve`
-  does with a target it does not host.
+- **changed — `web`.** The existing statement that unknown, unregistered, or
+  dangling targets remain inert is still true. Extend it to say that a real work
+  target in the registered graph but outside the served board is shown as
+  off-board and names its owning project, while an unresolved reference states
+  why it failed.
+- **changed — `cli/reference-a-tcw-object`.** Before closeout, its body said
+  "`tcw validate` checks resolution and `tcw serve` turns hosted targets into
+  in-app navigation." True but silent on the other half; extend it to say what
+  `serve` does with a target it does not host.
 
 Recorded as the work→capability back-pointer in the item's `capabilities.yaml`
 under `changed:`. No taxonomy delta: the terms involved (`reference`) and the
@@ -72,7 +70,8 @@ state of any cross-node document viewed from the wrong anchor, so it disappears
 into the noise. That is how four request documents in the reporter's
 orchestrator accumulated downgraded references nobody noticed.
 
-Reproducible on HEAD in two shapes, both valid references to real items:
+Reproduced on the pre-change tip in two shapes, both valid references to real
+items:
 
 - `tcw://W/<descendant-id>/<slug>` in plain `serve` mode. `_hosted_projects()`
   returns the empty set when not aggregating (`tcw/serve/__init__.py:424-427`),
@@ -88,8 +87,9 @@ Reproducible on HEAD in two shapes, both valid references to real items:
    without hovering, and can read which project owns it in place.
 3. A broken reference tells the reader what is wrong with it, in the words the
    resolver already produces for `tcw validate`.
-4. Nothing changes about which references resolve, or which projects a board
-   hosts.
+4. The presentation work changes neither graph reachability nor which projects a
+   board hosts. The separately absorbed goal below makes only dangling work-item
+   references stop resolving.
 5. **A work reference that names no existing item does not resolve.** Absorbed at
    the second rework, on the user's decision. `resolve_tcw_ref` checked existence
    for `T` and `C` and not for `W`, so `tcw://W/<slug>` reported `ok` for a slug
@@ -147,7 +147,7 @@ pre-solved.
   so `validate` has no invocation to check against.
 - **`resolve_qualified_work_ref` is not changed.** It answers "which store
   addresses this ref", which is what `tcw serve`'s routing wants and what its
-  other caller (`_work_store_for`) depends on. The existence check belongs to
+  other caller (`_resolve_work`) depends on. The existence check belongs to
   `resolve_tcw_ref`, which answers "does this reference resolve" — the same
   question it already asks of `T` and `C`.
 - **The self-qualified-link symptom (GitHub #12)** stays fixed and untested-for
@@ -192,8 +192,9 @@ closed discriminator plus its payload:
   `tcw/serve/dist` and shipped with the server — so the added fields need no
   compatibility shim, and a `{"ok": false}` with no `reason` never occurs.
 
-Nothing moves into `tcw/refs.py`. `resolve_tcw_ref` deliberately answers "does
-this resolve in the registered graph?" and leaves hostability to the caller
+The presentation response classification does not move into `tcw/refs.py`.
+`resolve_tcw_ref` deliberately answers "does this resolve in the registered
+graph?" and leaves hostability to the caller
 (`tcw/refs.py:88-96`); classifying a _server's_ hosting decision belongs in the
 server. Litmus: any store adapter can report "resolved / did not resolve, and
 here is why," and any server over it can decide what it hosts — the split is
@@ -325,9 +326,8 @@ Whole tree:
     run. Confirmed pre-existing by running the suite against `5ecdb9a`. What this
     change is accountable for is that the seven tests which do run still pass and
     no snapshot changes.)
-15. The two capability descriptions no longer contain the sentence
-    "unknown, unregistered, or dangling foreign targets remain inert" and
-    `tcw capabilities check` exits `0`.
+15. The two capability descriptions retain the true unresolved-target behavior
+    and add the off-board distinction, and `tcw capabilities check` exits `0`.
 
 ## Risks
 
@@ -356,11 +356,10 @@ Whole tree:
   is the requested behavior — the failure being fixed is that it was quiet — but
   if it proves noisy in practice, the dial is the CSS, not the response shape.
 - **The badge is inserted DOM, not React.** It lives in `dangerouslySetInnerHTML`
-  content that React does not own, matching how `tcw-inert` is applied today. If
-  the effect ever re-runs against DOM it did not just replace, badges could
-  duplicate; no current call site does that (`resolveLinks` is a literal `true`
-  everywhere, no `StrictMode` in `main.tsx`), so a guard is cheap insurance
-  rather than a fix.
+  content that React does not own, matching how `tcw-inert` is applied today.
+  The live query selects only anchors whose `tcw://` href remains, and every
+  treated anchor loses that href, so the same anchor cannot be treated twice.
+  No authored DOM marker is trusted as an ownership guard.
 - **Forgetting the bundle rebuild ships nothing.** The Python package serves
   `tcw/serve/dist`; a source-only change is invisible at runtime and passes every
   Python test. `pnpm check:build` is the guard (criterion 13).

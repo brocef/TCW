@@ -1,8 +1,9 @@
 # Plan: Render an unhosted tcw:// reference as a visibly distinct non-link naming its project
 
-Four code/artifact tasks, then one documentation block, then the ledger flip at
-`complete`. No blockers: nothing in the backlog touches `/api/resolve` or
-`shared-components.tsx`.
+The original sequence was four code/artifact tasks, then one documentation block,
+then the ledger flip at `complete`. Rework later absorbed the work-tab and
+dangling-work-reference defects; where those passes disproved a detail below,
+`spec.md` and `outcome.md` record the corrected contract and evidence.
 
 ## Task 1 — Record the capability back-pointer
 
@@ -34,16 +35,16 @@ the spec:
   `{"ok": False, "reason": "unhosted-project", "project": r.project}`.
 - otherwise → `{"ok": False, "reason": "unresolved", "detail": r.reason}`.
 
-Hoist `_hosted_projects()` out of the per-URI loop into a local computed once
-before it: the batch is up to `RESOLVE_MAX_URIS` (256) URIs and the call walks
-`descendant_nodes` every time. Today it is called at most once per URI too, so
-this is not a regression being introduced — but the new branch structure makes
-the repeated walk obvious, and the set is invariant across a batch.
+Compute `_hosted_projects()` lazily on the first foreign reference and reuse that
+snapshot for the rest of the batch. The batch is up to `RESOLVE_MAX_URIS` (256)
+URIs and the call walks `descendant_nodes`; eager computation would widen the
+failure surface for empty, local-only, malformed, or dangling batches.
 
 Add a comment stating the invariant the client depends on: `reason` is a closed
 two-value discriminator, `project` is non-empty exactly when
 `reason == "unhosted-project"`, `detail` is present exactly when
-`reason == "unresolved"`. `tcw/refs.py` is not touched.
+`reason == "unresolved"`. Task 2 does not touch `tcw/refs.py`; the later
+absorbed existence fix does.
 
 **Modifies** `tests/test_serve_resolve.py`. `_node`, `_connect`, `_start`, and
 `_resolve` already exist; add:
@@ -86,12 +87,12 @@ and replace the single `else` at 70-73 with:
   the anchor, and append a `<span class="tcw-sr-only">` carrying the same
   sentence with an `id`, referenced from the anchor's `aria-describedby` — so the
   sentence is both an accessible description and real text, not a `title`-only
-  string (spec criterion 9). Skip the insertion when
-  `anchor.nextElementSibling` already carries `tcw-project-badge`, so a repeated
-  effect run cannot double the badge.
+  string (spec criterion 9). Do not trust an authored DOM marker as an ownership
+  guard: every treated anchor loses its `tcw://` href, so the live query cannot
+  select the same anchor twice.
 - otherwise → today's behavior with the diagnosis instead of the URI:
-  `classList.add("tcw-inert")`, `title = detail ?? uri` (the `?? uri` covers a
-  response that predates this change, e.g. a stale bundle against a new server).
+  `classList.add("tcw-inert")`, `title = detail || uri` (the fallback covers a
+  response that predates this change and an empty store-exception message).
 
 **Modifies** `web/client/src/style.css`, after the `.body a.tcw-inert` rule
 (ends line 265):
@@ -125,20 +126,18 @@ client asset filenames are content-hashed, so expect
 `tcw/serve/dist/client/assets/index-*.js` and `index-*.css` to be replaced under
 new names and `index.html` to change; that churn is the artifact, not a mistake.
 
-**Proves it:** `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm prettify:check`,
-`pnpm check:build` (spec criteria 8-13). Then `pnpm test:e2e` — expect existing
-snapshots unchanged (spec criterion 14); a diff there means something outside a
-document body moved and must be explained before the snapshot is accepted.
+**Proves it:** `pnpm test`, `pnpm exec tsc --noEmit`, `pnpm lint`, focused
+`pnpm prettier --check` for touched files, and `pnpm check:build`. The repository-
+wide prettify check and full e2e suite are baseline-red; preserve their baseline
+counts and require that no committed snapshot moves.
 
 ## Task 4 — Look at it
 
-Not automatable, so it is a task rather than a checkbox. Run `tcw serve` on this
-repo and open this work item's own request document, which carries a
-`tcw://W/…` reference the board does not host. Confirm in **both** the Light and
-Dark theme settings that the warning treatment and badge are legible and that
-the marker is findable by scanning, not only by hovering. Record what was seen
-in `outcome.md`; if the treatment is illegible in either theme, the fix is the
-CSS in Task 3, not the response shape.
+Not automatable, so it is a task rather than a checkbox. Use the recorded
+three-node fixture containing live, off-board, dangling, and malformed links,
+and confirm on the work item's Initial Request tab in **both** Light and Dark
+themes that the warning treatment and badge are legible and the marker is
+findable by scanning, not only by hovering. Record what was seen in `outcome.md`.
 
 ## Task 5 — Documentation Sync
 
@@ -173,11 +172,9 @@ One pass over the finished diff, after Task 4.
 
 **5b — the ledger flip, at `complete` and not before.**
 
-- `docs/capabilities/web/description.md` — replace "unknown, unregistered, or
-  dangling foreign targets remain inert" (line 8) with wording that separates the
-  two: a target on a board this viewer does not host is shown as off-board and
-  names its project; an unknown or dangling target is shown inert with the reason
-  it failed.
+- `docs/capabilities/web/description.md` — retain the true unresolved-target
+  behavior and extend it with the distinction: a real work target in the graph
+  but outside the served board is shown off-board and names its project.
 - `docs/capabilities/cli/reference-a-tcw-object/description.md` — extend
   "`tcw serve` turns hosted targets into in-app navigation" to say what it does
   with an unhosted one.
@@ -197,10 +194,9 @@ What the suite cannot decide, for the `verify` stage:
   reads. Confirm it says the right thing for both reproduction shapes — a
   descendant not aggregated, and an ancestor from a child — where "this board"
   means the served node, not the project the reader came from.
-- **The accepted disclosure.** Confirm the reviewer agrees with the spec's Risks
-  call that surfacing a store error's message to a loopback-only viewer discloses
-  nothing new. If not, the narrowing is one branch in Task 2: send the code
-  without `detail` for the store-error case.
+- **The accepted disclosure.** Confirm the narrower threat model in the spec:
+  loopback and Origin/CSRF controls are not caller authentication, so any local
+  process that can reach the port can read the served node's error detail.
 - **Snapshot silence.** Spec criterion 14 asserts the e2e snapshots do not move.
   That is an expectation from reading the snapshot names, not a fact checked
   before the change; if `pnpm test:e2e` reports a diff, it is evidence to explain,

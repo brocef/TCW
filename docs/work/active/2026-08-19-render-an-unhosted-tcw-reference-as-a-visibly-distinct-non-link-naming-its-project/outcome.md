@@ -20,8 +20,9 @@ An adversarial `codex exec` review of the finished diff returned **NOT DONE**
 with one P1 and five P2 findings. What was accepted and what was not is below;
 the rework is the last row.
 
-5b (the capability wording flip) is deliberately not done yet: it belongs at
-`complete`, per the plan.
+At this first pass, 5b (the capability wording flip) was deliberately not done
+yet: it belonged at `complete`, per the plan. It is reconciled in the final
+round recorded below.
 
 ## Test results
 
@@ -206,7 +207,9 @@ own contract, but it is the thing to look at first if anyone finds it faint.
 
 ## Notes
 
-- **Two pre-existing defects were found and filed, not fixed.** The second is
+- **At this first pass, two pre-existing defects were found and filed, not
+  fixed; both were later absorbed and fixed in the passes recorded below.** The
+  second is
   `docs/work/inbox/2026-08-24-a-dangling-bare-work-slug-resolves-ok-so-validate-never-flags-it.md`:
   `resolve_tcw_ref` checks existence for `T` and `C` but not for a bare `W` slug,
   so `tcw://W/anything` resolves `ok: true`, `tcw validate` never flags a dangling
@@ -451,7 +454,7 @@ worth less while the resolver is wrong about _which_ references are broken.
 The `W` branch confirms the item exists and, when it does not, returns the
 message `qualified_work_ref_problem` already produces. `resolve_qualified_work_ref`
 is deliberately untouched — it answers store location, which is what
-`tcw serve`'s `_work_store_for` wants, and changing it would have altered routing
+`tcw serve`'s `_resolve_work` wants, and changing it would have altered routing
 for a question about resolution.
 
 ## Evidence
@@ -475,3 +478,58 @@ for a question about resolution.
 - `pytest` — **1961 passed** in 459s. Making a core resolver stricter is exactly
   the change that breaks something elsewhere; nothing broke, and the run is the
   evidence rather than the reasoning.
+
+---
+
+# Review round 4 — final adversarial split
+
+The fourth round found no subject code defect in either primary target.
+
+## Supersession guard
+
+- Cleanup can run after the response promise settles but before its reaction is
+  executed; the reaction then observes `superseded` and returns before touching
+  the DOM. Once the reaction starts, JavaScript run-to-completion means cleanup
+  cannot interleave between the guard and the mutation loop, so a dropped answer
+  cannot leave a neutralized anchor, badge, note, or `aria-describedby` half
+  applied.
+- The round-2 live-DOM fix remains intact. When identical dependencies leave the
+  effect mounted while the DOM is replaced, cleanup does not run, `superseded`
+  remains false, and the response still re-queries and updates the live anchors.
+- The stale-first test is non-vacuous. With only `if (superseded) return` removed,
+  it failed at the pre-release assertion because the current anchor had acquired
+  `tcw-inert`. Restored, the focused test passed as part of the full web unit run.
+
+## Work-reference existence
+
+- `resolve_qualified_work_ref` and `tcw serve` routing remain unchanged. Only
+  `resolve_tcw_ref` asks the returned store whether the item exists, so
+  `_resolve_work` keeps its permissive store-location contract while
+  `/api/resolve` and `tcw validate` get strict object resolution.
+- Bare, correct status-path, registered-project, and both foreign URI spellings
+  resolve through the same check. Missing local and registered-project items use
+  `qualified_work_ref_problem`'s `no such work item` message; an unregistered
+  qualifier names the missing project; a wrong status locator names the locator
+  that does not exist. Completed and discarded items still resolve in both bare
+  and matching status-path form.
+- `FsWorkStore.get` may raise for duplicate items, interrupted claims, or I/O;
+  `resolve_tcw_ref`'s existing exception boundary converts those into `ok: false`
+  instead of aborting a link scan.
+- Reverting only the new `store.get(bare)` block made both new tests fail with
+  `ResolveResult(ok=True, ...)`, proving both gates cover the fix.
+
+## Decisive finding split
+
+**Belongs to this change's subject, fixed here:** the lifecycle record named a
+nonexistent `_work_store_for` helper instead of `_resolve_work`, retained stale
+badge-guard and capability-delta claims, and had not yet reconciled the two
+declared capability descriptions. The spec, plan, outcome, and capability ledger
+now describe the code that exists; `tcw capabilities check` passes.
+
+**Needs a different mechanism / separate item:** the existence check is
+O(work references × work items), because each `FsWorkStore.get` scans the work
+tree. In this checkout (148 items), 100 distinct missing references took about
+0.716 seconds and 100 repeats about 0.699 seconds; `/api/resolve` accepts 256
+URIs. Correctness is retained here, and a request/validation-scoped index or
+batch resolver is filed as
+`2026-08-25-avoid-rescanning-work-items-for-every-tcw-work-reference`.
