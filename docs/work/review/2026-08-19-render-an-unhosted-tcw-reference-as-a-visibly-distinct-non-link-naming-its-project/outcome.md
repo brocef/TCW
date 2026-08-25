@@ -233,13 +233,15 @@ own contract, but it is the thing to look at first if anyone finds it faint.
 
 # Second pass — the absorbed work-tab defect
 
-Follows `rework.md`, not the plan: verification rejected the item so it would
-absorb the defect that kept its result off the surface work items are read on.
+Follows the rejected verification direction preserved in this section, not the
+original plan: verification rejected the item so it would absorb the defect that
+kept its result off the surface work items are read on.
 
 ## Root cause
 
-Found, not guessed — the rework file was explicit that a plausible mechanism is
-not a diagnosis, and the one it suggested turned out to be only half the story.
+Found, not guessed — the rejected direction was explicit that a plausible
+mechanism is not a diagnosis, and the one it suggested turned out to be only half
+the story.
 
 `Markdown` (`web/client/src/ui/shared-components.tsx`) queried the container for
 `a[href^="tcw://"]`, posted them to `/api/resolve`, and then applied the answers
@@ -296,7 +298,8 @@ guards it.
   tab — `/work/2026-03-01-…` → `/work/2026-02-01-local-sibling-task`. That
   navigation was dead before this pass too.
 - `docs/work/inbox/2026-08-24-tcw-link-resolution-never-applies-on-a-work-items-document-tab.md`
-  was deleted when the rework absorbed it; its measurements live in `rework.md`.
+  was deleted when the rework absorbed it; its measurements live in this
+  outcome's second-pass record.
 
 ## Gates at this pass
 
@@ -307,13 +310,14 @@ guards it.
   about. No Python changed here, but the tree did, and asserting which tests read
   which files is the kind of claim that turns out false.
 
-## What the rework file got wrong
+## What the rejected direction got wrong
 
 Its hypothesis — the parent's `{}` reset — was the _trigger_, and it named the
 right file. It was not the _cause_: the cause is `Markdown` holding node
 references across an await, and a fix aimed only at the trigger would have been
-the wrong fix in the right file. Recorded because the rework file explicitly told
-the next pass not to treat that hypothesis as a diagnosis, and it was right to.
+the wrong fix in the right file. Recorded because the rejected direction
+explicitly told the next pass not to treat that hypothesis as a diagnosis, and
+it was right to.
 
 ## Review round 2
 
