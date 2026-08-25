@@ -1,0 +1,9 @@
+slug: 2026-08-25-avoid-rescanning-work-items-for-every-tcw-work-reference
+title: Avoid rescanning work items for every tcw:// work reference
+created: '2026-08-25'
+resolution: null
+priority: 25
+effort: medium
+complexity: medium
+tags:
+- cli
