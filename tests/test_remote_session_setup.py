@@ -11,6 +11,7 @@ The stubs are argv recorders: each appends its arguments to a log and exits with
 a status the test chose through the environment, so every assertion is about
 *what the script decided to run*, never about what an install did.
 """
+import json
 import os
 import shutil
 import stat
@@ -286,3 +287,25 @@ def test_the_plugin_bootstrap_is_untouched_by_this_script():
     body = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
     assert "pipx" not in body
     assert "tcw-cli" not in body
+
+
+# --- the hook that calls it -------------------------------------------------
+
+SETTINGS = REPO / ".claude" / "settings.json"
+
+
+def test_settings_registers_the_script_as_a_session_start_hook():
+    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    commands = [
+        hook["command"]
+        for matcher in settings["hooks"]["SessionStart"]
+        for hook in matcher["hooks"]
+        if hook.get("type") == "command"
+    ]
+    assert any("scripts/remote_session_setup.sh" in c for c in commands), commands
+
+
+def test_settings_still_enables_the_tcw_plugin():
+    """The hook installs `tcw@tcw`; settings enabling it is the other half."""
+    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    assert settings["enabledPlugins"]["tcw@tcw"] is True
