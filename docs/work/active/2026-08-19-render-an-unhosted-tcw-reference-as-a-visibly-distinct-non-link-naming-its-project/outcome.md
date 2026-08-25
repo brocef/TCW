@@ -297,9 +297,12 @@ guards it.
 
 ## Gates at this pass
 
-- `pnpm test` — **59 passed**, 11 files (the reproduction is the 59th).
+- `pnpm test` — **60 passed**, 11 files (the tab reproduction, plus the two the
+  second review round forced).
 - `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm check:build` — all exit 0.
-- `pytest` — see the verify assessment; no Python changed in this pass.
+- `pytest` — **1959 passed** in 496s, re-run after this pass rather than reasoned
+  about. No Python changed here, but the tree did, and asserting which tests read
+  which files is the kind of claim that turns out false.
 
 ## What the rework file got wrong
 
@@ -308,3 +311,102 @@ right file. It was not the _cause_: the cause is `Markdown` holding node
 references across an await, and a fix aimed only at the trigger would have been
 the wrong fix in the right file. Recorded because the rework file explicitly told
 the next pass not to treat that hypothesis as a diagnosis, and it was right to.
+
+## Review round 2
+
+Run against `5ecdb9a..HEAD` after the first round's fixes, on the standing rule
+that a fixed round is not a passed round. It returned **NOT DONE**, and its P1
+had been **introduced by round 1's own fix** — the failure mode worth naming:
+
+- **P1 — the duplicate-badge guard could delete authored content.** Round 1
+  replaced a class-based guard with one keyed on a `data-tcw-badge` marker, which
+  removed the marked sibling _and the element after it_. A document containing
+  `[ref](tcw://…)<span data-tcw-badge></span><em>keep me</em>` lost both. A
+  DOM-visible attribute cannot establish ownership.
+
+    Fixed by **deleting the guard**, not by hardening it. It defended a condition
+    that can no longer arise: since `ed59223` the loop selects
+    `a[href^="tcw://"]` from the live DOM at response time, and every anchor it
+    treats has had its `href` removed — so the same anchor cannot be reached twice.
+    Two rounds of increasingly clever defense for an impossible case, and the
+    defense was the only thing that ever broke. Round 2 also noted this same
+    change closes its other finding, the `getAttribute("href")` re-entrancy hole:
+    a re-queried anchor has an href by construction.
+
+- **P2 — the id-collision test did not test the id-collision fix.** It authored
+  `id="tcw-off-board-0"`, but earlier tests had already advanced the module
+  counter past 0, so reverting collision-avoidance still minted a free id and the
+  test passed. `freeNoteId()` now counts from zero against the document on every
+  call, with no module state — which makes the outcome deterministic, so the test
+  pins the exact id (`tcw-off-board-1`) that an authored `-0` forces. Watched red
+  against the counter version.
+
+- **P2 — spec criterion 9 still required `getByRole("link", …)`,** the semantics
+  `neutralize()` deliberately removes. A criterion demanding the thing the change
+  set out to remove would have blessed the defect it was written to prevent.
+  Corrected.
+
+- **P2 — `outcome.md` described the eager hoist that `634cf05` had removed** —
+  "walks once instead of zero times", true of the first pass only. The sentence
+  outlived its code. Corrected.
+
+- **Narrowed rather than fixed:** the review held that `README.md` and the
+  release note overclaim, because a bare `tcw://W/<slug>` naming no existing item
+  still resolves and is rendered as a live link. That is the second filed
+  defect, out of scope here; both documents now say so explicitly rather than
+  implying coverage this change does not have. (Its other overclaim point — that
+  the work-document tab shows none of this — was already obsolete: `ed59223` had
+  landed while the review was reading, which the review itself noted.)
+
+Both new client tests were watched red against the round-1 code before being
+accepted. A third round is running over these fixes; the pattern of each round
+finding a hole in the previous round's fix is the reason it is running rather
+than being declared unnecessary.
+
+## Review round 3
+
+**NOT DONE**, with one P1 again inside the previous round's fix — the third round
+in a row where the newest change carried the newest defect.
+
+- **P1 — a stale response could consume a newer render's anchors.** The re-query
+  in `ed59223` fixed writes landing on detached nodes, but introduced the mirror
+  problem: source A's request in flight, source B renders, **A answers first**,
+  re-queries B's anchors, finds no entry for B's uris, and marks them all
+  unresolved — stripping their hrefs, so B's own answer finds nothing left to
+  repair. Reachable by switching document tabs. The effect now sets a
+  `superseded` flag in its cleanup, which React runs before the next effect, and a
+  superseded response is dropped.
+
+    The first test written for this **passed without the fix** and was thrown away:
+    it released A's response _after_ B's, in which order B has already stripped the
+    hrefs and A's re-query finds nothing to damage. The race only exists when A
+    lands first. Rewritten with both responses gated so the order is explicit, it
+    fails without the guard on `Expected the element not to have class: tcw-inert`.
+    A vacuous test here would have shipped the P1 with a green suite over it.
+
+- **P2 — the capability delta was framed as a contradiction when it is an
+  extension.** Criterion 15 required _deleting_ the sentence "unknown,
+  unregistered, or dangling foreign targets remain inert" from
+  `docs/capabilities/web/description.md`. That sentence is still true — those
+  targets do remain inert, and now say why. Deleting it would have made the
+  ledger less accurate, not more. Criterion 15 and the Capability changes section
+  now describe an extension, which is what the closeout flip will apply.
+
+- **P2 — the residual was stated as the only one.** `spec.md` and `outcome.md`
+  called a post-response replacement the sole remaining hole while the P1 above
+  was open. Corrected; the surviving residual is stated as what it is.
+
+- **P2 — the release note claimed three tabs, evidence covered one.** Only the
+  Initial Request tab was tested and looked at. Narrowed to what was verified,
+  with the shared rendering noted rather than asserted as verified.
+
+- **Acknowledged, not fixed:** the exact-id assertion added in round 2 fails
+  against the old module-global counter only in full-file order, not run in
+  isolation, so it proves collision avoidance but not the removal of module
+  state. Contorting it further buys less than it costs; recorded instead.
+
+The review's own verdict: **not converged** — "one more adversarial round after
+adding response ownership/cancellation and an overlapping-source test is
+worthwhile." Both of those now exist, which is precisely what round 4 would be
+reviewing. That decision is the user's, and is put to them rather than taken
+here.
