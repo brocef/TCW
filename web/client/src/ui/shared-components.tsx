@@ -48,15 +48,16 @@ type Resolution = {
     detail?: string
 }
 
-let offBoardNoteId = 0
-
-/** An id no element in the document already claims. The counter alone is not
- * enough: `marked` passes authored HTML through, so a document may contain an
- * element whose id collides with the next one we would mint. */
+/** An id no element in the document already claims. `marked` passes authored
+ * HTML through, so a document may hold the id we would otherwise mint. Counting
+ * from zero on each call rather than from a module global makes this a function
+ * of the document alone — each note is inserted before the next id is minted, so
+ * the search terminates one past the ids already in use, and a test can state
+ * exactly which id a given document forces. */
 function freeNoteId() {
-    let id = `tcw-off-board-${offBoardNoteId++}`
-    while (document.getElementById(id)) id = `tcw-off-board-${offBoardNoteId++}`
-    return id
+    let n = 0
+    while (document.getElementById(`tcw-off-board-${n}`)) n += 1
+    return `tcw-off-board-${n}`
 }
 
 /** Stop an unopenable reference from behaving like a link. The anchor keeps its
@@ -73,21 +74,20 @@ function neutralize(anchor: HTMLAnchorElement, uri: string) {
  * a warning treatment rather than the broken-link one, the owning project named
  * beside the link text, and the sentence carried as an accessible description
  * (a `title` alone is announced inconsistently). Inserted DOM, matching how the
- * inert class is applied to this same `marked` output. The guard keys off a
- * marker we set ourselves, not off the class, so authored markup that happens to
- * carry the badge class cannot suppress the note; a repeated pass over its own
- * output rebuilds the badge and note rather than leaving a stale project. */
+ * inert class is applied to this same `marked` output.
+ *
+ * No guard against inserting twice, because the caller cannot reach the same
+ * anchor twice: it selects `a[href^="tcw://"]` from the live DOM, and every
+ * anchor treated here has had its href removed. An earlier version guarded on a
+ * marker attribute and removed the marked sibling *and the element after it*,
+ * which authored markup could forge into deleting content that was never ours.
+ * A condition that cannot arise does not need defending, and defending it cost
+ * more than it bought. */
 function markOffBoard(anchor: HTMLAnchorElement, project: string) {
     anchor.classList.add("tcw-unhosted")
     anchor.title = `Project ${project} is not included in this board`
-    const previous = anchor.nextElementSibling
-    if (previous instanceof HTMLElement && previous.dataset.tcwBadge === "") {
-        previous.nextElementSibling?.remove()
-        previous.remove()
-    }
     const badge = document.createElement("span")
     badge.className = "tcw-project-badge"
-    badge.dataset.tcwBadge = ""
     badge.textContent = project
     const note = document.createElement("span")
     note.className = "tcw-sr-only"

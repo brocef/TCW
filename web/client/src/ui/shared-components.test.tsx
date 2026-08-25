@@ -166,10 +166,33 @@ test("authored markup cannot suppress the off-board note", async () => {
     const anchor = await screen.findByText("the epic")
     await waitFor(() => expect(anchor).toHaveAttribute("aria-describedby"))
     const noteId = anchor.getAttribute("aria-describedby")!
+    // Ids are minted from zero against the document, so this one is forced: the
+    // authored element holds -0, therefore the note must be -1. Asserting the
+    // exact value is what makes this test fail if collision-avoidance is dropped
+    // — asserting only "the note has the right text" would not, since a stale
+    // module counter could hand out a free id by luck.
+    expect(noteId).toBe("tcw-off-board-1")
     const note = container.querySelector(`#${noteId}`)
     expect(note).toHaveTextContent(OFF_BOARD)
-    expect(note).not.toHaveTextContent("x")
+    expect(screen.getByText("x")).toHaveAttribute("id", "tcw-off-board-0")
     expect(anchor.nextElementSibling).toHaveTextContent(/^orchestrator$/)
+})
+
+test("authored markup adjacent to a reference is never removed", async () => {
+    // An earlier guard removed a marked sibling and the element after it, which
+    // authored markup could forge into deleting content that was never ours.
+    const { container } = renderResolved(
+        {
+            ok: false,
+            reason: "unhosted-project",
+            project: "orchestrator",
+        },
+        `See [the epic](${URI})<span data-tcw-badge></span><em>keep me</em>.`
+    )
+    const anchor = await screen.findByText("the epic")
+    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+    expect(screen.getByText("keep me")).toBeInTheDocument()
+    expect(container.querySelector("[data-tcw-badge]")).not.toBeNull()
 })
 
 test("shows an unresolved reference inert, with the reason it failed", async () => {
