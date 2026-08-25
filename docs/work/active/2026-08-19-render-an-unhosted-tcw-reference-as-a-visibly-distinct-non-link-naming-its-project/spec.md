@@ -90,7 +90,13 @@ Reproducible on HEAD in two shapes, both valid references to real items:
    resolver already produces for `tcw validate`.
 4. Nothing changes about which references resolve, or which projects a board
    hosts.
-5. **The treatment actually appears on every surface a document is read on.**
+5. **A work reference that names no existing item does not resolve.** Absorbed at
+   the second rework, on the user's decision. `resolve_tcw_ref` checked existence
+   for `T` and `C` and not for `W`, so `tcw://W/<slug>` reported `ok` for a slug
+   nobody created — `tcw validate` passed a dangling local reference, and the
+   viewer rewrote it into a link that 404s. The failure-reason work above is
+   worth less while the resolver lies about which references are broken.
+6. **The treatment actually appears on every surface a document is read on.**
    Added at the rework: goals 1-3 were all satisfiable — and were satisfied —
    while a work item's document tab applied no treatment at all, because
    `Markdown`'s resolve pass wrote to DOM that a re-render had already replaced.
@@ -139,6 +145,11 @@ pre-solved.
 - **`tcw validate` gains no hostability check.** Settled _no_ in the superseded
   item: hostability is a property of a `serve` invocation, not of stored data,
   so `validate` has no invocation to check against.
+- **`resolve_qualified_work_ref` is not changed.** It answers "which store
+  addresses this ref", which is what `tcw serve`'s routing wants and what its
+  other caller (`_work_store_for`) depends on. The existence check belongs to
+  `resolve_tcw_ref`, which answers "does this reference resolve" — the same
+  question it already asks of `T` and `C`.
 - **The self-qualified-link symptom (GitHub #12)** stays fixed and untested-for
   here; it no longer reproduces and its work-store defect was fixed by
   `2026-08-12-honor-the-configured-work-path-at-every-work-store-call-site`.
@@ -287,6 +298,17 @@ while this surface is dead, which is how it went unnoticed):
 17. In the running app, a work item's Initial Request tab shows all four
     appearances, and a resolvable reference navigates in-app from that tab —
     the `data-nav-key` rewrite was equally dead there before.
+
+Work-reference existence (`tests/test_refs.py`, added at the second rework):
+
+18. `tcw://W/<slug>` for a slug no item carries returns `ok: false` with
+    `no such work item: <slug>`, and the same holds for
+    `tcw://W/<registered-project>/<slug>` — the defect covers both spellings, not
+    only the bare one.
+19. `tcw validate` reports a dangling bare work reference as a problem. It did
+    not before, which was the defect's headline consequence.
+20. `tcw validate` on this repo still exits `0` — the stricter resolver finds no
+    dangling reference in the tree it now checks properly.
 
 Whole tree:
 

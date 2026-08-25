@@ -346,9 +346,7 @@ is deep-linkable and Back/Forward work. Any `tcw://` reference in an object's bo
 in-app link** that navigates to the target object. A reference to a real object on
 a board this viewer isn't serving is marked as **off-board**, with the name of the
 project that owns it shown beside the link text; a reference that doesn't resolve
-at all is shown inert with the reason it failed. (One gap: a bare
-`tcw://W/<slug>` naming no existing item currently resolves anyway — see
-`docs/work/inbox/`.) The list/detail divider and the
+at all is shown inert with the reason it failed. The list/detail divider and the
 editor/preview split are **drag-resizable**. The object list is a **collapsible
 tree** that mirrors each axis's hierarchy — nested paths for taxonomy terms and
 capabilities (a path segment with no item of its own is a plain folder label),

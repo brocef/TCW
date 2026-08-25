@@ -19,6 +19,17 @@ category.
 
 ### Fixed
 
+- `resolve_tcw_ref` reported `ok` for a work reference naming no existing item.
+  It checked existence for `T` (`get`) and `C` (`get`) but not for `W`, where it
+  took `resolve_qualified_work_ref`'s answer — which locates the store that
+  _would_ hold the item, not the item — as resolution. Only the status-path
+  spelling ever looked. So `tcw://W/<slug>` and
+  `tcw://W/<registered-project>/<slug>` both passed `tcw validate` for a slug
+  nobody created, and `tcw serve` rewrote them into in-app links that 404. The
+  `W` branch now confirms the item exists and reports
+  `qualified_work_ref_problem`'s message when it does not.
+  `resolve_qualified_work_ref` is unchanged — `tcw serve`'s routing wants store
+  location, not existence.
 - `tcw://` link resolution applied nothing at all on a work item's document tab
   — not the new off-board treatment, not `tcw-inert`, and not the `data-nav-key`
   rewrite, so references there were neither navigable nor marked. `Markdown`

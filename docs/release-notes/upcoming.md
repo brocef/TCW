@@ -12,9 +12,11 @@ internal module names.
   mistakes.
 - A link that really is broken now says why — a misspelled address, or a
   destination the project does not have — instead of only repeating the address
-  back to you. One case is not covered yet: a link written as a plain work-item
-  name that does not exist is still treated as valid, and is being tracked
-  separately.
+  back to you.
+- A link to a work item that does not exist is finally treated as broken. It used
+  to pass `tcw validate` without comment and appear as a working link that led
+  nowhere, so a typo in an item name could sit unnoticed in a document
+  indefinitely.
 - Links inside a work item's **Initial Request** tab work again. They were
   rendering as plain text: a link to another item did not go anywhere when
   clicked, and a broken one was not marked as broken. Everything described above
