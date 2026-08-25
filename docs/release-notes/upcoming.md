@@ -11,8 +11,10 @@ internal module names.
   document written across projects reads as complete rather than as full of
   mistakes.
 - A link that really is broken now says why — a misspelled address, or a
-  document that no longer exists — instead of only repeating the address back
-  to you.
+  destination the project does not have — instead of only repeating the address
+  back to you. One case is not covered yet: a link written as a plain work-item
+  name that does not exist is still treated as valid, and is being tracked
+  separately.
 - Links inside a work item's **Initial Request**, **Spec**, and **Implementation
   Plan** tabs work again. They were rendering as plain text: a link to another
   item did not go anywhere when clicked, and a broken one was not marked as

@@ -254,9 +254,13 @@ Client (`web/client/src/ui/shared-components.test.tsx`, new coverage for
    element whose text content is exactly `orchestrator`.
 9. The sentence `Project orchestrator is not included in this board` is
    reachable two ways for that anchor: as the link's accessible description
-   (`getByRole("link", { description: ... })`), and as text present in the
-   rendered container (visually-hidden counts) — so the meaning survives both a
-   screen reader and a reader who never hovers.
+   (`aria-describedby` resolving to an element that carries the sentence), and as
+   text present in the rendered container (visually-hidden counts) — so the
+   meaning survives both a screen reader and a reader who never hovers.
+   (Corrected after review round 2: this said `getByRole("link", …)`, which an
+   unopenable reference deliberately no longer satisfies — removing the `href`
+   removes the implicit link role. A criterion that requires the thing the change
+   set out to remove would have blessed the defect it was written to prevent.)
 10. Given `unresolved` with `detail: "no such work item: x"`, the anchor carries
     `tcw-inert`, carries no badge sibling, and its `title` is
     `no such work item: x`.

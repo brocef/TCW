@@ -213,13 +213,98 @@ own contract, but it is the thing to look at first if anyone finds it faint.
   local work reference, and the viewer rewrites it into a link that 404s. Found
   while building the fixture — the "dangling" link chosen for it turned out not to
   be dangling as far as the resolver was concerned.
-- **The hoist of `_hosted_projects()`** out of the per-URI loop is a behavior-
-  neutral change with one honest cost: an aggregating server whose batch contains
-  no foreign references now walks the descendant nodes once instead of zero times.
-  It previously walked them once _per foreign reference_, up to
-  `RESOLVE_MAX_URIS` (256) times. Recorded in the changelog under Internal.
+- **`_hosted_projects()` is taken at most once per batch**, lazily, on the first
+  foreign reference. It previously ran once _per foreign reference_, up to
+  `RESOLVE_MAX_URIS` (256) times. (Corrected after review round 2: this paragraph
+  still described the _eager_ hoist — "walks once instead of zero times" — which
+  was true of the first pass and removed by `634cf05`, restoring the zero. The
+  sentence outlived the code it described, which is the drift the review exists
+  to catch.)
 - **The `tcw` CLI was used throughout**, against the standing preference for inbox
   documents while `tcw/` is being modified. `tcw/cli.py` imports `tcw.serve` at
   module load, so the edited module is loaded by every `tcw` command; it was kept
   importable at every commit and the CLI misbehaved at no point. The two findings
   above were filed as inbox documents rather than through `tcw work new`.
+
+---
+
+# Second pass — the absorbed work-tab defect
+
+Follows `rework.md`, not the plan: verification rejected the item so it would
+absorb the defect that kept its result off the surface work items are read on.
+
+## Root cause
+
+Found, not guessed — the rework file was explicit that a plausible mechanism is
+not a diagnosis, and the one it suggested turned out to be only half the story.
+
+`Markdown` (`web/client/src/ui/shared-components.tsx`) queried the container for
+`a[href^="tcw://"]`, posted them to `/api/resolve`, and then applied the answers
+**to the anchors it had captured before the request**. Instrumented in a test:
+
+```
+EFFECT RUN, anchors: 1
+THEN RUN, connected: false   data keys: ["tcw://W/orchestrator/2026-01-01-x"]
+```
+
+The response is correct and arrives; the nodes it is written to have left the
+document. Nothing errors, and the effect does not re-run, because `[html,
+resolveLinks]` never changed — a re-render replaced the content with
+byte-identical HTML. That is why the browser showed exactly one `/api/resolve` at
+~95ms and zero anchor mutations: the request in the network log looked like proof
+the feature had run.
+
+`work-document-tabs.tsx` triggers it on every mount. Its
+`useEffect(…, [item.slug])` resets state with a fresh `{}`, and a child's effect
+runs before its parent's — so the resolve request is always in flight when that
+re-render lands. Confirmed by deleting `setArtifactStates({})` and watching the
+reproduction test go green.
+
+## The fix, and why it is not in `work-document-tabs.tsx`
+
+The response handler re-queries the container instead of trusting the captured
+nodes (`ed59223`). That is the shared point every call site routes through, so
+one edit restores the work, capability, and taxonomy surfaces together. Fixing
+the parent's state reset would have made this symptom go away while leaving the
+next parent that re-renders mid-request broken in exactly the same silent way —
+the `tcw-inert` and `data-nav-key` paths were equally dead here, which is the
+tell that the defect was never about the new rendering.
+
+`setArtifactStates({})` still allocates a fresh object per mount. It is a wasted
+render, not a defect, and it is left alone.
+
+**The residual, stated rather than pre-solved:** a replacement landing strictly
+_after_ the response is applied would still wipe the treatment, and the effect
+still would not re-run. Not observed, and not reproducible in a test, so nothing
+guards it.
+
+## Evidence
+
+- `web/client/src/ui/work-document-tabs.test.tsx` gained a reproduction that
+  mounts the real component with a body containing a `tcw://` link. **Written
+  first and watched fail** against the pre-fix `Markdown` (timed out waiting for
+  `tcw-unhosted`), then green. The existing `Markdown` tests pass either way —
+  they render the component directly and never touch the tab, which is how this
+  survived.
+- In the running app, on a work item's Initial Request tab: both off-board
+  spellings carry `tcw-unhosted` + the `orchestrator` badge + the sentence, the
+  dangling one carries `tcw-inert` + `no such work item: …`, the malformed one
+  `malformed tcw:// uri`, and the resolvable one **navigated in-app** from that
+  tab — `/work/2026-03-01-…` → `/work/2026-02-01-local-sibling-task`. That
+  navigation was dead before this pass too.
+- `docs/work/inbox/2026-08-24-tcw-link-resolution-never-applies-on-a-work-items-document-tab.md`
+  was deleted when the rework absorbed it; its measurements live in `rework.md`.
+
+## Gates at this pass
+
+- `pnpm test` — **59 passed**, 11 files (the reproduction is the 59th).
+- `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm check:build` — all exit 0.
+- `pytest` — see the verify assessment; no Python changed in this pass.
+
+## What the rework file got wrong
+
+Its hypothesis — the parent's `{}` reset — was the _trigger_, and it named the
+right file. It was not the _cause_: the cause is `Markdown` holding node
+references across an await, and a fix aimed only at the trigger would have been
+the wrong fix in the right file. Recorded because the rework file explicitly told
+the next pass not to treat that hypothesis as a diagnosis, and it was right to.
