@@ -30,6 +30,28 @@ store implement this operation, even if less elegantly?"_ It governs every chang
 to an operation, not only the ones made at a lifecycle stage, and it lives in
 full in [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md).
 
+## Development environment
+
+A **Claude Code remote session** provisions itself at session start:
+`scripts/remote_session_setup.sh`, wired to `SessionStart` in
+`.claude/settings.json`, installs this checkout with its dev extras
+(`pip install -e '.[dev]'`) and installs the `tcw` plugin from the checkout, so
+`tcw`, `pytest`, and the plugin's skills are present without a manual step. It
+is idempotent, exits 0 on every path, and prints only when something failed —
+a session start that says nothing succeeded.
+
+Everywhere else — Codex, a local shell, a session where the hook never fired —
+run the same provisioning by hand:
+
+```sh
+scripts/remote_session_setup.sh --force
+```
+
+That script is contributor tooling, **not** the published install path. The
+published one is `scripts/session_bootstrap.sh`, which installs the released
+`tcw-cli` from PyPI with pipx for a _user_; leave it alone when changing this
+one.
+
 ## Documentation Sync
 
 Before reporting any code change complete, invoke the `documentation-sync` skill
