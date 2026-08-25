@@ -12,6 +12,7 @@ const artifacts = [
 function renderTabs(
     options: {
         slug?: string
+        body?: string
         present?: string[]
         onReadArtifact?: ReturnType<typeof vi.fn>
     } = {}
@@ -31,7 +32,7 @@ function renderTabs(
             <WorkDocumentTabs
                 item={{
                     slug: options.slug ?? "first-item",
-                    body: "# Initial body",
+                    body: options.body ?? "# Initial body",
                 }}
                 artifacts={artifacts.map((artifact) => ({
                     ...artifact,
@@ -168,4 +169,23 @@ test("does not render the intake fallback under the request's name", () => {
     expect(
         screen.getByRole("button", { name: "Edit Initial Request" })
     ).toBeVisible()
+})
+
+test("resolves tcw:// links in the body shown on the Initial Request tab", async () => {
+    // The Markdown unit tests render the component directly, so they pass while
+    // this surface is dead. This drives it through the tab the way a reader does.
+    const uri = "tcw://W/orchestrator/2026-01-01-x"
+    globalThis.fetch = vi.fn().mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({
+            [uri]: {
+                ok: false,
+                reason: "unhosted-project",
+                project: "orchestrator",
+            },
+        }),
+    }))
+    renderTabs({ body: `See [the epic](${uri}).` })
+    const anchor = await screen.findByText("the epic")
+    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
 })

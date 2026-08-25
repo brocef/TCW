@@ -119,7 +119,18 @@ export function Markdown({
         void requestJson<Record<string, Resolution>>("/api/resolve", "POST", {
             uris,
         }).then((result) => {
-            for (const anchor of anchors) {
+            // Re-query instead of reusing the anchors captured above. A render
+            // between the request and the response can replace this content with
+            // identical HTML, which leaves those nodes detached while the effect
+            // does not re-run — its deps never changed. Writing to detached nodes
+            // is a silent no-op, and it is why every reference on a work item's
+            // document tab stayed unmarked (`work-document-tabs.tsx` resets state
+            // in a mount effect, which runs after this one and re-renders).
+            const live =
+                container.current?.querySelectorAll<HTMLAnchorElement>(
+                    'a[href^="tcw://"]'
+                ) ?? []
+            for (const anchor of live) {
                 const uri = anchor.getAttribute("href")!
                 const resolved = result.data?.[uri]
                 if (resolved?.ok && resolved.axis && resolved.key) {
