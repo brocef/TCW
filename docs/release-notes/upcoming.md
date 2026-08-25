@@ -15,9 +15,10 @@ internal module names.
   back to you. One case is not covered yet: a link written as a plain work-item
   name that does not exist is still treated as valid, and is being tracked
   separately.
-- Links inside a work item's **Initial Request**, **Spec**, and **Implementation
-  Plan** tabs work again. They were rendering as plain text: a link to another
-  item did not go anywhere when clicked, and a broken one was not marked as
-  broken. Everything described above now applies there too.
+- Links inside a work item's **Initial Request** tab work again. They were
+  rendering as plain text: a link to another item did not go anywhere when
+  clicked, and a broken one was not marked as broken. Everything described above
+  now applies there too. The same fix covers the Spec and Implementation Plan
+  tabs, which share that rendering.
 - Neither kind of dead link can be clicked any more. Both used to look
   unclickable and still respond to a click; now they behave the way they look.

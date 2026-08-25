@@ -117,9 +117,18 @@ why the same edit restores the capability, taxonomy, and work surfaces at once,
 and why fixing the parent's state reset instead would have left the next parent
 that re-renders mid-request broken in the same silent way.
 
-The residual: a replacement landing strictly _after_ the response is applied would
-still wipe the treatment, and the effect still would not re-run. Not observed, not
-reproducible in a test, and not defended against here — noted rather than
+A second hole, found by review round 3 and closed here: the re-query alone let a
+_stale_ response consume a newer render's anchors. Source A's request is in
+flight, source B renders, A answers first, re-queries B's anchors, finds no entry
+for B's uris and marks them all unresolved — stripping their hrefs, so B's own
+answer then finds nothing left to repair. The effect now sets a `superseded` flag
+in its cleanup, which React runs before the next effect, and a superseded response
+is dropped. This does not undo the re-query: when the DOM is replaced without the
+deps changing, no cleanup runs and the response still applies.
+
+The residual that remains: a replacement landing strictly _after_ the response is
+applied would still wipe the treatment, and the effect would not re-run. Not
+observed, not reproducible in a test, and not defended against — noted rather than
 pre-solved.
 
 ## Non-goals

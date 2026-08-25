@@ -29,7 +29,10 @@ category.
   `work-document-tabs.tsx` triggers this on every mount — its `[item.slug]`
   effect resets state, and a child's effect runs before its parent's. The
   response handler now re-queries the container instead of trusting the captured
-  nodes, which fixes every call site rather than that one parent. Pre-existing;
+  nodes, which fixes every `Markdown` call site rather than that one parent, and
+  drops a response superseded by a later render so a stale answer cannot consume
+  the newer document's anchors. Verified through the tab for Initial Request; the
+  Spec and Implementation Plan tabs share the same rendering. Pre-existing;
   reproduced against `5ecdb9a`'s bundle before the fix.
 - An unopenable `tcw://` reference kept its `href`. The delegated click handler
   navigates only on `data-nav-key`, so clicking one handed the click to the
