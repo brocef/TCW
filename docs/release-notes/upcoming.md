@@ -13,5 +13,9 @@ internal module names.
 - A link that really is broken now says why — a misspelled address, or a
   document that no longer exists — instead of only repeating the address back
   to you.
+- Links inside a work item's **Initial Request**, **Spec**, and **Implementation
+  Plan** tabs work again. They were rendering as plain text: a link to another
+  item did not go anywhere when clicked, and a broken one was not marked as
+  broken. Everything described above now applies there too.
 - Neither kind of dead link can be clicked any more. Both used to look
   unclickable and still respond to a click; now they behave the way they look.

@@ -19,6 +19,18 @@ category.
 
 ### Fixed
 
+- `tcw://` link resolution applied nothing at all on a work item's document tab
+  — not the new off-board treatment, not `tcw-inert`, and not the `data-nav-key`
+  rewrite, so references there were neither navigable nor marked. `Markdown`
+  applied `/api/resolve`'s answers to the anchors it captured _before_ the
+  request; a render in between replaces that content with identical HTML, which
+  detaches those nodes while leaving the effect's deps (`[html, resolveLinks]`)
+  unchanged, so it never re-runs and the writes land on nothing.
+  `work-document-tabs.tsx` triggers this on every mount — its `[item.slug]`
+  effect resets state, and a child's effect runs before its parent's. The
+  response handler now re-queries the container instead of trusting the captured
+  nodes, which fixes every call site rather than that one parent. Pre-existing;
+  reproduced against `5ecdb9a`'s bundle before the fix.
 - An unopenable `tcw://` reference kept its `href`. The delegated click handler
   navigates only on `data-nav-key`, so clicking one handed the click to the
   browser's `tcw://` protocol handling while `cursor: not-allowed` claimed

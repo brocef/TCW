@@ -90,6 +90,37 @@ Reproducible on HEAD in two shapes, both valid references to real items:
    resolver already produces for `tcw validate`.
 4. Nothing changes about which references resolve, or which projects a board
    hosts.
+5. **The treatment actually appears on every surface a document is read on.**
+   Added at the rework: goals 1-3 were all satisfiable — and were satisfied —
+   while a work item's document tab applied no treatment at all, because
+   `Markdown`'s resolve pass wrote to DOM that a re-render had already replaced.
+   A reader-facing behavior that does not reach the reader has not shipped.
+
+### Applying to the live DOM
+
+`Markdown` resolves links in an effect: it queries the container for
+`a[href^="tcw://"]`, posts them to `/api/resolve`, and applies the answers when
+the response arrives. It applies them to the anchors it captured **before** the
+request — and a render in between can replace that content with byte-identical
+HTML, which leaves those nodes detached while the effect does not re-run, because
+`[html, resolveLinks]` never changed. Writing to a detached node is silent: no
+error, no visible effect, and the one request in the network log looks like proof
+that the feature ran.
+
+`work-document-tabs.tsx` triggers this every time. Its `useEffect(…, [item.slug])`
+resets state with a fresh `{}`, and a child's effect runs before its parent's — so
+the resolve request is always in flight when that re-render lands.
+
+The fix is in `Markdown`, not in that one parent: re-query the container when the
+response arrives and apply by `href`. Every call site routes through it, which is
+why the same edit restores the capability, taxonomy, and work surfaces at once,
+and why fixing the parent's state reset instead would have left the next parent
+that re-renders mid-request broken in the same silent way.
+
+The residual: a replacement landing strictly _after_ the response is applied would
+still wipe the treatment, and the effect still would not re-run. Not observed, not
+reproducible in a test, and not defended against here — noted rather than
+pre-solved.
 
 ## Non-goals
 
@@ -231,6 +262,18 @@ Client (`web/client/src/ui/shared-components.test.tsx`, new coverage for
     `no such work item: x`.
 11. Given `ok: true`, the anchor is rewritten to the in-app path with
     `data-nav-axis`/`data-nav-key` and carries neither failure class.
+
+Work-item document tab (`web/client/src/ui/work-document-tabs.test.tsx`, added
+at the rework — the `Markdown` tests render the component directly and stay green
+while this surface is dead, which is how it went unnoticed):
+
+16. Mounting `WorkDocumentTabs` with an item whose body holds a `tcw://`
+    reference, with `/api/resolve` stubbed to answer `unhosted-project`, ends
+    with that anchor carrying `tcw-unhosted`. This test must fail against the
+    pre-rework `Markdown`.
+17. In the running app, a work item's Initial Request tab shows all four
+    appearances, and a resolvable reference navigates in-app from that tab —
+    the `data-nav-key` rewrite was equally dead there before.
 
 Whole tree:
 
