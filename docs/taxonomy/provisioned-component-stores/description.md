@@ -1,0 +1,1 @@
+Declaring a component store's home repository in the project config and materializing it on demand with an explicit command, so a checkout that clones only the code repository can still reach the store.

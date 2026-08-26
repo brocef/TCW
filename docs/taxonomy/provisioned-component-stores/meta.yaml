@@ -1,0 +1,7 @@
+name: Provisioned component stores
+kind: Feature
+relatesTo: []
+vocabulary:
+- store
+- node
+- store/home-repository

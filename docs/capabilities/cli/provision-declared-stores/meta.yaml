@@ -1,0 +1,9 @@
+id: cap-28abaf
+name: Provision declared stores
+Status: Missing
+Planning doc: 2026-08-26-declare-and-provision-the-work-store-s-home-repository
+Feature: provisioned-component-stores
+Subject:
+- store
+- store/home-repository
+- cli
