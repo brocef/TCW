@@ -337,3 +337,102 @@ def test_the_git_counter_actually_sees_calls(tmp_path, monkeypatch):
     provisioner.ensure_available()
 
     assert any(argv[:2] == ["git", "clone"] for argv in calls), calls
+
+
+# ── resolution precedence ────────────────────────────────────────────────────
+
+def _local_store(root: Path) -> Path:
+    for name in ("inbox", "backlog", "active", "review", "completed", "discarded"):
+        (root / name).mkdir(parents=True, exist_ok=True)
+        (root / name / ".gitkeep").write_text("")
+    return root
+
+
+def test_a_store_already_here_wins_over_the_declaration(tmp_path):
+    """The requester's laptop: the orchestrator folder is present, so nothing
+    about that machine changes and the declaration is never consulted."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    here = _local_store(_repo(tmp_path / "orchestrator-local") / "stores" / "corelib")
+    _write_config(code, path=str(here),
+                  repository={"url": str(_remote_with_store(tmp_path)),
+                              "path": "docs/work/corelib"})
+
+    assert FsWorkStore.open(code).root == here.resolve()
+    assert not (tmp_path / "cache" / "tcw").exists(), \
+        "resolution must not provision, and must not even look in the cache"
+
+
+def test_an_absent_local_store_falls_through_to_the_provisioned_one(tmp_path):
+    """The cloud session: the same config, on a machine that has only the code."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    declaration = RepositoryDeclaration(url=str(_remote_with_store(tmp_path)),
+                                        path="docs/work/corelib")
+    _write_config(code, path="../orchestrator-that-is-not-here/stores/corelib",
+                  repository={"url": declaration.url, "path": declaration.path})
+
+    with pytest.raises(StoreNotProvisioned):
+        FsWorkStore.open(code)
+
+    FsStoreProvisioner(code, "work", declaration).ensure_available()
+
+    assert FsWorkStore.open(code).root == fs.provisioned_store_root(
+        code, declaration).resolve()
+
+
+def test_not_provisioned_names_the_remote_and_the_command(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    _write_config(code, path="../nowhere/stores/corelib",
+                  repository={"url": "https://example.invalid/orchestrator.git"})
+
+    with pytest.raises(StoreNotProvisioned) as caught:
+        FsWorkStore.open(code)
+
+    message = str(caught.value)
+    assert "https://example.invalid/orchestrator.git" in message
+    assert "tcw provision" in message
+    assert "not a directory" not in message, \
+        "a declared store that simply is not here yet is not a misconfiguration"
+
+
+def test_without_a_declaration_a_broken_path_still_says_what_it_always_said(tmp_path):
+    """The compatibility guarantee: with nothing declared, not one byte moves."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    _write_config(code, path="../nowhere/stores/corelib")
+
+    with pytest.raises(ValueError) as caught:
+        FsWorkStore.open(code)
+
+    assert not isinstance(caught.value, StoreNotProvisioned)
+    assert "work.path is not a directory" in str(caught.value)
+
+
+def test_a_declared_node_whose_default_store_exists_uses_it(tmp_path):
+    """`work.path` unset, `docs/work` present, a declaration alongside: the real
+    store on this machine still wins."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    _write_config(code, repository={"url": str(_remote_with_store(tmp_path)),
+                                    "path": "docs/work/corelib"})
+
+    assert FsWorkStore.open(code).root == (code / "docs" / "work").resolve()
+
+
+def test_a_provisioned_store_commits_in_its_own_repository(tmp_path):
+    """The store's repository owns its commits, not the code repository — the
+    same split a local `work.path` in another repository already gets."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    declaration = RepositoryDeclaration(url=str(_remote_with_store(tmp_path)),
+                                        path="docs/work/corelib")
+    _write_config(code, repository={"url": declaration.url, "path": declaration.path})
+    (code / "docs" / "work").rename(code / "docs" / "work-moved-aside")
+    FsStoreProvisioner(code, "work", declaration).ensure_available()
+
+    store = FsWorkStore.open(code)
+
+    assert store.store_git_root == fs.checkout_root(code, declaration).resolve()
+    assert store.node_root == code.resolve()

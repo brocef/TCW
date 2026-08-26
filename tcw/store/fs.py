@@ -2615,6 +2615,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @classmethod
     def open(cls, node_root: Path) -> "FsWorkStore":
+        """Resolve this node's work store, in one ordered ladder.
+
+        1. the local store (`work.path`, else `docs/work`) when it is usable;
+        2. else the declared home repository's provisioned location, if usable;
+        3. else `StoreNotProvisioned`, when a home repository is declared;
+        4. else exactly what this did before a declaration existed — the same
+           checks, in the same order, with the same messages.
+
+        **A declaration is a fallback, never an override.** Rule 1 runs first so
+        a checkout that already has the store keeps using it and nothing about
+        that machine changes; the declaration answers only for a machine that
+        does not have it. Rules 3 and 4 are the same failure told two ways: with
+        a declaration it is actionable, so it says what to run.
+        """
         node_root = node_root.resolve()
         config_path = node_root / SENTINEL
         config = load_yaml(config_path, unique=True)
@@ -2624,15 +2638,51 @@ class FsWorkStore(FsTreeStore, WorkStore):
         configured = work.get("path")
         if configured is not None and (not isinstance(configured, str) or not configured.strip()):
             raise ValueError(f"{config_path}: work.path must be a non-empty path string")
+        raw_root = cls._local_root(node_root, configured)
+        # Problems are discarded, as everywhere a store *reads* config: a
+        # mistyped declaration is `tcw validate`'s to report, and the parser
+        # fails closed, so a broken one reads as no declaration at all.
+        declaration, _problems = parse_repository_declaration(
+            work.get("repository"), f"{cls.COMPONENT}.repository")
+
+        if declaration is None:
+            return cls._open_at(raw_root, node_root, config_path, external=configured is not None)
+        if _is_store_layout(raw_root):                          # rule 1
+            return cls._open_at(raw_root, node_root, config_path, external=configured is not None)
+        provisioned = provisioned_store_root(node_root, declaration)
+        if _is_store_layout(provisioned):                       # rule 2
+            return cls._open_at(provisioned, node_root, config_path, external=True)
+        raise StoreNotProvisioned(                              # rule 3
+            f"{config_path}: the {cls.COMPONENT} store is declared in "
+            f"{declaration.url} but has not been provisioned here; "
+            f"run `tcw provision` to obtain it")
+
+    @staticmethod
+    def _local_root(node_root: Path, configured: str | None) -> Path:
+        """Where the store lives on this machine per `work.path`, or the default.
+
+        Unchanged from before the declaration existed, re-anchoring included: a
+        relative `work.path` inside a *linked worktree* is authored against the
+        primary checkout's position on disk, so it resolves against the main
+        worktree root. Getting this wrong would silently swap a worktree user's
+        real store for a cache clone, which is why it stayed one function rather
+        than being reimplemented inside the ladder.
+        """
         if configured is None:
-            raw_root = node_root / "docs" / "work"
-        else:
-            value = Path(configured).expanduser()
-            base = node_root
-            anchors = worktree_anchors(node_root)
-            if not value.is_absolute() and anchors is not None:
-                base = anchors[1]
-            raw_root = value if value.is_absolute() else base / value
+            return node_root / "docs" / "work"
+        value = Path(configured).expanduser()
+        base = node_root
+        anchors = worktree_anchors(node_root)
+        if not value.is_absolute() and anchors is not None:
+            base = anchors[1]
+        return value if value.is_absolute() else base / value
+
+    @classmethod
+    def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
+                 external: bool) -> "FsWorkStore":
+        """Validate a candidate root and build the store. `external` means the
+        store is not the node's own `docs/work`, so the repository that owns its
+        commits has to be discovered rather than assumed."""
         if raw_root.is_symlink() and not raw_root.exists():
             raise ValueError(f"{config_path}: work.path is a broken symlink: {raw_root}")
         if not raw_root.is_dir():
@@ -2641,8 +2691,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         missing = [name for name in ("inbox", *WORK_STATUSES) if not (root / name).is_dir()]
         if missing:
             raise ValueError(f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
-        repository = node_root if configured is None else git_root(root)
-        if repository is None and configured is not None:
+        repository = git_root(root) if external else node_root
+        if repository is None and external:
             raise ValueError(f"{config_path}: work.path is not inside a Git repository: {root}")
         return cls(root, node_root=node_root, store_git_root=repository or node_root)
 
