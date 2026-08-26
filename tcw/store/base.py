@@ -709,6 +709,64 @@ class RepositoryDeclaration:
     checkout: str | None = None
 
 
+@dataclass(frozen=True)
+class ProvisionResult:
+    """What one provisioning attempt did.
+
+    `location` is a short human-readable handle, exactly like `WorkStore.locate`:
+    presentation only, do not parse it. `action` is the closed vocabulary a
+    caller may branch on.
+    """
+    action: str                 # one of PROVISION_ACTIONS
+    available: bool
+    location: str = ""
+    detail: str = ""
+
+
+PROVISION_ACTIONS = (
+    "undeclared",        # nothing declared; there was nothing to do
+    "available",         # already usable here; nothing was contacted
+    "obtained",          # newly made available
+    "refreshed",         # already present, brought up to the declared version
+    "planned",           # dry run: this is what would have happened
+)
+
+
+class StoreProvisioner(ABC):
+    """Making a declared store usable *here*.
+
+    The abstract verb is "make yourself usable", not "clone": a tracker-backed
+    adapter answers `is_available` by checking credentials and reachability, and
+    an adapter that needs nothing implements `ensure_available` as a no-op —
+    which is a legitimate implementation, not a stub.
+
+    No signature names a URL, a ref, or a directory. Those are the filesystem
+    adapter's private business, and a store-interface method that mentioned one
+    would have moved the seam into the wrong layer.
+    """
+
+    @abstractmethod
+    def describe(self) -> str:
+        """A short, human-readable account of where the store is declared to come
+        from. Presentation only — do not parse it."""
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Whether the store can be used here right now, without contacting
+        anything."""
+
+    @abstractmethod
+    def ensure_available(self, *, refresh: bool = False,
+                         dry_run: bool = False) -> ProvisionResult:
+        """Make the store usable here, and report what that took.
+
+        Idempotent: an already-usable store returns `available` and contacts
+        nothing, which is what lets a caller run this unconditionally. `refresh`
+        asks for the declared version even when something usable is already
+        present. `dry_run` reports the plan and contacts nothing.
+        """
+
+
 @dataclass
 class StageBindings:
     """A stage's checks and prompts.

@@ -40,7 +40,8 @@ from tcw.store.base import (
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
-    parse_repository_declaration, RepositoryDeclaration, StoreNotProvisioned,
+    parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
+    StoreNotProvisioned, StoreProvisioner,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -2405,6 +2406,192 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             self._write_node(d, meta, desc_text)
         return _require_detail(self.get_capability_detail(identifier),
                                "capability", identifier)
+
+
+# ── provisioning (FS adapter: a declared store is a git checkout) ────────────
+#
+# Everything below realizes `StoreProvisioner` for the filesystem. Clones, refs
+# and cache directories are named *here and nowhere else* — a store-interface
+# signature that mentioned one would put the seam in the wrong layer.
+
+STORE_LAYOUT = ("inbox", *WORK_STATUSES)
+
+
+def _cache_root() -> Path:
+    """Where working copies land when a declaration names no `checkout`.
+
+    XDG, so it is outside every checkout and survives between sessions on one
+    machine. Read from the environment on each call rather than at import: a
+    test — and a user's shell — may set it after this module loads.
+    """
+    base = os.environ.get("XDG_CACHE_HOME") or "~/.cache"
+    return Path(base).expanduser() / "tcw" / "stores"
+
+
+def _cache_key(declaration: RepositoryDeclaration) -> str:
+    """A directory name for one (url, ref) pair: readable, then unambiguous.
+
+    The readable half is the tail of the URL, so a user browsing the cache can
+    tell whose repository a directory holds. The hash is what actually keeps two
+    declarations apart, because the readable half is lossy by design.
+
+    Keyed on url *and* ref: two projects naming the same repository at the same
+    ref should share one working copy, and two refs of it must not fight over
+    one checkout.
+    """
+    cleaned = declaration.url.strip().rstrip("/")
+    if cleaned.endswith(".git"):
+        cleaned = cleaned[:-4]
+    tokens = [token.rpartition("@")[2]                 # drop any `git@` user part
+              for token in re.split(r"[/:]", cleaned) if token]
+    slug = "-".join(re.sub(r"[^A-Za-z0-9._-]+", "-", token).strip("-.")
+                    for token in tokens[-3:])
+    slug = (slug.strip("-").lower() or "store")[:60]
+    digest = hashlib.sha256(
+        f"{declaration.url}\n{declaration.ref or ''}".encode("utf-8")).hexdigest()[:12]
+    return f"{slug}-{digest}"
+
+
+def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
+    """The working copy's root for `declaration` — the declared `checkout`, or a
+    per-machine cache directory. `~` expands; a relative path is the node's."""
+    if declaration.checkout:
+        value = Path(declaration.checkout).expanduser()
+        return value if value.is_absolute() else (node_root / value)
+    return _cache_root() / _cache_key(declaration)
+
+
+def provisioned_store_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
+    """Where a provisioned store *would* live. Pure: computes a path, probes
+    nothing. `FsWorkStore.open` and the provisioner share it, so they can never
+    disagree about where a declared store is."""
+    root = checkout_root(node_root, declaration)
+    return (root / declaration.path) if declaration.path else root
+
+
+def _is_store_layout(root: Path) -> bool:
+    """Whether `root` holds a work store's folders — the same question
+    `FsWorkStore.open` asks, so a provisioned store and an opened one agree."""
+    return root.is_dir() and all((root / name).is_dir() for name in STORE_LAYOUT)
+
+
+class FsStoreProvisioner(StoreProvisioner):
+    """A declared store, realized as a git checkout.
+
+    Obtains into a temporary directory beside the target and renames it into
+    place, so a failed or interrupted fetch is never visible as a store. That is
+    what makes "leaves nothing behind" true rather than aspirational.
+    """
+
+    def __init__(self, node_root: Path, component: str,
+                 declaration: RepositoryDeclaration | None):
+        self.node_root = node_root.resolve()
+        self.component = component
+        self.declaration = declaration
+
+    # -- StoreProvisioner --
+
+    def describe(self) -> str:
+        if self.declaration is None:
+            return f"{self.component}: no home repository declared"
+        d = self.declaration
+        at = f" at {d.ref}" if d.ref else ""
+        within = f", store at {d.path}" if d.path else ""
+        return (f"{self.component}: {d.url}{at}{within} → "
+                f"{provisioned_store_root(self.node_root, d)}")
+
+    def is_available(self) -> bool:
+        if self.declaration is None:
+            return False
+        return _is_store_layout(provisioned_store_root(self.node_root, self.declaration))
+
+    def ensure_available(self, *, refresh: bool = False,
+                         dry_run: bool = False) -> ProvisionResult:
+        if self.declaration is None:
+            return ProvisionResult(action="undeclared", available=False,
+                                   detail=f"{self.component}: nothing declared")
+        target = provisioned_store_root(self.node_root, self.declaration)
+        checkout = checkout_root(self.node_root, self.declaration)
+
+        if self.is_available() and not refresh:
+            return ProvisionResult(action="available", available=True,
+                                   location=str(target),
+                                   detail=f"{self.component}: already available")
+        if dry_run:
+            verb = "refresh" if checkout.exists() else "obtain"
+            return ProvisionResult(action="planned", available=False,
+                                   location=str(target),
+                                   detail=f"{self.component}: would {verb} {self.describe()}")
+
+        if checkout.exists():
+            self._refresh(checkout)
+            action = "refreshed"
+        else:
+            self._obtain(checkout)
+            action = "obtained"
+
+        if not _is_store_layout(target):
+            missing = [n for n in STORE_LAYOUT if not (target / n).is_dir()]
+            raise ValueError(
+                f"{self.component}.repository: {self.declaration.url} has no work store "
+                f"at '{self.declaration.path or '.'}'; missing: {', '.join(missing)}")
+        return ProvisionResult(action=action, available=True, location=str(target),
+                               detail=f"{self.component}: {action} at {target}")
+
+    # -- git plumbing (adapter-private; nothing above this class names it) --
+
+    def _obtain(self, checkout: Path) -> None:
+        """Clone beside the target, then rename in. The rename is what makes a
+        failure leave nothing behind — a half-clone is never at the real path."""
+        checkout.parent.mkdir(parents=True, exist_ok=True)
+        staging = checkout.parent / f".{checkout.name}.tcw-{uuid.uuid4().hex[:8]}"
+        try:
+            self._run(["git", "clone", "--quiet", self.declaration.url, str(staging)])
+            if self.declaration.ref:
+                self._run(["git", "-C", str(staging), "checkout", "--quiet",
+                           self.declaration.ref])
+            staging.rename(checkout)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
+    def _refresh(self, checkout: Path) -> None:
+        """Fetch, then bring the working copy to the declared version.
+
+        No `pull`: the target may be a tag or a commit, where merging is
+        meaningless. Fast-forwarding is attempted only when the checked-out ref
+        actually tracks a remote branch, and its absence is not an error.
+        """
+        self._run(["git", "-C", str(checkout), "fetch", "--quiet", "--prune", "origin"])
+        target = self.declaration.ref or self._remote_head(checkout)
+        if target:
+            self._run(["git", "-C", str(checkout), "checkout", "--quiet", target])
+        upstream = _git(["git", "-C", str(checkout), "rev-parse", "--abbrev-ref",
+                         "--symbolic-full-name", "@{u}"],
+                        capture_output=True, text=True)
+        if upstream.returncode == 0 and upstream.stdout.strip():
+            self._run(["git", "-C", str(checkout), "merge", "--ff-only", "--quiet",
+                       upstream.stdout.strip()])
+
+    def _remote_head(self, checkout: Path) -> str | None:
+        """The remote's default branch, or None when the remote never advertised
+        one. None is a legitimate answer: the working copy simply stays put."""
+        probe = _git(["git", "-C", str(checkout), "symbolic-ref", "--quiet",
+                      "refs/remotes/origin/HEAD"], capture_output=True, text=True)
+        if probe.returncode != 0:
+            return None
+        return probe.stdout.strip().rpartition("/")[2] or None
+
+    def _run(self, argv: list[str]) -> None:
+        """Every git call goes through `_git`, so stdin stays closed and a remote
+        demanding credentials fails instead of hanging on a terminal nobody is
+        watching."""
+        done = _git(argv, capture_output=True, text=True)
+        if done.returncode != 0:
+            detail = (done.stderr or done.stdout or "").strip().splitlines()
+            raise ValueError(
+                f"{self.component}.repository: git {argv[1]} failed: "
+                f"{detail[-1] if detail else f'exit {done.returncode}'}")
 
 
 # ── FsWorkStore ──────────────────────────────────────────────────────────────

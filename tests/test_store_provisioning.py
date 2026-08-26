@@ -19,7 +19,8 @@ import yaml
 from tcw.store.base import (
     RepositoryDeclaration, StoreNotProvisioned, parse_repository_declaration,
 )
-from tcw.store.fs import FsWorkStore, init
+from tcw.store import fs
+from tcw.store.fs import FsStoreProvisioner, FsWorkStore, init
 
 
 WHERE = "work.repository"
@@ -137,3 +138,202 @@ def test_store_not_provisioned_is_a_value_error():
     """Existing `except ValueError` callers around `open()` must keep working —
     this is what lets the new state be introduced without a flag day."""
     assert issubclass(StoreNotProvisioned, ValueError)
+
+
+# ── the provisioner ──────────────────────────────────────────────────────────
+
+def _remote_with_store(tmp_path: Path, inner: str = "docs/work/corelib") -> Path:
+    """A repository that actually holds a work store, used as the remote.
+
+    Git does not care that the URL is a local path, and the code under test
+    never learns the difference — which is how this suite honors "no network,
+    ever" while exercising real clones.
+    """
+    remote = _repo(tmp_path / "orchestrator")
+    store = remote / inner
+    for name in ("inbox", "backlog", "active", "review", "completed", "discarded"):
+        (store / name).mkdir(parents=True)
+        (store / name / ".gitkeep").write_text("")
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "seed store"], check=True)
+    return remote
+
+
+def _provisioner(tmp_path, node_root: Path, remote: Path, **overrides):
+    """A provisioner whose cache lands inside `tmp_path`, never the real
+    `~/.cache`."""
+    declaration = RepositoryDeclaration(
+        url=str(remote), path=overrides.pop("path", "docs/work/corelib"), **overrides)
+    return FsStoreProvisioner(node_root, "work", declaration)
+
+
+@pytest.fixture(autouse=True)
+def _cache_in_tmp(tmp_path, monkeypatch):
+    """No test may write to the developer's real cache directory."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+
+def _count_git(monkeypatch):
+    """Count git invocations made by the provisioner, letting them run."""
+    calls: list[list[str]] = []
+    real = fs._git
+
+    def counting(argv, *args, **kwargs):
+        calls.append(list(argv))
+        return real(argv, *args, **kwargs)
+
+    monkeypatch.setattr(fs, "_git", counting)
+    return calls
+
+
+def test_obtaining_a_declared_store_puts_it_where_resolution_expects(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    remote = _remote_with_store(tmp_path)
+    provisioner = _provisioner(tmp_path, code, remote)
+
+    assert provisioner.is_available() is False
+    result = provisioner.ensure_available()
+
+    assert result.action == "obtained"
+    assert result.available is True
+    expected = fs.provisioned_store_root(code, provisioner.declaration)
+    assert Path(result.location) == expected
+    assert (expected / "backlog").is_dir()
+    assert provisioner.is_available() is True
+
+
+def test_a_second_call_contacts_nothing(tmp_path, monkeypatch):
+    """Idempotence is the property that lets a caller run this unconditionally,
+    and it is only worth anything if the second run makes no git call at all."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    provisioner = _provisioner(tmp_path, code, _remote_with_store(tmp_path))
+    provisioner.ensure_available()
+
+    calls = _count_git(monkeypatch)
+    result = provisioner.ensure_available()
+
+    assert result.action == "available"
+    assert result.available is True
+    assert calls == [], f"an already-available store must contact nothing, ran {calls}"
+
+
+def test_a_dry_run_contacts_nothing_and_reports_the_plan(tmp_path, monkeypatch):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    provisioner = _provisioner(tmp_path, code, _remote_with_store(tmp_path))
+
+    calls = _count_git(monkeypatch)
+    result = provisioner.ensure_available(dry_run=True)
+
+    assert result.action == "planned"
+    assert result.available is False
+    assert calls == []
+    assert not fs.checkout_root(code, provisioner.declaration).exists()
+
+
+def test_refresh_brings_an_existing_checkout_to_the_declared_ref(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    remote = _remote_with_store(tmp_path)
+    provisioner = _provisioner(tmp_path, code, remote, ref="main")
+    provisioner.ensure_available()
+    target = fs.provisioned_store_root(code, provisioner.declaration)
+
+    (remote / "docs" / "work" / "corelib" / "backlog" / "later.md").write_text("later\n")
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "add an item"], check=True)
+
+    result = provisioner.ensure_available(refresh=True)
+
+    assert result.action == "refreshed"
+    assert (target / "backlog" / "later.md").is_file()
+
+
+def test_an_unknown_ref_fails_and_leaves_nothing_behind(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    provisioner = _provisioner(tmp_path, code, _remote_with_store(tmp_path),
+                               ref="no-such-ref")
+
+    with pytest.raises(ValueError) as caught:
+        provisioner.ensure_available()
+
+    assert "git" in str(caught.value)
+    assert not fs.checkout_root(code, provisioner.declaration).exists()
+    assert list((tmp_path / "cache" / "tcw" / "stores").glob("*")) == [], \
+        "a failed clone must leave no staging directory behind either"
+
+
+def test_an_unreachable_remote_fails_and_leaves_nothing_behind(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    provisioner = FsStoreProvisioner(code, "work", RepositoryDeclaration(
+        url=str(tmp_path / "there-is-no-repository-here"), path="docs/work/corelib"))
+
+    with pytest.raises(ValueError) as caught:
+        provisioner.ensure_available()
+
+    assert "git clone failed" in str(caught.value)
+    assert not fs.checkout_root(code, provisioner.declaration).exists()
+
+
+def test_a_repository_without_a_store_at_the_declared_path_is_refused(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    remote = _remote_with_store(tmp_path)
+    provisioner = _provisioner(tmp_path, code, remote, path="docs/work/somewhere-else")
+
+    with pytest.raises(ValueError) as caught:
+        provisioner.ensure_available()
+
+    assert "no work store" in str(caught.value)
+    assert "missing:" in str(caught.value)
+
+
+def test_a_declared_checkout_location_is_used_instead_of_the_cache(tmp_path):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    provisioner = _provisioner(tmp_path, code, _remote_with_store(tmp_path),
+                               checkout=str(tmp_path / "elsewhere" / "orchestrator"))
+
+    result = provisioner.ensure_available()
+
+    assert Path(result.location).is_relative_to(tmp_path / "elsewhere")
+    assert not (tmp_path / "cache" / "tcw").exists()
+
+
+def test_the_cache_key_separates_refs_and_shares_a_repository(tmp_path):
+    code = _repo(tmp_path / "code")
+    one = FsStoreProvisioner(code, "work", RepositoryDeclaration(url="u", ref="main"))
+    two = FsStoreProvisioner(code, "work", RepositoryDeclaration(url="u", ref="next"))
+    same = FsStoreProvisioner(code, "work", RepositoryDeclaration(url="u", ref="main"))
+
+    roots = {p: fs.checkout_root(code, p.declaration) for p in (one, two, same)}
+    assert roots[one] != roots[two], "two refs must not fight over one checkout"
+    assert roots[one] == roots[same], "one (url, ref) pair is one working copy"
+
+
+def test_an_undeclared_component_is_a_no_op(tmp_path):
+    code = _repo(tmp_path / "code")
+    result = FsStoreProvisioner(code, "work", None).ensure_available()
+    assert result.action == "undeclared"
+    assert result.available is False
+
+
+def test_the_git_counter_actually_sees_calls(tmp_path, monkeypatch):
+    """Guards the two "contacts nothing" tests above.
+
+    `assert calls == []` passes just as well when the monkeypatch missed its
+    target as when the code genuinely made no call, so those assertions are only
+    worth something if the same counter is shown to observe a real one.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    provisioner = _provisioner(tmp_path, code, _remote_with_store(tmp_path))
+
+    calls = _count_git(monkeypatch)
+    provisioner.ensure_available()
+
+    assert any(argv[:2] == ["git", "clone"] for argv in calls), calls
