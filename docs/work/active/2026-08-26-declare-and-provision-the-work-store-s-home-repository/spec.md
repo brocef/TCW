@@ -192,9 +192,17 @@ accident.
 
 ### 6. Error surfaces
 
-- `find_node` (`tcw/store/fs.py:157-160`) and `_has_work_store`
-  (`tcw/store/fs.py:198-202`) let `StoreNotProvisioned` propagate instead of
-  flattening it to `None`.
+- `find_node` (`tcw/store/fs.py:157-160`) lets `StoreNotProvisioned` propagate
+  instead of flattening it to `None`. This is what fixes the reported symptom:
+  `find_node` resolves *this* node, and every `tcw work` command goes through it.
+- `_has_work_store` (`tcw/store/fs.py:198-202`) keeps returning `False`.
+  **Corrected during implementation** — an earlier draft of this section had it
+  propagate too, which is wrong: it asks about *other* nodes, so a parent's
+  `tcw work nodes` would raise because one child happened to be unprovisioned,
+  turning a legible listing into a hard failure. "No usable store here" is a true
+  and useful answer for a node that is not the one being operated on. Reporting a
+  *child* as unprovisioned rather than omitting it is a listing-format change,
+  and it belongs to the epic's criterion 3 with child B, not here.
 - `tcw/work/cli.py`'s six sites move onto one helper that prints either today's
   sentence or, for `StoreNotProvisioned`, the declared remote and
   `run \`tcw provision\``. Six copies of one string become one.
