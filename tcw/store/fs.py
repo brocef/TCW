@@ -40,6 +40,7 @@ from tcw.store.base import (
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
+    parse_repository_declaration, RepositoryDeclaration, StoreNotProvisioned,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -3149,6 +3150,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
             self._work_config().get("documentation"))
         return [f"{SENTINEL}: {p}" for p in problems]
 
+    def repository_declaration(self) -> "RepositoryDeclaration | None":
+        """The store's declared home repository, or None — problems discarded.
+
+        Same contract as `lifecycle_policy` and `documentation`: a mistyped key
+        must not break `tcw work list`. It fails *closed* rather than partially,
+        because the parser returns None on any problem — a half-read repository
+        is one nobody declared.
+        """
+        declaration, _problems = parse_repository_declaration(
+            self._work_config().get("repository"), f"{self.COMPONENT}.repository")
+        return declaration
+
+    def repository_problems(self) -> list[str]:
+        """Declaration problems, prefixed with the file they came from — for
+        `check`. Mirrors `documentation_problems` and shares its parser."""
+        _declaration, problems = parse_repository_declaration(
+            self._work_config().get("repository"), f"{self.COMPONENT}.repository")
+        return [f"{SENTINEL}: {p}" for p in problems]
+
     def lifecycle_problems(self) -> list[str]:
         """Policy problems, prefixed with the file they came from — for `check`."""
         policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
@@ -3245,6 +3265,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if identifier is None:                         # node-wide config, not per-item
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
+            problems.extend(self.repository_problems())
         if identifier is not None:
             item = self.get(identifier)
             if item is None:

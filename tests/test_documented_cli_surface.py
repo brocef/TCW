@@ -25,6 +25,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -61,7 +62,36 @@ def _doc_files() -> list[Path]:
                   if p and not p.startswith(ARCHIVAL))
 
 
-DOC_FILES = _doc_files()
+def _declares_a_missing_capability(doc: Path) -> bool:
+    """Whether `doc` is the body of a capability the ledger marks `Missing`.
+
+    A capability seeded `Missing` at a work item's `plan` stage describes what a
+    user *will* be able to do — `skills/tcw-capabilities/SKILL.md` prescribes
+    exactly that (`tcw capabilities add … --status Missing`), and for any
+    capability that adds a CLI verb the body necessarily names a verb that does
+    not exist yet. Without this carve-out the documented planning workflow cannot
+    be followed without turning the suite red, which is a guard forbidding the
+    process it is meant to protect.
+
+    Narrow on purpose, and self-healing: the exemption is keyed to an explicit
+    `Status: Missing`, so it evaporates the moment `tcw work complete` flips the
+    capability to `Supported` — which is precisely when the verb must exist. The
+    completion gate refuses a `new:` capability still reading `Missing`, so
+    nothing can stay exempt by being forgotten.
+    """
+    if doc.name != "description.md":
+        return False
+    meta = doc.parent / "meta.yaml"
+    if not meta.is_file():
+        return False
+    try:
+        loaded = yaml.safe_load(meta.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return False                       # `tcw capabilities check` owns that
+    return isinstance(loaded, dict) and loaded.get("Status") == "Missing"
+
+
+DOC_FILES = [d for d in _doc_files() if not _declares_a_missing_capability(d)]
 
 # `tcw` must be followed by whitespace to count as an invocation. `\btcw\b` also
 # matches the `tcw` inside `tcw-cli` — `-` is a non-word character — so a span
