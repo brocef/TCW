@@ -1,0 +1,13 @@
+slug: 2026-08-26-declare-a-component-store-s-home-repository-so-a-fresh-checkout-can-provision-it
+title: Declare a component store's home repository so a fresh checkout can provision
+  it
+created: '2026-08-26'
+resolution: null
+priority: 55
+effort: very-high
+complexity: high
+tags:
+- remote
+- work
+- cli
+type: epic
