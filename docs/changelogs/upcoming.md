@@ -3,6 +3,59 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category.
 
+### Added
+
+- **A component store can declare its home repository.** `<component>.repository`
+  in `tcw-config.yaml` takes `url` (required), `ref`, `path` (the store's
+  location within the repository) and `checkout` (where a working copy lives on
+  this machine; default `${XDG_CACHE_HOME:-~/.cache}/tcw/stores/<url+ref key>`).
+  Parsed by `parse_repository_declaration`, which is pure, never raises, and
+  **fails closed** — unlike the documentation parser, a half-read declaration
+  would send a fetch somewhere nobody asked for. `repository.path` is bounded
+  syntactically (relative, no `..`) before any join.
+- **`tcw provision`** obtains the stores a node declares but does not have here.
+  `--component <c>` (repeatable), `--refresh`, `--dry-run`. Idempotent: an
+  already-available store contacts nothing. The only command in `tcw` that
+  reaches the network, and it prints the remote before contacting it.
+- `StoreProvisioner` / `ProvisionResult` in `tcw/store/base.py` — the
+  storage-neutral protocol (`describe`, `is_available`, `ensure_available`). No
+  signature names a URL, a ref, or a directory; a tracker adapter would check
+  credentials and reachability and return the same shape.
+- `FsStoreProvisioner` realizes it as a git checkout. Clones into a staging
+  directory beside the target and renames in, so a failed or interrupted fetch
+  is never visible as a store.
+- `StoreNotProvisioned(ValueError)` — "declared but not available here". A
+  `ValueError` so every existing `except ValueError` around a store `open()`
+  keeps working and the sites that should say more are changed deliberately.
+
+### Changed
+
+- `FsWorkStore.open` is now an ordered ladder: the local store (`work.path`, else
+  `docs/work`) when usable, else the declared repository's provisioned location,
+  else `StoreNotProvisioned`, else exactly its prior behavior — same checks, same
+  order, same messages. **A declaration is a fallback, never an override.** The
+  `work.path` resolution, worktree re-anchoring included, moved into
+  `_local_root` unchanged rather than being reimplemented inside the ladder.
+- `find_node` lets `StoreNotProvisioned` propagate instead of flattening it to
+  `None`. `_has_work_store` deliberately does not: it asks about *other* nodes,
+  and one unprovisioned child must not fail a parent's topology listing.
+- The six duplicated `no tcw work node here` strings in `tcw/work/cli.py`
+  collapse into one `_require_node` helper. The duplication is why the message
+  could not be improved in one place.
+
+### Fixed
+
+- `tcw work list` on a node whose store was configured elsewhere but absent
+  reported `no tcw work node here — run \`tcw init\``. Following that advice
+  would scaffold a second, empty store beside the real one. It now names the
+  declared remote and `tcw provision`.
+- `tests/test_documented_cli_surface.py` no longer fails a capability body
+  declared `Status: Missing`. Such a capability is seeded at a work item's `plan`
+  stage and necessarily names a verb that does not exist yet, so the guard
+  forbade the planning workflow `skills/tcw-capabilities/SKILL.md` prescribes.
+  The carve-out is self-healing: flipping to `Supported` at completion re-arms
+  it, which is exactly when the verb must exist.
+
 ### Internal
 
 - Claude Code **remote** sessions on this repository now provision themselves.
