@@ -2489,6 +2489,25 @@ def _is_store_layout(root: Path) -> bool:
     return root.is_dir() and all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
+def declared_repository(
+    node_root: Path, component: str
+) -> tuple["RepositoryDeclaration | None", list[str]]:
+    """A component's declared home repository, read straight from the config.
+
+    Deliberately not a store method: the whole point is to answer for a component
+    whose store cannot be opened, which is exactly when a store method would be
+    unavailable. Component-generic from the start — it reads `<component>.repository`
+    for any component, so extending provisioning past `work` adds a caller, not a
+    reader.
+    """
+    config = load_yaml(node_root / SENTINEL, unique=True)
+    section = config.get(component) if isinstance(config, dict) else None
+    if not isinstance(section, dict):
+        return None, []
+    return parse_repository_declaration(section.get("repository"),
+                                        f"{component}.repository")
+
+
 class FsStoreProvisioner(StoreProvisioner):
     """A declared store, realized as a git checkout.
 
@@ -2533,9 +2552,11 @@ class FsStoreProvisioner(StoreProvisioner):
                                    detail=f"{self.component}: already available")
         if dry_run:
             verb = "refresh" if checkout.exists() else "obtain"
+            # Short on purpose: the caller prints `describe()` immediately above,
+            # and repeating it here read as "work: would obtain work: …".
             return ProvisionResult(action="planned", available=False,
                                    location=str(target),
-                                   detail=f"{self.component}: would {verb} {self.describe()}")
+                                   detail=f"{self.component}: would {verb} into {target}")
 
         if checkout.exists():
             self._refresh(checkout)

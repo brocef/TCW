@@ -10,6 +10,7 @@ the code under test never learns the difference.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -531,3 +532,151 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
     assert "parent-project" in out
     assert "children: (none — leaf)" in out, \
         "an unprovisioned child has no usable store here, and says so by absence"
+
+
+# ── the `tcw provision` verb ─────────────────────────────────────────────────
+
+def _declared_against(tmp_path: Path, remote: Path, **repository) -> Path:
+    """A node declaring `remote` as its work store's home, with no local store."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    shutil.rmtree(code / "docs" / "work")
+    _write_config(code, repository={"url": str(remote), "path": "docs/work/corelib",
+                                    **repository})
+    return code
+
+
+def test_provision_then_the_board_works(tmp_path, monkeypatch, capsys):
+    """The whole feature, end to end, in the shape the requester hits it."""
+    remote = _remote_with_store(tmp_path)
+    (remote / "docs" / "work" / "corelib" / "backlog" / "an-item").mkdir()
+    (remote / "docs" / "work" / "corelib" / "backlog" / "an-item" / "state.yaml").write_text(
+        "slug: an-item\ntitle: An item from the orchestrator\nstatus: backlog\n"
+        "created: 2026-01-01\n")
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "add an item"], check=True)
+    monkeypatch.chdir(_declared_against(tmp_path, remote))
+
+    assert main(["work", "list"]) == 1                      # before
+    assert main(["provision"]) == 0
+    capsys.readouterr()
+    assert main(["work", "list"]) == 0                      # after
+
+    assert "An item from the orchestrator" in capsys.readouterr().out
+
+
+def test_provision_names_the_remote_before_contacting_it(tmp_path, monkeypatch, capsys):
+    """A config can name a URL, so the person holding the checkout is told which
+    one is about to be contacted."""
+    remote = _remote_with_store(tmp_path)
+    monkeypatch.chdir(_declared_against(tmp_path, remote))
+
+    assert main(["provision"]) == 0
+
+    out = capsys.readouterr().out
+    assert str(remote) in out
+    assert out.index(str(remote)) < out.index("obtained")
+
+
+def test_a_second_provision_reports_available_and_contacts_nothing(tmp_path,
+                                                                   monkeypatch, capsys):
+    monkeypatch.chdir(_declared_against(tmp_path, _remote_with_store(tmp_path)))
+    assert main(["provision"]) == 0
+    capsys.readouterr()
+
+    calls = _count_git(monkeypatch)
+    assert main(["provision"]) == 0
+
+    assert "already available" in capsys.readouterr().out
+    assert calls == []
+
+
+def test_a_dry_run_from_the_cli_contacts_nothing(tmp_path, monkeypatch, capsys):
+    code = _declared_against(tmp_path, _remote_with_store(tmp_path))
+    monkeypatch.chdir(code)
+
+    calls = _count_git(monkeypatch)
+    assert main(["provision", "--dry-run"]) == 0
+
+    assert "would obtain" in capsys.readouterr().out
+    assert calls == []
+    assert not (tmp_path / "cache" / "tcw").exists()
+
+
+def test_a_node_declaring_nothing_says_so_and_succeeds(tmp_path, monkeypatch, capsys):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    monkeypatch.chdir(code)
+
+    assert main(["provision"]) == 0
+    assert "Nothing to provision" in capsys.readouterr().out
+
+
+def test_a_malformed_declaration_refuses_rather_than_doing_nothing(tmp_path,
+                                                                   monkeypatch, capsys):
+    """Silently reporting success would be the worst outcome: the user asked for
+    a store and would be told everything is fine."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    _write_config(code, repository={"path": "docs/work/corelib"})     # no url
+    monkeypatch.chdir(code)
+
+    assert main(["provision"]) == 1
+    assert "work.repository.url" in capsys.readouterr().err
+
+
+def test_a_failure_exits_non_zero_and_names_the_cause(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(_declared_against(tmp_path, tmp_path / "no-such-repository"))
+
+    assert main(["provision"]) == 1
+    assert "git clone failed" in capsys.readouterr().err
+
+
+def test_provision_outside_a_node_says_so(tmp_path, monkeypatch, capsys):
+    plain = tmp_path / "not-a-node"
+    plain.mkdir()
+    monkeypatch.chdir(plain)
+
+    assert main(["provision"]) == 1
+    assert "no tcw node here" in capsys.readouterr().err
+
+
+def test_limiting_to_an_undeclared_component_is_a_no_op(tmp_path, monkeypatch, capsys):
+    """`--component` takes a value rather than being a work-shaped flag, so
+    extending provisioning past work adds a caller, not a new flag."""
+    monkeypatch.chdir(_declared_against(tmp_path, _remote_with_store(tmp_path)))
+
+    assert main(["provision", "--component", "taxonomy"]) == 0
+    assert "Nothing to provision" in capsys.readouterr().out
+
+
+# ── nothing else reaches the network ─────────────────────────────────────────
+
+@pytest.mark.parametrize("argv", [
+    ["work", "list"], ["work", "show", "an-item"], ["work", "path"],
+    ["work", "nodes"], ["work", "docs"], ["validate"],
+])
+def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, argv):
+    """A repository's config can name a URL. Nothing but the provisioning verb
+    may act on it, so the commands a user runs first must work against a
+    provisioned node with the fetch path made fatal.
+    """
+    remote = _remote_with_store(tmp_path)
+    (remote / "docs" / "work" / "corelib" / "backlog" / "an-item").mkdir()
+    (remote / "docs" / "work" / "corelib" / "backlog" / "an-item" / "state.yaml").write_text(
+        "slug: an-item\ntitle: An item\nstatus: backlog\ncreated: 2026-01-01\n")
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "item"], check=True)
+    code = _declared_against(tmp_path, remote)
+    monkeypatch.chdir(code)
+    assert main(["provision"]) == 0
+    capsys.readouterr()
+
+    def explode(self, *args, **kwargs):
+        raise AssertionError(f"{argv} provisioned implicitly")
+
+    monkeypatch.setattr(FsStoreProvisioner, "ensure_available", explode)
+    monkeypatch.setattr(FsStoreProvisioner, "_obtain", explode)
+    monkeypatch.setattr(FsStoreProvisioner, "_refresh", explode)
+
+    assert main(argv) == 0
