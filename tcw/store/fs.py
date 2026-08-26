@@ -158,6 +158,12 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
         return nr if (nr / "docs" / component).is_dir() else None
     try:
         FsWorkStore.open(nr)
+    except StoreNotProvisioned:
+        # Not "no node here" — the node is right in front of us and says where
+        # its store comes from. Flattening this to None is what made `tcw work
+        # list` answer a declared-but-absent store with "run `tcw init`", which
+        # would scaffold a second, empty store beside the real one.
+        raise
     except ValueError:
         return None
     return nr
@@ -196,11 +202,19 @@ def descendant_nodes(root: Path) -> list[Path]:
 def _has_work_store(node_root: Path) -> bool:
     """Whether `node_root` has a usable work store. The *configured* store is the
     only authority: a literal `docs/work` folder must not vouch for a node whose
-    `work.path` points somewhere else (or somewhere broken)."""
+    `work.path` points somewhere else (or somewhere broken).
+
+    A declared-but-unprovisioned store answers `False` here rather than raising,
+    unlike `find_node`. The difference is whose store is being asked about: this
+    one is asked about *other* nodes while listing a topology, and one
+    unprovisioned child must not turn a parent's listing into a hard failure.
+    "No usable store here" is true of such a node, and it is the answer every
+    caller of this function actually wants.
+    """
     try:
         FsWorkStore.open(node_root)
         return True
-    except ValueError:
+    except ValueError:                     # StoreNotProvisioned included, by design
         return False
 
 

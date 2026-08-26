@@ -19,8 +19,10 @@ import yaml
 from tcw.store.base import (
     RepositoryDeclaration, StoreNotProvisioned, parse_repository_declaration,
 )
+from tcw.cli import main
 from tcw.store import fs
 from tcw.store.fs import FsStoreProvisioner, FsWorkStore, init
+from tcw.validate import validate
 
 
 WHERE = "work.repository"
@@ -436,3 +438,96 @@ def test_a_provisioned_store_commits_in_its_own_repository(tmp_path):
 
     assert store.store_git_root == fs.checkout_root(code, declaration).resolve()
     assert store.node_root == code.resolve()
+
+
+# ── what the user is told ────────────────────────────────────────────────────
+
+def _declared_but_absent(tmp_path: Path) -> Path:
+    """A node exactly like the requester's cloud session: the config names a
+    store in another repository, and this machine has only the code."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    subprocess.run(["git", "-C", str(code), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(code), "commit", "-qm", "init"], check=True)
+    (code / "docs" / "work").rename(code / "docs" / "work-elsewhere")
+    _write_config(code, path="../orchestrator/stores/corelib",
+                  repository={"url": "https://example.invalid/orchestrator.git",
+                              "path": "stores/corelib"})
+    return code
+
+
+def test_the_board_no_longer_misdirects_to_tcw_init(tmp_path, monkeypatch, capsys):
+    """The reported symptom. `tcw work list` used to answer a declared-but-absent
+    store with "run `tcw init`" — advice that would scaffold a second, empty
+    store beside the real one."""
+    monkeypatch.chdir(_declared_but_absent(tmp_path))
+
+    assert main(["work", "list"]) == 1
+
+    err = capsys.readouterr().err
+    assert "no tcw work node here" not in err
+    assert "tcw init" not in err
+    assert "https://example.invalid/orchestrator.git" in err
+    assert "tcw provision" in err
+
+
+@pytest.mark.parametrize("argv", [
+    ["work", "list"], ["work", "show", "anything"], ["work", "path"],
+    ["work", "nodes"], ["work", "reconcile", "anything"],
+    ["work", "escalate", "anything"],
+])
+def test_every_work_command_says_the_same_actionable_thing(tmp_path, monkeypatch,
+                                                           capsys, argv):
+    """One message, six call sites — the duplication is what kept it unimprovable."""
+    monkeypatch.chdir(_declared_but_absent(tmp_path))
+
+    assert main(argv) == 1
+    assert "tcw provision" in capsys.readouterr().err
+
+
+def test_an_absent_node_still_gets_the_tcw_init_advice(tmp_path, monkeypatch, capsys):
+    """The other answer must not be lost: somewhere that is not a node at all is
+    exactly what `tcw init` fixes."""
+    plain = tmp_path / "not-a-node"
+    plain.mkdir()
+    monkeypatch.chdir(plain)
+
+    assert main(["work", "list"]) == 1
+    assert "no tcw work node here" in capsys.readouterr().err
+
+
+def test_validate_reports_the_declared_store_rather_than_a_dead_path(tmp_path, capsys):
+    code = _declared_but_absent(tmp_path)
+
+    problems = validate(code)
+
+    assert any("tcw provision" in p for p in problems), problems
+    assert not any("is not a directory" in p for p in problems), problems
+
+
+def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_path,
+                                                                        monkeypatch,
+                                                                        capsys):
+    """`_has_work_store` answers False rather than raising, so one unprovisioned
+    child cannot turn a parent's listing into a hard failure."""
+    parent = _repo(tmp_path / "parent")
+    init(["work"], parent, "parent-project")
+    child = _repo(tmp_path / "child")
+    init(["work"], child, "child-project")
+    (child / "docs" / "work").rename(child / "docs" / "work-elsewhere")
+    _write_config(child, repository={"url": "https://example.invalid/o.git"})
+
+    for root, key, other in ((parent, "children", "child-project"),
+                             (child, "parent", "parent-project")):
+        path = root / "tcw-config.yaml"
+        config = yaml.safe_load(path.read_text())
+        config["connected-projects"] = {key: {other: f"../{other.split('-')[0]}"}}
+        path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    monkeypatch.chdir(parent)
+    assert main(["work", "nodes"]) == 0
+
+    out = capsys.readouterr().out
+    assert "parent-project" in out
+    assert "children: (none — leaf)" in out, \
+        "an unprovisioned child has no usable store here, and says so by absence"
