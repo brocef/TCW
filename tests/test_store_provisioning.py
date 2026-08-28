@@ -680,3 +680,69 @@ def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, ar
     monkeypatch.setattr(FsStoreProvisioner, "_refresh", explode)
 
     assert main(argv) == 0
+
+
+# ── review findings (Codex, PR #23) ──────────────────────────────────────────
+
+def test_a_repository_without_a_store_leaves_no_checkout_behind(tmp_path):
+    """Review finding 1. The clone succeeds, so the staging directory is renamed
+    into place, and only *then* is the layout checked — leaving a checkout at the
+    target after a failure the command reports."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    remote = _remote_with_store(tmp_path)
+    provisioner = _provisioner(tmp_path, code, remote, path="docs/work/somewhere-else")
+
+    with pytest.raises(ValueError):
+        provisioner.ensure_available()
+
+    assert not fs.checkout_root(code, provisioner.declaration).exists(), \
+        "a provision that fails leaves nothing at the target"
+
+
+def test_an_occupied_checkout_is_not_fetched_without_checking_its_origin(tmp_path,
+                                                                        monkeypatch):
+    """Review finding 2. `checkout.exists()` alone routes into refresh, which
+    fetches *that* checkout's origin — so the command can print one remote and
+    contact another."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    declared = _remote_with_store(tmp_path)
+    unrelated = _repo(tmp_path / "unrelated")
+    (unrelated / "readme").write_text("not the declared repository\n")
+    subprocess.run(["git", "-C", str(unrelated), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(unrelated), "commit", "-qm", "seed"], check=True)
+
+    squatter = tmp_path / "squatter"
+    subprocess.run(["git", "clone", "--quiet", str(unrelated), str(squatter)], check=True)
+    provisioner = _provisioner(tmp_path, code, declared, checkout=str(squatter))
+
+    calls = _count_git(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        provisioner.ensure_available()
+
+    assert "origin" in str(caught.value) or "declared" in str(caught.value)
+    assert not any(argv[:1] == ["git"] and "fetch" in argv for argv in calls), \
+        f"refused only after contacting the wrong remote: {calls}"
+
+
+def test_an_occupied_checkout_that_is_not_a_repository_is_refused(tmp_path, monkeypatch):
+    """The other half of finding 2: a declared `checkout` is an arbitrary
+    user-chosen directory, so it can hold something that is not a repository at
+    all. `git fetch` there fails with a confusing error; this fails with a clear
+    one, and without a network call."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    occupied = tmp_path / "just-a-folder"
+    occupied.mkdir()
+    (occupied / "notes.txt").write_text("someone else's files\n")
+    provisioner = _provisioner(tmp_path, code, _remote_with_store(tmp_path),
+                               checkout=str(occupied))
+
+    calls = _count_git(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        provisioner.ensure_available()
+
+    assert "not a git repository" in str(caught.value)
+    assert not any("fetch" in argv for argv in calls), calls
+    assert (occupied / "notes.txt").is_file(), "someone else's directory is untouched"

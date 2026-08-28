@@ -23,7 +23,16 @@ category.
   credentials and reachability and return the same shape.
 - `FsStoreProvisioner` realizes it as a git checkout. Clones into a staging
   directory beside the target and renames in, so a failed or interrupted fetch
-  is never visible as a store.
+  is never visible as a store. **Everything that can refuse runs before the
+  rename**, the store-layout check included — validating after publishing left a
+  cloned repository at the target whenever it carried no store at the declared
+  path, and a re-run then took the *refresh* branch on a checkout that was never
+  usable.
+- `_require_declared_checkout` refuses, **before any network call**, to refresh a
+  working copy that is not the declared repository's — a directory that is not a
+  git repository, or one whose `origin` does not match. Entering the refresh
+  branch on `checkout.exists()` alone was enough to make `tcw provision` fetch
+  another repository's origin while having printed the declared URL.
 - `StoreNotProvisioned(ValueError)` — "declared but not available here". A
   `ValueError` so every existing `except ValueError` around a store `open()`
   keeps working and the sites that should say more are changed deliberately.

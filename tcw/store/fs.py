@@ -2466,6 +2466,14 @@ def _cache_key(declaration: RepositoryDeclaration) -> str:
     return f"{slug}-{digest}"
 
 
+def _normalize_remote(url: str) -> str:
+    """A remote URL reduced to the differences that matter for identity here:
+    surrounding whitespace, a trailing slash, and a `.git` suffix. Nothing more —
+    see `_require_declared_checkout` for why this stays deliberately literal."""
+    cleaned = (url or "").strip().rstrip("/")
+    return cleaned[:-4] if cleaned.endswith(".git") else cleaned
+
+
 def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
     """The working copy's root for `declaration` — the declared `checkout`, or a
     per-machine cache directory. `~` expands; a relative path is the node's."""
@@ -2559,25 +2567,44 @@ class FsStoreProvisioner(StoreProvisioner):
                                    detail=f"{self.component}: would {verb} into {target}")
 
         if checkout.exists():
+            # Before any network call: this working copy must be the declared
+            # repository's. Otherwise the command prints one remote and contacts
+            # another — and fetches into a checkout that is not ours to touch.
+            self._require_declared_checkout(checkout)
             self._refresh(checkout)
             action = "refreshed"
         else:
             self._obtain(checkout)
             action = "obtained"
 
-        if not _is_store_layout(target):
-            missing = [n for n in STORE_LAYOUT if not (target / n).is_dir()]
-            raise ValueError(
-                f"{self.component}.repository: {self.declaration.url} has no work store "
-                f"at '{self.declaration.path or '.'}'; missing: {', '.join(missing)}")
+        # Still checked after a refresh: only `_obtain` can validate before
+        # publishing, and a pre-existing checkout is the user's, so a bad layout
+        # there is reported without deleting anything.
+        self._require_store_layout(target)
         return ProvisionResult(action=action, available=True, location=str(target),
                                detail=f"{self.component}: {action} at {target}")
+
+    def _require_store_layout(self, root: Path) -> None:
+        """Refuse a repository that carries no store where the declaration says."""
+        if _is_store_layout(root):
+            return
+        missing = [n for n in STORE_LAYOUT if not (root / n).is_dir()]
+        raise ValueError(
+            f"{self.component}.repository: {self.declaration.url} has no work store "
+            f"at '{self.declaration.path or '.'}'; missing: {', '.join(missing)}")
 
     # -- git plumbing (adapter-private; nothing above this class names it) --
 
     def _obtain(self, checkout: Path) -> None:
         """Clone beside the target, then rename in. The rename is what makes a
-        failure leave nothing behind — a half-clone is never at the real path."""
+        failure leave nothing behind — a half-clone is never at the real path.
+
+        **Everything that can refuse runs before the rename**, the store-layout
+        check included. Validating after publishing left a cloned repository at
+        the target whenever it carried no store at the declared path: the command
+        reported a failure and the directory stayed, so a re-run then took the
+        *refresh* branch on a checkout that was never usable.
+        """
         checkout.parent.mkdir(parents=True, exist_ok=True)
         staging = checkout.parent / f".{checkout.name}.tcw-{uuid.uuid4().hex[:8]}"
         try:
@@ -2585,10 +2612,44 @@ class FsStoreProvisioner(StoreProvisioner):
             if self.declaration.ref:
                 self._run(["git", "-C", str(staging), "checkout", "--quiet",
                            self.declaration.ref])
+            self._require_store_layout(
+                (staging / self.declaration.path) if self.declaration.path else staging)
             staging.rename(checkout)
         except BaseException:
             shutil.rmtree(staging, ignore_errors=True)
             raise
+
+    def _require_declared_checkout(self, checkout: Path) -> None:
+        """Refuse to refresh a working copy that is not the declared repository's.
+
+        Entering the refresh branch on `checkout.exists()` alone was enough to
+        make `tcw provision` fetch some *other* repository's origin while having
+        printed the declared URL — the one guarantee the explicit-verb design
+        exists to provide. A declared `checkout` is an arbitrary user-chosen
+        directory, so it can hold anything at all.
+
+        Comparison is on the URL as spelled, normalized only for a trailing
+        slash and a `.git` suffix. Deliberately not smarter: treating `ssh` and
+        `https` spellings of one host as equal means deciding two URLs are the
+        same repository, which this cannot know. The error says so, because the
+        fix in that case is to point `checkout` somewhere else.
+        """
+        probe = _git(["git", "-C", str(checkout), "rev-parse", "--git-dir"],
+                     capture_output=True, text=True)
+        if probe.returncode != 0:
+            raise ValueError(
+                f"{self.component}.repository: {checkout} already exists and is not a "
+                f"git repository; move it aside or point `checkout` elsewhere")
+        origin = _git(["git", "-C", str(checkout), "remote", "get-url", "origin"],
+                      capture_output=True, text=True)
+        found = origin.stdout.strip() if origin.returncode == 0 else ""
+        if _normalize_remote(found) != _normalize_remote(self.declaration.url):
+            raise ValueError(
+                f"{self.component}.repository: {checkout} is a checkout of "
+                f"{found or '(no origin)'}, not the declared "
+                f"{self.declaration.url}; nothing was contacted. Point `checkout` at a "
+                f"different directory, or spell the declared url the way that "
+                f"checkout's origin does")
 
     def _refresh(self, checkout: Path) -> None:
         """Fetch, then bring the working copy to the declared version.

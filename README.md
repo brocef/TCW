@@ -238,8 +238,12 @@ tcw provision --component work
 Running it twice does nothing the second time. It is the **only** command that
 reaches the network, and only because you asked: a repository's config can name a
 URL, so nothing acts on that URL until you run this, and the remote is printed
-before it is contacted. A failure says why and leaves no half-fetched store
-behind.
+before it is contacted — and is the remote actually contacted, since a `checkout`
+directory already holding a different repository is refused before any fetch.
+
+A failure says why and leaves nothing new behind. A working copy you already had
+is never deleted for you: if it turns out to carry no store at the declared
+`path`, you are told, and it stays where it is.
 
 Everything that reads or writes work follows `work.path`: `delegate` and
 `escalate` land in the target project's configured inbox, `reconcile` writes and
