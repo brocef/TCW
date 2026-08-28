@@ -33,7 +33,7 @@ throwaway repository pair.
 | 7 | failure leaves nothing behind                      | `test_an_unknown_ref_fails_and_leaves_nothing_behind`, `…unreachable_remote…`, `test_a_repository_without_a_store_leaves_no_checkout_behind` (added at rework) |
 | 8 | git stdin closed                                   | every call routes through `_git`; `tests/test_subprocess_stdin.py`   |
 | 9 | `test_external_work_store.py` unmodified           | untouched in this branch; 82 cases pass                              |
-| 10 | malformed declarations refused                    | 9 parametrized parser cases + `test_a_malformed_declaration_refuses_rather_than_doing_nothing` |
+| 10 | malformed declarations refused                    | 9 parametrized parser cases + CLI refusal + `test_validate_reports_a_malformed_declaration_when_the_store_is_absent` |
 | 11 | reproducible from a bare shell                    | the hand walkthrough was a plain shell; no hook, no slash command    |
 
 ## Verified by hand
@@ -59,24 +59,47 @@ Both sit in the same blind spot: **the order of publish and validate**, and
 **what `exists()` is taken to prove**. Criterion 7 below stated "leaves nothing
 behind" but enumerated only the unknown-ref and unreachable-remote cases, so the
 tests followed the enumeration rather than the property. Three regression tests
-now cover the property; `tests/test_store_provisioning.py` holds 62 cases.
+now cover the property; the first rework left `tests/test_store_provisioning.py`
+at 62 cases.
 
 The README, the capability body and the changelog also claimed a failure "leaves
 no half-fetched store behind" without qualification — broader than what holds
 even after the fix, since a refresh against a pre-existing checkout deliberately
 does not delete it. All three now say what is true.
 
+## Third pass — second PR review
+
+The second review found three runtime/documentation defects and one lifecycle
+violation. All four are corrected:
+
+- `14e4292` restricts child A's CLI to `--component work`, makes the resolution
+  ladder apply full store validation before preferring a local path, preserves a
+  malformed declaration when no local store opens, and adds three regression
+  tests. `tests/test_store_provisioning.py` now holds 65 cases.
+- `178c831` reverts the premature `v1.1.0` cut. The five version sources are back
+  at `1.0.3`, the versioned documents are gone, and their content is restored to
+  `upcoming.md` until acceptance and completion authorize a release choice.
+- `892d3d7` scopes README, release notes, changelog, capability wording and the
+  work command reference to what child A actually implements. The plugin skill
+  was evaluated and already remained accurate because it names only the work
+  store symptom and the unqualified `tcw provision` recovery command.
+
+What the plan got wrong: its task text correctly said `--component` accepts only
+`work`, but the original implementation used the global component tuple and the
+documentation broadened the promise to all three stores. Criterion 10 also
+covered malformed declarations without testing the only case where store-based
+validation could not run: a malformed declaration alongside an absent local
+store. Finally, `_is_store_layout` was treated as equivalent to "usable" even
+though external work stores require a Git root for transition commits.
+
 ## Suite
 
-6 failures out of 2045 on the final run, all confirmed **pre-existing or
-environmental** against a clean-tree baseline of the same tests: two
-`test_generate_hook` process cases, `test_scaffold`'s unwritable-target case and
-both `test_store_editor` permission cases (all four assume a non-root user; this
-container runs as root), and `test_shipped_prompts`'s wheel build (no network).
-An earlier run also showed a `test_work_autocommit` case failing on a transient
-`signing server returned status 503` from the environment's commit-signing
-service; it passes in isolation and did not recur. No test failed because of this
-change.
+The final full run passed **2047 tests with 1 skipped** in 402.19 seconds. It ran
+outside the restricted sandbox because the server suites bind loopback sockets;
+the sandboxed run's `PermissionError: Operation not permitted` cluster vanished
+under the required permission. Focused provisioning/external-store/subprocess
+coverage passed 137 tests, and the documented CLI surface passed 190 tests using
+the exact branch CLI from a temporary isolated environment.
 
 ## Decisions worth carrying forward
 
@@ -115,8 +138,10 @@ Two defects surfaced that were not in the original report:
 
 Untouched here, by design: `FsTreeStore.open` still hard-codes
 `node_root/docs/<component>` (child B), and nothing writes to a remote (child C).
-`declared_repository` and the `--component` flag are already component-generic, so
-child B adds callers rather than a parallel mechanism.
+`declared_repository` and the value-taking `--component` flag shape are already
+component-generic. Child B adds its adapters and then expands the allowed values;
+until then the CLI accepts only `work` rather than routing another store through
+the work layout.
 
 `tcw serve` opens `FsWorkStore` per request, so on an unprovisioned node it will
 surface the error per route rather than at startup. Legible, but not designed —
@@ -125,4 +150,5 @@ worth a look when child B touches the same surfaces.
 ## Not yet done
 
 The two new capabilities are still `Missing`. They flip to `Supported` at
-`tcw work complete`, per `capabilities.yaml`.
+`tcw work complete`, per `capabilities.yaml`. Version `1.0.3` remains current;
+the release choice comes only after the user accepts this review-stage outcome.
