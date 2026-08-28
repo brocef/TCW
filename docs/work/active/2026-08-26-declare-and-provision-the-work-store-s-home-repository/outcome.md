@@ -28,7 +28,7 @@ throwaway repository pair.
 | 2 | provision, then the board works                    | `test_provision_then_the_board_works`                                |
 | 3 | second run contacts nothing                        | `test_a_second_provision_reports_available_and_contacts_nothing`     |
 | 4 | validate distinguishes the two failures            | `test_validate_reports_the_declared_store_rather_than_a_dead_path`, `test_without_a_declaration_a_broken_path_still_says_what_it_always_said` |
-| 5 | a store already here wins                          | `test_a_store_already_here_wins_over_the_declaration`                |
+| 5 | a store already here wins                          | `test_a_store_already_here_wins_over_the_declaration`, `test_provision_reports_a_local_store_without_contacting_the_remote` |
 | 6 | `--dry-run` contacts nothing                       | `test_a_dry_run_from_the_cli_contacts_nothing`                       |
 | 7 | failure leaves nothing behind                      | `test_an_unknown_ref_fails_and_leaves_nothing_behind`, `…unreachable_remote…`, `test_a_repository_without_a_store_leaves_no_checkout_behind` (added at rework) |
 | 8 | git stdin closed                                   | every call routes through `_git`; `tests/test_subprocess_stdin.py`   |
@@ -92,13 +92,25 @@ validation could not run: a malformed declaration alongside an absent local
 store. Finally, `_is_store_layout` was treated as equivalent to "usable" even
 though external work stores require a Git root for transition commits.
 
+## Fourth pass — independent completion review
+
+The independent review of the second-pass fixes found one remaining mismatch:
+criterion 5 was enforced by `FsWorkStore.open`, but plain `tcw provision` still
+went directly to the declaration provisioner. With a usable local `work.path`,
+that could clone or fetch a repository the resolution ladder did not need.
+
+`c759765` adds a command-level regression test and makes plain provisioning
+report the resolved local store as already available before any clone or fetch.
+Explicit `--refresh` continues to contact the declaration by request.
+`tests/test_store_provisioning.py` now holds 66 cases.
+
 ## Suite
 
-The final full run passed **2047 tests with 1 skipped** in 402.19 seconds. It ran
+The final full run passed **2048 tests with 1 skipped** in 390.02 seconds. It ran
 outside the restricted sandbox because the server suites bind loopback sockets;
 the sandboxed run's `PermissionError: Operation not permitted` cluster vanished
 under the required permission. Focused provisioning/external-store/subprocess
-coverage passed 137 tests, and the documented CLI surface passed 190 tests using
+coverage passed 138 tests, and the documented CLI surface passed 190 tests using
 the exact branch CLI from a temporary isolated environment.
 
 ## Decisions worth carrying forward
