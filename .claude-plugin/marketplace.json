@@ -10,7 +10,7 @@
             "name": "tcw",
             "source": "./",
             "description": "Taxonomy · Capabilities · Work — skills + slash commands that drive the tcw workflow.",
-            "version": "1.1.0",
+            "version": "1.0.3",
             "author": {
                 "name": "Brian Cefali",
                 "email": "brocef@users.noreply.github.com"
