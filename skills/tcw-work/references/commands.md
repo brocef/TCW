@@ -27,6 +27,7 @@
 | a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
+| obtain the declared work store | `tcw provision [--component work] [--refresh] [--dry-run]` — fetches the work store this node declares but does not have here; idempotent |
 
 **Not CLI subcommands.** Two workflows are AI-driven reviews with no `tcw` verb
 behind them — the CLI cannot run them, and asking it to is an argparse error:
@@ -104,6 +105,21 @@ claimant died mid-claim, reads report an **interrupted claim** instead of guessi
 and it still works while that state persists. A configured `work.path` changes only the
 filesystem adapter location; project identity, hooks, and code worktrees stay
 with the owning node.
+
+**The work store can also declare where it comes from.** `work.repository` in
+`tcw-config.yaml` names the repository holding the store (`url`, and optionally
+`ref`, `path` within it, and a local `checkout`), which is the portable half:
+`work.path` says where it is on one machine, `repository` says how any machine
+gets it. Resolution prefers a store that is **already here** — the declaration
+answers only when the local one is absent, so one config serves a laptop that has
+the folder and a fresh clone that does not.
+
+`tcw provision` obtains the missing work store. `--component` currently accepts
+only `work`; taxonomy and capabilities remain local until their adapters gain
+the same resolution path. Nothing else reaches the network: a
+command that needs an unprovisioned store fails, names the declared remote, and
+tells the user to run it — do not work around that by composing a path or running
+`tcw init`, which would scaffold a second, empty store beside the real one.
 
 The store may live in a **different Git repository** than the code, so never
 compose a store path from the node root — `tcw work path`, `tcw work path <slug>`

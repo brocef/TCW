@@ -1,0 +1,13 @@
+slug: 2026-08-26-publish-provisioned-store-writes-to-their-remote
+title: Publish provisioned-store writes to their remote
+created: '2026-08-26'
+resolution: null
+priority: 35
+effort: high
+complexity: very-high
+tags:
+- remote
+- work
+initiative: 2026-08-26-declare-a-component-store-s-home-repository-so-a-fresh-checkout-can-provision-it
+blocked_by:
+- slug: 2026-08-26-declare-and-provision-the-work-store-s-home-repository

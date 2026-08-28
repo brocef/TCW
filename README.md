@@ -205,6 +205,49 @@ paths are anchored to the owning project's primary checkout; absolute paths and
 symlinks are supported. Existing non-pristine stores are never moved
 automatically.
 
+A path is a fact about one machine, so a checkout that has never seen that folder
+— a fresh clone, or a cloud session that cloned only the code — cannot use it. To
+say where the store *comes from*, add a `repository` block beside `work.path`:
+
+```yaml
+id: my-project
+work:
+    path: ../orchestrator/docs/work/my-project   # optional; where it is here
+    repository:
+        url: https://github.com/me/orchestrator.git
+        ref: main                                # optional (default: remote HEAD)
+        path: docs/work/my-project               # optional (default: repo root)
+        checkout: ~/src/orchestrator             # optional (default: a cache dir)
+```
+
+**A store that is already here always wins.** The declaration is consulted only
+when the local store is absent, so the same config keeps working untouched on a
+machine that has the folder, and answers for one that doesn't. Where the store is
+absent, every `tcw work` command says so in those words and names the remote —
+instead of reporting that the project has no work component.
+
+`tcw provision` is what obtains it:
+
+```sh
+tcw provision                 # the declared work store, when it is not here yet
+tcw provision --dry-run       # print the plan; contact nothing
+tcw provision --refresh       # bring an existing copy to the declared version
+tcw provision --component work
+```
+
+This first provisioning step supports the work store. Taxonomy and capabilities
+remain local until their component adapters gain the same resolution path.
+
+Running it twice does nothing the second time. It is the **only** command that
+reaches the network, and only because you asked: a repository's config can name a
+URL, so nothing acts on that URL until you run this, and the remote is printed
+before it is contacted — and is the remote actually contacted, since a `checkout`
+directory already holding a different repository is refused before any fetch.
+
+A failure says why and leaves nothing new behind. A working copy you already had
+is never deleted for you: if it turns out to carry no store at the declared
+`path`, you are told, and it stays where it is.
+
 Everything that reads or writes work follows `work.path`: `delegate` and
 `escalate` land in the target project's configured inbox, `reconcile` writes and
 commits the epic rollup in the store's repository, `tcw capabilities drift` finds
@@ -294,6 +337,10 @@ tcw capabilities path
 tcw work path
 tcw work inbox path
 ```
+
+A store that is declared but not yet obtained here has no path to print: these
+report that and name `tcw provision`, rather than printing a folder that does not
+exist.
 
 The work commands follow a configured `work.path`, so they report the physical
 external store and its inbox when work storage lives outside the project.

@@ -11,7 +11,7 @@ from tcw.store.base import (
     DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
-    TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
+    StoreNotProvisioned, TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
@@ -67,10 +67,30 @@ def _tag(value: str) -> str:
         raise argparse.ArgumentTypeError(str(e))
 
 
-def _store() -> FsWorkStore | None:
-    node = find_node(NAME)
+def _require_node() -> Path | None:
+    """This node, or None after saying why there isn't one.
+
+    One place, because there are two different "no store" answers and they need
+    different words. An *absent* node is what `tcw init` fixes. A node whose
+    store is declared elsewhere and simply not here yet is not missing at all —
+    it needs provisioning, and `tcw init` would scaffold a second, empty store
+    beside the real one. That advice used to be printed at six call sites, which
+    is why it could not be improved in one.
+    """
+    try:
+        node = find_node(NAME)
+    except StoreNotProvisioned as e:
+        print(f"tcw work: {e}", file=sys.stderr)
+        return None
     if node is None:
-        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
+        print("tcw work: no tcw work node here — run `tcw init` in the project folder.",
+              file=sys.stderr)
+    return node
+
+
+def _store() -> FsWorkStore | None:
+    node = _require_node()
+    if node is None:
         return None
     return FsWorkStore.open(node)
 
@@ -84,9 +104,8 @@ def _resolve(slug: str, label: str) -> tuple[FsWorkStore, str] | None:
     returns None on failure (no work node here, or the qualifier names no
     registered project) so callers just `return 1`. Item existence is still the
     caller's `get`/`path` check — the returned slug is always bare."""
-    node = find_node(NAME)
+    node = _require_node()
     if node is None:
-        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return None
     resolved = resolve_qualified_work_ref(node, slug)
     if resolved is None:
@@ -139,9 +158,8 @@ def _print_item(item: WorkItem) -> None:
 
 
 def _nodes(args: argparse.Namespace) -> int:
-    node = find_node(NAME)
+    node = _require_node()
     if node is None:
-        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     parent = parent_node(node)
     print(f"node:   {registered_project_id(node, node)}")
@@ -157,9 +175,8 @@ def _nodes(args: argparse.Namespace) -> int:
 
 
 def _reconcile(args: argparse.Namespace) -> int:
-    node = find_node(NAME)
+    node = _require_node()
     if node is None:
-        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
         block = reconcile(node, args.slug, commit=args.commit,
@@ -172,9 +189,8 @@ def _reconcile(args: argparse.Namespace) -> int:
 
 
 def _delegate(args: argparse.Namespace) -> int:
-    node = find_node(NAME)
+    node = _require_node()
     if node is None:
-        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
         doc = delegate(node, args.child, args.title, body=read_piped_stdin(),
@@ -187,9 +203,8 @@ def _delegate(args: argparse.Namespace) -> int:
 
 
 def _escalate(args: argparse.Namespace) -> int:
-    node = find_node(NAME)
+    node = _require_node()
     if node is None:
-        print("tcw work: no tcw work node here — run `tcw init` in the project folder.", file=sys.stderr)
         return 1
     try:
         doc = escalate(node, args.title, body=read_piped_stdin(),

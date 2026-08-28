@@ -51,6 +51,23 @@ class SidecarError(ValueError):
     (malformed YAML, or a non-list delta value)."""
 
 
+class StoreNotProvisioned(ValueError):
+    """A store is *declared* but not available here — nothing is wrong with the
+    configuration, the store simply has not been obtained on this machine yet.
+
+    A `ValueError` on purpose. Every existing `except ValueError` around a store
+    `open()` keeps working unchanged, so this cannot silently break a caller; the
+    sites that should now say more are the ones updated deliberately. What
+    separates it from a misconfiguration is that it is *actionable* — the message
+    carries what to run — and `str(e)` is the whole of it, so callers print it
+    rather than composing their own.
+
+    Not filesystem-specific: "declared but not available here" is a state a
+    tracker-backed adapter reaches too, when credentials are absent or the
+    service is unreachable.
+    """
+
+
 @dataclass(frozen=True)
 class Project:
     """A registered TCW project.
@@ -671,6 +688,85 @@ class DocEntry:
     description: str
 
 
+@dataclass(frozen=True)
+class RepositoryDeclaration:
+    """Where a component store comes from, as the project records it.
+
+    Node configuration and an **adapter locator**, exactly as a store path is —
+    the project registry already states the rule that canonical IDs are identity
+    and filesystem locations are locators only. A tracker-backed adapter would
+    read a different locator from the same slot; nothing above the adapter is
+    entitled to read these fields.
+
+    `path` is the store's location *within* the declared repository, and stays a
+    POSIX-style relative string here rather than becoming a `Path`: this object
+    is parsed from YAML and compared in tests, and the adapter that joins it is
+    the only code that needs it to be a path at all.
+    """
+    url: str
+    ref: str | None = None
+    path: str = ""
+    checkout: str | None = None
+
+
+@dataclass(frozen=True)
+class ProvisionResult:
+    """What one provisioning attempt did.
+
+    `location` is a short human-readable handle, exactly like `WorkStore.locate`:
+    presentation only, do not parse it. `action` is the closed vocabulary a
+    caller may branch on.
+    """
+    action: str                 # one of PROVISION_ACTIONS
+    available: bool
+    location: str = ""
+    detail: str = ""
+
+
+PROVISION_ACTIONS = (
+    "undeclared",        # nothing declared; there was nothing to do
+    "available",         # already usable here; nothing was contacted
+    "obtained",          # newly made available
+    "refreshed",         # already present, brought up to the declared version
+    "planned",           # dry run: this is what would have happened
+)
+
+
+class StoreProvisioner(ABC):
+    """Making a declared store usable *here*.
+
+    The abstract verb is "make yourself usable", not "clone": a tracker-backed
+    adapter answers `is_available` by checking credentials and reachability, and
+    an adapter that needs nothing implements `ensure_available` as a no-op —
+    which is a legitimate implementation, not a stub.
+
+    No signature names a URL, a ref, or a directory. Those are the filesystem
+    adapter's private business, and a store-interface method that mentioned one
+    would have moved the seam into the wrong layer.
+    """
+
+    @abstractmethod
+    def describe(self) -> str:
+        """A short, human-readable account of where the store is declared to come
+        from. Presentation only — do not parse it."""
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Whether the store can be used here right now, without contacting
+        anything."""
+
+    @abstractmethod
+    def ensure_available(self, *, refresh: bool = False,
+                         dry_run: bool = False) -> ProvisionResult:
+        """Make the store usable here, and report what that took.
+
+        Idempotent: an already-usable store returns `available` and contacts
+        nothing, which is what lets a caller run this unconditionally. `refresh`
+        asks for the declared version even when something usable is already
+        present. `dry_run` reports the plan and contacts nothing.
+        """
+
+
 @dataclass
 class StageBindings:
     """A stage's checks and prompts.
@@ -1074,6 +1170,76 @@ def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":
         sb.prompt = _parse_binding_list(raw["prompt"], f"{where}.prompt", problems,
                                         PROMPT_KINDS, "prompt")
     return sb
+
+
+def parse_repository_declaration(
+    raw: Any, where: str
+) -> tuple["RepositoryDeclaration | None", list[str]]:
+    """Parse a `<component>.repository` mapping into a declaration plus problems.
+
+    Mirrors `parse_lifecycle_policy` and `parse_documentation_entries`: pure,
+    touches no filesystem, never raises. `where` is the config path to quote in
+    problems (`work.repository`), so one implementation serves every component
+    rather than three that drift.
+
+    Returns `(None, problems)` when the declaration cannot be trusted — unlike
+    the documentation parser, which keeps the entries that parsed. The difference
+    is what a half-read value would do: a mistyped documentation entry costs one
+    row in a table, while a mistyped repository would send a fetch somewhere
+    nobody asked for. This one fails closed.
+    """
+    problems: list[str] = []
+    if raw is None:
+        return None, problems
+    if not isinstance(raw, dict):
+        return None, [f"{where}: expected a mapping, got {type(raw).__name__}"]
+
+    known = {"url", "ref", "path", "checkout"}
+    unknown = set(raw) - known
+    if unknown:
+        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
+                        f"expected {', '.join(repr(k) for k in sorted(known))}")
+
+    url = raw.get("url")
+    if not isinstance(url, str) or not url.strip():
+        problems.append(f"{where}.url: expected a non-empty string")
+
+    def _optional_string(key: str) -> str | None:
+        value = raw.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"{where}.{key}: expected a non-empty string")
+            return None
+        return value.strip()
+
+    ref = _optional_string("ref")
+    checkout = _optional_string("checkout")
+
+    # `path` is bounded rather than merely typed: it is joined onto a directory
+    # this code created, so the containment rule the stores already enforce for
+    # their own identifiers applies here too — syntactically, before any join.
+    store_path = ""
+    raw_path = raw.get("path")
+    if raw_path is not None:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            problems.append(f"{where}.path: expected a non-empty string")
+        else:
+            candidate = raw_path.strip()
+            parts = PurePosixPath(candidate).parts
+            if candidate.startswith("/") or (len(candidate) > 1 and candidate[1] == ":"):
+                problems.append(f"{where}.path: must be relative to the repository root, "
+                                f"got {candidate!r}")
+            elif ".." in parts:
+                problems.append(f"{where}.path: must not leave the repository root, "
+                                f"got {candidate!r}")
+            else:
+                store_path = PurePosixPath(candidate).as_posix().strip("/")
+
+    if problems:
+        return None, problems
+    return RepositoryDeclaration(url=url.strip(), ref=ref, path=store_path,
+                                 checkout=checkout), problems
 
 
 def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:

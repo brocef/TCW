@@ -73,6 +73,12 @@ a problem:**
 tcw --version      # works? → nothing to do. stop here.
 ```
 
+**A `tcw` that runs is not this skill's problem.** In particular, a `tcw work`
+command reporting that the store is *declared but not provisioned here* is a
+working install telling you the truth: the project keeps its store in another
+repository and this machine has not obtained it. Run `tcw provision`; nothing
+below applies.
+
 If `tcw` is **missing or broken**, read the matching procedure in this skill's
 `references/` and follow it:
 

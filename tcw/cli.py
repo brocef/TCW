@@ -14,12 +14,16 @@ from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
-    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, find_node_root, git_root, init,
+    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, FsStoreProvisioner, FsWorkStore,
+    declared_repository, find_node_root, git_root, init,
 )
 from tcw.store.project import FsProjectRegistry
 import yaml
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
+
+
+PROVISION_COMPONENTS = ("work",)
 
 # Component CLI modules (each exposes NAME / SUBCOMMANDS / DEFAULT_SUBCOMMAND /
 # add_subparser). All three components are now built.
@@ -74,6 +78,72 @@ def run_init(components: list[str], project_id: str | None = None,
         print(".gitignore: resolved work (completed/, discarded/) stays on disk, "
               "out of the tracked tree")
     return 0
+
+
+def run_provision(components: list[str], *, refresh: bool = False,
+                  dry_run: bool = False) -> int:
+    """Make this node's declared component stores usable here.
+
+    The only command in `tcw` that reaches the network, and it does so only
+    because it was asked to. That is the whole security posture of the feature:
+    a repository's config can name a URL, so nothing may act on that URL without
+    an explicit instruction from the person holding the checkout. The remote is
+    printed before it is contacted, for the same reason.
+    """
+    node_root = find_node_root()
+    if node_root is None:
+        print("tcw provision: no tcw node here — run `tcw init` in the project folder.",
+              file=sys.stderr)
+        return 1
+
+    declared: list[tuple[str, object]] = []
+    problems: list[str] = []
+    for component in components:
+        declaration, component_problems = declared_repository(node_root, component)
+        problems += [f"{SENTINEL}: {p}" for p in component_problems]
+        if declaration is not None:
+            declared.append((component, declaration))
+
+    # A malformed declaration refuses rather than reading as "nothing declared".
+    # Silently doing nothing here would be the worst outcome: the user asked for
+    # a store and would be told everything is fine.
+    if problems:
+        for problem in problems:
+            print(f"tcw provision: {problem}", file=sys.stderr)
+        return 1
+
+    if not declared:
+        print(f"Nothing to provision: no component declares a home repository "
+              f"in {SENTINEL}.")
+        return 0
+
+    failed = False
+    for component, declaration in declared:
+        provisioner = FsStoreProvisioner(node_root, component, declaration)
+        declared_available = provisioner.is_available()
+        if not refresh and not declared_available:
+            try:
+                resolved = FsWorkStore.open(node_root)
+            except ValueError:
+                pass
+            else:
+                print(f"  {component}: already available at {resolved.root}")
+                continue
+        if not declared_available or refresh:
+            print(f"→ {provisioner.describe()}")      # says what it will contact
+        try:
+            result = provisioner.ensure_available(refresh=refresh, dry_run=dry_run)
+        except (ValueError, OSError) as error:
+            print(f"tcw provision: {error}", file=sys.stderr)
+            failed = True
+            continue
+        print(f"  {result.detail}")
+    return 1 if failed else 0
+
+
+def _cmd_provision(args: argparse.Namespace) -> int:
+    return run_provision(args.component or list(PROVISION_COMPONENTS),
+                         refresh=args.refresh, dry_run=args.dry_run)
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -142,6 +212,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
     p_init.add_argument("--work-path", help="filesystem location for the work store")
     p_init.set_defaults(func=_cmd_init)
+
+    p_provision = sub.add_parser(
+        "provision", help="obtain the work store this project declares but does not have here")
+    p_provision.add_argument(
+        "--component", action="append", choices=list(PROVISION_COMPONENTS),
+        help="limit provisioning by component (currently: work)")
+    p_provision.add_argument("--refresh", action="store_true",
+                             help="bring an existing working copy to the declared version")
+    p_provision.add_argument("--dry-run", action="store_true",
+                             help="print the plan; contact nothing")
+    p_provision.set_defaults(func=_cmd_provision)
 
     p_validate = sub.add_parser(
         "validate", help="check YAML soundness, tcw:// links, and component integrity")

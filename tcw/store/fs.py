@@ -40,6 +40,8 @@ from tcw.store.base import (
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
+    parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
+    StoreNotProvisioned, StoreProvisioner,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -156,6 +158,12 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
         return nr if (nr / "docs" / component).is_dir() else None
     try:
         FsWorkStore.open(nr)
+    except StoreNotProvisioned:
+        # Not "no node here" — the node is right in front of us and says where
+        # its store comes from. Flattening this to None is what made `tcw work
+        # list` answer a declared-but-absent store with "run `tcw init`", which
+        # would scaffold a second, empty store beside the real one.
+        raise
     except ValueError:
         return None
     return nr
@@ -194,11 +202,19 @@ def descendant_nodes(root: Path) -> list[Path]:
 def _has_work_store(node_root: Path) -> bool:
     """Whether `node_root` has a usable work store. The *configured* store is the
     only authority: a literal `docs/work` folder must not vouch for a node whose
-    `work.path` points somewhere else (or somewhere broken)."""
+    `work.path` points somewhere else (or somewhere broken).
+
+    A declared-but-unprovisioned store answers `False` here rather than raising,
+    unlike `find_node`. The difference is whose store is being asked about: this
+    one is asked about *other* nodes while listing a topology, and one
+    unprovisioned child must not turn a parent's listing into a hard failure.
+    "No usable store here" is true of such a node, and it is the answer every
+    caller of this function actually wants.
+    """
     try:
         FsWorkStore.open(node_root)
         return True
-    except ValueError:
+    except ValueError:                     # StoreNotProvisioned included, by design
         return False
 
 
@@ -2406,6 +2422,281 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                                "capability", identifier)
 
 
+# ── provisioning (FS adapter: a declared store is a git checkout) ────────────
+#
+# Everything below realizes `StoreProvisioner` for the filesystem. Clones, refs
+# and cache directories are named *here and nowhere else* — a store-interface
+# signature that mentioned one would put the seam in the wrong layer.
+
+STORE_LAYOUT = ("inbox", *WORK_STATUSES)
+
+
+def _cache_root() -> Path:
+    """Where working copies land when a declaration names no `checkout`.
+
+    XDG, so it is outside every checkout and survives between sessions on one
+    machine. Read from the environment on each call rather than at import: a
+    test — and a user's shell — may set it after this module loads.
+    """
+    base = os.environ.get("XDG_CACHE_HOME") or "~/.cache"
+    return Path(base).expanduser() / "tcw" / "stores"
+
+
+def _cache_key(declaration: RepositoryDeclaration) -> str:
+    """A directory name for one (url, ref) pair: readable, then unambiguous.
+
+    The readable half is the tail of the URL, so a user browsing the cache can
+    tell whose repository a directory holds. The hash is what actually keeps two
+    declarations apart, because the readable half is lossy by design.
+
+    Keyed on url *and* ref: two projects naming the same repository at the same
+    ref should share one working copy, and two refs of it must not fight over
+    one checkout.
+    """
+    cleaned = declaration.url.strip().rstrip("/")
+    if cleaned.endswith(".git"):
+        cleaned = cleaned[:-4]
+    tokens = [token.rpartition("@")[2]                 # drop any `git@` user part
+              for token in re.split(r"[/:]", cleaned) if token]
+    slug = "-".join(re.sub(r"[^A-Za-z0-9._-]+", "-", token).strip("-.")
+                    for token in tokens[-3:])
+    slug = (slug.strip("-").lower() or "store")[:60]
+    digest = hashlib.sha256(
+        f"{declaration.url}\n{declaration.ref or ''}".encode("utf-8")).hexdigest()[:12]
+    return f"{slug}-{digest}"
+
+
+def _normalize_remote(url: str) -> str:
+    """A remote URL reduced to the differences that matter for identity here:
+    surrounding whitespace, a trailing slash, and a `.git` suffix. Nothing more —
+    see `_require_declared_checkout` for why this stays deliberately literal."""
+    cleaned = (url or "").strip().rstrip("/")
+    return cleaned[:-4] if cleaned.endswith(".git") else cleaned
+
+
+def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
+    """The working copy's root for `declaration` — the declared `checkout`, or a
+    per-machine cache directory. `~` expands; a relative path is the node's."""
+    if declaration.checkout:
+        value = Path(declaration.checkout).expanduser()
+        return value if value.is_absolute() else (node_root / value)
+    return _cache_root() / _cache_key(declaration)
+
+
+def provisioned_store_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
+    """Where a provisioned store *would* live. Pure: computes a path, probes
+    nothing. `FsWorkStore.open` and the provisioner share it, so they can never
+    disagree about where a declared store is."""
+    root = checkout_root(node_root, declaration)
+    return (root / declaration.path) if declaration.path else root
+
+
+def _is_store_layout(root: Path) -> bool:
+    """Whether `root` holds a work store's folders — the same question
+    `FsWorkStore.open` asks, so a provisioned store and an opened one agree."""
+    return root.is_dir() and all((root / name).is_dir() for name in STORE_LAYOUT)
+
+
+def declared_repository(
+    node_root: Path, component: str
+) -> tuple["RepositoryDeclaration | None", list[str]]:
+    """A component's declared home repository, read straight from the config.
+
+    Deliberately not a store method: the whole point is to answer for a component
+    whose store cannot be opened, which is exactly when a store method would be
+    unavailable. Component-generic from the start — it reads `<component>.repository`
+    for any component, so extending provisioning past `work` adds a caller, not a
+    reader.
+    """
+    config = load_yaml(node_root / SENTINEL, unique=True)
+    section = config.get(component) if isinstance(config, dict) else None
+    if not isinstance(section, dict):
+        return None, []
+    return parse_repository_declaration(section.get("repository"),
+                                        f"{component}.repository")
+
+
+class FsStoreProvisioner(StoreProvisioner):
+    """A declared store, realized as a git checkout.
+
+    Obtains into a temporary directory beside the target and renames it into
+    place, so a failed or interrupted fetch is never visible as a store. That is
+    what makes "leaves nothing behind" true rather than aspirational.
+    """
+
+    def __init__(self, node_root: Path, component: str,
+                 declaration: RepositoryDeclaration | None):
+        self.node_root = node_root.resolve()
+        self.component = component
+        self.declaration = declaration
+
+    # -- StoreProvisioner --
+
+    def describe(self) -> str:
+        if self.declaration is None:
+            return f"{self.component}: no home repository declared"
+        d = self.declaration
+        at = f" at {d.ref}" if d.ref else ""
+        within = f", store at {d.path}" if d.path else ""
+        return (f"{self.component}: {d.url}{at}{within} → "
+                f"{provisioned_store_root(self.node_root, d)}")
+
+    def is_available(self) -> bool:
+        if self.declaration is None:
+            return False
+        target = provisioned_store_root(self.node_root, self.declaration)
+        checkout = checkout_root(self.node_root, self.declaration)
+        # A directory with the right folder names is not enough: work-store
+        # writes need a checkout to own their commits. Check the filesystem
+        # marker rather than invoking Git: an already-available second run is
+        # deliberately a zero-subprocess no-op. ``FsWorkStore._open_at`` remains
+        # the full validation authority when the store is actually opened.
+        return _is_store_layout(target) and (checkout / ".git").exists()
+
+    def ensure_available(self, *, refresh: bool = False,
+                         dry_run: bool = False) -> ProvisionResult:
+        if self.declaration is None:
+            return ProvisionResult(action="undeclared", available=False,
+                                   detail=f"{self.component}: nothing declared")
+        target = provisioned_store_root(self.node_root, self.declaration)
+        checkout = checkout_root(self.node_root, self.declaration)
+
+        if self.is_available() and not refresh:
+            return ProvisionResult(action="available", available=True,
+                                   location=str(target),
+                                   detail=f"{self.component}: already available")
+        if dry_run:
+            verb = "refresh" if checkout.exists() else "obtain"
+            # Short on purpose: the caller prints `describe()` immediately above,
+            # and repeating it here read as "work: would obtain work: …".
+            return ProvisionResult(action="planned", available=False,
+                                   location=str(target),
+                                   detail=f"{self.component}: would {verb} into {target}")
+
+        if checkout.exists():
+            # Before any network call: this working copy must be the declared
+            # repository's. Otherwise the command prints one remote and contacts
+            # another — and fetches into a checkout that is not ours to touch.
+            self._require_declared_checkout(checkout)
+            self._refresh(checkout)
+            action = "refreshed"
+        else:
+            self._obtain(checkout)
+            action = "obtained"
+
+        # Still checked after a refresh: only `_obtain` can validate before
+        # publishing, and a pre-existing checkout is the user's, so a bad layout
+        # there is reported without deleting anything.
+        self._require_store_layout(target)
+        return ProvisionResult(action=action, available=True, location=str(target),
+                               detail=f"{self.component}: {action} at {target}")
+
+    def _require_store_layout(self, root: Path) -> None:
+        """Refuse a repository that carries no store where the declaration says."""
+        if _is_store_layout(root):
+            return
+        missing = [n for n in STORE_LAYOUT if not (root / n).is_dir()]
+        raise ValueError(
+            f"{self.component}.repository: {self.declaration.url} has no work store "
+            f"at '{self.declaration.path or '.'}'; missing: {', '.join(missing)}")
+
+    # -- git plumbing (adapter-private; nothing above this class names it) --
+
+    def _obtain(self, checkout: Path) -> None:
+        """Clone beside the target, then rename in. The rename is what makes a
+        failure leave nothing behind — a half-clone is never at the real path.
+
+        **Everything that can refuse runs before the rename**, the store-layout
+        check included. Validating after publishing left a cloned repository at
+        the target whenever it carried no store at the declared path: the command
+        reported a failure and the directory stayed, so a re-run then took the
+        *refresh* branch on a checkout that was never usable.
+        """
+        checkout.parent.mkdir(parents=True, exist_ok=True)
+        staging = checkout.parent / f".{checkout.name}.tcw-{uuid.uuid4().hex[:8]}"
+        try:
+            self._run(["git", "clone", "--quiet", self.declaration.url, str(staging)])
+            if self.declaration.ref:
+                self._run(["git", "-C", str(staging), "checkout", "--quiet",
+                           self.declaration.ref])
+            self._require_store_layout(
+                (staging / self.declaration.path) if self.declaration.path else staging)
+            staging.rename(checkout)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
+    def _require_declared_checkout(self, checkout: Path) -> None:
+        """Refuse to refresh a working copy that is not the declared repository's.
+
+        Entering the refresh branch on `checkout.exists()` alone was enough to
+        make `tcw provision` fetch some *other* repository's origin while having
+        printed the declared URL — the one guarantee the explicit-verb design
+        exists to provide. A declared `checkout` is an arbitrary user-chosen
+        directory, so it can hold anything at all.
+
+        Comparison is on the URL as spelled, normalized only for a trailing
+        slash and a `.git` suffix. Deliberately not smarter: treating `ssh` and
+        `https` spellings of one host as equal means deciding two URLs are the
+        same repository, which this cannot know. The error says so, because the
+        fix in that case is to point `checkout` somewhere else.
+        """
+        probe = _git(["git", "-C", str(checkout), "rev-parse", "--git-dir"],
+                     capture_output=True, text=True)
+        if probe.returncode != 0:
+            raise ValueError(
+                f"{self.component}.repository: {checkout} already exists and is not a "
+                f"git repository; move it aside or point `checkout` elsewhere")
+        origin = _git(["git", "-C", str(checkout), "remote", "get-url", "origin"],
+                      capture_output=True, text=True)
+        found = origin.stdout.strip() if origin.returncode == 0 else ""
+        if _normalize_remote(found) != _normalize_remote(self.declaration.url):
+            raise ValueError(
+                f"{self.component}.repository: {checkout} is a checkout of "
+                f"{found or '(no origin)'}, not the declared "
+                f"{self.declaration.url}; nothing was contacted. Point `checkout` at a "
+                f"different directory, or spell the declared url the way that "
+                f"checkout's origin does")
+
+    def _refresh(self, checkout: Path) -> None:
+        """Fetch, then bring the working copy to the declared version.
+
+        No `pull`: the target may be a tag or a commit, where merging is
+        meaningless. Fast-forwarding is attempted only when the checked-out ref
+        actually tracks a remote branch, and its absence is not an error.
+        """
+        self._run(["git", "-C", str(checkout), "fetch", "--quiet", "--prune", "origin"])
+        target = self.declaration.ref or self._remote_head(checkout)
+        if target:
+            self._run(["git", "-C", str(checkout), "checkout", "--quiet", target])
+        upstream = _git(["git", "-C", str(checkout), "rev-parse", "--abbrev-ref",
+                         "--symbolic-full-name", "@{u}"],
+                        capture_output=True, text=True)
+        if upstream.returncode == 0 and upstream.stdout.strip():
+            self._run(["git", "-C", str(checkout), "merge", "--ff-only", "--quiet",
+                       upstream.stdout.strip()])
+
+    def _remote_head(self, checkout: Path) -> str | None:
+        """The remote's default branch, or None when the remote never advertised
+        one. None is a legitimate answer: the working copy simply stays put."""
+        probe = _git(["git", "-C", str(checkout), "symbolic-ref", "--quiet",
+                      "refs/remotes/origin/HEAD"], capture_output=True, text=True)
+        if probe.returncode != 0:
+            return None
+        return probe.stdout.strip().rpartition("/")[2] or None
+
+    def _run(self, argv: list[str]) -> None:
+        """Every git call goes through `_git`, so stdin stays closed and a remote
+        demanding credentials fails instead of hanging on a terminal nobody is
+        watching."""
+        done = _git(argv, capture_output=True, text=True)
+        if done.returncode != 0:
+            detail = (done.stderr or done.stdout or "").strip().splitlines()
+            raise ValueError(
+                f"{self.component}.repository: git {argv[1]} failed: "
+                f"{detail[-1] if detail else f'exit {done.returncode}'}")
+
+
 # ── FsWorkStore ──────────────────────────────────────────────────────────────
 
 class FsWorkStore(FsTreeStore, WorkStore):
@@ -2427,6 +2718,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @classmethod
     def open(cls, node_root: Path) -> "FsWorkStore":
+        """Resolve this node's work store, in one ordered ladder.
+
+        1. the local store (`work.path`, else `docs/work`) when it is usable;
+        2. else the declared home repository's provisioned location, if usable;
+        3. else `StoreNotProvisioned`, when a home repository is declared;
+        4. else exactly what this did before a declaration existed — the same
+           checks, in the same order, with the same messages.
+
+        **A declaration is a fallback, never an override.** Rule 1 runs first so
+        a checkout that already has the store keeps using it and nothing about
+        that machine changes; the declaration answers only for a machine that
+        does not have it. Rules 3 and 4 are the same failure told two ways: with
+        a declaration it is actionable, so it says what to run.
+        """
         node_root = node_root.resolve()
         config_path = node_root / SENTINEL
         config = load_yaml(config_path, unique=True)
@@ -2436,15 +2741,65 @@ class FsWorkStore(FsTreeStore, WorkStore):
         configured = work.get("path")
         if configured is not None and (not isinstance(configured, str) or not configured.strip()):
             raise ValueError(f"{config_path}: work.path must be a non-empty path string")
+        raw_root = cls._local_root(node_root, configured)
+        declaration, declaration_problems = parse_repository_declaration(
+            work.get("repository"), f"{cls.COMPONENT}.repository")
+
+        if declaration is None:
+            try:
+                return cls._open_at(
+                    raw_root, node_root, config_path, external=configured is not None)
+            except ValueError:
+                # A valid local store keeps reads working even when an unused
+                # declaration is malformed. When no local store can open,
+                # however, the declaration is the actionable config error and
+                # must not be hidden behind the dead local path.
+                if declaration_problems:
+                    raise ValueError(
+                        f"{config_path}: {'; '.join(declaration_problems)}") from None
+                raise
+
+        try:                                                    # rule 1
+            return cls._open_at(
+                raw_root, node_root, config_path, external=configured is not None)
+        except ValueError:
+            pass
+        provisioned = provisioned_store_root(node_root, declaration)
+        try:                                                    # rule 2
+            return cls._open_at(provisioned, node_root, config_path, external=True)
+        except ValueError:
+            pass
+        raise StoreNotProvisioned(                              # rule 3
+            f"{config_path}: the {cls.COMPONENT} store is declared in "
+            f"{declaration.url} but has not been provisioned here; "
+            f"run `tcw provision` to obtain it")
+
+    @staticmethod
+    def _local_root(node_root: Path, configured: str | None) -> Path:
+        """Where the store lives on this machine per `work.path`, or the default.
+
+        Unchanged from before the declaration existed, re-anchoring included: a
+        relative `work.path` inside a *linked worktree* is authored against the
+        primary checkout's position on disk, so it resolves against the main
+        worktree root. Getting this wrong would silently swap a worktree user's
+        real store for a cache clone, which is why it stayed one function rather
+        than being reimplemented inside the ladder.
+        """
         if configured is None:
-            raw_root = node_root / "docs" / "work"
-        else:
-            value = Path(configured).expanduser()
-            base = node_root
-            anchors = worktree_anchors(node_root)
-            if not value.is_absolute() and anchors is not None:
-                base = anchors[1]
-            raw_root = value if value.is_absolute() else base / value
+            return node_root / "docs" / "work"
+        value = Path(configured).expanduser()
+        base = node_root
+        anchors = worktree_anchors(node_root)
+        if not value.is_absolute() and anchors is not None:
+            base = anchors[1]
+        return value if value.is_absolute() else base / value
+
+    @classmethod
+    def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
+                 external: bool) -> "FsWorkStore":
+        """Validate a candidate root and build the store. `external` means the
+        store is not the node's own `docs/work`, so the repository that owns its
+        commits has to be discovered rather than assumed."""
         if raw_root.is_symlink() and not raw_root.exists():
             raise ValueError(f"{config_path}: work.path is a broken symlink: {raw_root}")
         if not raw_root.is_dir():
@@ -2453,8 +2808,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         missing = [name for name in ("inbox", *WORK_STATUSES) if not (root / name).is_dir()]
         if missing:
             raise ValueError(f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
-        repository = node_root if configured is None else git_root(root)
-        if repository is None and configured is not None:
+        repository = git_root(root) if external else node_root
+        if repository is None and external:
             raise ValueError(f"{config_path}: work.path is not inside a Git repository: {root}")
         return cls(root, node_root=node_root, store_git_root=repository or node_root)
 
@@ -3149,6 +3504,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
             self._work_config().get("documentation"))
         return [f"{SENTINEL}: {p}" for p in problems]
 
+    def repository_declaration(self) -> "RepositoryDeclaration | None":
+        """The store's declared home repository, or None — problems discarded.
+
+        Same contract as `lifecycle_policy` and `documentation`: a mistyped key
+        must not break `tcw work list`. It fails *closed* rather than partially,
+        because the parser returns None on any problem — a half-read repository
+        is one nobody declared.
+        """
+        declaration, _problems = parse_repository_declaration(
+            self._work_config().get("repository"), f"{self.COMPONENT}.repository")
+        return declaration
+
+    def repository_problems(self) -> list[str]:
+        """Declaration problems, prefixed with the file they came from — for
+        `check`. Mirrors `documentation_problems` and shares its parser."""
+        _declaration, problems = parse_repository_declaration(
+            self._work_config().get("repository"), f"{self.COMPONENT}.repository")
+        return [f"{SENTINEL}: {p}" for p in problems]
+
     def lifecycle_problems(self) -> list[str]:
         """Policy problems, prefixed with the file they came from — for `check`."""
         policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
@@ -3245,6 +3619,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if identifier is None:                         # node-wide config, not per-item
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
+            problems.extend(self.repository_problems())
         if identifier is not None:
             item = self.get(identifier)
             if item is None:

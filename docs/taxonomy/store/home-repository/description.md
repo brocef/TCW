@@ -1,0 +1,1 @@
+The repository a component store lives in, recorded in the project's config so a machine that has never seen the store can obtain it. Distinct from the store's local path, which is a fact about one machine.
