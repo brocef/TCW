@@ -14,8 +14,8 @@ from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
-    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, FsStoreProvisioner, declared_repository,
-    find_node_root, git_root, init,
+    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, FsStoreProvisioner, FsWorkStore,
+    declared_repository, find_node_root, git_root, init,
 )
 from tcw.store.project import FsProjectRegistry
 import yaml
@@ -120,7 +120,16 @@ def run_provision(components: list[str], *, refresh: bool = False,
     failed = False
     for component, declaration in declared:
         provisioner = FsStoreProvisioner(node_root, component, declaration)
-        if not provisioner.is_available() or refresh:
+        declared_available = provisioner.is_available()
+        if not refresh and not declared_available:
+            try:
+                resolved = FsWorkStore.open(node_root)
+            except ValueError:
+                pass
+            else:
+                print(f"  {component}: already available at {resolved.root}")
+                continue
+        if not declared_available or refresh:
             print(f"→ {provisioner.describe()}")      # says what it will contact
         try:
             result = provisioner.ensure_available(refresh=refresh, dry_run=dry_run)

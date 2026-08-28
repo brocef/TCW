@@ -366,6 +366,30 @@ def test_a_store_already_here_wins_over_the_declaration(tmp_path):
         "resolution must not provision, and must not even look in the cache"
 
 
+def test_provision_reports_a_local_store_without_contacting_the_remote(
+    tmp_path, monkeypatch, capsys,
+):
+    """Criterion 5 applies to the command as well as resolution: a usable local
+    ``work.path`` wins, so plain provisioning has nothing to obtain."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    here = _local_store(_repo(tmp_path / "orchestrator-local") / "stores" / "corelib")
+    remote = _remote_with_store(tmp_path)
+    _write_config(
+        code,
+        path=str(here),
+        repository={"url": str(remote), "path": "docs/work/corelib"},
+    )
+    monkeypatch.chdir(code)
+
+    calls = _count_git(monkeypatch)
+    assert main(["provision"]) == 0
+
+    assert "already available" in capsys.readouterr().out
+    assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
+    assert not (tmp_path / "cache" / "tcw").exists()
+
+
 def test_an_absent_local_store_falls_through_to_the_provisioned_one(tmp_path):
     """The cloud session: the same config, on a machine that has only the code."""
     code = _repo(tmp_path / "code")
