@@ -30,7 +30,7 @@ throwaway repository pair.
 | 4 | validate distinguishes the two failures            | `test_validate_reports_the_declared_store_rather_than_a_dead_path`, `test_without_a_declaration_a_broken_path_still_says_what_it_always_said` |
 | 5 | a store already here wins                          | `test_a_store_already_here_wins_over_the_declaration`                |
 | 6 | `--dry-run` contacts nothing                       | `test_a_dry_run_from_the_cli_contacts_nothing`                       |
-| 7 | failure leaves nothing behind                      | `test_an_unknown_ref_fails_and_leaves_nothing_behind`, `…unreachable_remote…` |
+| 7 | failure leaves nothing behind                      | `test_an_unknown_ref_fails_and_leaves_nothing_behind`, `…unreachable_remote…`, `test_a_repository_without_a_store_leaves_no_checkout_behind` (added at rework) |
 | 8 | git stdin closed                                   | every call routes through `_git`; `tests/test_subprocess_stdin.py`   |
 | 9 | `test_external_work_store.py` unmodified           | untouched in this branch; 82 cases pass                              |
 | 10 | malformed declarations refused                    | 9 parametrized parser cases + `test_a_malformed_declaration_refuses_rather_than_doing_nothing` |
@@ -46,16 +46,37 @@ orchestrator absent, `tcw work list` reported the declared remote and
 a second `tcw provision` reported *already available*; `tcw work path` printed
 the provisioned location.
 
+## Second pass — external review
+
+An external review of [PR #23](https://github.com/brocef/TCW/pull/23) found two
+blocking defects. Both were real, both are fixed, and the details are in
+`rework.md`. In short: `_obtain` published the checkout before validating the
+store layout, and `_refresh` fetched an existing checkout's `origin` without
+checking it against the declaration — so `tcw provision` could print one remote
+and contact another.
+
+Both sit in the same blind spot: **the order of publish and validate**, and
+**what `exists()` is taken to prove**. Criterion 7 below stated "leaves nothing
+behind" but enumerated only the unknown-ref and unreachable-remote cases, so the
+tests followed the enumeration rather than the property. Three regression tests
+now cover the property; `tests/test_store_provisioning.py` holds 62 cases.
+
+The README, the capability body and the changelog also claimed a failure "leaves
+no half-fetched store behind" without qualification — broader than what holds
+even after the fix, since a refresh against a pre-existing checkout deliberately
+does not delete it. All three now say what is true.
+
 ## Suite
 
-7 failures out of 2042, all confirmed **pre-existing or environmental** against a
-clean-tree baseline of the same tests: two `test_generate_hook` process cases,
-`test_scaffold`'s unwritable-target case and both `test_store_editor`
-permission cases (all four assume a non-root user; this container runs as root),
-`test_shipped_prompts`'s wheel build (no network), and one
-`test_work_autocommit` case that failed on a transient
+6 failures out of 2045 on the final run, all confirmed **pre-existing or
+environmental** against a clean-tree baseline of the same tests: two
+`test_generate_hook` process cases, `test_scaffold`'s unwritable-target case and
+both `test_store_editor` permission cases (all four assume a non-root user; this
+container runs as root), and `test_shipped_prompts`'s wheel build (no network).
+An earlier run also showed a `test_work_autocommit` case failing on a transient
 `signing server returned status 503` from the environment's commit-signing
-service and passes in isolation. No test failed because of this change.
+service; it passes in isolation and did not recur. No test failed because of this
+change.
 
 ## Decisions worth carrying forward
 
