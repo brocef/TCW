@@ -27,6 +27,9 @@ would be fetched into already holds something else, you are told what is there
 and nothing is contacted at all. It is the only command that goes to the network,
 so merely checking out a project never reaches out on its own.
 
+Provisioning currently applies to work items and their lifecycle documents;
+taxonomy and capability stores remain local for now.
+
 If anything goes wrong — the repository is unreachable, the branch does not
 exist, or it turns out not to carry the store where you said — you are told why
 and nothing new is left behind. A working copy you already had is never deleted

@@ -5,7 +5,7 @@ category.
 
 ### Added
 
-- **A component store can declare its home repository.** `<component>.repository`
+- **The work store can declare its home repository.** `work.repository`
   in `tcw-config.yaml` takes `url` (required), `ref`, `path` (the store's
   location within the repository) and `checkout` (where a working copy lives on
   this machine; default `${XDG_CACHE_HOME:-~/.cache}/tcw/stores/<url+ref key>`).
@@ -13,8 +13,8 @@ category.
   **fails closed** — unlike the documentation parser, a half-read declaration
   would send a fetch somewhere nobody asked for. `repository.path` is bounded
   syntactically (relative, no `..`) before any join.
-- **`tcw provision`** obtains the stores a node declares but does not have here.
-  `--component <c>` (repeatable), `--refresh`, `--dry-run`. Idempotent: an
+- **`tcw provision`** obtains the work store a node declares but does not have here.
+  `--component work`, `--refresh`, `--dry-run`. Idempotent: an
   already-available store contacts nothing. The only command in `tcw` that
   reaches the network, and it prints the remote before contacting it.
 - `StoreProvisioner` / `ProvisionResult` in `tcw/store/base.py` — the
@@ -51,6 +51,8 @@ category.
 - The six duplicated `no tcw work node here` strings in `tcw/work/cli.py`
   collapse into one `_require_node` helper. The duplication is why the message
   could not be improved in one place.
+- Provisioning exposes only `--component work`; taxonomy and capabilities remain
+  child B rather than being accepted by a work-layout-only provisioner.
 
 ### Fixed
 
@@ -58,6 +60,10 @@ category.
   reported `no tcw work node here — run \`tcw init\``. Following that advice
   would scaffold a second, empty store beside the real one. It now names the
   declared remote and `tcw provision`.
+- `FsWorkStore.open` now applies full store validation before preferring a local
+  `work.path`, so an unusable folder cannot block a valid provisioned fallback.
+- A malformed `work.repository` is now the validation error when no local store
+  can open, rather than being hidden behind a secondary dead-path diagnostic.
 - `tests/test_documented_cli_surface.py` no longer fails a capability body
   declared `Status: Missing`. Such a capability is seeded at a work item's `plan`
   stage and necessarily names a verb that does not exist yet, so the guard

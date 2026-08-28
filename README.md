@@ -229,11 +229,14 @@ instead of reporting that the project has no work component.
 `tcw provision` is what obtains it:
 
 ```sh
-tcw provision                 # every store this node declares but doesn't have
+tcw provision                 # the declared work store, when it is not here yet
 tcw provision --dry-run       # print the plan; contact nothing
 tcw provision --refresh       # bring an existing copy to the declared version
 tcw provision --component work
 ```
+
+This first provisioning step supports the work store. Taxonomy and capabilities
+remain local until their component adapters gain the same resolution path.
 
 Running it twice does nothing the second time. It is the **only** command that
 reaches the network, and only because you asked: a repository's config can name a
