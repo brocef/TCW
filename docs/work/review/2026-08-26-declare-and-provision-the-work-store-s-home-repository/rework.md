@@ -86,3 +86,13 @@ A second review of the updated PR found four more blockers:
 The first three have failing regression tests before implementation. The fourth
 is enforced by restoring the five version sources and the upcoming release
 documents to their pre-cut state while preserving the feature and rework entries.
+
+## Independent completion review — local-store precedence in the command
+
+The independent review of the fixes found that criterion 5 held in
+`FsWorkStore.open` but not in the `tcw provision` command. With both a usable
+local `work.path` and a repository declaration, plain provisioning still built a
+declaration provisioner and could clone or fetch the declared repository. The
+local store is first in the resolution ladder, so the command must report that
+resolved store as already available and perform no clone or fetch. Explicit
+`--refresh` remains the opt-in path that contacts the declaration.
