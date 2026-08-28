@@ -63,3 +63,26 @@ acceptance criterion 7 but enumerated only the unknown-ref and unreachable-remot
 cases, so the tests followed the enumeration rather than the property. A criterion
 stated as a property, with the enumeration as examples, would have been checked
 against every failure path instead of two of them.
+
+## Second review — incomplete component boundary and availability checks
+
+A second review of the updated PR found four more blockers:
+
+1. `tcw provision --component` accepted taxonomy and capabilities even though
+   `FsStoreProvisioner` only knew the work-store layout. A taxonomy declaration
+   was cloned and then rejected for missing work statuses. Child A must expose
+   only `work`; child B adds the other values with their adapters.
+2. The resolution ladder called a folder with the work status names "usable"
+   before checking that an external store was inside a Git repository. Such a
+   local `work.path` blocked fallback to an already-provisioned valid store.
+3. When the local store was absent, `FsWorkStore.open` discarded a malformed
+   repository declaration and `tcw validate` reported only the dead local path,
+   losing the actionable configuration problem required by criterion 10.
+4. Version `1.1.0` was cut while this item was still in review and both new
+   capabilities were still `Missing`. Release work belongs after acceptance and
+   completion, so the cut must be reverted and its entries restored to the
+   upcoming files.
+
+The first three have failing regression tests before implementation. The fourth
+is enforced by restoring the five version sources and the upcoming release
+documents to their pre-cut state while preserving the feature and rework entries.
