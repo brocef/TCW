@@ -22,8 +22,15 @@ repository, and tells you what to run.
 `tcw provision` is what fetches it. Run it once in a new checkout and your board,
 your specs and your plans are there. Run it again and it does nothing, because
 nothing needs doing. It shows you which repository it is about to contact before
-it contacts one, and it is the only command that goes to the network at all — so
-merely checking out a project never reaches out on its own.
+it contacts one — and that is the repository it contacts: if the folder a store
+would be fetched into already holds something else, you are told what is there
+and nothing is contacted at all. It is the only command that goes to the network,
+so merely checking out a project never reaches out on its own.
+
+If anything goes wrong — the repository is unreachable, the branch does not
+exist, or it turns out not to carry the store where you said — you are told why
+and nothing new is left behind. A working copy you already had is never deleted
+for you.
 
 Nothing changes for a machine that already has the store: the local copy is
 always preferred, so the same configuration works on your laptop and in a fresh
