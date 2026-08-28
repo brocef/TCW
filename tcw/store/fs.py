@@ -2544,7 +2544,14 @@ class FsStoreProvisioner(StoreProvisioner):
     def is_available(self) -> bool:
         if self.declaration is None:
             return False
-        return _is_store_layout(provisioned_store_root(self.node_root, self.declaration))
+        target = provisioned_store_root(self.node_root, self.declaration)
+        checkout = checkout_root(self.node_root, self.declaration)
+        # A directory with the right folder names is not enough: work-store
+        # writes need a checkout to own their commits. Check the filesystem
+        # marker rather than invoking Git: an already-available second run is
+        # deliberately a zero-subprocess no-op. ``FsWorkStore._open_at`` remains
+        # the full validation authority when the store is actually opened.
+        return _is_store_layout(target) and (checkout / ".git").exists()
 
     def ensure_available(self, *, refresh: bool = False,
                          dry_run: bool = False) -> ProvisionResult:
@@ -2735,19 +2742,33 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if configured is not None and (not isinstance(configured, str) or not configured.strip()):
             raise ValueError(f"{config_path}: work.path must be a non-empty path string")
         raw_root = cls._local_root(node_root, configured)
-        # Problems are discarded, as everywhere a store *reads* config: a
-        # mistyped declaration is `tcw validate`'s to report, and the parser
-        # fails closed, so a broken one reads as no declaration at all.
-        declaration, _problems = parse_repository_declaration(
+        declaration, declaration_problems = parse_repository_declaration(
             work.get("repository"), f"{cls.COMPONENT}.repository")
 
         if declaration is None:
-            return cls._open_at(raw_root, node_root, config_path, external=configured is not None)
-        if _is_store_layout(raw_root):                          # rule 1
-            return cls._open_at(raw_root, node_root, config_path, external=configured is not None)
+            try:
+                return cls._open_at(
+                    raw_root, node_root, config_path, external=configured is not None)
+            except ValueError:
+                # A valid local store keeps reads working even when an unused
+                # declaration is malformed. When no local store can open,
+                # however, the declaration is the actionable config error and
+                # must not be hidden behind the dead local path.
+                if declaration_problems:
+                    raise ValueError(
+                        f"{config_path}: {'; '.join(declaration_problems)}") from None
+                raise
+
+        try:                                                    # rule 1
+            return cls._open_at(
+                raw_root, node_root, config_path, external=configured is not None)
+        except ValueError:
+            pass
         provisioned = provisioned_store_root(node_root, declaration)
-        if _is_store_layout(provisioned):                       # rule 2
+        try:                                                    # rule 2
             return cls._open_at(provisioned, node_root, config_path, external=True)
+        except ValueError:
+            pass
         raise StoreNotProvisioned(                              # rule 3
             f"{config_path}: the {cls.COMPONENT} store is declared in "
             f"{declaration.url} but has not been provisioned here; "

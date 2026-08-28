@@ -641,12 +641,12 @@ def test_provision_outside_a_node_says_so(tmp_path, monkeypatch, capsys):
     assert "no tcw node here" in capsys.readouterr().err
 
 
-def test_limiting_to_an_undeclared_component_is_a_no_op(tmp_path, monkeypatch, capsys):
-    """`--component` takes a value rather than being a work-shaped flag, so
-    extending provisioning past work adds a caller, not a new flag."""
-    monkeypatch.chdir(_declared_against(tmp_path, _remote_with_store(tmp_path)))
+def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    monkeypatch.chdir(code)
 
-    assert main(["provision", "--component", "taxonomy"]) == 0
+    assert main(["provision", "--component", "work"]) == 0
     assert "Nothing to provision" in capsys.readouterr().out
 
 
@@ -746,3 +746,60 @@ def test_an_occupied_checkout_that_is_not_a_repository_is_refused(tmp_path, monk
     assert "not a git repository" in str(caught.value)
     assert not any("fetch" in argv for argv in calls), calls
     assert (occupied / "notes.txt").is_file(), "someone else's directory is untouched"
+
+
+# ── second review findings ─────────────────────────────────────────────────
+
+
+def test_only_work_is_exposed_until_the_other_component_adapters_land(
+    tmp_path, monkeypatch, capsys,
+):
+    """Child A provisions work. Taxonomy and capabilities are child B, so this
+    CLI must not advertise values whose layouts and resolution are not built."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    config_path = code / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["taxonomy"] = {
+        "repository": {"url": str(tmp_path / "taxonomy-remote")}
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    monkeypatch.chdir(code)
+
+    assert main(["provision"]) == 0
+    assert "Nothing to provision" in capsys.readouterr().out
+    assert not (tmp_path / "cache" / "tcw").exists()
+    with pytest.raises(SystemExit):
+        main(["provision", "--component", "taxonomy"])
+
+
+def test_an_unusable_local_layout_falls_through_to_the_provisioned_store(tmp_path):
+    """Status folders outside Git are not a usable external store and therefore
+    must not block the declaration's valid provisioned fallback."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    local = _local_store(tmp_path / "not-a-repository" / "work")
+    declaration = RepositoryDeclaration(
+        url=str(_remote_with_store(tmp_path)), path="docs/work/corelib")
+    _write_config(
+        code,
+        path=str(local),
+        repository={"url": declaration.url, "path": declaration.path},
+    )
+    FsStoreProvisioner(code, "work", declaration).ensure_available()
+
+    assert FsWorkStore.open(code).root == fs.provisioned_store_root(
+        code, declaration).resolve()
+
+
+def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_path):
+    """Criterion 10 is about the declaration error, even when no local store can
+    be opened to report it through ``store.check()``."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    shutil.rmtree(code / "docs" / "work")
+    _write_config(code, repository={"path": "docs/work/corelib"})
+
+    problems = validate(code)
+
+    assert any("work.repository.url" in problem for problem in problems), problems

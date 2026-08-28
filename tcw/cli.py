@@ -22,6 +22,9 @@ import yaml
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
 
+
+PROVISION_COMPONENTS = ("work",)
+
 # Component CLI modules (each exposes NAME / SUBCOMMANDS / DEFAULT_SUBCOMMAND /
 # add_subparser). All three components are now built.
 _BUILT = [taxonomy_cli, capabilities_cli, work_cli]
@@ -130,7 +133,7 @@ def run_provision(components: list[str], *, refresh: bool = False,
 
 
 def _cmd_provision(args: argparse.Namespace) -> int:
-    return run_provision(args.component or list(COMPONENTS),
+    return run_provision(args.component or list(PROVISION_COMPONENTS),
                          refresh=args.refresh, dry_run=args.dry_run)
 
 
@@ -202,10 +205,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.set_defaults(func=_cmd_init)
 
     p_provision = sub.add_parser(
-        "provision", help="obtain component stores this project declares but does not have here")
+        "provision", help="obtain the work store this project declares but does not have here")
     p_provision.add_argument(
-        "--component", action="append", choices=list(COMPONENTS),
-        help="limit to one component (repeatable; default: every declared component)")
+        "--component", action="append", choices=list(PROVISION_COMPONENTS),
+        help="limit provisioning by component (currently: work)")
     p_provision.add_argument("--refresh", action="store_true",
                              help="bring an existing working copy to the declared version")
     p_provision.add_argument("--dry-run", action="store_true",
