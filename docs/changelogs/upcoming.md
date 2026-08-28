@@ -56,6 +56,10 @@ category.
 
 ### Fixed
 
+- Plain `tcw provision` now honors the resolution ladder's local-store
+  precedence. When a usable local `work.path` already satisfies the declaration,
+  it reports that store as available without cloning or fetching; `--refresh`
+  remains the explicit request to contact the declared repository.
 - `tcw work list` on a node whose store was configured elsewhere but absent
   reported `no tcw work node here — run \`tcw init\``. Following that advice
   would scaffold a second, empty store beside the real one. It now names the
