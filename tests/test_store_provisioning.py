@@ -851,26 +851,43 @@ def test_an_occupied_checkout_that_is_not_a_repository_is_refused(tmp_path, monk
 # ── second review findings ─────────────────────────────────────────────────
 
 
-def test_only_work_is_exposed_until_the_other_component_adapters_land(
+def test_every_component_is_exposed_now_that_its_adapter_exists(
     tmp_path, monkeypatch, capsys,
 ):
-    """Child A provisions work. Taxonomy and capabilities are child B, so this
-    CLI must not advertise values whose layouts and resolution are not built."""
+    """The successor to child A's deliberate narrowing.
+
+    That CLI accepted only `work`, because advertising a value whose layout and
+    resolution were not built meant cloning a taxonomy declaration and then
+    refusing it for missing work statuses. The adapters exist now, so the tuple
+    widens — and the assertion that matters is not that the value is *accepted*
+    but that accepting it does the right thing, which is what the narrowing was
+    protecting."""
+    remote = _remote_with_tree(tmp_path, inner="trees/taxonomy")
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     config_path = code / "tcw-config.yaml"
     config = yaml.safe_load(config_path.read_text())
     config["taxonomy"] = {
-        "repository": {"url": str(tmp_path / "taxonomy-remote")}
+        "repository": {"url": str(remote), "path": "trees/taxonomy",
+                       "checkout": str(tmp_path / "co")}
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 0
-    assert "Nothing to provision" in capsys.readouterr().out
-    assert not (tmp_path / "cache" / "tcw").exists()
+    assert main(["provision", "--component", "taxonomy"]) == 0
+
+    assert (tmp_path / "co" / "trees" / "taxonomy").is_dir()
+    assert "taxonomy: obtained" in capsys.readouterr().out
+    # The refusal that made the narrowing necessary is gone: a tree declaration
+    # is no longer measured against the work store's status folders.
+    assert main(["taxonomy", "path"]) == 0
+
+
+def test_an_unknown_component_is_still_refused(tmp_path, monkeypatch):
+    """Widening the tuple is not opening it."""
+    monkeypatch.chdir(_repo(tmp_path / "code"))
     with pytest.raises(SystemExit):
-        main(["provision", "--component", "taxonomy"])
+        main(["provision", "--component", "nonsense"])
 
 
 def test_an_unusable_local_layout_falls_through_to_the_provisioned_store(tmp_path):
@@ -1187,3 +1204,83 @@ def test_validate_reports_a_declared_tree_store_rather_than_aborting(
     assert f"{component} check:" in err, err
     assert "has not been provisioned here" in err, err
     assert "tcw provision" in err, err
+
+
+# ── the provisioning verb, across components ────────────────────────────────
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
+def test_provision_obtains_a_declared_tree_store(tmp_path, monkeypatch, capsys,
+                                                 component):
+    """Criteria 2 and 5 through the command, not the adapter."""
+    remote = _remote_with_tree(tmp_path, inner=f"trees/{component}")
+    checkout = tmp_path / "co"
+    code = _tree_node(tmp_path, component,
+                      path=f"../orchestrator/trees/{component}",
+                      repository={"url": str(remote), "path": f"trees/{component}",
+                                  "checkout": str(checkout)})
+    monkeypatch.chdir(code)
+
+    assert main(["provision", "--component", component]) == 0
+
+    assert (checkout / "trees" / component).is_dir()
+    assert main([component, "path"]) == 0
+    assert capsys.readouterr().out.strip().endswith(f"trees/{component}")
+
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities", "work"])
+def test_a_local_store_wins_at_the_command_for_every_component(
+        tmp_path, monkeypatch, capsys, component):
+    """Criterion 4, per component.
+
+    This is the defect child A's fourth review pass found, in the shape that
+    makes it invisible: `run_provision` loops over components and asked
+    `FsWorkStore.open` inside the loop. Correct while the tuple held one value,
+    and wrong for every value added to it — so a taxonomy declaration would be
+    cloned because the *work* store did not resolve."""
+    remote = _remote_with_tree(tmp_path, inner="trees/thing")
+    if component == "work":
+        here = _remote_with_store(tmp_path, inner="local/work") / "local" / "work"
+    else:
+        here = tmp_path / "local" / component
+        here.mkdir(parents=True)
+    code = _tree_node(tmp_path, component, path=str(here),
+                      repository={"url": str(remote), "path": "trees/thing",
+                                  "checkout": str(tmp_path / "co")})
+    monkeypatch.chdir(code)
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(fs.FsStoreProvisioner, "_run",
+                        lambda self, argv, **kw: calls.append(list(argv)))
+
+    assert main(["provision", "--component", component]) == 0
+
+    assert calls == [], calls
+    assert "already available" in capsys.readouterr().out
+    assert not (tmp_path / "co").exists()
+
+
+def test_each_declared_component_is_provisioned_independently(tmp_path, monkeypatch,
+                                                              capsys):
+    """Criterion 5. Two declarations, one good and one naming nothing: the good
+    one lands, the bad one is reported, and neither result is the other's."""
+    good = _remote_with_tree(tmp_path, inner="trees/taxonomy")
+    code = _tree_node(tmp_path, "taxonomy",
+                      path="../nowhere/taxonomy",
+                      repository={"url": str(good), "path": "trees/taxonomy",
+                                  "checkout": str(tmp_path / "co-good")})
+    path = code / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text())
+    config["capabilities"] = {
+        "path": "../nowhere/capabilities",
+        "repository": {"url": str(good), "path": "trees/not-here",
+                       "checkout": str(tmp_path / "co-bad")}}
+    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    monkeypatch.chdir(code)
+
+    assert main(["provision"]) == 1
+
+    captured = capsys.readouterr()
+    assert (tmp_path / "co-good" / "trees" / "taxonomy").is_dir()
+    assert "taxonomy: obtained" in captured.out
+    assert "capabilities" in captured.err
+    assert not (tmp_path / "co-bad").exists()

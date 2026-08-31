@@ -14,8 +14,8 @@ from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
-    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, FsStoreProvisioner, FsWorkStore,
-    declared_repository, find_node_root, git_root, init,
+    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
+    FsWorkStore, declared_repository, find_node_root, git_root, init,
 )
 from tcw.store.project import FsProjectRegistry
 import yaml
@@ -23,7 +23,11 @@ from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
 
 
-PROVISION_COMPONENTS = ("work",)
+# Every component the provisioning verb can serve. This was narrowed to `work`
+# while only the work store had an adapter — a taxonomy declaration was cloned
+# and then refused for missing work statuses — and widens here together with the
+# adapters that make the other two values honest, never ahead of them.
+PROVISION_COMPONENTS = COMPONENTS
 
 # Component CLI modules (each exposes NAME / SUBCOMMANDS / DEFAULT_SUBCOMMAND /
 # add_subparser). All three components are now built.
@@ -123,7 +127,11 @@ def run_provision(components: list[str], *, refresh: bool = False,
         declared_available = provisioner.is_available()
         if not refresh and not declared_available:
             try:
-                resolved = FsWorkStore.open(node_root)
+                # *This* component's store. Asking `FsWorkStore` here was
+                # correct only while the loop had one component to run: with
+                # more, a taxonomy declaration was measured against whether the
+                # work store resolved, and would be cloned because it did not.
+                resolved = STORE_CLASSES[component].open(node_root)
             except ValueError:
                 pass
             else:
@@ -217,7 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
         "provision", help="obtain the work store this project declares but does not have here")
     p_provision.add_argument(
         "--component", action="append", choices=list(PROVISION_COMPONENTS),
-        help="limit provisioning by component (currently: work)")
+        help="limit provisioning by component (default: every declared one)")
     p_provision.add_argument("--refresh", action="store_true",
                              help="bring an existing working copy to the declared version")
     p_provision.add_argument("--dry-run", action="store_true",
