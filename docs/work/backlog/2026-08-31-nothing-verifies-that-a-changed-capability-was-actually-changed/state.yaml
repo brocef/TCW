@@ -1,0 +1,11 @@
+slug: 2026-08-31-nothing-verifies-that-a-changed-capability-was-actually-changed
+title: 'Nothing verifies that a changed: capability was actually changed'
+created: '2026-08-31'
+resolution: null
+priority: 45
+effort: low
+complexity: medium
+tags:
+- cli
+- capabilities
+- work
