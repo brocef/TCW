@@ -73,6 +73,23 @@ Both plausible answers are storage-abstracted; neither needs the filesystem.
 The first is the real fix. The second is what to fall back to if the revision
 token turns out not to survive the operations a capability edit performs.
 
+## Related
+
+[Nothing enforces a spec's declared capability deltas without a capabilities.yaml](tcw://W/2026-08-21-nothing-enforces-a-spec-s-declared-capability-deltas-without-a-capabilities-yaml)
+is the adjacent hole in the same gate, and the two are worth specced together
+even though their fixes differ:
+
+| | that item | this item |
+| --- | --- | --- |
+| the file | absent entirely | present |
+| what fails | no gate runs at all | the gate runs and checks only `new:` |
+| the seam | producing `capabilities.yaml` from a spec's declared deltas | what `changed:` obliges, once the file exists |
+
+Together they say the completion gate covers one of the three buckets it is
+handed. That item asks "worth checking whether other completed items have the
+same gap before choosing" — the two children of this initiative are that check,
+and they answer yes.
+
 ## Notes
 
 - Found during the `verify` stage of two children of

@@ -57,4 +57,21 @@ honest fix is in the stage instructions rather than in the CLI.
 
 Worth checking whether other completed items have the same gap before choosing.
 
+## Later evidence
+
+> Worth checking whether other completed items have the same gap before choosing.
+
+Checked, 2026-08-31, on the two completed children of
+[the store-home-repository epic](tcw://W/2026-08-26-declare-a-component-store-s-home-repository-so-a-fresh-checkout-can-provision-it).
+Both **had** a `capabilities.yaml`, so the gate described in point 2 above did
+run — and a sibling hole showed up beside this one: the gate checks `new:` and
+says nothing about `changed:`. Child A declared three `changed:` capabilities and
+edited none of them, and would have completed cleanly.
+
+Tracked separately as
+[Nothing verifies that a changed: capability was actually changed](tcw://W/2026-08-31-nothing-verifies-that-a-changed-capability-was-actually-changed),
+because the fixes differ — that one is about what `changed:` obliges once the
+file exists, this one is about the file existing at all. They are the same gate
+and probably want one spec.
+
 Axis: work (and capabilities).
