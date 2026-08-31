@@ -21,3 +21,23 @@ Evaluate this project's documentation entries by invoking the
 `documentation-sync` skill. The entries themselves come from `tcw work docs`;
 they live in `tcw-config.yaml` under `work.documentation`, where `tcw validate`
 checks them.
+
+## Tests that cannot narrow a criterion
+
+Two rules, both earned. A general acceptance criterion verified by a helper that
+quietly fixes two of its axes is indistinguishable, at review, from a criterion
+verified generally — which is how the store-provisioning epic shipped the same
+defect shape four times.
+
+- **A shared fixture may not default an axis the code branches on.** If a helper
+  builds a node, every configuration key the resolution path tests is an explicit
+  argument with no default. A fixture's default is always whichever value makes
+  setup easiest, and that is why three of those four defects sat in cells no test
+  could reach — `_tree_node` created the local tree unconditionally and every
+  caller passed `path=`, so the uncovered cell was unreachable by construction.
+- **One property, one assertion helper.** A family of tests for a single
+  criterion calls one named assertion — `_assert_nothing_left_behind(target)` —
+  so a sibling that skips it is visible in the diff rather than left to review.
+  Three failure-path tests existed for "leaves nothing behind"; two asserted it
+  and said so in their names, the third asserted only that it raised, and that is
+  the one that was wrong.
