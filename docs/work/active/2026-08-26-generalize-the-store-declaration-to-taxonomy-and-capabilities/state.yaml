@@ -13,3 +13,5 @@ tags:
 initiative: 2026-08-26-declare-a-component-store-s-home-repository-so-a-fresh-checkout-can-provision-it
 blocked_by:
 - slug: 2026-08-26-declare-and-provision-the-work-store-s-home-repository
+owner: brocef@users.noreply.github.com
+started: '2026-08-31T21:30:55.117286Z'
