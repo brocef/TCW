@@ -164,3 +164,50 @@ worth a look when child B touches the same surfaces.
 The two new capabilities are still `Missing`. They flip to `Supported` at
 `tcw work complete`, per `capabilities.yaml`. Version `1.0.3` remains current;
 the release choice comes only after the user accepts this review-stage outcome.
+
+## Fifth pass — verification
+
+Verification walked all eleven criteria from a bare shell against a real two-repo
+fixture (a bare orchestrator remote holding a work store, a code repository
+declaring it). Every criterion passes as written, and the two non-test checks the
+epic plan reserved for a reader hold: no `StoreProvisioner` signature names a URL,
+a ref or a directory, and the only `clone`/`fetch` call sites in the package are
+inside the provisioner.
+
+One defect surfaced in the seam between criteria 1 and 10, recorded in
+`rework.md` and fixed in `ddb1edd`: a malformed `work.repository` sent every work
+command back to `no tcw work node here — run \`tcw init\``, the exact misdirection
+this feature exists to remove and the one command that must not be run there.
+`tcw validate` was correct throughout; the divergence was between it and every
+other command.
+
+Root cause was one exception type — `FsWorkStore.open` built the actionable
+message but raised a plain `ValueError`, which `find_node` flattened to `None`.
+`StoreDeclarationError` now carries it, `find_node` re-raises it beside
+`StoreNotProvisioned`, and both remain `ValueError` subclasses so
+`_has_work_store` still answers `False` for a misconfigured *other* node.
+
+Eight tests were written red first: six parametrized across the work command
+surface asserting the **property** ("no command tells a user with a `repository`
+block to run `tcw init`"), one on the exception type at the seam, and one holding
+`_has_work_store`'s unchanged contract. `35f950d` carries the README sentence, the
+`tcw-work` command reference's guardrail clause, and the changelog and
+release-note entries — all into `v1.1.0`, which is cut in the tree but was never
+tagged or published, so this fix belongs to that same unreleased change set.
+
+`tests/test_store_provisioning.py` now holds 74 cases. The full suite passed
+**2057 tests** in 529.78s.
+
+## What the fourth pass got wrong
+
+Criterion 10 asked that a malformed declaration be reported by `tcw validate` and
+not open the store. Both held — so the criterion passed while the behaviour a user
+actually meets was wrong. It named one command's output and one negative property,
+and never asked what the *other* commands say. Criterion 1's "does not say no tcw
+work node here" was written against a well-formed declaration and never re-checked
+against a malformed one, which is the more common situation by far.
+
+That is the third time in this item the same shape has appeared: **a criterion
+stated as an enumeration gets tested to its enumeration.** The two earlier
+instances were criterion 7's failure list and criterion 10's parser cases. Worth a
+post-mortem at closeout rather than a fourth recurrence.
