@@ -49,6 +49,13 @@ nothing; `tcw provision` obtained the tree; `tcw taxonomy list` and
 the provisioned location; a second `tcw provision` reported *already available*
 with no Git subprocess.
 
+## Suite
+
+The full run passed **2123 tests** with no failures and no skips, outside the
+restricted sandbox — the server suites bind loopback sockets, and the sandboxed
+run's `PermissionError` cluster is an artefact of that rather than a result.
+`tests/test_store_provisioning.py` holds 138 cases, up from the 74 child A left.
+
 ## What the plan and spec got wrong
 
 **Criterion 9 was written as a property and tested as an enumeration.** Every
