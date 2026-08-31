@@ -96,3 +96,64 @@ declaration provisioner and could clone or fetch the declared repository. The
 local store is first in the resolution ladder, so the command must report that
 resolved store as already available and perform no clone or fetch. Explicit
 `--refresh` remains the opt-in path that contacts the declaration.
+
+## Fifth pass — a malformed declaration still misdirects to `tcw init`
+
+Verification walked all eleven criteria from a bare shell against a real two-repo
+fixture. Every one passes as written. One defect sits in the seam between
+criterion 1 and criterion 10, and it defeats the guarantee criterion 1 exists to
+give.
+
+With a `repository` block that has a `ref` but no `url` — an ordinary config
+typo — `tcw work list` answers:
+
+```
+tcw work: no tcw work node here — run `tcw init` in the project folder.
+```
+
+That is the exact message this feature was built to eliminate, and `tcw init` is
+the one command a user must not run there: it would scaffold a second, empty
+store beside the real one. The comment at `tcw/store/fs.py:162-165` names that
+hazard in so many words — the fix was applied for the declared-but-unprovisioned
+case and not for the malformed-declaration case, which has the identical
+consequence.
+
+`tcw validate` is correct throughout, reporting
+`work.repository.url: expected a non-empty string` for all four malformed shapes.
+The divergence is between `validate` and every work command.
+
+**Root cause: one exception type.** `FsWorkStore.open` already builds the
+actionable message, but raises a plain `ValueError` for it. `find_node` re-raises
+`StoreNotProvisioned` and flattens everything else:
+
+```
+open() raises ValueError: …: work.repository.url: expected a non-empty string
+find_node('work') returns: None
+```
+
+`StoreNotProvisioned` is a `ValueError` subclass precisely so existing handlers
+keep working; the malformed-declaration message needs the same treatment and did
+not get it.
+
+**Fix.** A sibling `StoreDeclarationError(ValueError)` in `tcw/store/base.py`,
+raised at `FsWorkStore.open`'s two malformed-declaration sites, and added to
+`find_node`'s re-raise beside `StoreNotProvisioned`. `_has_work_store` is
+deliberately unchanged: it wants `False` for a broken sibling node, and a
+`ValueError` subclass still gives it that, so one unprovisioned or misconfigured
+child cannot turn a parent's topology listing into a hard failure.
+
+## What this says about the fourth pass
+
+Criterion 10 asked that a malformed declaration be "reported by `tcw validate` as
+a config problem" and "not open the store". Both hold — so the criterion passed
+while the behaviour a user actually meets was wrong. The criterion named one
+command's output and one negative property; it never asked what the *other*
+commands say. Criterion 1's "does not say no tcw work node here" was written
+against a well-formed declaration and was never re-checked against a malformed
+one, even though that is the more common situation by far.
+
+The general shape, for the third time in this item: **a criterion stated as an
+enumeration rather than a property gets tested to its enumeration.** Here the
+property is "no `tcw` command tells a user with a `repository` block to run
+`tcw init`", and it should have been asserted across the command surface rather
+than at one call site.
