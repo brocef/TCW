@@ -1035,14 +1035,64 @@ class FsTreeStore:
     COMPONENT: str
     CONFIG_NAME: str | None = None
 
-    def __init__(self, root: Path):
-        self.root = root                       # docs/<component>/
-        self.node_root = root.parent.parent    # repo root
+    def __init__(self, root: Path, *, node_root: Path | None = None,
+                 store_git_root: Path | None = None):
+        self.root = root                       # docs/<component>/, or wherever configured
+        # Two roots, because they answer different questions and diverge the
+        # moment a store leaves its node's repository — the same split
+        # `FsWorkStore` has carried since `work.path` existed.
+        #
+        # `node_root` is the *node*: whose config this is, and what federation
+        # resolves `extends` against. `store_git_root` is the repository a write
+        # here has to land in. They are the same directory for a store sitting
+        # in its own node, and are not for a configured or provisioned one.
+        self.node_root = node_root or root.parent.parent
+        self.store_git_root = store_git_root or git_root(root) or self.node_root
         self.config = load_yaml(root / self.CONFIG_NAME) if self.CONFIG_NAME else {}
 
     @classmethod
     def open(cls, node_root: Path):
-        return cls(node_root / "docs" / cls.COMPONENT)
+        """Resolve this node's store for this component. The ladder is
+        `resolve_store`, shared with the work store."""
+        return resolve_store(cls, node_root)
+
+    @classmethod
+    def _local_root(cls, node_root: Path, configured: str | None) -> Path:
+        """Where this component's tree sits on this machine, per
+        `<component>.path`, or the default `docs/<component>`."""
+        if configured is None:
+            return node_root / "docs" / cls.COMPONENT
+        value = Path(configured).expanduser()
+        base = node_root
+        anchors = worktree_anchors(node_root)
+        if not value.is_absolute() and anchors is not None:
+            base = anchors[1]
+        return value if value.is_absolute() else base / value
+
+    @classmethod
+    def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
+                 external: bool, must_exist: bool = True):
+        """Build the store at a candidate root, validating it only when
+        something points at it.
+
+        A tree store has no layout to check — see `_is_store_layout` — so
+        "usable" is "the directory is there", and that is the strongest honest
+        answer rather than a shortcut. When `must_exist` is false this validates
+        nothing at all, which is the pre-ladder behaviour for a component's bare
+        default and the contract every existing project relies on.
+        """
+        if must_exist:
+            if raw_root.is_symlink() and not raw_root.exists():
+                raise ValueError(
+                    f"{config_path}: {cls.COMPONENT}.path is a broken symlink: {raw_root}")
+            if not raw_root.is_dir():
+                raise ValueError(
+                    f"{config_path}: {cls.COMPONENT}.path is not a directory: {raw_root}")
+        root = raw_root.resolve() if raw_root.exists() else raw_root
+        owner = (git_root(root) if external else node_root) or node_root
+        # The node stays the node — federation resolves `extends` against it —
+        # while writes follow the store into whatever repository holds it.
+        return cls(root, node_root=node_root, store_git_root=owner)
 
     # -- containment: a store id never names a file outside its own store --
     #
@@ -1098,9 +1148,9 @@ class FsTreeStore:
             return False
 
     def _write_git_root(self) -> Path:
-        """The repository a write here has to land in. Overridden where the
-        store's own repository can differ from its node's."""
-        return self.node_root
+        """The repository a write here has to land in — the store's own, which is
+        the node's only while the store sits inside it."""
+        return self.store_git_root
 
     def _require_repository(self) -> None:
         """Deliberately stateless — see `test_non_git_writes.py`'s no-state pin."""
@@ -1108,7 +1158,7 @@ class FsTreeStore:
 
     def _stage(self, *paths: Path) -> None:
         self._require_repository()
-        git_stage(self.node_root, *paths)
+        git_stage(self.store_git_root, *paths)
 
     def _write_staged(self, pairs: list[tuple[Path, str]], *,
                       owned_dir: Path | None = None,
@@ -1155,11 +1205,11 @@ class FsTreeStore:
 
     def _rm(self, path: Path) -> None:
         self._require_repository()
-        git_rm(self.node_root, path)
+        git_rm(self.store_git_root, path)
 
     def _mv(self, src: Path, dst: Path) -> None:
         self._require_repository()
-        git_mv(self.node_root, src, dst)
+        git_mv(self.store_git_root, src, dst)
 
     # -- shared folder-node anatomy (meta.yaml + description.md + attachments) --
     #
@@ -1256,8 +1306,9 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     COMPONENT = "taxonomy"
     CONFIG_NAME = "config.yaml"
 
-    def __init__(self, root: Path, _seen: set[Path] | None = None):
-        super().__init__(root)
+    def __init__(self, root: Path, _seen: set[Path] | None = None, *,
+                 node_root: Path | None = None, store_git_root: Path | None = None):
+        super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
         for project_id, ext in _extended_component_roots(
@@ -1714,8 +1765,9 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     COMPONENT = "capabilities"
     CONFIG_NAME = ".config.yaml"
 
-    def __init__(self, root: Path, _seen: set[Path] | None = None):
-        super().__init__(root)
+    def __init__(self, root: Path, _seen: set[Path] | None = None, *,
+                 node_root: Path | None = None, store_git_root: Path | None = None):
+        super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsCapabilitiesStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
         for project_id, ext in _extended_component_roots(
@@ -2564,10 +2616,19 @@ def resolve_store(store_cls, node_root: Path):
     declaration, declaration_problems = parse_repository_declaration(
         section.get("repository"), f"{component}.repository")
 
+    # Whether a candidate location has to prove it holds a store. It does once
+    # anything points at it — a configured path, or a declaration that gives the
+    # ladder somewhere else to fall to. It does not for a component's bare
+    # default with nothing configured: that is rule 4, and for the tree stores
+    # "return `docs/<component>` whether or not it exists" is the behaviour that
+    # predates this ladder and must survive it.
+    must_exist = configured is not None or declaration is not None
+
     if declaration is None:                                     # rule 4
         try:
             return store_cls._open_at(
-                raw_root, node_root, config_path, external=configured is not None)
+                raw_root, node_root, config_path,
+                external=configured is not None, must_exist=must_exist)
         except ValueError:
             # A valid local store keeps reads working even when an unused
             # declaration is malformed. When no local store can open, however,
@@ -2580,13 +2641,14 @@ def resolve_store(store_cls, node_root: Path):
 
     try:                                                        # rule 1
         return store_cls._open_at(
-            raw_root, node_root, config_path, external=configured is not None)
+            raw_root, node_root, config_path,
+            external=configured is not None, must_exist=must_exist)
     except ValueError:
         pass
     try:                                                        # rule 2
         return store_cls._open_at(
             provisioned_store_root(node_root, declaration), node_root, config_path,
-            external=True)
+            external=True, must_exist=True)
     except ValueError:
         pass
     raise StoreNotProvisioned(                                  # rule 3
@@ -2854,10 +2916,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
-                 external: bool) -> "FsWorkStore":
+                 external: bool, must_exist: bool = True) -> "FsWorkStore":
         """Validate a candidate root and build the store. `external` means the
         store is not the node's own `docs/work`, so the repository that owns its
-        commits has to be discovered rather than assumed."""
+        commits has to be discovered rather than assumed.
+
+        `must_exist` is accepted and ignored: a work store has always validated
+        its location, with or without a declaration, and nothing here relaxes
+        that. The parameter exists because the shared ladder asks every
+        component the same question."""
         if raw_root.is_symlink() and not raw_root.exists():
             raise ValueError(f"{config_path}: work.path is a broken symlink: {raw_root}")
         if not raw_root.is_dir():

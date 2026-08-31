@@ -23,7 +23,9 @@ from tcw.store.base import (
 )
 from tcw.cli import main
 from tcw.store import fs
-from tcw.store.fs import FsStoreProvisioner, FsWorkStore, init
+from tcw.store.fs import (
+    FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore, FsWorkStore, init,
+)
 from tcw.validate import validate
 
 
@@ -965,3 +967,101 @@ def test_the_work_layout_check_is_not_relaxed_by_the_tree_one(tmp_path):
     assert "missing" in str(caught.value)
     assert "inbox" in str(caught.value)
     assert not checkout.exists()
+
+
+# ── the tree stores on the ladder ───────────────────────────────────────────
+
+def _tree_node(tmp_path: Path, component: str = "taxonomy", **section) -> Path:
+    """A node with `component` configured however the case needs."""
+    code = _repo(tmp_path / "code")
+    init([component], code, "corelib")
+    path = code / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text()) or {}
+    config.setdefault(component, {}).update(section)
+    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    return code
+
+
+def test_rule_four_is_untouched_for_a_node_that_configures_nothing(tmp_path):
+    """The back-compatibility contract, and the one most easily broken by
+    accident. With neither key set, `open` returns `docs/<component>` exactly as
+    the single line it replaces did — no existence check, no new refusal."""
+    code = _repo(tmp_path / "code")
+    init(["taxonomy", "capabilities"], code, "corelib")
+
+    assert FsTaxonomyStore.open(code).root == code / "docs" / "taxonomy"
+    assert FsCapabilitiesStore.open(code).root == code / "docs" / "capabilities"
+
+
+def test_rule_four_holds_even_when_the_component_folder_is_absent(tmp_path):
+    """The case that would catch a `is_dir()` leaking into the undeclared path.
+    A node with no `docs/taxonomy/` at all still opens, because that is what it
+    does today."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")           # taxonomy deliberately not scaffolded
+    assert not (code / "docs" / "taxonomy").exists()
+
+    assert FsTaxonomyStore.open(code).root == code / "docs" / "taxonomy"
+
+
+def test_a_configured_tree_path_is_followed(tmp_path):
+    """Criterion 6's other half: the new local locator actually works."""
+    elsewhere = tmp_path / "trees" / "taxonomy"
+    elsewhere.mkdir(parents=True)
+    code = _tree_node(tmp_path, "taxonomy", path=str(elsewhere))
+
+    assert FsTaxonomyStore.open(code).root == elsewhere.resolve()
+
+
+def test_a_declared_tree_store_that_is_absent_says_so(tmp_path):
+    """Criterion 1 at the store layer: not "no component here", but "declared,
+    not provisioned, run this"."""
+    code = _tree_node(tmp_path, "taxonomy",
+                      path="../orchestrator/trees/taxonomy",
+                      repository={"url": "https://example.invalid/orchestrator.git",
+                                  "path": "trees/taxonomy"})
+
+    with pytest.raises(StoreNotProvisioned) as caught:
+        FsTaxonomyStore.open(code)
+
+    assert "taxonomy store is declared" in str(caught.value)
+    assert "tcw provision" in str(caught.value)
+
+
+def test_a_provisioned_tree_store_resolves(tmp_path):
+    """Criterion 2: after provisioning, reads come from the provisioned copy."""
+    remote = _remote_with_tree(tmp_path)
+    checkout = tmp_path / "co"
+    code = _tree_node(tmp_path, "capabilities",
+                      path="../orchestrator/trees/capabilities",
+                      repository={"url": str(remote), "path": "trees/taxonomy",
+                                  "checkout": str(checkout)})
+
+    FsStoreProvisioner(code, "capabilities",
+                       RepositoryDeclaration(url=str(remote), path="trees/taxonomy",
+                                             checkout=str(checkout))).ensure_available()
+
+    assert FsCapabilitiesStore.open(code).root == (checkout / "trees" / "taxonomy").resolve()
+
+
+def test_a_local_tree_store_wins_over_a_declaration(tmp_path):
+    """Criterion 4 per component. A declaration is a fallback, never an override."""
+    here = tmp_path / "trees" / "taxonomy"
+    here.mkdir(parents=True)
+    code = _tree_node(tmp_path, "taxonomy", path=str(here),
+                      repository={"url": "https://example.invalid/orchestrator.git",
+                                  "path": "trees/taxonomy"})
+
+    assert FsTaxonomyStore.open(code).root == here.resolve()
+
+
+def test_a_malformed_tree_declaration_names_the_line(tmp_path):
+    """Criterion 9 per component."""
+    code = _tree_node(tmp_path, "capabilities",
+                      path="../nowhere/capabilities",
+                      repository={"ref": "main", "path": "trees/capabilities"})
+
+    with pytest.raises(StoreDeclarationError) as caught:
+        FsCapabilitiesStore.open(code)
+
+    assert "capabilities.repository.url" in str(caught.value)
