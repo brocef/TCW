@@ -13,6 +13,12 @@ Because the configured store is the only authority, a project whose default
 `docs/work/` layout is missing its inbox or any status folder counts as having no
 work store until I restore it with `tcw work init`.
 
+The same key exists for the other two components —
+[taxonomy](tcw://C/taxonomy/configure-the-taxonomy-store-location) and
+[capabilities](tcw://C/capabilities/configure-the-capabilities-store-location) —
+and all three resolve through one ladder, so what is true of one is true of the
+others.
+
 `work.path` says where the store sits on **this** machine. Beside it I can add a
 `repository` block saying where the store *comes from*, so a machine that has
 never seen it can obtain it — see

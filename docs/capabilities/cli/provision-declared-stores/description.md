@@ -2,8 +2,13 @@ As a developer arriving in a fresh checkout, I can run one explicit command,
 `tcw provision`, to materialize the work store this project declares but does
 not have here. It reports what it is about to contact before contacting it,
 fetches into the location the declaration names or a per-machine cache, and
-prints where the store landed. Taxonomy and capabilities are not provisioned by
-this first component implementation.
+prints where the store landed.
+
+It serves all three component stores. `--component` limits it to `work`,
+`taxonomy`, or `capabilities`; with none given, every component that declares a
+home repository is provisioned. Each is resolved, reported, and failed on its
+own, so one component's bad declaration neither suppresses nor corrupts
+another's result.
 
 Running it again does nothing: a store that already resolves is reported as
 already available and no network call is made. `--dry-run` shows me the plan

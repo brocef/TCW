@@ -7,6 +7,9 @@ Each successful command emits only the path, making it safe to compose in shell
 commands. The work and inbox forms follow the configured physical work-store
 location.
 
+All three commands follow a configured `<component>.path` and a declared home
+repository, not only the work ones.
+
 Where a store is declared in another repository but has not been obtained here,
 there is no folder to print, so the command says so and names `tcw provision`
 rather than emitting a path that does not exist. Once provisioned, it prints the

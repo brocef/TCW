@@ -1,0 +1,9 @@
+id: cap-72508e
+name: Declare the capabilities store's home repository
+Status: Missing
+Feature: provisioned-component-stores
+Subject:
+- store
+- store/home-repository
+- node
+Planning doc: 2026-08-26-generalize-the-store-declaration-to-taxonomy-and-capabilities

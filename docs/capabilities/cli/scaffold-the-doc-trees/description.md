@@ -23,3 +23,8 @@ whose items the repository's ignore rules would hide (so nothing filed there
 would be tracked), one behind a broken symlink, a status folder that is really a
 file, and a `docs/work` that is a symlink elsewhere. A `tcw-config.yaml` it
 cannot read reports that plainly rather than failing part-way through.
+
+Each component's location is mine to choose: `--work-path`, `--taxonomy-path`,
+and `--capabilities-path` scaffold that component somewhere other than
+`docs/<component>` and record the choice in `tcw-config.yaml`, so later commands
+find it without being told again.

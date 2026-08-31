@@ -9,8 +9,12 @@ edges, cycles, legacy inheritance maps, and unreachable inheritance targets
 fail closed with migration guidance.
 
 Validation also tells a store's three failure modes apart in different words: a
-`work.path` that is simply wrong, a store declared in another repository but not
-yet provisioned here (naming the declared remote and `tcw provision`), and a
-malformed `repository` block (naming the offending configuration key). The last
-is reported even when no local store can be opened to report it through, so a
-typo is never hidden behind a dead path.
+`<component>.path` that is simply wrong, a store declared in another repository
+but not yet provisioned here (naming the declared remote and `tcw provision`),
+and a malformed `repository` block (naming the offending configuration key). The
+last is reported even when no local store can be opened to report it through, so
+a typo is never hidden behind a dead path.
+
+All three apply to each of the three components. A store that cannot be opened
+is reported as one problem beside the others rather than ending the run, so one
+unprovisioned tree does not hide the rest of a node's faults.
