@@ -13,6 +13,14 @@ Because the configured store is the only authority, a project whose default
 `docs/work/` layout is missing its inbox or any status folder counts as having no
 work store until I restore it with `tcw work init`.
 
+`work.path` says where the store sits on **this** machine. Beside it I can add a
+`repository` block saying where the store *comes from*, so a machine that has
+never seen it can obtain it — see
+[declaring the home repository](tcw://C/work/declare-the-work-stores-home-repository).
+The declaration is a fallback and never an override: a store already present at
+`work.path` keeps being used untouched, so one configuration serves both a laptop
+that has the folder and a fresh checkout that does not.
+
 I can scaffold this layout with `tcw work init --path <path>` or `tcw init
 --work-path <path> work`. TCW refuses broken, invalid, non-Git, or colliding
 stores — including a store whose items the repository's own ignore rules would

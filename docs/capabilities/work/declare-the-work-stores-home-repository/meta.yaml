@@ -1,6 +1,6 @@
 id: cap-8b206f
 name: Declare the work store's home repository
-Status: Missing
+Status: Supported
 Planning doc: 2026-08-26-declare-and-provision-the-work-store-s-home-repository
 Feature: provisioned-component-stores
 Subject:
