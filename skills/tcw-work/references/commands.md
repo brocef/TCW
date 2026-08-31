@@ -119,7 +119,10 @@ only `work`; taxonomy and capabilities remain local until their adapters gain
 the same resolution path. Nothing else reaches the network: a
 command that needs an unprovisioned store fails, names the declared remote, and
 tells the user to run it — do not work around that by composing a path or running
-`tcw init`, which would scaffold a second, empty store beside the real one.
+`tcw init`, which would scaffold a second, empty store beside the real one. A
+*malformed* `repository` block fails the same way and names the offending config
+line instead of the remote; the response there is to fix that line, and `tcw init`
+is just as wrong.
 
 The store may live in a **different Git repository** than the code, so never
 compose a store path from the node root — `tcw work path`, `tcw work path <slug>`

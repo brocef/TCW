@@ -238,6 +238,11 @@ tcw provision --component work
 This first provisioning step supports the work store. Taxonomy and capabilities
 remain local until their component adapters gain the same resolution path.
 
+If the `repository` block itself is wrong — a missing `url`, a path that escapes
+the repository root, a key that is not one of the four — every command says which
+line to fix. None of them falls back to "no tcw work node here", which would send
+you to `tcw init` and scaffold a second, empty store beside the real one.
+
 Running it twice does nothing the second time. It is the **only** command that
 reaches the network, and only because you asked: a repository's config can name a
 URL, so nothing acts on that URL until you run this, and the remote is printed
