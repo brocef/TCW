@@ -101,17 +101,27 @@ def _components_to_check(node_root: Path, path) -> list[str]:
 
 
 def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> list[str]:
-    if comp == "taxonomy":
-        return [f"taxonomy check: {p}"
-                for p in FsTaxonomyStore.open(node_root).check(identifier)]
-    if comp == "work":
-        try:                                          # a malformed node-root tcw-config.yaml
-            problems = FsWorkStore.open(node_root).check(identifier)  # (the tag registry) isn't in the
-        except ValueError as e:                       # YAML-scan roots, so report it, don't crash
-            return [f"work check: {e}"]
-        return [f"work check: {p}" for p in problems]
-    return [f"capabilities check: {p}"
-            for p in FsCapabilitiesStore.open(node_root).check(identifier=identifier)]
+    """One component's `check()`, or the reason its store could not be opened.
+
+    Opening is guarded for every component, not just work. A store that is
+    declared-but-unprovisioned or declared-malformed raises rather than
+    returning problems, and those are exactly the configuration faults
+    `tcw validate` exists to report — so an unguarded `open` would abort the
+    whole validation with one component's problem instead of listing it beside
+    the others. The node-root `tcw-config.yaml` is also not among the YAML-scan
+    roots, so nothing else would catch it.
+    """
+    store_cls = {"taxonomy": FsTaxonomyStore, "work": FsWorkStore,
+                 "capabilities": FsCapabilitiesStore}[comp]
+    try:
+        store = store_cls.open(node_root)
+    except ValueError as e:
+        return [f"{comp} check: {e}"]
+    if comp == "capabilities":
+        problems = store.check(identifier=identifier)
+    else:
+        problems = store.check(identifier)
+    return [f"{comp} check: {p}" for p in problems]
 
 
 def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:

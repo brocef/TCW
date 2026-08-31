@@ -1065,3 +1065,125 @@ def test_a_malformed_tree_declaration_names_the_line(tmp_path):
         FsCapabilitiesStore.open(code)
 
     assert "capabilities.repository.url" in str(caught.value)
+
+
+# ── the tree stores' error surfaces ─────────────────────────────────────────
+#
+# Criteria 1 and 9 are properties over a command surface, so they are asserted
+# across that surface rather than at one call site. Child A shipped criterion 1
+# holding for `tcw work list` while a malformed declaration still sent every
+# work command to `tcw init`; the parametrization is what makes that shape of
+# defect impossible to repeat here.
+
+TREE_COMMANDS = [
+    ["taxonomy", "list"], ["taxonomy", "path"], ["taxonomy", "show", "anything"],
+    ["taxonomy", "check"],
+    ["capabilities", "list"], ["capabilities", "path"],
+    ["capabilities", "show", "anything"], ["capabilities", "check"],
+]
+
+
+def _tree_component(argv) -> str:
+    return argv[0]
+
+
+@pytest.mark.parametrize("argv", TREE_COMMANDS)
+def test_a_declared_tree_store_is_never_reported_as_an_absent_component(
+        tmp_path, monkeypatch, capsys, argv):
+    """Criterion 1. The node is right in front of the command and says where its
+    store comes from; answering "no tcw <component> node here — run `tcw init`"
+    would point the user at the one action that makes things worse."""
+    component = _tree_component(argv)
+    code = _tree_node(tmp_path, component,
+                      path=f"../orchestrator/trees/{component}",
+                      repository={"url": "https://example.invalid/orchestrator.git",
+                                  "path": f"trees/{component}"})
+    monkeypatch.chdir(code)
+
+    assert main(argv) == 1
+
+    err = capsys.readouterr().err
+    assert "no tcw" not in err, err
+    assert "tcw init" not in err, err
+    assert "https://example.invalid/orchestrator.git" in err, err
+    assert "tcw provision" in err, err
+
+
+@pytest.mark.parametrize("argv", TREE_COMMANDS)
+def test_a_malformed_tree_declaration_names_the_line_from_every_command(
+        tmp_path, monkeypatch, capsys, argv):
+    """Criterion 9, as a property over the same surface."""
+    component = _tree_component(argv)
+    code = _tree_node(tmp_path, component,
+                      path=f"../orchestrator/trees/{component}",
+                      repository={"ref": "main", "path": f"trees/{component}"})
+    monkeypatch.chdir(code)
+
+    assert main(argv) == 1
+
+    err = capsys.readouterr().err
+    assert "no tcw" not in err, err
+    assert "tcw init" not in err, err
+    assert f"{component}.repository.url" in err, err
+
+
+def test_a_node_without_the_component_still_says_so(tmp_path, monkeypatch, capsys):
+    """Criterion 6's edge. Nothing declared and no `docs/taxonomy` — the answer
+    is still "no tcw taxonomy node here", exactly as before this work."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    monkeypatch.chdir(code)
+
+    assert main(["taxonomy", "list"]) == 1
+
+    assert "no tcw taxonomy node here" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv", TREE_COMMANDS)
+def test_a_declared_tree_store_is_found_even_with_no_local_component_folder(
+        tmp_path, monkeypatch, capsys, argv):
+    """The requester's actual shape, and the one the other cases cannot reach.
+
+    A checkout that cloned only the code repository has no `docs/taxonomy/`,
+    because the taxonomy lives in the other repository — that is the whole
+    premise. `find_node` decided "does this node have this component?" by looking
+    for that folder, so it answered None before the resolution ladder ever ran,
+    and the declaration went unread."""
+    component = _tree_component(argv)
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")            # the component is deliberately absent
+    path = code / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text()) or {}
+    config[component] = {"repository": {"url": "https://example.invalid/orchestrator.git",
+                                        "path": f"trees/{component}"}}
+    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    monkeypatch.chdir(code)
+
+    assert main(argv) == 1
+
+    err = capsys.readouterr().err
+    assert "no tcw" not in err, err
+    assert "tcw init" not in err, err
+    assert "https://example.invalid/orchestrator.git" in err, err
+    assert "tcw provision" in err, err
+
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
+def test_validate_reports_a_declared_tree_store_rather_than_aborting(
+        tmp_path, monkeypatch, capsys, component):
+    """`tcw validate`'s job is to list configuration faults, so a store it cannot
+    open is a problem to report, not a reason to stop. Only the work branch was
+    guarded; the tree branches let the exception escape to the top-level
+    handler, which prints one line and abandons every other check."""
+    code = _tree_node(tmp_path, component,
+                      path=f"../orchestrator/trees/{component}",
+                      repository={"url": "https://example.invalid/orchestrator.git",
+                                  "path": f"trees/{component}"})
+    monkeypatch.chdir(code)
+
+    assert main(["validate"]) == 1
+
+    err = capsys.readouterr().err
+    assert f"{component} check:" in err, err
+    assert "has not been provisioned here" in err, err
+    assert "tcw provision" in err, err

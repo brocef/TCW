@@ -52,6 +52,36 @@ from tcw.store.project import FsProjectRegistry, validate_project_id, worktree_a
 COMPONENTS = ("taxonomy", "capabilities", "work")
 
 
+def _store_classes() -> dict:
+    """Component → filesystem store class. A function, and consulted through the
+    `STORE_CLASSES` mapping below, because the classes are defined further down
+    this module than the helpers that need them."""
+    return {"taxonomy": FsTaxonomyStore,
+            "capabilities": FsCapabilitiesStore,
+            "work": FsWorkStore}
+
+
+class _StoreClasses:
+    """Lazy view over `_store_classes()`, so `find_node` and `run_provision` name
+    one mapping instead of each growing its own `if component ==` ladder — the
+    shape that left `run_provision` calling `FsWorkStore.open` for every
+    component it looped over."""
+
+    def __getitem__(self, component: str):
+        try:
+            return _store_classes()[component]
+        except KeyError:
+            raise ValueError(
+                f"unknown component '{component}'; "
+                f"choose from: {', '.join(COMPONENTS)}") from None
+
+    def __contains__(self, component: str) -> bool:
+        return component in _store_classes()
+
+
+STORE_CLASSES = _StoreClasses()
+
+
 def _modified_timestamp(resources: list[Path]) -> str:
     existing = [path for path in resources if path.is_file()]
     if not existing:
@@ -147,17 +177,23 @@ def find_node_root(start: Path | None = None) -> Path | None:
 
 
 def find_node(component: str, start: Path | None = None) -> Path | None:
-    """The node owning `docs/<component>/`, or None. A node is the nearest
+    """The node owning `component`'s store, or None. A node is the nearest
     ancestor marked by a `tcw-config.yaml` sentinel (FS-adapter-local). Returns
-    the node iff it has that component, preserving the prior contract."""
+    the node iff it has that component, preserving the prior contract.
+
+    "Has that component" is asked of the *resolved* store, never of a literal
+    `docs/<component>` folder. The two answers differ in exactly the case this
+    feature exists for: a checkout that cloned only the code repository has no
+    `docs/taxonomy/`, because the taxonomy is in the other repository — so
+    looking for the folder answered None before the resolution ladder could read
+    the declaration, and the node's own config went unread.
+    """
     nr = find_node_root(start)
     if nr is None:
         return None
     FsProjectRegistry.open(nr).require_valid()
-    if component != "work":
-        return nr if (nr / "docs" / component).is_dir() else None
     try:
-        FsWorkStore.open(nr)
+        store = STORE_CLASSES[component].open(nr)
     except (StoreNotProvisioned, StoreDeclarationError):
         # Not "no node here" — the node is right in front of us and says where
         # its store comes from. Flattening this to None is what made `tcw work
@@ -170,7 +206,11 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
         raise
     except ValueError:
         return None
-    return nr
+    # A work store that opened is a work store; a tree store's `open` validates
+    # nothing when nothing is configured (rule 4), so the "is this component
+    # here at all?" question is still this function's to ask. Asked of the
+    # resolved root rather than the default one, which is the whole point.
+    return nr if component == "work" or store.root.is_dir() else None
 
 
 def child_nodes(root: Path) -> list[Path]:
