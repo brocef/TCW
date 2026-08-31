@@ -27,7 +27,7 @@
 | a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
-| obtain the declared work store | `tcw provision [--component work] [--refresh] [--dry-run]` — fetches the work store this node declares but does not have here; idempotent |
+| obtain a declared store | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores this node declares but does not have here; every declared component by default; idempotent |
 
 **Not CLI subcommands.** Two workflows are AI-driven reviews with no `tcw` verb
 behind them — the CLI cannot run them, and asking it to is an argparse error:

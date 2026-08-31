@@ -27,6 +27,15 @@ one-directional — **taxonomy never points back** at capabilities or work. See
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
 local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-capabilities**.
+**The taxonomy tree is not necessarily `docs/taxonomy`.** `taxonomy.path` in
+`tcw-config.yaml` can put it anywhere, and a `taxonomy.repository` block can put
+it in another Git repository entirely, fetched here by `tcw provision`. So never
+compose a store path from the node root — ask `tcw taxonomy path`. A command that
+needs a declared-but-unprovisioned tree fails, names the declared remote, and
+tells you to run `tcw provision`; do not work around that by running `tcw init`,
+which would scaffold a second, empty tree beside the real one. A malformed
+`taxonomy.repository` fails the same way and names the offending config line.
+
 Use `tcw taxonomy path` when an agent needs the absolute, resolved filesystem
 store folder. Because `path` is reserved as that command, read a term literally
 named `path` with explicit `tcw taxonomy show path`.

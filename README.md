@@ -205,6 +205,12 @@ paths are anchored to the owning project's primary checkout; absolute paths and
 symlinks are supported. Existing non-pristine stores are never moved
 automatically.
 
+All three component stores work this way — `taxonomy.path` and
+`capabilities.path` do for those trees what `work.path` does for work items, with
+`tcw init --taxonomy-path <path>` and `--capabilities-path <path>` to scaffold
+them. A project that configures nothing keeps resolving `docs/<component>`
+exactly as before.
+
 A path is a fact about one machine, so a checkout that has never seen that folder
 — a fresh clone, or a cloud session that cloned only the code — cannot use it. To
 say where the store *comes from*, add a `repository` block beside `work.path`:
@@ -218,30 +224,36 @@ work:
         ref: main                                # optional (default: remote HEAD)
         path: docs/work/my-project               # optional (default: repo root)
         checkout: ~/src/orchestrator             # optional (default: a cache dir)
+taxonomy:
+    repository:                                  # the same block, per component
+        url: https://github.com/me/orchestrator.git
+        path: docs/taxonomy
 ```
 
 **A store that is already here always wins.** The declaration is consulted only
 when the local store is absent, so the same config keeps working untouched on a
 machine that has the folder, and answers for one that doesn't. Where the store is
-absent, every `tcw work` command says so in those words and names the remote —
-instead of reporting that the project has no work component.
+absent, every command that needs it says so in those words and names the remote —
+instead of reporting that the project has no such component. That last part
+matters most for the trees: a checkout that cloned only the code has no
+`docs/taxonomy/` folder, which used to read as "this project has no taxonomy".
 
 `tcw provision` is what obtains it:
 
 ```sh
-tcw provision                 # the declared work store, when it is not here yet
+tcw provision                 # every declared store, when it is not here yet
 tcw provision --dry-run       # print the plan; contact nothing
 tcw provision --refresh       # bring an existing copy to the declared version
-tcw provision --component work
+tcw provision --component taxonomy
 ```
 
-This first provisioning step supports the work store. Taxonomy and capabilities
-remain local until their component adapters gain the same resolution path.
+Each declared component is obtained on its own, so one bad declaration does not
+suppress another's result.
 
 If the `repository` block itself is wrong — a missing `url`, a path that escapes
 the repository root, a key that is not one of the four — every command says which
-line to fix. None of them falls back to "no tcw work node here", which would send
-you to `tcw init` and scaffold a second, empty store beside the real one.
+line to fix. None of them falls back to "no tcw node here", which would send you
+to `tcw init` and scaffold a second, empty store beside the real one.
 
 Running it twice does nothing the second time. It is the **only** command that
 reaches the network, and only because you asked: a repository's config can name a
@@ -252,6 +264,15 @@ directory already holding a different repository is refused before any fetch.
 A failure says why and leaves nothing new behind. A working copy you already had
 is never deleted for you: if it turns out to carry no store at the declared
 `path`, you are told, and it stays where it is.
+
+**What is checked differs by component, and it is worth knowing which.** A work
+store is recognizable — it names six status folders — so a repository that has
+no work store at the declared `path` is refused. A taxonomy or capabilities tree
+is just a directory of entry folders with no required marker, so the check is
+that a directory is there, and a declared path holding an empty or unrelated
+directory is accepted rather than refused. What holds for all three is that a
+failure publishes nothing: a repository with no directory at the declared path
+is refused before any working copy is put in place.
 
 Everything that reads or writes work follows `work.path`: `delegate` and
 `escalate` land in the target project's configured inbox, `reconcile` writes and

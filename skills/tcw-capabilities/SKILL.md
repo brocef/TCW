@@ -15,6 +15,15 @@ The standing ledger (`docs/capabilities/`) describes _what a user can currently 
 `Capability.modified` is read-only, adapter-provided presentation metadata for
 viewers; it is not an editable capability field.
 
+**The ledger is not necessarily `docs/capabilities/`.** `capabilities.path` can
+put it elsewhere and a `capabilities.repository` block can put it in another Git
+repository, fetched here by `tcw provision` — so never compose a store path from
+the node root; ask `tcw capabilities path`. A command needing a declared-but-
+unprovisioned ledger fails, names the remote, and tells you to run
+`tcw provision`; running `tcw init` instead would scaffold a second, empty ledger
+beside the real one. Inheritance is unaffected: `extends` resolves against your
+project, not against wherever the tree sits.
+
 Each capability is a **path-addressed folder** (`docs/capabilities/<path>/` = `meta.yaml` + `description.md`) carrying an opaque stable `id`. Address a capability by its path (e.g. `auth/login`), never a `#heading`. Capabilities may carry `Subject` (a **multi-valued** loose taxonomy pointer — a list of slugs) and `Feature` (a strong pointer to a taxonomy feature). The taxonomy axis is **REQUIRED SUB-SKILL: Use tcw-taxonomy** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use tcw-work**.
 
 > **Web editing:** Capabilities can also be created and edited through the local `tcw serve` web app; check failures are surfaced in the UI.
