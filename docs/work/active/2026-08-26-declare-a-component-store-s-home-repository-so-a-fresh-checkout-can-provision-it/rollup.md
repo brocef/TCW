@@ -3,7 +3,7 @@
 
 | node | slug | status | blocked-by |
 |---|---|---|---|
-| . | 2026-08-26-declare-and-provision-the-work-store-s-home-repository | review | - |
+| . | 2026-08-26-declare-and-provision-the-work-store-s-home-repository | completed | - |
 | . | 2026-08-26-generalize-the-store-declaration-to-taxonomy-and-capabilities | backlog | 2026-08-26-declare-and-provision-the-work-store-s-home-repository |
 | . | 2026-08-26-publish-provisioned-store-writes-to-their-remote | backlog | 2026-08-26-declare-and-provision-the-work-store-s-home-repository |
 
@@ -14,5 +14,5 @@
 - ./2026-08-26-declare-and-provision-the-work-store-s-home-repository: changed cli/locate-tcw-storage-folders
 - ./2026-08-26-declare-and-provision-the-work-store-s-home-repository: changed cli/validate-a-node
 
-**Next:** 2026-08-26-declare-and-provision-the-work-store-s-home-repository
+**Next:** 2026-08-26-generalize-the-store-declaration-to-taxonomy-and-capabilities, 2026-08-26-publish-provisioned-store-writes-to-their-remote
 <!-- /tcw:rollup -->
