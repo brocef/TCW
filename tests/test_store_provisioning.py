@@ -163,6 +163,21 @@ def _remote_with_store(tmp_path: Path, inner: str = "docs/work/corelib") -> Path
     return remote
 
 
+def _remote_with_tree(tmp_path: Path, inner: str = "trees/taxonomy") -> Path:
+    """A repository holding a *tree* store — which is just a directory.
+
+    That is the whole point of these cases: `init` scaffolds a taxonomy or
+    capabilities store as a bare folder with no required entries and no marker
+    file, so there is nothing here to make it recognizable, and nothing the
+    provisioner could check beyond its existence."""
+    remote = _repo(tmp_path / "orchestrator-trees")
+    (remote / inner).mkdir(parents=True)
+    (remote / inner / ".gitkeep").write_text("")
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "seed tree"], check=True)
+    return remote
+
+
 def _provisioner(tmp_path, node_root: Path, remote: Path, **overrides):
     """A provisioner whose cache lands inside `tmp_path`, never the real
     `~/.cache`."""
@@ -292,8 +307,13 @@ def test_a_repository_without_a_store_at_the_declared_path_is_refused(tmp_path):
     with pytest.raises(ValueError) as caught:
         provisioner.ensure_available()
 
+    # The declared path names nothing in the clone, so *nothing* is missing from
+    # a store — there is no store. The message used to enumerate all six status
+    # folders as missing, which read as "an incomplete store" for a case that is
+    # a wrong path. The enumeration belongs to the present-but-incomplete case,
+    # which `test_the_work_layout_check_is_not_relaxed_by_the_tree_one` holds.
     assert "no work store" in str(caught.value)
-    assert "missing:" in str(caught.value)
+    assert "no such directory" in str(caught.value)
 
 
 def test_a_declared_checkout_location_is_used_instead_of_the_cache(tmp_path):
@@ -881,3 +901,67 @@ def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_p
     problems = validate(code)
 
     assert any("work.repository.url" in problem for problem in problems), problems
+
+
+# ── what "usable" means, per component ───────────────────────────────────────
+#
+# A work store names six folders and the provisioner reads them. A tree store
+# names nothing, so the strongest honest check is that the directory is there.
+# These cases pin the difference in both directions, because the risk is not
+# that the tree check is weak — that is deliberate — but that it silently
+# becomes the *work* check's answer, or that widening the tree case weakens the
+# work one.
+
+def test_a_tree_store_is_any_directory_that_is_there(tmp_path):
+    """The accepted consequence, asserted rather than left implicit: a declared
+    taxonomy store carrying no marker of any kind is usable."""
+    remote = _remote_with_tree(tmp_path)
+    node = _repo(tmp_path / "code")
+    provisioner = FsStoreProvisioner(
+        node, "taxonomy",
+        RepositoryDeclaration(url=str(remote), path="trees/taxonomy",
+                              checkout=str(tmp_path / "co")))
+
+    provisioner.ensure_available()
+
+    assert provisioner.is_available()
+    assert (tmp_path / "co" / "trees" / "taxonomy").is_dir()
+
+
+def test_a_tree_declaration_pointing_at_nothing_is_refused_and_leaves_nothing(tmp_path):
+    """The one guarantee that survives the weaker predicate: `repository.path`
+    must resolve inside the clone before the staging checkout is published."""
+    remote = _remote_with_tree(tmp_path)
+    node = _repo(tmp_path / "code")
+    checkout = tmp_path / "co"
+    provisioner = FsStoreProvisioner(
+        node, "capabilities",
+        RepositoryDeclaration(url=str(remote), path="trees/not-here",
+                              checkout=str(checkout)))
+
+    with pytest.raises(ValueError) as caught:
+        provisioner.ensure_available()
+
+    assert "capabilities" in str(caught.value)
+    assert "work store" not in str(caught.value)
+    assert not checkout.exists()
+
+
+def test_the_work_layout_check_is_not_relaxed_by_the_tree_one(tmp_path):
+    """The direction that would actually be a regression. A work declaration
+    whose clone holds a bare directory must still be refused for its missing
+    status folders."""
+    remote = _remote_with_tree(tmp_path, inner="trees/pretend-work")
+    node = _repo(tmp_path / "code")
+    checkout = tmp_path / "co"
+    provisioner = FsStoreProvisioner(
+        node, "work",
+        RepositoryDeclaration(url=str(remote), path="trees/pretend-work",
+                              checkout=str(checkout)))
+
+    with pytest.raises(ValueError) as caught:
+        provisioner.ensure_available()
+
+    assert "missing" in str(caught.value)
+    assert "inbox" in str(caught.value)
+    assert not checkout.exists()

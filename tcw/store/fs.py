@@ -2495,10 +2495,35 @@ def provisioned_store_root(node_root: Path, declaration: RepositoryDeclaration) 
     return (root / declaration.path) if declaration.path else root
 
 
-def _is_store_layout(root: Path) -> bool:
-    """Whether `root` holds a work store's folders — the same question
-    `FsWorkStore.open` asks, so a provisioned store and an opened one agree."""
-    return root.is_dir() and all((root / name).is_dir() for name in STORE_LAYOUT)
+def _is_store_layout(root: Path, component: str) -> bool:
+    """Whether `root` holds `component`'s store, as far as the filesystem can say.
+
+    The answer has two strengths, because the components differ in what they can
+    honestly claim.
+
+    A **work** store names six folders, so this is the same question
+    `FsWorkStore.open` asks and a provisioned store and an opened one agree.
+
+    A **tree** store — taxonomy, capabilities — names nothing. `init` scaffolds
+    it as a bare directory (see `init`'s plan loop, which gives work its status
+    leaves and the tree components only `[base]`), its `CONFIG_NAME` file is
+    optional and commonly absent, and the only file reliably left behind is a
+    `.gitkeep`, which is git's answer to empty directories and means nothing
+    here. So "the directory is there" is the strongest honest answer, and it is
+    deliberately weaker than the work store's: a declared tree store that clones
+    into an empty directory reads as usable, because an empty taxonomy is a real
+    state and nothing distinguishes the two. What this still refuses — a
+    `repository.path` naming nothing at all — is what keeps "a failure leaves
+    nothing behind" true for every component.
+
+    `component` is required rather than defaulted: a caller that forgets it
+    should not silently get the work store's answer for a tree store.
+    """
+    if not root.is_dir():
+        return False
+    if component != "work":
+        return True
+    return all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
 def declared_repository(
@@ -2555,7 +2580,8 @@ class FsStoreProvisioner(StoreProvisioner):
         # marker rather than invoking Git: an already-available second run is
         # deliberately a zero-subprocess no-op. ``FsWorkStore._open_at`` remains
         # the full validation authority when the store is actually opened.
-        return _is_store_layout(target) and (checkout / ".git").exists()
+        return (_is_store_layout(target, self.component)
+                and (checkout / ".git").exists())
 
     def ensure_available(self, *, refresh: bool = False,
                          dry_run: bool = False) -> ProvisionResult:
@@ -2596,13 +2622,22 @@ class FsStoreProvisioner(StoreProvisioner):
                                detail=f"{self.component}: {action} at {target}")
 
     def _require_store_layout(self, root: Path) -> None:
-        """Refuse a repository that carries no store where the declaration says."""
-        if _is_store_layout(root):
+        """Refuse a repository that carries no store where the declaration says.
+
+        Two shapes of refusal, because the two predicates fail differently: a
+        tree store can only be absent, while a work store can also be present
+        and incomplete, and naming the folders it lacks is what makes that
+        message worth reading.
+        """
+        if _is_store_layout(root, self.component):
             return
+        where = self.declaration.path or "."
+        prefix = (f"{self.component}.repository: {self.declaration.url} has no "
+                  f"{self.component} store at '{where}'")
+        if not root.is_dir():
+            raise ValueError(f"{prefix}: no such directory in the repository")
         missing = [n for n in STORE_LAYOUT if not (root / n).is_dir()]
-        raise ValueError(
-            f"{self.component}.repository: {self.declaration.url} has no work store "
-            f"at '{self.declaration.path or '.'}'; missing: {', '.join(missing)}")
+        raise ValueError(f"{prefix}; missing: {', '.join(missing)}")
 
     # -- git plumbing (adapter-private; nothing above this class names it) --
 
