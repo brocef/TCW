@@ -51,6 +51,22 @@ class SidecarError(ValueError):
     (malformed YAML, or a non-list delta value)."""
 
 
+class StoreDeclarationError(ValueError):
+    """A store's home repository is *declared wrongly* — the configuration itself
+    is the problem, and the message names the line to fix.
+
+    A sibling of `StoreNotProvisioned`, and a `ValueError` for the same reason:
+    every existing `except ValueError` around a store keeps working, including
+    `_has_work_store`, which must answer False for a misconfigured *other* node
+    rather than failing a whole topology listing.
+
+    It exists because `find_node` cannot otherwise tell "this config is wrong"
+    from "this is not a node", and flattening the first to the second is what
+    answered a typo'd `repository` block with "run `tcw init`" — the one command
+    that would scaffold a second, empty store beside the real one.
+    """
+
+
 class StoreNotProvisioned(ValueError):
     """A store is *declared* but not available here — nothing is wrong with the
     configuration, the store simply has not been obtained on this machine yet.

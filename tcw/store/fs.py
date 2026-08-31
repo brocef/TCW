@@ -41,7 +41,7 @@ from tcw.store.base import (
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
-    StoreNotProvisioned, StoreProvisioner,
+    StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -158,11 +158,15 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
         return nr if (nr / "docs" / component).is_dir() else None
     try:
         FsWorkStore.open(nr)
-    except StoreNotProvisioned:
+    except (StoreNotProvisioned, StoreDeclarationError):
         # Not "no node here" — the node is right in front of us and says where
         # its store comes from. Flattening this to None is what made `tcw work
         # list` answer a declared-but-absent store with "run `tcw init`", which
         # would scaffold a second, empty store beside the real one.
+        #
+        # A *malformed* declaration is the same node with the same hazard, only
+        # the actionable message is "fix this line" rather than "run this
+        # command", so it travels the same way.
         raise
     except ValueError:
         return None
@@ -2755,7 +2759,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 # however, the declaration is the actionable config error and
                 # must not be hidden behind the dead local path.
                 if declaration_problems:
-                    raise ValueError(
+                    raise StoreDeclarationError(
                         f"{config_path}: {'; '.join(declaration_problems)}") from None
                 raise
 

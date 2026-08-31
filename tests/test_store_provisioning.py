@@ -18,7 +18,8 @@ import pytest
 import yaml
 
 from tcw.store.base import (
-    RepositoryDeclaration, StoreNotProvisioned, parse_repository_declaration,
+    RepositoryDeclaration, StoreDeclarationError, StoreNotProvisioned,
+    parse_repository_declaration,
 )
 from tcw.cli import main
 from tcw.store import fs
@@ -479,6 +480,59 @@ def _declared_but_absent(tmp_path: Path) -> Path:
                   repository={"url": "https://example.invalid/orchestrator.git",
                               "path": "stores/corelib"})
     return code
+
+
+def _declared_but_malformed(tmp_path: Path) -> Path:
+    """The same node, with an ordinary config typo: a `repository` block whose
+    `url` was never filled in. The store is just as absent, and the user is just
+    as much in need of being told which line to fix."""
+    code = _declared_but_absent(tmp_path)
+    _write_config(code, repository={"ref": "main", "path": "stores/corelib"})
+    return code
+
+
+@pytest.mark.parametrize("argv", [
+    ["work", "list"], ["work", "show", "anything"], ["work", "path"],
+    ["work", "nodes"], ["work", "reconcile", "anything"],
+    ["work", "escalate", "anything"],
+])
+def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypatch,
+                                                              capsys, argv):
+    """Stated as the property, not an enumeration: a node that declares a home
+    repository must never be answered with "run `tcw init`", however broken the
+    declaration is. `tcw init` there would scaffold a second, empty store beside
+    the real one — the worst advice available, and the reason this feature exists.
+
+    `tcw validate` already reported the bad line; every work command flattened it
+    to "no tcw work node here" because the message travelled as a plain
+    `ValueError` that `find_node` discards."""
+    monkeypatch.chdir(_declared_but_malformed(tmp_path))
+
+    assert main(argv) == 1
+
+    err = capsys.readouterr().err
+    assert "no tcw work node here" not in err
+    assert "tcw init" not in err
+    assert "work.repository.url" in err, err
+
+
+def test_a_malformed_declaration_is_a_declaration_error_not_a_bare_value_error(tmp_path):
+    """The seam itself. `find_node` must be able to tell "this config is wrong"
+    apart from "this is not a node", and only a distinct type carries that."""
+    code = _declared_but_malformed(tmp_path)
+
+    with pytest.raises(StoreDeclarationError):
+        FsWorkStore.open(code)
+
+    with pytest.raises(StoreDeclarationError):
+        fs.find_node("work", code)
+
+
+def test_a_misconfigured_sibling_node_does_not_break_a_topology_listing(tmp_path):
+    """`_has_work_store` asks about *other* nodes, so it must keep answering
+    False rather than raising — one broken child must not fail a parent's
+    listing. The new type stays a `ValueError` subclass to preserve that."""
+    assert fs._has_work_store(_declared_but_malformed(tmp_path)) is False
 
 
 def test_the_board_no_longer_misdirects_to_tcw_init(tmp_path, monkeypatch, capsys):
