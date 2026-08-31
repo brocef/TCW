@@ -1303,3 +1303,55 @@ def test_init_scaffolds_a_tree_store_at_a_configured_location(tmp_path, monkeypa
     assert yaml.safe_load((code / "tcw-config.yaml").read_text())[component]["path"] \
         == str(elsewhere)
     assert STORE_CLASSES[component].open(code).root == elsewhere.resolve()
+
+
+@pytest.mark.parametrize("argv", TREE_COMMANDS)
+@pytest.mark.parametrize("with_path", [True, False], ids=["with-path", "no-path"])
+def test_a_malformed_tree_declaration_is_named_with_or_without_a_configured_path(
+        tmp_path, monkeypatch, capsys, argv, with_path):
+    """Criterion 9, finally tested as the property it was written as.
+
+    The earlier cases all set `<component>.path`, and passed. Without one the
+    same config answered "no tcw taxonomy node here — run `tcw init`": a
+    malformed declaration parses to `(None, problems)`, so the ladder saw no
+    declaration, took rule 4, and a tree store's rule 4 validates nothing and
+    cannot fail — so the problems were dropped on a path that never raised.
+
+    Both shapes are the same user with the same typo, and the second is the more
+    likely one: someone adding a `repository` block to a project whose tree has
+    always been at the default location has no reason to add a `path` too."""
+    component = _tree_component(argv)
+    section = {"repository": {"ref": "main", "path": f"trees/{component}"}}
+    if with_path:
+        section["path"] = f"../orchestrator/trees/{component}"
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    config_path = code / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text()) or {}
+    config[component] = section
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    monkeypatch.chdir(code)
+
+    assert main(argv) == 1
+
+    err = capsys.readouterr().err
+    assert "no tcw" not in err, err
+    assert "tcw init" not in err, err
+    assert f"{component}.repository.url" in err, err
+
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
+def test_a_usable_local_tree_still_masks_an_unused_malformed_declaration(
+        tmp_path, monkeypatch, capsys, component):
+    """The other side of the same rule, and the reason the fix is not "always
+    raise". A tree that is really here keeps working even when a declaration
+    nobody needs is malformed — the contract the work store already holds."""
+    code = _repo(tmp_path / "code")
+    init([component], code, "corelib")          # the default tree exists
+    config_path = code / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text()) or {}
+    config[component] = {"repository": {"ref": "main"}}
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    monkeypatch.chdir(code)
+
+    assert main([component, "list"]) == 0

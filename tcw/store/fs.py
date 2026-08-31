@@ -2675,7 +2675,16 @@ def resolve_store(store_cls, node_root: Path):
     # default with nothing configured: that is rule 4, and for the tree stores
     # "return `docs/<component>` whether or not it exists" is the behaviour that
     # predates this ladder and must survive it.
-    must_exist = configured is not None or declaration is not None
+    #
+    # `declaration_problems` counts too, and that is not an edge case. A
+    # malformed declaration parses to `(None, problems)`, so the ladder sees no
+    # declaration and takes rule 4 — and a tree store's rule 4 validates nothing
+    # and therefore cannot fail, which dropped the problems on a path that never
+    # raised. The user got "no tcw taxonomy node here" for a typo in the block
+    # right in front of them. A candidate allowed to mask a configuration error
+    # has to be a real store, not a directory that might not exist.
+    must_exist = (configured is not None or declaration is not None
+                  or bool(declaration_problems))
 
     if declaration is None:                                     # rule 4
         try:
