@@ -1,0 +1,1 @@
+Pointing any of a project's three component stores — work, taxonomy, capabilities — at a location other than its default `docs/<component>` folder, through a `<component>.path` key in the node config, without changing the project's canonical ID or ownership.

@@ -1,7 +1,0 @@
-name: Configurable work-store location
-kind: Feature
-relatesTo: []
-vocabulary:
-    - store
-    - node
-    - namespace
