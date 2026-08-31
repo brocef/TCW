@@ -1,6 +1,6 @@
 id: cap-d351a8
 name: Declare the taxonomy store's home repository
-Status: Missing
+Status: Supported
 Feature: provisioned-component-stores
 Subject:
 - store

@@ -1,6 +1,6 @@
 id: cap-851dbc
 name: Configure the capabilities-store location
-Status: Missing
+Status: Supported
 Feature: configurable-component-store-location
 Subject:
 - store
