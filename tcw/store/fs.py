@@ -702,7 +702,8 @@ def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None
 
 
 def init(components: list[str], root: Path, project_id: str | None = None,
-         work_path: Path | None = None) -> list[Path]:
+         work_path: Path | None = None,
+         paths: dict[str, Path] | None = None) -> list[Path]:
     """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
     Returns leaf dirs made. A `.gitkeep` lands in each leaf so the empty skeleton
     survives a commit (git doesn't track empty directories).
@@ -718,6 +719,14 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     existing_config = load_yaml(root / SENTINEL, unique=True)
     if not isinstance(existing_config, dict):
         raise ValueError(f"{root / SENTINEL}: config must be a mapping")
+    # `work_path` kept as its own parameter rather than folded into `paths`:
+    # it is the fourth positional argument every existing caller passes, and
+    # this component's location has a name in the CLI (`--work-path`,
+    # `tcw work init --path`) that predates the mapping.
+    paths = dict(paths or {})
+    if work_path is not None:
+        paths["work"] = work_path
+    work_path = paths.get("work")
     if work_path is None and "work" in components:
         configured_work = existing_config.get("work") or {}
         # `in`, not truthiness: `work.path: []` and `work.path: false` used to
@@ -727,7 +736,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             configured_path = configured_work["path"]
             if not isinstance(configured_path, str) or not configured_path:
                 raise ValueError(f"{root / SENTINEL}: work.path must be a string")
-            work_path = Path(configured_path).expanduser()
+            work_path = paths["work"] = Path(configured_path).expanduser()
     # Everything `init` can refuse over, decided before it writes anything at
     # all — the sentinel included. It writes two locations, and each of these
     # checks used to sit next to the write it protects rather than ahead of all
@@ -778,8 +787,9 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # that makes them, so there is only one of it.
     plan: list[tuple[str, Path, list[Path]]] = []
     for c in components:
-        base = ((work_path if work_path.is_absolute() else root / work_path)
-                if c == "work" and work_path is not None else root / "docs" / c)
+        configured = paths.get(c)
+        base = ((configured if configured.is_absolute() else root / configured)
+                if configured is not None else root / "docs" / c)
         plan.append((c, base, [base / "inbox", *(base / s for s in WORK_STATUSES)]
                      if c == "work" else [base]))
     for component, _, leaves in plan:
@@ -839,13 +849,16 @@ def init(components: list[str], root: Path, project_id: str | None = None,
                         f"filed there would not be tracked"
                     )
     write_sentinel(root, project_id)
-    if work_path is not None and "work" in components:
-        if replacing_default_store:
+    configured = {c: p for c, p in paths.items() if c in components}
+    if configured:
+        if work_path is not None and "work" in components and replacing_default_store:
             shutil.rmtree(default_root)
         config_path = root / SENTINEL
         config = load_yaml(config_path, unique=True)
-        work_config = config.get("work") if isinstance(config.get("work"), dict) else {}
-        config["work"] = {**work_config, "path": str(work_path)}
+        for component, location in configured.items():
+            section = (config.get(component)
+                       if isinstance(config.get(component), dict) else {})
+            config[component] = {**section, "path": str(location)}
         dump_yaml(config_path, config)
     created: list[Path] = []
     for c, base, leaves in plan:

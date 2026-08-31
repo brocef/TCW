@@ -24,7 +24,8 @@ from tcw.store.base import (
 from tcw.cli import main
 from tcw.store import fs
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore, FsWorkStore, init,
+    STORE_CLASSES, FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore,
+    FsWorkStore, init,
 )
 from tcw.validate import validate
 
@@ -1284,3 +1285,21 @@ def test_each_declared_component_is_provisioned_independently(tmp_path, monkeypa
     assert "taxonomy: obtained" in captured.out
     assert "capabilities" in captured.err
     assert not (tmp_path / "co-bad").exists()
+
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
+def test_init_scaffolds_a_tree_store_at_a_configured_location(tmp_path, monkeypatch,
+                                                              component):
+    """`--work-path` grows companions. The scaffolding difference stays: work
+    gets its status folders, a tree component gets the directory."""
+    code = _repo(tmp_path / "code")
+    monkeypatch.chdir(code)
+    elsewhere = tmp_path / "trees" / component
+
+    assert main(["init", "--id", "corelib", f"--{component}-path", str(elsewhere),
+                 component]) == 0
+
+    assert elsewhere.is_dir()
+    assert yaml.safe_load((code / "tcw-config.yaml").read_text())[component]["path"] \
+        == str(elsewhere)
+    assert STORE_CLASSES[component].open(code).root == elsewhere.resolve()

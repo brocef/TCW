@@ -36,7 +36,8 @@ _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 
 
 def run_init(components: list[str], project_id: str | None = None,
-             work_path: str | None = None) -> int:
+             work_path: str | None = None,
+             paths: dict[str, str] | None = None) -> int:
     """Scaffold `docs/<component>/` trees under the current directory, mark it a
     node, and report. Shared by `tcw init` and each `tcw <component> init`."""
     root = Path.cwd()
@@ -65,8 +66,10 @@ def run_init(components: list[str], project_id: str | None = None,
             )
             return 1
     try:
-        created = init(components, root, project_id,
-                       Path(work_path).expanduser() if work_path is not None else None)
+        created = init(
+            components, root, project_id,
+            Path(work_path).expanduser() if work_path is not None else None,
+            {c: Path(p).expanduser() for c, p in (paths or {}).items()})
     except (ValueError, OSError) as error:
         print(f"tcw init: {error}", file=sys.stderr)
         return 1
@@ -155,7 +158,10 @@ def _cmd_provision(args: argparse.Namespace) -> int:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
-    return run_init(args.components or list(COMPONENTS), args.id, args.work_path)
+    return run_init(
+        args.components or list(COMPONENTS), args.id, args.work_path,
+        {c: getattr(args, f"{c}_path") for c in ("taxonomy", "capabilities")
+         if getattr(args, f"{c}_path", None) is not None})
 
 
 def _not_yet(name: str):
@@ -219,6 +225,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")
     p_init.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
     p_init.add_argument("--work-path", help="filesystem location for the work store")
+    p_init.add_argument("--taxonomy-path",
+                        help="filesystem location for the taxonomy store")
+    p_init.add_argument("--capabilities-path",
+                        help="filesystem location for the capabilities store")
     p_init.set_defaults(func=_cmd_init)
 
     p_provision = sub.add_parser(
