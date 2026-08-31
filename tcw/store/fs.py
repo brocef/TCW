@@ -2526,6 +2526,75 @@ def _is_store_layout(root: Path, component: str) -> bool:
     return all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
+def resolve_store(store_cls, node_root: Path):
+    """This node's store for `store_cls`'s component, in one ordered ladder.
+
+    1. the local store (`<component>.path`, else `docs/<component>`) when it is
+       usable;
+    2. else the declared home repository's provisioned location, if usable;
+    3. else `StoreNotProvisioned`, when a home repository is declared;
+    4. else exactly what the component did before a declaration existed — the
+       same checks, in the same order, with the same messages.
+
+    **A declaration is a fallback, never an override.** Rule 1 runs first so a
+    checkout that already has the store keeps using it and nothing about that
+    machine changes; the declaration answers only for a machine that does not
+    have it. Rules 3 and 4 are the same failure told two ways: with a
+    declaration it is actionable, so it says what to run.
+
+    One function for every component, because the ladder is the contract and
+    three copies of a contract drift. The two things that genuinely differ are
+    hooks on the store class: `_local_root`, which knows the component's default
+    location and how a relative path re-anchors, and `_open_at`, which decides
+    what "usable" means and builds the store. `COMPONENT` names the config
+    section.
+    """
+    node_root = node_root.resolve()
+    config_path = node_root / SENTINEL
+    config = load_yaml(config_path, unique=True)
+    component = store_cls.COMPONENT
+    section = config.get(component) or {} if isinstance(config, dict) else {}
+    if not isinstance(section, dict):
+        section = {}
+    configured = section.get("path")
+    if configured is not None and (not isinstance(configured, str) or not configured.strip()):
+        raise ValueError(
+            f"{config_path}: {component}.path must be a non-empty path string")
+    raw_root = store_cls._local_root(node_root, configured)
+    declaration, declaration_problems = parse_repository_declaration(
+        section.get("repository"), f"{component}.repository")
+
+    if declaration is None:                                     # rule 4
+        try:
+            return store_cls._open_at(
+                raw_root, node_root, config_path, external=configured is not None)
+        except ValueError:
+            # A valid local store keeps reads working even when an unused
+            # declaration is malformed. When no local store can open, however,
+            # the declaration is the actionable config error and must not be
+            # hidden behind the dead local path.
+            if declaration_problems:
+                raise StoreDeclarationError(
+                    f"{config_path}: {'; '.join(declaration_problems)}") from None
+            raise
+
+    try:                                                        # rule 1
+        return store_cls._open_at(
+            raw_root, node_root, config_path, external=configured is not None)
+    except ValueError:
+        pass
+    try:                                                        # rule 2
+        return store_cls._open_at(
+            provisioned_store_root(node_root, declaration), node_root, config_path,
+            external=True)
+    except ValueError:
+        pass
+    raise StoreNotProvisioned(                                  # rule 3
+        f"{config_path}: the {component} store is declared in "
+        f"{declaration.url} but has not been provisioned here; "
+        f"run `tcw provision` to obtain it")
+
+
 def declared_repository(
     node_root: Path, component: str
 ) -> tuple["RepositoryDeclaration | None", list[str]]:
@@ -2757,75 +2826,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @classmethod
     def open(cls, node_root: Path) -> "FsWorkStore":
-        """Resolve this node's work store, in one ordered ladder.
+        """Resolve this node's work store. The ladder is `resolve_store`, shared
+        with every other component; this class supplies `_local_root` and
+        `_open_at`."""
+        return resolve_store(cls, node_root)
 
-        1. the local store (`work.path`, else `docs/work`) when it is usable;
-        2. else the declared home repository's provisioned location, if usable;
-        3. else `StoreNotProvisioned`, when a home repository is declared;
-        4. else exactly what this did before a declaration existed — the same
-           checks, in the same order, with the same messages.
-
-        **A declaration is a fallback, never an override.** Rule 1 runs first so
-        a checkout that already has the store keeps using it and nothing about
-        that machine changes; the declaration answers only for a machine that
-        does not have it. Rules 3 and 4 are the same failure told two ways: with
-        a declaration it is actionable, so it says what to run.
-        """
-        node_root = node_root.resolve()
-        config_path = node_root / SENTINEL
-        config = load_yaml(config_path, unique=True)
-        work = config.get("work") or {} if isinstance(config, dict) else {}
-        if not isinstance(work, dict):
-            work = {}
-        configured = work.get("path")
-        if configured is not None and (not isinstance(configured, str) or not configured.strip()):
-            raise ValueError(f"{config_path}: work.path must be a non-empty path string")
-        raw_root = cls._local_root(node_root, configured)
-        declaration, declaration_problems = parse_repository_declaration(
-            work.get("repository"), f"{cls.COMPONENT}.repository")
-
-        if declaration is None:
-            try:
-                return cls._open_at(
-                    raw_root, node_root, config_path, external=configured is not None)
-            except ValueError:
-                # A valid local store keeps reads working even when an unused
-                # declaration is malformed. When no local store can open,
-                # however, the declaration is the actionable config error and
-                # must not be hidden behind the dead local path.
-                if declaration_problems:
-                    raise StoreDeclarationError(
-                        f"{config_path}: {'; '.join(declaration_problems)}") from None
-                raise
-
-        try:                                                    # rule 1
-            return cls._open_at(
-                raw_root, node_root, config_path, external=configured is not None)
-        except ValueError:
-            pass
-        provisioned = provisioned_store_root(node_root, declaration)
-        try:                                                    # rule 2
-            return cls._open_at(provisioned, node_root, config_path, external=True)
-        except ValueError:
-            pass
-        raise StoreNotProvisioned(                              # rule 3
-            f"{config_path}: the {cls.COMPONENT} store is declared in "
-            f"{declaration.url} but has not been provisioned here; "
-            f"run `tcw provision` to obtain it")
-
-    @staticmethod
-    def _local_root(node_root: Path, configured: str | None) -> Path:
-        """Where the store lives on this machine per `work.path`, or the default.
+    @classmethod
+    def _local_root(cls, node_root: Path, configured: str | None) -> Path:
+        """Where the store lives on this machine per `<component>.path`, or the
+        default `docs/<component>`.
 
         Unchanged from before the declaration existed, re-anchoring included: a
-        relative `work.path` inside a *linked worktree* is authored against the
-        primary checkout's position on disk, so it resolves against the main
-        worktree root. Getting this wrong would silently swap a worktree user's
-        real store for a cache clone, which is why it stayed one function rather
-        than being reimplemented inside the ladder.
+        relative path inside a *linked worktree* is authored against the primary
+        checkout's position on disk, so it resolves against the main worktree
+        root. Getting this wrong would silently swap a worktree user's real store
+        for a cache clone, which is why it stayed one function rather than being
+        reimplemented inside the ladder.
         """
         if configured is None:
-            return node_root / "docs" / "work"
+            return node_root / "docs" / cls.COMPONENT
         value = Path(configured).expanduser()
         base = node_root
         anchors = worktree_anchors(node_root)
