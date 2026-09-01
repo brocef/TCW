@@ -1,0 +1,13 @@
+slug: 2026-09-01-publish-provisioned-taxonomy-and-capabilities-writes-too
+title: Publish provisioned taxonomy and capabilities writes too
+created: '2026-09-01'
+resolution: null
+priority: 30
+effort: medium
+complexity: high
+tags:
+- remote
+- taxonomy
+- capabilities
+blocked_by:
+- slug: 2026-08-26-publish-provisioned-store-writes-to-their-remote
