@@ -17,7 +17,10 @@ what shipped task by task with commit references, the test result, and
    the item is still in `backlog` means you skipped this — stop and start it.
 2. Work the plan's tasks in order, committing each.
 3. **Write the failing test first and watch it fail** before the code that
-   makes it pass. A test that has never been red proves nothing.
+   makes it pass. A test that has never been red proves nothing. When a new test
+   passes on its first run, break the behaviour it names and confirm it goes red
+   before writing anything else — the explanation for an unearned green is
+   usually true and beside the point.
 4. On a bug or unexpected failure, **find the root cause before the fix**, and
    fix it where every caller routes through, not at the site that reported it.
 5. Check any capability change against the standing ledger for contradictions.
