@@ -29,13 +29,13 @@ that way.
 
 ## Out of scope
 
-A separate divergence surfaced while reproducing this, and the requester chose
-to leave it alone: for a node at the repository root, an *explicit* relative
-`work.path: docs/work` re-anchors to the primary checkout, while the
-*identical* default (no `work.path` at all) does not, giving each worktree its
-own store. Whether an explicit relative path should re-anchor at all is a real
-question, but it is not this item's, and answering it would change behaviour
-for users who are not hitting this bug. Record it; do not fix it here.
+Nothing adjacent was deferred. An earlier reading of this request put a second
+divergence out of scope — for a node at the repository root, an *explicit*
+relative `work.path: docs/work` re-anchors to the primary checkout while the
+*identical* default does not. Reading the capability ledger at `spec` showed
+that is not a separate design question: it is the same line breaking the same
+already-Supported promise, and the requester widened the scope to cover it.
+See `spec.md` for the finding.
 
 ## Notes
 
