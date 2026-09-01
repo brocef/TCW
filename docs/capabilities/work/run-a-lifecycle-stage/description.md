@@ -3,6 +3,12 @@ lifecycle stage. TCW checks the stage makes sense for where the item is, runs
 whatever `pre` checks the project configured, resolves the stage's prompt
 bindings, and prints the instructions.
 
+Those instructions are opinionated where it counts. `implement` does not merely
+say to write the failing test first; it tells me what to do when a *new* test
+passes on its first run — break the behaviour it names and confirm it goes red,
+because a green that was never earned is the same as no test, and the explanation
+for one is usually true and beside the point.
+
 **With nothing configured for a stage, the instructions are TCW's own.** TCW
 ships defaults for the six lifecycle stages that run against an existing item —
 `request`, `spec`, `plan`, `implement`, `verify`, and `postmortem` — so the
