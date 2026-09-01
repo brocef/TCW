@@ -985,3 +985,28 @@ class TestWorktreeWorkPathReAnchoring:
         repo, node, wt = nested_node_worktree(tmp_path, cfg)
         st = FsWorkStore.open(wt / "apps" / "server")
         assert st.root == (tmp_path / "external" / "work").resolve()
+
+
+class TestWorktreeTreeStorePathReAnchoring:
+    """The same rule, on the tree stores. `resolve_store` gives taxonomy and
+    capabilities a configured `<component>.path` too, and their `_local_root`
+    carried its own copy of the anchoring — so the fix has to reach both hooks
+    or the components drift apart, which is the drift the shared ladder exists
+    to prevent."""
+
+    @pytest.mark.parametrize("store_cls", [FsTaxonomyStore, FsCapabilitiesStore])
+    def test_nested_node_escaping_path_resolves_to_the_same_tree(self, tmp_path, store_cls):
+        cfg = "../../../external/tree"
+        repo, node, wt = nested_node_worktree(tmp_path)
+        wt_node = wt / "apps" / "server"
+        assert store_cls._local_root(wt_node.resolve(), cfg).resolve() == \
+            store_cls._local_root(node.resolve(), cfg).resolve()
+        assert store_cls._local_root(node.resolve(), cfg).resolve() == \
+            tmp_path / "external" / "tree"
+
+    @pytest.mark.parametrize("store_cls", [FsTaxonomyStore, FsCapabilitiesStore])
+    def test_nested_node_inside_path_stays_with_the_worktree(self, tmp_path, store_cls):
+        cfg = "docs/elsewhere"
+        repo, node, wt = nested_node_worktree(tmp_path)
+        wt_node = (wt / "apps" / "server").resolve()
+        assert store_cls._local_root(wt_node, cfg).resolve() == (wt_node / cfg).resolve()

@@ -1073,6 +1073,43 @@ def _mkdir_owned(d: Path) -> bool:
         return False
 
 
+def anchor_configured_path(node_root: Path, value: Path) -> Path:
+    """The directory a relative `<component>.path` is resolved against.
+
+    Inside a *linked worktree* this follows the same rule
+    `FsProjectRegistry._target_path` applies to `connected-projects` locators
+    (`tcw/store/project.py:322-334`), and for the same reasons:
+
+    - **Re-anchor only on escape.** A relative path that stays inside the
+      worktree is this node's store on this branch and belongs to the worktree,
+      exactly as the default `docs/<component>` does. Only a path that leaves
+      the checkout was authored against the primary checkout's position on disk.
+      Re-anchoring an inside-staying path used to send a worktree user to the
+      primary checkout's store while the *identical* default did not.
+    - **Anchor at this node's counterpart, not at the main worktree root.**
+      `worktree_anchors` returns `(current top, main root)`; using the second
+      alone drops the sub-path of a node nested inside the repository, so
+      `apps/server`'s relative path got applied from the repository root and the
+      store could not be found at all (GitHub #26).
+
+    One function, not one per store class: both `_local_root` hooks had their
+    own copy of this and only the work store's was ever fixed, which is the
+    drift `resolve_store` exists to prevent. Getting it wrong silently swaps a
+    worktree user's real store for a cache clone.
+
+    Returns `node_root` unchanged outside a worktree, for a node that is not in
+    a git repository, and for a path that stays inside the checkout.
+    """
+    anchors = worktree_anchors(node_root)
+    if anchors is None:
+        return node_root
+    top, main = anchors
+    resolved = (node_root / value).resolve()
+    if node_root.is_relative_to(top) and not resolved.is_relative_to(top):
+        return main / node_root.relative_to(top)
+    return node_root
+
+
 class FsTreeStore:
     """Common FS-adapter base for the three bounded-tree stores.
 
@@ -1112,15 +1149,14 @@ class FsTreeStore:
     @classmethod
     def _local_root(cls, node_root: Path, configured: str | None) -> Path:
         """Where this component's tree sits on this machine, per
-        `<component>.path`, or the default `docs/<component>`."""
+        `<component>.path`, or the default `docs/<component>`. A relative path
+        re-anchors per `anchor_configured_path`."""
         if configured is None:
             return node_root / "docs" / cls.COMPONENT
         value = Path(configured).expanduser()
-        base = node_root
-        anchors = worktree_anchors(node_root)
-        if not value.is_absolute() and anchors is not None:
-            base = anchors[1]
-        return value if value.is_absolute() else base / value
+        if value.is_absolute():            # names a place, not an offset
+            return value
+        return anchor_configured_path(node_root, value) / value
 
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
@@ -3022,40 +3058,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """Where the store lives on this machine per `<component>.path`, or the
         default `docs/<component>`.
 
-        Inside a *linked worktree* this follows the same rule
-        `FsProjectRegistry._target_path` applies to `connected-projects`
-        locators (`tcw/store/project.py:322-334`), and for the same reasons:
-
-        - **Re-anchor only on escape.** A relative path that stays inside the
-          worktree is this node's store on this branch and belongs to the
-          worktree, exactly as the default `docs/<component>` does. Only a path
-          that leaves the checkout was authored against the primary checkout's
-          position on disk. Re-anchoring an inside-staying path used to send a
-          worktree user to the primary checkout's store while the *identical*
-          default did not.
-        - **Anchor at this node's counterpart, not at the main worktree root.**
-          `worktree_anchors` returns `(current top, main root)`; using the second
-          alone drops the sub-path of a node nested inside the repository, so
-          `apps/server`'s relative path got applied from the repository root and
-          the store could not be found at all (GitHub #26).
-
-        Getting this wrong would silently swap a worktree user's real store for
-        a cache clone, which is why it stays one function rather than being
-        reimplemented inside the ladder.
+        A relative path re-anchors per `anchor_configured_path`, which the tree
+        stores share — the rule is identical for every component, and keeping a
+        second copy here is what let the two drift apart in the first place.
         """
         if configured is None:
             return node_root / "docs" / cls.COMPONENT
         value = Path(configured).expanduser()
         if value.is_absolute():            # names a place, not an offset
             return value
-        base = node_root
-        anchors = worktree_anchors(node_root)
-        if anchors is not None:
-            top, main = anchors
-            resolved = (node_root / value).resolve()
-            if node_root.is_relative_to(top) and not resolved.is_relative_to(top):
-                base = main / node_root.relative_to(top)
-        return base / value
+        return anchor_configured_path(node_root, value) / value
 
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
