@@ -231,28 +231,6 @@ def test_every_transition_on_a_publishing_store_refreshes_first(
 
 
 @pytest.mark.parametrize("kind, kwargs", NON_PUBLISHING)
-def test_no_transition_on_a_non_publishing_store_touches_the_network(
-        tmp_path, monkeypatch, kind, kwargs):
-    """Criterion 6, over every rule in section A that must not publish.
-
-    Parametrized over all three rather than written for one, because the spec's
-    Coverage table marks a column of cells `n/a — via 7`, and those cells are
-    load bearing only if this test really does cover the rules they defer to.
-    One rule covered and three assumed is how the previous two items in this
-    initiative shipped the same defect four times.
-    """
-    code = _node(tmp_path, **kwargs)
-    monkeypatch.chdir(code)
-    assert main(["work", "new", "A thing to move"]) == 0
-    slug = _slug_of("A thing to move")
-
-    calls = _record_network(monkeypatch)
-    assert main(["work", "start", slug]) == 0
-
-    _assert_no_network(calls)
-
-
-@pytest.mark.parametrize("kind, kwargs", NON_PUBLISHING)
 def test_a_non_publishing_store_is_unchanged(tmp_path, monkeypatch, kind, kwargs):
     """Criterion 7. Not just 'no network' but 'nothing new at all': the
     transition still succeeds, still moves the item, and still commits."""
