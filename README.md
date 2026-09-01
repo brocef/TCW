@@ -200,10 +200,11 @@ already tracks.
 
 To keep a project's work in another Git repository while preserving its own ID
 and lifecycle configuration, set `work.path` in its `tcw-config.yaml` or pass
-`tcw work init --path <path>` (`tcw init --work-path <path> work`). Relative
-paths are anchored to the owning project's primary checkout; absolute paths and
-symlinks are supported. Existing non-pristine stores are never moved
-automatically.
+`tcw work init --path <path>` (`tcw init --work-path <path> work`). A relative
+path is anchored to the project's own directory — inside a linked worktree, to
+the primary checkout's copy of it, but only when the path points outside the
+worktree (see below); absolute paths and symlinks are supported. Existing
+non-pristine stores are never moved automatically.
 
 All three component stores work this way — `taxonomy.path` and
 `capabilities.path` do for those trees what `work.path` does for work items, with
@@ -360,13 +361,20 @@ groups registered boards by project ID, and any work command accepts
 
 Inside a **linked git worktree** a relative locator would otherwise be off by the
 worktree's nesting depth, because it was written against the project's position
-in its primary checkout. TCW re-anchors it against the main worktree root — but
-only when the target leaves the worktree. A target that stays inside is a sibling
-on the same branch and stays with the worktree, so several projects in one repo
-behave the same inside a worktree as outside it. This is the one place git
-metadata is consulted, and it only re-points a locator: it never discovers a
-project or infers a relation. Projects outside a worktree, and projects not in a
-git repository at all, are unaffected.
+in its primary checkout. TCW re-anchors it against that project's own counterpart
+in the main worktree — but only when the target leaves the worktree. A target
+that stays inside is a sibling on the same branch and stays with the worktree, so
+several projects in one repo behave the same inside a worktree as outside it.
+This is the one place git metadata is consulted, and it only re-points a locator:
+it never discovers a project or infers a relation. Projects outside a worktree,
+and projects not in a git repository at all, are unaffected.
+
+The same rule governs a relative **store** path (`work.path`, `taxonomy.path`,
+`capabilities.path`): one that leaves the checkout re-anchors, one that stays
+inside belongs to the worktree exactly as the default `docs/<component>` does.
+Both re-anchor at the project's own counterpart, so a project nested inside its
+repository keeps its sub-path instead of having it dropped at the repository
+root.
 
 Connections do not imply component inheritance. Each axis opts in explicitly:
 
