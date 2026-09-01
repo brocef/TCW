@@ -134,3 +134,91 @@ def test_a_store_that_must_not_publish_does_not(tmp_path, monkeypatch, kind, kwa
         assert main(["provision"]) == 0
 
     assert FsWorkStore.open(code).publishes is False, kind
+
+
+# ── the property task 6 must not break ──────────────────────────────────────
+#
+# These pass trivially today: nothing publishes yet, so nothing can perform a
+# network operation. That is deliberate and they are not redundant. They are the
+# definition of "adding publication broke nothing", written before the code that
+# could break them — written afterwards they would be shaped to fit whatever
+# that code happened to do.
+
+def _assert_no_network(calls: list[list[str]]) -> None:
+    """One named assertion for criterion 6, so a sibling test that skips it is
+    visible in the diff rather than left to review."""
+    assert calls == [], f"expected no network operation, got: {calls}"
+
+
+def _record_network(monkeypatch) -> list[list[str]]:
+    """Intercept the adapter's own Git runner — the single point every clone,
+    fetch and push routes through. Asserted **empty**, not merely 'no push': a
+    test that allows some network is one that cannot notice a new call site."""
+    calls: list[list[str]] = []
+
+    def spy(self, argv, **kwargs):
+        calls.append(list(argv))
+        raise AssertionError(f"unexpected network operation: {argv}")
+
+    monkeypatch.setattr(fs.FsStoreProvisioner, "_run", spy)
+    return calls
+
+
+def _slug_of(title: str) -> str:
+    """`tcw work new` slugs a title with today's date. Derived rather than read
+    back, so these tests do not depend on a listing API to say what they mean."""
+    from datetime import date
+    return f"{date.today().isoformat()}-{title.lower().replace(' ', '-')}"
+
+
+NON_PUBLISHING = [
+    ("rule-1-declared-but-unused",
+     dict(local_store=True, declaration=True, provisioned=False)),
+    ("rule-4-no-declaration",
+     dict(local_store=True, declaration=False, provisioned=False)),
+    ("disabled-by-config",
+     dict(local_store=True, declaration=True, provisioned=False, publish=False)),
+]
+
+
+@pytest.mark.parametrize("kind, kwargs", NON_PUBLISHING)
+def test_no_transition_on_a_non_publishing_store_touches_the_network(
+        tmp_path, monkeypatch, kind, kwargs):
+    """Criterion 6, over every rule in section A that must not publish.
+
+    Parametrized over all three rather than written for one, because the spec's
+    Coverage table marks a column of cells `n/a — via 7`, and those cells are
+    load bearing only if this test really does cover the rules they defer to.
+    One rule covered and three assumed is how the previous two items in this
+    initiative shipped the same defect four times.
+    """
+    code = _node(tmp_path, **kwargs)
+    monkeypatch.chdir(code)
+    assert main(["work", "new", "A thing to move"]) == 0
+    slug = _slug_of("A thing to move")
+
+    calls = _record_network(monkeypatch)
+    assert main(["work", "start", slug]) == 0
+
+    _assert_no_network(calls)
+
+
+@pytest.mark.parametrize("kind, kwargs", NON_PUBLISHING)
+def test_a_non_publishing_store_is_unchanged(tmp_path, monkeypatch, kind, kwargs):
+    """Criterion 7. Not just 'no network' but 'nothing new at all': the
+    transition still succeeds, still moves the item, and still commits."""
+    code = _node(tmp_path, **kwargs)
+    monkeypatch.chdir(code)
+    assert main(["work", "new", "A thing to move"]) == 0
+    slug = _slug_of("A thing to move")
+
+    assert main(["work", "start", slug]) == 0
+
+    store = FsWorkStore.open(code)
+    assert store.publishes is False, kind
+    assert store.get(slug).status == "active"
+    head = subprocess.run(["git", "-C", str(store.store_git_root), "log", "-1",
+                           "--format=%s"], capture_output=True, text=True)
+    assert slug in head.stdout, head.stdout
+
+
