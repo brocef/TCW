@@ -1624,6 +1624,41 @@ class WorkStore(ABC):
     STATUSES = WORK_STATUSES
     LEGAL_TRANSITIONS = LEGAL_TRANSITIONS
 
+    # -- publication: whether writes here are visible to anyone else ------
+    #
+    # Three members rather than a `publish_transitions()` verb, because the
+    # question "are my writes visible to others?" belongs to the store and not
+    # to each operation that writes. A tracker-backed store answers `True` and
+    # implements both methods as no-ops — a tracker write is published by
+    # definition — and that is a legitimate implementation, not a stub.
+    #
+    # No signature here names a remote, a ref, a branch, or how a store came to
+    # be the one in use. Those are the filesystem adapter's business.
+
+    @property
+    def publishes(self) -> bool:
+        """Whether committed writes to this store reach anywhere but this
+        machine. Default False: a store says nothing is published unless it
+        knows otherwise, so a new adapter cannot leak writes by omission."""
+        return False
+
+    def refresh(self) -> None:
+        """Bring this store up to date with wherever it comes from.
+
+        Called before a write that reads state to decide. A store that is never
+        stale — a tracker read live, a purely local folder — does nothing here,
+        which is why this is not abstract.
+        """
+
+    def publish(self) -> None:
+        """Make this store's committed writes visible to others.
+
+        Called after a write has landed locally. Raises to report that the write
+        did **not** become visible; it must not undo the write, which has
+        already happened and whose reversal would be a second failure worse than
+        the first.
+        """
+
     # -- abstract primitives every adapter implements --
 
     @abstractmethod

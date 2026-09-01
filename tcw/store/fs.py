@@ -1124,9 +1124,19 @@ class FsTreeStore:
 
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
-                 external: bool, must_exist: bool = True):
+                 external: bool, must_exist: bool = True,
+                 declaration: "RepositoryDeclaration | None" = None):
         """Build the store at a candidate root, validating it only when
         something points at it.
+
+        `declaration` is accepted and deliberately ignored: a tree store never
+        publishes. A taxonomy term or a capability status is a claim *about the
+        code*, realized when the code implementing it merges, so the edit belongs
+        to that change and lands with it. Publishing one on its own would
+        announce a capability to everyone reading the ledger while the code
+        making it true is still unmerged. Work is different — an item's state is
+        the record of a session and changes independently of any code — which is
+        why `FsWorkStore` takes the same argument and uses it.
 
         A tree store has no layout to check — see `_is_store_layout` — so
         "usable" is "the directory is there", and that is the strongest honest
@@ -2708,9 +2718,12 @@ def resolve_store(store_cls, node_root: Path):
     except ValueError:
         pass
     try:                                                        # rule 2
+        # The declaration travels with the store *only* here. Rule 1 above
+        # resolved without it, so a store built there carries None and does not
+        # publish — see `FsWorkStore.publishes`.
         return store_cls._open_at(
             provisioned_store_root(node_root, declaration), node_root, config_path,
-            external=True, must_exist=True)
+            external=True, must_exist=True, declaration=declaration)
     except ValueError:
         pass
     raise StoreNotProvisioned(                                  # rule 3
@@ -2942,11 +2955,18 @@ class FsWorkStore(FsTreeStore, WorkStore):
     COMPONENT = "work"
 
     def __init__(self, root: Path, *, node_root: Path | None = None,
-                 store_git_root: Path | None = None):
+                 store_git_root: Path | None = None,
+                 declaration: "RepositoryDeclaration | None" = None):
         self.root = root.resolve()
         self.node_root = (node_root or root.parent.parent).resolve()
         self.store_git_root = (store_git_root or git_root(self.root) or self.node_root).resolve()
         self.config = {}
+        # Set only when the resolution ladder reached this store *through* the
+        # declaration — rule 2, the provisioned location. A store found at a
+        # local path keeps this None even when the node declares a repository,
+        # because the declaration did not answer the read and therefore does not
+        # get to cause a write. See `publishes`.
+        self.declaration = declaration
 
     @classmethod
     def open(cls, node_root: Path) -> "FsWorkStore":
@@ -2978,7 +2998,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
-                 external: bool, must_exist: bool = True) -> "FsWorkStore":
+                 external: bool, must_exist: bool = True,
+                 declaration: "RepositoryDeclaration | None" = None) -> "FsWorkStore":
         """Validate a candidate root and build the store. `external` means the
         store is not the node's own `docs/work`, so the repository that owns its
         commits has to be discovered rather than assumed.
@@ -2998,7 +3019,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         repository = git_root(root) if external else node_root
         if repository is None and external:
             raise ValueError(f"{config_path}: work.path is not inside a Git repository: {root}")
-        return cls(root, node_root=node_root, store_git_root=repository or node_root)
+        return cls(root, node_root=node_root, store_git_root=repository or node_root,
+                   declaration=declaration)
 
     def _write_git_root(self) -> Path:
         return self.store_git_root          # may differ from the node's (work.path)
@@ -3654,6 +3676,42 @@ class FsWorkStore(FsTreeStore, WorkStore):
         except ValueError:                             # malformed sentinel
             return {}
         return work if isinstance(work, dict) else {}
+
+    @property
+    def publishes(self) -> bool:
+        """Whether a committed transition here is pushed to a remote.
+
+        True only for a store the resolution ladder reached **through its
+        declaration** — the provisioned copy, on a machine that has no other. Two
+        stores are deliberately excluded, and the second is the important one:
+
+        - a store found at a local `<component>.path` while a declaration also
+          exists. The declaration is a fallback, never an override; one that did
+          not answer the read does not get to cause a write. That copy is on the
+          user's own disk and they can push it themselves.
+        - a store with no declaration at all. Its Git repository very often
+          *does* have an `origin` — it is usually the user's own project — so a
+          publication decision made by looking for a remote, rather than for a
+          declaration, would make TCW push the user's repository on every status
+          change. `self.declaration` is the only thing consulted here for
+          exactly that reason.
+        """
+        return self.declaration is not None and self.publish_transitions()
+
+    def publish_transitions(self) -> bool:
+        """Whether publication is switched on. Default True.
+
+        Default True because a store only reaches `publishes` by having been
+        provisioned, which is already an explicit opt-in to the declaration; a
+        second opt-in nobody knows to look for would mean nobody gets this.
+
+        Any non-boolean reads as the default rather than as false, for the same
+        reason `auto_commit_transitions` gives: a typo silently disabling the
+        mechanism is a worse failure than one that is ignored, because nothing
+        looks wrong until someone notices the work never left the machine.
+        """
+        value = self._work_config().get("publish-transitions")
+        return value if isinstance(value, bool) else True
 
     def auto_commit_transitions(self) -> bool:
         """Whether a transition commits its own status move. Default True.
