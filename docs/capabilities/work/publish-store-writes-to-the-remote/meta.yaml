@@ -1,0 +1,9 @@
+id: cap-4d7a13
+name: Publish store writes to the remote
+Status: Supported
+Feature: published-store-writes
+Subject:
+- store
+- store/home-repository
+- work-item/transition
+Planning doc: 2026-08-26-publish-provisioned-store-writes-to-their-remote

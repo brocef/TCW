@@ -10,6 +10,11 @@ home repository is provisioned. Each is resolved, reported, and failed on its
 own, so one component's bad declaration neither suppresses nor corrupts
 another's result.
 
+`--refresh` is no longer the only way a provisioned store meets its remote: a
+transition on one refreshes and publishes on its own. This command stays the way
+I ask for a store, and the way I bring one up to date without transitioning
+anything.
+
 Running it again does nothing: a store that already resolves is reported as
 already available and no network call is made. `--dry-run` shows me the plan
 without contacting anything, and `--refresh` brings an existing working copy back

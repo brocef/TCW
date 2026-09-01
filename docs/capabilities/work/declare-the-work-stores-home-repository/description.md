@@ -14,6 +14,12 @@ Where the store is absent, TCW tells me so in those words, naming the declared
 remote and the command that fetches it, instead of reporting that the project has
 no work component.
 
+**The declaration governs writes as well as reads.** A store I obtained through
+it publishes its transitions back to it — see
+[publishing store writes](tcw://C/work/publish-store-writes-to-the-remote) — while
+a store I already had at `work.path` does not, because a declaration that did not
+answer the read does not cause a write.
+
 A declaration I got *wrong* is held to the same standard. A missing URL, a store
 path that escapes the repository root, an unrecognized key — each is reported
 against the configuration line that carries it, by every command and not only by
