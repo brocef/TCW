@@ -20,7 +20,7 @@ from urllib.parse import unquote, urlparse
 from tcw.work.projection import work_item_json
 from tcw.store.base import (
     CAP_FIELDS, CAP_STATUSES, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
-    IllegalTransition, RefError, StaleRevision, TransitionCommitError,
+    IllegalTransition, PublicationError, RefError, StaleRevision, TransitionCommitError,
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
@@ -185,9 +185,21 @@ def _transition_ok(work, slug: str, run):
 
     It is not swallowed: the failure goes to the server's stderr, where the
     operator running `tcw serve` sees it and can commit by hand.
+
+    `PublicationError` is a subclass and is **not** the same news, which is why
+    it is logged apart. "The browser cannot act on it anyway" is true of a local
+    commit and false of a failed publication: that one means the work exists only
+    on this machine's disk, and if this server is a container the work is one
+    reclamation away from gone. The transition still happened, so the response is
+    still the moved item — but the operator log has to say which of the two it
+    was, in words that do not read as routine.
     """
     try:
         return run()
+    except PublicationError as e:
+        print(f"tcw serve: NOT PUBLISHED — this work exists only on this "
+              f"machine: {e}", file=sys.stderr)
+        return work.get(slug)
     except TransitionCommitError as e:
         print(f"tcw serve: {e}", file=sys.stderr)
         return work.get(slug)

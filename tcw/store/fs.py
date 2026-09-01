@@ -41,7 +41,7 @@ from tcw.store.base import (
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
-    StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
+    PublicationError, StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
     TaxonomyStore, Term, TermDetail,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -3750,9 +3750,51 @@ class FsWorkStore(FsTreeStore, WorkStore):
         a transition's refresh and `tcw provision --refresh` can never disagree
         about what "up to date" means — including the fast-forward-only
         behaviour that this store's divergence semantics now rest on.
+
+        Then checks that the copy is *actually* level with the remote, which the
+        provisioner's refresh does not promise. Two ways it can come back behind:
+        the fast-forward was refused because the histories diverged, and — quieter
+        — the branch has no upstream, in which case `_refresh` fetches and skips
+        integration entirely, reporting success while changing nothing. Both end
+        the same way: every push from here is rejected, and every later
+        transition hits the same wall. So the check is here, and the message
+        names the way out rather than only the symptom.
         """
-        FsStoreProvisioner(self.node_root, self.COMPONENT,
-                           self.declaration).ensure_available(refresh=True)
+        checkout = checkout_root(self.node_root, self.declaration)
+        provisioner = FsStoreProvisioner(self.node_root, self.COMPONENT,
+                                         self.declaration)
+        try:
+            provisioner.ensure_available(refresh=True)
+        except ValueError as error:
+            if "fast-forward" not in str(error):
+                raise
+            raise self._diverged(checkout) from None
+        branch = self._publish_branch(checkout)
+        counts = _git(["git", "-C", str(checkout), "rev-list", "--count",
+                       "--left-right", f"origin/{branch}...{branch}"],
+                      capture_output=True, text=True)
+        if counts.returncode == 0 and counts.stdout.split():
+            behind = int(counts.stdout.split()[0])
+            if behind:
+                raise self._diverged(checkout)
+
+    def _diverged(self, checkout: Path) -> ValueError:
+        """The one message a wedged user meets on every transition until they act.
+
+        It says what happened, where, and what to run — because "Not possible to
+        fast-forward, aborting" is git telling the truth to someone who did not
+        ask git anything.
+        """
+        return ValueError(
+            f"{self.COMPONENT}.repository: the provisioned store at {checkout} has "
+            f"diverged from its remote — both have commits the other does not, so "
+            f"it cannot be brought up to date without choosing how to combine "
+            f"them, and TCW will not choose that for you. Until it is reconciled "
+            f"every transition will stop here.\n"
+            f"Reconcile it in {checkout} — `git -C {checkout} log --oneline "
+            f"--left-right HEAD...@{{u}}` shows both sides — then re-run the "
+            f"transition."
+        )
 
     def publish(self) -> None:
         """Push this store's committed transitions to the declared remote.
@@ -3772,19 +3814,27 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                          self.declaration)
         checkout = checkout_root(self.node_root, self.declaration)
         provisioner._require_declared_checkout(checkout)
+        branch = self._publish_branch(checkout)
+        provisioner._run(["git", "-C", str(checkout), "push", "--quiet",
+                          "origin", f"{branch}:{branch}"])
+
+    def _publish_branch(self, checkout: Path) -> str:
+        """The branch a push would update, or a refusal naming why there is none.
+
+        A declaration pinning `ref` to a tag or a commit leaves the checkout on a
+        detached HEAD, so there is no branch to push and nothing sensible to
+        invent.
+        """
         branch = _git(["git", "-C", str(checkout), "rev-parse", "--abbrev-ref", "HEAD"],
                       capture_output=True, text=True).stdout.strip()
         if not branch or branch == "HEAD":
-            # A detached head is what a declaration pinning a tag or a commit
-            # produces. There is no branch to push and nothing sensible to
-            # invent, so say which case this is rather than failing obscurely.
             raise ValueError(
                 f"{self.COMPONENT}.repository: the provisioned checkout is not on a "
                 f"branch, so there is nothing to publish to. A declaration pinned "
                 f"to a tag or a commit is read-only by nature; point `ref` at a "
-                f"branch to publish transitions.")
-        provisioner._run(["git", "-C", str(checkout), "push", "--quiet",
-                          "origin", f"{branch}:{branch}"])
+                f"branch to publish transitions, or set "
+                f"`{self.COMPONENT}.publish-transitions: false` to work locally.")
+        return branch
 
     def _publish_after_transition(self, slug: str, to_status: str) -> None:
         """Step 4 of four, after the commit has landed.
@@ -3800,7 +3850,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         try:
             self.publish()
         except (ValueError, OSError, subprocess.CalledProcessError) as error:
-            raise TransitionCommitError(
+            raise PublicationError(
                 f"{slug} moved to {to_status} and was committed in "
                 f"{self.store_git_root} — your work is saved there — but "
                 f"publishing it to the declared remote failed:\n{error}\n"
@@ -3826,8 +3876,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
         parametrized transition-surface tests in `tests/test_store_publication.py`
         are what will say so.
         """
-        if self.publishes:
-            self.refresh()
+        if not self.publishes:
+            return
+        # Whether a push is *possible* is a precondition, so it is answered here
+        # rather than after the item has moved. A declaration pinned to a tag or
+        # a commit can never publish, and discovering that at step 4 left the
+        # user with a moved, committed, unpublishable item on *every* transition
+        # — the same error each time, after the damage rather than instead of it.
+        self._publish_branch(checkout_root(self.node_root, self.declaration))
+        self.refresh()
 
     def publish_transitions(self) -> bool:
         """Whether publication is switched on. Default True.

@@ -503,3 +503,132 @@ def test_an_unreachable_remote_at_publish_says_where_the_work_is(
     assert "git -C failed" not in err, err
     assert str(store.store_git_root) in err, err
     assert "push" in err, err
+
+
+def test_a_failed_publication_is_not_a_failed_commit(tmp_path, monkeypatch):
+    """A publication failure raises `PublicationError`, not a bare
+    `TransitionCommitError`.
+
+    Found by independent review. The two were the same type, and
+    `tcw/serve/__init__.py` deliberately treats `TransitionCommitError` as
+    success on the stated grounds that "the commit is a repository-level concern
+    the browser cannot act on anyway" — sound for a refused commit, and false for
+    a refused publication, which means the work exists only on a disk that may be
+    reclaimed. The subclass keeps every existing handler working while letting
+    the ones that care tell them apart.
+    """
+    from tcw.store.base import PublicationError, TransitionCommitError
+
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    monkeypatch.setattr(fs.FsWorkStore, "publish",
+                        lambda self: (_ for _ in ()).throw(ValueError("nope")))
+    store = FsWorkStore.open(code)
+
+    with pytest.raises(PublicationError):
+        store.start(slug)
+
+    assert issubclass(PublicationError, TransitionCommitError), \
+        "existing handlers must keep catching it"
+
+
+def test_serve_reports_an_unpublished_transition_differently(tmp_path, monkeypatch,
+                                                             capsys):
+    """The handler that motivated the split: its log must not read as routine."""
+    from tcw.serve import _transition_ok
+    from tcw.store.base import PublicationError, TransitionCommitError
+
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    store = FsWorkStore.open(code)
+
+    def raiser(error):
+        def run():
+            raise error
+        return run
+
+    _transition_ok(store, slug, raiser(TransitionCommitError("commit refused")))
+    commit_log = capsys.readouterr().err
+
+    _transition_ok(store, slug, raiser(PublicationError("push refused")))
+    publish_log = capsys.readouterr().err
+
+    assert "NOT PUBLISHED" in publish_log, publish_log
+    assert "only on this machine" in publish_log, publish_log
+    assert "NOT PUBLISHED" not in commit_log, commit_log
+
+
+def test_a_tag_pinned_declaration_refuses_before_it_moves_anything(tmp_path,
+                                                                   monkeypatch,
+                                                                   capsys):
+    """Found by independent review, in the shape a correct guard can hide.
+
+    A declaration pinning `ref` to a tag leaves the checkout on a detached HEAD,
+    so a push has no branch to update. The guard for that was right, but it sat
+    at step 4 — so every transition moved the item, committed it, and *then*
+    failed, leaving a moved-but-unpublishable item and the same error, forever.
+
+    Whether a push is possible is a precondition, not an outcome. It is answered
+    at step 1, where a failure has nothing to explain.
+    """
+    source = _remote_with_store(tmp_path)
+    subprocess.run(["git", "-C", str(source), "tag", "v1"], check=True)
+    bare = _bare(tmp_path, source)
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    subprocess.run(["git", "-C", str(code), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(code), "commit", "-qm", "init"], check=True)
+    (code / "docs" / "work").rename(code / "docs" / "work-elsewhere")
+    _write_config(code, path=str(tmp_path / "absent"),
+                  repository={"url": str(bare), "ref": "v1", "path": "stores/corelib",
+                              "checkout": str(tmp_path / "checkout")})
+    monkeypatch.chdir(code)
+    assert main(["provision"]) == 0
+    assert main(["work", "new", "A thing to move"]) == 0
+    slug = _slug_of("A thing to move")
+    head = _head(code)
+
+    assert main(["work", "start", slug]) == 1
+
+    _assert_nothing_moved(code, slug, "backlog", head)
+    err = capsys.readouterr().err
+    assert "not on a branch" in err, err
+    assert "publish-transitions" in err, err
+
+
+def test_a_diverged_store_says_how_to_get_unwedged(tmp_path, monkeypatch, capsys):
+    """Found by independent review, and the trap is that every *later* command
+    fails too.
+
+    If the remote advances between the refresh and the push, the push is
+    rejected. Local and remote now hold different commits, and the next refresh's
+    `merge --ff-only` refuses — permanently, until somebody reconciles by hand.
+    Criterion 5 says divergence is reported, and it was; what it did not say is
+    that the report has to name the way out, because the user meets this message
+    on every subsequent transition, not once.
+    """
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    checkout = tmp_path / "checkout"
+
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(bare), str(other)], check=True)
+    for key, value in (("user.email", "o@o"), ("user.name", "O")):
+        subprocess.run(["git", "-C", str(other), "config", key, value], check=True)
+    (other / "stores" / "corelib" / "inbox" / "theirs.md").write_text("theirs\n")
+    subprocess.run(["git", "-C", str(other), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(other), "commit", "-qm", "theirs"], check=True)
+    subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "main"], check=True)
+
+    (checkout / "stores" / "corelib" / "inbox" / "ours.md").write_text("ours\n")
+    subprocess.run(["git", "-C", str(checkout), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(checkout), "commit", "-qm", "ours"], check=True)
+
+    assert main(["work", "start", slug]) == 1
+
+    err = capsys.readouterr().err
+    # Asserted against the wording TCW produces, not against anything git might
+    # happen to say. An earlier version of this test passed on git's own push
+    # hint while TCW's message was still "Not possible to fast-forward,
+    # aborting" — green, and testing the wrong program.
+    assert "has diverged from its remote" in err, err
+    assert "every transition will stop here" in err, err
+    assert f"git -C {checkout} log" in err, err
+    assert "Not possible to fast-forward" not in err, err

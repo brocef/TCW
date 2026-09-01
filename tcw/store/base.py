@@ -1495,6 +1495,24 @@ class TransitionCommitError(Exception):
     held `index.lock`, no write permission, a rejecting pre-commit hook). Benign
     conditions — not a repository, nothing to commit — never raise.
     """
+class PublicationError(TransitionCommitError):
+    """A transition moved and committed the item, but did not reach the remote.
+
+    A **subclass** of `TransitionCommitError` so every existing handler keeps
+    working: the item moved, which is the property those handlers were written
+    around, and a caller that retries a move that already happened is the failure
+    they exist to prevent.
+
+    A separate type because the two are no longer the same news. A refused commit
+    is local and recoverable by whoever is at the machine — `TransitionCommitError`
+    says the operator "can make it by hand". A refused *publication* means the
+    work exists only on this disk, and on a machine that is about to be reclaimed
+    that is exactly the loss the declaration mechanism exists to prevent. A
+    handler that treats "the commit is a repository-level concern the browser
+    cannot act on anyway" as a reason to report success is right about the first
+    and wrong about the second.
+    """
+
 
 
 class MultipleMatch(Exception):
