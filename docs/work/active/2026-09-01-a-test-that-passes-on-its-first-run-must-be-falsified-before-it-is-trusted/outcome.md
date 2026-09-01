@@ -99,9 +99,16 @@ missed both fired on the full suite:
   like a command.
 
 Missing them is a spec defect of exactly the kind this initiative has been
-cataloguing: the spec enumerated the guards it knew about and treated the
-enumeration as the set. `grep -rl "prompts/implement\|stage_prompts" tests/`
-would have found all six in one command, and the spec asserted a list instead.
+cataloguing — committed, with some irony, in the spec for the item that fixes
+that class. The spec enumerated the guards it knew about and treated the
+enumeration as the set.
+
+One command settles it. `grep -rln 'prompts/implement\|stage_prompts\|prompt_fallback' tests/`
+returns **eleven** files touching this surface; six of them constrain a change to
+the implement prompt's content, and the spec named four. Running that grep costs
+a second and would have turned a guessed list into a read one — which is the
+whole difference between the two, and is not a new lesson so much as the same one
+in a smaller box.
 
 **And re-baselining nearly hid itself.** Regenerating the fixture with
 `json.dumps(..., ensure_ascii=False)` re-encoded every entry, producing a
