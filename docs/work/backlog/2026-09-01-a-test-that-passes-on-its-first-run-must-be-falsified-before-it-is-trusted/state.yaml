@@ -1,0 +1,12 @@
+slug: 2026-09-01-a-test-that-passes-on-its-first-run-must-be-falsified-before-it-is-trusted
+title: A test that passes on its first run must be falsified before it is trusted
+created: '2026-09-01'
+resolution: null
+priority: 55
+effort: low
+complexity: medium
+tags:
+- work
+- docs
+- cli
+- tech-debt
