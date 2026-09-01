@@ -181,6 +181,55 @@ NON_PUBLISHING = [
 ]
 
 
+# Every command that moves an item, not the one that was convenient to write.
+# `start` does not route through `_effect_transition` — it has its own claim
+# path — so a refresh hooked into `_effect_transition` alone leaves `start`
+# unrefreshed. That was found by accident here; parametrizing is what stops the
+# next transition path from being found the same way.
+TRANSITIONS = ["start", "submit", "complete"]
+
+
+def _drive_to(slug: str, transition: str) -> int:
+    if transition == "start":
+        return main(["work", "start", slug])
+    assert main(["work", "start", slug]) == 0
+    if transition == "submit":
+        return main(["work", "submit", slug])
+    return main(["work", "complete", slug, "--resolution", "done", "--confirm"])
+
+
+@pytest.mark.parametrize("transition", TRANSITIONS)
+@pytest.mark.parametrize("kind, kwargs", NON_PUBLISHING)
+def test_no_transition_on_a_non_publishing_store_touches_the_network_anywhere(
+        tmp_path, monkeypatch, kind, kwargs, transition):
+    """Criterion 6, over every non-publishing rule AND every transition."""
+    code = _node(tmp_path, **kwargs)
+    monkeypatch.chdir(code)
+    assert main(["work", "new", "A thing to move"]) == 0
+    slug = _slug_of("A thing to move")
+
+    calls = _record_network(monkeypatch)
+    assert _drive_to(slug, transition) == 0
+
+    _assert_no_network(calls)
+
+
+@pytest.mark.parametrize("transition", TRANSITIONS)
+def test_every_transition_on_a_publishing_store_refreshes_first(
+        tmp_path, monkeypatch, transition):
+    """The other half of the same property: a transition path that forgets to
+    refresh is a path that silently stops publishing."""
+    code, _bare_remote, slug = _publishing_node(tmp_path, monkeypatch)
+    seen: list[str] = []
+    real = fs.FsWorkStore.refresh
+    monkeypatch.setattr(fs.FsWorkStore, "refresh",
+                        lambda self: (seen.append("refreshed"), real(self))[1])
+
+    assert _drive_to(slug, transition) == 0
+
+    assert seen, f"`tcw work {transition}` did not refresh"
+
+
 @pytest.mark.parametrize("kind, kwargs", NON_PUBLISHING)
 def test_no_transition_on_a_non_publishing_store_touches_the_network(
         tmp_path, monkeypatch, kind, kwargs):
@@ -222,3 +271,116 @@ def test_a_non_publishing_store_is_unchanged(tmp_path, monkeypatch, kind, kwargs
     assert slug in head.stdout, head.stdout
 
 
+
+
+# ── step 1: refresh, before anything moves ──────────────────────────────────
+
+def _publishing_node(tmp_path, monkeypatch) -> tuple[Path, Path, str]:
+    """A provisioned store with one backlog item. Returns (node, bare remote,
+    slug)."""
+    source = _remote_with_store(tmp_path)
+    bare = _bare(tmp_path, source)
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    subprocess.run(["git", "-C", str(code), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(code), "commit", "-qm", "init"], check=True)
+    (code / "docs" / "work").rename(code / "docs" / "work-elsewhere")
+    _write_config(code, path=str(tmp_path / "absent"),
+                  repository={"url": str(bare), "path": "stores/corelib",
+                              "checkout": str(tmp_path / "checkout")})
+    monkeypatch.chdir(code)
+    assert main(["provision"]) == 0
+    assert main(["work", "new", "A thing to move"]) == 0
+    return code, bare, _slug_of("A thing to move")
+
+
+def _head(node_root: Path) -> str:
+    store = FsWorkStore.open(node_root)
+    return subprocess.run(["git", "-C", str(store.store_git_root), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+
+
+def _assert_nothing_moved(node_root: Path, slug: str, status: str,
+                          head_before: str) -> None:
+    """One named assertion for criterion 3: the spec says *same status, same
+    folder, no commit*, so all three are checked in one place and no sibling
+    test can quietly check a subset.
+
+    "No commit" is the store repository's HEAD, not a clean working tree —
+    `tcw work new` stages an item without committing it, so a pristine-tree
+    assertion would be checking someone else's behaviour and would fail for a
+    reason that has nothing to do with this criterion.
+    """
+    store = FsWorkStore.open(node_root)
+    item = store.get(slug)
+    assert item is not None and item.status == status, item
+    assert (store.root / status / slug).is_dir(), f"{slug} is not in {status}/"
+    assert _head(node_root) == head_before, "the refused transition committed"
+
+
+def test_the_refresh_precedes_any_filesystem_change(tmp_path, monkeypatch):
+    """Criterion 2, asserted as an ordering rather than as 'a refresh happened'.
+
+    The store is asked to move an item; the refresh is made to observe whether
+    the item has already moved. If it has, the refresh is not first.
+    """
+    code, _bare_remote, slug = _publishing_node(tmp_path, monkeypatch)
+    store_root = FsWorkStore.open(code).root
+    seen: list[bool] = []
+    real = fs.FsWorkStore.refresh
+
+    def watching(self):
+        seen.append((self.root / "active" / slug).exists())
+        return real(self)
+
+    monkeypatch.setattr(fs.FsWorkStore, "refresh", watching)
+    assert main(["work", "start", slug]) == 0
+
+    assert seen == [False], "refresh ran after the item had already moved"
+    assert (store_root / "active" / slug).is_dir()
+
+
+def test_a_refused_refresh_leaves_the_item_untouched(tmp_path, monkeypatch):
+    """Criterion 3. Nothing has moved when step 1 fails, so there is no partial
+    state to explain — the transition simply refuses."""
+    code, _bare_remote, slug = _publishing_node(tmp_path, monkeypatch)
+
+    def broken(self):
+        raise ValueError("the declared remote is unreachable")
+
+    head = _head(code)
+    monkeypatch.setattr(fs.FsWorkStore, "refresh", broken)
+    assert main(["work", "start", slug]) == 1
+
+    _assert_nothing_moved(code, slug, "backlog", head)
+
+
+def test_divergence_is_refused_not_merged(tmp_path, monkeypatch, capsys):
+    """Criterion 5. The remote moves incompatibly; the refresh is fast-forward
+    only, so it refuses at step 1 rather than creating a merge commit inside
+    somebody's work store."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    checkout = tmp_path / "checkout"
+
+    # Someone else advances the remote…
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(bare), str(other)], check=True)
+    for key, value in (("user.email", "o@o"), ("user.name", "O")):
+        subprocess.run(["git", "-C", str(other), "config", key, value], check=True)
+    (other / "stores" / "corelib" / "inbox" / "theirs.md").write_text("theirs\n")
+    subprocess.run(["git", "-C", str(other), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(other), "commit", "-qm", "theirs"], check=True)
+    subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "main"], check=True)
+
+    # …while this checkout commits something else on top of the old tip.
+    (checkout / "stores" / "corelib" / "inbox" / "ours.md").write_text("ours\n")
+    subprocess.run(["git", "-C", str(checkout), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(checkout), "commit", "-qm", "ours"], check=True)
+
+    head = _head(code)
+    assert main(["work", "start", slug]) == 1
+
+    _assert_nothing_moved(code, slug, "backlog", head)
+    log = subprocess.run(["git", "-C", str(checkout), "log", "--merges",
+                          "--oneline"], capture_output=True, text=True)
+    assert log.stdout.strip() == "", f"a merge commit was created: {log.stdout}"

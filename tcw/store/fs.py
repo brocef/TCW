@@ -2909,6 +2909,16 @@ class FsStoreProvisioner(StoreProvisioner):
         No `pull`: the target may be a tag or a commit, where merging is
         meaningless. Fast-forwarding is attempted only when the checked-out ref
         actually tracks a remote branch, and its absence is not an error.
+
+        **Something else now depends on the ff-only part.** A published store
+        refreshes here before every transition, so a remote that has moved
+        incompatibly surfaces as a refused fast-forward *before* the item moves —
+        that refusal is how divergence is reported, and it is the reason a
+        transition never creates a merge commit inside somebody's work store.
+        Relaxing this to a real merge for the tags-and-commits reason above would
+        silently move divergence from a clean refusal into an automatic merge of
+        two people's work items. If that becomes necessary, the transition path
+        needs its own answer first (`FsWorkStore.refresh`).
         """
         self._run(["git", "-C", str(checkout), "fetch", "--quiet", "--prune", "origin"])
         target = self.declaration.ref or self._remote_head(checkout)
@@ -3075,6 +3085,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # than through `_stage`, and both rename before they stage, so `_mv`'s
         # guard reaches neither.
         self._require_repository()
+        self._refresh_before_transition()
         started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         # `_get_now`: the take-over branch below exists precisely for the state
         # the stabilizing `get` raises on, so probing through `get` would make
@@ -3698,6 +3709,38 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         return self.declaration is not None and self.publish_transitions()
 
+    def refresh(self) -> None:
+        """Bring the provisioned working copy to the declared remote's state.
+
+        Delegates to the provisioner rather than reimplementing the plumbing, so
+        a transition's refresh and `tcw provision --refresh` can never disagree
+        about what "up to date" means — including the fast-forward-only
+        behaviour that this store's divergence semantics now rest on.
+        """
+        FsStoreProvisioner(self.node_root, self.COMPONENT,
+                           self.declaration).ensure_available(refresh=True)
+
+    def _refresh_before_transition(self) -> None:
+        """Step 1 of four, at the top of every path that moves an item.
+
+        Before anything moves, because a refresh that fails here has nothing to
+        explain: no folder has moved, no commit exists, and the transition simply
+        refuses. Every later step's failure leaves state behind and has to
+        describe it — see `_commit_transition`.
+
+        **Called from two places, not one.** `start` does not route through
+        `_effect_transition`: it has its own claim-based path with its own
+        commits (the `.claiming/` rename is what makes concurrent starts safe),
+        so a hook in `_effect_transition` alone would leave `tcw work start` —
+        the transition most likely to happen in a fresh session — unrefreshed and
+        unpublished. Both call this as their first statement after
+        `_require_repository`. A third transition path must call it too; the
+        parametrized transition-surface tests in `tests/test_store_publication.py`
+        are what will say so.
+        """
+        if self.publishes:
+            self.refresh()
+
     def publish_transitions(self) -> bool:
         """Whether publication is switched on. Default True.
 
@@ -4212,6 +4255,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _effect_transition(self, slug: str, to_status: str,
                            fields: dict | None = None) -> None:
         self._require_repository()
+        self._refresh_before_transition()
         # Read the item *before* the move: afterwards `_find` points at the new
         # location and the pre-move branch/worktree fields are what the
         # trunk-branch check needs.
