@@ -180,11 +180,12 @@ upstreamed.
 
 ## Suite
 
-The full run passed **2159 tests** with no failures and no skips, outside the
+The full run passed **2163 tests** with no failures and no skips, outside the
 restricted sandbox — the server suites bind loopback sockets, and the sandboxed
 run's `PermissionError` cluster is an artefact of that rather than a result.
-`tests/test_store_publication.py` is new and holds 31 cases; no test outside it
-was rewritten to accommodate this work, which is criterion 7's other half.
+`tests/test_store_publication.py` is new and holds 35 cases (31 before the
+independent review, 4 added by it); no test outside it was rewritten to
+accommodate this work, which is criterion 7's other half.
 
 ## Decisions worth carrying forward
 
