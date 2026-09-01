@@ -115,6 +115,49 @@ Worth noting because the mistake was not carelessness about the budget; it was
 adding to the router without asking whether the content was *always* relevant,
 which is the actual rule the budget enforces.
 
+## Independent review
+
+An adversarial review (`codex exec`, one pass — the stopping rule was one) plus
+the same attack run by hand. Five claims; each was verified rather than accepted.
+
+| # | Claim | Verdict |
+| - | ----- | ------- |
+| 1 | a branch with no upstream makes refresh a silent no-op, so every push is rejected | **real**, fixed |
+| 2 | `refresh()` can *clone* when the checkout was deleted between commands | **real, benign** — self-healing, and fails before anything moves. Documented, not changed. |
+| 3 | `refresh()` runs more than once per command | **not a defect** — one call per transition, correctly analysed |
+| 4 | `UnicodeDecodeError` escapes the except tuple and reaches the user as a traceback | **wrong** — it is a `ValueError` subclass and already caught |
+| 5 | a rejected push wedges the store permanently | **real**, fixed |
+
+Two more came from running the same attack by hand:
+
+**`TransitionCommitError` had its meaning widened without auditing its handlers.**
+`tcw/serve/__init__.py` deliberately treats it as success, on the stated grounds
+that "the commit is a repository-level concern the browser cannot act on anyway".
+Sound for a refused commit; false for a refused publication, which means the work
+exists only on a disk that may be reclaimed — and the browser showed a green
+success. `PublicationError` is now a subclass, so every existing handler keeps
+working while the ones that care can tell them apart.
+
+**A tag-pinned declaration failed at step 4 instead of step 1.** The detached-HEAD
+guard was correct, and sat after the move — so every transition moved the item,
+committed it, and then failed, leaving a moved-but-unpublishable item and the
+same error forever. Whether a push is *possible* is a precondition; it is
+answered at step 1 now, where a failure has nothing to explain.
+
+**The wedge was the one worth the review.** Push rejected, both sides holding
+commits the other lacks, and the next refresh's ff-only merge refusing — for
+good. The user saw `git merge failed: fatal: Not possible to fast-forward,
+aborting`: git telling the truth to someone who never asked git anything. It now
+says what happened, that every transition will stop until it is reconciled, and
+the command that shows both sides.
+
+**And my test for that passed spuriously.** It asserted `"diverged" in err` and
+matched git's *push-rejection hint* while TCW's own message still said "Not
+possible to fast-forward" — green, and testing the wrong program. It now asserts
+TCW's exact wording and asserts git's phrasing is absent. That is the fourth time
+in this item a test passed for a reason I had not checked; the pattern is not
+"weak assertions" but **assertions aimed at a string some other program owns**.
+
 ## Did the Coverage requirement earn its cost?
 
 Recorded for
