@@ -151,3 +151,13 @@ outcome for a defect about resolving a path on disk.
 **Deliberately not planned:** extracting the counterpart expression now shared
 by four sites. The spec's Non-goals explain why; if a fifth appears, that is
 the moment.
+
+**That moment arrived during implementation.** Rebasing onto main brought the
+generalized `resolve_store` ladder and with it a second, character-identical
+copy of the anchoring rule on `FsTreeStore._local_root` — the copy the reporter
+described and this plan's spec had denied. Fixing one and not the other would
+have left taxonomy and capabilities broken in exactly the way the work store
+had just been repaired, so Task 2 grew a sibling: extract
+`anchor_configured_path` and route both hooks through it, with the escape and
+inside-staying assertions repeated for `FsTaxonomyStore` and
+`FsCapabilitiesStore`. The Non-goal is withdrawn, not worked around.

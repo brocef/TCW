@@ -71,9 +71,14 @@ Repo-wide, for defects sibling to the reported one:
   worktree anchors (`tcw/store/fs.py:700`). That is correct — `init` acts where
   you stand — and is left alone.
 - The report states there is an "identical tree-store copy" of `_local_root` at
-  roughly line 3021. There is not: `_local_root` is defined once
-  (`tcw/store/fs.py:2778`) and called once (line 2744). The tree store has no
-  configured path to resolve.
+  roughly line 3021. **Corrected after rebasing onto main mid-implementation:
+  the reporter was right and this spec was wrong.** The sweep above was run
+  against v1.1.0, where `_local_root` was defined once and the tree stores had
+  no configured path. The reporter filed against 1.2.0, which had already
+  generalized store resolution into a shared `resolve_store` ladder — so
+  `FsTreeStore._local_root` (`tcw/store/fs.py:1112`) exists, serves taxonomy and
+  capabilities, and carried a character-identical copy of both defects. Both
+  hooks are in scope. See `outcome.md`.
 
 ## Goals
 
