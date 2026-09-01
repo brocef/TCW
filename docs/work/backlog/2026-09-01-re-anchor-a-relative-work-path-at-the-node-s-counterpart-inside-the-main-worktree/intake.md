@@ -81,3 +81,10 @@ by @brocef, reporting against tcw 1.2.0 on macOS.
 - `tcw/store/project.py:56` — `worktree_anchors`, which returns
   `(current worktree top, main worktree root)` and is what the fix reads both
   halves of instead of only the second.
+- `tests/` — no test anywhere sets a *relative* `work.path`, so the re-anchoring
+  branch in `_local_root` has no coverage at all, not merely thin coverage. The
+  worktree fixtures in `tests/test_environment_hardness.py` exercise
+  `connected-projects` locators instead, and `monorepo_worktree` there is the
+  layout that must not change — a relative locator staying inside the checkout,
+  which the naive "always re-anchor" fix breaks. Worth reading before deciding
+  what the `work.path` counterpart of that case should resolve to.
