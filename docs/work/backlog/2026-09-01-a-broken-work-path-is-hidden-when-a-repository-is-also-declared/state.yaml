@@ -1,0 +1,10 @@
+slug: 2026-09-01-a-broken-work-path-is-hidden-when-a-repository-is-also-declared
+title: A broken work.path is hidden when a repository is also declared
+created: '2026-09-01'
+resolution: null
+priority: 35
+effort: low
+complexity: low
+tags:
+- cli
+- work
