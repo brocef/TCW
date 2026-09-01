@@ -3022,21 +3022,40 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """Where the store lives on this machine per `<component>.path`, or the
         default `docs/<component>`.
 
-        Unchanged from before the declaration existed, re-anchoring included: a
-        relative path inside a *linked worktree* is authored against the primary
-        checkout's position on disk, so it resolves against the main worktree
-        root. Getting this wrong would silently swap a worktree user's real store
-        for a cache clone, which is why it stayed one function rather than being
+        Inside a *linked worktree* this follows the same rule
+        `FsProjectRegistry._target_path` applies to `connected-projects`
+        locators (`tcw/store/project.py:322-334`), and for the same reasons:
+
+        - **Re-anchor only on escape.** A relative path that stays inside the
+          worktree is this node's store on this branch and belongs to the
+          worktree, exactly as the default `docs/<component>` does. Only a path
+          that leaves the checkout was authored against the primary checkout's
+          position on disk. Re-anchoring an inside-staying path used to send a
+          worktree user to the primary checkout's store while the *identical*
+          default did not.
+        - **Anchor at this node's counterpart, not at the main worktree root.**
+          `worktree_anchors` returns `(current top, main root)`; using the second
+          alone drops the sub-path of a node nested inside the repository, so
+          `apps/server`'s relative path got applied from the repository root and
+          the store could not be found at all (GitHub #26).
+
+        Getting this wrong would silently swap a worktree user's real store for
+        a cache clone, which is why it stays one function rather than being
         reimplemented inside the ladder.
         """
         if configured is None:
             return node_root / "docs" / cls.COMPONENT
         value = Path(configured).expanduser()
+        if value.is_absolute():            # names a place, not an offset
+            return value
         base = node_root
         anchors = worktree_anchors(node_root)
-        if not value.is_absolute() and anchors is not None:
-            base = anchors[1]
-        return value if value.is_absolute() else base / value
+        if anchors is not None:
+            top, main = anchors
+            resolved = (node_root / value).resolve()
+            if node_root.is_relative_to(top) and not resolved.is_relative_to(top):
+                base = main / node_root.relative_to(top)
+        return base / value
 
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,

@@ -888,6 +888,15 @@ def nested_node_worktree(tmp_path: Path, work_path: str | None = None,
         store = (node / work_path).resolve()
         for leaf in ("inbox", *WORK_STATUSES):
             (store / leaf).mkdir(parents=True, exist_ok=True)
+        # A store outside the node's repo must be in a git repo of its own —
+        # `_open_at` refuses one that is not, because it has to know which
+        # repository owns the store's commits.
+        if not store.is_relative_to(repo):
+            outer = store
+            while outer.parent != tmp_path:
+                outer = outer.parent
+            _git_init(outer)
+            _commit_all(outer, "store")
     _commit_all(repo, "seed")
     wt = repo / WORKTREES_DIR / "f"
     subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "f", str(wt)],
@@ -935,3 +944,44 @@ class TestWorktreeWorkPathUnchanged:
         repo, node, wt = nested_node_worktree(tmp_path, "../external/work", sub=".")
         assert _resolved(node, "../external/work") == _resolved(wt, "../external/work")
         assert _resolved(wt, "../external/work") == (tmp_path / "external" / "work")
+
+
+class TestWorktreeWorkPathReAnchoring:
+    """A relative `work.path` follows the rule `FsProjectRegistry._target_path`
+    already applies to `connected-projects` locators: re-anchor only on escape,
+    and at *this node's* counterpart under the main worktree — never at the
+    repository root, which drops a nested node's own sub-path."""
+
+    def test_nested_node_escaping_path_resolves_to_the_same_store(self, tmp_path):
+        """The reported bug (GitHub #26): the store is outside the repository,
+        so the path was authored against the primary checkout's position and
+        has to re-anchor — but at `<main>/apps/server`, not at `<main>`."""
+        cfg = "../../../external/work"
+        repo, node, wt = nested_node_worktree(tmp_path, cfg)
+        assert _resolved(wt / "apps" / "server", cfg) == _resolved(node, cfg)
+        assert _resolved(node, cfg) == tmp_path / "external" / "work"
+
+    def test_nested_node_inside_path_stays_with_the_worktree(self, tmp_path):
+        """A path that never leaves the checkout is the node's own store on this
+        branch, so it belongs to the worktree — exactly as the default does."""
+        cfg = "docs/work"
+        repo, node, wt = nested_node_worktree(tmp_path, cfg)
+        wt_node = wt / "apps" / "server"
+        assert _resolved(wt_node, cfg) == (wt_node / "docs" / "work").resolve()
+        assert _resolved(wt_node, cfg) == _resolved(wt_node, None)
+
+    def test_root_node_inside_path_matches_the_default(self, tmp_path):
+        """The divergence this closes: `work.path: docs/work` spelled out used to
+        resolve to the primary checkout while the identical default did not."""
+        cfg = "docs/work"
+        repo, node, wt = nested_node_worktree(tmp_path, cfg, sub=".")
+        assert _resolved(wt, cfg) == (wt / "docs" / "work").resolve()
+        assert _resolved(wt, cfg) == _resolved(wt, None)
+
+    def test_the_store_is_reachable_end_to_end_from_the_worktree(self, tmp_path):
+        """`_local_root` is only the path computation; `open` validates the
+        directory downstream of it. The reporter ran a command, not a function."""
+        cfg = "../../../external/work"
+        repo, node, wt = nested_node_worktree(tmp_path, cfg)
+        st = FsWorkStore.open(wt / "apps" / "server")
+        assert st.root == (tmp_path / "external" / "work").resolve()
