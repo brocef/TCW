@@ -1,0 +1,7 @@
+name: Published store writes
+kind: Feature
+relatesTo: []
+vocabulary:
+- store
+- store/home-repository
+- work-item/transition
