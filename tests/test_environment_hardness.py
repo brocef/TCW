@@ -46,6 +46,7 @@ from tcw.store.fs import (
     parent_node,
     write_sentinel,
 )
+from tcw.store.base import WORK_STATUSES
 from tcw.store.project import FsProjectRegistry
 from tcw.work.recursion import delegate, escalate, reconcile
 
@@ -854,3 +855,83 @@ class TestCrossEnvironment:
         FsWorkStore.open(root).create("Task", created="2026-01-01")
         assert FsTaxonomyStore.open(root).check() == []
         assert FsCapabilitiesStore.open(root).check(taxonomy=FsTaxonomyStore.open(root)) == []
+
+
+# ────────────────────────────────────────────────────────────────────────
+# 5. A nested node's `work.path` inside a linked worktree
+# ────────────────────────────────────────────────────────────────────────
+
+
+def nested_node_worktree(tmp_path: Path, work_path: str | None = None,
+                         sub: str = "apps/server") -> tuple[Path, Path, Path]:
+    """Return (repo, node, worktree) for a work node at ``sub`` inside one git
+    repo, with a linked worktree of the whole repo at ``<repo>/.worktrees/f``.
+
+    ``work_path`` is written into the node's config **verbatim** — the point of
+    these tests is how a literal string is anchored, so it must not be
+    normalized on the way in. The store it names is created (``inbox`` plus
+    every status folder) so ``FsWorkStore.open`` can reach it, not only
+    ``_local_root``.
+
+    ``sub="."`` puts the node at the repository root: the shape that already
+    worked, and the regression guard for it.
+    """
+    repo = tmp_path / "repo"
+    node = (repo / sub).resolve() if sub != "." else repo
+    node.mkdir(parents=True)
+    _git_init(repo)
+    init(["work"], node, "server")
+    if work_path is not None:
+        config = load_yaml(node / "tcw-config.yaml")
+        config["work"] = {"path": work_path}
+        (node / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+        store = (node / work_path).resolve()
+        for leaf in ("inbox", *WORK_STATUSES):
+            (store / leaf).mkdir(parents=True, exist_ok=True)
+    _commit_all(repo, "seed")
+    wt = repo / WORKTREES_DIR / "f"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "f", str(wt)],
+                   check=True)
+    return repo, node, wt
+
+
+def _resolved(node_root: Path, configured: str | None) -> Path:
+    """`_local_root` as the caller invokes it — on an already-resolved node root
+    (`tcw/store/fs.py` resolves before calling) — normalized for comparison."""
+    return FsWorkStore._local_root(node_root.resolve(), configured).resolve()
+
+
+class TestWorktreeWorkPathUnchanged:
+    """The shapes this must leave exactly as they are.
+
+    Written before the re-anchoring change and passing on both sides of it: an
+    absolute path names a place, the default belongs to the checkout you are
+    standing in, and a node *at* the repository root was never affected by the
+    dropped sub-path.
+    """
+
+    def test_absolute_work_path_is_never_re_anchored(self, tmp_path):
+        external = tmp_path / "external" / "work"
+        repo, node, wt = nested_node_worktree(tmp_path, str(external))
+        assert _resolved(node, str(external)) == external
+        assert _resolved(wt / "apps" / "server", str(external)) == external
+
+    def test_default_store_stays_with_its_own_checkout(self, tmp_path):
+        repo, node, wt = nested_node_worktree(tmp_path)
+        # No `work.path` at all: each checkout keeps its own `docs/work`, which
+        # is the behaviour an explicit inside-staying path must come to match.
+        assert _resolved(node, None) == (repo / "apps" / "server" / "docs" / "work")
+        assert _resolved(wt / "apps" / "server", None) == \
+            (wt / "apps" / "server" / "docs" / "work").resolve()
+
+    def test_default_store_stays_with_its_own_checkout_at_repo_root(self, tmp_path):
+        repo, node, wt = nested_node_worktree(tmp_path, sub=".")
+        assert _resolved(node, None) == repo / "docs" / "work"
+        assert _resolved(wt, None) == (wt / "docs" / "work").resolve()
+
+    def test_escaping_path_on_a_root_node_already_agreed(self, tmp_path):
+        """The case the pre-existing re-anchoring handled correctly: node at the
+        repository root, so there is no sub-path to drop."""
+        repo, node, wt = nested_node_worktree(tmp_path, "../external/work", sub=".")
+        assert _resolved(node, "../external/work") == _resolved(wt, "../external/work")
+        assert _resolved(wt, "../external/work") == (tmp_path / "external" / "work")
