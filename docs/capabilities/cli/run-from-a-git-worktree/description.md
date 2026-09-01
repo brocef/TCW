@@ -12,8 +12,16 @@ re-anchored — but if it names the current project's counterpart in the primary
 checkout, it still resolves to the worktree copy, so the project appears once
 rather than twice.
 
+A **configured store path** follows the same rule. Whether I point
+`work.path`, `taxonomy.path` or `capabilities.path` somewhere else, a relative
+one that leaves the checkout re-anchors — at *this node's* counterpart under the
+main worktree, so a node nested inside the repository keeps its own sub-path —
+and one that stays inside belongs to the worktree, exactly as the default does.
+An absolute store path is never re-anchored.
+
 The node I operate on is the **worktree**: its `docs/work/`,
-`docs/capabilities/` and `docs/taxonomy/` are the checked-out ones, and a work
+`docs/capabilities/` and `docs/taxonomy/` are the checked-out ones — as is a
+store I relocated with a relative path that stays in the checkout — and a work
 item I create lands there. Only the shape of the graph is resolved through the
 primary checkout, so the current project appears once, not twice.
 

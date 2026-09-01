@@ -1,7 +1,11 @@
 As a project owner, I can keep a project's work items in another filesystem
 location without changing the project's canonical ID or ownership. I set
-`work.path` in `tcw-config.yaml`, using an absolute path or a path relative to
-the owning project's primary checkout. TCW follows symlinks, routes every work
+`work.path` in `tcw-config.yaml`, using an absolute path or a relative one.
+A relative path is read against the project's own directory; inside a linked
+git worktree it is read against the primary checkout only when it points
+outside the checkout, while one that stays inside belongs to the worktree like
+the default store does (see
+[Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree)). TCW follows symlinks, routes every work
 command and web edit to that store, and commits work transitions in the Git
 repository containing it while lifecycle hooks and code worktrees remain in the
 owning software repository. That routing is uniform: cross-node requests, epic
