@@ -41,8 +41,8 @@ defect shape four times.
   push-rejection hint, and stayed green while TCW's own message was still the
   unhelpful `Not possible to fast-forward, aborting` — deleting TCW's message
   would not have failed it. `test_the_board_no_longer_misdirects_to_tcw_init`
-  already had the shape: it asserts `"no tcw work node here" not in err`, which
-  names the thing being replaced and so cannot pass by accident.
+  already had the shape: it asserts the old misdirecting message is **not** in
+  stderr, naming the thing being replaced, so it cannot pass by accident.
 - **One property, one assertion helper.** A family of tests for a single
   criterion calls one named assertion — `_assert_nothing_left_behind(target)` —
   so a sibling that skips it is visible in the diff rather than left to review.

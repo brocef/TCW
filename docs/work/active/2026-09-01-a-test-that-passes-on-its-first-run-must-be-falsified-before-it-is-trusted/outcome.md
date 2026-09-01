@@ -77,6 +77,40 @@ parity module's fixtures are all parametrized over stage ids, and these tests ar
 about one stage's content — so `tests/test_falsification_rule.py` is new. The
 plan was right to leave that open rather than guess.
 
+## What the plan got wrong, second finding
+
+**The spec named four guards on the shipped prompt. There are six.** The two it
+missed both fired on the full suite:
+
+- `tests/test_prompt_fallback.py` — a **recorded-bytes tripwire**. It replays
+  `tcw work stage` in an unconfigured node and asserts the output is byte-identical
+  to a baseline captured before documentation entries could reach a prompt. Its
+  docstring settles what to do: *"A prompt rewrite is the one reason to touch
+  these bytes; a substitution changing them is the regression, and re-baselining
+  to hide that is the thing the file exists to prevent."* This is a prompt
+  rewrite, so re-baselining is the documented path — done only after asserting
+  every other stage was byte-identical, which is the precedent the docstring
+  names from the 2026-08-19 item.
+- `tests/test_documented_cli_surface.py` — it parses backticked spans in bound
+  lifecycle docs and refuses ones naming a CLI verb that does not exist. The new
+  message-assertion rule quoted an *error string* containing `tcw work node`,
+  which reads as a verb claim. The guard was right for the general case, so the
+  prose was rewritten to name the test rather than inline a string that looks
+  like a command.
+
+Missing them is a spec defect of exactly the kind this initiative has been
+cataloguing: the spec enumerated the guards it knew about and treated the
+enumeration as the set. `grep -rl "prompts/implement\|stage_prompts" tests/`
+would have found all six in one command, and the spec asserted a list instead.
+
+**And re-baselining nearly hid itself.** Regenerating the fixture with
+`json.dumps(..., ensure_ascii=False)` re-encoded every entry, producing a
+six-line diff of which five were pure re-serialization — precisely the noise the
+tripwire exists to prevent, since a real change would sit unnoticed among them.
+The fix was to splice the single re-encoded value into the original text, leaving
+every other byte alone: **one line changed**. A fixture update whose diff is
+larger than the change it records is not an update, it is camouflage.
+
 ## What this does not fix, stated so it is not over-relied on
 
 Three of the five defects that motivated this were **coverage** gaps — a fixture
