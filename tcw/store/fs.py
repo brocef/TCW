@@ -3108,6 +3108,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             git_stage(self.store_git_root, src, dst)
             if self.auto_commit_transitions():
                 self._commit_transition(slug, src, dst, "active", None)
+                self._publish_after_transition(slug, "active")
             return self._require(slug)
         if item is None:
             # Empty has two meanings: no such slug, or a competitor moved the
@@ -3177,6 +3178,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         git_stage(self.store_git_root, src, dst)
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, "active", item)
+            self._publish_after_transition(slug, "active")
         return self._require(slug)
 
     def _claiming_dirs(self, slug: str) -> list[Path]:
@@ -3719,6 +3721,60 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         FsStoreProvisioner(self.node_root, self.COMPONENT,
                            self.declaration).ensure_available(refresh=True)
+
+    def publish(self) -> None:
+        """Push this store's committed transitions to the declared remote.
+
+        Verifies the checkout against the declaration before contacting anything,
+        for the reason `_require_declared_checkout` already gives about fetching:
+        a declared `checkout` is an arbitrary user-chosen directory and can hold
+        an unrelated repository. Pushing into the wrong one is worse than fetching
+        from it, because it writes.
+
+        Raises on failure and undoes nothing. The move and the commit have
+        already landed, and reversing them would be a second failure worse than
+        the first — the same reasoning `_commit_transition` gives, one step
+        further out.
+        """
+        provisioner = FsStoreProvisioner(self.node_root, self.COMPONENT,
+                                         self.declaration)
+        checkout = checkout_root(self.node_root, self.declaration)
+        provisioner._require_declared_checkout(checkout)
+        branch = _git(["git", "-C", str(checkout), "rev-parse", "--abbrev-ref", "HEAD"],
+                      capture_output=True, text=True).stdout.strip()
+        if not branch or branch == "HEAD":
+            # A detached head is what a declaration pinning a tag or a commit
+            # produces. There is no branch to push and nothing sensible to
+            # invent, so say which case this is rather than failing obscurely.
+            raise ValueError(
+                f"{self.COMPONENT}.repository: the provisioned checkout is not on a "
+                f"branch, so there is nothing to publish to. A declaration pinned "
+                f"to a tag or a commit is read-only by nature; point `ref` at a "
+                f"branch to publish transitions.")
+        provisioner._run(["git", "-C", str(checkout), "push", "--quiet",
+                          "origin", f"{branch}:{branch}"])
+
+    def _publish_after_transition(self, slug: str, to_status: str) -> None:
+        """Step 4 of four, after the commit has landed.
+
+        The failure message is the whole point of this wrapper. "Your item moved,
+        it is committed here, and it is not on the remote" is a state this CLI has
+        never had to describe, and the user's next question is always whether
+        their work is safe. So it says where the work is before it says what
+        failed.
+        """
+        if not self.publishes:
+            return
+        try:
+            self.publish()
+        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+            raise TransitionCommitError(
+                f"{slug} moved to {to_status} and was committed in "
+                f"{self.store_git_root} — your work is saved there — but "
+                f"publishing it to the declared remote failed:\n{error}\n"
+                f"Re-run the transition, or push {self.store_git_root} yourself, "
+                f"once the remote is reachable."
+            ) from None
 
     def _refresh_before_transition(self) -> None:
         """Step 1 of four, at the top of every path that moves an item.
@@ -4302,6 +4358,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     f"failed:\n{e}")
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, to_status, item)
+            # Inside the commit branch, not beside it: with auto-commit off the
+            # move is uncommitted, so a push would contact the remote and
+            # publish nothing. Nothing to commit means nothing to publish.
+            self._publish_after_transition(slug, to_status)
 
     def _commit_transition(self, slug: str, src: Path, dst: Path,
                            to_status: str, item: "WorkItem | None") -> None:

@@ -384,3 +384,93 @@ def test_divergence_is_refused_not_merged(tmp_path, monkeypatch, capsys):
     log = subprocess.run(["git", "-C", str(checkout), "log", "--merges",
                           "--oneline"], capture_output=True, text=True)
     assert log.stdout.strip() == "", f"a merge commit was created: {log.stdout}"
+
+
+# ── step 4: publish, after the commit ───────────────────────────────────────
+
+def _remote_log(bare: Path) -> str:
+    return subprocess.run(["git", "-C", str(bare), "log", "--oneline"],
+                          capture_output=True, text=True).stdout
+
+
+@pytest.mark.parametrize("transition", TRANSITIONS)
+def test_a_transition_reaches_the_remote(tmp_path, monkeypatch, transition):
+    """Criterion 1, over every transition. The check is not "a push happened"
+    but the thing the user actually cares about: provisioning the same
+    declaration somewhere else afterwards shows the item where it now is."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+
+    assert _drive_to(slug, transition) == 0
+
+    elsewhere = tmp_path / "second"
+    subprocess.run(["git", "clone", "-q", str(bare), str(elsewhere)], check=True)
+    expected = {"start": "active", "submit": "review", "complete": "completed"}[transition]
+    assert (elsewhere / "stores" / "corelib" / expected / slug).is_dir(), \
+        _remote_log(bare)
+
+
+def test_a_failed_publish_says_what_landed(tmp_path, monkeypatch, capsys):
+    """Criterion 4. The item moved and committed locally; only the push failed.
+    The message has to say exactly that, because "your work is on this machine
+    and nowhere else" is a state this CLI has never had to describe."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    head_before = _head(code)
+
+    def broken(self):
+        raise ValueError("could not reach the declared remote")
+
+    monkeypatch.setattr(fs.FsWorkStore, "publish", broken)
+    assert main(["work", "start", slug]) == 1
+
+    store = FsWorkStore.open(code)
+    assert store.get(slug).status == "active", "the transition was rolled back"
+    assert _head(code) != head_before, "the transition was not committed"
+    err = capsys.readouterr().err
+    assert slug in err and "active" in err, err
+    assert "not" in err.lower(), err
+
+
+def test_a_push_verifies_the_remote_before_contacting_it(tmp_path, monkeypatch):
+    """Criterion 8. A `checkout` is an arbitrary user-chosen directory, so it can
+    hold an unrelated repository — the same reason `_require_declared_checkout`
+    exists for fetching. Pushing into the wrong one would be worse."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    checkout = tmp_path / "checkout"
+    stranger = _repo(tmp_path / "stranger")
+    subprocess.run(["git", "-C", str(checkout), "remote", "set-url", "origin",
+                    str(stranger)], check=True)
+
+    assert main(["work", "start", slug]) == 1
+
+    assert _remote_log(stranger).strip() == "", "pushed to an unexpected remote"
+
+
+def test_publication_can_be_switched_off(tmp_path, monkeypatch):
+    """Criterion 9, including the half that gets forgotten: a non-boolean reads
+    as the default rather than as false."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    before = _remote_log(bare)
+
+    _write_config(code, **{"publish-transitions": False})
+    calls = _record_network(monkeypatch)
+    assert main(["work", "start", slug]) == 0
+    _assert_no_network(calls)
+    assert _remote_log(bare) == before
+
+    _write_config(code, **{"publish-transitions": "yes please"})
+    assert FsWorkStore.open(code).publishes is True, \
+        "a non-boolean must read as the default, not as false"
+
+
+def test_nothing_is_published_when_nothing_is_committed(tmp_path, monkeypatch):
+    """A cell the spec's Coverage tables did not enumerate, found while wiring
+    step 4: `work.auto-commit-transitions: false` leaves the move uncommitted,
+    so a push would contact the remote and publish nothing. The two switches are
+    independent in config and must not be independent in effect."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    before = _remote_log(bare)
+    _write_config(code, **{"auto-commit-transitions": False})
+
+    assert main(["work", "start", slug]) == 0
+
+    assert _remote_log(bare) == before, "pushed without a commit to publish"
