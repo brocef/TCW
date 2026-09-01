@@ -35,6 +35,14 @@ defect shape four times.
   setup easiest, and that is why three of those four defects sat in cells no test
   could reach — `_tree_node` created the local tree unconditionally and every
   caller passed `path=`, so the uncovered cell was unreachable by construction.
+- **When asserting a user-facing message, assert that the message it replaces
+  is absent.** An assertion aimed at a string another program owns is not a test
+  of this one. A divergence test asserted `"diverged" in err`, matched *git's*
+  push-rejection hint, and stayed green while TCW's own message was still the
+  unhelpful `Not possible to fast-forward, aborting` — deleting TCW's message
+  would not have failed it. `test_the_board_no_longer_misdirects_to_tcw_init`
+  already had the shape: it asserts `"no tcw work node here" not in err`, which
+  names the thing being replaced and so cannot pass by accident.
 - **One property, one assertion helper.** A family of tests for a single
   criterion calls one named assertion — `_assert_nothing_left_behind(target)` —
   so a sibling that skips it is visible in the diff rather than left to review.

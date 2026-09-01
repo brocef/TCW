@@ -59,3 +59,19 @@ def test_the_original_rule_survives_the_rewrite():
 
     assert "watch it fail" in prompt, prompt
     assert "never been red proves nothing" in prompt, prompt
+
+
+def test_the_implement_stage_composes_the_message_assertion_rule():
+    """The narrower half, bound by this repo rather than shipped.
+
+    It is about error-message tests specifically, and the pattern it names is
+    already this codebase's idiom rather than a general TCW rule — so it lives in
+    `docs/lifecycle/implementation.md`, which `tcw-config.yaml` composes after the
+    shipped prompt, and it earns its way upstream separately or not at all.
+    """
+    from pathlib import Path
+
+    bound = Path("docs/lifecycle/implementation.md").read_text(encoding="utf-8")
+
+    assert "assert that the message it replaces" in bound, bound[-800:]
+    assert "another program owns" in bound, bound[-800:]
