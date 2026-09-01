@@ -95,6 +95,24 @@ else rests on it.
 **Proves it.** Criteria 2, 3 and 5. Criterion 3's test asserts *all* of: same
 status, same folder, no commit — the spec's wording, not a subset of it.
 
+### 5a — CORRECTION, found at task 5
+
+The plan below said `_effect_transition` is the one seam every transition passes
+through. **It is not.** `FsWorkStore.start` (`tcw/store/fs.py:3080`) has its own
+claim-based path with its own two `_commit_transition` calls — the `.claiming/`
+rename is what makes concurrent starts safe — and never touches
+`_effect_transition`.
+
+A refresh hooked into `_effect_transition` alone therefore left `tcw work start`
+unrefreshed and unpublished: the transition most likely to happen in a fresh
+cloud session, which is the scenario this whole initiative exists for.
+
+Corrected by a named `_refresh_before_transition()` called as the first statement
+after `_require_repository()` in **both** paths, and by parametrizing the
+transition tests over `start` / `submit` / `complete` rather than the one command
+that was convenient. It was found by luck — the first test written happened to
+use `start` — and the parametrization is what replaces the luck.
+
 ### 6 — Publish after the commit
 
 Step 4, and the first task that pushes. `publish()` after `_commit_transition`,
