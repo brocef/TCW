@@ -1,0 +1,10 @@
+slug: 2026-09-01-re-anchor-a-relative-work-path-at-the-node-s-counterpart-inside-the-main-worktree
+title: Re-anchor a relative work.path at the node's counterpart inside the main worktree
+created: '2026-09-01'
+resolution: null
+priority: 45
+effort: low
+tags:
+- cli
+- work
+- bug
