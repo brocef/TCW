@@ -133,6 +133,12 @@ The two families, and where each is answered:
 | the test never reaches the case it names | Coverage table; no defaulted axis in a shared fixture | `templates/spec.md`, `implementation.md` |
 | the test reaches it and asserts the wrong thing | falsification; assert the replaced message is absent | shipped prompt, `implementation.md` |
 
+## Suite
+
+**2168 passed**, no failures, no skips, outside the restricted sandbox. Two
+failures were found and fixed first — both guards this spec had not enumerated —
+and the re-baselined fixture's diff is one line.
+
 ## Notes
 
 - The finding behind this item is that **the instruction was right and produced
