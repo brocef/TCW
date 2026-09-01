@@ -176,6 +176,8 @@ What the suite cannot check, and who checks it:
 - Task 3 deliberately writes tests that pass on an unchanged tree. They are not
   redundant: they are the definition of "task 6 did not break anything", and
   writing them after task 6 would mean writing them to fit whatever task 6 did.
-- No blocker is recorded against any other item. Children A and B are complete;
-  [the tree-store follow-up](tcw://W/2026-09-01-publish-provisioned-taxonomy-and-capabilities-writes-too)
-  is blocked by *this* item, not the reverse.
+- No blocker is recorded against any other item, and nothing is blocked by this
+  one. Children A and B are complete. Publishing the taxonomy and capabilities
+  trees was briefly filed as a follow-up and then dropped — see the spec's
+  Non-goals: those trees describe the code and land with it, so publishing them
+  separately would announce a capability before the code realizing it exists.
