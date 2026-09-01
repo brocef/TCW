@@ -57,10 +57,30 @@ call sites in the package are inside `FsStoreProvisioner`
 
 - **Resolving merge conflicts.** Detecting divergence and reporting it
   actionably is in scope; merging someone's work store for them is not.
-- **Publishing tree-store writes.** Child B made taxonomy and capabilities
-  declarable, and a provisioned tree has the same loss problem, but this item's
-  boundary is work transitions. The store interface below is shaped so the tree
-  stores can adopt it without redesign; doing so is a follow-up.
+- **Publishing tree-store writes — not as a boundary, but on purpose.** Child B
+  made taxonomy and capabilities declarable, so it is natural to ask why they do
+  not publish too. They should not, and the reason is worth stating so nobody
+  re-raises it as a gap.
+
+  A work item's state is the record of a *session's* activity. It changes
+  independently of any code — `tcw work start` happens before a line is written —
+  so a transition made in an ephemeral checkout has no other home, and losing it
+  loses the only copy. That is the whole initiative.
+
+  A taxonomy term or a capability status is a *claim about the code*. A
+  capability is realized when the code implementing it merges, not before, so the
+  edit belongs to the same change as the code and lands when that lands.
+  Publishing it on its own would decouple the claim from its realization —
+  announcing "capability X is `Supported`" to everyone reading the ledger while
+  the code making it supported is still unmerged, or abandoned. The ledger would
+  describe a product that does not exist.
+
+  So the asymmetry is not an accident of this item's scope: **work is published
+  because it is independent of the code; the trees are not published because they
+  are not.** The store interface below still lives on the abstract store rather
+  than on `WorkStore` alone, because "are my writes visible to anyone else?" is a
+  fair question to ask any store — but for a tree store the honest answer is no,
+  and it stays no.
 - The provisioning verb's contract, the config schema, and `FsTreeStore.open` —
   consumed unchanged.
 - Making transitions atomic across the network. They are not, cannot be, and the
@@ -300,6 +320,9 @@ is decorative — which is exactly the failure it exists to prevent.
 - The four numbered failure modes in section B are ordered by *when* they occur,
   not by severity, because when is what determines the answer. That ordering is
   what made the refuse/report asymmetry fall out rather than be chosen.
+- The tree-store question was raised at this stage, briefly filed as a follow-up
+  item, and then dropped once the reasoning above was worked out: it is not
+  deferred work, it is a thing that should not be built.
 - This is the first spec written under the `### Coverage` requirement added after
   the post-mortem on children A and B. Two observations for
   [the upstream item](tcw://W/2026-08-31-upstream-the-acceptance-criteria-coverage-table-to-tcw-s-own-spec-stage):
