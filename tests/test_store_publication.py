@@ -452,3 +452,54 @@ def test_nothing_is_published_when_nothing_is_committed(tmp_path, monkeypatch):
     assert main(["work", "start", slug]) == 0
 
     assert _remote_log(bare) == before, "pushed without a commit to publish"
+
+
+# ── the messages a real failure actually produces ───────────────────────────
+#
+# The tests above inject a clean `ValueError` to exercise the message *wrapper*.
+# That is not the same as checking what a user sees, and the difference hid two
+# defects: a bare-shell walk produced
+#
+#     tcw work: work.repository: git -C failed: and the repository exists.
+#
+# for an unreachable remote — the wrong subcommand, and git's least useful line.
+# These drive the real path.
+
+def test_an_unreachable_remote_at_refresh_says_why(tmp_path, monkeypatch, capsys):
+    """Criterion 3's second half. Nothing moved — but "says why" is a
+    requirement, and a truncated fragment of git's boilerplate does not."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    head = _head(code)
+    bare.rename(bare.parent / "moved-away.git")
+
+    assert main(["work", "start", slug]) == 1
+
+    _assert_nothing_moved(code, slug, "backlog", head)
+    err = capsys.readouterr().err
+    assert "git -C failed" not in err, err
+    assert "fetch" in err or "clone" in err, err
+    assert "does not appear to be a git repository" in err or "not found" in err, err
+
+
+def test_an_unreachable_remote_at_publish_says_where_the_work_is(
+        tmp_path, monkeypatch, capsys):
+    """Criterion 4 against the real failure. The refresh has to succeed and the
+    push has to fail, so the remote is removed *after* the refresh runs."""
+    code, bare, slug = _publishing_node(tmp_path, monkeypatch)
+    head = _head(code)
+    real = fs.FsWorkStore.refresh
+
+    def refresh_then_break(self):
+        real(self)
+        bare.rename(bare.parent / "moved-away.git")
+
+    monkeypatch.setattr(fs.FsWorkStore, "refresh", refresh_then_break)
+    assert main(["work", "start", slug]) == 1
+
+    store = FsWorkStore.open(code)
+    assert store.get(slug).status == "active", "the transition was rolled back"
+    assert _head(code) != head, "the transition was not committed"
+    err = capsys.readouterr().err
+    assert "git -C failed" not in err, err
+    assert str(store.store_git_root) in err, err
+    assert "push" in err, err

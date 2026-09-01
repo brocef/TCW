@@ -2585,6 +2585,39 @@ def _cache_key(declaration: RepositoryDeclaration) -> str:
     return f"{slug}-{digest}"
 
 
+def _git_subcommand(argv: list[str]) -> str:
+    """The verb in a git argv, for an error message.
+
+    `argv[1]` is not it. Every call here is built as
+    `["git", "-C", <path>, <verb>, …]`, so naming `argv[1]` reported "git -C
+    failed" for every failure the adapter has ever produced.
+    """
+    tokens = iter(argv[1:] if argv and argv[0] == "git" else argv)
+    for token in tokens:
+        if token == "-C":
+            next(tokens, None)                 # skip the path it takes
+            continue
+        if not token.startswith("-"):
+            return token
+    return "command"
+
+
+def _git_reason(done) -> str:
+    """The line of git's output worth showing.
+
+    Git puts the diagnosis first and the boilerplate last — an unreachable remote
+    ends with "and the repository exists.", which is what taking the *last* line
+    used to report. Prefer the first line git itself marked as the failure.
+    """
+    lines = [line.strip()
+             for line in (done.stderr or done.stdout or "").strip().splitlines()
+             if line.strip()]
+    for line in lines:
+        if line.startswith(("fatal:", "error:")):
+            return line
+    return lines[0] if lines else ""
+
+
 def _normalize_remote(url: str) -> str:
     """A remote URL reduced to the differences that matter for identity here:
     surrounding whitespace, a trailing slash, and a `.git` suffix. Nothing more —
@@ -2946,10 +2979,9 @@ class FsStoreProvisioner(StoreProvisioner):
         watching."""
         done = _git(argv, capture_output=True, text=True)
         if done.returncode != 0:
-            detail = (done.stderr or done.stdout or "").strip().splitlines()
             raise ValueError(
-                f"{self.component}.repository: git {argv[1]} failed: "
-                f"{detail[-1] if detail else f'exit {done.returncode}'}")
+                f"{self.component}.repository: git {_git_subcommand(argv)} failed: "
+                f"{_git_reason(done) or f'exit {done.returncode}'}")
 
 
 # ── FsWorkStore ──────────────────────────────────────────────────────────────
