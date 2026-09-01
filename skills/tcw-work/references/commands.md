@@ -139,6 +139,16 @@ absent rather than being followed. Nothing supported is lost — Git cannot trac
 a file through a symlink anyway. The same containment applies to taxonomy and
 capability entries and the files inside them.
 
+**A transition on a provisioned store talks to its remote.** It refreshes before
+moving and pushes after committing, so a transition can now fail *after* having
+succeeded locally — a state the rest of this document does not otherwise describe.
+Read the error rather than assuming the transition did not happen: if the refresh
+failed nothing moved and the item is untouched, but if the push failed the item
+**has** moved and is committed, and the message says where. Re-running is safe.
+Only a provisioned store does this (`work.publish-transitions: false` turns it
+off); a local `work.path` store never publishes, and neither do the taxonomy and
+capabilities trees, whose entries land with the code change that realizes them.
+
 **Every write needs a Git repository; every read does not.** Outside one, any
 writing command refuses with `not inside a git repository. Run `git init`
 first.`, exits non-zero, and changes nothing on disk — including `delegate` and

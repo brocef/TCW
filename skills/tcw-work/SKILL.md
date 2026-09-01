@@ -47,6 +47,10 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 
 ## Always
 
+- **A transition can fail after it succeeded.** On a provisioned store,
+  transitions push; a failed push means the item moved and is committed locally
+  but is not on the remote. The message says where the work is — do not re-run
+  blindly assuming nothing happened. `[judgment]` → `commands.md`
 - **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
   it. Never batch several stages into one commit. TCW commits the _transitions_
   itself; do not commit those by hand.

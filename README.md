@@ -255,15 +255,49 @@ the repository root, a key that is not one of the four — every command says wh
 line to fix. None of them falls back to "no tcw node here", which would send you
 to `tcw init` and scaffold a second, empty store beside the real one.
 
-Running it twice does nothing the second time. It is the **only** command that
-reaches the network, and only because you asked: a repository's config can name a
-URL, so nothing acts on that URL until you run this, and the remote is printed
-before it is contacted — and is the remote actually contacted, since a `checkout`
-directory already holding a different repository is refused before any fetch.
+Running it twice does nothing the second time. Nothing acts on a config-supplied
+URL until you ask: the remote is printed before it is contacted — and is the
+remote actually contacted, since a `checkout` directory already holding a
+different repository is refused before any fetch.
 
 A failure says why and leaves nothing new behind. A working copy you already had
 is never deleted for you: if it turns out to carry no store at the declared
 `path`, you are told, and it stays where it is.
+
+### Keeping a provisioned store in step
+
+A store you obtained with `tcw provision` is a working copy of somebody else's
+repository, and on a machine that may not last — a cloud session, a container.
+So its transitions travel: `tcw work start`, `submit` and `complete` bring the
+copy up to date before they move anything, and push the result afterwards.
+
+**Only a provisioned store does this.** A store found at your own `work.path`
+does not publish even when a `repository` block is also present — the
+declaration is a fallback and did not answer the read, so it does not cause a
+write, and that copy is on your disk for you to push. A store with no
+declaration at all never publishes; it commonly has a Git `origin` of its own,
+usually your project's, and TCW does not push your repository because you changed
+an item's status.
+
+Taxonomy and capabilities are not published, deliberately and not as an omission.
+A capability's status is a claim about the code, true when the code implementing
+it merges, so the edit belongs to that change and lands with it. Publishing one
+on its own would announce a capability while the code making it real is still
+unmerged.
+
+If the remote cannot be reached, *when* it fails decides what happens. The
+refresh runs first, before anything moves, so a failure there refuses the
+transition and leaves the item exactly as it was. The push runs last, after the
+move is committed locally, so a failure there tells you where your work is saved
+and exits non-zero without undoing it. A remote that has moved incompatibly is
+reported as divergence and never merged for you.
+
+To switch it off, `work.publish-transitions: false`:
+
+```yaml
+work:
+    publish-transitions: false     # default: true, for a provisioned store
+```
 
 **What is checked differs by component, and it is worth knowing which.** A work
 store is recognizable — it names six status folders — so a repository that has

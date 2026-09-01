@@ -3,6 +3,29 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## If you use a provisioned work store, your transitions now push
+
+**Read this one before you upgrade.** If your project's work items live in
+another repository and you fetched them with `tcw provision`, then starting,
+submitting or completing an item now talks to that repository: it brings your
+copy up to date first, and pushes the result afterwards.
+
+This is the point of the feature — work done in a cloud session or a container
+used to vanish with the machine — but it is a change to what a routine command
+does, so it should not be a surprise. To turn it off, put
+`publish-transitions: false` under `work:` in your config.
+
+Nothing changes if your work store is simply a folder on your own disk. Only a
+store TCW fetched for you publishes; one you already had is yours to push, and a
+project with no declared repository never touches a network at all.
+
+If the repository cannot be reached, what happens depends on when it fails. If
+the update at the start fails, nothing moves and the command stops — your item is
+exactly as it was. If the push at the end fails, the item has already moved and
+been saved locally, and the message tells you where it is saved and what to run
+when the remote is back. If someone else changed the same store in a way that
+conflicts, you are told; nothing is merged on your behalf.
+
 ## Your taxonomy and capabilities can live elsewhere too
 
 Work items could already live in another folder, or another repository, and be

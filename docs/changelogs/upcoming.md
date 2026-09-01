@@ -5,6 +5,17 @@ category.
 
 ### Added
 
+- Publication for provisioned work stores. `WorkStore` gains `publishes`,
+  `refresh()` and `publish()` — publication as a property of the store rather
+  than a verb on each transition, so a tracker-backed adapter answers `True` with
+  both methods as no-ops. No signature names a remote, a ref, a branch, or how
+  the store came to be the one in use.
+- `work.publish-transitions` (default true), read exactly as
+  `auto-commit-transitions` is, including its non-boolean-reads-as-default rule.
+- `FsWorkStore.refresh()` delegates to `FsStoreProvisioner.ensure_available(refresh=True)`
+  rather than reimplementing the plumbing, so a transition's refresh and
+  `tcw provision --refresh` cannot disagree about what up-to-date means.
+
 - `taxonomy.path` and `capabilities.path` in `tcw-config.yaml`, with
   `tcw init --taxonomy-path` and `--capabilities-path` to scaffold at them.
   `FsTreeStore.open` read no configuration at all before this: it was the single
@@ -21,6 +32,18 @@ category.
   ==` ladder.
 
 ### Changed
+
+- A transition on a provisioned store now refreshes before it moves anything and
+  pushes after it commits. Which failure you get depends on which step failed: a
+  refused refresh aborts with nothing changed, a failed push reports where the
+  work is saved and exits non-zero without rolling back — following
+  `_commit_transition`'s existing precedent for a failed commit.
+- Divergence is reported, never merged. The refresh is fast-forward only
+  (inherited from `FsStoreProvisioner._refresh`), so an incompatibly-moved remote
+  refuses at step 1, before the item moves. **`_refresh` now carries a note that
+  transition-divergence semantics depend on its ff-only behaviour** — its
+  docstring justified that on tags-and-commits grounds, which would not have
+  stopped someone relaxing it.
 
 - `PROVISION_COMPONENTS` widens from `("work",)` to every component. It was
   narrowed deliberately while only the work-store layout existed; the adapters
@@ -45,6 +68,16 @@ category.
   others.
 
 ### Fixed
+
+- `_refresh_before_transition` is called from **two** paths, not one.
+  `FsWorkStore.start` does not route through `_effect_transition` — it has its own
+  claim-based path, because the `.claiming/` rename is what makes concurrent
+  starts safe — so a hook in `_effect_transition` alone left `tcw work start`
+  unrefreshed and unpublished. That is the transition most likely to happen in a
+  fresh session, which is the case this feature exists for.
+- Publication is inside the auto-commit branch, not beside it. With
+  `auto-commit-transitions: false` the move is uncommitted, so a push would
+  contact the remote and publish nothing.
 
 - `find_node` answered "does this node have this component?" by looking for a
   literal `docs/<component>/` folder. That is exactly wrong for the case the
