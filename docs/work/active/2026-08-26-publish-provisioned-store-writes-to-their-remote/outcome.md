@@ -98,6 +98,23 @@ wiring step 4, not by the tables, and now covered by
 against section A and section B; they did not cross the two config switches
 against each other, because only one of them was in the Design section.
 
+**The documentation task broke a rule the docs themselves state.** Task 8 added
+four lines to `skills/tcw-work/SKILL.md`, and
+`test_the_router_stays_within_its_line_budget` failed at 64 against a budget of
+60 — the router was already exactly at budget, so any addition breaks it. The
+test's own words are *"the rule on breach is extract, never grow"*, and
+`docs/lifecycle/implementation.md` says a `SKILL.md` is a thin router with rare
+sub-procedures pushed into `references/`.
+
+Trimming to two lines still overflowed. The right answer was that this belongs in
+the router not at all: it is conditional detail — only provisioned stores publish
+— so it lives in `references/commands.md`, which already had it, and the router's
+existing pointer line grew four words instead. Zero new lines.
+
+Worth noting because the mistake was not carelessness about the budget; it was
+adding to the router without asking whether the content was *always* relevant,
+which is the actual rule the budget enforces.
+
 ## Did the Coverage requirement earn its cost?
 
 Recorded for
