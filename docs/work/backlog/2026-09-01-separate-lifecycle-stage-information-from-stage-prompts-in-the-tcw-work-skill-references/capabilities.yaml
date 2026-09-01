@@ -1,0 +1,6 @@
+# Shipping a built-in `inbox` stage prompt widens `tcw work stage` to all seven
+# stages, which contradicts two claims the capability's description makes today:
+# that TCW ships defaults for six stages, and that `tcw work stage inbox` is
+# refused. The capability stays Supported; its body is rewritten at completion.
+changed:
+    - work/run-a-lifecycle-stage
