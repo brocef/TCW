@@ -57,6 +57,10 @@ def test_each_row_is_what_the_lifecycle_contract_says():
     """Written out rather than derived, because the two non-obvious rows are
     exactly where a table written from the happy path goes wrong."""
     assert STAGE_STATUSES == {
+        # Empty means "no work-item status applies", which is a true statement
+        # about a stage that runs before an item exists — not "refused". The
+        # `inbox` branch in `_stage` is chosen by stage id; nothing reads this
+        # emptiness as a rejection.
         "inbox": (),
         "request": ("backlog",),
         "spec": ("backlog",),
@@ -122,12 +126,20 @@ def test_postmortem_is_rejected_on_a_discarded_item(one_of_each):
     assert "not legal" in r.stderr
 
 
-def test_inbox_is_rejected_with_its_reason(one_of_each):
+def test_inbox_refuses_a_work_item_argument(one_of_each):
+    """There is no item at this point, so a reference is a mistake to report,
+    never something to interpret.
+
+    The refusal must be its own: `inbox` has an empty legality row, so a branch
+    that fell through to the status check would report "not legal for an item in
+    'backlog'" — true of nothing and misleading about why.
+    """
     root, slugs = one_of_each
     r = _cli(root, "inbox", slugs["backlog"])
     assert r.returncode == 1
     assert r.stdout == ""
-    assert "runs before an item exists" in r.stderr
+    assert "takes no work item" in r.stderr
+    assert "not legal" not in r.stderr
 
 
 def test_an_unknown_stage_names_the_legal_ids(one_of_each):
@@ -229,6 +241,10 @@ def test_the_item_folder_is_byte_identical_after_every_legal_stage(tmp_path):
     st = FsWorkStore.open(root)
     item = st.create("Thing", body="req\n")
     st.write_artifact(item.slug, "spec", "# Spec\n")
+    # `inbox` is excluded deliberately, not left over: this test walks an
+    # *item* folder, and `inbox` neither takes an item nor appears in the loop
+    # below (its legality row is empty). Configuring it would add a binding no
+    # assertion here exercises.
     _configure(root, {"stages": {sid: {"prompt": [{"blob": f"{sid} text"}]}
                                  for sid in STAGE_IDS if sid != "inbox"}})
 
@@ -332,12 +348,18 @@ def test_an_unconfigured_node_prints_tcws_own_instructions(one_of_each):
         assert r.stdout == expected.rstrip() + "\n"
 
 
-def test_inbox_still_ships_no_prompt(one_of_each):
-    """`inbox` runs before an item exists, so it has no built-in to fall back
-    to — re-asserted here rather than assumed, because the floor is exactly the
-    change that could have given it one."""
-    root, slugs = one_of_each
-    assert "inbox" not in load_builtins().stage_prompts
-    r = _cli(root, "inbox", slugs["backlog"])
-    assert r.returncode == 1 and r.stdout == ""
-    assert "runs before an item exists" in r.stderr
+def test_inbox_prints_its_prompt_with_no_item(one_of_each):
+    """The stage that runs before an item exists, invoked the only way it can
+    be: with no reference at all.
+
+    Asserting the replaced message is absent, not just that the new one is
+    present — the refusal this supersedes said "runs before an item exists",
+    and a branch that still printed it while somehow exiting 0 would satisfy a
+    presence-only check.
+    """
+    root, _ = one_of_each
+    r = _cli(root, "inbox")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == load_builtins().stage_prompts["inbox"].rstrip() + "\n"
+    assert r.stderr == ""
+    assert "runs before an item exists" not in r.stderr

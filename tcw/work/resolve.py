@@ -54,15 +54,18 @@ def load_builtins() -> Builtins:
     is added to this return value — C6 populates `stage_prompts` from
     `tcw/work/prompts/*.md` right here, beside the artifact templates.
 
-    The stage set is the derivation `set(STAGE_IDS) - {"inbox"}`, never a
-    literal list, so adding a stage without its prompt file fails here rather
-    than shipping a stage that silently says nothing. `importlib.resources`
+    The stage set is the derivation `set(STAGE_IDS)`, never a literal list, so
+    adding a stage without its prompt file fails here rather than shipping a
+    stage that silently says nothing. `inbox` is in it: that stage runs before
+    an item exists, which shapes how it is *invoked* — with no work item
+    reference — but is no reason for TCW to have no instructions for it.
+    `importlib.resources`
     rather than a path off `__file__`: the latter assumes an unpacked directory
     and breaks under a zipimport-style install.
     """
     root = files("tcw.work")
     prompts = {}
-    for sid in sorted(set(STAGE_IDS) - {"inbox"}):
+    for sid in sorted(STAGE_IDS):
         rel = f"prompts/{sid}.md"
         try:
             text = (root / rel).read_text(encoding="utf-8")
