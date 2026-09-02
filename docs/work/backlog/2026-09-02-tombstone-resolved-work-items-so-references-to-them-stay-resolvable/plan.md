@@ -11,9 +11,15 @@ declared `review → active` only (`tcw/store/base.py:2186-2187`). So a tombston
 never has to be removed, and task 6 can refuse a tombstoned slug outright with
 no resurrection case to handle.
 
-**Also settled:** a `graveyard/` folder holding a YAML file inside the work
-store does not trip `tcw validate` (checked on a scratch node — `validate OK`).
-No bounds work is needed.
+**Also settled:** a YAML file added inside the work store does not trip
+`tcw validate` (checked on a scratch node — `validate OK`). No bounds work is
+needed.
+
+**Changed after the spec, at the requester's direction:** the graveyard is a
+single `${tcw.work}/graveyard.yaml` mapping, not one file per tombstone. Tasks 1,
+2 and 8 reflect that, and task 2 carries the two consequences the spec records —
+a shared path in the transition pathspec, and read-modify-write against
+concurrent completions.
 
 ---
 
@@ -22,12 +28,13 @@ No bounds work is needed.
 **Files.** `tcw/store/base.py` — a frozen `Tombstone` dataclass (`slug`,
 `resolution`, `resolved`), and a `WorkStore.tombstone(slug) -> Tombstone | None`
 abstract method beside `get` (:1696). `tcw/store/fs.py` — `FsWorkStore.tombstone`,
-reading `<store root>/graveyard/<slug>.yaml` through the tolerant `_safe_yaml`
-(:3558-3561). `tests/test_tombstone.py` — new.
+reading `<store root>/graveyard.yaml` through the tolerant `_safe_yaml`
+(:3558-3561) and returning the entry for `slug`. `tests/test_tombstone.py` — new.
 
-**Proves.** An entry written into `graveyard/` by hand comes back with its three
-fields; an absent slug returns `None`; malformed YAML returns `None` rather than
-raising, matching `_safe_yaml`'s stated degrade-don't-crash rule. Full suite
+**Proves.** An entry written into `graveyard.yaml` by hand comes back with its
+fields; a slug absent from the mapping returns `None`; a missing file returns
+`None`; malformed YAML returns `None` rather than raising, matching
+`_safe_yaml`'s stated degrade-don't-crash rule. Full suite
 green — `FsWorkStore` is the only concrete `WorkStore`, and
 `tests/test_stage_verb.py:206` only introspects the class rather than
 subclassing it, so a new abstract method breaks nothing.
@@ -38,23 +45,30 @@ subclassing it, so a new abstract method breaks nothing.
 
 **Files.** `tcw/store/fs.py` — `_effect_transition` (:4431): when `to_status` is
 in `RESOLVED_STATUSES`, write the tombstone before the move, and add
-`graveyard/<slug>.yaml` to the commit pathspec. `tests/test_tombstone.py`.
+`graveyard.yaml` to the commit pathspec. The write is **read-modify-write** on
+the mapping, never a blind append: two agents resolving different items touch the
+same file. `tests/test_tombstone.py`.
 
 **Why there.** `_effect_transition` is the one primitive every resolving route
 passes through: the normal path via `transition` (`base.py:2115`) and the
 backlog-epic bypass (`base.py:2265`). `start`'s separate claim-based path
 (fs.py:3901-3903) never targets a resolved status, so it needs no hook.
 
-**Proves.** After `complete --resolution done`, `graveyard/<slug>.yaml` records
-`done`; a discarding resolution records that resolution with the item in
-`discarded/`; the backlog-epic route records one too; and `git show --name-only`
-on the transition commit contains the tombstone — the assertion that it reaches
-another clone at all, which is the whole point.
+**Proves.** After `complete --resolution done`, `graveyard.yaml` has an entry
+for the slug reading `done`; a discarding resolution records that resolution with
+the item in `discarded/`; the backlog-epic route records one too; **resolving a
+second item leaves the first item's entry intact** (the read-modify-write
+assertion); and `git show --name-only` on the transition commit contains
+`graveyard.yaml` — the assertion that it reaches another clone at all, which is
+the whole point.
 
-**Watch.** The commit stays scoped — pathspec becomes `{item folder,
-graveyard/<slug>.yaml}`, both item-specific, so the promise in
-`work/complete-a-work-item` that unrelated working-tree edits are never swept in
-still holds. Assert it: an unrelated dirty file is not in the transition commit.
+**Watch.** The pathspec becomes `{item folder, graveyard.yaml}`, and the second
+path is **shared with every other item** — the one hole in
+`work/complete-a-work-item`'s promise that unrelated working-tree edits are never
+swept in, since a concurrent agent's uncommitted graveyard edit would ride along.
+Assert what still holds: an unrelated dirty file elsewhere in the tree is not in
+the transition commit. If the shared-path exposure turns out to matter more than
+it looks, say so at `verify` rather than quietly switching layouts.
 
 ## Task 3 — `tcw work tombstone add`
 
@@ -116,7 +130,7 @@ as broken in the viewer.
 
 ## Task 8 — Backfill this repository and unblock completion
 
-**Files.** `docs/work/graveyard/*.yaml` — four entries, **written by
+**Files.** `docs/work/graveyard.yaml` — four entries, **written by
 `tcw work tombstone add`**, never by hand.
 
 **Proves.** Spec criterion 9: `tcw validate` exits 0 in this repository, and
@@ -150,7 +164,7 @@ triggers fire.
   references to finished work stop being reported as mistakes; validate now
   gives the same answer in every checkout; existing repositories need
   `tcw work tombstone add` to backfill before they see the benefit; a new
-  `graveyard/` directory appears and is kept permanently.
+  `graveyard.yaml` file appears and is kept permanently.
 - **`docs/changelogs/upcoming.md`** — [Any-Code-Change] **fires.** Grouped
   Added/Fixed/Internal, naming the abstract method, the `_effect_transition`
   hook, the `_unique_slug` collision, and the two negative sweep results.
@@ -177,17 +191,17 @@ What the suite cannot check, to be done by hand at `implement`:
    asserting it.
 4. **CI on both legs** (spec criterion 11) — green on 3.11 and 3.14, which only
    the runner can settle.
-5. **A judgment call for the user at review:** whether `graveyard/` should be
-   gitignorable at all. This plan makes it tracked unconditionally, because an
+5. **A judgment call for the user at review:** whether `graveyard.yaml` should
+   be gitignorable at all. This plan makes it tracked unconditionally, because an
    ignorable graveyard reproduces the exact defect one level up. Worth confirming
    that is wanted before it ships.
 
 ## Notes
 
 - **Naming**, left open by the spec and settled here: `Tombstone` /
-  `tombstone()` for the model, `graveyard/` for the folder. The record is a
-  tombstone; the place they live is the graveyard. If the requester prefers one
-  word throughout, change it in task 1 before anything depends on it.
+  `tombstone()` for the model, `graveyard.yaml` for the file. The record is a
+  tombstone; the place they all live is the graveyard. If the requester prefers
+  one word throughout, change it in task 1 before anything depends on it.
 - Task 6 is the only task fixing a *silent wrong answer* rather than a noisy
   one, and it is sequenced after the mechanism it needs but before the
   documentation pass, so it cannot be dropped for time.

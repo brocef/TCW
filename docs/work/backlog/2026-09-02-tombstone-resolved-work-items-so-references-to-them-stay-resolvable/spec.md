@@ -129,19 +129,31 @@ the interface mentions files, commits, or history.
 
 ### The filesystem realization
 
-One file per tombstone: `<store>/graveyard/<slug>.yaml`, holding the three
-fields. Per-slug rather than one appended registry, for two reasons:
+**One file for the whole store: `<store>/graveyard.yaml`** — a mapping of slug
+to its `resolution` and `resolved` date. Requester's decision, taken after the
+per-slug alternative below was put to them.
 
-- **Commit scoping.** `complete` commits scoped to the item's own folders so
-  unrelated working-tree edits are never swept in (`work/complete-a-work-item`).
-  A single store-root registry would force every transition commit to include a
-  path shared with every other item. `graveyard/<slug>.yaml` is still
-  item-specific, so the pathspec stays `{item folder, graveyard/<slug>.yaml}`.
-- **Concurrency.** This store is explicitly multi-agent (`docs/work/.claiming/`).
-  Two agents completing different items append to the same registry line region
-  and conflict; separate files never do.
+It is tracked, unconditionally. It must be, or the whole defect reproduces one
+level up: an ignorable graveyard is invisible in exactly the clones that need it.
 
-The folder is tracked — it must be, or the whole defect reproduces one level up.
+Two consequences follow from one shared file rather than one file per tombstone.
+Neither blocks the design; both are recorded so `implement` handles them
+deliberately rather than discovering them.
+
+- **Commit scoping widens by one path.** `complete` commits scoped to the item's
+  own folders so unrelated working-tree edits are never swept in
+  (`work/complete-a-work-item`). The pathspec becomes `{item folder,
+  graveyard.yaml}`, and that second path is shared with every other item — so a
+  concurrent agent's *uncommitted* edit to `graveyard.yaml` would ride along in
+  this item's transition commit. Narrow, but it is the promise's one hole.
+- **Concurrent completions can conflict.** This store is explicitly multi-agent
+  (`docs/work/.claiming/`). Two agents resolving different items write the same
+  file; the write must be read-modify-write rather than a blind append, and a
+  merge conflict on it is a plain YAML conflict a human can settle.
+
+A single file also buys something real: it is one greppable artifact, it makes
+the count of resolved items obvious, and it does not scatter thousands of
+near-empty files through the store over a project's life.
 
 ### Writing and reading
 
@@ -205,9 +217,10 @@ currently **fails** in the way the criterion describes (that is the point).
   slug that is legitimately live again. `plan` must establish whether such a
   path exists; if it does, tombstone removal is part of it.
 - **The graveyard becomes the thing kept forever.** Deliberate and bounded: one
-  small file per resolved item, three fields, no documents. It is not what the
-  requester asked not to keep. Still worth stating plainly in the release note,
-  since it is a new permanent directory in every adopting repo.
+  file, two fields per resolved item, no documents. It is not what the requester
+  asked not to keep. Still worth stating plainly in the release note, since it
+  is a new permanent file in every adopting repo — and it grows monotonically,
+  so a very long-lived store should expect a large-ish YAML mapping.
 - **A tombstone can be wrong.** Nothing verifies the item really was resolved —
   `tombstone add` trusts its caller, which is what makes the backfill possible.
   The refusal in criterion 7 is the only guard.
@@ -216,7 +229,7 @@ currently **fails** in the way the criterion describes (that is the point).
   sentence in the release note pointing at `tombstone add`.
 - **Naming.** "Graveyard" is the requester's word, "tombstone" the industry one
   for exactly this record. The spec uses `tombstone` for the model and
-  `graveyard/` for the folder; if that split reads badly, settle it in `plan`
+  `graveyard.yaml` for the file; if that split reads badly, settle it in `plan`
   before any code is written.
 
 ## Notes
