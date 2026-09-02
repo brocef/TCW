@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Locating the earliest catchable miss. `tcw work stage postmortem <slug>` prints
-the methodology; this document carries only what the CLI cannot.
+Locating the earliest catchable miss.
+Get your instructions on how to produce the output by running
+`tcw work stage postmortem <slug>`.
 
 ## Inputs
 

@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Deciding how. `tcw work stage plan <slug>` prints the methodology; this
-document carries only what the CLI cannot.
+Deciding how.
+Get your instructions on how to produce the output by running
+`tcw work stage plan <slug>`.
 
 ## Inputs
 
