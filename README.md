@@ -731,6 +731,35 @@ Blocked-ness is a **derived overlay**: an item is blocked when it has at least
 one unresolved blocker recorded in its data — there is no separate "blocked"
 folder or status.
 
+### References to work that is finished
+
+Resolving an item takes its documents out of the tracked tree, so a
+`tcw://W/<slug>` link to it would have nothing to resolve against. Completing
+and discarding therefore **record the slug**, in `graveyard.yaml` beside the
+status folders, and the record rides the same commit as the status change. A
+reference to finished work then keeps resolving: `tcw validate` says nothing
+about it, and `tcw serve` shows it inert rather than broken. A reference to a
+slug the project never held is still an error, in the same words as before —
+that distinction is the whole point of the record.
+
+The record says the slug existed and how it was resolved. It deliberately does
+**not** say where the documents went: any such pointer stops working the moment
+history is squashed, rebased, or shallowly cloned, and a pointer that quietly
+breaks is worse than none. How long resolved documents are kept stays your
+call — `completed/` and `discarded/` are gitignored by default, and a project
+that wants them in the tracked tree simply does not ignore them.
+
+For work resolved **before** your project kept these records — including
+everything resolved before this feature existed — record a slug by hand:
+
+```bash
+tcw work tombstone add <slug> --resolution done --resolved 2026-09-01
+```
+
+Both flags are optional; omit them when nobody kept the detail, since the
+record's job is to say the slug existed. It refuses a slug that is currently a
+live item, and commits what it writes.
+
 ### Binding your own skills and commands to the lifecycle
 
 The lifecycle has named **stages** (each producing one document) and named

@@ -103,6 +103,22 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
 A completable epic — every child resolved — may complete **directly from
 `backlog`**, with no throwaway `start`.
 
+**Resolving records the slug.** Both `complete` and `discard` write the item's
+slug to `graveyard.yaml` at the store root, in the same commit as the status
+move, so `tcw://W/<slug>` references to it keep resolving after its documents
+leave the tracked tree. A slug with no record is still an unresolvable
+reference — that is the distinction, and it is why `tcw validate` now gives the
+same answer in every checkout rather than depending on who ran the transition.
+
+The transition **refuses** if `graveyard.yaml` cannot be written safely: it is
+unparseable, is not a mapping, or holds uncommitted changes TCW did not make.
+Nothing moves on that refusal. Since every graveyard write commits itself, a
+dirty graveyard means something already went wrong — do not work around it by
+committing the stray edit under the item's name. `[gated]`
+
+For work resolved before the store kept records, `tcw work tombstone add <slug>`
+records one after the fact; see [`commands.md`](commands.md).
+
 ## discard — `backlog | active | review → discarded`
 
 `tcw work complete <slug> --resolution wontfix|duplicate|superseded --confirm`

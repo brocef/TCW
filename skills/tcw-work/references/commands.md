@@ -15,6 +15,7 @@
 | finish work              | `tcw work complete <slug> --resolution done --confirm [--already-integrated]`                                                                   |
 | close without shipping   | `tcw work complete <slug> --resolution wontfix\|duplicate\|superseded --confirm`                                                                |
 | delete a backlog item    | `tcw work drop <slug> --confirm` (no record kept)                                                                                               |
+| record a resolved slug   | `tcw work tombstone add <slug> [--resolution <r>] [--resolved <ISO>]` — for work resolved *before* the store kept records; refuses a live slug   |
 | record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated                                |
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>`                                                                               |
 | retitle an item          | `tcw work edit <slug> --title "<new title>"` — the slug is the stable ID and does not change; the body's `#` heading is prose you edit yourself |
