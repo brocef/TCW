@@ -50,19 +50,19 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
   it. Never batch several stages into one commit. TCW commits the _transitions_
   itself; do not commit those by hand.
-- **Run `tcw work stage <id> <slug>`** at every stage entry: it runs any binding
-  and otherwise prints TCW's own instructions → [`hooks.md`](references/hooks.md)
+- **Run `tcw work stage <id> <slug>`** at every stage entry — it carries the
+  methodology, the stage document only what the CLI cannot. Bindings →
+  [`hooks.md`](references/hooks.md) · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
 - For a small change, ask whether to compress planning detail — but keep the item
   the durable source of truth and write whatever is needed to resume or review.
 
 ## Read on demand
 
 - [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, slash commands, the documentation gate (`tcw work docs`), publication on a provisioned store
-- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents
+- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into nested pieces
 - [`tags.md`](references/tags.md) — the node's tag vocabulary
 - [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences
 - [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
-- [`decompose.md`](references/procedures/decompose.md) — splitting one item into nested pieces
 - **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources
 
 > **Web editing:** items, artifacts (Request/Spec/Plan as tabs), and the `capabilities.yaml`
