@@ -152,12 +152,16 @@ Two consequences follow from one shared file rather than one file per tombstone.
 Neither blocks the design; both are recorded so `implement` handles them
 deliberately rather than discovering them.
 
-- **Commit scoping widens by one path.** `complete` commits scoped to the item's
-  own folders so unrelated working-tree edits are never swept in
-  (`work/complete-a-work-item`). The pathspec becomes `{item folder,
-  graveyard.yaml}`, and that second path is shared with every other item — so a
-  concurrent agent's *uncommitted* edit to `graveyard.yaml` would ride along in
-  this item's transition commit. Narrow, but it is the promise's one hole.
+- **Commit scoping widens by one path, and the write is committed like any other
+  TCW write.** `complete` commits scoped to the item's own folders so unrelated
+  working-tree edits are never swept in (`work/complete-a-work-item`). The
+  pathspec becomes `{item folder, graveyard.yaml}`, and that second path is
+  shared with every other item. The promise is kept by **refusing rather than
+  absorbing**: if `graveyard.yaml` carries uncommitted changes TCW did not just
+  make, the transition fails with a conflict error and moves nothing, instead of
+  sweeping a concurrent agent's edit into this item's commit. Every graveyard
+  write commits itself, so a dirty graveyard means something went wrong and is
+  worth stopping for.
 - **Concurrent completions can conflict.** This store is explicitly multi-agent
   (`docs/work/.claiming/`). Two agents resolving different items write the same
   file; the write must be read-modify-write rather than a blind append, and a
@@ -171,7 +175,8 @@ near-empty files through the store over a project's life.
 
 - `complete` and `discard` write the tombstone as part of the transition.
 - `tcw work tombstone add <slug> [--resolution r] [--resolved date]` records one
-  after the fact. Required, not a convenience: this repository's four failing
+  after the fact, committing its write the way TCW commits a transition and
+  honouring the same `work.auto-commit-transitions` setting. Required, not a convenience: this repository's four failing
   references name items resolved before any graveyard existed, so Goal 2 is
   unreachable without it. It is also the migration path for every existing
   adopter. A CLI command rather than deriving entries from git history, which
@@ -221,6 +226,13 @@ currently **fails** in the way the criterion describes (that is the point).
     store implementing `tombstone()` by consulting its own resolved items
     satisfies the interface.
 11. The full suite passes on both matrix legs in CI.
+12. A transition into a resolved status, run while `graveyard.yaml` holds
+    uncommitted changes TCW did not just make, **refuses** with a conflict error
+    and leaves the item's status unchanged — the edit is not committed, and the
+    item does not move.
+13. `tcw work tombstone add` leaves no uncommitted change behind: its write is
+    committed, and setting `work.auto-commit-transitions: false` suppresses that
+    commit exactly as it does for a transition.
 
 ## Risks
 
@@ -239,10 +251,10 @@ currently **fails** in the way the criterion describes (that is the point).
 - **Adopters with existing history see no improvement until they backfill.**
   The feature is inert for references written before it shipped. Worth a
   sentence in the release note pointing at `tombstone add`.
-- **Naming.** "Graveyard" is the requester's word, "tombstone" the industry one
-  for exactly this record. The spec uses `tombstone` for the model and
-  `graveyard.yaml` for the file; if that split reads badly, settle it in `plan`
-  before any code is written.
+- **Naming — settled, not a risk.** `Tombstone` / `tombstone()` for the model,
+  `graveyard.yaml` for the file: the record is a tombstone, the place they all
+  live is the graveyard. Confirmed by the requester; recorded here so it is not
+  reopened.
 
 ## Notes
 

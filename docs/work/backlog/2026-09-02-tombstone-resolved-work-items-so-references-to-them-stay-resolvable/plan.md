@@ -62,13 +62,16 @@ assertion); and `git show --name-only` on the transition commit contains
 `graveyard.yaml` — the assertion that it reaches another clone at all, which is
 the whole point.
 
-**Watch.** The pathspec becomes `{item folder, graveyard.yaml}`, and the second
-path is **shared with every other item** — the one hole in
-`work/complete-a-work-item`'s promise that unrelated working-tree edits are never
-swept in, since a concurrent agent's uncommitted graveyard edit would ride along.
-Assert what still holds: an unrelated dirty file elsewhere in the tree is not in
-the transition commit. If the shared-path exposure turns out to matter more than
-it looks, say so at `verify` rather than quietly switching layouts.
+**Refuse, don't absorb.** The pathspec becomes `{item folder, graveyard.yaml}`,
+and the second path is shared with every other item. Rather than accept that as a
+hole in `work/complete-a-work-item`'s promise, the transition **fails with a
+conflict error** when `graveyard.yaml` carries uncommitted changes TCW did not
+just make, moving nothing. Every graveyard write commits itself, so a dirty
+graveyard means something already went wrong.
+
+**Also proves.** Spec criterion 12: with a hand-dirtied `graveyard.yaml`, a
+`complete` refuses, the item stays put, and the stray edit is not committed. And
+that an unrelated dirty file *elsewhere* in the tree is still not swept in.
 
 ## Task 3 — `tcw work tombstone add`
 
@@ -78,7 +81,9 @@ it looks, say so at `verify` rather than quietly switching layouts.
 **Proves.** Records an entry for a slug with no live item. Refuses non-zero and
 writes nothing when the slug is live. Refuses a resolution outside
 `done|wontfix|duplicate|superseded`. `--resolved` defaults to today and accepts
-an explicit ISO date.
+an explicit ISO date. Spec criterion 13: the write is **committed**, leaving no
+uncommitted change behind, and `work.auto-commit-transitions: false` suppresses
+that commit exactly as it does for a transition.
 
 **Required, not convenience.** The four references failing in this repository
 name items resolved before any graveyard existed; without this command spec
@@ -195,17 +200,19 @@ What the suite cannot check, to be done by hand at `implement`:
    asserting it.
 4. **CI on both legs** (spec criterion 11) — green on 3.11 and 3.14, which only
    the runner can settle.
-5. **A judgment call for the user at review:** whether `graveyard.yaml` should
-   be gitignorable at all. This plan makes it tracked unconditionally, because an
-   ignorable graveyard reproduces the exact defect one level up. Worth confirming
-   that is wanted before it ships.
+5. **Settled by the requester, recorded so it is not reopened:**
+   `graveyard.yaml` is tracked unconditionally and is deliberately *not*
+   gitignorable — an ignorable graveyard reproduces the exact defect one level
+   up, which is the point of the file. Confirm at `implement` that no code path
+   lets an ignore rule hide it; `_warn_hidden` (`tcw/store/fs.py:362`) is the
+   existing precedent for noticing that case.
 
 ## Notes
 
-- **Naming**, left open by the spec and settled here: `Tombstone` /
+- **Naming is settled** and confirmed by the requester: `Tombstone` /
   `tombstone()` for the model, `graveyard.yaml` for the file. The record is a
-  tombstone; the place they all live is the graveyard. If the requester prefers
-  one word throughout, change it in task 1 before anything depends on it.
+  tombstone; the place they all live is the graveyard. Not to be reopened at
+  `implement`.
 - Task 6 closes the one path that would produce a *silent wrong answer* rather
   than a noisy one. It is sequenced after the mechanism it needs but before the
   documentation pass, so it cannot be dropped for time — it is half of what the
