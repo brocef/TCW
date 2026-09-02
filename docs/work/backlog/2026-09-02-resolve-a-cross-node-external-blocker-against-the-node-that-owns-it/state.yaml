@@ -1,0 +1,10 @@
+slug: 2026-09-02-resolve-a-cross-node-external-blocker-against-the-node-that-owns-it
+title: 'Resolve a cross-node external: blocker against the node that owns it'
+created: '2026-09-02'
+resolution: null
+priority: 45
+effort: medium
+tags:
+- cli
+- work
+- bug
