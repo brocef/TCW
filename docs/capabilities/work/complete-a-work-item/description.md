@@ -18,3 +18,16 @@ If the work branch was merged outside TCW — a merged pull request, say — I a
 Completed items no longer store a Definition-of-Done list. It was the same checklist on every item, so it recorded nothing; the checklist is still printed before I confirm. Which entries it holds is my node's to choose — see [Customize the Definition of Done](tcw://C/work/customize-the-definition-of-done).
 
 When the item came from a GitHub issue, closing it out includes answering that issue: `tcw work show <slug>` prints the item's body — its `initial-request.md`, or the `intake.md` it was filed from when no request has been written — and that body records the issue under `## Origin`. `done`, `duplicate`, and `wontfix` close the issue; `superseded` closes it only when the superseding item absorbed the request rather than deferring it. A discard prints no checklist at all, so on those paths nothing prompts me — see [Triage GitHub issues into work items](tcw://C/plugin/triage-github-issues).
+
+Completing an item **records its slug**, so references to it keep resolving
+after its documents leave the tracked tree. The record travels with the same
+commit as the status change, which is what carries it to everyone else who
+clones the project. It says the slug existed and how it was resolved, and
+deliberately does not say where the documents went: any such pointer would stop
+working the moment history was squashed, rebased, or shallowly cloned, and a
+pointer that quietly breaks is worse than none.
+
+If the record cannot be written safely — it has uncommitted changes that are not
+mine, or it has been damaged by hand — the tool refuses and the item does not
+move, rather than committing someone else's edit under my item's name or
+overwriting what is already recorded.

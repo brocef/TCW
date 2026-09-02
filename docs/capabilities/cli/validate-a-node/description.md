@@ -18,3 +18,14 @@ a typo is never hidden behind a dead path.
 All three apply to each of the three components. A store that cannot be opened
 is reported as one problem beside the others rather than ending the run, so one
 unprovisioned tree does not hide the rest of a node's faults.
+
+A reference to a work item this project once held and has since completed or
+discarded is **not** a problem. Finishing work is normal, and reporting every
+reference to finished work as a mistake buries the real ones. A reference to a
+slug the project never held is still reported, in the same words as before —
+that distinction is the point.
+
+Validation gives the **same answer in every checkout**. It reads only what is
+committed, so it no longer matters whether the machine running it happens to be
+the one that resolved an item: the verdict is a property of the project, not of
+a working directory. That is what makes it usable as a gate on finishing work.

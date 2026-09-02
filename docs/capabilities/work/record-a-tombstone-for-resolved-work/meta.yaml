@@ -1,0 +1,7 @@
+id: cap-a458b8
+name: Record a tombstone for resolved work
+Status: Supported
+Planning doc: 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable
+Subject:
+- work-item
+- reference
