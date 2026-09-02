@@ -19,7 +19,7 @@ behaviour a user expects, and this item makes the code match.
 A `tcw://W/<slug>` reference to a completed or discarded item is reported
 identically to a reference to a slug that never existed —
 `no such work item: <slug>` (`tcw/store/fs.py:347`, reached from
-`tcw/refs.py:135-140`, where a W ref fails when `store.get(bare) is None`).
+`tcw/refs.py:132-134`, where a W ref fails when `store.get(bare) is None`).
 
 But the sharper defect is that **the answer is not reproducible across
 checkouts.** `completed/` and `discarded/` are gitignored by default
@@ -153,7 +153,7 @@ The folder is tracked — it must be, or the whole defect reproduces one level u
   adopter. A CLI command rather than deriving entries from git history, which
   would be exactly the "reconstruct state from history" trick the prime
   directive forbids.
-- `tcw/refs.py`, at the `store.get(bare) is None` branch (:135-140), consults
+- `tcw/refs.py`, at the `store.get(bare) is None` branch (:132-134), consults
   `tombstone()` before failing, and reports success with the resolved status.
 - `tcw/validate.py` (:182-190) therefore stops reporting these, with no change
   of its own beyond what the resolver returns.
