@@ -417,6 +417,141 @@ def test_cli_drift_active_planning_doc_not_flagged(tmp_path, monkeypatch, capsys
     assert main(["capabilities", "drift"]) == 0
 
 
+# ── drift does not depend on which machine is asking ──────────────────────────
+#
+# `completed/` and `discarded/` are gitignored, and resolving an item *moves* its
+# folder there rather than deleting it — so the folder is present for whoever ran
+# the transition and reaches no other clone. Answering "did this ship?" from
+# `get()` therefore answered differently depending on who asked, and the silent
+# direction was under-reporting: `drift` exited 0 with "no capability drift" in
+# CI and in every colleague's clone. The tombstone is the same answer from a
+# source that travels.
+
+
+def _shipped_capability(tmp_path: Path, resolution: str = "done") -> tuple[Path, str]:
+    """A Missing capability whose `Planning doc` names an item resolved as
+    `resolution`, with the item's resolved folder still on disk."""
+    from tcw.store.fs import FsWorkStore, init
+    root = node(tmp_path)
+    init(["work"], root)
+    write_cap(root, "auth/login", Status="Missing")
+    st = FsWorkStore.open(root)
+    slug = st.create("Ship login", created="2026-01-01").slug
+    FsCapabilitiesStore.open(root).set("auth/login", {"Planning doc": slug})
+    if resolution == "done":
+        # `(backlog, completed)` is not a legal transition for a plain item —
+        # only a discard may close straight from backlog.
+        st.start(slug)
+    st.complete(slug, resolution, dod_ack=[], force=True)
+    return root, slug
+
+
+def _make_it_a_fresh_clone(root: Path, slug: str) -> None:
+    """Remove the resolved item's folder, which is what every other checkout
+    sees: the folder is gitignored, so it never arrived there at all."""
+    import shutil
+    from tcw.store.fs import FsWorkStore
+    st = FsWorkStore.open(root)
+    for status in ("completed", "discarded"):
+        target = st.root / status / slug
+        if target.exists():
+            shutil.rmtree(target)
+            return
+    raise AssertionError(f"{slug} is in no resolved folder; the fixture is wrong")
+
+
+def test_cli_drift_reports_a_shipped_item_whose_folder_is_gone(
+        tmp_path, monkeypatch, capsys):
+    """Spec criterion 1. The capability's work shipped; the only thing missing is
+    the folder, which was never going to be here."""
+    from tcw.cli import main
+    root, slug = _shipped_capability(tmp_path)
+    _make_it_a_fresh_clone(root, slug)
+    monkeypatch.chdir(root)
+
+    assert main(["capabilities", "drift"]) == 1
+    out = capsys.readouterr().out
+    assert "shipped-missing" in out and "auth/login" in out
+
+
+def test_cli_drift_gives_the_same_verdict_either_side_of_the_ignore_rule(
+        tmp_path, monkeypatch, capsys):
+    """Spec criterion 2, and the criterion this whole item exists for.
+
+    Asserts the two runs are *equal* rather than re-asserting the value: the
+    defect was never a wrong answer, it was two different answers to the same
+    question at the same commit, and equality is what says so.
+    """
+    from tcw.cli import main
+    root, slug = _shipped_capability(tmp_path)
+    monkeypatch.chdir(root)
+
+    here_code = main(["capabilities", "drift"])
+    here_out = capsys.readouterr().out
+
+    _make_it_a_fresh_clone(root, slug)
+
+    clone_code = main(["capabilities", "drift"])
+    clone_out = capsys.readouterr().out
+
+    assert (here_code, here_out) == (clone_code, clone_out)
+
+
+def test_cli_drift_still_ignores_a_discarded_item_whose_folder_is_gone(
+        tmp_path, monkeypatch, capsys):
+    """Spec criterion 3. The distinction `drift` makes on purpose — "did it
+    ship?", not "is it closed?" — has to survive being answered from the record
+    rather than from the folder, or this fix trades a false negative for the
+    false positive the command was already careful to avoid."""
+    from tcw.cli import main
+    root, slug = _shipped_capability(tmp_path, resolution="wontfix")
+    _make_it_a_fresh_clone(root, slug)
+    monkeypatch.chdir(root)
+
+    assert main(["capabilities", "drift"]) == 0
+    assert "no capability drift" in capsys.readouterr().out
+
+
+def test_cli_drift_is_silent_when_the_record_kept_no_resolution(
+        tmp_path, monkeypatch, capsys):
+    """Spec criterion 4. A backfilled record often has no resolution, because
+    whoever backfilled it did not know one. Reporting on that would mean guessing
+    that unknown means shipped, and the requester chose silence over ever calling
+    abandoned work shipped."""
+    from tcw.cli import main
+    from tcw.store.fs import init
+    root = node(tmp_path)
+    init(["work"], root)
+    write_cap(root, "auth/login", Status="Missing")
+    FsCapabilitiesStore.open(root).set("auth/login",
+                                       {"Planning doc": "2026-01-01-long-gone"})
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-long-gone"]) == 0
+    capsys.readouterr()
+
+    assert main(["capabilities", "drift"]) == 0
+    assert "no capability drift" in capsys.readouterr().out
+
+
+def test_cli_drift_ignores_a_planning_doc_naming_a_slug_that_never_existed(
+        tmp_path, monkeypatch, capsys):
+    """Spec criterion 5, and a regression guard rather than a defect test — it
+    passes before and after. It is the case that separates "resolved" from
+    "typo", which is the distinction the whole tombstone mechanism exists to
+    draw, so it is worth pinning where the drift lookup can see it."""
+    from tcw.cli import main
+    from tcw.store.fs import init
+    root = node(tmp_path)
+    init(["work"], root)
+    write_cap(root, "auth/login", Status="Missing")
+    FsCapabilitiesStore.open(root).set("auth/login",
+                                       {"Planning doc": "2026-01-01-never-was"})
+    monkeypatch.chdir(root)
+
+    assert main(["capabilities", "drift"]) == 0
+    assert "no capability drift" in capsys.readouterr().out
+
+
 def test_cli_drift_no_work_node_no_error(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)                             # capabilities only, no work
