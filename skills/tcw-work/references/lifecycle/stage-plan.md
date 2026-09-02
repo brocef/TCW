@@ -4,7 +4,7 @@
 
 Deciding how.
 Get your instructions on how to produce the output by running
-`tcw work stage plan <slug>`.
+`tcw work stage begin plan <slug>`.
 
 ## Inputs
 

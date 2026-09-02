@@ -21,7 +21,7 @@ and Codex while a skill only reaches whoever installed the plugin.
 ## Reading one
 
 ```sh
-tcw work stage <id> <slug>     # `inbox` takes no reference — it runs first
+tcw work stage begin <id> <slug>  # `inbox` takes no reference — it runs first
 ```
 
 No checkout required: the command resolves the prompt out of the installed

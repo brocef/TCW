@@ -4,7 +4,7 @@
 
 Turning a raw drop into a tracked item.
 Get your instructions on how to produce the output by running
-`tcw work stage inbox` — no work item reference, because none exists yet.
+`tcw work stage begin inbox` — no work item reference, because none exists yet.
 
 A **GitHub issue is the same shape from a different source**: someone else's raw
 text, accepted or rejected. The `tcw-triage-issues` skill sweeps a project's open

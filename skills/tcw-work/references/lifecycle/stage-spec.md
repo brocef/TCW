@@ -4,7 +4,7 @@
 
 Deciding what to build.
 Get your instructions on how to produce the output by running
-`tcw work stage spec <slug>`.
+`tcw work stage begin spec <slug>`.
 
 ## Inputs
 

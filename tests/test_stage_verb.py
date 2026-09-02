@@ -33,6 +33,20 @@ def _configure(root: Path, lifecycle: dict) -> None:
 
 
 def _cli(root: Path, *args: str):
+    """`tcw work stage begin …` — the verb that gates, which is what most of
+    this module is about. `_prompt` is the ungated sibling."""
+    return subprocess.run(["tcw", "work", "stage", "begin", *args],
+                          cwd=str(root), capture_output=True, text=True)
+
+
+def _prompt(root: Path, *args: str):
+    """`tcw work stage prompt …` — no legality check, no `pre` bindings."""
+    return subprocess.run(["tcw", "work", "stage", "prompt", *args],
+                          cwd=str(root), capture_output=True, text=True)
+
+
+def _bare(root: Path, *args: str):
+    """The form removed in 2.0.0, invoked to prove it is refused."""
     return subprocess.run(["tcw", "work", "stage", *args], cwd=str(root),
                           capture_output=True, text=True)
 
@@ -231,8 +245,15 @@ def test_no_mutating_store_method_is_called(tmp_path, monkeypatch):
                             (lambda n: lambda *a, **k: called.append(n))(name))
 
     monkeypatch.chdir(root)
-    assert main(["work", "stage", "spec", item.slug]) == 0
-    assert called == []
+    assert main(["work", "stage", "begin", "spec", item.slug]) == 0
+    assert called == [], f"`begin` called mutators: {called}"
+
+    # `prompt` skips the gate, so it reaches resolution by a different path and
+    # needs its own guard — the property is the same and the route is not.
+    assert main(["work", "stage", "prompt", "spec", item.slug]) == 0
+    assert called == [], f"`prompt` called mutators: {called}"
+    assert main(["work", "stage", "prompt", "spec"]) == 0
+    assert called == [], f"itemless `prompt` called mutators: {called}"
 
 
 def test_the_item_folder_is_byte_identical_after_every_legal_stage(tmp_path):

@@ -26,7 +26,7 @@ one write path where a node's config can substitute a whole document.
 | 9 | Two `when:` bindings where both match: the **first** wins, and the second's content is absent. |
 | 10 | A `file:` template resolves relative to the node root; a missing file exits non-zero naming the path. |
 | 11 | A `{{tcw:documentation}}` span inside an **artifact template** is written **verbatim**, token and all — substitution is a prompt-role behaviour. Asserted on a node that *does* configure documentation entries, so a passing test means "deliberately not substituted", not "nothing to substitute". |
-| 12 | The same node's `tcw work stage plan` **does** substitute. Both in one scenario, because the pair is the contract. |
+| 12 | The same node's `tcw work stage begin plan` **does** substitute. Both in one scenario, because the pair is the contract. |
 | 13 | Scaffolding **does** respect stage legality — measured. `tcw work scaffold outcome $SLUG` on a `backlog` item exits 1 with `'outcome' is written by the 'implement' stage, which is not legal for an item in 'backlog'; it runs in active`. Pair it with the same call succeeding once the item is `active`. |
 | 14 | The scaffolded draft **is staged in git** — measured: `git status --porcelain` shows `A  …/spec.draft.md` immediately after scaffolding, with no commit. This is a **known open question**, not a settled design (`2026-08-18-decide-whether-tcw-work-scaffold-should-stage-its-draft-in-git`). Assert the current behaviour so a future decision to change it is a visible test change rather than a silent one, and mark the assertion in the script as pinning-not-endorsing. |
 

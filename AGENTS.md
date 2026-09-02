@@ -13,7 +13,7 @@
 **All work in this repository should be tracked by the `tcw work` system!**
 
 The rules for *how* to do that work are bound to the lifecycle stages rather than
-written here. Run **`tcw work stage <stage> <work-item-slug>`**: it prints TCW's
+written here. Run **`tcw work stage begin <stage> <work-item-slug>`**: it prints TCW's
 own instructions for that stage composed with this repo's, and it behaves
 identically under Claude and Codex.
 
@@ -100,8 +100,8 @@ path.
 Before reporting any code change complete, invoke the `documentation-sync` skill
 to evaluate this project's documentation entries. They are **configuration, not
 prose**: they live in `tcw-config.yaml` under `work.documentation`, `tcw validate`
-checks their shape, and `tcw work docs` prints them. `tcw work stage plan` and
-`tcw work stage implement` include them inline, so a plan should already name a
+checks their shape, and `tcw work docs` prints them. `tcw work stage begin plan` and
+`tcw work stage begin implement` include them inline, so a plan should already name a
 task for every trigger expected to fire.
 
 The reasoning stays here; the facts live in config. The version is duplicated

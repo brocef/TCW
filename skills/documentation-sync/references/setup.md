@@ -4,7 +4,7 @@ Read this when a project declares no documentation entries and the user wants to
 
 ## Two forms — prefer config in a TCW project
 
-**Recommended, in a TCW node:** declare the entries in `tcw-config.yaml` under `work.documentation`. `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage plan` / `tcw work stage implement` include them inline — so the gate does not depend on an agent remembering to open a file and parse prose.
+**Recommended, in a TCW node:** declare the entries in `tcw-config.yaml` under `work.documentation`. `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage begin plan` / `tcw work stage begin implement` include them inline — so the gate does not depend on an agent remembering to open a file and parse prose.
 
 ```yaml
 # tcw-config.yaml

@@ -4,7 +4,7 @@
 
 Capturing the request.
 Get your instructions on how to produce the output by running
-`tcw work stage request <slug>`.
+`tcw work stage begin request <slug>`.
 
 ## Inputs
 

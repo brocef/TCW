@@ -55,7 +55,8 @@ def replayed(tmp_path_factory):
                            capture_output=True, check=True,
                            stdin=subprocess.DEVNULL)
             current = status
-        r = subprocess.run(["tcw", "work", "stage", stage, slug], cwd=root,
+        r = subprocess.run(["tcw", "work", "stage", "begin", stage, slug],
+                           cwd=root,
                            capture_output=True, text=True,
                            stdin=subprocess.DEVNULL)
         out[stage] = {"returncode": r.returncode, "stdout": r.stdout,
@@ -63,9 +64,9 @@ def replayed(tmp_path_factory):
     return out
 
 
-@pytest.mark.parametrize("expected", BASELINE, ids=lambda e: e["argv"][2])
+@pytest.mark.parametrize("expected", BASELINE, ids=lambda e: e["argv"][-2])
 def test_an_unconfigured_node_sees_the_recorded_bytes(expected, replayed):
-    stage = expected["argv"][2]
+    stage = expected["argv"][-2]
     actual = replayed[stage]
     assert actual["returncode"] == expected["returncode"]
     assert actual["stdout"] == expected["stdout"], (
@@ -75,7 +76,7 @@ def test_an_unconfigured_node_sees_the_recorded_bytes(expected, replayed):
 def test_the_baseline_covers_the_two_prompts_that_will_change():
     """Guards the fixture itself: if the corpus ever stopped covering `plan` and
     `implement`, the tripwire would pass while protecting nothing."""
-    covered = {e["argv"][2] for e in BASELINE}
+    covered = {e["argv"][-2] for e in BASELINE}
     assert {"plan", "implement"} <= covered
 
 
@@ -83,5 +84,5 @@ def test_the_documentation_sentence_is_where_the_spec_says_it_is():
     """The fallback text this item preserves lives in exactly two prompts.
     Recorded so that 'byte-identical' has a named subject rather than being a
     claim about opaque bytes."""
-    carrying = {e["argv"][2] for e in BASELINE if "Documentation Sync" in e["stdout"]}
+    carrying = {e["argv"][-2] for e in BASELINE if "Documentation Sync" in e["stdout"]}
     assert carrying == {"plan", "implement"}

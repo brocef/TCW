@@ -25,7 +25,8 @@
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
 | hand work down / up      | `tcw work delegate <child-project-id> "<title>"` · `tcw work escalate "<title>"` — the ID `tcw work nodes` lists, never a path              |
 | topology                 | `tcw work nodes`                                                                                                                                |
-| a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing. `inbox` takes no slug: `tcw work stage inbox`      |
+| enter a stage            | `tcw work stage begin <id> <slug> [--no-exec]` — legality, then checks, then prompts, on stdout; writes nothing. `inbox` takes no slug: `tcw work stage begin inbox` |
+| read a stage's instructions | `tcw work stage prompt <id> [<slug>]` — the same instructions with **no** legality check and **no** `pre` checks. The slug is optional: without one they resolve generically, with one they resolve for that item. Use it to find out what a stage asks for without entering it |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 | obtain a declared store | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores this node declares but does not have here; every declared component by default; idempotent |
@@ -66,8 +67,8 @@ entries are authoritative and no Markdown needs reading; `agent-guide` means the
 node declared nothing and the `documentation-sync` skill falls back to a
 `## Documentation Sync` section in the agent guide, exactly as before.
 
-You rarely need the verb during a stage — `tcw work stage plan` and
-`tcw work stage implement` already include the entries inline. It exists for the
+You rarely need the verb during a stage — `tcw work stage begin plan` and
+`tcw work stage begin implement` already include the entries inline. It exists for the
 third invocation point, the version offer *after* `complete`, which has no stage
 to hang off.
 

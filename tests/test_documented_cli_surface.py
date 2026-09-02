@@ -39,6 +39,10 @@ ARCHIVAL = (
     "docs/superpowers/",    # archived specs and plans from a prior workflow
     "docs/changelogs/",     # historical entries, correct as of their version
     "docs/release-notes/",  # same
+    # A migration guide's "before" column names the command being migrated away
+    # from, so it documents a surface that by definition no longer exists. Not a
+    # trailing-slash tree: these are files directly under `docs/`.
+    "docs/migration-guide-",
 )
 
 
@@ -238,7 +242,8 @@ def test_documented_verbs_and_flags_exist(doc, tree):
 # documentation mandate for `tcw work path`, which nobody needs a paragraph for.
 # Entries are added when a verb is worth finding by reading rather than by
 # `--help`.
-DOCUMENTED_VERBS = ("tcw work stage", "tcw work scaffold")
+DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage begin",
+                    "tcw work scaffold")
 
 
 @pytest.mark.parametrize("verb", DOCUMENTED_VERBS)

@@ -22,9 +22,9 @@ out of the agent guide.
 | 2 | `tcw work docs --json` parses, and carries `schema`, `source: "config"`, and an `entries` array whose `path` values are **in the configured order**. |
 | 3 | On an **unconfigured** node, `tcw work docs --json` reports `source: "agent-guide"` and `entries: []`, exit 0. |
 | 4 | On an unconfigured node, `tcw work docs` (human form) prints **nothing on stdout** and names the agent guide on **stderr**, exit 0. This split is what lets a script gate on emptiness. |
-| 5 | `tcw work stage plan $SLUG` on a configured node contains every entry's path, trigger and description, and does **not** mention the agent guide. |
-| 6 | `tcw work stage implement $SLUG` likewise. |
-| 7 | `tcw work stage spec $SLUG` — a stage carrying no span — contains **none** of the entry paths. |
+| 5 | `tcw work stage begin plan $SLUG` on a configured node contains every entry's path, trigger and description, and does **not** mention the agent guide. |
+| 6 | `tcw work stage begin implement $SLUG` likewise. |
+| 7 | `tcw work stage begin spec $SLUG` — a stage carrying no span — contains **none** of the entry paths. |
 | 8 | On an unconfigured node, `plan` and `implement` still name the agent guide and contain **no** `{{tcw:documentation}}` token. |
 | 9 | `tcw work docs` writes nothing: a `path → sha256` manifest of the whole node is identical before and after running both forms. |
 | 10 | `tcw work docs` outside a node exits non-zero with empty stdout. |
@@ -48,7 +48,7 @@ The `documentation-sync` skill's own prose, which is not executable.
 Assertion 8 is the back-compat guarantee and the most valuable line in this file.
 The in-process suite pins it against a fixture captured before any prompt was
 touched (`tests/fixtures/prompt_fallback/`). The shell version should compare
-`tcw work stage plan` output on an unconfigured node against that **same
+`tcw work stage begin plan` output on an unconfigured node against that **same
 fixture**, not against a fresh capture — a fresh capture would pass even if both
 sides drifted together.
 

@@ -49,7 +49,7 @@ runs nothing, and changes nothing. Consult it before performing a stage.
 context injection and **never the path**: Codex receives no injection, so nothing
 may depend on it.
 
-`tcw work stage <id> <slug>` runs the stage's `pre` checks and prints the
+`tcw work stage begin <id> <slug>` runs the stage's `pre` checks and prints the
 resolved prompt on stdout. **It writes nothing** — no artifact, no draft, no
 status change — so it is safe to run purely to find out what to do.
 

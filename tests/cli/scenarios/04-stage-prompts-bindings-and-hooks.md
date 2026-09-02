@@ -5,7 +5,7 @@ The 1.0.0 headline: the lifecycle is polymorphic and CLI-driven. A node's
 
 ## Functionality covered
 
-- `tcw work stage <stage> <slug>` and `--no-exec`
+- `tcw work stage begin <stage> <slug>` and `--no-exec`
 - `tcw work lifecycle` with `--json`, `--directive`, `--phase`, `--stage`,
   `--transition`, and a slug argument
 - `work.lifecycle` config: `stages.<id>.prompt` (`builtin:`, `file:`, `blob:`),
@@ -16,7 +16,7 @@ The 1.0.0 headline: the lifecycle is polymorphic and CLI-driven. A node's
 
 | # | Assertion |
 | - | --------- |
-| 1 | On an **unconfigured** node, `tcw work stage spec $SLUG` exits 0 and prints TCW's built-in instructions. |
+| 1 | On an **unconfigured** node, `tcw work stage begin spec $SLUG` exits 0 and prints TCW's built-in instructions. |
 | 2 | Binding `prompt: [{builtin: true}, {blob: "PROJECT RULE"}]` on `spec` makes the output contain **both** the built-in text and `PROJECT RULE`, in that order. |
 | 3 | Binding without `builtin: true` **replaces** the built-in text — the built-in marker string is absent. |
 | 4 | A `file:` binding resolves relative to the node root and its content appears; a `file:` pointing at a missing path exits non-zero with a message naming the path. |
@@ -29,9 +29,9 @@ The 1.0.0 headline: the lifecycle is polymorphic and CLI-driven. A node's
 | 11 | A `command:` hook receives `TCW_SLUG` in its environment — the hook writes `$TCW_SLUG` to a file, which the script then reads and compares to the real slug. |
 | 12 | A `command:` hook that **reads stdin** does not stall the transition: the transition completes within the timeout with the hook's stdin closed. (Regression for the inherited-stdin fix.) |
 | 13 | A hook that exceeds its configured timeout aborts the transition non-zero, and the item's status is unchanged. |
-| 14 | `tcw work stage <stage> <slug> --no-exec` prints what **would** run and executes none of it — proven by having the hook create a sentinel file and asserting the file does not exist. |
+| 14 | `tcw work stage begin <stage> <slug> --no-exec` prints what **would** run and executes none of it — proven by having the hook create a sentinel file and asserting the file does not exist. |
 | 14a | A failing **post**-transition hook exits non-zero but the move and its transition commit **stay in place** — post hooks run after the fact and cannot roll one back. Asserted alongside 10, which pins the opposite for `pre`. |
-| 15 | A malformed `work.lifecycle` block is **advisory, not fatal** — measured. `work.lifecycle.stages.spec.prompt: "not-a-list"` makes `tcw validate` exit 1 reporting `expected a list of bindings, got str`, while `tcw work stage spec $SLUG` still exits **0** and prints the built-in instructions. Both halves asserted: a config error must be *reported* without bricking the lifecycle. |
+| 15 | A malformed `work.lifecycle` block is **advisory, not fatal** — measured. `work.lifecycle.stages.spec.prompt: "not-a-list"` makes `tcw validate` exit 1 reporting `expected a list of bindings, got str`, while `tcw work stage begin spec $SLUG` still exits **0** and prints the built-in instructions. Both halves asserted: a config error must be *reported* without bricking the lifecycle. |
 
 ## Refusals asserted
 

@@ -67,7 +67,7 @@ def capture_one(root: Path, slug: str) -> list[dict]:
                 cwd=str(root), capture_output=True,    # a legal transition
                 check=True, stdin=subprocess.DEVNULL)
             current = status
-        out.append(_run(root, "work", "stage", stage, slug))
+        out.append(_run(root, "work", "stage", "begin", stage, slug))
     return out
 
 

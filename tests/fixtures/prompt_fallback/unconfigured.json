@@ -3,6 +3,7 @@
     "argv": [
       "work",
       "stage",
+      "begin",
       "request",
       "2026-08-18-baseline-item"
     ],
@@ -14,6 +15,7 @@
     "argv": [
       "work",
       "stage",
+      "begin",
       "spec",
       "2026-08-18-baseline-item"
     ],
@@ -25,6 +27,7 @@
     "argv": [
       "work",
       "stage",
+      "begin",
       "plan",
       "2026-08-18-baseline-item"
     ],
@@ -36,6 +39,7 @@
     "argv": [
       "work",
       "stage",
+      "begin",
       "implement",
       "2026-08-18-baseline-item"
     ],
@@ -47,6 +51,7 @@
     "argv": [
       "work",
       "stage",
+      "begin",
       "verify",
       "2026-08-18-baseline-item"
     ],
@@ -58,6 +63,7 @@
     "argv": [
       "work",
       "stage",
+      "begin",
       "postmortem",
       "2026-08-18-baseline-item"
     ],

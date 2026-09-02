@@ -151,21 +151,21 @@ def test_an_intake_only_item_is_told_to_read_its_intake(node, stage):
     explain how the two differ; that is prose about the artifacts, not a claim
     that this item has one."""
     slug = _new(node, "Intake only item", intake="# Raw\n\nWhat arrived.\n")
-    para = _inputs_paragraph(_tcw(node, "work", "stage", stage, slug))
+    para = _inputs_paragraph(_tcw(node, "work", "stage", "begin", stage, slug))
     assert para.startswith("**Inputs.** `intake.md`")
 
 
 @pytest.mark.parametrize("stage", ["spec", "plan"])
 def test_a_request_bearing_item_is_told_to_read_its_request(node, stage):
     slug = _new(node, "Request item", body="# Written up\n")
-    para = _inputs_paragraph(_tcw(node, "work", "stage", stage, slug))
+    para = _inputs_paragraph(_tcw(node, "work", "stage", "begin", stage, slug))
     assert para.startswith("**Inputs.** `initial-request.md`")
 
 
 @pytest.mark.parametrize("stage", ["spec", "plan"])
 def test_the_request_still_wins_when_the_item_also_has_intake(node, stage):
     slug = _new(node, "Both item", intake="# Raw\n", body="# Written up\n")
-    para = _inputs_paragraph(_tcw(node, "work", "stage", stage, slug))
+    para = _inputs_paragraph(_tcw(node, "work", "stage", "begin", stage, slug))
     assert para.startswith("**Inputs.** `initial-request.md`")
 
 
@@ -178,7 +178,7 @@ def test_an_item_with_no_body_falls_back_instead_of_naming_a_phantom(node, stage
     names both artifacts to explain how they differ, and that is descriptive
     rather than a claim about this item."""
     slug = _new(node, "Bodyless item")
-    para = _inputs_paragraph(_tcw(node, "work", "stage", stage, slug))
+    para = _inputs_paragraph(_tcw(node, "work", "stage", "begin", stage, slug))
     assert "**Inputs.** the item's body artifact" in para
     assert "`initial-request.md`, read as filed" not in para
     assert "`intake.md`, read as filed" not in para
@@ -195,7 +195,7 @@ def test_the_nobody_asked_conclusion_is_scoped_to_the_request(node):
     do instead. Both halves asserted: the scoping check alone would pass on
     deleting the intake guidance."""
     slug = _new(node, "Intake only item", intake="# Raw\n")
-    para = _inputs_paragraph(_tcw(node, "work", "stage", "spec", slug))
+    para = _inputs_paragraph(_tcw(node, "work", "stage", "begin", "spec", slug))
 
     flat = " ".join(para.split())
     carriers = [s for s in flat.split(". ") if "nobody asked" in s]
@@ -219,7 +219,7 @@ def test_the_postmortem_spine_names_the_intake(node):
     slug = _new(node, "Intake only item", intake="# Raw\n")
     for transition in ("start", "submit"):
         _tcw(node, "work", transition, slug)
-    out = _tcw(node, "work", "stage", "postmortem", slug)
+    out = _tcw(node, "work", "stage", "begin", "postmortem", slug)
     assert "intake.md" in out
     assert "initial-request.md" in out
 
@@ -233,6 +233,6 @@ def test_no_token_survives_into_a_resolved_prompt(node, stage, state):
     kwargs = {"intake": "# Raw\n"} if state == "intake" else (
         {"body": "# Written\n"} if state == "request" else {})
     slug = _new(node, f"Item {state}", **kwargs)
-    out = _tcw(node, "work", "stage", stage, slug)
+    out = _tcw(node, "work", "stage", "begin", stage, slug)
     assert "{{tcw:" not in out
     assert "{{/tcw:" not in out

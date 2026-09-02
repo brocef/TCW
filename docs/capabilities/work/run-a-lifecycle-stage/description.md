@@ -1,4 +1,4 @@
-As a user or agent, I run `tcw work stage <id> <ref>` to find out what to do at a
+As a user or agent, I run `tcw work stage begin <id> <ref>` to find out what to do at a
 lifecycle stage. TCW checks the stage makes sense for where the item is, runs
 whatever `pre` checks the project configured, resolves the stage's prompt
 bindings, and prints the instructions.
@@ -42,7 +42,7 @@ hook runs**: `implement` on a backlog item, or `spec` on one already closed.
 `verify` is legal from `active` as well as `review`, because an item can be
 closed without ever having been submitted. `postmortem` is the out-of-band
 exception, legal in review and after completion — but not on a discarded item,
-which was closed without shipping. `tcw work stage inbox` is refused too, and
+which was closed without shipping. `tcw work stage begin inbox` is refused too, and
 says why: `inbox` runs before an item exists, so there is no item to resolve a
 stage against.
 

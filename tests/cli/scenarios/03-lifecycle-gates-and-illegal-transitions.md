@@ -18,9 +18,9 @@ becomes permissive.
 | - | --------- |
 | 1 | Every illegal transition exits non-zero **and leaves the item's folder where it was**: `submit` from `backlog`, `rework` from `backlog`, `rework` from `active`, `start` from `review`, `start` from `completed`, `drop` from `active`. |
 | 2 | Each refusal writes to **stderr** with stdout empty, and the message names the current status and the attempted destination. Do **not** require it to name the legal move — several refusals only report that the `from → to` pair is illegal, and asserting more than that pins wording the CLI does not promise. |
-| 3 | `tcw work stage spec $SLUG` succeeds in `backlog` and fails in `active`. |
-| 4 | `tcw work stage implement $SLUG` fails in `backlog` and succeeds in `active`. |
-| 5 | `tcw work stage verify $SLUG` succeeds in **both `active` and `review`**, and fails in `backlog`, `completed` and `discarded`. `verify` is deliberately legal in `active` because `complete` moves from `review \| active`, so an item can be verified without ever having been submitted. (An earlier draft of this document asserted it fails in `active`. That was wrong.) |
+| 3 | `tcw work stage begin spec $SLUG` succeeds in `backlog` and fails in `active`. |
+| 4 | `tcw work stage begin implement $SLUG` fails in `backlog` and succeeds in `active`. |
+| 5 | `tcw work stage begin verify $SLUG` succeeds in **both `active` and `review`**, and fails in `backlog`, `completed` and `discarded`. `verify` is deliberately legal in `active` because `complete` moves from `review \| active`, so an item can be verified without ever having been submitted. (An earlier draft of this document asserted it fails in `active`. That was wrong.) |
 | 6 | `verify` and `postmortem` are **both** legal in `review` — running one does not make the other illegal (a documented sharp edge: `review → review` is not a transition, so the two stages coexist in one status). |
 | 7 | `tcw work rework $SLUG` from `review` returns the item to `active` and exits 0. |
 | 8 | A full `submit → rework → submit → complete` round trip works, and the item's history shows both submits. |
@@ -31,7 +31,7 @@ becomes permissive.
 | 12 | An item with an unresolved blocker refuses `start`; `--force` starts it anyway and the blocker is still recorded. |
 | 13 | An item with an unresolved blocker refuses `complete`; `--force` completes it. |
 | 14 | `tcw work drop $SLUG` from `backlog` **requires `--confirm`**; with it, the item folder is gone from disk. |
-| 15 | An unknown stage id (`tcw work stage nonsense $SLUG`) exits non-zero and lists the valid stages. |
+| 15 | An unknown stage id (`tcw work stage begin nonsense $SLUG`) exits non-zero and lists the valid stages. |
 
 ## Refusals asserted
 

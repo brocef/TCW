@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
+    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
@@ -766,7 +766,7 @@ def _binding_json(b) -> dict:
 
 
 def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
-                status: str) -> int:
+                status: str, *, run_checks: bool = True) -> int:
     """Everything `tcw work stage` does once it knows what it is resolving.
 
     Shared by the path that has a work item and the path that does not, so the
@@ -789,7 +789,7 @@ def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
     emitted once at the end after everything that could fail has succeeded.
     """
     policy = st.lifecycle_policy()
-    if not args.no_exec:
+    if run_checks and not args.no_exec:
         checks = select(policy.stage_checks(step.id), item)
         err = run_bindings(checks, st.node_root,
                            hook_env(st.node_root, slug, status, step.id),
@@ -827,6 +827,99 @@ def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
     return 0
 
 
+def _stage_step(verb: str, stage_id: str):
+    """The `LifecycleStep` for a stage id, or None after reporting why not."""
+    step = LIFECYCLE_STEPS_BY_ID.get(stage_id)
+    if step is None or step.kind != "stage":
+        legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
+        print(f"tcw work stage {verb}: unknown stage '{stage_id}'; expected one "
+              f"of {', '.join(legal)}", file=sys.stderr)
+        return None
+    return step
+
+
+def _stage_removed_form(args: argparse.Namespace) -> int:
+    """`tcw work stage <stage> <slug>` — removed in 2.0.0, reported not run.
+
+    A usage error rather than an operation that failed, so it exits 2 like every
+    other malformed command line. It deliberately does **not** run the stage:
+    accepting the old spelling here would be the alias this release decided
+    against, and a migration nobody is forced to make is one nobody makes.
+    """
+    ref = args.rest[0] if args.rest else "<slug>"
+    print(f"tcw work stage: '{args.removed_stage}' is not a subcommand; run "
+          f"`tcw work stage begin {args.removed_stage} {ref}` to enter the "
+          f"stage, or `tcw work stage prompt {args.removed_stage}` to read its "
+          f"instructions without entering it", file=sys.stderr)
+    return 2
+
+
+def _stage_prompt(args: argparse.Namespace) -> int:
+    """`tcw work stage prompt <stage> [ref]` — the instructions, nothing else.
+
+    Runs no gate of its own: no status-legality check and no `pre` bindings. It
+    still resolves `file:` and `generate:` bindings, because those are how the
+    text is produced — so the promise is "no check TCW decides to run", not "no
+    process is started", which would be false.
+
+    The reference is optional and does two things, not one. Without it,
+    resolution runs against the local anchor node with `item=None`. With it, the
+    reference goes through `_resolve`, so a `<project-id>/<slug>` qualifier
+    selects **that node's** configuration — a different `tcw-config.yaml`, its
+    `prompt:` bindings, and its documentation entries.
+
+    An illegal stage still prints. The built-in prompts carry state-changing
+    instructions — `verify` opens with `tcw work submit` — so reading one out of
+    context is worth a warning, but the warning goes to stderr and the exit code
+    stays 0: a caller piping stdout asked for the text and gets exactly it.
+    """
+    step = _stage_step("prompt", args.stage_id)
+    if step is None:
+        return 1
+    if args.no_exec:
+        print("tcw work stage prompt: --no-exec would suppress the `file:` and "
+              "`generate:` bindings this verb exists to resolve, leaving "
+              "incomplete instructions; use `tcw work stage begin --no-exec` to "
+              "report what would run", file=sys.stderr)
+        return 1
+
+    if args.slug is None:
+        st = _store()
+        if st is None:
+            return 1
+        return _stage_tail(args, step, st, None, "", "", run_checks=False)
+
+    if step.id == "inbox":
+        print(f"tcw work stage prompt: '{step.id}' runs before an item exists "
+              f"and takes no work item; run it with no argument",
+              file=sys.stderr)
+        return 1
+
+    resolved = _resolve(args.slug, "stage prompt")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work stage prompt: {e}", file=sys.stderr)
+        return 1
+    if item is None:
+        print(f"tcw work stage prompt: no such work item: {args.slug}",
+              file=sys.stderr)
+        return 1
+
+    legal = STAGE_STATUSES[step.id]
+    if legal and item.status not in legal:
+        print(f"tcw work stage prompt: note — '{step.id}' is not legal for an "
+              f"item in '{item.status}'; it runs in {', '.join(legal)}. Printing "
+              f"its instructions anyway because you asked to read them, not to "
+              f"enter the stage.", file=sys.stderr)
+
+    return _stage_tail(args, step, st, item, bare, item.status,
+                       run_checks=False)
+
+
 def _stage_without_item(args: argparse.Namespace, step) -> int:
     """The `inbox` half of `tcw work stage`: same contract, no item.
 
@@ -841,21 +934,22 @@ def _stage_without_item(args: argparse.Namespace, step) -> int:
 
 
 def _stage(args: argparse.Namespace) -> int:
-    """`tcw work stage <id> [ref]` — what to do at a lifecycle stage.
+    """`tcw work stage begin <id> [ref]` — enter a lifecycle stage.
 
     Order matters and is the contract: id → item → legality → checks → resolve →
     print. Legality is decided **before any hook runs** — not before any read,
     which is impossible, since the item's status is the thing being judged.
 
+    This is the verb every lifecycle document names, so it is the verb whose
+    gates matter: `tcw work stage prompt` reads the same instructions without
+    them, and that is the whole difference between the two.
+
     stdout carries the resolved prompt and nothing else, emitted once at the end
     after everything that could fail has succeeded. An agent piping this gets
     either the whole instruction or nothing, never a fragment.
     """
-    step = LIFECYCLE_STEPS_BY_ID.get(args.stage_id)
-    if step is None or step.kind != "stage":
-        legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
-        print(f"tcw work stage: unknown stage '{args.stage_id}'; expected one of "
-              f"{', '.join(legal)}", file=sys.stderr)
+    step = _stage_step("begin", args.stage_id)
+    if step is None:
         return 1
 
     # `inbox` runs before an item exists, so it resolves against the node alone.
@@ -864,32 +958,35 @@ def _stage(args: argparse.Namespace) -> int:
     # statement about this stage and not a licence to read it as "any status".
     if step.id == "inbox":
         if args.slug is not None:
-            print(f"tcw work stage: '{step.id}' runs before an item exists and "
-                  f"takes no work item; run it with no argument",
+            print(f"tcw work stage begin: '{step.id}' runs before an item exists "
+                  f"and takes no work item; run it with no argument",
                   file=sys.stderr)
             return 1
         return _stage_without_item(args, step)
     if args.slug is None:
-        print(f"tcw work stage: '{step.id}' needs a work item; "
-              f"run `tcw work stage {step.id} <slug>`", file=sys.stderr)
+        print(f"tcw work stage begin: '{step.id}' needs a work item; run "
+              f"`tcw work stage begin {step.id} <slug>`, or "
+              f"`tcw work stage prompt {step.id}` to read its instructions "
+              f"without entering it", file=sys.stderr)
         return 1
 
-    resolved = _resolve(args.slug, "stage")
+    resolved = _resolve(args.slug, "stage begin")
     if resolved is None:
         return 1
     st, bare = resolved
     try:
         item = st.get(bare)
     except MultipleMatch as e:
-        print(f"tcw work stage: {e}", file=sys.stderr)
+        print(f"tcw work stage begin: {e}", file=sys.stderr)
         return 1
     if item is None:
-        print(f"tcw work stage: no such work item: {args.slug}", file=sys.stderr)
+        print(f"tcw work stage begin: no such work item: {args.slug}",
+              file=sys.stderr)
         return 1
 
     legal = STAGE_STATUSES[step.id]
     if item.status not in legal:
-        print(f"tcw work stage: '{step.id}' is not legal for an item in "
+        print(f"tcw work stage begin: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
         return 1
 
@@ -1529,16 +1626,48 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pdoc.add_argument("--json", action="store_true", help="machine-readable output")
     pdoc.set_defaults(func=_docs)
     pstg = g.add_parser("stage",
-                        help="print a stage's instructions after its checks pass")
-    pstg.add_argument("stage_id", metavar="stage")
-    # Optional here and required in the handler: argparse cannot express
+                        help="read a stage's instructions, or enter the stage")
+    # The metavar is written out rather than left to argparse: the default would
+    # list the hidden migration parsers below as if they were verbs, and setting
+    # it to a bare "verb" would hide the real two from `--help` — which is also
+    # where `tests/test_documented_cli_surface.py` discovers the CLI surface.
+    stg = pstg.add_subparsers(dest="stage_verb", required=True,
+                              metavar="{prompt,begin}")
+
+    # Optional slug on both, required in the handlers: argparse cannot express
     # "required for six values of another positional, refused for the seventh".
-    pstg.add_argument("slug", nargs="?",
-                      help="the work item; omitted for `inbox`, which runs "
-                           "before an item exists")
-    pstg.add_argument("--no-exec", action="store_true",
-                      help="report what would run and run none of it")
-    pstg.set_defaults(func=_stage)
+    ppr = stg.add_parser("prompt",
+                         help="print a stage's instructions, running no checks")
+    ppr.add_argument("stage_id", metavar="stage")
+    ppr.add_argument("slug", nargs="?",
+                     help="optional; without one the instructions resolve "
+                          "generically, with one they resolve for that item")
+    ppr.add_argument("--no-exec", action="store_true",
+                     help=argparse.SUPPRESS)
+    ppr.set_defaults(func=_stage_prompt)
+
+    pbg = stg.add_parser("begin",
+                         help="check the stage is legal, run its checks, then "
+                              "print its instructions")
+    pbg.add_argument("stage_id", metavar="stage")
+    pbg.add_argument("slug", nargs="?",
+                     help="the work item; omitted for `inbox`, which runs "
+                          "before an item exists")
+    pbg.add_argument("--no-exec", action="store_true",
+                     help="report what would run and run none of it")
+    pbg.set_defaults(func=_stage)
+
+    # The removed form. Registered so it fails with the command to run instead
+    # of argparse's bare "invalid choice", and hidden so it is not offered as a
+    # third verb. It never resolves anything — a migration message, not an alias.
+    for _sid in STAGE_IDS:
+        # No `help=`: omitting it keeps the parser out of the choices list
+        # entirely, where `help=SUPPRESS` would print a literal "==SUPPRESS==".
+        pold = stg.add_parser(_sid)
+        pold.add_argument("rest", nargs="*")
+        pold.add_argument("--no-exec", action="store_true",
+                          help=argparse.SUPPRESS)
+        pold.set_defaults(func=_stage_removed_form, removed_stage=_sid)
 
     pscf = g.add_parser("scaffold",
                         help="write a draft of a lifecycle artifact from its template")

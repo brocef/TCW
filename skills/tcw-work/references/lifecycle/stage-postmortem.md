@@ -4,7 +4,7 @@
 
 Locating the earliest catchable miss.
 Get your instructions on how to produce the output by running
-`tcw work stage postmortem <slug>`.
+`tcw work stage begin postmortem <slug>`.
 
 ## Inputs
 

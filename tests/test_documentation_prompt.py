@@ -129,7 +129,7 @@ CONFIGURED = [
 def test_a_configured_node_sees_its_entries_in_plan_and_implement(tmp_path):
     """Acceptance criterion 4."""
     root, slug = _node(tmp_path, CONFIGURED)
-    r = _cli(root, "work", "stage", "plan", slug)
+    r = _cli(root, "work", "stage", "begin", "plan", slug)
     assert r.returncode == 0, r.stderr
     for entry in CONFIGURED:
         assert entry["path"] in r.stdout
@@ -138,14 +138,14 @@ def test_a_configured_node_sees_its_entries_in_plan_and_implement(tmp_path):
     assert "agent guide" not in r.stdout          # the fallback is gone
 
     _cli(root, "work", "start", slug)
-    r = _cli(root, "work", "stage", "implement", slug)
+    r = _cli(root, "work", "stage", "begin", "implement", slug)
     assert r.returncode == 0, r.stderr
     assert "README.md" in r.stdout and "agent guide" not in r.stdout
 
 
 def test_an_unconfigured_node_still_names_the_agent_guide(tmp_path):
     root, slug = _node(tmp_path)
-    r = _cli(root, "work", "stage", "plan", slug)
+    r = _cli(root, "work", "stage", "begin", "plan", slug)
     assert r.returncode == 0, r.stderr
     assert "agent guide" in r.stdout
     assert "{{tcw:documentation}}" not in r.stdout
@@ -153,7 +153,7 @@ def test_an_unconfigured_node_still_names_the_agent_guide(tmp_path):
 
 def test_a_stage_that_carries_no_span_is_unaffected(tmp_path):
     root, slug = _node(tmp_path, CONFIGURED)
-    r = _cli(root, "work", "stage", "spec", slug)
+    r = _cli(root, "work", "stage", "begin", "spec", slug)
     assert r.returncode == 0, r.stderr
     assert "README.md" not in r.stdout
 
@@ -256,7 +256,7 @@ def test_a_span_in_a_project_prompt_binding_is_substituted(tmp_path):
         {"blob": "ours: {{tcw:documentation}}fallback{{/tcw:documentation}}"}]}}}
     cfg.write_text(yaml.safe_dump(conf, sort_keys=False))
 
-    r = _cli(root, "work", "stage", "spec", slug)
+    r = _cli(root, "work", "stage", "begin", "spec", slug)
     assert r.returncode == 0, r.stderr
     assert "README.md" in r.stdout
     assert "fallback" not in r.stdout

@@ -4,7 +4,7 @@
 
 Getting the user's decision.
 Get your instructions on how to produce the output by running
-`tcw work stage verify <slug>`.
+`tcw work stage begin verify <slug>`.
 
 ## Inputs
 

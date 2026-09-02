@@ -30,7 +30,8 @@ STAGE_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "stage")
 TRANSITION_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "transition")
 
 # Every stage is a router over a prompt the CLI prints, `inbox` included: it
-# ships one too, reached by `tcw work stage inbox` with no work item reference.
+# ships one too, reached by `tcw work stage begin inbox` with no work item
+# reference.
 ROUTER_IDS = STAGE_IDS
 
 STAGE_SECTIONS = ("Purpose", "Inputs", "Produce", "Steps", "Exit")
@@ -170,12 +171,13 @@ def test_every_stage_document_names_the_harness_neutral_binding_command(stage_id
     """Codex receives no context injection, so every stage must carry the command
     both harnesses can run. `--directive` is sugar, never the path.
 
-    The command that answers "what do I do here" is `tcw work stage`, which
+    The command that answers "what do I do here" is `tcw work stage begin`,
+    which
     resolves a binding *and* falls back to TCW's own instructions — for every
     stage, `inbox` included.
     """
     text = stage_doc(stage_id).read_text(encoding="utf-8")
-    wanted = f"tcw work stage {stage_id}"
+    wanted = f"tcw work stage begin {stage_id}"
     assert wanted in text, \
         f"stage-{stage_id}.md never tells the agent how to find its instructions"
 

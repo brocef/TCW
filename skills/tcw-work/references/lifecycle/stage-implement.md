@@ -4,7 +4,7 @@
 
 Building it.
 Get your instructions on how to produce the output by running
-`tcw work stage implement <slug>`.
+`tcw work stage begin implement <slug>`.
 
 ## Inputs
 

@@ -844,12 +844,29 @@ by `tcw validate`, in both spellings — `prompt: []` and a bare
 falls back to TCW's own instructions it reads as an opt-out it is not. A stage
 that should genuinely say nothing binds `{blob: ""}`.
 
-**Reading a stage's instructions** is `tcw work stage <id> <ref>`. With nothing
+**Entering a stage** is `tcw work stage begin <id> <ref>`. With nothing
 configured it prints TCW's own instructions for that stage, so the command is
 useful before you have written any lifecycle configuration at all. The one
 exception to the reference is `inbox`: it runs before an item exists, so it is
-`tcw work stage inbox` with nothing after it, and passing a work item is
-refused rather than interpreted. The shipped instructions include a short self-review pass at the stages where one earns its
+`tcw work stage begin inbox` with nothing after it, and passing a work item is
+refused rather than interpreted.
+
+**Reading a stage's instructions without entering it** is
+`tcw work stage prompt <id> [<ref>]`. It resolves and prints the same
+instructions, but checks no status legality and runs no `pre` bindings — so you
+can find out what the `plan` stage asks for on an item whose spec is not written
+yet, which `begin` correctly refuses. The reference is optional: without one the
+instructions resolve generically, with one they resolve for that item, and a
+`<project-id>/<slug>` qualifier reads that node's configuration. If the stage is
+not legal for the item's status it still prints, and says so on stderr, leaving
+stdout to carry the instructions alone.
+
+```sh
+tcw work stage prompt plan             # what does the plan stage ask for?
+tcw work stage begin plan "$slug"      # enter it: gates first, then instructions
+```
+
+The shipped instructions include a short self-review pass at the stages where one earns its
 place — `spec`, `plan`, and `implement`. The `spec` and `plan` instructions name
 the item's **own** body artifact rather than a fixed filename: `initial-request.md`
 once the `request` stage has written one, and the `intake.md` it arrived as
@@ -938,7 +955,7 @@ tcw work docs                          # path, trigger, and what to write
 tcw work docs --json                   # {"schema", "source", "entries"}
 ```
 
-`tcw work stage plan` and `tcw work stage implement` include the entries inline,
+`tcw work stage begin plan` and `tcw work stage begin implement` include the entries inline,
 so the documentation gate is part of the stage's instructions rather than a
 convention an agent has to remember. **A project that declares nothing is
 unaffected** — those stages print exactly what they printed before, and the
@@ -1019,8 +1036,8 @@ tcw work lifecycle --stage spec --directive
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
 tcw work show "$slug" --json           # the item as a versioned JSON document
 
-tcw work stage spec "$slug"            # what to do at this stage: checks, then instructions
-tcw work stage spec "$slug" --no-exec  # what *would* run, running none of it
+tcw work stage begin spec "$slug"            # what to do at this stage: checks, then instructions
+tcw work stage begin spec "$slug" --no-exec  # what *would* run, running none of it
 
 tcw work scaffold spec "$slug"         # write spec.draft.md from its template — a starting
                                        # point to type into, never the spec itself
