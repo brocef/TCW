@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Capturing the request. `tcw work stage request <slug>` prints the methodology;
-this document carries only what the CLI cannot.
+Capturing the request.
+Get your instructions on how to produce the output by running
+`tcw work stage request <slug>`.
 
 ## Inputs
 

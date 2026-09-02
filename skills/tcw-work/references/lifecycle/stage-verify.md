@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Getting the user's decision. `tcw work stage verify <slug>` prints the
-methodology; this document carries only what the CLI cannot.
+Getting the user's decision.
+Get your instructions on how to produce the output by running
+`tcw work stage verify <slug>`.
 
 ## Inputs
 

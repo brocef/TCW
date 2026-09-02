@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Building it. `tcw work stage implement <slug>` prints the methodology; this
-document carries only what the CLI cannot.
+Building it.
+Get your instructions on how to produce the output by running
+`tcw work stage implement <slug>`.
 
 ## Inputs
 

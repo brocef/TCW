@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Deciding what to build. `tcw work stage spec <slug>` prints the methodology;
-this document carries only what the CLI cannot.
+Deciding what to build.
+Get your instructions on how to produce the output by running
+`tcw work stage spec <slug>`.
 
 ## Inputs
 
