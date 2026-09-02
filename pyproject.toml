@@ -19,7 +19,12 @@ tcw = "tcw.cli:main"
 # Tests only — nothing TCW ships imports it, and runtime dependencies stay at
 # PyYAML alone. Writing the validator by hand would let the test and the
 # projection share a bug.
-dev = ["pytest", "jsonschema"]
+#
+# setuptools is the build backend, and `test_shipped_prompts` builds a wheel
+# with `--no-build-isolation` to keep the suite off the network. It is not
+# bundled with the interpreter from 3.12 on, so without this the wheel test
+# fails on the 3.14 leg alone.
+dev = ["pytest", "jsonschema", "setuptools>=61"]
 
 [tool.setuptools.packages.find]
 include = ["tcw*"]

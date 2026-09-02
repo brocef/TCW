@@ -386,6 +386,15 @@ def test_every_cli_write_refuses_with_one_wording_and_writes_nothing(
     review = st.query("review")[0].slug
     active = st.query("active")[0].slug
     monkeypatch.chdir(parent)
+    # `work start` resolves a claimant before it reaches the repository guard,
+    # and its last fallback is `git config --get user.email`, which reads the
+    # *global* config and so answers even outside a repository. On a machine
+    # with no global identity it refuses with "claimant identity required"
+    # instead — a refusal that writes nothing, so the contract this test defends
+    # holds, but not the one wording it asserts. Supplied here so the subject is
+    # the repository guard rather than whatever identity the host happens to
+    # carry.
+    monkeypatch.setenv("TCW_WORK_OWNER", "t@t")
 
     commands = [
         ["init", "--id", "parent"],

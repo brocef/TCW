@@ -123,7 +123,12 @@ def test_a_grandchild_does_not_survive_the_timeout(tmp_path):
 
 
 def test_invalid_utf8_is_replaced_rather_than_fatal(tmp_path):
-    out = _run(r"printf 'ok\xff\xfe'", tmp_path).text
+    # Octal, not `\xff`: the command runs under `shell=True`, i.e. `/bin/sh`,
+    # which is dash on Debian and on the CI runner. Dash's `printf` has no `\x`
+    # escape and emits the four characters literally, so the hook under test
+    # received valid UTF-8 and the assertion below had nothing to replace.
+    # `\NNN` is POSIX and means the same byte in dash and bash alike.
+    out = _run(r"printf 'ok\377\376'", tmp_path).text
     assert out.startswith("ok")
     assert "�" in out
 

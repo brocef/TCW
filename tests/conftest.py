@@ -86,3 +86,37 @@ def stub_desktop_opener(_no_desktop_opener, monkeypatch):
     monkeypatch.setattr("os.startfile", lambda path: calls.append([str(path)]),
                         raising=False)
     return calls
+
+
+# The four variables Git reads before it consults any config file. Set as
+# environment rather than `git config --global`: config would also change how
+# `tcw work start` resolves a claimant (it falls back to `user.email`/`user.name`
+# via `git config --get`), so a global identity would silently satisfy a
+# precondition some test means to exercise. The environment supplies a committer
+# and nothing else.
+_GIT_IDENTITY = {
+    "GIT_AUTHOR_NAME": "TCW Test",
+    "GIT_AUTHOR_EMAIL": "test@example.invalid",
+    "GIT_COMMITTER_NAME": "TCW Test",
+    "GIT_COMMITTER_EMAIL": "test@example.invalid",
+}
+
+
+@pytest.fixture(autouse=True)
+def _git_identity(monkeypatch):
+    """Every `git commit` the suite provokes has a committer.
+
+    Most fixtures `git config` an identity into the repositories they build
+    themselves, but that cannot cover the ones TCW *clones* — `tcw provision`
+    checks a store out, and a clone inherits no local config from its source.
+    Those commits fell back to the developer's global identity, which a bare CI
+    runner does not have: `fatal: empty ident name (for <runner@...>) not
+    allowed`, and thirteen `test_store_publication` failures that never
+    reproduced on a workstation.
+
+    Suite-wide for the same reason the opener guard is: the dependency is
+    invisible until it runs somewhere unconfigured, so no individual test can be
+    trusted to remember it.
+    """
+    for key, value in _GIT_IDENTITY.items():
+        monkeypatch.setenv(key, value)
