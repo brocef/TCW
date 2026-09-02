@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-02-capabilities-drift-goes-silent-in-a-clone-without-the-resolved-folders.md`
+
+## Inbox body
+
 # `tcw capabilities drift` goes silent in a clone without the resolved folders
 
 ## Desired outcome
