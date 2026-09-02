@@ -62,6 +62,14 @@ Full suite under the same conditions: `4 failed, 2176 passed in 261.64s`. All
 15/16 CI failures are gone. The four that remain are pre-existing and local to
 this container, not regressions — see Notes.
 
+**Confirmed on the runner itself**, which is the only result that settles it —
+everything above is a local approximation of a bare runner.
+[Run #46](https://github.com/brocef/TCW/actions/runs/33585626173) on
+`0cf755e`: `pytest (3.11)` **success**, `pytest (3.14)` **success**. The first
+green `test` run since v1.1.0, and the gate `release.yml` needs. The
+`test_a_grandchild_does_not_survive_the_timeout` flake seen locally did not
+reproduce on either leg, as expected.
+
 ## Corrections
 
 None to a spec or plan; there were none. One correction to the diagnosis made
