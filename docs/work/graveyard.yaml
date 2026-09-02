@@ -4,3 +4,6 @@
 2026-08-26-publish-provisioned-store-writes-to-their-remote:
   resolution: done
   resolved: '2026-09-01'
+2026-09-02-restore-the-ci-test-suite-to-green:
+  resolution: done
+  resolved: '2026-09-02'
