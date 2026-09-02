@@ -7,8 +7,15 @@ listed by that axis's `extends`. A connection alone never grants inheritance.
 navigation, marks a real work target outside the served board as off-board and
 names its owning project, and shows an unresolved target inert with the reason.
 
-A reference to work that has been completed or discarded still resolves. There
-is nothing to open — the item's documents are no longer in the tree — so
+A reference to work that has been completed or discarded still resolves, whether
+I write it as `tcw://W/<slug>` or as `tcw://W/completed/<slug>`. There is
+nothing to open — the item's documents are no longer in the tree — so
 `tcw serve` shows it inert and says it names finished work, alongside its
 resolution where one was recorded. A reference to a slug the project never held
 remains unresolved and reads exactly as it did before.
+
+Where I name the folder as well as the slug, that folder is still checked
+against the record when the record can settle it: a reference filed under
+`discarded/` to work that completed stays unresolved, because it says something
+untrue. Where no resolution was kept — the ordinary state of a backfilled
+record — the folder is taken on trust rather than refused.
