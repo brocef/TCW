@@ -765,33 +765,45 @@ def _binding_json(b) -> dict:
     return out
 
 
-def _stage_without_item(args: argparse.Namespace, step) -> int:
-    """The `inbox` half of `tcw work stage`: same contract, no item.
+def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
+                status: str) -> int:
+    """Everything `tcw work stage` does once it knows what it is resolving.
 
-    Every step the item path takes that *reads* the item is skipped rather than
-    fed a placeholder — no `get`, no status-legality check — and the two that do
-    not are run with `item=None`, which both already accept. A `when:`-condition
-    correctly never matches (`Condition.matches` answers False for no item), so
-    a project's conditioned `inbox` binding does not fire on nothing.
+    Shared by the path that has a work item and the path that does not, so the
+    two cannot drift: the `--no-exec` plan, the failure messages, and the stdout
+    discipline have exactly one definition. The caller decides *what* is being
+    resolved — an item or nothing, this node or another — and decides it before
+    calling; this function decides none of it.
 
-    Stream discipline is the same promise the item path makes: stdout carries
-    the resolved prompt and nothing else, emitted once at the end.
+    `item` is `None` on the itemless path, which `resolve_prompts` and
+    `hook_env` both already accept. A `when:`-condition then never matches
+    (`Condition.matches` answers False for no item), so a project's conditioned
+    binding does not fire on nothing.
+
+    `artifacts` is read **here**, after the checks, not by the caller: the
+    documented order is `… → checks → resolve → print`, and reading the item's
+    artifact map before the checks run would quietly move a read earlier than
+    the contract says it happens.
+
+    Stream discipline: stdout carries the resolved prompt and nothing else,
+    emitted once at the end after everything that could fail has succeeded.
     """
-    st = _store()
-    if st is None:
-        return 1
     policy = st.lifecycle_policy()
     if not args.no_exec:
-        checks = select(policy.stage_checks(step.id), None)
+        checks = select(policy.stage_checks(step.id), item)
         err = run_bindings(checks, st.node_root,
-                           hook_env(st.node_root, "", "", step.id),
+                           hook_env(st.node_root, slug, status, step.id),
                            policy.timeout, f"{step.id} pre")
         if err:
             print(f"tcw work stage: {err}; nothing resolved", file=sys.stderr)
             return 1
+
     try:
-        res = resolve_prompts(policy, step.id, None, st.node_root,
-                              load_builtins(), env=dict(os.environ),
+        res = resolve_prompts(policy, step.id, item, st.node_root,
+                              load_builtins(),
+                              artifacts=st.artifacts(slug) if item is not None
+                              else (),
+                              env=dict(os.environ),
                               execute=not args.no_exec,
                               documentation=st.documentation())
     except ResolveError as e:
@@ -799,9 +811,11 @@ def _stage_without_item(args: argparse.Namespace, step) -> int:
         return 1
 
     if args.no_exec:
+        # The plan is a diagnostic, so it goes to stderr: a caller piping stdout
+        # should get the (partial) prompt, never a plan they might act on.
         print(f"tcw work stage {step.id}: --no-exec, nothing was executed",
               file=sys.stderr)
-        for b in select(policy.stage_checks(step.id), None):
+        for b in select(policy.stage_checks(step.id), item):
             print(f"  pre check would run: {b.ref}", file=sys.stderr)
         for entry in res.plan:
             state = "matched" if entry.matched else "skipped (condition)"
@@ -811,6 +825,19 @@ def _stage_without_item(args: argparse.Namespace, step) -> int:
     if res.text:
         print(res.text)
     return 0
+
+
+def _stage_without_item(args: argparse.Namespace, step) -> int:
+    """The `inbox` half of `tcw work stage`: same contract, no item.
+
+    Every step the item path takes that *reads* the item is skipped rather than
+    fed a placeholder — no `get`, no status-legality check. The empty slug and
+    status are what the hook environment carries when there is no item to name.
+    """
+    st = _store()
+    if st is None:
+        return 1
+    return _stage_tail(args, step, st, None, "", "")
 
 
 def _stage(args: argparse.Namespace) -> int:
@@ -866,41 +893,7 @@ def _stage(args: argparse.Namespace) -> int:
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
         return 1
 
-    policy = st.lifecycle_policy()
-    if not args.no_exec:
-        checks = select(policy.stage_checks(step.id), item)
-        err = run_bindings(checks, st.node_root,
-                           hook_env(st.node_root, bare, item.status, step.id),
-                           policy.timeout, f"{step.id} pre")
-        if err:
-            print(f"tcw work stage: {err}; nothing resolved", file=sys.stderr)
-            return 1
-
-    try:
-        res = resolve_prompts(policy, step.id, item, st.node_root,
-                              load_builtins(),
-                              artifacts=st.artifacts(bare), env=dict(os.environ),
-                              execute=not args.no_exec,
-                              documentation=st.documentation())
-    except ResolveError as e:
-        print(f"tcw work stage: {e}", file=sys.stderr)
-        return 1
-
-    if args.no_exec:
-        # The plan is a diagnostic, so it goes to stderr: a caller piping stdout
-        # should get the (partial) prompt, never a plan they might act on.
-        print(f"tcw work stage {step.id}: --no-exec, nothing was executed",
-              file=sys.stderr)
-        for b in select(policy.stage_checks(step.id), item):
-            print(f"  pre check would run: {b.ref}", file=sys.stderr)
-        for entry in res.plan:
-            state = "matched" if entry.matched else "skipped (condition)"
-            detail = f": {entry.ref}" if entry.kind != "builtin" else ""
-            print(f"  prompt {entry.kind} — {state}{detail}", file=sys.stderr)
-
-    if res.text:
-        print(res.text)
-    return 0
+    return _stage_tail(args, step, st, item, bare, item.status)
 
 
 # Which stage writes each artifact, inverted from the one table that says so.
