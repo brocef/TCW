@@ -4,7 +4,7 @@ writes when a project has bound no template of its own.
 A plain module-level map rather than package data: there is exactly one
 definition of each template, no wheel work, and nothing to go missing from an
 install. Each skeleton is derived from the matching stage document's `Produce`
-section (`skills/tcw-work/references/stage-*.md`), so the built-in asks for what
+section (`skills/tcw-work/references/lifecycle/stage-*.md`), so the built-in asks for what
 the lifecycle already asks for.
 
 **These are drafts, never documents.** `scaffold` writes `<artifact>.draft.md`;

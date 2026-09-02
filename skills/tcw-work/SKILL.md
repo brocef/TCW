@@ -24,15 +24,15 @@ skills.
 A **stage** produces one artifact. A **transition** moves status. Nothing is
 both. Stage detection is artifact presence; status is the folder.
 
-| Stage        | Produces                                | Document                                                |
-| ------------ | --------------------------------------- | ------------------------------------------------------- |
-| `inbox`      | — (creates the item)                    | [`stage-inbox.md`](references/stage-inbox.md)           |
-| `request`    | `initial-request.md`                    | [`stage-request.md`](references/stage-request.md)       |
-| `spec`       | `spec.md`                               | [`stage-spec.md`](references/stage-spec.md)             |
-| `plan`       | `plan.md`                               | [`stage-plan.md`](references/stage-plan.md)             |
-| `implement`  | `outcome.md`                            | [`stage-implement.md`](references/stage-implement.md)   |
-| `verify`     | `refined-outcome.md` **or** `rework.md` | [`stage-verify.md`](references/stage-verify.md)         |
-| `postmortem` | `post-mortem.md`                        | [`stage-postmortem.md`](references/stage-postmortem.md) |
+| Stage        | Produces                                | Document                                                          |
+| ------------ | --------------------------------------- | ----------------------------------------------------------------- |
+| `inbox`      | — (creates the item)                    | [`stage-inbox.md`](references/lifecycle/stage-inbox.md)           |
+| `request`    | `initial-request.md`                    | [`stage-request.md`](references/lifecycle/stage-request.md)       |
+| `spec`       | `spec.md`                               | [`stage-spec.md`](references/lifecycle/stage-spec.md)             |
+| `plan`       | `plan.md`                               | [`stage-plan.md`](references/lifecycle/stage-plan.md)             |
+| `implement`  | `outcome.md`                            | [`stage-implement.md`](references/lifecycle/stage-implement.md)   |
+| `verify`     | `refined-outcome.md` **or** `rework.md` | [`stage-verify.md`](references/lifecycle/stage-verify.md)         |
+| `postmortem` | `post-mortem.md`                        | [`stage-postmortem.md`](references/lifecycle/stage-postmortem.md) |
 
 `start` · `submit` · `rework` · `complete` · `discard` →
 [`transitions.md`](references/transitions.md)
@@ -58,12 +58,12 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 ## Read on demand
 
 - [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, slash commands, the documentation gate (`tcw work docs`), publication on a provisioned store
-- [`delegation.md`](references/delegation.md) — dispatching stages to subagents
+- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents
 - [`tags.md`](references/tags.md) — the node's tag vocabulary
 - [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences
 - [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
-- [`decompose.md`](references/decompose.md) — splitting one item into nested pieces
-- **Only when the user asks for it** — [`audit-backlog.md`](references/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources
+- [`decompose.md`](references/procedures/decompose.md) — splitting one item into nested pieces
+- **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources
 
 > **Web editing:** items, artifacts (Request/Spec/Plan as tabs), and the `capabilities.yaml`
 > sidecar use the configured store through `tcw serve`; it commits transitions but runs **no** hooks.

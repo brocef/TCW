@@ -69,7 +69,7 @@ def artifacts_in(text: str) -> set[str]:
 
 
 def stage_doc(stage_id: str) -> Path:
-    return REFS / f"stage-{stage_id}.md"
+    return REFS / "lifecycle" / f"stage-{stage_id}.md"
 
 
 # ── one document per id, and no orphans ──────────────────────────────────────
@@ -80,7 +80,8 @@ def test_every_stage_has_exactly_one_document(stage_id):
 
 
 def test_no_stage_document_exists_for_an_unknown_id():
-    found = {p.stem[len("stage-"):] for p in REFS.glob("stage-*.md")}
+    found = {p.stem[len("stage-"):]
+             for p in (REFS / "lifecycle").glob("stage-*.md")}
     assert found == set(STAGE_IDS), f"orphaned or missing: {found ^ set(STAGE_IDS)}"
 
 
@@ -240,7 +241,7 @@ def test_each_router_keeps_its_judgment(stage_id):
 
 def test_no_reference_filename_carries_an_ordinal():
     """Ordinals recreate exactly the renumbering churn stable ids prevent."""
-    bad = [p.name for p in REFS.glob("*.md") if re.search(r"\d", p.stem)]
+    bad = [p.name for p in REFS.rglob("*.md") if re.search(r"\d", p.stem)]
     assert not bad, f"ordinal in filename(s): {bad}"
 
 
@@ -285,5 +286,10 @@ def test_the_router_routes_to_every_reference_file():
     """An unreachable reference file is dead weight that still costs a reader
     the time to wonder whether it matters."""
     text = SKILL.read_text(encoding="utf-8")
-    orphans = [p.name for p in sorted(REFS.glob("*.md")) if p.name not in text]
+    # Matched by path relative to `references/`, not bare name: a link written
+    # `references/lifecycle/stage-spec.md` has to count as reaching the file,
+    # and two files in different folders may legitimately share a name.
+    orphans = [rel for rel in sorted(p.relative_to(REFS).as_posix()
+                                     for p in REFS.rglob("*.md"))
+               if rel not in text]
     assert not orphans, f"unreachable from SKILL.md: {orphans}"

@@ -26,4 +26,4 @@ pass.
    documentation-sync.** — agent `[judgment]`
 4. **Delegable, and this is where it pays**: the coordinating session ends up
    holding `outcome.md` rather than an entire diff. See
-   [`delegation.md`](delegation.md). — agent `[judgment]`
+   [`delegation.md`](../procedures/delegation.md). — agent `[judgment]`

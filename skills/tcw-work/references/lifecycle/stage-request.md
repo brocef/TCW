@@ -12,7 +12,7 @@ this document carries only what the CLI cannot.
 ## Produce
 
 `initial-request.md` — and, for an epic, the coordination goal it alone states:
-what the children are collectively for. See [`epic-deltas.md`](epic-deltas.md).
+what the children are collectively for. See [`epic-deltas.md`](../epic-deltas.md).
 
 ## Steps
 
