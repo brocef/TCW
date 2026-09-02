@@ -3556,7 +3556,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         body = slugify(title)[:120].rstrip("-") or "untitled"
         base = f"{created}-{body}"
         slug, n = base, 2
-        while self._find(slug) is not None:
+        # Live items *and* the graveyard. `_find` sees only what the store still
+        # holds, and a resolved item's folder is gitignored — so in any clone but
+        # the one that resolved it, a matching date and title would be handed the
+        # very slug it used, and every existing reference to the resolved item
+        # would resolve, silently, to this new one. The tombstone is the only
+        # trace that survives into that clone, which makes it the only thing that
+        # can prevent the collision there.
+        #
+        # A YAML read per candidate, not per call: the loop body runs only on a
+        # real collision, and `_find` already walks the store on every iteration.
+        while self._find(slug) is not None or self.tombstone(slug) is not None:
             slug, n = f"{base}-{n}", n + 1
         return slug
 

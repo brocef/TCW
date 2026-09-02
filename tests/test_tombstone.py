@@ -11,6 +11,7 @@ promise that does not survive a squash-merge, a rebase, or a shallow clone, and
 a pointer that silently stops working is worse than no pointer at all.
 """
 
+import shutil
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -315,3 +316,31 @@ def test_auto_commit_off_suppresses_the_tombstone_add_commit(tmp_path, monkeypat
     assert main(["work", "tombstone", "add", "2026-01-01-a"]) == 0
     assert FsWorkStore.open(root).tombstone("2026-01-01-a") is not None
     assert "graveyard" in git(root, "status", "--porcelain")
+
+
+# ── slug assignment ───────────────────────────────────────────────────────────
+
+def test_a_new_item_never_reuses_a_tombstoned_slug(tmp_path):
+    """`_unique_slug` loops over *live* items, so in a clone without the ignored
+    `completed/` folder nothing stopped a new item from being handed a resolved
+    item's slug — after which every reference to the resolved item resolved,
+    silently, to a different item. A dangling reference is loud and harmless;
+    this is neither.
+
+    Forward-only: slugs are assumed unique to date, so there is no audit of
+    existing items. This is what keeps the assumption true from here on.
+    """
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create_work("A thing", created="2026-01-01").item.slug
+    st.start(slug, owner="t")
+    st.complete(slug, "done", [])
+    # The clone's condition, reproduced in place: the record survives, the
+    # folder does not.
+    subprocess.run(["git", "-C", str(root), "rm", "-r", "-q", "--ignore-unmatch",
+                    f"docs/work/completed/{slug}"], check=True)
+    shutil.rmtree(root / "docs" / "work" / "completed" / slug, ignore_errors=True)
+
+    again = FsWorkStore.open(root).create_work("A thing", created="2026-01-01").item.slug
+    assert again != slug
+    assert FsWorkStore.open(root).tombstone(slug) is not None   # still recorded
