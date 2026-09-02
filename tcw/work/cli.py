@@ -765,6 +765,54 @@ def _binding_json(b) -> dict:
     return out
 
 
+def _stage_without_item(args: argparse.Namespace, step) -> int:
+    """The `inbox` half of `tcw work stage`: same contract, no item.
+
+    Every step the item path takes that *reads* the item is skipped rather than
+    fed a placeholder — no `get`, no status-legality check — and the two that do
+    not are run with `item=None`, which both already accept. A `when:`-condition
+    correctly never matches (`Condition.matches` answers False for no item), so
+    a project's conditioned `inbox` binding does not fire on nothing.
+
+    Stream discipline is the same promise the item path makes: stdout carries
+    the resolved prompt and nothing else, emitted once at the end.
+    """
+    st = _store()
+    if st is None:
+        return 1
+    policy = st.lifecycle_policy()
+    if not args.no_exec:
+        checks = select(policy.stage_checks(step.id), None)
+        err = run_bindings(checks, st.node_root,
+                           hook_env(st.node_root, "", "", step.id),
+                           policy.timeout, f"{step.id} pre")
+        if err:
+            print(f"tcw work stage: {err}; nothing resolved", file=sys.stderr)
+            return 1
+    try:
+        res = resolve_prompts(policy, step.id, None, st.node_root,
+                              load_builtins(), env=dict(os.environ),
+                              execute=not args.no_exec,
+                              documentation=st.documentation())
+    except ResolveError as e:
+        print(f"tcw work stage: {e}", file=sys.stderr)
+        return 1
+
+    if args.no_exec:
+        print(f"tcw work stage {step.id}: --no-exec, nothing was executed",
+              file=sys.stderr)
+        for b in select(policy.stage_checks(step.id), None):
+            print(f"  pre check would run: {b.ref}", file=sys.stderr)
+        for entry in res.plan:
+            state = "matched" if entry.matched else "skipped (condition)"
+            detail = f": {entry.ref}" if entry.kind != "builtin" else ""
+            print(f"  prompt {entry.kind} — {state}{detail}", file=sys.stderr)
+
+    if res.text:
+        print(res.text)
+    return 0
+
+
 def _stage(args: argparse.Namespace) -> int:
     """`tcw work stage <id> [ref]` — what to do at a lifecycle stage.
 
@@ -782,12 +830,21 @@ def _stage(args: argparse.Namespace) -> int:
         print(f"tcw work stage: unknown stage '{args.stage_id}'; expected one of "
               f"{', '.join(legal)}", file=sys.stderr)
         return 1
-    if not STAGE_STATUSES[step.id]:
-        # `inbox` — rejected with the reason rather than printing nothing, which
-        # would read as "no instructions configured".
-        print(f"tcw work stage: '{step.id}' runs before an item exists, so there "
-              f"is no item to resolve a stage against; use `tcw work inbox list` "
-              f"and `tcw work inbox accept`", file=sys.stderr)
+
+    # `inbox` runs before an item exists, so it resolves against the node alone.
+    # Branching on the **stage id**, never on `STAGE_STATUSES[step.id]` being
+    # empty: that emptiness says "no work-item status applies", which is a true
+    # statement about this stage and not a licence to read it as "any status".
+    if step.id == "inbox":
+        if args.slug is not None:
+            print(f"tcw work stage: '{step.id}' runs before an item exists and "
+                  f"takes no work item; run it with no argument",
+                  file=sys.stderr)
+            return 1
+        return _stage_without_item(args, step)
+    if args.slug is None:
+        print(f"tcw work stage: '{step.id}' needs a work item; "
+              f"run `tcw work stage {step.id} <slug>`", file=sys.stderr)
         return 1
 
     resolved = _resolve(args.slug, "stage")
@@ -1481,7 +1538,11 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pstg = g.add_parser("stage",
                         help="print a stage's instructions after its checks pass")
     pstg.add_argument("stage_id", metavar="stage")
-    pstg.add_argument("slug")
+    # Optional here and required in the handler: argparse cannot express
+    # "required for six values of another positional, refused for the seventh".
+    pstg.add_argument("slug", nargs="?",
+                      help="the work item; omitted for `inbox`, which runs "
+                           "before an item exists")
     pstg.add_argument("--no-exec", action="store_true",
                       help="report what would run and run none of it")
     pstg.set_defaults(func=_stage)

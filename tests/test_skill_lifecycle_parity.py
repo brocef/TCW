@@ -29,10 +29,9 @@ REFS = REPO / "skills/tcw-work/references"
 STAGE_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "stage")
 TRANSITION_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "transition")
 
-# `inbox` runs before an item exists, so no prompt ships for it and
-# `tcw work stage inbox` is refused. Its document keeps its own methodology; the
-# other six are routers over a prompt the CLI prints.
-ROUTER_IDS = tuple(s for s in STAGE_IDS if s != "inbox")
+# Every stage is a router over a prompt the CLI prints, `inbox` included: it
+# ships one too, reached by `tcw work stage inbox` with no work item reference.
+ROUTER_IDS = STAGE_IDS
 
 STAGE_SECTIONS = ("Purpose", "Inputs", "Produce", "Steps", "Exit")
 # Derived, never written out a second time: a router's `Exit` would restate the
@@ -138,10 +137,10 @@ def test_a_stage_producing_nothing_says_so_explicitly():
 
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
 def test_every_stage_document_has_the_sections_in_order(stage_id):
-    """Five for `inbox`, four for a router — the `Exit` section is the one shape
-    that cannot survive the split, since "how this stage ends badly" is exactly
-    the redirect material the prompt carries."""
-    wanted = STAGE_SECTIONS if stage_id == "inbox" else ROUTER_SECTIONS
+    """Four sections, for all seven — the `Exit` section is the one shape that
+    cannot survive the split, since "how this stage ends badly" is exactly the
+    redirect material the prompt carries."""
+    wanted = ROUTER_SECTIONS
     found = [h for h in sections(stage_doc(stage_id)) if h in STAGE_SECTIONS]
     assert found == list(wanted), \
         f"stage-{stage_id}.md sections are {found}"
@@ -171,13 +170,12 @@ def test_every_stage_document_names_the_harness_neutral_binding_command(stage_id
     """Codex receives no context injection, so every stage must carry the command
     both harnesses can run. `--directive` is sugar, never the path.
 
-    The command that answers "what do I do here" is now `tcw work stage`, which
-    resolves a binding *and* falls back to TCW's own instructions. `inbox` keeps
-    `tcw work lifecycle`: the verb refuses `inbox` by design, so pointing its
-    document at it would route a reader into an error.
+    The command that answers "what do I do here" is `tcw work stage`, which
+    resolves a binding *and* falls back to TCW's own instructions — for every
+    stage, `inbox` included.
     """
     text = stage_doc(stage_id).read_text(encoding="utf-8")
-    wanted = "tcw work lifecycle" if stage_id == "inbox" else f"tcw work stage {stage_id}"
+    wanted = f"tcw work stage {stage_id}"
     assert wanted in text, \
         f"stage-{stage_id}.md never tells the agent how to find its instructions"
 
@@ -218,7 +216,7 @@ def test_no_router_sentence_appears_in_its_prompt(stage_id):
 def test_each_router_stays_within_its_ceiling(stage_id):
     """The backstop behind the shared-sentence check: no test can catch a
     faithful paraphrase, but a router that paraphrased its whole prompt would
-    not fit. `inbox` is exempt — it carries its own methodology."""
+    not fit."""
     lines = len(stage_doc(stage_id).read_text(encoding="utf-8").splitlines())
     assert lines <= ROUTER_LINE_CEILING, \
         f"stage-{stage_id}.md is {lines} lines, ceiling is {ROUTER_LINE_CEILING}"

@@ -17,15 +17,21 @@ import pytest
 from tcw.store.base import STAGE_IDS
 from tcw.work.resolve import load_builtins
 
-SHIPPED = set(STAGE_IDS) - {"inbox"}
+SHIPPED = set(STAGE_IDS)
 REPO = Path(__file__).resolve().parent.parent
 
 
-def test_every_stage_but_inbox_ships_a_prompt():
+def test_every_stage_ships_a_prompt():
     """The set is the derivation, never a hand-written list: a stage added to
-    `STAGE_IDS` with no prompt file has to fail here."""
+    `STAGE_IDS` with no prompt file has to fail here.
+
+    `inbox` is **in** the set. It runs before an item exists, which is why it
+    long shipped nothing — but "no item to resolve against" was never a reason
+    for TCW to have no instructions for it, only a reason for those
+    instructions to take no work item reference.
+    """
     assert set(load_builtins().stage_prompts) == SHIPPED
-    assert "inbox" not in load_builtins().stage_prompts
+    assert "inbox" in load_builtins().stage_prompts
 
 
 @pytest.mark.parametrize("sid", sorted(SHIPPED))

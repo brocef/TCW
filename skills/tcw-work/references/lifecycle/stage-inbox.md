@@ -2,69 +2,35 @@
 
 ## Purpose
 
-Turn a raw drop in `docs/work/inbox/` — a pasted request, a delegation from
-another node, an escalation from a child — into a tracked work item. This is the
-only stage that runs before an item exists.
+Turning a raw drop into a tracked item.
+Get your instructions on how to produce the output by running
+`tcw work stage inbox` — no work item reference, because none exists yet.
 
 A **GitHub issue is the same shape from a different source**: someone else's raw
 text, accepted or rejected. The `tcw-triage-issues` skill sweeps a project's open
-issues and reuses the judgment below for the ones it accepts; what it adds is
+issues and reuses this stage's judgment for the ones it accepts; what it adds is
 GitHub-specific — reaching the issues, and replying to the reporter.
 
 ## Inputs
 
-The raw inbox entry, read with `tcw work inbox show <entry>`. An entry may be a
-single file or a folder with attachments.
-
-Repository discovery is unrestricted: read whatever code, docs, or history helps
-you understand the request well enough to title it.
+The raw inbox entry. No lifecycle artifact precedes it: this is the stage that
+runs first, and the entry is the only thing to read.
 
 ## Produce
 
-**No lifecycle artifact.** This stage creates the _item_; `tcw work inbox accept`
-preserves the entry as its `intake.md` — body, resource manifest, attachments —
-and the `request` stage is what shapes that into a request document. Accepting an
-entry does not write one, so an accepted item shows `i` and not `R`.
+**No lifecycle artifact.** This stage creates the _item_, and `tcw work inbox
+accept` preserves the entry as its `intake.md` rather than writing a request.
+An accepted item therefore shows `i` and not `R` in `tcw work list`.
 
 ## Steps
 
-1. `tcw work inbox list`, then `tcw work inbox show <entry>` for anything
-   unfamiliar. — agent `[judgment]`
-2. Run `tcw work lifecycle --stage inbox` and honor any binding it reports.
-   — agent `[judgment]`
-3. Decide whether the entry is one item or several. A drop describing three
-   unrelated changes becomes three items; one describing a change with three
-   parts becomes one item that [`decompose.md`](../procedures/decompose.md) may later split. — agent
-   `[judgment]`
-4. Inspect the node's tag vocabulary (`tcw work tags list`) and choose every
-   materially applicable tag. Register a new one only if it will be useful beyond
-   this item. — agent `[judgment]`
-5. `tcw work inbox accept <entry>`. The item is named after the entry's first
-   `# ` heading, or its filename minus the `YYYY-MM-DD-` prefix (kept when
-   stripping it would leave nothing); pass
-   `--title "<clear title>"` when that heading is missing or poor. The tool
-   consumes the entry, creates the item, and prints its slug; it refuses an
-   entry that does not exist. — agent `[gated]`
-6. Apply tags and estimates with `tcw work edit`. If the entry carried links or
-   attachments, make sure they survived into the item — collect them under
-   `## References`, one line of _why it matters_ each, rather than leaving them
-   buried in pasted text. Do **not** ask for more here: the requester is usually
-   a GitHub issue reporter or another node, and is not present. The `request`
-   stage asks. — agent `[judgment]`
-7. Commit the new item. — agent `[judgment]`
-
-## Exit
-
-**Well:** the entry is gone from `inbox/`, a backlog item exists with a title
-that reads as a change rather than a symptom, and the `request` stage can begin.
-
-**Badly:**
-
-- _The entry is too vague to title._ Do not invent scope. Accept it with the
-  clearest title the text supports and let the `request` stage ask the user, or
-  leave it in the inbox and say why.
-- _The entry duplicates an existing item._ Do not accept it. Note the overlap on
-  the existing item and remove the entry.
-- _The entry is really several items._ Accept the primary one and create the
-  others with `tcw work new`, linking them with `--blocked-by` where order
-  matters.
+1. **Not delegable.** The stage is interactive — deciding what an entry means
+   and how to title it is judgment the coordinating session holds. See
+   [`delegation.md`](../procedures/delegation.md). — agent `[judgment]`
+2. `tcw work inbox accept <entry>` is `[gated]` rather than advice: it consumes
+   the entry, creates the item, and refuses one that does not exist. Everything
+   the prompt says about titling governs the `--title` you pass it. — agent
+   `[gated]`
+3. An entry that turns out to be one change with several parts becomes a single
+   item; [`decompose.md`](../procedures/decompose.md) is what splits it later,
+   at planning time rather than here. — agent `[judgment]`
