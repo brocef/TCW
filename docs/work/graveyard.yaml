@@ -7,3 +7,6 @@
 2026-09-02-restore-the-ci-test-suite-to-green:
   resolution: done
   resolved: '2026-09-02'
+2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
+  resolution: done
+  resolved: '2026-09-02'

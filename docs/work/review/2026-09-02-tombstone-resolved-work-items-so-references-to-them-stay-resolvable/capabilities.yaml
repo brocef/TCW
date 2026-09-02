@@ -1,7 +1,0 @@
-new:
-    - work/record-a-tombstone-for-resolved-work
-changed:
-    - cli/validate-a-node
-    - cli/reference-a-tcw-object
-    - work/complete-a-work-item
-    - work/discard-a-work-item
