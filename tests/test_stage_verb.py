@@ -206,7 +206,8 @@ def test_no_mutating_store_method_is_called(tmp_path, monkeypatch):
     mutators = [name for name in dir(WorkStore)
                 if name.startswith(("create", "update", "write", "delete",
                                     "set_", "start", "submit", "rework",
-                                    "complete", "drop", "inbox_accept"))
+                                    "complete", "drop", "inbox_accept",
+                                    "record"))
                 and callable(getattr(WorkStore, name, None))]
     assert mutators, "found no mutating methods to guard — the guard is vacuous"
     called = []

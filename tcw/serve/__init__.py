@@ -1009,7 +1009,10 @@ class TcwHandler(BaseHTTPRequestHandler):
                     # its unrecognized-reason branch, which neutralizes the anchor
                     # and shows `detail`. That is already the right rendering, so
                     # no client change is required for this to read correctly.
-                    detail = f"{r.key} is completed work; its documents are no " \
+                    # "resolved", not "completed": with no resolution recorded
+                    # this covers a discarded item too, and calling abandoned
+                    # work completed would be worse than saying less.
+                    detail = f"{r.key} is resolved work; its documents are no " \
                              f"longer in the tree"
                     if r.resolution:
                         detail = f"{r.key} was resolved as {r.resolution}; its " \

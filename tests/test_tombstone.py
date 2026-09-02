@@ -332,6 +332,39 @@ def test_tombstone_add_leaves_an_existing_record_alone(tmp_path, monkeypatch):
     assert ts.resolution == "wontfix" and ts.resolved == "2025-06-01"
 
 
+@pytest.mark.parametrize("bad", ["", "   ", "completed/2026-01-01-a"])
+def test_tombstone_add_refuses_a_slug_that_names_no_item(bad, tmp_path, monkeypatch):
+    """There is no `tcw work tombstone rm`, so a junk key is permanent short of
+    the hand-edit the graveyard exists to make unnecessary. Blank and path-shaped
+    are the two that can never name an item; anything stricter would refuse a
+    legitimate slug minted by an older version of this tool."""
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", bad]) == 1
+    assert not (FsWorkStore.open(root).root / "graveyard.yaml").exists()
+
+
+def test_tombstone_add_normalizes_the_resolved_date(tmp_path, monkeypatch):
+    """`date.fromisoformat` accepts `20260601` on 3.11+, so validating without
+    normalizing would store a shape nothing else in the store writes or reads."""
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-a",
+                 "--resolved", "20260601"]) == 0
+    assert FsWorkStore.open(root).tombstone("2026-01-01-a").resolved == "2026-06-01"
+
+
+def test_a_graveyard_that_is_not_utf8_reads_as_absent(tmp_path):
+    """`_safe_yaml` catches a YAML syntax error and nothing else. An unreadable
+    file must not surface inside `_unique_slug`, where it would turn `tcw work
+    new` into a traceback about a file the user never touched."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    (st.root / "graveyard.yaml").write_bytes(b"\xff\xfe not utf-8 at all")
+    assert st.tombstone("2026-01-01-a") is None
+    assert st.create_work("A new thing").item.slug        # slug minting survives
+
+
 def test_tombstone_add_refuses_an_unknown_resolution(tmp_path, monkeypatch):
     root = node(tmp_path)
     monkeypatch.chdir(root)

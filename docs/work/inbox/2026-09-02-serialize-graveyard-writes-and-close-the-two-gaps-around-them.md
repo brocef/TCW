@@ -89,3 +89,8 @@ actually gets the record to the clones it exists for.
   own wording, not just the call.
 - Item 1's fix must not make the single-agent path slower or more fragile; the
   overwhelmingly common case is one agent, no contention.
+- Item 3 has a test to add with it: `tcw work tombstone add` is absent from
+  `TRANSITIONS` in `tests/test_store_publication.py:189`, which is the list that
+  would have caught the missing publish. It is deliberately not added yet,
+  because the test would fail — the command does not publish. Add the entry in
+  the same change that makes it publish, not before.

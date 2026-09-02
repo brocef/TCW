@@ -3716,6 +3716,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not self.auto_commit_transitions():
             return
         rel = str(path.relative_to(self.store_git_root))
+        # Not `_has_committable_changes`, which is the obvious reuse and is the
+        # wrong rule here by exactly one line: it excludes untracked (`??`)
+        # paths, and an untracked graveyard is precisely the state this refuses
+        # — a first write someone else made and has not committed. Not `_git`
+        # either, because that raises on a non-zero exit and this wants to fall
+        # through to "assume clean" when git cannot answer (see the returncode
+        # check below). `stdin` is closed explicitly so `_git`'s guarantee about
+        # never inheriting a terminal still holds here.
         out = subprocess.run(
             ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", rel],
             stdin=subprocess.DEVNULL, capture_output=True, text=True)
@@ -3794,10 +3802,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
         says what is already there.
         """
         self._require_repository()
+        # A blank or path-shaped slug can never name an item this store held, and
+        # there is no `tombstone rm` — an entry written under one is permanent
+        # short of the hand-edit the graveyard exists to make unnecessary. The
+        # guard is deliberately this narrow: a backfilled slug comes from an
+        # older version of this tool and need not match what `slugify` mints
+        # today, so anything stricter would refuse legitimate history.
+        slug = slug.strip()
+        if not slug or "/" in slug:
+            raise ValueError(
+                "cannot record an empty or path-shaped slug: a tombstone names "
+                "one work item this store held.")
         if resolution:
             resolution_status(resolution)          # raises on an unknown one
         if resolved:
-            date.fromisoformat(resolved)           # raises on a malformed one
+            # Normalized, not just validated: `date.fromisoformat` accepts
+            # `20260601` on 3.11+, and storing that raw would put a shape in the
+            # graveyard that nothing else in the store writes or reads.
+            resolved = date.fromisoformat(resolved).isoformat()
         item = self.get(slug)
         if item is not None and item.status not in RESOLVED_STATUSES:
             raise ValueError(
@@ -3849,7 +3871,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
         path = self.root / self.GRAVEYARD_NAME
         if not path.exists():
             return None
-        doc = self._safe_yaml(path)
+        try:
+            doc = self._safe_yaml(path)
+        except (OSError, UnicodeDecodeError):
+            # `_safe_yaml` catches a YAML syntax error and nothing else, so a
+            # file that is unreadable or not valid UTF-8 came back out of it —
+            # and from here it would surface inside `_unique_slug`, turning
+            # `tcw work new` into a traceback about a file the user never
+            # touched. Every caller of this method wants "answer None and carry
+            # on", so the tolerance the docstring promises is completed here.
+            return None
         if not isinstance(doc, dict):
             return None
         if slug not in doc:
