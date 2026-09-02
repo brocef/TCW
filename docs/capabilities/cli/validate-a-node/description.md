@@ -25,7 +25,13 @@ reference to finished work as a mistake buries the real ones. A reference to a
 slug the project never held is still reported, in the same words as before —
 that distinction is the point.
 
-Validation gives the **same answer in every checkout**. It reads only what is
-committed, so it no longer matters whether the machine running it happens to be
-the one that resolved an item: the verdict is a property of the project, not of
-a working directory. That is what makes it usable as a gate on finishing work.
+**A reference to a resolved item gives the same answer in every checkout.** It no
+longer matters whether the machine running validation is the one that resolved
+the item, because the record the answer comes from is tracked. That is what makes
+validation usable as a gate on finishing work.
+
+Note the limit, which is narrower than "reads only what is committed": validation
+walks the working tree, not the index, so a file that is on disk but untracked —
+including the documents inside a resolved item's own folder — is still scanned.
+A mistyped reference *inside* a completed item's documents is therefore still
+reported only on a machine that still has them.

@@ -3735,6 +3735,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         `_require_writable_graveyard` has already refused the shapes where the
         read half would lose data.
 
+        **This is not concurrency-safe, and read-modify-write is not what makes
+        it safe.** The read and the write are separate steps with no lock across
+        them, so two processes can both read the same mapping and the second
+        write wins, dropping the first one's entry — an item left in `completed/`
+        with no record anywhere, which is exactly what `_unique_slug` then fails
+        to protect against. The window is one YAML parse plus one atomic write,
+        so it needs two resolutions within milliseconds of each other. What
+        read-modify-write actually buys is the *sequential* case — a second
+        resolution preserving the first — and a merge between two clones, where
+        the conflict is a plain YAML one a human can settle.
+
         Sorted keys, unlike the ordered documents elsewhere in this store: this
         mapping has no meaningful order, and a stable one keeps the diff of a
         resolution to a single added block and makes a merge conflict between two
@@ -3763,16 +3774,43 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
         `resolved` likewise defaults to today rather than guessing a real date —
         the honest reading of the record is "known resolved by this date".
+
+        Two refusals, and the first is narrower than it looks. `get()` answers
+        for `completed/` and `discarded/` as well as the live statuses, so "the
+        store can find it" is not the same as "it is still live" — and the
+        machine an adopter backfills from is precisely the one where a resolved
+        item's folder is still on disk. Refusing on `get()` alone rejected the
+        migration path this command exists to provide, telling the user to
+        "resolve the item instead" of an item already resolved. Only a genuinely
+        live status is refused.
+
+        The second refusal is what that first change makes reachable.
+        `_write_tombstone` assigns `doc[slug]` outright — correct for a
+        transition, which should record what just happened — so a second
+        `tombstone add` for the same slug would overwrite a good record with this
+        call's defaults, an empty resolution and today's date, and report
+        success. A scripted backfill re-run over the same list is the ordinary
+        way to hit that, so an existing record is left alone and the command
+        says what is already there.
         """
         self._require_repository()
         if resolution:
             resolution_status(resolution)          # raises on an unknown one
         if resolved:
             date.fromisoformat(resolved)           # raises on a malformed one
-        if self.get(slug) is not None:
+        item = self.get(slug)
+        if item is not None and item.status not in RESOLVED_STATUSES:
             raise ValueError(
-                f"cannot record {slug}: it is a live work item. A tombstone says "
-                f"the store is finished with a slug; resolve the item instead.")
+                f"cannot record {slug}: it is a live work item ({item.status}). "
+                f"A tombstone says the store is finished with a slug; resolve the "
+                f"item instead.")
+        existing = self.tombstone(slug)
+        if existing is not None:
+            raise ValueError(
+                f"cannot record {slug}: it is already in the graveyard "
+                f"(resolution {existing.resolution or 'unrecorded'}, resolved "
+                f"{existing.resolved or 'unrecorded'}). Recording it again would "
+                f"replace that with this call's values.")
         self._require_writable_graveyard(slug)
         self._write_tombstone(slug, resolution, resolved)
         if self.auto_commit_transitions():
@@ -4678,9 +4716,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
         would sweep every other item's uncommitted edits into a status commit.
 
         `extra` widens that pathspec by the graveyard on a resolving transition —
-        the one path here not owned by this item. It is safe to include only
-        because `_require_writable_graveyard` already refused the transition if
-        it held changes TCW did not just make.
+        the one path here not owned by this item.
+
+        `_require_writable_graveyard` is what makes that acceptable, but it is
+        not a guarantee, and the difference matters. It runs before the move and
+        the pathspec is used after the write, so the state it checked can change
+        in between — "time of check to time of use", and this code opens that
+        window itself. With two agents resolving different items in one working
+        tree, the second one's commit can carry the first one's graveyard entry
+        under its own message. Nothing is lost when that happens; the entries are
+        merged, just attributed to the wrong commit. The guard removes the case
+        it can see — a graveyard already dirty when the transition starts — and
+        narrows the rest to the window between the check and the commit.
+        Serializing that window needs a lock held across check, write and commit,
+        which this does not have.
 
         The move is never rolled back on a commit failure. The `git mv` already
         landed in both the index and the working tree, and undoing it introduces

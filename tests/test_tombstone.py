@@ -288,6 +288,50 @@ def test_tombstone_add_refuses_a_live_slug_and_writes_nothing(tmp_path, monkeypa
     assert not (FsWorkStore.open(root).root / "graveyard.yaml").exists()
 
 
+def test_tombstone_add_records_a_resolved_item_whose_folder_is_still_here(
+        tmp_path, monkeypatch):
+    """The backfill case the command exists for, and the one it used to refuse.
+
+    `get()` answers for `completed/` and `discarded/` too, so on the machine that
+    ran the transition a resolved item is still findable — and that is *exactly*
+    the machine an adopter backfills from. They read the failing slugs off CI,
+    where the folders never arrived, and run this command at home, where they
+    did. Refusing there left the documented migration path with no way through:
+    the message said "resolve the item instead" of an item already resolved.
+    """
+    root = node(tmp_path)
+    slug = resolve_item(root, "A thing", resolution="done")
+    st = FsWorkStore.open(root)
+    # An adopter upgrading: the folder is on disk, nothing was ever recorded.
+    (st.root / "graveyard.yaml").unlink()
+    assert st.get(slug) is not None and st.get(slug).status == "completed"
+
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", slug, "--resolution", "done"]) == 0
+    assert FsWorkStore.open(root).tombstone(slug).resolution == "done"
+
+
+def test_tombstone_add_leaves_an_existing_record_alone(tmp_path, monkeypatch):
+    """A re-run must not degrade what is already recorded.
+
+    `_write_tombstone` assigns `doc[slug]` outright, which is right for a
+    transition (a re-resolution should say the new thing) and wrong for a
+    backfill: running the command a second time without `--resolution` would
+    replace a recorded `done` with an empty string and the real date with today,
+    report success, and commit it. A scripted backfill loop re-run over the same
+    list is the obvious way to hit it — and it only became reachable once the
+    guard above stopped rejecting resolved items outright.
+    """
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-a",
+                 "--resolution", "wontfix", "--resolved", "2025-06-01"]) == 0
+
+    assert main(["work", "tombstone", "add", "2026-01-01-a"]) == 1
+    ts = FsWorkStore.open(root).tombstone("2026-01-01-a")
+    assert ts.resolution == "wontfix" and ts.resolved == "2025-06-01"
+
+
 def test_tombstone_add_refuses_an_unknown_resolution(tmp_path, monkeypatch):
     root = node(tmp_path)
     monkeypatch.chdir(root)

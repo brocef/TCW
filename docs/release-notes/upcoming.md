@@ -23,7 +23,10 @@ Resolved items are kept out of the tracked tree by default, but they stay in the
 working directory of whoever resolved them — so `tcw validate` passed for that
 person and failed for everybody else, at the same commit. If you gate anything
 on `tcw validate`, it could pass locally and fail in CI for reasons nobody could
-see. It now reads only what is committed.
+see. A reference to a resolved item now answers the same way everywhere, because
+the record behind it is tracked. Validation still scans the working tree rather
+than only what is committed, so a mistyped reference inside a resolved item's own
+documents remains visible only where those documents are.
 
 ### Recording work you finished before this release
 

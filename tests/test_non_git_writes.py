@@ -413,6 +413,7 @@ def test_every_cli_write_refuses_with_one_wording_and_writes_nothing(
         ["work", "drop", backlog, "--confirm"],
         ["work", "tags", "add", "demo"],
         ["work", "tags", "rm", "demo"],
+        ["work", "tombstone", "add", "2026-01-01-gone"],
         ["work", "scaffold", "spec", backlog],
         ["work", "inbox", "accept", "raw.md"],
         ["work", "reconcile", epic],
