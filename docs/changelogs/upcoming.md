@@ -122,4 +122,25 @@ category.
   `get()`, so `tcw capabilities drift` reports drift for whoever completed the
   work and reports none in every other clone, failing in the silent direction.
   Filed as its own item rather than fixed here, since it changes what a
-  different command reports.
+  different command reports. **Now fixed** — see below.
+- **`tcw capabilities drift` under-reported in every checkout but one.**
+  `_shipped_but_missing` decided "did it ship?" from `work.get()`, which only
+  answers where the gitignored `completed/` folder still is, so the command
+  reported drift for whoever completed the work and exited 0 with "no capability
+  drift" in CI and every colleague's clone. It now falls back to `tombstone()`,
+  mapping the recorded resolution through `resolution_status` so the
+  ship-versus-abandon distinction is drawn by the same function `complete()`
+  uses. A record with no resolution reports nothing rather than guessing — a
+  backfilled record often has none, and guessing wrong means calling abandoned
+  work shipped.
+- The sweep was redone properly this time, over two mechanical searches (every
+  work-store `get()` outside the store module, every comparison against a
+  resolved status) with each hit adjudicated. Table in that item's `spec.md`.
+  It found **a second instance**: `epic_completable` (`base.py:2141-2150`) reads
+  its children through `initiative_children`, so an epic whose children are all
+  resolved has zero *visible* children in another clone and the `bool(children)`
+  guard reports it not completable. Measured, not reasoned. That one is worse —
+  it gates the backlog→completed bypass, so it blocks a close rather than
+  under-reporting — and it is **not fixable with the current record**, which
+  carries no `initiative`. Filed; not fixed. The honest claim for this sweep is
+  "every site those two searches reach", not "every site".

@@ -55,6 +55,31 @@ This adds one file, `graveyard.yaml`, next to your status folders. It is small �
 two lines per resolved item — and it is deliberately always tracked: a record
 that could be ignored would be missing from exactly the checkouts that need it.
 
+### `tcw capabilities drift` now works in CI
+
+`tcw capabilities drift` tells you when a capability is still marked Missing
+even though the work behind it shipped. It was deciding that by looking for the
+work item in your tree — and finished items are kept out of the tracked tree, so
+it only ever found them on the machine that finished the work. Everywhere else,
+including CI, it printed "no capability drift" and exited 0. That reads as a
+clean bill of health, and it was really "could not tell".
+
+It now reads the same record that makes links to finished work resolve, so it
+gives the same answer everywhere.
+
+Two limits worth knowing, because both are deliberate:
+
+- If you backfilled a slug with `tcw work tombstone add` and did not give it a
+  `--resolution`, the record cannot say whether that work shipped or was
+  abandoned, and drift stays quiet about it rather than guessing. Pass
+  `--resolution` when you know it, and those capabilities come back into scope.
+- Work that was **discarded** is still not reported. A capability behind
+  abandoned work is supposed to stay Missing, and that has not changed.
+
+This fixes the reporting, not the whole class. Whether an epic is ready to close
+is decided the same way and still differs between checkouts; that is filed and
+not yet fixed.
+
 ### One thing it deliberately does not do
 
 The record says a slug existed and how it was resolved. It does not say where
