@@ -22,10 +22,15 @@ import tempfile
 import time
 import uuid
 from datetime import date, datetime, timezone
-from contextlib import suppress
+from contextlib import contextmanager, nullcontext, suppress
 from functools import cached_property
 from pathlib import Path
 from typing import NoReturn
+
+try:
+    import fcntl
+except ImportError:                                # not POSIX
+    fcntl = None                                   # type: ignore[assignment]
 
 import yaml
 
@@ -313,13 +318,37 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
     if "/" not in ref:                             # bare slug -> anchor node (unchanged)
         return FsWorkStore.open(anchor), ref
     if ref.split("/", 1)[0] in WORK_STATUSES:      # status-path locator (anchor node)
+        segment = ref.split("/", 1)[0]
         bare = ref.rpartition("/")[2]
         if not bare:
             return None
         store = FsWorkStore.open(anchor)
         item = store.get(bare)                     # MultipleMatch propagates
-        if item is None or item.status != ref.split("/", 1)[0]:
-            return None                            # unknown slug or wrong status segment
+        if item is not None:
+            return (store, bare) if item.status == segment else None
+        # Not live, which for this spelling used to end the matter — and that
+        # left `tcw://W/completed/<slug>` with exactly the machine-dependence the
+        # bare spelling was fixed for: the folder is gitignored, so the same
+        # reference resolved for whoever ran the transition and failed for
+        # everyone else. Fall through to the tombstone so the caller can report
+        # it archived.
+        if segment not in RESOLVED_STATUSES:
+            return None                            # a live-status locator, stale
+        grave = store.tombstone(bare)
+        if grave is None:
+            return None                            # genuinely unknown slug
+        # Verify the segment when the record can settle it, and do not punish it
+        # when it cannot: a backfilled tombstone may carry no resolution at all,
+        # and refusing those would reintroduce the refusal for exactly the
+        # adopters `tombstone add` exists to serve. An unrecognized resolution in
+        # a hand-edited graveyard is treated the same way, matching the
+        # tolerance every other read of this file already applies.
+        implied = ""
+        if grave.resolution:
+            with suppress(ValueError):
+                implied = resolution_status(grave.resolution)
+        if implied and implied != segment:
+            return None                            # the record contradicts it
         return store, bare
     qualifier, _, bare = ref.partition("/")
     if not qualifier or not bare or "/" in bare:
@@ -3039,6 +3068,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # is the defect it exists to fix, one level up.
     GRAVEYARD_NAME = "graveyard.yaml"
 
+    # How long a resolving transition waits for another one to finish before it
+    # gives up. Generous: the section it guards spans a `git mv`, a field write
+    # and a `git commit`, so a busy store can legitimately hold it for a second
+    # or two, and timing out early would turn contention into a spurious failure.
+    GRAVEYARD_LOCK_TIMEOUT = 30.0
+
     def __init__(self, root: Path, *, node_root: Path | None = None,
                  store_git_root: Path | None = None,
                  declaration: "RepositoryDeclaration | None" = None):
@@ -3677,6 +3712,63 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _graveyard_path(self) -> Path:
         return self.root / self.GRAVEYARD_NAME
 
+    @contextmanager
+    def _graveyard_lock(self):
+        """Hold one store's resolving transitions apart from each other, across
+        the whole check-write-commit sequence.
+
+        Without this the sequence is three steps with nothing between them: the
+        cleanliness check runs before the move, the write runs after it, and the
+        commit after that. Two agents resolving *different* items in one working
+        tree can interleave anywhere in that span, and the worst outcome is
+        silent — both read the same mapping, the second write wins, and an item
+        sits in `completed/` with no tombstone. `_unique_slug` can then hand its
+        slug to a new item, which is precisely the collision the graveyard
+        exists to prevent, arriving by another route.
+
+        **The lock file lives in the system temp directory, not in the store.**
+        The graveyard itself cannot be locked: it is replaced atomically, so a
+        lock held on the old file protects nothing once the replacement lands.
+        A dedicated file inside the store would work but would sit in
+        `git status` as an untracked path forever, and the store root is tracked.
+        Keying a temp path off the store's resolved path gets the same mutual
+        exclusion between processes on this machine and leaves the repository
+        alone. Two clones on two machines are not covered and do not need to be
+        — that case ends in a git merge conflict on the graveyard, which is a
+        plain YAML conflict a human settles.
+
+        `flock` rather than a lock directory because the kernel releases it when
+        the process dies. A directory-based lock has to answer "is the holder
+        still alive", and a stale one wedges every future resolution in the
+        store — a worse failure than the race it prevents.
+
+        On a platform without `fcntl` this degrades to no locking, which is the
+        behaviour every caller had before it existed.
+        """
+        if fcntl is None:
+            yield
+            return
+        key = hashlib.sha256(str(self.root.resolve()).encode()).hexdigest()[:16]
+        path = Path(tempfile.gettempdir()) / f"tcw-graveyard-{key}.lock"
+        with open(path, "w") as handle:
+            deadline = time.monotonic() + self.GRAVEYARD_LOCK_TIMEOUT
+            while True:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise ValueError(
+                            f"another process in {self.root} has been resolving "
+                            f"an item for over {self.GRAVEYARD_LOCK_TIMEOUT:g}s "
+                            f"and still holds the graveyard. Nothing was "
+                            f"changed here; retry once it finishes.")
+                    time.sleep(0.02)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
     def _require_writable_graveyard(self, slug: str) -> None:
         """Refuse a resolving transition when the graveyard cannot be safely
         rewritten. Called *before* the move, so a refusal moves nothing.
@@ -3731,8 +3823,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(
                 f"cannot record {slug}: the graveyard at {rel} has uncommitted "
                 f"changes, and this transition's commit would carry them. TCW "
-                f"commits every graveyard write itself, so these are someone "
-                f"else's — commit or discard them, then retry.")
+                f"commits every graveyard write itself, so either another agent "
+                f"is mid-transition here — retry in a moment — or the file was "
+                f"edited by hand, in which case commit that edit and retry. "
+                f"Inspect it before discarding anything: a `git checkout` on it "
+                f"while another agent is resolving destroys that item's record "
+                f"and leaves the item resolved with no tombstone.")
 
     def _write_tombstone(self, slug: str, resolution: str,
                          resolved: str = "") -> None:
@@ -3833,17 +3929,46 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"(resolution {existing.resolution or 'unrecorded'}, resolved "
                 f"{existing.resolved or 'unrecorded'}). Recording it again would "
                 f"replace that with this call's values.")
-        self._require_writable_graveyard(slug)
-        self._write_tombstone(slug, resolution, resolved)
-        if self.auto_commit_transitions():
-            path = self._graveyard_path()
-            err = git_commit_result(
-                self.store_git_root, f"tcw work: tombstone {slug}",
-                str(path.relative_to(self.store_git_root)))
-            if err:
-                raise TransitionCommitError(
-                    f"{slug} was recorded in the graveyard, but committing it "
-                    f"failed:\n{err}")
+        # Same span, same reason, as a resolving transition: this reads the
+        # graveyard, writes it back and commits it, and a concurrent resolution
+        # anywhere in between loses one of the two entries.
+        with self._graveyard_lock():
+            # Inside the lock, not before it: refreshing rewrites the very file
+            # the check is about to inspect, so doing it outside would let
+            # another local process's write land in between. A transition
+            # refreshes first for the same reason this does — a read-modify-write
+            # onto a stale graveyard is how two clones produce a merge conflict
+            # that neither of them had to have.
+            self._refresh_before_transition()
+            self._require_writable_graveyard(slug)
+            self._write_tombstone(slug, resolution, resolved)
+            if self.auto_commit_transitions():
+                path = self._graveyard_path()
+                err = git_commit_result(
+                    self.store_git_root, f"tcw work: tombstone {slug}",
+                    str(path.relative_to(self.store_git_root)))
+                if err:
+                    raise TransitionCommitError(
+                        f"{slug} was recorded in the graveyard, but committing it "
+                        f"failed:\n{err}")
+                # A transition publishes after it commits, and the plan said this
+                # command would commit "the way TCW commits a transition". On a
+                # provisioned store the omission was the whole point missed: the
+                # record exists to reach other clones, and without this it sits
+                # on the machine that wrote it until some later transition
+                # happens to push it. Its own message, because
+                # `_publish_after_transition` describes an item that moved and
+                # nothing moved here.
+                if self.publishes:
+                    try:
+                        self.publish()
+                    except (ValueError, OSError,
+                            subprocess.CalledProcessError) as error:
+                        raise PublicationError(
+                            f"{slug} was recorded in the graveyard and committed "
+                            f"in {self.store_git_root} — the record is saved "
+                            f"there — but publishing it to the remote failed, so "
+                            f"other checkouts will not see it yet:\n{error}")
         recorded = self.tombstone(slug)
         assert recorded is not None                # just written, above
         return recorded
@@ -4669,9 +4794,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
                            fields: dict | None = None) -> None:
         self._require_repository()
         self._refresh_before_transition()
+        resolving = to_status in RESOLVED_STATUSES
+        # Held from the cleanliness check through the commit, because those are
+        # the two ends of the window another resolving transition can interleave
+        # with. Only taken when there is a graveyard write to protect — an
+        # ordinary status move touches nothing shared and must not queue behind
+        # one that does.
+        with self._graveyard_lock() if resolving else nullcontext():
+            self._effect_transition_locked(slug, to_status, fields, resolving)
+
+    def _effect_transition_locked(self, slug: str, to_status: str,
+                                  fields: dict | None, resolving: bool) -> None:
+        """The body of `_effect_transition`, run under the graveyard lock when
+        the target status is a resolved one. Split out only so the lock has a
+        single obvious span; it has no other caller."""
         # Before anything moves: a resolving transition has to write the shared
         # graveyard, and a refusal has to mean nothing happened.
-        resolving = to_status in RESOLVED_STATUSES
         if resolving:
             self._require_writable_graveyard(slug)
         # Read the item *before* the move: afterwards `_find` points at the new

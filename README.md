@@ -757,8 +757,14 @@ tcw work tombstone add <slug> --resolution done --resolved 2026-09-01
 ```
 
 Both flags are optional; omit them when nobody kept the detail, since the
-record's job is to say the slug existed. It refuses a slug that is currently a
-live item, and commits what it writes.
+record's job is to say the slug existed.
+
+Run it wherever you are — including on the machine that resolved the work, where
+the item's folder is usually still sitting on disk. It refuses only a slug that
+is *live*, and a slug already in the graveyard, so re-running it over a list is
+safe and will not quietly replace a good record with a blank one. It commits
+what it writes, and on a store with a configured remote it publishes too, since
+a record nobody else can see does not do its job.
 
 ### Binding your own skills and commands to the lifecycle
 

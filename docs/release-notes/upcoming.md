@@ -38,8 +38,18 @@ tcw work tombstone add <slug> --resolution done --resolved 2026-09-01
 ```
 
 Run it for each slug `tcw validate` still complains about. Both flags are
-optional — omit them when nobody kept the detail. It refuses a slug that is
-still a live item, and commits what it writes.
+optional — omit them when nobody kept the detail.
+
+Run it wherever you are, including on the machine that finished the work, where
+those items are usually still sitting in your working directory. It refuses only
+a slug that is genuinely still live, and one it has already recorded — so
+looping over a list is safe, and a second run will not replace a good record
+with a blank one. It commits what it writes, and if your store has a remote
+configured it publishes too, because a record the rest of your team cannot see
+is not doing its job.
+
+Links written as `tcw://W/completed/<slug>` — naming the folder as well as the
+slug — resolve the same way the plain `tcw://W/<slug>` form does.
 
 This adds one file, `graveyard.yaml`, next to your status folders. It is small —
 two lines per resolved item — and it is deliberately always tracked: a record

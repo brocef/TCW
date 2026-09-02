@@ -13,12 +13,16 @@ a pointer that silently stops working is worse than no pointer at all.
 
 import shutil
 import subprocess
+import threading
+import time
 from datetime import date
 from pathlib import Path
 
 import pytest
 
 from tcw.cli import main
+from tcw.refs import resolve_tcw_ref
+from tcw.store import fs as fs_module
 from tcw.store.base import Tombstone
 from tcw.store.fs import FsWorkStore, init
 
@@ -421,3 +425,104 @@ def test_a_new_item_never_reuses_a_tombstoned_slug(tmp_path):
     again = FsWorkStore.open(root).create_work("A thing", created="2026-01-01").item.slug
     assert again != slug
     assert FsWorkStore.open(root).tombstone(slug) is not None   # still recorded
+
+
+# ── concurrency, the status-path spelling, and publication ────────────────────
+#
+# The three findings the adversarial review left open. Each is a defect in what
+# this feature shipped, not a wish for more of it.
+
+def test_two_resolutions_racing_keep_both_records(tmp_path, monkeypatch):
+    """Two agents resolving different items in one working tree both finish, and
+    both records survive.
+
+    Check, write and commit are three steps with nothing holding them together,
+    so an unserialized pair can collide anywhere across that span. Two failures
+    live there: the graveyard read-modify-write can lose an entry (both read the
+    same mapping, the second write wins, and an item sits in `completed/` with no
+    tombstone — after which `_unique_slug` can hand its slug to new work), and
+    the git operations can collide outright.
+
+    **Worth knowing what this test actually catches.** With the lock removed it
+    fails on the git collision — `git rm --cached` exiting 128 — because that
+    arrives first. It does not exhibit the lost update, which needs a narrower
+    interleaving than two real transitions reliably produce. So read this as
+    "unserialized concurrent resolution is broken, and the lock fixes it": the
+    assertions cover both failures (nobody errors, and neither record is
+    missing), but only the git collision is the one that reliably goes red.
+
+    Delaying every read of the graveyard widens the read-modify-write window
+    from about a millisecond to a third of a second, which is what makes the
+    threads overlap at all rather than finishing in sequence by luck.
+    """
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    a = st.create_work("Thing A").item.slug
+    b = st.create_work("Thing B").item.slug
+    st.start(a, owner="t")
+    st.start(b, owner="t")
+
+    real_load = fs_module.load_yaml
+
+    def slow_load(path, unique=False):
+        doc = real_load(path, unique)
+        if path.name == FsWorkStore.GRAVEYARD_NAME:
+            time.sleep(0.3)
+        return doc
+
+    monkeypatch.setattr(fs_module, "load_yaml", slow_load)
+
+    errors: list[BaseException] = []
+
+    def resolve(slug):
+        try:
+            FsWorkStore.open(root).complete(slug, "done", [])
+        except BaseException as e:                 # noqa: BLE001 - asserted below
+            errors.append(e)
+
+    threads = [threading.Thread(target=resolve, args=(s,)) for s in (a, b)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=90)
+    assert not any(t.is_alive() for t in threads), "a resolution never finished"
+    assert not errors, f"both resolutions should succeed, got {errors}"
+
+    final = FsWorkStore.open(root)
+    assert final.tombstone(a) is not None, "Thing A's record was lost"
+    assert final.tombstone(b) is not None, "Thing B's record was lost"
+
+
+def test_a_status_path_reference_to_a_resolved_item_resolves(tmp_path):
+    """`tcw://W/completed/<slug>` took a branch that returned before the
+    tombstone was ever consulted, so that spelling kept the exact per-machine
+    behaviour the bare spelling was fixed for."""
+    root = node(tmp_path)
+    slug = resolve_item(root, "A thing", resolution="done")
+    st = FsWorkStore.open(root)
+    shutil.rmtree(st.root / "completed" / slug)    # the fresh-clone state
+
+    r = resolve_tcw_ref(root, f"tcw://W/completed/{slug}")
+    assert r.ok and r.archived and r.resolution == "done"
+
+
+def test_a_status_path_reference_the_record_contradicts_does_not_resolve(tmp_path):
+    """The segment is still checked when the record can settle it. A `done`
+    resolution means the item completed, so a `discarded/` locator for it is
+    wrong and stays a problem."""
+    root = node(tmp_path)
+    slug = resolve_item(root, "A thing", resolution="done")
+    shutil.rmtree(FsWorkStore.open(root).root / "completed" / slug)
+
+    assert not resolve_tcw_ref(root, f"tcw://W/discarded/{slug}").ok
+
+
+def test_a_status_path_reference_resolves_when_no_resolution_was_recorded(
+        tmp_path, monkeypatch):
+    """A backfilled tombstone often has no resolution — nobody kept it. Refusing
+    those would reintroduce the refusal for exactly the adopters the backfill
+    command exists to serve, so an unsettleable segment is allowed."""
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-long-gone"]) == 0
+    assert resolve_tcw_ref(root, "tcw://W/completed/2026-01-01-long-gone").ok

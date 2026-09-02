@@ -186,10 +186,18 @@ NON_PUBLISHING = [
 # path — so a refresh hooked into `_effect_transition` alone leaves `start`
 # unrefreshed. That was found by accident here; parametrizing is what stops the
 # next transition path from being found the same way.
-TRANSITIONS = ["start", "submit", "complete"]
+# `tombstone` is not a status move, but it is the other write that commits the
+# store and has to reach the remote — it was left off this list when it shipped,
+# and the omission was exactly the bug: it committed and never published, so the
+# record sat on the machine that wrote it.
+TRANSITIONS = ["start", "submit", "complete", "tombstone"]
 
 
 def _drive_to(slug: str, transition: str) -> int:
+    if transition == "tombstone":
+        # Its own slug, deliberately unrelated: the command refuses a live item,
+        # and `slug` here is one.
+        return main(["work", "tombstone", "add", "2026-01-01-long-gone"])
     if transition == "start":
         return main(["work", "start", slug])
     assert main(["work", "start", slug]) == 0
@@ -382,9 +390,15 @@ def test_a_transition_reaches_the_remote(tmp_path, monkeypatch, transition):
 
     elsewhere = tmp_path / "second"
     subprocess.run(["git", "clone", "-q", str(bare), str(elsewhere)], check=True)
+    store = elsewhere / "stores" / "corelib"
+    if transition == "tombstone":
+        # No folder moves, so the record itself is what has to have travelled —
+        # and reaching another clone is the only reason the record exists.
+        assert "2026-01-01-long-gone" in (store / "graveyard.yaml").read_text(), \
+            _remote_log(bare)
+        return
     expected = {"start": "active", "submit": "review", "complete": "completed"}[transition]
-    assert (elsewhere / "stores" / "corelib" / expected / slug).is_dir(), \
-        _remote_log(bare)
+    assert (store / expected / slug).is_dir(), _remote_log(bare)
 
 
 def test_a_failed_publish_says_what_landed(tmp_path, monkeypatch, capsys):
