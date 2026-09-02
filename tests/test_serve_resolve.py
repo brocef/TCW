@@ -251,3 +251,48 @@ def test_resolve_does_not_read_the_graph_for_a_batch_with_no_foreign_ref(tmp_pat
     finally:
         handler._hosted_projects = real
         httpd.shutdown()
+
+
+def test_resolve_archived_work_is_inert_and_says_why(tmp_path):
+    """A reference to finished work is sound but has nothing to navigate to: the
+    item's documents left the tracked tree when it was resolved. So it is
+    reported the way an off-board target is — `ok: false` with a reason, which is
+    what makes the SPA neutralize the anchor instead of writing a link that 404s
+    — rather than as a broken reference, which is what it looked like before the
+    graveyard existed.
+
+    `detail` rather than a bare reason: the SPA's fallback branch renders any
+    unrecognized reason inert with `detail` as the tooltip, so this reads
+    correctly on a client that knows nothing about archived work.
+    """
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create_work("A finished thing").item.slug
+    st.start(slug, owner="t")
+    st.complete(slug, "done", [])
+    import shutil
+    shutil.rmtree(root / "docs" / "work" / "completed" / slug, ignore_errors=True)
+    uri = f"tcw://W/{slug}"
+
+    httpd, base = _start(root)
+    try:
+        _, body = _resolve(base, [uri])
+        assert body[uri]["ok"] is False
+        assert body[uri]["reason"] == "archived"
+        assert body[uri]["resolution"] == "done"
+        assert slug in body[uri]["detail"]
+    finally:
+        httpd.shutdown()
+
+
+def test_resolve_a_slug_that_never_existed_is_still_unresolved(tmp_path):
+    """The distinction, at the viewer boundary too."""
+    root = _node(tmp_path)
+    httpd, base = _start(root)
+    try:
+        uri = "tcw://W/2026-01-01-never-created"
+        _, body = _resolve(base, [uri])
+        assert body[uri]["ok"] is False
+        assert body[uri]["reason"] == "unresolved"
+    finally:
+        httpd.shutdown()

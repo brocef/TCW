@@ -989,12 +989,33 @@ class TcwHandler(BaseHTTPRequestHandler):
                 r = resolve_tcw_ref(self.server.node_root, uri)
                 # Failure objects carry why, because the viewer renders "valid but
                 # not on this board" differently from "broken". The shape the SPA
-                # branches on: `reason` is exactly one of two values, `project` is
-                # non-empty iff "unhosted-project", `detail` present iff
-                # "unresolved". A bare {"ok": false} never occurs.
+                # branches on: `reason` is exactly one of three values, `project`
+                # is non-empty iff "unhosted-project", `detail` present iff
+                # "unresolved" or "archived", `resolution` present iff
+                # "archived". A bare {"ok": false} never occurs.
                 if not r.ok:
                     result[uri] = {"ok": False, "reason": "unresolved",
                                    "detail": r.reason}
+                    continue
+                if r.archived:
+                    # Sound reference, real finished work, nothing to open: the
+                    # item's documents left the tracked tree when it resolved.
+                    # `ok: false` for the same reason an off-board target gets it
+                    # — it is what stops the SPA writing a link that 404s — and
+                    # not the same thing as "broken", which is what this looked
+                    # like before resolved slugs were recorded at all.
+                    #
+                    # A client that knows nothing of `archived` falls through to
+                    # its unrecognized-reason branch, which neutralizes the anchor
+                    # and shows `detail`. That is already the right rendering, so
+                    # no client change is required for this to read correctly.
+                    detail = f"{r.key} is completed work; its documents are no " \
+                             f"longer in the tree"
+                    if r.resolution:
+                        detail = f"{r.key} was resolved as {r.resolution}; its " \
+                                 f"documents are no longer in the tree"
+                    result[uri] = {"ok": False, "reason": "archived",
+                                   "detail": detail, "resolution": r.resolution}
                     continue
                 if r.project:
                     if hosted is None:
