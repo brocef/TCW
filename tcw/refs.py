@@ -8,9 +8,16 @@ Grammar: ``tcw://[<namespace>/]<axis>/<ref>``
 
 `parse_tcw_uri` is a pure, total function (never raises) — the abstract grammar.
 `resolve_tcw_ref` is thin CLI/serve adapter glue: it imports the FS stores and
-dispatches through their existing ``get()`` / ``resolve_qualified_work_ref`` (no
-new store-interface method — litmus-clean), and never propagates a store
-exception to a caller scanning many links.
+dispatches through ``get()`` / ``tombstone()`` / ``resolve_qualified_work_ref``,
+and never propagates a store exception to a caller scanning many links.
+
+This module once recorded that it added *no* new store-interface method. That
+stopped being true when work references learned to tell a resolved item from a
+slug nobody created: `get()` alone cannot draw that distinction, because a store
+whose resolved items leave it answers None to both. `tombstone()` is the second
+abstract read, and it is abstract rather than a filesystem check on purpose —
+any store can answer "did I ever hold this id", and one that keeps its resolved
+items answers it without storing anything extra.
 """
 
 from __future__ import annotations
@@ -44,6 +51,12 @@ class ResolveResult:
     key: str | None
     reason: str
     project: str = ""      # owning project id for a foreign work ref; "" = local
+    # A work ref that resolved to a *record* of a resolved item rather than to a
+    # live one. Still `ok` — the reference is sound and names real, finished work
+    # — but there is nothing to navigate to, so a viewer shows it inert rather
+    # than as a link, and `tcw validate` says nothing at all.
+    archived: bool = False
+    resolution: str = ""   # the archived item's resolution; "" when unrecorded
 
 
 def _segment_ok(seg: str) -> bool:
@@ -130,8 +143,20 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
         # `tcw://W/<slug>` reporting ok for a slug nobody ever created — passing
         # `tcw validate` and rendering as a link that 404s.
         if store.get(bare) is None:
+            # Not live — but "not live" and "never existed" are different
+            # answers, and reporting them identically is what made this check
+            # machine-dependent: a resolved item's folder is ignored, so it is
+            # present for whoever ran the transition and absent for everyone
+            # else, and the same reference passed there and failed here.
+            grave = store.tombstone(bare)
+            if grave is None:
+                return ResolveResult(
+                    False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
+            local = store.node_root == node_root.resolve()
             return ResolveResult(
-                False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
+                True, "W", bare if local else f"{ns_ref.partition('/')[0]}/{bare}",
+                "", "" if local else ns_ref.partition("/")[0],
+                archived=True, resolution=grave.resolution)
         if store.node_root == node_root.resolve():        # landed locally
             return ResolveResult(True, "W", bare, "")
         # Foreign: the qualifier is a project id (a status-path locator is always

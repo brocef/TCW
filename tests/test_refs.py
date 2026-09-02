@@ -5,11 +5,13 @@ thin adapter glue over the existing FS stores that never propagates a store
 exception to a link-scanning caller.
 """
 
+import shutil
 import subprocess
 import yaml
 from pathlib import Path
 
 from tcw.refs import TcwRef, parse_tcw_uri, resolve_tcw_ref
+from tcw.store.base import Tombstone
 from tcw.store.fs import (
     FsCapabilitiesStore,
     FsTaxonomyStore,
@@ -264,3 +266,63 @@ def test_resolve_ambiguous_does_not_raise(tmp_path):
     st.extends_add("b")
     r = resolve_tcw_ref(child, "tcw://C/dup")   # bare, matches both aliases
     assert r.ok is False and r.reason
+
+
+# ── resolved work: a reference to finished work is not a typo ─────────────────
+
+def test_resolve_a_tombstoned_slug_resolves_and_says_it_is_archived(tmp_path):
+    """A resolved item's folder leaves the tracked tree, so `get` stops
+    answering for it in every clone but the one that ran the transition. Failing
+    here reported finished work in the same words as a misspelling — and made
+    `tcw validate`'s verdict depend on which machine ran it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create_work("A thing").item.slug
+    st.start(slug, owner="t")
+    st.complete(slug, "done", [])
+    subprocess.run(["git", "-C", str(root), "rm", "-r", "-q", "--ignore-unmatch",
+                    f"docs/work/completed/{slug}"], check=True)
+    shutil.rmtree(root / "docs" / "work" / "completed" / slug, ignore_errors=True)
+
+    r = resolve_tcw_ref(root, f"tcw://W/{slug}")
+    assert r.ok is True
+    assert r.archived is True
+    assert r.resolution == "done"
+    assert r.key == slug
+
+
+def test_resolve_a_slug_that_never_existed_still_fails_unchanged(tmp_path):
+    """The distinction the graveyard exists to draw. Recording resolved work
+    must not turn a typo into a passing reference."""
+    root = node(tmp_path)
+    r = resolve_tcw_ref(root, "tcw://W/2026-01-01-never-created")
+    assert r.ok is False
+    assert r.archived is False
+    assert r.reason == "no such work item: 2026-01-01-never-created"
+
+
+def test_a_live_item_resolves_without_being_marked_archived(tmp_path):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create_work("A live thing").item.slug
+    r = resolve_tcw_ref(root, f"tcw://W/{slug}")
+    assert r.ok is True and r.archived is False
+
+
+def test_resolution_needs_only_get_and_tombstone(tmp_path, monkeypatch):
+    """The litmus test, in code. A store exposing nothing but the two abstract
+    reads — no filesystem, no git, no paths — drives the same resolution, which
+    is what "could a non-filesystem store implement this?" means concretely."""
+    class StoreWithNoFilesystem:
+        node_root = tmp_path.resolve()
+
+        def get(self, slug):
+            return None                      # resolved items are not live
+
+        def tombstone(self, slug):
+            return Tombstone(slug=slug, resolution="wontfix", resolved="2025-01-01")
+
+    monkeypatch.setattr("tcw.refs.resolve_qualified_work_ref",
+                        lambda anchor, ref: (StoreWithNoFilesystem(), ref))
+    r = resolve_tcw_ref(tmp_path, "tcw://W/anything-at-all")
+    assert r.ok is True and r.archived is True and r.resolution == "wontfix"
