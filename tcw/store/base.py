@@ -1554,6 +1554,26 @@ class WorkItem:
     started: str = ""               # UTC claim timestamp
 
 
+@dataclass(frozen=True)
+class Tombstone:
+    """The record that `slug` named an item this store once held and has since
+    resolved.
+
+    Answers exactly one question — *did this slug ever exist here?* — so that a
+    reference to finished work is distinguishable from a reference to a slug
+    nobody created. `resolution` and `resolved` are context for the reader; both
+    may be empty on a degraded record, and neither changes the answer.
+
+    **There is deliberately no locator.** Recording where the item's documents
+    went would promise they are retrievable there, and that promise does not
+    survive a squash-merge, a rebase, or a shallow clone. A pointer that
+    silently stops working is worse than no pointer.
+    """
+    slug: str
+    resolution: str = ""
+    resolved: str = ""
+
+
 @dataclass
 class Artifact:
     """A named lifecycle artifact associated with a work item."""
@@ -1696,6 +1716,21 @@ class WorkStore(ABC):
     @abstractmethod
     def get(self, slug: str) -> WorkItem | None:
         """Resolve a stable id (slug) to its item, or None. Raises `MultipleMatch`."""
+
+    @abstractmethod
+    def tombstone(self, slug: str) -> Tombstone | None:
+        """The record of an item this store once held and has since resolved, or
+        None if it never held one by that id.
+
+        Distinct from `get`, which answers about *live* items only. An adapter
+        whose resolved items remain retrievable by `get` — a tracker where a
+        closed issue never stops existing — may answer from those directly and
+        keep no separate record at all; one whose resolved items leave the store
+        has to record something at resolution time in order to answer later.
+
+        A `None` here means the store has genuinely never held this id, which is
+        what lets a caller report a typo as a typo.
+        """
 
     @abstractmethod
     def query(self, status: str | None = None) -> list[WorkItem]: ...

@@ -42,7 +42,7 @@ from tcw.store.base import (
     parse_documentation_entries, parse_lifecycle_policy,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
     PublicationError, StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
-    TaxonomyStore, Term, TermDetail,
+    TaxonomyStore, Term, TermDetail, Tombstone,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
 from tcw.store.project import FsProjectRegistry, validate_project_id, worktree_anchors
@@ -3032,6 +3032,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
     """
     COMPONENT = "work"
 
+    # The graveyard sits at the store root, beside the status folders rather than
+    # inside one: it outlives every item it records, and a status folder is a
+    # place items *are*. Tracked unconditionally and never gitignorable — an
+    # ignorable graveyard is invisible in exactly the clones that need it, which
+    # is the defect it exists to fix, one level up.
+    GRAVEYARD_NAME = "graveyard.yaml"
+
     def __init__(self, root: Path, *, node_root: Path | None = None,
                  store_git_root: Path | None = None,
                  declaration: "RepositoryDeclaration | None" = None):
@@ -3656,6 +3663,43 @@ class FsWorkStore(FsTreeStore, WorkStore):
             d = self._find(slug)               # once: it has a new home, or none
             item = self._item_from_dir(d) if d is not None else None
         return item
+
+    def tombstone(self, slug: str) -> Tombstone | None:
+        """Read `slug`'s record out of the store's `graveyard.yaml`.
+
+        One file for the whole store rather than one per record: it keeps a
+        long-lived store from accumulating thousands of near-empty files, and it
+        is one greppable artifact. The cost is that every resolving transition
+        writes the same path — see `_write_tombstone`, which is why that write is
+        read-modify-write and refuses a dirty file.
+
+        Tolerant on every degraded shape — absent file, unparseable YAML, a
+        document that is not a mapping, an entry missing its fields. Two reasons,
+        and they point the same way: `_safe_yaml`'s stated degrade-don't-crash
+        rule, and `resolve_tcw_ref`'s contract never to propagate a store
+        exception to a caller scanning many links. A hand-edited graveyard must
+        not take `tcw validate` down with it.
+
+        An entry that is present but malformed still answers *yes, this slug
+        existed* — the fields are context, and reporting None for a damaged
+        record would call finished work a typo.
+        """
+        path = self.root / self.GRAVEYARD_NAME
+        if not path.exists():
+            return None
+        doc = self._safe_yaml(path)
+        if not isinstance(doc, dict):
+            return None
+        if slug not in doc:
+            return None
+        entry = doc[slug]
+        if not isinstance(entry, dict):
+            entry = {}
+        return Tombstone(
+            slug=slug,
+            resolution=str(entry.get("resolution") or ""),
+            resolved=str(entry.get("resolved") or ""),
+        )
 
     def get(self, slug: str) -> WorkItem | None:
         """The settled item, or None if it is genuinely absent.
