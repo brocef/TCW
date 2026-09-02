@@ -115,8 +115,12 @@ with a tombstone. `tests/test_work.py`.
 
 **Proves.** In a clone with no `completed/` folder, creating an item whose date
 and title would generate a tombstoned slug yields a **suffixed** slug. The same
-test against today's code yields the identical slug, silently repointing every
-existing reference — run it before the fix to watch it fail.
+test against today's code yields the identical slug — run it before the fix to
+watch it fail.
+
+**Forward-only.** Slugs are assumed unique to date (spec Problem), so there is no
+audit of existing items and no repair pass; this task is what makes the
+assumption hold from here on.
 
 ## Task 7 — `tcw serve` renders an archived target
 
@@ -202,9 +206,10 @@ What the suite cannot check, to be done by hand at `implement`:
   `tombstone()` for the model, `graveyard.yaml` for the file. The record is a
   tombstone; the place they all live is the graveyard. If the requester prefers
   one word throughout, change it in task 1 before anything depends on it.
-- Task 6 is the only task fixing a *silent wrong answer* rather than a noisy
-  one, and it is sequenced after the mechanism it needs but before the
-  documentation pass, so it cannot be dropped for time.
+- Task 6 closes the one path that would produce a *silent wrong answer* rather
+  than a noisy one. It is sequenced after the mechanism it needs but before the
+  documentation pass, so it cannot be dropped for time — it is half of what the
+  graveyard is for, not a nice-to-have riding along with it.
 - `tests/test_tombstone.py` is new and carries tasks 1, 2 and 3; tasks 4–7 add to
   existing suites. That keeps the new mechanism's tests in one readable place
   and the reader-integration tests beside the readers they change.

@@ -47,12 +47,20 @@ exits 1 in any fresh checkout, and **no item can be completed here at all**. It
 also explains why completion succeeded on 2026-09-01 and fails now — the
 difference is which machine ran it, not what changed.
 
-There is a second, quieter consequence. `_unique_slug` (`tcw/store/fs.py:3552`)
-loops `while self._find(slug) is not None`, which sees **live items only**. In a
-clone without the ignored folders, a new item whose date and title match a
-resolved one is handed **that same slug**. Every existing reference to the
-resolved item then silently resolves to a *different* item. A dangling reference
-is loud and harmless; this is silent and wrong.
+There is a second, quieter consequence — a hazard rather than a present fault.
+`_unique_slug` (`tcw/store/fs.py:3552`) loops
+`while self._find(slug) is not None`, which sees **live items only**. In a clone
+without the ignored folders, nothing stops a new item whose date and title match
+a resolved one from being handed **that same slug**; every existing reference to
+the resolved item would then silently resolve to a *different* item.
+
+**Working assumption, set by the requester: slugs have been unique to date.** No
+collision is presumed to have happened, so nothing here needs repairing — the
+graveyard is what guarantees it stays true going forward, since it is the only
+record of a resolved slug that survives into another clone. Stated as an
+assumption because it is not verified: doing so would mean reconstructing every
+resolved slug from git history, which is both the trick the prime directive
+forbids and unnecessary if the assumption holds.
 
 ### Sweep
 
@@ -78,7 +86,8 @@ redo them:
    checkout, from tracked content alone.
 2. `tcw validate` stops reporting the first kind, so it is usable as the
    `complete` gate again and this repository's four failing references clear.
-3. Slug assignment never reuses the slug of a resolved item.
+3. Slug assignment never reuses the slug of a resolved item, from this change
+   forward.
 4. The mechanism sits in the abstract model, not in a filesystem trick, and a
    store that keeps resolved items forever needs no graveyard to satisfy it.
 
@@ -96,6 +105,9 @@ redo them:
 - **Making `unresolved_blockers` precise.** The tombstone makes it *possible* to
   tell a resolved blocker from a typo; acting on that changes when transitions
   refuse, which deserves its own item rather than riding in on this one.
+- **Detecting or repairing a historical slug collision.** Out of scope on the
+  assumption above. If one is ever found, it is its own item — this one only
+  closes the path forward.
 - **Reconciling `2026-09-01-make-tcw-validate-usable-as-a-gate-…`.** This item
   removes most of that one's motivation; re-scoping it is that item's business.
 
