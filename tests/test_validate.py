@@ -238,3 +238,65 @@ def test_cli_recurses_into_descendant_without_work_store(tmp_path, monkeypatch, 
     error = capsys.readouterr().err
     assert "[child]" in error
     assert "taxonomy check:" in error
+
+
+# ── the same verdict in every checkout ────────────────────────────────────────
+#
+# The defect this closes was not that references to resolved work dangled — it
+# was that they dangled *somewhere else*. `completed/` and `discarded/` are
+# gitignored by default, and completion moves the item's folder there rather
+# than removing it, so it survives on the machine that ran the transition and
+# never reaches any other clone. `tcw validate` therefore answered `validate OK`
+# for whoever completed the item and reported a problem for everyone else, at
+# the same commit. Wired as a `complete` pre-hook, as this project wires it, that
+# made completion impossible in a fresh checkout.
+
+def _resolved_item_referenced_by_a_tracked_file(root: Path) -> str:
+    from tcw.store.fs import FsWorkStore
+    st = FsWorkStore.open(root)
+    slug = st.create_work("A finished thing").item.slug
+    st.start(slug, owner="t")
+    st.complete(slug, "done", [])
+    (root / "docs" / "work" / "inbox" / "ref.md").write_text(
+        f"see [the finished thing](tcw://W/{slug})\n")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "a reference"], check=True)
+    return slug
+
+
+def test_a_reference_to_resolved_work_validates_where_it_was_resolved(tmp_path):
+    root = node(tmp_path)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
+    _resolved_item_referenced_by_a_tracked_file(root)
+    assert validate(root) == []
+
+
+def test_the_same_reference_validates_in_a_fresh_clone(tmp_path):
+    """The half that used to fail. Nothing about the commit differs — only
+    whether the ignored folder happens to be sitting in the working tree."""
+    root = node(tmp_path)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
+    slug = _resolved_item_referenced_by_a_tracked_file(root)
+
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
+    assert not (clone / "docs" / "work" / "completed" / slug).exists()   # really gone
+    assert validate(clone) == []
+
+
+def test_a_typo_reference_still_fails_in_both(tmp_path):
+    """The graveyard must not turn every unresolvable reference into a pass."""
+    root = node(tmp_path)
+    (root / "docs" / "work" / "inbox" / "ref.md").write_text(
+        "see [a typo](tcw://W/2026-01-01-never-created)\n")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
+
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
+    for where in (root, clone):
+        problems = validate(where)
+        assert any("no such work item: 2026-01-01-never-created" in p
+                   for p in problems), (where, problems)
