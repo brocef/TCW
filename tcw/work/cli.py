@@ -1155,6 +1155,22 @@ def _tags_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def _tombstone_add(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        ts = st.record_tombstone(args.slug, args.resolution or "",
+                                 args.resolved or "")
+    except _ERRORS as e:
+        print(f"tcw work tombstone add: {e}", file=sys.stderr)
+        return 1
+    print(f"recorded {ts.slug}"
+          + (f" ({ts.resolution})" if ts.resolution else "")
+          + f", resolved {ts.resolved}")
+    return 0
+
+
 def _tags_rm(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -1384,6 +1400,19 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptgr = ptgs.add_parser("rm", help="unregister one or more tags")
     ptgr.add_argument("tag", nargs="+", help="tag(s) to unregister")
     ptgr.set_defaults(func=_tags_rm)
+
+    pts = g.add_parser(
+        "tombstone",
+        help="records of items this store resolved before it kept any")
+    ptss = pts.add_subparsers(dest="tombstone_cmd", required=True)
+    ptsa = ptss.add_parser(
+        "add",
+        help="record that a slug was a work item here, so references to it resolve")
+    ptsa.add_argument("slug")
+    ptsa.add_argument("--resolution",
+                      help="done|wontfix|duplicate|superseded; omit if unknown")
+    ptsa.add_argument("--resolved", help="ISO date it was resolved (default: today)")
+    ptsa.set_defaults(func=_tombstone_add)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
     pn.add_argument("title")

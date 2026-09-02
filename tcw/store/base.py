@@ -1733,6 +1733,23 @@ class WorkStore(ABC):
         """
 
     @abstractmethod
+    def record_tombstone(self, slug: str, resolution: str = "",
+                         resolved: str = "") -> Tombstone:
+        """Record that `slug` named an item this store held and has resolved,
+        for one it resolved before it kept any record.
+
+        The backfill half of `tombstone`, and the only way an existing project
+        gets the benefit: every reference written before tombstones existed names
+        an item resolved before any record was kept. An adapter that already
+        answers `tombstone` from its own resolved items has nothing to store and
+        may treat this as a no-op.
+
+        Refuses a `slug` that is currently live — a store cannot both hold an
+        item and have finished with it, and claiming otherwise would let slug
+        assignment refuse an id that is legitimately in use.
+        """
+
+    @abstractmethod
     def query(self, status: str | None = None) -> list[WorkItem]: ...
 
     @abstractmethod

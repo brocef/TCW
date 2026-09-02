@@ -3716,7 +3716,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"commits every graveyard write itself, so these are someone "
                 f"else's — commit or discard them, then retry.")
 
-    def _write_tombstone(self, slug: str, resolution: str) -> None:
+    def _write_tombstone(self, slug: str, resolution: str,
+                         resolved: str = "") -> None:
         """Record `slug` in the graveyard, preserving every entry already there.
 
         Read-modify-write rather than append: one file serves the whole store, so
@@ -3736,9 +3737,46 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if isinstance(loaded, dict):
                 doc = loaded
         doc[slug] = {"resolution": resolution or "",
-                     "resolved": date.today().isoformat()}
+                     "resolved": resolved or date.today().isoformat()}
         self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
                                                   allow_unicode=True))])
+
+    def record_tombstone(self, slug: str, resolution: str = "",
+                         resolved: str = "") -> Tombstone:
+        """Backfill one record, committing it the way a transition commits.
+
+        `resolution` is optional and may stay empty: a repository adopting this
+        is recording slugs whose resolution nobody kept, and inventing one would
+        be worse than admitting it is unknown. When given it is validated
+        through `resolution_status`, the same function `complete` uses, so the
+        two cannot drift.
+
+        `resolved` likewise defaults to today rather than guessing a real date —
+        the honest reading of the record is "known resolved by this date".
+        """
+        self._require_repository()
+        if resolution:
+            resolution_status(resolution)          # raises on an unknown one
+        if resolved:
+            date.fromisoformat(resolved)           # raises on a malformed one
+        if self.get(slug) is not None:
+            raise ValueError(
+                f"cannot record {slug}: it is a live work item. A tombstone says "
+                f"the store is finished with a slug; resolve the item instead.")
+        self._require_writable_graveyard(slug)
+        self._write_tombstone(slug, resolution, resolved)
+        if self.auto_commit_transitions():
+            path = self._graveyard_path()
+            err = git_commit_result(
+                self.store_git_root, f"tcw work: tombstone {slug}",
+                str(path.relative_to(self.store_git_root)))
+            if err:
+                raise TransitionCommitError(
+                    f"{slug} was recorded in the graveyard, but committing it "
+                    f"failed:\n{err}")
+        recorded = self.tombstone(slug)
+        assert recorded is not None                # just written, above
+        return recorded
 
     def tombstone(self, slug: str) -> Tombstone | None:
         """Read `slug`'s record out of the store's `graveyard.yaml`.

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from tcw.cli import main
 from tcw.store.base import Tombstone
 from tcw.store.fs import FsWorkStore, init
 
@@ -235,3 +236,82 @@ def test_auto_commit_off_does_not_refuse_on_its_own_uncommitted_write(tmp_path):
     resolve_item(root, "First thing")
     slug = resolve_item(root, "Second thing")         # must not raise
     assert FsWorkStore.open(root).tombstone(slug) is not None
+
+
+# ── `tcw work tombstone add`: recording one after the fact ────────────────────
+#
+# Required, not a convenience. Every reference written before this feature
+# existed names an item resolved before any graveyard did, so without a way to
+# record a slug retroactively the whole thing is inert for existing repositories.
+# Deriving the entries from git history instead would be the "reconstruct state
+# from history" trick the prime directive forbids.
+
+def test_tombstone_add_records_a_slug_with_no_live_item(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-long-gone"]) == 0
+    ts = FsWorkStore.open(root).tombstone("2026-01-01-long-gone")
+    assert ts is not None and ts.slug == "2026-01-01-long-gone"
+
+
+def test_tombstone_add_defaults_the_date_to_today_and_accepts_an_explicit_one(
+        tmp_path, monkeypatch):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-a"]) == 0
+    assert FsWorkStore.open(root).tombstone("2026-01-01-a").resolved == \
+        date.today().isoformat()
+    assert main(["work", "tombstone", "add", "2026-01-01-b",
+                 "--resolved", "2025-06-01"]) == 0
+    assert FsWorkStore.open(root).tombstone("2026-01-01-b").resolved == "2025-06-01"
+
+
+def test_tombstone_add_records_the_resolution_when_given(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-a",
+                 "--resolution", "wontfix"]) == 0
+    assert FsWorkStore.open(root).tombstone("2026-01-01-a").resolution == "wontfix"
+
+
+def test_tombstone_add_refuses_a_live_slug_and_writes_nothing(tmp_path, monkeypatch):
+    """The one guard on a command that otherwise trusts its caller. Recording a
+    live item would make `_unique_slug` refuse a slug that is legitimately in
+    use, and would claim finished work that is not finished."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create_work("A live thing").item.slug
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", slug]) == 1
+    assert FsWorkStore.open(root).tombstone(slug) is None
+    assert not (FsWorkStore.open(root).root / "graveyard.yaml").exists()
+
+
+def test_tombstone_add_refuses_an_unknown_resolution(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-a",
+                 "--resolution", "banana"]) == 1
+    assert FsWorkStore.open(root).tombstone("2026-01-01-a") is None
+
+
+def test_tombstone_add_commits_its_own_write(tmp_path, monkeypatch):
+    """Spec criterion 13. The graveyard's whole job is to reach other clones,
+    and an uncommitted one reaches none of them. It also keeps the invariant the
+    transition guard relies on: a dirty graveyard means something went wrong."""
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-a"]) == 0
+    assert "graveyard" not in git(root, "status", "--porcelain")
+    assert "docs/work/graveyard.yaml" in git(root, "show", "--name-only", "--format=", "HEAD")
+
+
+def test_auto_commit_off_suppresses_the_tombstone_add_commit(tmp_path, monkeypatch):
+    """Exactly as it does for a transition — one setting, one meaning."""
+    root = node(tmp_path)
+    cfg = root / "tcw-config.yaml"
+    cfg.write_text(cfg.read_text() + "work:\n  auto-commit-transitions: false\n")
+    monkeypatch.chdir(root)
+    assert main(["work", "tombstone", "add", "2026-01-01-a"]) == 0
+    assert FsWorkStore.open(root).tombstone("2026-01-01-a") is not None
+    assert "graveyard" in git(root, "status", "--porcelain")
