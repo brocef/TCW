@@ -12,7 +12,10 @@ a pointer that silently stops working is worse than no pointer at all.
 """
 
 import subprocess
+from datetime import date
 from pathlib import Path
+
+import pytest
 
 from tcw.store.base import Tombstone
 from tcw.store.fs import FsWorkStore, init
@@ -98,3 +101,137 @@ def test_an_entry_that_is_not_a_mapping_still_answers_that_the_slug_existed(tmp_
     ts = FsWorkStore.open(root).tombstone("2026-01-01-a-thing")
     assert ts is not None and ts.slug == "2026-01-01-a-thing"
     assert ts.resolution == "" and ts.resolved == ""
+
+
+# ── writing: resolving an item records one ────────────────────────────────────
+
+def git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(root), *args],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def resolve_item(root: Path, title: str, resolution: str = "done") -> str:
+    st = FsWorkStore.open(root)
+    slug = st.create_work(title).item.slug
+    st.start(slug, owner="t")
+    st.complete(slug, resolution, [])
+    return slug
+
+
+def test_completing_records_a_tombstone(tmp_path):
+    root = node(tmp_path)
+    slug = resolve_item(root, "A thing")
+    assert FsWorkStore.open(root).tombstone(slug) == Tombstone(
+        slug=slug, resolution="done", resolved=date.today().isoformat())
+
+
+def test_discarding_records_its_own_resolution(tmp_path):
+    """`wontfix` files the item under `discarded/`, and the record says so — the
+    graveyard answers "did this exist", but the resolution is what tells a reader
+    whether the work shipped or was abandoned."""
+    root = node(tmp_path)
+    slug = resolve_item(root, "A thing", resolution="wontfix")
+    st = FsWorkStore.open(root)
+    assert st.tombstone(slug).resolution == "wontfix"
+    assert st.get(slug).status == "discarded"
+
+
+def test_a_second_resolution_leaves_the_first_entry_intact(tmp_path):
+    """Read-modify-write, not a blind overwrite. One shared file means every
+    resolving transition rewrites it, and a clobber would erase the record of
+    everything resolved before it."""
+    root = node(tmp_path)
+    first = resolve_item(root, "First thing")
+    second = resolve_item(root, "Second thing")
+    st = FsWorkStore.open(root)
+    assert st.tombstone(first) is not None
+    assert st.tombstone(second) is not None
+
+
+def test_the_transition_commit_carries_the_graveyard(tmp_path):
+    """The assertion that the record reaches another clone at all, which is the
+    entire point of the file."""
+    root = node(tmp_path)
+    resolve_item(root, "A thing")
+    assert "docs/work/graveyard.yaml" in git(root, "show", "--name-only", "--format=", "HEAD")
+
+
+def test_an_unrelated_dirty_file_is_still_not_swept_in(tmp_path):
+    """The transition commit stays scoped. Adding the graveyard to the pathspec
+    widens it by exactly one path, not to the whole tree."""
+    root = node(tmp_path)
+    (root / "unrelated.txt").write_text("do not commit me\n")
+    resolve_item(root, "A thing")
+    assert "unrelated.txt" not in git(root, "show", "--name-only", "--format=", "HEAD")
+    assert "unrelated.txt" in git(root, "status", "--porcelain")
+
+
+def test_the_epic_route_from_backlog_also_records_one(tmp_path):
+    """A completable epic closes straight from `backlog`, bypassing `transition`
+    and calling `_effect_transition` directly. A hook on the normal path alone
+    would miss it."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create_work("An epic", type="epic").item.slug
+    child = st.create_work("A child", initiative=epic).item.slug
+    # Discarded straight from `backlog`: an initiative child cannot *start* until
+    # its epic is active, and an active epic would not take the backlog route
+    # this test exists to cover. A discarded child still resolves the epic —
+    # "a child nobody will do no longer holds its epic open".
+    st.complete(child, "wontfix", [])
+    st.complete(epic, "done", [])                     # from backlog, epic route
+    assert FsWorkStore.open(root).tombstone(epic) is not None
+
+
+# ── writing: refusing rather than absorbing ───────────────────────────────────
+
+def test_a_dirty_graveyard_refuses_the_transition_and_moves_nothing(tmp_path):
+    """Every graveyard write commits itself, so uncommitted changes in it are
+    someone else's in-flight edit. Committing them under *this* item's message
+    is the one hole a shared path opens in the scoped-commit promise; refusing
+    closes it."""
+    root = node(tmp_path)
+    resolve_item(root, "First thing")                 # creates and commits it
+    st = FsWorkStore.open(root)
+    gy = st.root / "graveyard.yaml"
+    gy.write_text(gy.read_text() + "someone-elses-edit: {resolution: done}\n")
+
+    slug = st.create_work("Second thing").item.slug
+    st.start(slug, owner="t")
+    with pytest.raises(ValueError, match="graveyard"):
+        st.complete(slug, "done", [])
+
+    assert FsWorkStore.open(root).get(slug).status == "active"    # moved nothing
+    assert "graveyard" in git(root, "status", "--porcelain")      # still uncommitted
+    assert "someone-elses-edit" in gy.read_text()                 # and untouched
+
+
+def test_an_unparseable_graveyard_refuses_rather_than_resetting_it(tmp_path):
+    """Committed but malformed: the dirty check passes, so only the writer can
+    catch it. Parsing it as empty and writing one entry back would silently
+    delete the record of everything resolved before."""
+    root = node(tmp_path)
+    resolve_item(root, "First thing")
+    st = FsWorkStore.open(root)
+    gy = st.root / "graveyard.yaml"
+    gy.write_text("not: [valid: yaml\n")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "break it"], check=True)
+
+    slug = st.create_work("Second thing").item.slug
+    st.start(slug, owner="t")
+    with pytest.raises(ValueError, match="graveyard"):
+        st.complete(slug, "done", [])
+    assert gy.read_text() == "not: [valid: yaml\n"                # not clobbered
+
+
+def test_auto_commit_off_does_not_refuse_on_its_own_uncommitted_write(tmp_path):
+    """With `auto-commit-transitions: false` the user manages commits, so an
+    uncommitted graveyard is the expected steady state rather than a conflict.
+    Refusing there would make the setting unusable after the first resolution."""
+    root = node(tmp_path)
+    cfg = root / "tcw-config.yaml"
+    cfg.write_text(cfg.read_text() + "work:\n  auto-commit-transitions: false\n")
+    resolve_item(root, "First thing")
+    slug = resolve_item(root, "Second thing")         # must not raise
+    assert FsWorkStore.open(root).tombstone(slug) is not None

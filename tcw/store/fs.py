@@ -3664,6 +3664,82 @@ class FsWorkStore(FsTreeStore, WorkStore):
             item = self._item_from_dir(d) if d is not None else None
         return item
 
+    def _graveyard_path(self) -> Path:
+        return self.root / self.GRAVEYARD_NAME
+
+    def _require_writable_graveyard(self, slug: str) -> None:
+        """Refuse a resolving transition when the graveyard cannot be safely
+        rewritten. Called *before* the move, so a refusal moves nothing.
+
+        Two refusals, both about not destroying someone else's record:
+
+        **Unparseable, or a document that is not a mapping.** The write is
+        read-modify-write; parsing a broken file as empty and writing one entry
+        back would silently delete every record before it. Reading tolerates
+        this shape (see `tombstone`) because a reader answering None costs a
+        single lookup — a writer clobbering costs the whole file.
+
+        **Uncommitted changes, when auto-commit is on.** The transition commit
+        is scoped to the item's folders plus this one shared path, so a
+        concurrent agent's in-flight graveyard edit would be committed under
+        *this* item's message. Since every graveyard write commits itself, a
+        dirty graveyard means something already went wrong. Skipped when
+        `auto-commit-transitions` is off: there the user manages commits and an
+        uncommitted graveyard is the expected steady state, so refusing would
+        make the setting unusable after the first resolution.
+        """
+        path = self._graveyard_path()
+        if not path.exists():
+            return
+        try:
+            doc = load_yaml(path)
+        except yaml.YAMLError as e:
+            raise ValueError(
+                f"cannot record {slug}: the graveyard at {path} does not parse "
+                f"({e.__class__.__name__}). Recording over it would delete every "
+                f"item already in it — repair the file, then retry.")
+        if doc and not isinstance(doc, dict):
+            raise ValueError(
+                f"cannot record {slug}: the graveyard at {path} is not a mapping "
+                f"of slugs. Recording over it would delete its contents — repair "
+                f"the file, then retry.")
+        if not self.auto_commit_transitions():
+            return
+        rel = str(path.relative_to(self.store_git_root))
+        out = subprocess.run(
+            ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", rel],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        if out.returncode == 0 and out.stdout.strip():
+            raise ValueError(
+                f"cannot record {slug}: the graveyard at {rel} has uncommitted "
+                f"changes, and this transition's commit would carry them. TCW "
+                f"commits every graveyard write itself, so these are someone "
+                f"else's — commit or discard them, then retry.")
+
+    def _write_tombstone(self, slug: str, resolution: str) -> None:
+        """Record `slug` in the graveyard, preserving every entry already there.
+
+        Read-modify-write rather than append: one file serves the whole store, so
+        two agents resolving different items rewrite the same document.
+        `_require_writable_graveyard` has already refused the shapes where the
+        read half would lose data.
+
+        Sorted keys, unlike the ordered documents elsewhere in this store: this
+        mapping has no meaningful order, and a stable one keeps the diff of a
+        resolution to a single added block and makes a merge conflict between two
+        concurrent resolutions a plain, settleable one.
+        """
+        path = self._graveyard_path()
+        doc: dict = {}
+        if path.exists():
+            loaded = load_yaml(path)
+            if isinstance(loaded, dict):
+                doc = loaded
+        doc[slug] = {"resolution": resolution or "",
+                     "resolved": date.today().isoformat()}
+        self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
+                                                  allow_unicode=True))])
+
     def tombstone(self, slug: str) -> Tombstone | None:
         """Read `slug`'s record out of the store's `graveyard.yaml`.
 
@@ -4476,6 +4552,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
                            fields: dict | None = None) -> None:
         self._require_repository()
         self._refresh_before_transition()
+        # Before anything moves: a resolving transition has to write the shared
+        # graveyard, and a refusal has to mean nothing happened.
+        resolving = to_status in RESOLVED_STATUSES
+        if resolving:
+            self._require_writable_graveyard(slug)
         # Read the item *before* the move: afterwards `_find` points at the new
         # location and the pre-move branch/worktree fields are what the
         # trunk-branch check needs.
@@ -4520,20 +4601,38 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 raise TransitionCommitError(
                     f"{slug} moved to {to_status}, but writing its fields "
                     f"failed:\n{e}")
+        if resolving:
+            # After the move for the same reason the fields are: the move is
+            # where this process learns it won the race, and a tombstone written
+            # before it would record a resolution that another process's move
+            # actually performed.
+            try:
+                self._write_tombstone(slug, (fields or {}).get("resolution") or "")
+            except subprocess.CalledProcessError as e:
+                raise TransitionCommitError(
+                    f"{slug} moved to {to_status}, but recording it in the "
+                    f"graveyard failed:\n{e}")
         if self.auto_commit_transitions():
-            self._commit_transition(slug, src, dst, to_status, item)
+            self._commit_transition(slug, src, dst, to_status, item,
+                                    extra=(self._graveyard_path(),) if resolving else ())
             # Inside the commit branch, not beside it: with auto-commit off the
             # move is uncommitted, so a push would contact the remote and
             # publish nothing. Nothing to commit means nothing to publish.
             self._publish_after_transition(slug, to_status)
 
     def _commit_transition(self, slug: str, src: Path, dst: Path,
-                           to_status: str, item: "WorkItem | None") -> None:
+                           to_status: str, item: "WorkItem | None",
+                           extra: tuple[Path, ...] = ()) -> None:
         """Commit the status move, scoped to the two folders it touched.
 
         Scoped to `src` and `dst` rather than the whole work root: a scoped
         `git commit -- <paths>` takes *working-tree* state, so a broad pathspec
         would sweep every other item's uncommitted edits into a status commit.
+
+        `extra` widens that pathspec by the graveyard on a resolving transition —
+        the one path here not owned by this item. It is safe to include only
+        because `_require_writable_graveyard` already refused the transition if
+        it held changes TCW did not just make.
 
         The move is never rolled back on a commit failure. The `git mv` already
         landed in both the index and the working tree, and undoing it introduces
@@ -4541,7 +4640,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         moved and the commit did not.
         """
         self._warn_off_trunk(item)
-        rel = [str(p.relative_to(self.store_git_root)) for p in (src, dst)]
+        rel = [str(p.relative_to(self.store_git_root)) for p in (src, dst, *extra)]
         err = git_commit_result(self.store_git_root,
                                 f"tcw work: {slug} → {to_status}", *rel)
         if err:
