@@ -24,7 +24,7 @@
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
 | hand work down / up      | `tcw work delegate <child-project-id> "<title>"` · `tcw work escalate "<title>"` — the ID `tcw work nodes` lists, never a path              |
 | topology                 | `tcw work nodes`                                                                                                                                |
-| a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
+| a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing. `inbox` takes no slug: `tcw work stage inbox`      |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 | obtain a declared store | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores this node declares but does not have here; every declared component by default; idempotent |
