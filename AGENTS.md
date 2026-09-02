@@ -25,6 +25,26 @@ identically under Claude and Codex.
 
 The bindings are in `tcw-config.yaml`; `tcw work lifecycle` lists them.
 
+**Exception — do not drive the lifecycle with the `tcw` CLI while TCW's own code
+is being changed in the working tree.** The CLI you would be driving is the thing
+under modification, so its behavior is in flux: results are unreliable and it can
+hang (`tcw work new` once blocked inside a capture script). As soon as a session
+starts editing `tcw/`, switch to recording work as plain Markdown documents in
+`docs/work/inbox/`, and say so rather than silently alternating between the two.
+Do **not** hand-move item folders between status directories to compensate — that
+is the filesystem shortcut the prime directive refuses. Leave a stale status in
+place and file an inbox note about it.
+
+**Closing the originating GitHub issue waits for publication.** `docs/work/dod.yaml`
+lists _"originating GitHub issue answered and closed, if the item came from one"_
+as a completion criterion, but an issue closed before the fix ships tells the
+reporter it is fixed when they still cannot install it. The order is: complete
+every work item → cut the version → push → then answer and close the issues.
+Complete the item anyway and record the deferral explicitly in
+`refined-outcome.md`, naming this sequencing as the reason; batch the version cut
+across a run of items rather than cutting one per item. Nothing is ever posted to
+an issue without the exact text being approved first.
+
 **The prime directive is the abstraction litmus test** — _"could a non-filesystem
 store implement this operation, even if less elegantly?"_ It governs every change
 to an operation, not only the ones made at a lifecycle stage, and it lives in
@@ -51,6 +71,29 @@ That script is contributor tooling, **not** the published install path. The
 published one is `scripts/session_bootstrap.sh`, which installs the released
 `tcw-cli` from PyPI with pipx for a _user_; leave it alone when changing this
 one.
+
+### Working in a `--worktree` branch
+
+`tcw work start <slug> --worktree` puts implementation edits in
+`.worktrees/<slug>/` on a `work/<slug>` branch while the primary checkout stays
+on `main` — but the editable install (`pip install -e`) registers an import hook
+pinned to the primary checkout path, so **the worktree's source is not what runs**.
+`PYTHONPATH=<worktree>` does not override it, because import hooks take priority
+over the module search path. `import tcw` only resolves to the worktree when the
+shell's current directory is the worktree root, which puts its own `tcw/` first
+on the search path.
+
+To actually exercise worktree source, re-point the install once —
+`pip install -e <worktree> --no-deps`, preceded by `pip uninstall tcw -y` if a
+stale `tcw-0.0.1` hook lingers, since a version-mismatched hook shadows the
+right one — and run pytest and the CLI with the current directory set to the
+worktree.
+
+**Restore it before finishing.** `tcw work complete` tears the worktree down as
+part of completing (and refuses to run from inside the worktree it is about to
+remove, so run it from the primary checkout). Re-point the install first —
+`pip install -e /Users/brian/Projects/TCW` — or it is left pointing at a deleted
+path.
 
 ## Documentation Sync
 
