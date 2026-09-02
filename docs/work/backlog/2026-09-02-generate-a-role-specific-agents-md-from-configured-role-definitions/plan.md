@@ -476,3 +476,92 @@ What the suite cannot decide, to be checked by hand before `submit`:
   implementation, the honest move is to stop and decompose the *migration* into
   its own work item, leaving tasks 1–10 and 12 as a mechanism that this
   repository has not yet adopted — the feature stands without the dogfooding.
+
+## Open questions
+
+Raised with the requester when the plan was filed; **none blocks starting**, and
+each names the default that will be taken if nobody answers. Written down here
+rather than left in a chat log so whoever picks this up next can decide without
+the conversation. Two of the three are cheap to revisit later; question 3 gets
+expensive once task 11 is committed.
+
+### 1. Is `tcw/agents/` importing `tcw/work/` acceptable?
+
+**Default if unanswered:** yes — proceed as planned.
+
+Task 1 makes two helpers in `tcw/work/resolve.py` public so `tcw/agents/` can use
+them, and task 5 calls `run_generate` from `tcw/work/generate.py`. An agents
+package depending on the work package reads backwards.
+
+The alternative is to move the shared resolution machinery to a top-level module
+(`tcw/resolve.py`, say), leaving `tcw/work/` and `tcw/agents/` as peers that both
+import it. That is the layering most people would draw, and it touches every
+existing caller — `tcw/work/cli.py`, `tcw/serve/`, and four test modules — to
+spare one import. `docs/lifecycle/implementation.md` says don't pre-abstract, and
+one new consumer is the thinnest possible evidence that a shared layer is needed.
+
+**Cost of changing later:** low. A second consumer arriving would be a better
+reason to move it than this one is, and the move is mechanical.
+
+### 2. Does a bare string in a fragment map mean `blob`?
+
+**Default if unanswered:** yes — a bare string is `blob`, per task 3.
+
+The requester's sketch is `preamble: Preamble text here`, and a fragment map is
+mostly prose, so requiring `blob:` on every entry makes the common case worse.
+
+But `_parse_binding` (`tcw/store/base.py:1018-1076`) deliberately rejects a bare
+string in a lifecycle binding list, and the capability text for that says so
+outright: "a bare string is rejected rather than guessed at". The spec's argument
+for diverging is that a list position is genuinely ambiguous — a bare string
+there could be a command, a file, or a skill — while a keyed mapping admits one
+reading. That may still read as one rule with two answers to someone learning
+both surfaces at once.
+
+**Cost of changing later:** low *before* release, breaking after. If bare strings
+should be rejected, decide it before this ships, because every adopting project's
+fragment files would have to be rewritten afterwards.
+
+### 3. Should this repository's own migration be a separate work item?
+
+**Default if unanswered:** no — keep task 11 in this item.
+
+Task 11 untracks `AGENTS.md` and `CLAUDE.md`, retargets
+`tests/test_repo_lifecycle.py` and `tests/test_documentation_sync_wiring.py`,
+adds `docs/agents/`, and edits `scripts/remote_session_setup.sh` — one commit,
+because splitting it leaves a test asserting against a file whose tracked status
+just changed. It is the largest task here and the only one that changes how this
+repository is worked in.
+
+Splitting it out would let tasks 1–10 and 12 land as a reviewable feature, with
+the dogfooding as a follow-up. The argument against is that dogfooding is what
+proves the mechanism works on a real guide, and a feature this repository has not
+adopted is a feature nobody has used.
+
+**Cost of changing later:** this is the one that gets expensive. Decide before
+task 11 is committed; afterwards, splitting means reverting a commit that changed
+the repo's own agent guide, on a branch where subsequent work already assumes it.
+
+### Also unresolved, but not a question for the requester
+
+**The Cursor, Copilot and Gemini preset paths are unverified** — recorded in the
+spec's Notes and discharged by task 10, which confirms each against current
+vendor documentation and **deletes any it cannot confirm**. This needs a
+documentation check, not a decision, so it is a task rather than a question. Do
+not ship a preset on a guess: the mapping form accepts any path, so a missing
+preset costs one config line, while a wrong one silently writes a file no tool
+reads.
+
+## Resuming this item
+
+Branch `claude/agents-md-role-builder-x898h9`; item
+`2026-09-02-generate-a-role-specific-agents-md-from-configured-role-definitions`,
+status `backlog`, artifacts `initial-request.md` · `spec.md` · `plan.md` all
+committed, one commit each.
+
+Read the three artifacts in order, settle the questions above — or accept their
+defaults — and then `tcw work start
+2026-09-02-generate-a-role-specific-agents-md-from-configured-role-definitions`
+before the first code edit, followed by `tcw work stage implement <slug>` for the
+implementation instructions this repository binds. Nothing here has been started:
+no code exists, and `docs/agents/` does not yet exist.
