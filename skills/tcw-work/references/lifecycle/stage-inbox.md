@@ -34,7 +34,7 @@ entry does not write one, so an accepted item shows `i` and not `R`.
    — agent `[judgment]`
 3. Decide whether the entry is one item or several. A drop describing three
    unrelated changes becomes three items; one describing a change with three
-   parts becomes one item that `decompose.md` may later split. — agent
+   parts becomes one item that [`decompose.md`](../procedures/decompose.md) may later split. — agent
    `[judgment]`
 4. Inspect the node's tag vocabulary (`tcw work tags list`) and choose every
    materially applicable tag. Register a new one only if it will be useful beyond

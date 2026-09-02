@@ -8,7 +8,7 @@ It sweeps the **open GitHub issues on this project's own repo** — not TCW's; t
 send a report upstream to the TCW project, that is the `tcw-report` skill.
 
 Read `skills/tcw-triage-issues/SKILL.md` for the procedure, and
-`skills/tcw-work/references/stage-inbox.md` for the intake judgment it defers to
+`skills/tcw-work/references/lifecycle/stage-inbox.md` for the intake judgment it defers to
 — a GitHub issue is an inbox entry that happens to live on GitHub, and the
 retitling, splitting, and tag choice are the same.
 

@@ -20,4 +20,4 @@ when the `request` stage never ran.
 1. **Delegable to a read-only subagent**, and cheaply so: the stage reads the
    whole artifact spine and writes one file. Under Claude the `tcw-post-mortem`
    agent exists for it; under Codex, a `.codex/agents/` definition or an inline
-   run. See [`delegation.md`](delegation.md). — agent `[judgment]`
+   run. See [`delegation.md`](../procedures/delegation.md). — agent `[judgment]`

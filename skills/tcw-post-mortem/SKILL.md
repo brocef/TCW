@@ -5,7 +5,7 @@ description: Use when a TCW work item surfaced a problem worth understanding —
 
 # Running a post-mortem on a work item
 
-**The contract lives elsewhere.** `tcw-work/references/stage-postmortem.md`
+**The contract lives elsewhere.** `tcw-work/references/lifecycle/stage-postmortem.md`
 defines the inputs, the `post-mortem.md` artifact, its required content, and the
 rule that this stage never changes status. Read it once and do not restate it.
 This skill is the part that document deliberately does not cover: **how to

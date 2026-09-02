@@ -44,5 +44,5 @@ Use `--parent` children only when the slices are work items in the same project.
    Re-run it to refresh before deciding the next move.
 
 **Which path?** Same TCW project → `--parent` children
-([`decompose.md`](decompose.md)). Multiple registered projects → an `--epic` +
+([`decompose.md`](procedures/decompose.md)). Multiple registered projects → an `--epic` +
 `delegate`/`--initiative`/`reconcile` (this doc).

@@ -21,10 +21,10 @@ not commit those by hand.
 
 Before implementation begins, run `tcw work start <slug>` if the item is not
 already active, and ask whether to run the remaining stages sequentially or
-dispatch independent ones to subagents (`references/delegation.md`).
+dispatch independent ones to subagents (`references/procedures/delegation.md`).
 
 **Do not complete the item silently.** Stop at `verify` and hold there until the
-user explicitly approves closeout — see `references/stage-verify.md`. At closeout,
+user explicitly approves closeout — see `references/lifecycle/stage-verify.md`. At closeout,
 confirm the merge or PR route, the documentation updates, any follow-up items,
 and the version choice before running `tcw work complete`.
 
