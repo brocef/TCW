@@ -1,0 +1,11 @@
+slug: 2026-09-02-generate-a-role-specific-agents-md-from-configured-role-definitions
+title: Generate a role-specific AGENTS.md from configured role definitions
+created: '2026-09-02'
+resolution: null
+priority: 60
+effort: very-high
+complexity: high
+tags:
+- cli
+- docs
+- skills
