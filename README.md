@@ -799,9 +799,8 @@ concatenated in the order you wrote them. An entry under `artifacts:` is a
 normalized and confined to it, so a typo cannot quietly read something else.
 `generate:` is a script you own, under the contract below. `builtin: true` is
 TCW's own default for that stage or artifact — TCW ships instructions for each of
-the six lifecycle stages (`inbox` runs before an item exists, so it has none) and
-a template for each lifecycle document, and **a stage you have configured nothing
-for resolves to them**. `skill:` names an agent skill, which is a name rather than
+the seven lifecycle stages and a template for each lifecycle document, and **a
+stage you have configured nothing for resolves to them**. `skill:` names an agent skill, which is a name rather than
 instructions and is the weakest option. `command:` is for checks.
 
 ```yaml
@@ -847,8 +846,10 @@ that should genuinely say nothing binds `{blob: ""}`.
 
 **Reading a stage's instructions** is `tcw work stage <id> <ref>`. With nothing
 configured it prints TCW's own instructions for that stage, so the command is
-useful before you have written any lifecycle configuration at all; those shipped
-instructions include a short self-review pass at the stages where one earns its
+useful before you have written any lifecycle configuration at all. The one
+exception to the reference is `inbox`: it runs before an item exists, so it is
+`tcw work stage inbox` with nothing after it, and passing a work item is
+refused rather than interpreted. The shipped instructions include a short self-review pass at the stages where one earns its
 place — `spec`, `plan`, and `implement`. The `spec` and `plan` instructions name
 the item's **own** body artifact rather than a fixed filename: `initial-request.md`
 once the `request` stage has written one, and the `intake.md` it arrived as
