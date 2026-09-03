@@ -6,8 +6,10 @@ Connections are reciprocal and fail closed when a declaration is *inconsistent*
 — an ID that disagrees with the project it names, a cycle, unparseable
 configuration. A connection I simply cannot follow from this machine is a
 different thing and is treated as one: the project drops out of the graph, my
-other commands keep working, and `tcw validate` names the connection it could not
-follow every run so a mistyped locator is still findable. Reciprocity is decided
+other commands keep working, and `tcw validate` names each project it could not
+reach every run so a mistyped locator is still findable — a project some other
+declaration resolved is not listed, since both sides name every connection and
+one of those two is routinely a path only the other machine has. Reciprocity is decided
 between the two projects that are actually here — two configs naming each other
 at paths belonging to different machines are correct, not broken. A command that
 needs the absent project tells me which one and where I declared it, rather than

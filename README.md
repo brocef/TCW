@@ -463,8 +463,10 @@ out of the graph rather than failing your commands.** A checkout holding only
 some of a graph's repositories — a fresh clone, a cloud session that cloned one
 repo — keeps working: the absent project is simply not in the graph, and
 everything that does not need it behaves normally. `tcw validate` names each
-connection it could not follow, every run, so a genuine typo in a locator is
-still findable:
+project it could not reach, every run, so a genuine typo in a locator is still
+findable. A project some other declaration did resolve is not listed — in a
+reciprocal graph both sides name every connection, and on a machine holding only
+some of the repositories one of those two is routinely a path that is not here:
 
 ```
 tcw-config.yaml: connected project 'orchestrator' is declared but not reachable

@@ -471,3 +471,42 @@ def test_an_undeclared_absent_project_does_not_say_to_provision(tmp_path):
     note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
     assert "not reachable in this checkout" in note
     assert "tcw provision" not in note
+
+
+def test_a_project_another_route_resolved_is_not_reported_unreachable(tmp_path):
+    """Both sides declare the connection; only one side's locator resolves here.
+
+    Routine in a multi-repository workspace, where the two configs were written
+    against different machines. The project is in the graph, so nothing about it
+    is unreachable.
+    """
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: nested/child\n",          # not here
+    )
+    config(
+        child,
+        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",              # here
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert registry.parent().id == "root-project"
+    assert registry.unreachable() == []
+    assert registry.unreachable_project("child-project") is None
+
+
+def test_a_project_no_route_resolves_is_still_reported(tmp_path):
+    child = tmp_path / "child"
+    config(
+        child,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        "    root-project: ../nowhere\n",
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert [u.id for u in registry.unreachable()] == ["root-project"]
+    assert registry.unreachable_project("root-project") is not None

@@ -137,3 +137,12 @@ category.
   before anything is fetched, seeded from the starting registry and extended as
   the walk obtains nodes. `--refresh` bypasses the skip, since contacting the
   remote for a copy you have is what it asks for.
+
+## Fixed (unreachable is reported per project, not per edge)
+
+- **`ProjectRegistry.unreachable()` filters by what the graph holds.** Every
+  connection is declared twice and in a multi-repository workspace the two sides
+  are written against different machines, so a locator that does not resolve here
+  is routine and says nothing on its own. Only a project absent from the graph is
+  reported now — which stops `tcw validate` telling a user to provision the
+  repository they are standing in.

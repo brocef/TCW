@@ -190,7 +190,19 @@ class FsProjectRegistry(ProjectRegistry):
         return list(self._problems)
 
     def unreachable(self) -> list[UnreachableProject]:
-        return list(self._unreachable)
+        """Declared projects this checkout does not have.
+
+        Filtered by what the graph ended up holding, not by what each locator
+        did. Every connection is declared twice — once by each side — and in a
+        multi-repository workspace the two sides are written against different
+        machines, so a locator failing to resolve is routine and says nothing on
+        its own. Only the project being absent from the graph does.
+
+        Filtered here rather than at the point of record so the walk order cannot
+        matter: an edge may be recorded before the route that resolves the same
+        project is followed.
+        """
+        return [entry for entry in self._unreachable if entry.id not in self._by_id]
 
     def require_valid(self) -> "FsProjectRegistry":
         if self._problems:
@@ -526,4 +538,7 @@ class FsProjectRegistry(ProjectRegistry):
         message to print.
         """
         self._load_graph()
-        return next((u for u in self._unreachable if u.id == project_id), None)
+        # Through `unreachable()`, not the raw list: a project another route
+        # resolved is not missing, and a message telling the user to obtain a
+        # repository they already have is worse than no message.
+        return next((u for u in self.unreachable() if u.id == project_id), None)
