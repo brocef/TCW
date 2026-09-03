@@ -1,5 +1,0 @@
-new:
-    - cli/declare-a-connected-projects-home-repository
-changed:
-    - cli/provision-declared-stores
-    - cli/host-multiple-projects-in-one-repo
