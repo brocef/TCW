@@ -359,6 +359,30 @@ scanning directories to discover a project. `tcw work list --include-descendants
 groups registered boards by project ID, and any work command accepts
 `<descendant-project-id>/<slug>`.
 
+**A locator is a fact about one machine, and a project that is not on it drops
+out of the graph rather than failing your commands.** A checkout holding only
+some of a graph's repositories — a fresh clone, a cloud session that cloned one
+repo — keeps working: the absent project is simply not in the graph, and
+everything that does not need it behaves normally. `tcw validate` names each
+connection it could not follow, every run, so a genuine typo in a locator is
+still findable:
+
+```
+tcw-config.yaml: connected project 'orchestrator' is declared but not reachable
+in this checkout (/home/you/orchestrator)
+```
+
+A command that *does* need the absent project says which one and where it was
+declared, rather than reporting that it was never registered. This is the same
+courtesy a declared store already gets when it has not been provisioned here.
+
+Configuration that is genuinely wrong still fails closed, unchanged: an invalid
+or duplicated project ID, a cycle, unparseable YAML, a registered key that
+disagrees with the target it names. The one thing that relaxes with it is
+reciprocity — two nodes that name each other at paths belonging to different
+machines are correctly configured, and only a counterpart that is *present* and
+points somewhere else is a non-reciprocal declaration.
+
 Inside a **linked git worktree** a relative locator would otherwise be off by the
 worktree's nesting depth, because it was written against the project's position
 in its primary checkout. TCW re-anchors it against that project's own counterpart

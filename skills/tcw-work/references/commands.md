@@ -79,7 +79,10 @@ named artifact — raw input that quietly changes is not raw input.
 ## Addressing
 
 A **bare slug** is local. `<project-id>/<slug>` resolves any node in the
-registered graph — descendant, ancestor, or sibling. A `<status>/…/<slug>` path
+registered graph this checkout can open — descendant, ancestor, or sibling. A
+qualifier naming a project that is declared but whose repository is not here
+fails saying exactly that, naming the config that declared it; a qualifier naming
+a project nobody declared still reports that there is no such project. A `<status>/…/<slug>` path
 also works, but the status segment must match the item's real status; the slug is
 always the identity.
 
