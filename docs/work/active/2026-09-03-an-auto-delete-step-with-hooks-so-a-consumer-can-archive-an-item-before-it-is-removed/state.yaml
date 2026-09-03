@@ -11,3 +11,5 @@ tags:
 - cli
 blocked_by:
 - slug: 2026-09-03-retain-resolved-work-items-in-history-and-make-auto-delete-configurable
+owner: noreply@anthropic.com
+started: '2026-09-03T21:51:09.884896Z'
