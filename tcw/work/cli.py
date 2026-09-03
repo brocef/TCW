@@ -33,7 +33,8 @@ from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
-               "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
+               "rework", "edit", "complete", "drop", "delete", "nodes", "reconcile",
+               "delegate",
                "escalate", "tags", "lifecycle", "stage", "scaffold", "docs"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
@@ -537,6 +538,65 @@ def _path(args: argparse.Namespace) -> int:
         return 1
     print(p)
     return 0
+
+
+def _auto_delete(st, slug: str, status: str, resolution: str) -> int:
+    """Run the `auto-delete` bindings around removing a resolved item.
+
+    Ordered so the archive sees a complete, already-committed artifact and a
+    failure costs nothing: the resolving commit has landed, `pre` runs while the
+    item is still on disk, the removal and its commit come next, `post` last.
+
+    A `pre` failure leaves the item exactly where it is — resolved, recorded in
+    the graveyard, committed — which is a finishable state, and says so, because
+    the user's first question is whether their work is safe.
+    """
+    policy = st.lifecycle_policy()
+    item_path = st.path(slug)
+    item = st.get(slug)
+    if (err := run_pre(policy, "auto-delete", st.node_root, slug, status, item,
+                       item_path=item_path, resolution=resolution)):
+        print(f"tcw work: {err}; {slug} was resolved and committed but not "
+              f"removed. Fix the binding and run `tcw work delete {slug}`.",
+              file=sys.stderr)
+        return 1
+    try:
+        location = st.delete_resolved(slug)
+    except _ERRORS as e:
+        print(f"tcw work: {e}", file=sys.stderr)
+        return 1
+    print(f"deleted {slug}; its documents remain in commit {location}")
+    post_err = run_post(policy, "auto-delete", st.node_root, slug, status, item,
+                        item_path=item_path, resolution=resolution)
+    return _post_result(post_err, "auto-delete", slug)
+
+
+def _delete(args: argparse.Namespace) -> int:
+    """`tcw work delete <slug>` — finish a removal an archive failure left pending.
+
+    The same code path the automatic step takes, under a name that reads as
+    something a person types. Refuses anything that is not a resolved item this
+    node has stopped retaining, so it can never be mistaken for `drop`.
+    """
+    resolved = _resolve(args.slug, "delete")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    item = st.get(bare)
+    if item is None:
+        print(f"tcw work delete: no such work item: {args.slug}", file=sys.stderr)
+        return 1
+    if item.status not in RESOLVED_STATUSES:
+        print(f"tcw work delete: {bare} is {item.status}, not resolved. "
+              f"`tcw work drop` deletes a backlog item; this finishes the "
+              f"removal of one already resolved.", file=sys.stderr)
+        return 1
+    if not st.pending_deletion(bare):
+        print(f"tcw work delete: work.retain.{item.status} keeps resolved items "
+              f"in this project, so {bare} is not pending removal.",
+              file=sys.stderr)
+        return 1
+    return _auto_delete(st, bare, item.status, item.resolution or "")
 
 
 def _post_result(err: str | None, transition: str, slug: str) -> int:
@@ -1326,9 +1386,15 @@ def _complete(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
+    resolved_status = "completed" if shipping else "discarded"
     post_err = run_post(policy, transition_id, st.node_root, bare,
-                        "completed" if shipping else "discarded", item)
+                        resolved_status, item)
     loc = st.locate(bare)
+    if st.pending_deletion(bare):
+        if (deleted := _auto_delete(st, bare, resolved_status,
+                                    args.resolution)) != 0:
+            return deleted
+        loc = None
     print(f"{'completed' if shipping else 'discarded'} {args.slug} "
           f"({args.resolution})" + (f" → {loc}" if loc else ""))
     if has_worktree:
@@ -1561,3 +1627,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pd.add_argument("slug")
     pd.add_argument("--confirm", action="store_true")
     pd.set_defaults(func=_drop)
+
+    pdel = g.add_parser(
+        "delete",
+        help="finish removing a resolved item this project does not retain")
+    pdel.add_argument("slug")
+    pdel.set_defaults(func=_delete)

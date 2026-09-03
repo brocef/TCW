@@ -89,3 +89,30 @@ category.
 - `WorkStore.transition` returns the settled item, or the moved item where
   retention deleted it — re-reading would report it missing, which is true of
   the store and false of the transition.
+
+## Added (the auto-delete step)
+
+- **`auto-delete`** joins `TRANSITION_IDS` and `LIFECYCLE_STEPS` with
+  `moves: completed | discarded → (removed)`. Deliberately **not** in
+  `LEGAL_TRANSITIONS`: it changes no status. `postmortem` is the precedent for a
+  step that does not.
+- **`hook_env` exports `TCW_ITEM_PATH` and `TCW_RESOLUTION`**, omitted rather
+  than empty where a transition has neither. The path is passed in by the caller
+  — always the store's own answer, never composed from `TCW_NODE_ROOT`.
+- **The store no longer deletes on its own.** `FsWorkStore.pending_deletion`
+  reports the state; `tcw/work/cli.py::_auto_delete` runs the bindings around
+  `delete_resolved`. Running a command is a CLI concern, and a `pre` that
+  refuses must leave the item intact — only expressible if the removal is a
+  separate call.
+- **`tcw work delete <slug>`** finishes a removal a failed archive left pending,
+  through the same code path. Refuses a live item and a retained one.
+- **`tcw serve` performs no removal**, because it runs no hooks. An item resolved
+  there stays in its resolved folder for the CLI.
+- `delete_resolved` publishes its own commit — the resolving transition pushed
+  before this commit existed.
+
+## Changed
+
+- `tests/fixtures/lifecycle_baseline/*.json` regenerated: `tcw work lifecycle`
+  now lists `auto-delete`. A deliberate contract change, visible in the diff
+  exactly as those fixtures are meant to make it.

@@ -26,16 +26,34 @@ from tcw.store.base import Binding, LifecyclePolicy
 from tcw.work.resolve import select
 
 
-def hook_env(node_root: Path, slug: str, status: str, transition: str) -> dict[str, str]:
-    """The caller's environment plus the four `TCW_*` variables, so a hook can act
-    without re-deriving context it cannot see."""
-    return {
+def hook_env(node_root: Path, slug: str, status: str, transition: str,
+             item_path: "Path | str | None" = None,
+             resolution: str = "") -> dict[str, str]:
+    """The caller's environment plus the `TCW_*` variables, so a hook can act
+    without re-deriving context it cannot see.
+
+    `TCW_ITEM_PATH` and `TCW_RESOLUTION` are **omitted** rather than exported
+    empty when the transition has no item folder or no resolution — `start` and
+    `submit` have neither — so a script can test for presence instead of for
+    emptiness.
+
+    The path is passed in by the caller, always the store's own answer for the
+    item, and is never composed here from `TCW_NODE_ROOT`: the work store may
+    live in a different repository entirely, which is the standing rule for
+    store paths everywhere in this codebase.
+    """
+    env = {
         **os.environ,
         "TCW_SLUG": slug,
         "TCW_STATUS": status,
         "TCW_TRANSITION": transition,
         "TCW_NODE_ROOT": str(node_root),
     }
+    if item_path is not None:
+        env["TCW_ITEM_PATH"] = str(item_path)
+    if resolution:
+        env["TCW_RESOLUTION"] = resolution
+    return env
 
 
 def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
@@ -79,7 +97,7 @@ def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
 
 
 def run_pre(policy: LifecyclePolicy, transition: str, node_root: Path, slug: str,
-            status: str, item=None) -> str | None:
+            status: str, item=None, item_path=None, resolution: str = "") -> str | None:
     """`pre` hooks for a transition. A failure means **do not touch the store**.
 
     Callers must invoke this before any `set_field`, not merely before the move:
@@ -90,12 +108,13 @@ def run_pre(policy: LifecyclePolicy, transition: str, node_root: Path, slug: str
     does not match — a check that cannot be evaluated must not silently run.
     """
     return run_bindings(select(policy.transition(transition).pre, item), node_root,
-                        hook_env(node_root, slug, status, transition),
+                        hook_env(node_root, slug, status, transition, item_path,
+                                 resolution),
                         policy.timeout, f"{transition} pre")
 
 
 def run_post(policy: LifecyclePolicy, transition: str, node_root: Path, slug: str,
-             status: str, item=None) -> str | None:
+             status: str, item=None, item_path=None, resolution: str = "") -> str | None:
     """`post` hooks for a transition. A failure **never rolls back**.
 
     The move and its commit have already happened, and unwinding a committed
@@ -104,5 +123,6 @@ def run_post(policy: LifecyclePolicy, transition: str, node_root: Path, slug: st
     where it moved to.
     """
     return run_bindings(select(policy.transition(transition).post, item), node_root,
-                        hook_env(node_root, slug, status, transition),
+                        hook_env(node_root, slug, status, transition, item_path,
+                                 resolution),
                         policy.timeout, f"{transition} post")

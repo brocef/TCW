@@ -33,10 +33,25 @@ def _node(tmp_path: Path, retain: dict | None = None, ignore: bool = True) -> Pa
 
 
 def _resolve(root: Path, title: str = "A thing") -> str:
+    """Create, start and complete an item **through the CLI**.
+
+    The deletion is orchestrated by the CLI rather than by the store, because it
+    carries `pre`/`post` bindings and running a command is a CLI concern. A test
+    that called `store.transition` directly would be exercising a path that
+    deliberately stops short of removing anything.
+    """
+    import os
+
     store = FsWorkStore.open(root)
     item = store.create(title, created="2026-01-01")
     store.start(item.slug)
-    store.transition(item.slug, "completed", {"resolution": "done"})
+    cwd = os.getcwd()
+    try:
+        os.chdir(root)
+        assert main(["work", "complete", item.slug,
+                     "--resolution", "done", "--confirm"]) == 0
+    finally:
+        os.chdir(cwd)
     return item.slug
 
 
@@ -208,3 +223,137 @@ def test_a_slug_that_never_existed_still_reports_that(tmp_path, monkeypatch, cap
     monkeypatch.chdir(root)
     assert main(["work", "show", "2026-01-01-nothing-here"]) == 1
     assert "no such work item" in capsys.readouterr().err
+
+
+# ── the auto-delete step and its bindings ────────────────────────────────────
+
+
+def _bind(root: Path, **phases: list) -> None:
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text()) or {}
+    config.setdefault("work", {}).setdefault("lifecycle", {}).setdefault(
+        "transitions", {})["auto-delete"] = phases
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+
+def test_the_step_is_bindable_and_listed(tmp_path, monkeypatch, capsys):
+    root = _node(tmp_path, retain={"completed": False})
+    _bind(root, pre=[{"command": "true"}])
+    monkeypatch.chdir(root)
+    assert main(["validate"]) == 0
+    assert main(["work", "lifecycle"]) == 0
+    out = capsys.readouterr().out
+    assert "auto-delete  [transition]" in out
+    assert "completed | discarded → (removed)" in out
+
+
+def test_a_pre_binding_sees_the_item_and_its_resolution(tmp_path, monkeypatch):
+    root = _node(tmp_path, retain={"completed": False})
+    witness = tmp_path / "witness"
+    _bind(root, pre=[{"command":
+                      f'printf "%s\\n%s\\n" "$TCW_ITEM_PATH" "$TCW_RESOLUTION" '
+                      f'> {witness}; test -d "$TCW_ITEM_PATH"'}])
+    slug = _resolve(root)
+    item_path, resolution = witness.read_text().splitlines()
+    assert item_path == str(root / "docs" / "work" / "completed" / slug)
+    assert resolution == "done"
+
+
+def test_the_archive_sees_a_committed_artifact(tmp_path, monkeypatch):
+    """The tar an S3 upload would make, taken at hook time."""
+    root = _node(tmp_path, retain={"completed": False})
+    archive = tmp_path / "cold"
+    archive.mkdir()
+    _bind(root, pre=[{"command":
+                      f'tar -czf {archive}/"$TCW_SLUG".tgz -C "$TCW_ITEM_PATH" .'}])
+    slug = _resolve(root)
+    assert (archive / f"{slug}.tgz").is_file()
+    listed = subprocess.run(["tar", "-tzf", str(archive / f"{slug}.tgz")],
+                            capture_output=True, text=True, check=True).stdout
+    assert "./state.yaml" in listed
+    assert not (root / "docs" / "work" / "completed" / slug).exists()
+
+
+def test_a_binding_that_moves_the_item_away_is_not_an_error(tmp_path):
+    root = _node(tmp_path, retain={"completed": False})
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    _bind(root, pre=[{"command": f'mv "$TCW_ITEM_PATH" {elsewhere}/"$TCW_SLUG"'}])
+    slug = _resolve(root)
+    assert (elsewhere / slug / "state.yaml").is_file()
+    assert FsWorkStore.open(root).tombstone(slug).location
+
+
+def test_a_failing_pre_keeps_the_item_and_says_so(tmp_path, monkeypatch, capsys):
+    import os
+
+    root = _node(tmp_path, retain={"completed": False})
+    _bind(root, pre=[{"command": "exit 3"}])
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert "auto-delete pre" in err
+    assert f"tcw work delete {item.slug}" in err
+    # Resolved, recorded, committed — and still here.
+    assert (root / "docs" / "work" / "completed" / item.slug).is_dir()
+    assert FsWorkStore.open(root).tombstone(item.slug) is not None
+
+
+def test_delete_finishes_what_a_failed_archive_left(tmp_path, monkeypatch, capsys):
+    root = _node(tmp_path, retain={"completed": False})
+    _bind(root, pre=[{"command": "exit 3"}])
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    _bind(root, pre=[{"command": "true"}])
+    assert main(["work", "delete", item.slug]) == 0
+    assert not (root / "docs" / "work" / "completed" / item.slug).exists()
+
+
+def test_delete_refuses_a_live_item_and_a_retained_one(tmp_path, monkeypatch, capsys):
+    root = _node(tmp_path)
+    store = FsWorkStore.open(root)
+    live = store.create("Live", created="2026-01-01")
+    monkeypatch.chdir(root)
+    assert main(["work", "delete", live.slug]) == 1
+    assert "not resolved" in capsys.readouterr().err
+
+    store.start(live.slug)
+    assert main(["work", "complete", live.slug,
+                 "--resolution", "done", "--confirm"]) == 0
+    capsys.readouterr()
+    assert main(["work", "delete", live.slug]) == 1
+    assert "keeps resolved items" in capsys.readouterr().err
+
+
+def test_a_retained_status_runs_no_auto_delete_bindings(tmp_path, monkeypatch):
+    root = _node(tmp_path)
+    witness = tmp_path / "witness"
+    _bind(root, pre=[{"command": f"touch {witness}"}])
+    _resolve(root)
+    assert not witness.exists()
+
+
+def test_post_runs_after_the_removal(tmp_path):
+    root = _node(tmp_path, retain={"completed": False})
+    witness = tmp_path / "witness"
+    _bind(root,
+          pre=[{"command": "true"}],
+          post=[{"command": f'test ! -e "$TCW_ITEM_PATH" && touch {witness}'}])
+    _resolve(root)
+    assert witness.exists()
+
+
+def test_a_skill_binding_is_reported_not_executed(tmp_path, monkeypatch, capsys):
+    root = _node(tmp_path, retain={"completed": False})
+    _bind(root, pre=[{"skill": "some:archiver"}])
+    slug = _resolve(root)
+    assert "invoke the some:archiver skill" in capsys.readouterr().err
+    assert not (root / "docs" / "work" / "completed" / slug).exists()

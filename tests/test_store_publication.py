@@ -664,7 +664,10 @@ def test_both_commits_of_an_auto_delete_reach_the_remote(tmp_path, monkeypatch):
     assert store.publishes is True
     item = store.create("A thing", created="2026-01-01")
     store.start(item.slug)
-    store.transition(item.slug, "completed", {"resolution": "done"})
+    # Through the CLI: the deletion is orchestrated there, because it carries
+    # `auto-delete` bindings and the store deliberately does not shell out.
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 0
 
     remote = subprocess.run(
         ["git", "-C", str(tmp_path / "checkout"), "log", "--format=%s",

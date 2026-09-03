@@ -4163,6 +4163,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return (f"recorded in commit {location}, which this clone does not have "
                 f"(history rewritten, or a shallow clone)")
 
+    def pending_deletion(self, slug: str) -> bool:
+        """Whether `slug` is resolved, still present, and not to be retained.
+
+        The state a resolving transition leaves under `work.retain: false`, and
+        the question the CLI asks before running the `auto-delete` bindings.
+
+        **The store does not delete on its own**, deliberately. The deletion has
+        `pre` and `post` bindings, running a command is a CLI concern (see
+        `tcw/work/hooks.py`), and a `pre` that refuses has to leave the item
+        intact — which is only expressible if the removal is a second call the
+        CLI makes rather than something buried inside the move. It also means a
+        surface that runs no hooks, `tcw serve`, stops here instead of deleting
+        without the archive anyone configured.
+        """
+        item = self._get_now(slug)
+        if item is None or item.status not in RESOLVED_STATUSES:
+            return False
+        return not self.retention().get(item.status, True)
+
     def delete_resolved(self, slug: str) -> str:
         """Remove a resolved item's folder and record where it last existed.
 
@@ -4202,6 +4221,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if err:
                 raise TransitionCommitError(
                     f"{slug} was removed, but committing the removal failed:\n{err}")
+            # Its own push. The resolving transition published the first commit
+            # before this one existed, and a remote left holding an item the
+            # store has deleted is exactly the divergence publication exists to
+            # prevent.
+            self._publish_after_transition(slug, status or "removed")
         return location
 
     def tombstone(self, slug: str) -> Tombstone | None:
@@ -5145,11 +5169,6 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, to_status, item,
                                     extra=(self._graveyard_path(),) if resolving else ())
-            if resolving and not self.retention().get(to_status, True):
-                # Second commit, never folded into the first. The first has to
-                # *contain* the item for the record to point anywhere, so the
-                # removal cannot be part of it.
-                self.delete_resolved(slug)
             # Inside the commit branch, not beside it: with auto-commit off the
             # move is uncommitted, so a push would contact the remote and
             # publish nothing. Nothing to commit means nothing to publish.

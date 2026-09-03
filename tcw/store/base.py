@@ -536,6 +536,11 @@ LEGAL_TRANSITIONS = {
     ("review", "discarded"),                        # complete, any other resolution
     ("backlog", "discarded"),                       # abandon without a throwaway start
 }
+# `auto-delete` is deliberately absent from the set above and its absence is not
+# an oversight. It is a `LIFECYCLE_STEPS` transition — bindable, with `pre` and
+# `post` — but it changes no status: the item is already resolved and it leaves
+# the store rather than moving within it. `postmortem` is the existing precedent
+# for a step that never changes status.
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
 
 
@@ -642,7 +647,8 @@ STAGE_IDS = ("inbox", "request", "spec", "plan", "implement", "verify", "postmor
 # instead would make one binding fire for two opposite outcomes — "we shipped it"
 # and "we gave up on it" — which is exactly the distinction `discard` exists to
 # preserve.
-TRANSITION_IDS = ("start", "submit", "complete", "rework", "discard")
+TRANSITION_IDS = ("start", "submit", "complete", "rework", "discard",
+                  "auto-delete")
 
 
 # Bound on a `generate` hook's stdout, in **raw bytes before decoding**.
@@ -986,6 +992,15 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
                   "`complete --resolution <not-done>`, not a verb of its own.",
         moves="backlog | active | review → discarded",
         gates=("--confirm",)),
+    LifecycleStep(
+        id="auto-delete", kind="transition",
+        objective="Remove a resolved item from the store, after it has been "
+                  "committed where it landed. Reached as part of a resolving "
+                  "transition under `work.retain: <status>: false`, not as a "
+                  "verb of its own; `tcw work delete` finishes one a failed "
+                  "`pre` binding left pending.",
+        moves="completed | discarded → (removed)",
+        gates=("work.retain must say the status is not kept",)),
 )
 
 LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}

@@ -228,6 +228,35 @@ leaving the record pointing at a commit that never contained anything, and no
 copy anywhere. Removing the rules is a precondition, not a companion change. Once
 a status is named in `retain`, `tcw work init` stops writing rules for it.
 
+**Hand the item to your own archive before it goes.** The removal is a bindable
+lifecycle step, `auto-delete`, with `pre` and `post`:
+
+```yaml
+work:
+    retain:
+        completed: false
+    lifecycle:
+        transitions:
+            auto-delete:
+                pre:
+                    - command: tar -czf - -C "$TCW_ITEM_PATH" . |
+                        aws s3 cp - "s3://my-bucket/$TCW_RESOLUTION/$TCW_SLUG.tgz"
+```
+
+`pre` runs after the item is committed where it landed and before it is removed,
+so your command sees a complete artifact that is already recorded. Two variables
+join the usual four: `TCW_ITEM_PATH`, the store's own answer for where the item
+is, and `TCW_RESOLUTION`. **If your command fails, the item is not deleted** — it
+stays resolved, recorded and committed, and `tcw work delete <slug>` finishes the
+removal once you have fixed things. A command that moves the item away itself is
+fine; an already-absent folder counts as removed.
+
+Two things this does not promise. TCW cannot tell whether your command really
+archived anything, and a `skill:` binding is reported for your agent to invoke
+rather than run — so anything you need guaranteed belongs in a `command:`.
+`tcw serve` runs no hooks, so an item resolved through the web UI waits for a CLI
+`tcw work delete` rather than being removed without your archive.
+
 Adopting auto-delete on an older board wants one more step first: the graveyard
 is what keeps a deleted slug from being reissued, and a board that predates it
 has none. `tcw work tombstone add <slug>` backfills the ones already resolved.

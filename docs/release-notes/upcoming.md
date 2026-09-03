@@ -62,3 +62,16 @@ rather than treated as a yes.
 One thing to know before turning it on: it cannot be combined with the ignore
 rules that scaffolding writes, because git would remove the item before it was
 ever recorded. TCW refuses that combination and tells you which rules to drop.
+
+## Keep your own copy before finished work is deleted
+
+If you have asked TCW to delete finished work, you can now have it hand the item
+to your own archive first — an object store, another folder, anything a command
+of yours can reach. It runs while the item is still there and already committed,
+and it gets the item's location and how it was resolved in the environment.
+
+If your archive fails, nothing is deleted. The item stays exactly where it is and
+TCW tells you to run `tcw work delete` once you have fixed it. Note that TCW
+cannot check whether your command really archived anything, and that the web UI
+does not run commands at all — an item resolved there waits for you to finish the
+removal from the command line.

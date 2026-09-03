@@ -155,3 +155,27 @@ its own.
 `tcw work drop <slug> --confirm` deletes a backlog item outright. That is not a
 transition and leaves no record, which is why `--confirm` is required: without it
 the command names what would go and refuses. `[gated]`
+
+## auto-delete — `completed | discarded → (removed)`
+
+Not a verb you type in the normal case. It runs as part of a resolving
+transition when `work.retain.<status>` is `false`, after the item has been
+committed where it landed and before it is removed — so a binding sees a
+complete, already-recorded artifact and a failure costs nothing.
+
+- `pre` bindings run while the item is still on disk. A failure **keeps the
+  item**: resolved, recorded in the graveyard, committed, and reported as
+  finishable. `[gated]`
+- `post` bindings run after the removal is committed. A failure never undoes it.
+- `TCW_ITEM_PATH` and `TCW_RESOLUTION` are exported alongside the usual four, so
+  an archive command needs no lookup. The path is the store's own answer — never
+  compose one from `TCW_NODE_ROOT`.
+- A binding that moves the item away itself is supported: an already-absent
+  folder counts as removed.
+- `tcw work delete <slug>` finishes a removal a failed `pre` left pending,
+  running the same bindings. It refuses a live item — that is `drop` — and one
+  whose status the project still retains.
+- `tcw serve` runs no hooks and therefore performs no removal: an item resolved
+  through the web UI waits for a CLI `tcw work delete`.
+- Guarantees belong in a `command:`. A `skill:` binding here is reported for the
+  agent to invoke, not run, and the removal proceeds either way.
