@@ -215,7 +215,8 @@ class FsProjectRegistry(ProjectRegistry):
         self._validate_cycles()
 
     def _visit(self, config_path: Path, declared_id: str | None,
-               declared_in: Path | None = None) -> _Config | None:
+               declared_in: Path | None = None,
+               declaration: RepositoryDeclaration | None = None) -> _Config | None:
         config_path = config_path.resolve()
         if config_path in self._cache:
             cfg = self._cache[config_path]
@@ -230,7 +231,8 @@ class FsProjectRegistry(ProjectRegistry):
             return None
         self._visiting.add(config_path)
         try:
-            cfg = self._read_config(config_path, declared_id, declared_in)
+            cfg = self._read_config(config_path, declared_id, declared_in,
+                                    declaration)
             if cfg is None:
                 return None
             self._cache[config_path] = cfg
@@ -244,16 +246,18 @@ class FsProjectRegistry(ProjectRegistry):
                 self._by_id[cfg.project.id] = cfg
             for child_id, entry in cfg.children.items():
                 self._visit(self._target_path(config_path, entry), child_id,
-                            config_path)
+                            config_path, entry.repository)
             for parent_id, entry in cfg.parent.items():
                 self._visit(self._target_path(config_path, entry), parent_id,
-                            config_path)
+                            config_path, entry.repository)
             return cfg
         finally:
             self._visiting.discard(config_path)
 
     def _read_config(self, path: Path, declared_id: str | None,
-                     declared_in: Path | None = None) -> _Config | None:
+                     declared_in: Path | None = None,
+                     declaration: RepositoryDeclaration | None = None,
+                     ) -> _Config | None:
         if not path.is_file():
             # Not a defect. A locator is a fact about one machine — the same
             # thing `work.path` is — so a target that is not here means this
@@ -262,7 +266,8 @@ class FsProjectRegistry(ProjectRegistry):
             # the checkouts that have only some of a graph's repositories.
             # Everything else below stays an error: those targets are present
             # and wrong, which is what fail-closed was written for.
-            self._unreachable_edge(declared_in or path, declared_id, path.parent)
+            self._unreachable_edge(declared_in or path, declared_id, path.parent,
+                                   declaration)
             return None
         try:
             raw = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader) or {}
@@ -496,7 +501,8 @@ class FsProjectRegistry(ProjectRegistry):
             self._problems.append(rendered)
 
     def _unreachable_edge(self, config_path: Path, project_id: str | None,
-                          locator: Path) -> None:
+                          locator: Path,
+                          declaration: RepositoryDeclaration | None = None) -> None:
         """Record a declared project that is not here, rather than a problem.
 
         `project_id` is the key the declaring config used. It can be None only
@@ -507,7 +513,8 @@ class FsProjectRegistry(ProjectRegistry):
         if not project_id:
             return
         entry = UnreachableProject(id=project_id, locator=locator,
-                                   declared_in=config_path)
+                                   declared_in=config_path,
+                                   declaration=declaration)
         if entry not in self._unreachable:
             self._unreachable.append(entry)
 

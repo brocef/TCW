@@ -189,9 +189,15 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     # in a locator now surfaces, so they are printed every run rather than
     # behind a flag.
     for absent in registry.unreachable():
-        print(f"{absent.declared_in}: connected project '{absent.id}' is declared "
-              f"but not reachable in this checkout ({absent.locator})",
-              file=sys.stderr)
+        if absent.declaration is not None:
+            print(f"{absent.declared_in}: connected project '{absent.id}' is "
+                  f"declared in {absent.declaration.url} but has not been "
+                  f"provisioned here; run `tcw provision` to obtain it",
+                  file=sys.stderr)
+        else:
+            print(f"{absent.declared_in}: connected project '{absent.id}' is declared "
+                  f"but not reachable in this checkout ({absent.locator})",
+                  file=sys.stderr)
     from tcw.validate import validate
     recurse = args.path is None and not args.no_recurse
     projects = [registry.current, *registry.descendants()] if recurse else [registry.current]

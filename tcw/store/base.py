@@ -115,6 +115,7 @@ class UnreachableProject:
     id: str
     locator: Any
     declared_in: Any = ""
+    declaration: "RepositoryDeclaration | None" = None
 
 
 class ProjectRegistry(ABC):

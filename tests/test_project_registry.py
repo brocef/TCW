@@ -440,3 +440,34 @@ def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected
     problems = FsProjectRegistry.open(parent).check()
     assert any(expected in problem for problem in problems), problems
     assert FsProjectRegistry.open(parent).unreachable() == []
+
+
+def test_a_declared_project_says_to_provision_it(tmp_path, monkeypatch):
+    from tcw.store.fs import unreachable_project_note
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n        url: https://example.invalid/child.git\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    note = unreachable_project_note(registry, "child-project")
+    assert "https://example.invalid/child.git" in note
+    assert "tcw provision" in note
+
+
+def test_an_undeclared_absent_project_does_not_say_to_provision(tmp_path):
+    from tcw.store.fs import unreachable_project_note
+
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: ../child\n",
+    )
+    note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
+    assert "not reachable in this checkout" in note
+    assert "tcw provision" not in note

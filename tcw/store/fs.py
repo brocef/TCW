@@ -287,6 +287,12 @@ def unreachable_project_note(registry, project_id: str) -> str | None:
     absent = registry.unreachable_project(project_id)
     if absent is None:
         return None
+    if absent.declaration is not None:
+        # A declared project has a remedy, so the message names it rather than
+        # only the symptom — the same shape `StoreNotProvisioned` uses.
+        return (f"project '{project_id}' is declared in {absent.declaration.url} "
+                f"but has not been provisioned here; run `tcw provision` to "
+                f"obtain it")
     return (f"project '{project_id}' is declared in {absent.declared_in} but is "
             f"not reachable in this checkout ({absent.locator})")
 
