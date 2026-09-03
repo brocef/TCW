@@ -345,7 +345,10 @@ contacts a URL you did not write yourself, so every remote is printed before it
 is contacted — the transitive ones included — and `--dry-run` walks the whole
 queue without touching the network, saying plainly that a project it has not
 fetched may declare more. `--component` scopes the component pass only; there is
-no way to ask for a store and silently get a repository as well.
+no way to ask for a store and silently get a repository as well. A project this
+checkout can already reach is never fetched, however it is declared — the same
+"already here wins" rule the stores follow — so declaring an edge on both sides
+costs nothing.
 
 If the `repository` block itself is wrong — a missing `url`, a path that escapes
 the repository root, a key that is not one of the four — every command says which

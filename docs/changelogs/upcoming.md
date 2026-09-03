@@ -127,3 +127,13 @@ category.
 - Federation carries the projects already on its path (`_seen_nodes`), so a cycle
   is still reported by `check()` rather than recurring — resolving a sibling's
   store now opens it, and opening a tree store resolves its own `extends`.
+
+## Fixed (provisioning skips a project you already have)
+
+- **`tcw provision` no longer obtains a project the checkout can already reach.**
+  A declaration lives on whichever node knows about an edge, so an ancestor
+  routinely names a repository the caller is standing inside; the walk took that
+  at face value and re-cloned it. Reachability is now checked by project id
+  before anything is fetched, seeded from the starting registry and extended as
+  the walk obtains nodes. `--refresh` bypasses the skip, since contacting the
+  remote for a copy you have is what it asks for.

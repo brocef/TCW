@@ -223,6 +223,21 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
     failed = False
     seen: set[Path] = set()
     queue: list[tuple[Path, str, object]] = []
+    # The ids this checkout can already reach. "A project that is already here
+    # always wins" is the rule the whole feature rests on, and the walk is the
+    # one place it was not applied: a declaration is written by whichever node
+    # knows about that edge, so an ancestor routinely declares where a project
+    # comes from that the *caller* is standing inside. Taking that at face value
+    # re-cloned the current repository. Identity is the id — the registry
+    # rejects duplicates, so this inherits that guarantee.
+    have: set[str] = set()
+    try:
+        registry = FsProjectRegistry.open(node_root)
+        have = {registry.current.id,
+                *(p.id for p in registry.ancestors()),
+                *(p.id for p in registry.descendants())}
+    except Exception:
+        pass
 
     def enqueue(root: Path) -> None:
         found, problems = _declared_nodes_in_graph(root, enqueued)
@@ -238,9 +253,18 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         if target in seen:
             continue
         seen.add(target)
+        if project_id in have and not refresh:
+            # `--refresh` is the one case where contacting the remote for a copy
+            # you already have is exactly what was asked for.
+            # No location claimed: the project may be here in the working
+            # checkout or in a copy provisioned earlier, and both are
+            # "available" for the purpose of not fetching it again.
+            print(f"  {project_id}: already available")
+            continue
         provisioner = FsStoreProvisioner(source, NODE_TARGET, declaration)
         if provisioner.is_available() and not refresh:
             print(f"  {project_id}: already available at {target}")
+            have.add(project_id)
             enqueue(target)
             continue
         print(f"→ {project_id}: {provisioner.describe().split(': ', 1)[1]}")
@@ -251,6 +275,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
             failed = True
             continue
         print(f"  {project_id}: {result.detail.split(': ', 1)[1]}")
+        have.add(project_id)
         if dry_run:
             # Its own declarations live in a config we have not fetched, so
             # saying nothing here would imply there are none. Say what is

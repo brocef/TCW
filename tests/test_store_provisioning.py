@@ -1530,3 +1530,54 @@ def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
     assert main(["provision"]) == 0
     out = capsys.readouterr().out
     assert "away-project" in out and "obtained" in out
+
+
+def test_a_project_the_checkout_already_has_is_not_fetched(tmp_path, monkeypatch, capsys):
+    """An ancestor declares where a project comes from; that project is you.
+
+    Declarations live on whichever node knows about an edge, so an ancestor
+    routinely names a repository the caller is standing inside. Obtaining it
+    would clone the current repository a second time and put two nodes in the
+    graph under one id.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    absent = _node_repo(tmp_path / "absent", "absent-project",
+                        {"parent": {"away-project": "../away"}})
+    here = _node_repo(tmp_path / "here", "here-project",
+                      {"parent": {"away-project": "../away-not-here"}})
+    away = _node_repo(
+        tmp_path / "away", "away-project",
+        {"children": {
+            # One the caller has, one it does not.
+            "here-project": {"path": "../here-not-here",
+                             "repository": {"url": str(here), "ref": "main"}},
+            "absent-project": {"path": "../absent-not-here",
+                               "repository": {"url": str(absent), "ref": "main"}},
+        }},
+    )
+    # Point `here` at the real `away` remote now that it exists.
+    cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
+    cfg["connected-projects"]["parent"]["away-project"] = {
+        "path": "../away-not-here",
+        "repository": {"url": str(away), "ref": "main"},
+    }
+    (here / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    subprocess.run(["git", "-C", str(here), "commit", "-aqm", "declare"], check=True)
+
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "here-project: already available" in out
+    assert "absent-project" in out and "obtained" in out
+
+    # And again as a plan, now that the declaring node is here to be read —
+    # which is the shape the real reproduction had.
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert "here-project: already available" in planned
+    assert "here-project: would obtain" not in planned
+
+    cache = tmp_path / "cache" / "tcw" / "stores"
+    names = sorted(p.name for p in cache.iterdir())
+    assert not any("here" in n for n in names), names
+    assert len(names) == 2, names          # away + absent, never a second `here`

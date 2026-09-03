@@ -22,7 +22,9 @@ I ask for a store, and the way I bring one up to date without transitioning
 anything.
 
 Running it again does nothing: a store that already resolves is reported as
-already available and no network call is made. `--dry-run` shows me the plan
+already available and no network call is made. The same holds for a connected
+project — one I can already reach is never fetched, whoever declared where it
+comes from, so declaring an edge from both sides costs me nothing. `--dry-run` shows me the plan
 without contacting anything, and `--refresh` brings an existing working copy back
 to the declared ref.
 
