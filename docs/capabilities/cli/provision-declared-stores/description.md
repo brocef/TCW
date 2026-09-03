@@ -1,8 +1,8 @@
 As a developer arriving in a fresh checkout, I can run one explicit command,
-`tcw provision`, to materialize the work store this project declares but does
-not have here. It reports what it is about to contact before contacting it,
-fetches into the location the declaration names or a per-machine cache, and
-prints where the store landed.
+`tcw provision`, to materialize what this project declares but does not have
+here. It reports what it is about to contact before contacting it, fetches into
+the location the declaration names or a per-machine cache, and prints where the
+store landed.
 
 It serves all three component stores **and my connected projects**. A project I
 connect to may declare the repository it lives in, and `tcw provision` obtains it
@@ -10,11 +10,11 @@ after the components — following the trail, since a project it has just obtain
 may declare others. That is the one place it contacts a repository I did not name
 myself, so every remote is printed before it is contacted and `--dry-run` plans
 the whole walk without a network call, telling me plainly that a project it has
-not fetched may declare more. `--component` limits it to `work`,
-`taxonomy`, or `capabilities`; with none given, every component that declares a
-home repository is provisioned. Each is resolved, reported, and failed on its
-own, so one component's bad declaration neither suppresses nor corrupts
-another's result.
+not fetched may declare more. `--component` limits **the component pass** to
+`work`, `taxonomy`, or `capabilities`; connected projects are obtained either
+way. With no component named, every component that declares a home repository is
+provisioned. Each is resolved, reported, and failed on its own, so one
+component's bad declaration neither suppresses nor corrupts another's result.
 
 `--refresh` is no longer the only way a provisioned store meets its remote: a
 transition on one refreshes and publishes on its own. This command stays the way
@@ -24,9 +24,11 @@ anything.
 Running it again does nothing: a store that already resolves is reported as
 already available and no network call is made. The same holds for a connected
 project — one I can already reach is never fetched, whoever declared where it
-comes from, so declaring an edge from both sides costs me nothing. `--dry-run` shows me the plan
-without contacting anything, and `--refresh` brings an existing working copy back
-to the declared ref.
+comes from, so declaring an edge from both sides costs me nothing. `--dry-run`
+shows me the plan without contacting anything, and `--refresh` brings a working
+copy TCW provisioned back to the declared ref. `--refresh` does not reach past
+that skip: a project I resolve somewhere else has no provisioned copy to refresh,
+and fetching one anyway would put a second node in the graph under a single ID.
 
 Provisioning only ever happens because I asked for it. No other `tcw` command
 reaches the network on a project's behalf, so a repository I have merely checked

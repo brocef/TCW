@@ -267,6 +267,8 @@ show` says so rather than printing a dead pointer, but it cannot get the content
 back. That is the trade auto-delete makes, and it is why the default does not
 make it for you.
 
+### Where a component store lives
+
 To keep a project's work in another Git repository while preserving its own ID
 and lifecycle configuration, set `work.path` in its `tcw-config.yaml` or pass
 `tcw work init --path <path>` (`tcw init --work-path <path> work`). A relative
@@ -300,25 +302,8 @@ taxonomy:
         path: docs/taxonomy
 ```
 
-A **connected project** takes the same block, in the same place a locator goes:
-
-```yaml
-id: my-project
-connected-projects:
-    parent:
-        orchestrator:
-            path: ../../..                       # optional; where it is here
-            repository:
-                url: https://github.com/me/orchestrator.git
-                ref: main
-```
-
-A bare locator string stays a locator, so nothing already written changes. The
-ladder is the store's: the project at `path` wins when it is there, and the
-declaration answers only when it is not. Declarations follow the graph rather
-than being centralized — your repository declares its own edge, and the node on
-the other side declares its own — so `tcw provision` can obtain a project two
-hops away that your config never names.
+A connected project takes the same block, in the same place its locator goes —
+see [Connected projects](#connected-projects).
 
 **A store that is already here always wins.** The declaration is consulted only
 when the local store is absent, so the same config keeps working untouched on a
@@ -327,6 +312,8 @@ absent, every command that needs it says so in those words and names the remote 
 instead of reporting that the project has no such component. That last part
 matters most for the trees: a checkout that cloned only the code has no
 `docs/taxonomy/` folder, which used to read as "this project has no taxonomy".
+
+### Obtaining a declared store or project
 
 `tcw provision` is what obtains it:
 
@@ -344,11 +331,14 @@ others, and those are obtained in the same run. That is the one place `tcw`
 contacts a URL you did not write yourself, so every remote is printed before it
 is contacted — the transitive ones included — and `--dry-run` walks the whole
 queue without touching the network, saying plainly that a project it has not
-fetched may declare more. `--component` scopes the component pass only; there is
-no way to ask for a store and silently get a repository as well. A project this
-checkout can already reach is never fetched, however it is declared — the same
-"already here wins" rule the stores follow — so declaring an edge on both sides
-costs nothing.
+fetched may declare more. `--component` scopes the component pass only —
+connected projects are still obtained, and every remote is still printed first. A
+project this checkout can already reach is never fetched, however it is declared
+— the same "already here wins" rule the stores follow — so declaring an edge on
+both sides costs nothing. `--refresh` does not override that: it brings a copy
+`tcw` itself provisioned back to the declared version, and a project you resolve
+somewhere else has no such copy to bring anywhere — obtaining one would put a
+second node in the graph under a single ID.
 
 If the `repository` block itself is wrong — a missing `url`, a path that escapes
 the repository root, a key that is not one of the four — every command says which
@@ -451,6 +441,24 @@ connected-projects:
         orchestrator: ../orchestrator
 ```
 
+An entry may also say where the project *comes from*, taking the same
+`repository` block a component store takes (see [Where a component store
+lives](#where-a-component-store-lives)) in the place a locator goes:
+
+```yaml
+id: project-a
+connected-projects:
+    parent:
+        orchestrator:
+            path: ../orchestrator                # optional; where it is here
+            repository:
+                url: https://github.com/me/orchestrator.git
+                ref: main
+```
+
+A bare locator string stays a locator, so nothing already written changes. The
+ladder is the store's, and `tcw provision` is what walks it.
+
 Relative locators resolve from the declaring config; absolute locators are also
 allowed. `children` contains direct children only and `parent` has at most one
 entry. TCW derives deeper descendants and ancestors transitively, never by
@@ -463,8 +471,8 @@ out of the graph rather than failing your commands.** A checkout holding only
 some of a graph's repositories — a fresh clone, a cloud session that cloned one
 repo — keeps working: the absent project is simply not in the graph, and
 everything that does not need it behaves normally. `tcw validate` names each
-project it could not reach, every run, so a genuine typo in a locator is still
-findable. A project some other declaration did resolve is not listed — in a
+project it could not reach, every run. A project some other declaration did
+resolve is not listed — in a
 reciprocal graph both sides name every connection, and on a machine holding only
 some of the repositories one of those two is routinely a path that is not here:
 
@@ -481,8 +489,10 @@ courtesy a declared store already gets when it has not been provisioned here.
 packages owning the boards is a registered project like any other, and relations
 pass straight through it: an epic two levels up resolves, its slices below one
 are found, and `tcw work escalate` reaches the nearest ancestor that does keep a
-board. `tcw work nodes` says `parent: <id> (no work store)` for such a parent
-rather than calling this node the root.
+board. `tcw work nodes` says `parent: <id>  (no work store)` for such a parent
+rather than calling this node the root, and `(work store not provisioned here)`
+for one whose declared board this machine has not obtained — the same two markers
+it puts on the children lines.
 
 Configuration that is genuinely wrong still fails closed, unchanged: an invalid
 or duplicated project ID, a cycle, unparseable YAML, a registered key that

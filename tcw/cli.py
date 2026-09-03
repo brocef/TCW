@@ -244,15 +244,30 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
     # Obtained during *this* run, so not in a registry read before they existed.
     have: set[str] = set()
 
-    def already_here(project_id: str) -> bool:
-        if project_id in have:
-            return True
+    def resolved_outside(project_id: str, target: Path) -> bool:
+        """Whether the graph already resolves this project somewhere other than
+        the copy this declaration would create.
+
+        The distinction `--refresh` turns on. Refreshing means bringing a
+        *provisioned* copy back to the declared ref, and that copy is the only
+        thing there is to refresh. A project resolved somewhere else is a
+        checkout the user has — there is nothing drifted to fix, and obtaining
+        one anyway puts a second node in the graph under a single id, which
+        `require_valid` then rejects as a duplicate. So this case is skipped
+        whatever the flags say.
+        """
         if starting_registry is None:
             return False
         try:
-            return starting_registry.get(project_id) is not None
+            project = starting_registry.get(project_id)
         except Exception:
             return False
+        if project is None:
+            return False
+        try:
+            return Path(project.locator).resolve() != target.resolve()
+        except Exception:                       # an unresolvable locator: not it
+            return True
 
     def enqueue(root: Path) -> None:
         found, problems = _declared_nodes_in_graph(root, enqueued)
@@ -268,13 +283,17 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         if target in seen:
             continue
         seen.add(target)
-        if already_here(project_id) and not refresh:
-            # `--refresh` is the one case where contacting the remote for a copy
-            # you already have is exactly what was asked for.
-            # No location claimed: the project may be here in the working
-            # checkout or in a copy provisioned earlier, and both are
-            # "available" for the purpose of not fetching it again.
+        if project_id in have:
+            # Obtained or confirmed earlier in this same run.
             print(f"  {project_id}: already available")
+            continue
+        if resolved_outside(project_id, target):
+            # A checkout of this project that is not the copy this declaration
+            # would create — including, routinely, the one the command is being
+            # run from. No location claimed: it may be in the working checkout
+            # or in a copy provisioned earlier, and both mean "do not fetch".
+            print(f"  {project_id}: already available")
+            have.add(project_id)
             continue
         provisioner = FsStoreProvisioner(source, NODE_TARGET, declaration)
         if provisioner.is_available() and not refresh:

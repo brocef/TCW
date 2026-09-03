@@ -29,5 +29,3 @@ anything I need guaranteed belongs in a `command:`.
 `tcw serve` runs no hooks, so it does not perform the deletion either: an item
 resolved through the web UI waits in its resolved folder for a CLI
 `tcw work delete`, rather than being removed without my archive running.
-
-Planning doc: 2026-09-03-an-auto-delete-step-with-hooks-so-a-consumer-can-archive-an-item-before-it-is-removed

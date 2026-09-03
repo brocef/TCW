@@ -187,7 +187,9 @@ def test_nodes_reports_a_registered_parent_that_keeps_no_board(tmp_path, monkeyp
     monkeypatch.chdir(c)
     assert main(["work", "nodes"]) == 0
     out = capsys.readouterr().out
-    assert "parent: b-project (no work store)" in out
+    # Two spaces before the marker, the same spacing the children lines use —
+    # the parent branch used to hardcode its own note with one.
+    assert "parent: b-project  (no work store)" in out
 
     monkeypatch.chdir(a)
     assert main(["work", "nodes"]) == 0
@@ -215,3 +217,40 @@ def test_nodes_lists_a_registered_child_that_keeps_no_board(tmp_path, monkeypatc
     monkeypatch.chdir(c)
     assert main(["work", "nodes"]) == 0
     assert "children: (none — leaf)" in capsys.readouterr().out
+
+
+def test_the_parent_marker_says_which_reason_applies(tmp_path, monkeypatch, capsys):
+    """A declared-but-unobtained board is not the same as no board at all.
+
+    The children lines have distinguished the two since they were added; the
+    parent line hardcoded "no work store" and so reported the wrong reason for a
+    parent whose board this machine simply has not fetched.
+    """
+    import subprocess
+    import yaml
+    from tcw.cli import main
+    from tcw.store.fs import init
+
+    parent = tmp_path / "parent"
+    child = tmp_path / "parent" / "child"
+    child.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(parent)], check=True)
+    subprocess.run(["git", "-C", str(parent), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
+    init(["work"], parent, "parent-project")
+    init(["work"], child, "child-project")
+
+    # The parent's board is declared and not here.
+    doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
+    doc["connected-projects"] = {"children": {"child-project": "child"}}
+    doc.setdefault("work", {})["path"] = str(tmp_path / "absent")
+    doc["work"]["repository"] = {"url": "https://example.invalid/boards.git"}
+    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    child_doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    child_doc["connected-projects"] = {"parent": {"parent-project": ".."}}
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_doc, sort_keys=False))
+
+    monkeypatch.chdir(child)
+    assert main(["work", "nodes"]) == 0
+    out = capsys.readouterr().out
+    assert "parent: parent-project  (work store not provisioned here)" in out

@@ -3,18 +3,19 @@ connected-project graph. It prints the current node's canonical ID, its
 registered parent, and its registered children — each by ID, never by filesystem
 path, because IDs are identity and paths are only adapter locators. A project
 with no parent prints `parent: (none — root)`; one with no children prints
-`children: (none — leaf)`. A registered parent that keeps no work store prints
-`parent: <id> (no work store)` — it is a grouping project, not the top of the
-graph, and the two used to read identically.
+`children: (none — leaf)`.
 
 Only *registered* projects appear. TCW reads the `connected-projects` section of
 `tcw-config.yaml` rather than scanning the disk, so a git repository sitting next
 to or inside this one is invisible to the topology until it is registered — being
 nearby is not a relationship. A registered project whose work store cannot be
-opened here is still listed, and marked with which of the two reasons applies —
-it keeps no board at all, or it keeps one this machine has not obtained.
-Omitting them made a project with children read as a leaf. What the *unmarked*
-entries print is the set of nodes the cross-node commands can actually reach.
+opened here — parent or child alike, marked the same way on both lines — is
+still listed, with which of the two reasons applies: `(no work store)` where it
+keeps no board at all, `(work store not provisioned here)` where it declares one
+this machine has not obtained. Leaving them out made a project with children read
+as a leaf, and calling a grouping parent the root hid a whole project from me.
+What the *unmarked* entries print is the set of nodes the cross-node commands can
+actually reach.
 
 That makes it the command to run first when a cross-node operation is not
 behaving: the IDs listed here are exactly the ones

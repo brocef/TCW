@@ -15,9 +15,11 @@ ancestor that does keep one. `tcw work nodes` marks such a parent
 Reciprocity is checked between the nodes this checkout can actually open. A
 connected project whose repository is not here is absent from the graph rather
 than fatal to it, so cross-node coordination is simply unavailable for that node
-— `tcw work nodes` will not list it, `delegate`/`escalate` cannot reach it, and a
-slice whose epic lives there cannot resolve it. The commands say which project is
-missing; do not read that as "not registered" and add a second declaration.
+— `delegate`/`escalate` cannot reach it, a slice whose epic lives there cannot
+resolve it, and `tcw work nodes` will not list it at all — distinct from a
+project that *is* here but whose board this machine has not obtained, which is
+listed and marked. The commands say which project is missing; do not read that
+as "not registered" and add a second declaration.
 
 1. **Open the epic** at the orchestrator node:
    `tcw work new --epic "<epic title>"` → note its slug.

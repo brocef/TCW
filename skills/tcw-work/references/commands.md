@@ -15,7 +15,7 @@
 | finish work              | `tcw work complete <slug> --resolution done --confirm [--already-integrated]`                                                                   |
 | close without shipping   | `tcw work complete <slug> --resolution wontfix\|duplicate\|superseded --confirm`                                                                |
 | delete a backlog item    | `tcw work drop <slug> --confirm` (no record kept)                                                                                               |
-| finish a pending removal | `tcw work delete <slug>` — for an item a `work.retain: false` node resolved but whose `auto-delete` archive failed; runs the same bindings, refuses a live or retained item |
+| finish a pending removal | `tcw work delete <slug>` — for an item a `work.retain.<status>: false` node resolved but whose `auto-delete` archive failed; runs the same bindings, refuses a live or retained item |
 | record a resolved slug   | `tcw work tombstone add <slug> [--resolution <r>] [--resolved <ISO>]` — for work resolved *before* the store kept records; refuses only a **live** slug or one already recorded, so it works on the machine still holding the resolved folder and is safe to re-run; commits and publishes |
 | record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated                                |
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>`                                                                               |

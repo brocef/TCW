@@ -21,5 +21,3 @@ its own — so I never have to name a repository my project does not know about.
 Provisioning still only ever happens because I asked for it. Declaring a
 connected project's home repository does not make any other command reach the
 network.
-
-Planning doc: 2026-09-03-connected-project-entries-declare-where-they-come-from-so-tcw-provision-can-obtain-a-node

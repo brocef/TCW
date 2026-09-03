@@ -1653,3 +1653,67 @@ def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkey
     names = sorted(p.name for p in (tmp_path / "cache" / "tcw" / "stores").iterdir())
     assert len(names) == 1, names
     assert names[0].endswith(_cache_suffix(str(absent))), names
+
+
+def test_refresh_does_not_fetch_a_project_the_checkout_already_has(tmp_path,
+                                                                  monkeypatch,
+                                                                  capsys):
+    """`--refresh` does not outrank "already here wins", and must not.
+
+    Refreshing means bringing a *provisioned* copy back to the declared ref, and
+    that copy is the only thing there is to refresh. A project resolved somewhere
+    else is a checkout the user has: nothing has drifted, and obtaining one
+    anyway puts a second node in the graph under a single id — which
+    `require_valid` then rejects as a duplicate, on a graph the command reported
+    success for.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    here = _node_repo(tmp_path / "here", "here-project",
+                      {"parent": {"away-project": "../away-not-here"}})
+    away = _node_repo(
+        tmp_path / "away", "away-project",
+        {"children": {"here-project": {"path": "../here-not-here",
+                                       "repository": {"url": str(here), "ref": "main"}}}},
+    )
+    # Point `here` at the real `away` remote now that it exists.
+    cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
+    cfg["connected-projects"]["parent"]["away-project"] = {
+        "path": "../away-not-here",
+        "repository": {"url": str(away), "ref": "main"},
+    }
+    (here / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    subprocess.run(["git", "-C", str(here), "commit", "-aqm", "declare"], check=True)
+
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    assert "here-project: already available" in capsys.readouterr().out
+
+    assert main(["provision", "--refresh"]) == 0
+    assert "here-project: already available" in capsys.readouterr().out
+
+    cache = tmp_path / "cache" / "tcw" / "stores"
+    assert not any(n.name.endswith(_cache_suffix(str(here)))
+                   for n in cache.iterdir()), \
+        "a second copy of the checkout we are standing in"
+    # The graph is still one node per id, which is what the duplicate would break.
+    from tcw.store.project import FsProjectRegistry
+    FsProjectRegistry.open(here).require_valid()
+
+
+def test_refresh_still_refreshes_a_provisioned_copy(tmp_path, monkeypatch, capsys):
+    """The case `--refresh` is actually for: a copy `tcw` obtained, gone stale."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"parent": {"here-project": "../here"}})
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"path": "../away-not-here",
+                                       "repository": {"url": str(away), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    assert "away-project: obtained" in capsys.readouterr().out
+
+    assert main(["provision", "--refresh"]) == 0
+    out = capsys.readouterr().out
+    assert "away-project: refreshed" in out

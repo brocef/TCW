@@ -10,11 +10,12 @@ has only some of them used to refuse every command — including the ones that h
 no need of the missing project. That is fixed. A project TCW cannot find is left
 out of the picture and everything else carries on.
 
-You still hear about it. Every `tcw validate` run lists the connections it could
-not follow, naming the project and where it was expected, so a genuine typo in a
-path is still easy to spot. And when a command really does need the missing
-project, it now says which one and where you declared it, instead of telling you
-the project was never registered.
+You still hear about it. Every `tcw validate` run names each connected project it
+could not find, and where it expected it, so a project you thought you had does
+not go unnoticed. (A connection is declared from both sides, so a project the
+other side did find is not reported.) And when a command really does need the
+missing project, it now says which one and where you declared it, instead of
+telling you the project was never registered.
 
 This is what makes TCW usable in a fresh clone or a cloud coding session that
 starts with one repository on disk.
@@ -28,7 +29,9 @@ nothing is contacted; on one that does not, `tcw provision` fetches it.
 It follows the trail: a project fetched this way may point at others, and those
 are fetched too, so your own configuration only ever has to name its own
 neighbours. Every repository is printed before it is contacted, and `--dry-run`
-shows you the whole plan without going near the network.
+shows you the whole plan without going near the network. A project this checkout
+can already reach is never fetched, whichever side declared where it comes from,
+so declaring a connection on both sides costs you nothing.
 
 Together with the change above, this is what lets a session that starts with one
 repository on disk read the taxonomy, capabilities and boards that live in the
@@ -43,8 +46,11 @@ not exist, and a rollup quietly stopped listing the work under it.
 
 Those relationships now pass through. `tcw work escalate` reaches the nearest
 project that actually keeps a board, and `tcw work nodes` tells you when your
-parent is one of these grouping projects instead of calling you the top of the
-graph.
+parent is one of these grouping projects — or one whose board this machine has
+not fetched — instead of calling you the top of the graph. It also lists every
+project you registered as a child, saying which ones keep no board and which ones
+this machine has not fetched, instead of leaving them out and making you look
+like a leaf.
 
 ## Choose what happens to finished work
 

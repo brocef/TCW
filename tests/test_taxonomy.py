@@ -628,3 +628,39 @@ def test_cli_extends_is_not_treated_as_a_term_path(tmp_path, monkeypatch, capsys
     # "extends" must dispatch to the subcommand, not the `taxonomy <path>` show-sugar
     assert main(["taxonomy", "extends", "rm", "ghost"]) == 1   # absent alias → handled error, not "no such term"
     assert "no such term" not in capsys.readouterr().err
+
+
+# ── the extended store is resolved, not composed ─────────────────────────────
+
+def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
+    """`taxonomy.path` is exactly what `tcw init --taxonomy-path` writes.
+
+    The extended project's store used to be composed as `docs/taxonomy` under
+    its root, so a project that had moved its tree became unextendable and the
+    error blamed a path nobody had written. Resolution is component-generic, so
+    this is the taxonomy half of a fix whose capabilities half is already
+    covered — and the half that would go unnoticed if the two ever diverged.
+    """
+    import shutil
+    base = node(tmp_path, "base")
+    elsewhere = base / "vocabulary"
+    elsewhere.mkdir(parents=True)
+    write_term(base, "argument", name="Argument", description="A claim with support.")
+    shutil.move(str(base / "docs" / "taxonomy" / "argument"),
+                str(elsewhere / "argument"))
+    shutil.rmtree(base / "docs" / "taxonomy")
+    (base / "tcw-config.yaml").write_text(
+        "id: base\ntaxonomy:\n  path: vocabulary\n"
+        "connected-projects:\n  children:\n    consumer: ../consumer\n"
+    )
+
+    cons = node(tmp_path, "consumer")
+    (cons / "tcw-config.yaml").write_text(
+        "id: consumer\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    write_config(cons, "extends:\n  - base\n")
+
+    st = FsTaxonomyStore.open(cons)
+    assert {term.qualified for term in st.list_all()} == {"base/argument"}
+    assert st.get("base/argument").name == "Argument"
+    assert st.get("argument").origin == "base"

@@ -173,8 +173,8 @@ def _nodes(args: argparse.Namespace) -> int:
         # and printing "(none — root)" for it hid a whole node from the reader.
         registered = registered_parent(node)
         if registered is not None:
-            print(f"parent: {registered_project_id(node, registered)} "
-                  f"(no work store)")
+            print(f"parent: {registered_project_id(node, registered)}"
+                  f"{_no_store_note(registered)}")
         else:
             print("parent: (none — root)")
     # Every registered child, not only the ones keeping a board. A routing node
