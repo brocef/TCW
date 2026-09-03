@@ -1,3 +1,7 @@
 id: cap-240fde
 name: Archive a resolved item before it is deleted
 Status: Missing
+Planning doc: 2026-09-03-an-auto-delete-step-with-hooks-so-a-consumer-can-archive-an-item-before-it-is-removed
+Feature: configurable-work-lifecycle
+Subject:
+- work-item/lifecycle-hook
