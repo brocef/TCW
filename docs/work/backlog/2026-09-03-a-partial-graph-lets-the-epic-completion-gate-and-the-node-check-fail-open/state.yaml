@@ -1,0 +1,11 @@
+slug: 2026-09-03-a-partial-graph-lets-the-epic-completion-gate-and-the-node-check-fail-open
+title: A partial graph lets the epic completion gate and the node check fail open
+created: '2026-09-03'
+resolution: null
+priority: 90
+effort: medium
+complexity: medium
+tags:
+- bug
+- work
+- remote
