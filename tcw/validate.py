@@ -150,6 +150,10 @@ def validate(node_root: Path, path: Path | None = None, *,
     if graph_problems:
         return graph_problems
     registry = FsProjectRegistry.open(node_root).require_valid()
+    # Over the projects this checkout can open. A partial graph makes this scan
+    # narrower, never wrong: it can miss a collision a complete checkout would
+    # catch, and cannot invent one. The unreachable edges themselves are reported
+    # by `tcw validate`'s caller, so they are not silently dropped here.
     work_roots: dict[Path, str] = {}
     for project in [registry.current, *registry.ancestors(), *registry.descendants()]:
         try:

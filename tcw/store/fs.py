@@ -218,6 +218,13 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     return nr if component == "work" or store.root.is_dir() else None
 
 
+# The three helpers below enumerate the graph, and a graph may now be partial —
+# a connected project whose repository is not in this checkout is absent from it
+# rather than fatal to it. Each therefore answers for what is here, deliberately:
+# a topology is the set of nodes this machine can actually open, and a caller
+# that needs the graph complete says so in its own message (see
+# `FsWorkStore._incomplete_graph_note`). What none of them may do is imply the
+# absent node was never declared.
 def child_nodes(root: Path) -> list[Path]:
     """Direct registered children that contain a work store."""
     registry = FsProjectRegistry.open(root).require_valid()
@@ -3266,7 +3273,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not force:
             if item.initiative:
                 epic = self.initiative_epic(item)
-                if epic is None or epic.status != "active":
+                if epic is None:
+                    # "Not active" is the wrong thing to say about an epic this
+                    # checkout cannot see. Since a graph may now be partial, an
+                    # unresolvable epic is as likely to mean "that node is not
+                    # here" as "that slug is wrong", and the two want different
+                    # responses from the user.
+                    raise ValueError(
+                        f"Cannot resolve epic {item.initiative} for {slug}"
+                        f"{self._incomplete_graph_note()}. Run from a node that "
+                        f"can resolve the epic, or use --force.")
+                if epic.status != "active":
                     raise ValueError(f"Cannot start work item {slug} before epic {item.initiative} is active")
             blockers = self.unresolved_blockers(item)
             if blockers:
@@ -4070,6 +4087,23 @@ class FsWorkStore(FsTreeStore, WorkStore):
         items = [self._item_from_dir(d) for d in self._item_dirs()]
         return [i for i in items
                 if i is not None and (status is None or i.status == status)]
+
+    def _incomplete_graph_note(self) -> str:
+        """" (this checkout is missing …)" when the graph is partial, else "".
+
+        A relation that spans a node this checkout does not have resolves to
+        nothing, and nothing is indistinguishable from a typo without this. Kept
+        as a suffix rather than a separate message so every caller that walks the
+        graph can append it without restructuring its own error.
+        """
+        try:
+            absent = FsProjectRegistry.open(self.node_root).unreachable()
+        except Exception:
+            return ""
+        if not absent:
+            return ""
+        return (" (this checkout is missing connected project(s): "
+                + ", ".join(sorted(u.id for u in absent)) + ")")
 
     def initiative_epic(self, item: WorkItem) -> WorkItem | None:
         if not item.initiative:
