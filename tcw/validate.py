@@ -173,6 +173,18 @@ def validate(node_root: Path, path: Path | None = None, *,
     problems: list[str] = []
     yaml_syntax_error = False
 
+    # Retention: a malformed setting reads as the safe default, so the only
+    # place a user learns about it is here. And a node that says it retains
+    # while git ignores the folder is a real contradiction — the items will not
+    # be tracked whatever the config says.
+    try:
+        work_store = FsWorkStore.open(node_root)
+    except ValueError:
+        work_store = None
+    if work_store is not None:
+        problems += [f"work: {p}" for p in work_store.retention_problems()]
+        problems += work_store.retention_conflicts()
+
     # (a) YAML well-formedness
     for root in roots:
         for f in _iter(root, "*.yaml"):

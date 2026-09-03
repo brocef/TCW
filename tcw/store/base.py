@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
@@ -1368,6 +1368,43 @@ def parse_connected_entry(
                             repository=declaration), problems
 
 
+def parse_retention(raw: Any) -> tuple[dict[str, bool], list[str]]:
+    """Parse `work.retain` into `{status: keep?}`, defaulting every resolved
+    status to True, plus problems.
+
+    Pure and filesystem-free like its neighbours, with one deliberate difference
+    from `parse_repository_declaration`: it does **not** fail closed to "nothing
+    declared". A malformed repository block reading as absent costs a fetch that
+    does not happen; a malformed retention setting reading as absent would be
+    indistinguishable from the default, and the default and the mistake differ by
+    whether files are deleted. So it returns the safe value *and* the problem,
+    and the caller is expected to surface both.
+
+    Expressed as retention rather than as a `.gitignore` mechanic on purpose: a
+    tracker-backed store can honor "do not retain resolved items" by closing and
+    dropping the ticket, while an ignore rule has no meaning anywhere but a
+    filesystem.
+    """
+    retention = {status: True for status in RESOLVED_STATUSES}
+    if raw is None:
+        return retention, []
+    if not isinstance(raw, dict):
+        return retention, [f"work.retain: expected a mapping, got {type(raw).__name__}"]
+    problems: list[str] = []
+    for key, value in raw.items():
+        if key not in RESOLVED_STATUSES:
+            problems.append(
+                f"work.retain: unknown status {key!r}; expected "
+                f"{', '.join(repr(s) for s in RESOLVED_STATUSES)}")
+            continue
+        if not isinstance(value, bool):
+            problems.append(f"work.retain.{key}: expected true or false, "
+                            f"got {type(value).__name__}")
+            continue
+        retention[key] = value
+    return retention, problems
+
+
 def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
     """Parse a `work.documentation` list into entries plus a problem list.
 
@@ -1674,14 +1711,29 @@ class Tombstone:
     nobody created. `resolution` and `resolved` are context for the reader; both
     may be empty on a degraded record, and neither changes the answer.
 
-    **There is deliberately no locator.** Recording where the item's documents
-    went would promise they are retrievable there, and that promise does not
-    survive a squash-merge, a rebase, or a shallow clone. A pointer that
-    silently stops working is worse than no pointer.
+    **`location` is opaque and may be empty, and it never promises retrieval.**
+    The original rule here was that there must be no locator at all, because
+    recording where the documents went would promise they are retrievable and
+    that promise does not survive a squash-merge, a rebase, or a shallow clone.
+    That reasoning held while a resolved item was never committed in the first
+    place: any pointer was to something no clone had, so every pointer was
+    broken.
+
+    Retention changes the premise. Under `work.retain: false` the adapter commits
+    the item before removing it, so the recorded handle names a commit that
+    demonstrably contained it — the failure narrows from *always* to *only if
+    history is rewritten*. The remaining half of the original rule is the half
+    that mattered, and it is kept: nothing may fail **silently**. A reader
+    resolves the handle before showing it and says plainly when it no longer
+    resolves, rather than printing a dead pointer.
+
+    Presentation only, never parsed — the filesystem adapter writes a commit
+    SHA, another adapter writes whatever its own retrieval handle is.
     """
     slug: str
     resolution: str = ""
     resolved: str = ""
+    location: str = ""
 
 
 @dataclass
@@ -2275,7 +2327,15 @@ class WorkStore(ABC):
         if item.status == "active" or to_status == "active":
             merged.update({"owner": "", "started": ""})
         self._effect_transition(slug, to_status, merged)
-        return self._require(slug)
+        settled = self.get(slug)
+        if settled is not None:
+            return settled
+        # Under `work.retain: false` the item is gone by the time the move
+        # returns — deliberately, and the caller still asked what became of it.
+        # Re-reading would report the item missing, which is true of the store
+        # and false of the transition.
+        return replace(item, status=to_status, **{
+            k: v for k, v in merged.items() if k in {"resolution"}})
 
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
         """Labels of blockers that still block `item`. An entry is unresolved if

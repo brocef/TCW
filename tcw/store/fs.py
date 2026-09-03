@@ -45,7 +45,8 @@ from tcw.store.base import (
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
-    parse_connected_entry, parse_repository_declaration, ProvisionResult,
+    parse_connected_entry, parse_repository_declaration, parse_retention,
+    ProvisionResult,
     RepositoryDeclaration,
     PublicationError, StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
     TaxonomyStore, Term, TermDetail, Tombstone,
@@ -789,7 +790,8 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
 
 RESOLVED_IGNORE_COMMENT = "# Resolved work: kept on disk and in history, out of the tracked tree."
 
-def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None) -> list[str]:
+def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None,
+                          statuses: "list[str] | None" = None) -> list[str]:
     """The .gitignore rules that make the end-state work folders untracked while
     keeping the folders themselves. `<dir>/*` rather than `<dir>/`: git cannot
     re-include a file whose *parent directory* is excluded, which would make the
@@ -797,8 +799,11 @@ def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None
     prefix = "docs/work"
     if work_root is not None and repository is not None:
         prefix = work_root.resolve().relative_to(repository.resolve()).as_posix()
+    wanted = RESOLVED_STATUSES if statuses is None else statuses
+    if not wanted:
+        return []
     return [RESOLVED_IGNORE_COMMENT,
-            *(rule for s in RESOLVED_STATUSES
+            *(rule for s in wanted
               for rule in (f"{prefix}/{s}/*", f"!{prefix}/{s}/.gitkeep"))]
 
 
@@ -971,10 +976,21 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             target_git = git_root(base)
             if target_git is None and work_path is not None:
                 raise ValueError(f"work.path target is not inside a Git repository: {base}")
+            # A node that has declared retention has said what it wants to happen
+            # to resolved work, and the ignore rules are one adapter's way of
+            # saying something else. Only the statuses it has *not* spoken for
+            # get the default rules; a node declaring nothing gets both, exactly
+            # as before.
+            declared = existing_config.get("work") or {}
+            declared = declared.get("retain") if isinstance(declared, dict) else None
+            declared = declared if isinstance(declared, dict) else {}
+            statuses = [s for s in RESOLVED_STATUSES if s not in declared]
             if target_git is None:
-                ensure_ignored(root, *resolved_ignore_rules())
+                ensure_ignored(root, *resolved_ignore_rules(statuses=statuses))
             else:
-                ensure_ignored(target_git, *resolved_ignore_rules(base, target_git))
+                ensure_ignored(target_git,
+                               *resolved_ignore_rules(base, target_git,
+                                                      statuses=statuses))
     return created
 
 
@@ -3854,6 +3870,73 @@ class FsWorkStore(FsTreeStore, WorkStore):
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
+    def retention_conflicts(self) -> list[str]:
+        """Where this node says it retains resolved work and git disagrees.
+
+        The state every existing project is in the moment it declares retention:
+        the `.gitignore` rules `tcw work init` wrote are still there, so the
+        items are untracked whatever the config now says. Reported rather than
+        refused — a project mid-migration is legitimately here.
+        """
+        # Only an *explicit* `retain: true` conflicts. The default is also true,
+        # and every project that has ever run `tcw work init` has the ignore
+        # rules — reporting those would make this fire on every existing node
+        # and turn a real contradiction into noise nobody reads.
+        declared = self._work_config().get("retain")
+        declared = declared if isinstance(declared, dict) else {}
+        conflicts: list[str] = []
+        for status, keep in self.retention().items():
+            if not keep or declared.get(status) is not True:
+                continue
+            probe = self.root / status / ".tcw-retention-probe"
+            folder = self.root / status
+            try:
+                ignored = git_ignored(self.store_git_root, probe, no_index=True)
+            except Exception:
+                continue
+            if ignored:
+                conflicts.append(
+                    f"work.retain.{status} is true, but {folder} is gitignored, "
+                    f"so resolved items there are not tracked. Remove the "
+                    f"resolved-work rules from .gitignore, or set "
+                    f"work.retain.{status}: false.")
+        return conflicts
+
+    def _require_deletable(self, to_status: str) -> None:
+        """Refuse an auto-delete that would leave nothing behind.
+
+        **The interlock.** `git_mv` untracks rather than moves when the
+        destination is gitignored, which is how the default `completed/` and
+        `discarded/` rules keep resolved work out of the tracked tree. Deleting
+        on top of that would commit a *removal* first — a commit holding no item
+        — and then remove the folder from disk, so the graveyard's location would
+        name a commit that never contained anything and no clone would have the
+        content at all. That is strictly worse than the ignore rules alone, where
+        at least the resolving machine keeps a copy.
+
+        So the rules and auto-delete cannot coexist, and dropping the rules is a
+        precondition of the feature rather than a companion change. Refused
+        before the move, so a refusal means nothing happened.
+        """
+        if self.retention().get(to_status, True):
+            return
+        # Asked of a path *inside* the folder, not the folder itself: the rule
+        # the scaffolding writes is `<prefix>/<status>/*`, which matches the
+        # folder's contents and not the folder, so `check-ignore` on the
+        # directory answers no however the rules read. The probe name never
+        # exists; `--no-index` asks the rules rather than the index.
+        probe = self.root / to_status / ".tcw-retention-probe"
+        if not git_ignored(self.store_git_root, probe, no_index=True):
+            return
+        raise ValueError(
+            f"work.retain.{to_status} is false, but {self.root / to_status} is "
+            f"gitignored. "
+            f"Deleting an item that was never tracked would leave no copy "
+            f"anywhere: the commit would record a removal, not the item. Remove "
+            f"the resolved-work rules for '{to_status}' from .gitignore (and run "
+            f"`git rm -r --cached` on the folder if git already tracks it), then "
+            f"retry.")
+
     def _require_writable_graveyard(self, slug: str) -> None:
         """Refuse a resolving transition when the graveyard cannot be safely
         rewritten. Called *before* the move, so a refusal moves nothing.
@@ -3916,7 +3999,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"and leaves the item resolved with no tombstone.")
 
     def _write_tombstone(self, slug: str, resolution: str,
-                         resolved: str = "") -> None:
+                         resolved: str = "", location: str = "") -> None:
         """Record `slug` in the graveyard, preserving every entry already there.
 
         Read-modify-write rather than append: one file serves the whole store, so
@@ -3946,8 +4029,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             loaded = load_yaml(path)
             if isinstance(loaded, dict):
                 doc = loaded
-        doc[slug] = {"resolution": resolution or "",
-                     "resolved": resolved or date.today().isoformat()}
+        record = {"resolution": resolution or "",
+                  "resolved": resolved or date.today().isoformat()}
+        if location:
+            record["location"] = location
+        doc[slug] = record
         self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
                                                   allow_unicode=True))])
 
@@ -4058,6 +4144,66 @@ class FsWorkStore(FsTreeStore, WorkStore):
         assert recorded is not None                # just written, above
         return recorded
 
+    def describe_location(self, location: str) -> str:
+        """A tombstone's retrieval handle, rendered for a reader.
+
+        Checked before it is shown. The rule this store inherited is that a
+        pointer must never fail *silently*; a handle that no longer resolves in
+        this clone — history rewritten, a shallow fetch — is reported as
+        unresolvable rather than printed as if it worked.
+        """
+        try:
+            done = _git(["git", "-C", str(self.store_git_root), "cat-file", "-e",
+                         f"{location}^{{commit}}"], check=False)
+            present = done.returncode == 0
+        except Exception:
+            present = False
+        if present:
+            return f"last present in commit {location}"
+        return (f"recorded in commit {location}, which this clone does not have "
+                f"(history rewritten, or a shallow clone)")
+
+    def delete_resolved(self, slug: str) -> str:
+        """Remove a resolved item's folder and record where it last existed.
+
+        The second half of an auto-delete, and its own entry point so the state
+        left by a failure is finishable rather than broken. Safe to re-run: an
+        item whose folder is already gone still gets its record updated, which is
+        what makes the folder-move case (a hook that relocates the item itself)
+        succeed instead of erroring.
+
+        **The location is the first commit's SHA, written in the second commit.**
+        Writing it in the first would be circular — the SHA is not known until
+        that commit exists — and amending afterwards would change the very hash
+        being recorded. Two commits, the record pointing back one, is the only
+        arrangement of these that is not self-referential.
+        """
+        item = self._get_now(slug)
+        if item is None and self.tombstone(slug) is None:
+            raise ValueError(f"no such work item: {slug}")
+        status = item.status if item is not None else ""
+        folder = self._find(slug)
+        location = _git(["git", "-C", str(self.store_git_root), "rev-parse", "HEAD"],
+                        capture_output=True, text=True).stdout.strip()
+        if folder is not None and folder.exists():
+            shutil.rmtree(folder)
+        self._write_tombstone(
+            slug,
+            (self.tombstone(slug).resolution if self.tombstone(slug) else ""),
+            (self.tombstone(slug).resolved if self.tombstone(slug) else ""),
+            location=location)
+        if self.auto_commit_transitions():
+            paths = [self._graveyard_path()]
+            if status:
+                paths.append(self.root / status / slug)
+            err = git_commit_result(
+                self.store_git_root,
+                f"tcw work: delete {slug} (retained in {location[:12]})", *paths)
+            if err:
+                raise TransitionCommitError(
+                    f"{slug} was removed, but committing the removal failed:\n{err}")
+        return location
+
     def tombstone(self, slug: str) -> Tombstone | None:
         """Read `slug`'s record out of the store's `graveyard.yaml`.
 
@@ -4102,6 +4248,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             slug=slug,
             resolution=str(entry.get("resolution") or ""),
             resolved=str(entry.get("resolved") or ""),
+            location=str(entry.get("location") or ""),
         )
 
     def get(self, slug: str) -> WorkItem | None:
@@ -4404,6 +4551,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         value = self._work_config().get("publish-transitions")
         return value if isinstance(value, bool) else True
+
+    def retention(self) -> dict[str, bool]:
+        """Whether each resolved status keeps its items. Default: everything.
+
+        The default is what every project has today, so a node declaring nothing
+        behaves exactly as it did — which is the promise this feature rests on.
+        A malformed setting reads as the default *and* is reported by
+        `tcw validate`; it must never quietly become a deletion.
+        """
+        retention, _ = parse_retention(self._work_config().get("retain"))
+        return retention
+
+    def retention_problems(self) -> list[str]:
+        """Problems in `work.retain`, for `tcw validate` to surface."""
+        _, problems = parse_retention(self._work_config().get("retain"))
+        return problems
 
     def auto_commit_transitions(self) -> bool:
         """Whether a transition commits its own status move. Default True.
@@ -4923,6 +5086,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # graveyard, and a refusal has to mean nothing happened.
         if resolving:
             self._require_writable_graveyard(slug)
+            self._require_deletable(to_status)
         # Read the item *before* the move: afterwards `_find` points at the new
         # location and the pre-move branch/worktree fields are what the
         # trunk-branch check needs.
@@ -4981,6 +5145,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, to_status, item,
                                     extra=(self._graveyard_path(),) if resolving else ())
+            if resolving and not self.retention().get(to_status, True):
+                # Second commit, never folded into the first. The first has to
+                # *contain* the item for the record to point anywhere, so the
+                # removal cannot be part of it.
+                self.delete_resolved(slug)
             # Inside the commit branch, not beside it: with auto-commit off the
             # move is uncommitted, so a push would contact the remote and
             # publish nothing. Nothing to commit means nothing to publish.

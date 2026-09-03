@@ -481,6 +481,21 @@ def _show(args: argparse.Namespace) -> int:
         print(f"tcw work show: {e}", file=sys.stderr)
         return 1
     if item is None:
+        grave = st.tombstone(bare)
+        if grave is not None:
+            # The item is gone from the store but the store remembers it. Saying
+            # "no such work item" here would call finished work a typo.
+            print(f"{grave.slug}  (resolved)")
+            if grave.resolution:
+                print(f"resolution: {grave.resolution}")
+            if grave.resolved:
+                print(f"resolved:   {grave.resolved}")
+            if grave.location:
+                # Resolved before it is shown. The whole reason a locator was
+                # once refused here is that a pointer must not fail silently, so
+                # one that no longer resolves says so instead of being printed.
+                print(f"content:    {st.describe_location(grave.location)}")
+            return 0
         print(f"tcw work show: no such work item: {args.slug}", file=sys.stderr)
         return 1
     if getattr(args, "json", False):
