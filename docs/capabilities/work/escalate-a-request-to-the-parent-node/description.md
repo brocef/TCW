@@ -1,11 +1,13 @@
 As a user, I raise something to the coordinating project with
 `tcw work escalate "<title>"`, piping the body on stdin and optionally stamping it
 with `--initiative <epic-slug>`. There is no target argument: a project has at
-most one registered parent, and TCW resolves it. The parent it reaches is the nearest registered ancestor that keeps a work store,
-so a grouping project between me and the board I mean is passed through rather
-than treated as a wall. At the root of the graph the
-command refuses — *"no parent node to escalate to (this is the root)"* — rather
-than silently doing nothing.
+most one registered parent, and TCW resolves it. What it resolves to is the
+nearest registered ancestor that keeps a work store, so a grouping project
+between me and the board I mean is passed through rather than treated as a
+wall. At the root of the graph the command refuses — *"no parent node to
+escalate to (this is the root)"* — rather than silently doing nothing, and
+where I do have registered ancestry but none of it keeps a board it says that
+instead, which sends me somewhere different to fix it.
 
 This is the upward half of the cross-node request channel, and it obeys the same
 boundary as its downward counterpart,
