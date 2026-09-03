@@ -52,3 +52,143 @@ def test_capabilities_check_resolves_sibling_taxonomy(tmp_path):
     node = find_node("capabilities", repo / "project-b")
     tax = FsTaxonomyStore.open(node)
     assert FsCapabilitiesStore.open(node).check(taxonomy=tax) == []
+
+
+# ── a routing node: registered, keeps no board ───────────────────────────────
+
+
+def _routing_graph(tmp_path):
+    """A → B → C where B is registered and keeps no work store.
+
+    A repository root that groups packages owning the boards. Every connection
+    is reciprocal and `tcw validate` is clean, so the shape is legal today — the
+    defect this guards is behavioral, not a rejected configuration.
+    """
+    import subprocess
+    import yaml
+    from tcw.store.fs import init, write_sentinel
+
+    def git(path):
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True)
+
+    a = tmp_path / "a"
+    b = tmp_path / "a" / "b"
+    c = tmp_path / "a" / "b" / "c"
+    for d in (a, b, c):
+        d.mkdir(parents=True, exist_ok=True)
+    git(a)
+    init(["work"], a, "a-project")
+    write_sentinel(b, "b-project")
+    init(["work"], c, "c-project")
+
+    def config(path, doc):
+        (path / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+
+    a_doc = yaml.safe_load((a / "tcw-config.yaml").read_text())
+    a_doc["connected-projects"] = {"children": {"b-project": "b"}}
+    config(a, a_doc)
+    config(b, {"id": "b-project",
+               "connected-projects": {"parent": {"a-project": ".."},
+                                      "children": {"c-project": "c"}}})
+    c_doc = yaml.safe_load((c / "tcw-config.yaml").read_text())
+    c_doc["connected-projects"] = {"parent": {"b-project": ".."}}
+    config(c, c_doc)
+    return a, b, c
+
+
+def test_a_routing_node_is_a_legal_graph(tmp_path):
+    from tcw.store.project import FsProjectRegistry
+
+    a, b, c = _routing_graph(tmp_path)
+    for root in (a, b, c):
+        FsProjectRegistry.open(root).require_valid()
+
+
+def test_an_epic_two_levels_up_resolves_through_a_routing_node(tmp_path):
+    from tcw.store.fs import FsWorkStore
+
+    a, b, c = _routing_graph(tmp_path)
+    top = FsWorkStore.open(a)
+    epic = top.create("Cross-package epic", created="2026-01-01")
+    top.set_field(epic.slug, "type", "epic")
+
+    leaf = FsWorkStore.open(c)
+    slice_ = leaf.create("A slice", created="2026-01-01")
+    leaf.set_field(slice_.slug, "initiative", epic.slug)
+
+    found = FsWorkStore.open(c).initiative_epic(
+        FsWorkStore.open(c).get(slice_.slug))
+    assert found is not None and found.slug == epic.slug
+
+
+def test_initiative_children_crosses_a_routing_node(tmp_path):
+    from tcw.store.fs import FsWorkStore
+
+    a, b, c = _routing_graph(tmp_path)
+    top = FsWorkStore.open(a)
+    epic = top.create("Cross-package epic", created="2026-01-01")
+    top.set_field(epic.slug, "type", "epic")
+    leaf = FsWorkStore.open(c)
+    slice_ = leaf.create("A slice", created="2026-01-01")
+    leaf.set_field(slice_.slug, "initiative", epic.slug)
+
+    slugs = [i.slug for i in FsWorkStore.open(a).initiative_children(epic.slug)]
+    assert slugs == [slice_.slug]
+
+
+def test_escalate_reaches_the_nearest_board_bearing_ancestor(tmp_path):
+    from tcw.store.fs import FsWorkStore
+    from tcw.work.recursion import escalate
+
+    a, b, c = _routing_graph(tmp_path)
+    escalate(c, "Something for the top")
+    inbox = FsWorkStore.open(a).root / "inbox"
+    assert [p.name for p in inbox.iterdir() if p.suffix == ".md"]
+
+
+def test_escalate_with_no_board_bearing_ancestor_says_so(tmp_path):
+    """Registered ancestry, none of it keeping a board — not the same as being
+    the root, and it used to be reported as if it were."""
+    import subprocess
+    import pytest as _pytest
+    import yaml
+    from tcw.store.fs import init, write_sentinel
+    from tcw.work.recursion import escalate
+
+    root = tmp_path / "root"
+    child = tmp_path / "root" / "child"
+    child.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    write_sentinel(root, "root-project")
+    init(["work"], child, "child-project")
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(
+        {"id": "root-project",
+         "connected-projects": {"children": {"child-project": "child"}}},
+        sort_keys=False))
+    child_doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    child_doc["connected-projects"] = {"parent": {"root-project": ".."}}
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_doc, sort_keys=False))
+
+    with _pytest.raises(ValueError) as excinfo:
+        escalate(child, "Nowhere to go")
+    message = str(excinfo.value)
+    assert "no registered ancestor keeps a work store" in message
+    assert "this is the root" not in message
+
+
+def test_nodes_reports_a_registered_parent_that_keeps_no_board(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+
+    a, b, c = _routing_graph(tmp_path)
+    monkeypatch.chdir(c)
+    assert main(["work", "nodes"]) == 0
+    out = capsys.readouterr().out
+    assert "parent: b-project (no work store)" in out
+
+    monkeypatch.chdir(a)
+    assert main(["work", "nodes"]) == 0
+    assert "parent: (none — root)" in capsys.readouterr().out

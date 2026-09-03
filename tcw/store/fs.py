@@ -240,13 +240,50 @@ def child_nodes(root: Path) -> list[Path]:
 
 
 def parent_node(root: Path) -> Path | None:
-    """Direct registered parent that contains a work store."""
+    """Direct registered parent that contains a work store.
+
+    The *direct* question, for callers that mean it — `tcw work nodes` prints
+    this node's parent, not the nearest one that happens to keep a board. A walk
+    up the graph wants `nearest_work_ancestor` instead.
+    """
     registry = FsProjectRegistry.open(root).require_valid()
     parent = registry.parent()
     if parent is None:
         return None
     path = Path(parent.locator)
     return path if _has_work_store(path) else None
+
+
+def registered_parent(root: Path) -> Path | None:
+    """Direct registered parent, board or no board.
+
+    What `parent_node` answers before the store filter. `tcw work nodes` needs
+    both to tell "no parent registered" apart from "the registered parent keeps
+    no board", which used to print identically.
+    """
+    parent = FsProjectRegistry.open(root).require_valid().parent()
+    return None if parent is None else Path(parent.locator)
+
+
+def nearest_work_ancestor(root: Path) -> Path | None:
+    """The closest ancestor holding a work store, passing through any that do not.
+
+    **Not `parent_node` in a loop**, and the difference is the whole point. A
+    node that groups other nodes without keeping a board of its own — a
+    repository root whose packages own the boards — is a legitimate shape, and
+    hopping store-to-store ended every upward walk at the first one, silently.
+    An epic two levels up simply stopped existing.
+
+    Asking the registry for `ancestors()` is one traversal that no filter can
+    truncate, so a caller cannot reintroduce the bug by forgetting to keep
+    looping.
+    """
+    registry = FsProjectRegistry.open(root).require_valid()
+    for ancestor in registry.ancestors():
+        path = Path(ancestor.locator)
+        if _has_work_store(path):
+            return path
+    return None
 
 
 def descendant_nodes(root: Path) -> list[Path]:
@@ -4120,17 +4157,26 @@ class FsWorkStore(FsTreeStore, WorkStore):
         local = self.get(item.initiative)
         if local is not None:
             return local
-        parent = parent_node(self.node_root)
-        while parent is not None:
-            got = FsWorkStore.open(parent).get(item.initiative)
+        registry = FsProjectRegistry.open(self.node_root).require_valid()
+        for ancestor in registry.ancestors():
+            path = Path(ancestor.locator)
+            if not _has_work_store(path):
+                continue            # a routing node between two boards
+            got = FsWorkStore.open(path).get(item.initiative)
             if got is not None:
                 return got
-            parent = parent_node(parent)
         return None
 
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
+        """Slices of `epic_slug`, here and below.
+
+        `descendant_nodes` rather than `child_nodes`: a node that keeps no board
+        is a routing node, and a slice below one is still a slice. The two
+        directions used to disagree about that — the downward walk stopped at a
+        storeless child while the registry's own descendant walk crossed it.
+        """
         children = [i for i in self.query() if i.initiative == epic_slug]
-        for node in child_nodes(self.node_root):
+        for node in descendant_nodes(self.node_root):
             children.extend(i for i in FsWorkStore.open(node).query()
                             if i.initiative == epic_slug)
         return children

@@ -17,7 +17,8 @@ from tcw.store.base import (
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
     child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
-    git_commit_result, git_root, merge_worktree, parent_node,
+    git_commit_result, git_root, merge_worktree, nearest_work_ancestor,
+    parent_node, registered_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
     resolve_qualified_work_ref,
 )
@@ -163,7 +164,17 @@ def _nodes(args: argparse.Namespace) -> int:
         return 1
     parent = parent_node(node)
     print(f"node:   {registered_project_id(node, node)}")
-    print(f"parent: {registered_project_id(node, parent) if parent else '(none — root)'}")
+    if parent is not None:
+        print(f"parent: {registered_project_id(node, parent)}")
+    else:
+        # A registered parent that keeps no board is not the top of the graph,
+        # and printing "(none — root)" for it hid a whole node from the reader.
+        registered = registered_parent(node)
+        if registered is not None:
+            print(f"parent: {registered_project_id(node, registered)} "
+                  f"(no work store)")
+        else:
+            print("parent: (none — root)")
     children = child_nodes(node)
     if children:
         print("children:")
@@ -417,7 +428,7 @@ def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
                 if candidate is not None and candidate[2].type == "epic":
                     owner = candidate_key
                     break
-                candidate_root = parent_node(candidate_root)
+                candidate_root = nearest_work_ancestor(candidate_root)
         if owner is not None and owner != key:
             children.setdefault(owner, []).append(entry)
             owned.add(key)
