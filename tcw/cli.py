@@ -184,6 +184,14 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             print(problem, file=sys.stderr)
         print(f"{len(registry_problems)} project graph problem(s).", file=sys.stderr)
         return 1
+    # Reported, never counted, and never fatal. These are declarations this
+    # checkout cannot follow, not defects — but they are also how a genuine typo
+    # in a locator now surfaces, so they are printed every run rather than
+    # behind a flag.
+    for absent in registry.unreachable():
+        print(f"{absent.declared_in}: connected project '{absent.id}' is declared "
+              f"but not reachable in this checkout ({absent.locator})",
+              file=sys.stderr)
     from tcw.validate import validate
     recurse = args.path is None and not args.no_recurse
     projects = [registry.current, *registry.descendants()] if recurse else [registry.current]

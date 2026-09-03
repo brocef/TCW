@@ -300,3 +300,38 @@ def test_a_typo_reference_still_fails_in_both(tmp_path):
         problems = validate(where)
         assert any("no such work item: 2026-01-01-never-created" in p
                    for p in problems), (where, problems)
+
+
+# ── unreachable connected projects ────────────────────────────────────────────
+
+
+def test_an_absent_connected_project_is_reported_and_not_fatal(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config.setdefault("connected-projects", {})["children"] = {
+        "gone-project": str(tmp_path / "gone")
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    monkeypatch.chdir(root)
+    assert main(["validate"]) == 0
+    err = capsys.readouterr().err
+    assert "gone-project" in err
+    assert "not reachable in this checkout" in err
+
+
+def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "tcw-config.yaml").write_text("id: other-project\nid: dupe\n")
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config.setdefault("connected-projects", {})["children"] = {
+        "other-project": str(other),
+        "gone-project": str(tmp_path / "gone"),
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    monkeypatch.chdir(root)
+    assert main(["validate"]) == 1
+    assert "duplicate key" in capsys.readouterr().err

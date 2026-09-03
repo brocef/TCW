@@ -212,7 +212,8 @@ class FsProjectRegistry(ProjectRegistry):
         self._validate_reciprocity()
         self._validate_cycles()
 
-    def _visit(self, config_path: Path, declared_id: str | None) -> _Config | None:
+    def _visit(self, config_path: Path, declared_id: str | None,
+               declared_in: Path | None = None) -> _Config | None:
         config_path = config_path.resolve()
         if config_path in self._cache:
             cfg = self._cache[config_path]
@@ -227,7 +228,7 @@ class FsProjectRegistry(ProjectRegistry):
             return None
         self._visiting.add(config_path)
         try:
-            cfg = self._read_config(config_path, declared_id)
+            cfg = self._read_config(config_path, declared_id, declared_in)
             if cfg is None:
                 return None
             self._cache[config_path] = cfg
@@ -240,16 +241,26 @@ class FsProjectRegistry(ProjectRegistry):
             else:
                 self._by_id[cfg.project.id] = cfg
             for child_id, locator in cfg.children.items():
-                self._visit(self._target_path(config_path, locator), child_id)
+                self._visit(self._target_path(config_path, locator), child_id,
+                            config_path)
             for parent_id, locator in cfg.parent.items():
-                self._visit(self._target_path(config_path, locator), parent_id)
+                self._visit(self._target_path(config_path, locator), parent_id,
+                            config_path)
             return cfg
         finally:
             self._visiting.discard(config_path)
 
-    def _read_config(self, path: Path, declared_id: str | None) -> _Config | None:
+    def _read_config(self, path: Path, declared_id: str | None,
+                     declared_in: Path | None = None) -> _Config | None:
         if not path.is_file():
-            self._problem(path, "registered target has no tcw-config.yaml")
+            # Not a defect. A locator is a fact about one machine — the same
+            # thing `work.path` is — so a target that is not here means this
+            # checkout does not have that project, not that the declaration
+            # is wrong. Failing closed here refused every command in exactly
+            # the checkouts that have only some of a graph's repositories.
+            # Everything else below stays an error: those targets are present
+            # and wrong, which is what fail-closed was written for.
+            self._unreachable_edge(declared_in or path, declared_id, path.parent)
             return None
         try:
             raw = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader) or {}

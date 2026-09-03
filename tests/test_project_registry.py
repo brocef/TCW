@@ -255,3 +255,35 @@ def test_a_malformed_target_is_an_error_not_an_unreachable_edge(tmp_path):
     assert registry.unreachable() == []
     with pytest.raises(ValueError):
         registry.require_valid()
+
+
+def test_an_absent_target_is_unreachable_not_a_problem(tmp_path):
+    root = tmp_path / "root"
+    config(
+        root,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: ../child\n",
+    )
+    registry = FsProjectRegistry.open(root)
+    registry.require_valid()
+    assert registry.check() == []
+    assert [u.id for u in registry.unreachable()] == ["child-project"]
+    assert registry.unreachable()[0].locator == (tmp_path / "child").resolve()
+    assert registry.unreachable()[0].declared_in == (root / "tcw-config.yaml").resolve()
+    assert registry.get("child-project") is None
+    assert registry.children() == []
+
+
+def test_an_absent_parent_leaves_the_child_usable(tmp_path):
+    child = tmp_path / "a" / "b" / "child"
+    config(
+        child,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        "    root-project: ../../..\n",
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert registry.current.id == "child-project"
+    assert registry.parent() is None
+    assert registry.unreachable_project("root-project") is not None
+    assert registry.unreachable_project("nobody") is None
