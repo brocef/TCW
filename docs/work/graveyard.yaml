@@ -13,3 +13,6 @@
 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
   resolution: done
   resolved: '2026-09-02'
+2026-09-03-unreachable-connected-projects-degrade-instead-of-failing-every-command:
+  resolution: done
+  resolved: '2026-09-03'
