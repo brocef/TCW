@@ -231,6 +231,26 @@ taxonomy:
         path: docs/taxonomy
 ```
 
+A **connected project** takes the same block, in the same place a locator goes:
+
+```yaml
+id: my-project
+connected-projects:
+    parent:
+        orchestrator:
+            path: ../../..                       # optional; where it is here
+            repository:
+                url: https://github.com/me/orchestrator.git
+                ref: main
+```
+
+A bare locator string stays a locator, so nothing already written changes. The
+ladder is the store's: the project at `path` wins when it is there, and the
+declaration answers only when it is not. Declarations follow the graph rather
+than being centralized — your repository declares its own edge, and the node on
+the other side declares its own — so `tcw provision` can obtain a project two
+hops away that your config never names.
+
 **A store that is already here always wins.** The declaration is consulted only
 when the local store is absent, so the same config keeps working untouched on a
 machine that has the folder, and answers for one that doesn't. Where the store is
@@ -242,14 +262,21 @@ matters most for the trees: a checkout that cloned only the code has no
 `tcw provision` is what obtains it:
 
 ```sh
-tcw provision                 # every declared store, when it is not here yet
+tcw provision                 # every declared store and connected project
 tcw provision --dry-run       # print the plan; contact nothing
 tcw provision --refresh       # bring an existing copy to the declared version
 tcw provision --component taxonomy
 ```
 
 Each declared component is obtained on its own, so one bad declaration does not
-suppress another's result.
+suppress another's result. Connected projects are obtained after the components,
+and **transitively**: a project obtained because it was declared may declare
+others, and those are obtained in the same run. That is the one place `tcw`
+contacts a URL you did not write yourself, so every remote is printed before it
+is contacted — the transitive ones included — and `--dry-run` walks the whole
+queue without touching the network, saying plainly that a project it has not
+fetched may declare more. `--component` scopes the component pass only; there is
+no way to ask for a store and silently get a repository as well.
 
 If the `repository` block itself is wrong — a missing `url`, a path that escapes
 the repository root, a key that is not one of the four — every command says which

@@ -26,3 +26,28 @@ category.
 - `ProjectRegistry.unreachable()` and `UnreachableProject` on the
   storage-neutral store interface; `FsProjectRegistry.unreachable_project(id)`
   for the message sites.
+
+## Added (connected-project declarations)
+
+- **`connected-projects` entries accept `{path, repository}`** beside the bare
+  locator string, parsed by `parse_connected_entry` and resolved through the
+  same ladder a component store uses. `ConnectedProject` is the parsed form;
+  `_Config.parent`/`.children` now hold it.
+- **`tcw provision` obtains declared connected projects, transitively.** The walk
+  terminates on the resolved checkout path — keyed on `(url, ref)` — so one
+  working copy serves every entry naming the same repository and a cycle
+  revisits nothing. `--dry-run` covers the queue and reports that an unobtained
+  node's own declarations cannot be listed yet.
+- `declared_connected_projects()` reads the entries straight from the config, as
+  `declared_repository()` does, so it can answer for a graph that will not load.
+- `NODE_TARGET` extends the provisioner to a node: availability is a sentinel
+  file, and a repository carrying none at the declared path is refused before
+  anything is put in place.
+- `UnreachableProject.declaration` carries the declaration, so every message that
+  named an absent project now names its remote and says to run `tcw provision`.
+
+## Internal
+
+- `tcw/store/checkouts.py` holds the `(url, ref)` → working-copy-directory
+  computation, which `fs.py` and `project.py` both need and neither may import
+  from the other.

@@ -18,3 +18,18 @@ the project was never registered.
 
 This is what makes TCW usable in a fresh clone or a cloud coding session that
 starts with one repository on disk.
+
+## Say where a connected project comes from, and fetch it
+
+A project you connect to can now record which repository it lives in, exactly as
+a work store already could. On a machine that has the project nothing changes and
+nothing is contacted; on one that does not, `tcw provision` fetches it.
+
+It follows the trail: a project fetched this way may point at others, and those
+are fetched too, so your own configuration only ever has to name its own
+neighbours. Every repository is printed before it is contacted, and `--dry-run`
+shows you the whole plan without going near the network.
+
+Together with the change above, this is what lets a session that starts with one
+repository on disk read the taxonomy, capabilities and boards that live in the
+others.

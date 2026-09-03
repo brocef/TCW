@@ -28,7 +28,7 @@
 | a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
-| obtain a declared store | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores this node declares but does not have here; every declared component by default; idempotent |
+| obtain a declared store or project | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores **and connected projects** this node declares but does not have here; connected projects are followed transitively; every declared component by default; idempotent |
 
 **Not CLI subcommands.** Two workflows are AI-driven reviews with no `tcw` verb
 behind them — the CLI cannot run them, and asking it to is an argparse error:
@@ -118,9 +118,18 @@ gets it. Resolution prefers a store that is **already here** — the declaration
 answers only when the local one is absent, so one config serves a laptop that has
 the folder and a fresh clone that does not.
 
-`tcw provision` obtains the missing work store. `--component` currently accepts
-only `work`; taxonomy and capabilities remain local until their adapters gain
-the same resolution path. Nothing else reaches the network: a
+**A connected project declares the same way.** An entry under
+`connected-projects` may be `{path, repository}` instead of a bare locator, with
+the same ladder — the project at `path` wins when it is here — so a checkout that
+cloned one repository can still resolve `extends`, cross-node refs and the
+topology. Declarations follow the graph: each config names only its own edges.
+
+`tcw provision` obtains the missing stores and connected projects. `--component`
+scopes the component pass; connected projects are obtained after it and
+**transitively**, since a project just obtained may declare others. That is the
+one place a URL the user did not write is contacted, so every remote is printed
+first and `--dry-run` plans the whole queue without a network call. Nothing else
+reaches the network: a
 command that needs an unprovisioned store fails, names the declared remote, and
 tells the user to run it — do not work around that by composing a path or running
 `tcw init`, which would scaffold a second, empty store beside the real one. A
