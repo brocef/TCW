@@ -267,6 +267,20 @@ def _has_work_store(node_root: Path) -> bool:
         return False
 
 
+def unreachable_project_note(registry, project_id: str) -> str | None:
+    """"Declared but not reachable here" for `project_id`, or None.
+
+    One renderer for every site that resolves a project id and got None back.
+    Without it each message says the project was never registered, which sends
+    the reader to their config to add a declaration that is already there.
+    """
+    absent = registry.unreachable_project(project_id)
+    if absent is None:
+        return None
+    return (f"project '{project_id}' is declared in {absent.declared_in} but is "
+            f"not reachable in this checkout ({absent.locator})")
+
+
 def registered_project_id(anchor: Path, target: Path) -> str:
     """Return the canonical ID for a project reachable from ``anchor``."""
     target = target.resolve()
@@ -276,7 +290,6 @@ def registered_project_id(anchor: Path, target: Path) -> str:
         if Path(project.locator).resolve() == target:
             return project.id
     raise ValueError(f"{target} is not registered from project '{registry.current.id}'")
-
 
 def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, str] | None":
     """Resolve a (possibly qualified) work ref against `anchor`.
@@ -382,7 +395,12 @@ def qualified_work_ref_problem(anchor: Path, ref: str) -> str:
     except Exception:
         return generic
     if project is None:
-        return f"no such project in this graph: {qualifier}"
+        try:
+            note = unreachable_project_note(
+                FsProjectRegistry.open(anchor), qualifier)
+        except Exception:
+            note = None
+        return note or f"no such project in this graph: {qualifier}"
     if not _has_work_store(Path(project.locator)):
         return f"{qualifier} has no work component"
     return generic                                 # project resolved; the slug didn't
@@ -970,7 +988,9 @@ def _extended_component_roots(
     for project_id in _extends_ids(config, config_path):
         project = registry.get(project_id)
         if project is None:
+            note = unreachable_project_note(registry, project_id)
             raise ValueError(
+                f"{config_path}: extends {note}" if note else
                 f"{config_path}: extends project '{project_id}' is not reachable "
                 "through connected-projects"
             )
@@ -1596,7 +1616,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         registry = FsProjectRegistry.open(self.node_root).require_valid()
         project = registry.get(project_id)
         if project is None:
-            raise ValueError(f"project '{project_id}' is not registered")
+            note = unreachable_project_note(registry, project_id)
+            raise ValueError(note or f"project '{project_id}' is not registered")
         if project_id == registry.current.id:
             raise ValueError("a taxonomy cannot extend itself")
         if not (Path(project.locator) / "docs" / "taxonomy").is_dir():
@@ -2284,7 +2305,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         registry = FsProjectRegistry.open(self.node_root).require_valid()
         project = registry.get(project_id)
         if project is None:
-            raise ValueError(f"project '{project_id}' is not registered")
+            note = unreachable_project_note(registry, project_id)
+            raise ValueError(note or f"project '{project_id}' is not registered")
         if project_id == registry.current.id:
             raise ValueError("a capabilities store cannot extend itself")
         if not (Path(project.locator) / "docs" / "capabilities").is_dir():

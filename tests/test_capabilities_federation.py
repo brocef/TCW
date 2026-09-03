@@ -435,3 +435,45 @@ def test_reviewed_via_alias_qualified_override_key(tmp_path):
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/login", overrides="base/cap-aaa111", Status="Missing")
     assert store(child).unreviewed_inherited() == []
+
+
+def test_extending_a_declared_but_absent_project_says_so(tmp_path):
+    """A node whose extended sibling is in a repository this checkout lacks.
+
+    Written straight to `.config.yaml` rather than through `extends_add`,
+    because that is how such a config arrives: authored on a machine that had
+    the sibling, then cloned somewhere that does not.
+    """
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  - base\n"
+    )
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    message = str(excinfo.value)
+    assert "'base'" in message
+    assert "not reachable in this checkout" in message
+
+
+def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text("id: child\n")
+    (child / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  - nowhere\n"
+    )
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    assert "is not reachable through connected-projects" in str(excinfo.value)
+
+
+def test_extends_add_names_a_declared_but_absent_project(tmp_path):
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    with pytest.raises(ValueError) as excinfo:
+        FsCapabilitiesStore.open(child).extends_add("base")
+    assert "not reachable in this checkout" in str(excinfo.value)
