@@ -1581,3 +1581,73 @@ def test_a_project_the_checkout_already_has_is_not_fetched(tmp_path, monkeypatch
     names = sorted(p.name for p in cache.iterdir())
     assert not any("here" in n for n in names), names
     assert len(names) == 2, names          # away + absent, never a second `here`
+
+
+def _cache_suffix(url: str) -> str:
+    from tcw.store.base import RepositoryDeclaration
+    from tcw.store.checkouts import _cache_key
+    return _cache_key(RepositoryDeclaration(url=url, ref="main")).rsplit("-", 1)[1]
+
+
+def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkeypatch, capsys):
+    """The shape a workspace actually has.
+
+    An earlier version of the skip enumerated current/ancestors/descendants and
+    missed this: a project that is a child of the caller's grandparent is present
+    and in the graph, and a machine holding every repository still planned a
+    clone of it.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    workspace = _repo(tmp_path / "ws")
+    sibling = tmp_path / "ws" / "sibling"
+    middle = tmp_path / "ws" / "mono"
+    leaf = tmp_path / "ws" / "mono" / "pkg"
+    for d in (sibling, middle, leaf):
+        d.mkdir(parents=True)
+    init(["work"], sibling, "sibling-project")
+    init(["work"], middle, "middle-project")
+    init(["work"], leaf, "leaf-project")
+    absent = _node_repo(tmp_path / "absent", "absent-project",
+                        {"parent": {"top-project": "../ws"}})
+
+    (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "top-project",
+        "connected-projects": {"children": {
+            # Both declared with a repository, as a workspace root would be.
+            "sibling-project": {"path": "sibling",
+                                "repository": {"url": str(sibling), "ref": "main"}},
+            "middle-project": "mono",
+            "absent-project": {"path": "../absent-not-here",
+                               "repository": {"url": str(absent), "ref": "main"}},
+        }},
+    }, sort_keys=False))
+    for path, doc in (
+        (middle, {"id": "middle-project", "connected-projects": {
+            "parent": {"top-project": ".."},
+            "children": {"leaf-project": "pkg"}}}),
+        (leaf, {"id": "leaf-project", "connected-projects": {
+            "parent": {"middle-project": ".."}}}),
+        (sibling, {"id": "sibling-project", "connected-projects": {
+            "parent": {"top-project": ".."}}}),
+    ):
+        existing = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
+        existing.update(doc)
+        (path / "tcw-config.yaml").write_text(yaml.safe_dump(existing, sort_keys=False))
+
+    monkeypatch.chdir(leaf)
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert "sibling-project: already available" in planned
+    assert "sibling-project: would obtain" not in planned
+    assert "absent-project: would obtain" in planned
+
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "sibling-project: already available" in out
+    assert "absent-project" in out and "obtained" in out
+    # One working copy — the genuinely absent project — and nothing for the
+    # sibling. (The directory names embed the test name, so a substring check
+    # for "sibling" would match either way.)
+    names = sorted(p.name for p in (tmp_path / "cache" / "tcw" / "stores").iterdir())
+    assert len(names) == 1, names
+    assert names[0].endswith(_cache_suffix(str(absent))), names

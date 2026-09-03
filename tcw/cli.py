@@ -223,21 +223,36 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
     failed = False
     seen: set[Path] = set()
     queue: list[tuple[Path, str, object]] = []
-    # The ids this checkout can already reach. "A project that is already here
-    # always wins" is the rule the whole feature rests on, and the walk is the
-    # one place it was not applied: a declaration is written by whichever node
-    # knows about that edge, so an ancestor routinely declares where a project
-    # comes from that the *caller* is standing inside. Taking that at face value
-    # re-cloned the current repository. Identity is the id — the registry
-    # rejects duplicates, so this inherits that guarantee.
-    have: set[str] = set()
+    # "A project that is already here always wins" is the rule the whole feature
+    # rests on, and the walk is the one place it was not applied: a declaration
+    # is written by whichever node knows about that edge, so an ancestor
+    # routinely declares where a project comes from that the *caller* is standing
+    # inside, or beside. Taking that at face value re-cloned repositories the
+    # user already had.
+    #
+    # The registry is asked directly rather than reconstructed from a chosen set
+    # of relations. An earlier version enumerated current/ancestors/descendants
+    # and missed a sibling of an ancestor — which is what a workspace looks like,
+    # and meant a machine holding every repository still planned a clone.
+    # Identity is the id; the registry rejects duplicates, so this inherits that
+    # guarantee.
+    starting_registry = None
     try:
-        registry = FsProjectRegistry.open(node_root)
-        have = {registry.current.id,
-                *(p.id for p in registry.ancestors()),
-                *(p.id for p in registry.descendants())}
+        starting_registry = FsProjectRegistry.open(node_root)
     except Exception:
         pass
+    # Obtained during *this* run, so not in a registry read before they existed.
+    have: set[str] = set()
+
+    def already_here(project_id: str) -> bool:
+        if project_id in have:
+            return True
+        if starting_registry is None:
+            return False
+        try:
+            return starting_registry.get(project_id) is not None
+        except Exception:
+            return False
 
     def enqueue(root: Path) -> None:
         found, problems = _declared_nodes_in_graph(root, enqueued)
@@ -253,7 +268,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         if target in seen:
             continue
         seen.add(target)
-        if project_id in have and not refresh:
+        if already_here(project_id) and not refresh:
             # `--refresh` is the one case where contacting the remote for a copy
             # you already have is exactly what was asked for.
             # No location claimed: the project may be here in the working
