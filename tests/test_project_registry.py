@@ -333,3 +333,110 @@ def test_a_correct_pair_still_validates(tmp_path):
     reciprocal(parent, "root-project", child, "child-project")
     FsProjectRegistry.open(child).require_valid()
     FsProjectRegistry.open(parent).require_valid()
+
+
+# ── connected-project repository declarations ────────────────────────────────
+
+
+def test_a_mapping_entry_with_a_path_matches_the_bare_string_form(tmp_path):
+    for style in ("bare", "mapping"):
+        base = tmp_path / style
+        parent, child = base / "orchestrator", base / "child"
+        locator = "path: ../child" if style == "mapping" else "../child"
+        entry = f"    child-project:\n      {locator}\n" if style == "mapping" \
+            else f"    child-project: {locator}\n"
+        config(parent, f"id: root-project\nconnected-projects:\n  children:\n{entry}")
+        config(
+            child,
+            "id: child-project\nconnected-projects:\n  parent:\n"
+            "    root-project: ../orchestrator\n",
+        )
+        registry = FsProjectRegistry.open(parent)
+        registry.require_valid()
+        assert [c.id for c in registry.children()] == ["child-project"]
+
+
+def test_a_present_locator_wins_over_a_declaration(tmp_path, monkeypatch):
+    """The declaration must not be consulted at all — its url is unreachable."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent, child = tmp_path / "orchestrator", tmp_path / "child"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n        url: https://example.invalid/nope.git\n",
+    )
+    config(
+        child,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        "    root-project: ../orchestrator\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert [c.id for c in registry.children()] == ["child-project"]
+
+
+def test_a_declaration_answers_when_the_locator_does_not(tmp_path, monkeypatch):
+    from tcw.store.base import RepositoryDeclaration
+    from tcw.store.checkouts import provisioned_root
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
+                                        ref="main")
+    obtained = provisioned_root(parent, declaration)
+    config(
+        obtained,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n"
+        "        url: https://example.invalid/child.git\n        ref: main\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert [c.id for c in registry.children()] == ["child-project"]
+    assert registry.unreachable() == []
+
+
+def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n        url: https://example.invalid/child.git\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    absent = registry.unreachable_project("child-project")
+    assert absent is not None
+    assert absent.locator == (tmp_path / "child").resolve()
+
+
+@pytest.mark.parametrize(
+    "entry, expected",
+    [
+        ("      nonsense: 1\n", "unknown key"),
+        ("      path: ''\n", "expected a non-empty string"),
+        ("      repository:\n        ref: main\n", "url: expected a non-empty string"),
+        ("      repository:\n        url: u\n        path: /abs\n",
+         "must be relative to the repository root"),
+        ("      {}\n", "needs 'path', 'repository', or both"),
+    ],
+)
+def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected):
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        f"    child-project:\n{entry}",
+    )
+    problems = FsProjectRegistry.open(parent).check()
+    assert any(expected in problem for problem in problems), problems
+    assert FsProjectRegistry.open(parent).unreachable() == []

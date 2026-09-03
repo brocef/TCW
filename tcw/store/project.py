@@ -11,8 +11,10 @@ from typing import Any
 import yaml
 
 from tcw.store.base import (
-    Project, ProjectRegistry, UnreachableProject, WORK_STATUSES,
+    ConnectedProject, Project, ProjectRegistry, RepositoryDeclaration,
+    UnreachableProject, WORK_STATUSES, parse_connected_entry,
 )
+from tcw.store.checkouts import provisioned_root
 
 SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -100,8 +102,8 @@ def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
 class _Config:
     project: Project
     path: Path
-    parent: dict[str, str]
-    children: dict[str, str]
+    parent: dict[str, ConnectedProject]
+    children: dict[str, ConnectedProject]
     raw: dict[str, Any]
 
 
@@ -240,11 +242,11 @@ class FsProjectRegistry(ProjectRegistry):
                 )
             else:
                 self._by_id[cfg.project.id] = cfg
-            for child_id, locator in cfg.children.items():
-                self._visit(self._target_path(config_path, locator), child_id,
+            for child_id, entry in cfg.children.items():
+                self._visit(self._target_path(config_path, entry), child_id,
                             config_path)
-            for parent_id, locator in cfg.parent.items():
-                self._visit(self._target_path(config_path, locator), parent_id,
+            for parent_id, entry in cfg.parent.items():
+                self._visit(self._target_path(config_path, entry), parent_id,
                             config_path)
             return cfg
         finally:
@@ -308,26 +310,60 @@ class FsProjectRegistry(ProjectRegistry):
             raw=raw,
         )
 
-    def _relation(self, path: Path, value: Any, label: str) -> dict[str, str]:
+    def _relation(self, path: Path, value: Any,
+                  label: str) -> dict[str, ConnectedProject]:
         if value is None:
             return {}
         if not isinstance(value, dict):
             self._problem(path, f"connected-projects.{label} must be a mapping")
             return {}
-        result: dict[str, str] = {}
-        for project_id, locator in value.items():
+        result: dict[str, ConnectedProject] = {}
+        for project_id, raw in value.items():
             try:
                 valid_id = validate_project_id(project_id if isinstance(project_id, str) else "")
             except ValueError as error:
                 self._problem(path, f"{label} key: {error}")
                 continue
-            if not isinstance(locator, str) or not locator.strip():
-                self._problem(path, f"locator for '{valid_id}' must be a nonempty string")
+            entry, problems = parse_connected_entry(
+                valid_id, raw, f"connected-projects.{label}.{valid_id}")
+            if entry is None:
+                # A declaration that is present and wrong is an error, never an
+                # unreachable edge: the difference is whether we were told
+                # something incorrect or told nothing this machine can act on.
+                for problem in problems or [f"locator for '{valid_id}' must be a "
+                                            f"nonempty string"]:
+                    self._problem(path, problem)
                 continue
-            result[valid_id] = locator
+            result[valid_id] = entry
         return result
 
-    def _target_path(self, source_config: Path, locator: str) -> Path:
+    def _target_path(self, source_config: Path,
+                     entry: ConnectedProject) -> Path:
+        """Where `entry`'s `tcw-config.yaml` is, on this machine.
+
+        The same ladder a component store resolves through, for the same reason:
+        **a locator that is here always wins, and a declaration answers only when
+        it cannot.** One configuration then serves the machine that has the
+        project nested beside its siblings and the machine that cloned one
+        repository, without either being told about the other.
+
+        Falls back to the locator when neither rung answers, so the unreachable
+        record names the place the user actually wrote — the declaration is what
+        `tcw provision` acts on, not what the reader should be sent to check.
+        """
+        candidates: list[Path] = []
+        if entry.locator is not None:
+            candidates.append(self._locator_path(source_config, entry.locator))
+        if entry.repository is not None:
+            candidates.append(
+                (provisioned_root(source_config.parent, entry.repository)
+                 / SENTINEL).resolve())
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return candidates[0] if candidates else (source_config.parent / SENTINEL)
+
+    def _locator_path(self, source_config: Path, locator: str) -> Path:
         target = Path(locator)
         source_dir = source_config.parent.resolve()
         resolved = (
@@ -365,8 +401,8 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():
-            for child_id, locator in cfg.children.items():
-                child_path = self._target_path(cfg.path, locator)
+            for child_id, entry in cfg.children.items():
+                child_path = self._target_path(cfg.path, entry)
                 child = self._cache.get(child_path)
                 if child is None:
                     continue
@@ -386,8 +422,8 @@ class FsProjectRegistry(ProjectRegistry):
                         child.path,
                         f"registered key '{child_id}' does not match target id '{child.project.id}'",
                     )
-            for parent_id, locator in cfg.parent.items():
-                parent_path = self._target_path(cfg.path, locator)
+            for parent_id, entry in cfg.parent.items():
+                parent_path = self._target_path(cfg.path, entry)
                 parent = self._cache.get(parent_path)
                 if parent is None:
                     continue
@@ -408,7 +444,7 @@ class FsProjectRegistry(ProjectRegistry):
                         f"registered key '{parent_id}' does not match target id '{parent.project.id}'",
                     )
 
-    def _points_elsewhere(self, source_config: Path, locator: str,
+    def _points_elsewhere(self, source_config: Path, locator: ConnectedProject,
                           expected: Path) -> bool:
         """Whether `locator`, read from `source_config`, names a node other than
         `expected` — as far as this machine can tell.

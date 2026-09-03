@@ -761,6 +761,26 @@ class RepositoryDeclaration:
 
 
 @dataclass(frozen=True)
+class ConnectedProject:
+    """One `connected-projects` entry: where a project is, and where it comes from.
+
+    Both halves are optional individually and one of them is required. `locator`
+    is the adapter locator the entry has always been — a path, for the filesystem
+    adapter. `repository` says how a machine that does not have the project can
+    obtain it, and is exactly the declaration a component store takes, because
+    "where does this come from" is the same question either way.
+
+    The two are a ladder, not alternatives: the locator answers when it can, and
+    the declaration answers only when it cannot. A project already here is never
+    fetched.
+    """
+
+    id: str
+    locator: str | None = None
+    repository: "RepositoryDeclaration | None" = None
+
+
+@dataclass(frozen=True)
 class ProvisionResult:
     """What one provisioning attempt did.
 
@@ -1291,6 +1311,60 @@ def parse_repository_declaration(
         return None, problems
     return RepositoryDeclaration(url=url.strip(), ref=ref, path=store_path,
                                  checkout=checkout), problems
+
+
+def parse_connected_entry(
+    project_id: str, raw: Any, where: str
+) -> tuple["ConnectedProject | None", list[str]]:
+    """Parse one `connected-projects` entry into a `ConnectedProject` plus problems.
+
+    Two accepted forms, and the first must never stop working:
+
+        child-id: ../child                      # a bare locator, as always
+        child-id:
+            path: ../child                      # optional
+            repository: {url: ..., ref: ...}    # optional
+
+    Pure, filesystem-free, and fails closed like `parse_repository_declaration`
+    — which it delegates the `repository` half to wholesale, so a malformed
+    declaration reads the same here as it does under `work.repository` rather
+    than growing a second vocabulary of error messages.
+
+    An entry naming neither is refused. It would be a project that cannot be
+    found and cannot be obtained, which is not a state worth representing.
+    """
+    problems: list[str] = []
+    if isinstance(raw, str):
+        if not raw.strip():
+            return None, [f"{where}: locator must be a nonempty string"]
+        return ConnectedProject(id=project_id, locator=raw), problems
+    if not isinstance(raw, dict):
+        return None, [f"{where}: expected a locator string or a mapping, "
+                      f"got {type(raw).__name__}"]
+
+    known = {"path", "repository"}
+    unknown = set(raw) - known
+    if unknown:
+        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
+                        f"expected {', '.join(repr(k) for k in sorted(known))}")
+
+    locator = raw.get("path")
+    if locator is not None and (not isinstance(locator, str) or not locator.strip()):
+        problems.append(f"{where}.path: expected a non-empty string")
+        locator = None
+
+    declaration = None
+    if "repository" in raw:
+        declaration, declaration_problems = parse_repository_declaration(
+            raw.get("repository"), f"{where}.repository")
+        problems.extend(declaration_problems)
+
+    if locator is None and declaration is None and not problems:
+        problems.append(f"{where}: needs 'path', 'repository', or both")
+    if problems:
+        return None, problems
+    return ConnectedProject(id=project_id, locator=locator,
+                            repository=declaration), problems
 
 
 def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
