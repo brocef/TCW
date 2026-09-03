@@ -116,3 +116,14 @@ category.
 - `tests/fixtures/lifecycle_baseline/*.json` regenerated: `tcw work lifecycle`
   now lists `auto-delete`. A deliberate contract change, visible in the diff
   exactly as those fixtures are meant to make it.
+
+## Fixed (federation reads the sibling's configured store)
+
+- **`extends` resolves the extended project's component store** through the same
+  ladder every other read uses, instead of composing `docs/<component>` under its
+  root. A sibling that moved its tree with `<component>.path` can be extended
+  from; one whose tree is declared and unprovisioned reports the remote and
+  `tcw provision` rather than "has no docs/<component>/".
+- Federation carries the projects already on its path (`_seen_nodes`), so a cycle
+  is still reported by `check()` rather than recurring — resolving a sibling's
+  store now opens it, and opening a tree store resolves its own `extends`.

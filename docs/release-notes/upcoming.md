@@ -75,3 +75,10 @@ TCW tells you to run `tcw work delete` once you have fixed it. Note that TCW
 cannot check whether your command really archived anything, and that the web UI
 does not run commands at all — an item resolved there waits for you to finish the
 removal from the command line.
+
+## Extending a project that keeps its trees somewhere else
+
+If a project you extend has moved its taxonomy or capabilities out of the default
+folder, extending it works now. It used to report that the project had no such
+tree at all — naming a folder you had never chosen — and if the tree was one you
+had yet to fetch, it said the same thing rather than telling you to fetch it.

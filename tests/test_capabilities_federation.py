@@ -477,3 +477,76 @@ def test_extends_add_names_a_declared_but_absent_project(tmp_path):
     with pytest.raises(ValueError) as excinfo:
         FsCapabilitiesStore.open(child).extends_add("base")
     assert "not reachable in this checkout" in str(excinfo.value)
+
+
+# ── the extended store is resolved, not composed ─────────────────────────────
+
+
+def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
+    """`capabilities.path` is exactly what `tcw init --capabilities-path` writes.
+
+    The extended project's store used to be composed as `docs/capabilities` under
+    its root, so moving it made the project unextendable and the error blamed a
+    path nobody had written.
+    """
+    base = repo(tmp_path, "base")
+    elsewhere = tmp_path / "base" / "ledger"
+    elsewhere.mkdir(parents=True)
+    (base / "docs" / "capabilities").rmdir()
+    (base / "tcw-config.yaml").write_text(
+        "id: base\ncapabilities:\n  path: ledger\n"
+        "connected-projects:\n  children:\n    child: ../child\n"
+    )
+    (base / "docs" / "capabilities").mkdir(parents=True, exist_ok=True)
+    write_cap(base, "auth/login", id="cap-aaa111", Status="Supported", body="Log in.")
+    import shutil
+    shutil.move(str(base / "docs" / "capabilities" / "auth"), str(elsewhere / "auth"))
+    shutil.rmtree(base / "docs" / "capabilities")
+
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+
+    caps = {c.qualified for c in store(child).list_all()}
+    assert "base/auth/login" in caps
+
+
+def test_a_sibling_with_no_component_names_the_project(tmp_path):
+    base = repo(tmp_path, "base")
+    (base / "docs" / "capabilities").rmdir()
+    (base / "tcw-config.yaml").write_text(
+        "id: base\nconnected-projects:\n  children:\n    child: ../child\n"
+    )
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    assert "project 'base' has no capabilities component" in str(excinfo.value)
+
+
+def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    base = repo(tmp_path, "base")
+    (base / "docs" / "capabilities").rmdir()
+    (base / "tcw-config.yaml").write_text(
+        "id: base\ncapabilities:\n"
+        "  path: ledger\n"
+        "  repository:\n    url: https://example.invalid/ledger.git\n"
+        "connected-projects:\n  children:\n    child: ../child\n"
+    )
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    message = str(excinfo.value)
+    assert "project 'base'" in message
+    assert "https://example.invalid/ledger.git" in message
+    assert "tcw provision" in message

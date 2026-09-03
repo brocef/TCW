@@ -1051,9 +1051,21 @@ def _extends_ids(config: dict, config_path: Path) -> list[str]:
 
 
 def _extended_component_roots(
-    node_root: Path, config: dict, config_path: Path, component: str
+    node_root: Path, config: dict, config_path: Path, component: str,
+    seen_nodes: "set[Path] | None" = None,
 ) -> dict[str, Path]:
+    """Where each extended project's component store is, by project id.
+
+    `seen_nodes` carries the *projects* already on the federation path. It is
+    checked before the store is opened, and it has to be: resolving a sibling's
+    store now opens it, and opening a tree store resolves its own `extends`, so a
+    cycle would recur infinitely instead of being reported. Project identity is
+    known before any store is touched, which is what makes the guard possible at
+    all — and a cycle in `extends` is a cycle among projects, so this is also the
+    honest place to detect one.
+    """
     registry = FsProjectRegistry.open(node_root).require_valid()
+    seen_nodes = (seen_nodes or set()) | {node_root.resolve()}
     roots: dict[str, Path] = {}
     for project_id in _extends_ids(config, config_path):
         project = registry.get(project_id)
@@ -1064,12 +1076,37 @@ def _extended_component_roots(
                 f"{config_path}: extends project '{project_id}' is not reachable "
                 "through connected-projects"
             )
-        target = Path(project.locator) / "docs" / component
-        if not target.is_dir():
-            raise ValueError(f"project '{project_id}' has no docs/{component}/")
+        # Identity first: extending yourself is wrong whatever the store does,
+        # and asking the store about it would make a config error depend on
+        # whether a tree happens to be provisioned.
         if Path(project.locator).resolve() == node_root.resolve():
             raise ValueError(f"a {component} store cannot extend itself")
-        roots[project_id] = target.resolve()
+        if Path(project.locator).resolve() in seen_nodes:
+            continue                      # cyclic → `check()` reports it
+        # The extended project's *configured* store, not `docs/<component>` under
+        # its root. Composing that path skipped the whole resolution ladder, so a
+        # sibling that had moved its tree with `<component>.path` could not be
+        # extended from, and one whose tree was declared but unprovisioned read
+        # as having no tree at all — the confusion the ladder exists to end.
+        # Failures are re-worded for a reader standing in a *different* node than
+        # the one that failed.
+        try:
+            roots[project_id] = STORE_CLASSES[component].open(
+                Path(project.locator), _seen_nodes=seen_nodes).root.resolve()
+        except StoreNotProvisioned as error:
+            raise ValueError(f"project '{project_id}': {error}") from None
+        except (StoreDeclarationError, ValueError) as error:
+            if isinstance(error, StoreDeclarationError):
+                raise ValueError(f"project '{project_id}': {error}") from None
+            raise ValueError(
+                f"project '{project_id}' has no {component} component") from None
+        # Rule 4 of the ladder validates nothing for a bare default, so a project
+        # with no tree at all resolves to a path that is simply not there. That
+        # is the honest answer for the project's *own* store and the wrong one to
+        # federate from.
+        if not roots[project_id].is_dir():
+            del roots[project_id]
+            raise ValueError(f"project '{project_id}' has no {component} component")
     return roots
 
 
@@ -1260,10 +1297,15 @@ class FsTreeStore:
         self.config = load_yaml(root / self.CONFIG_NAME) if self.CONFIG_NAME else {}
 
     @classmethod
-    def open(cls, node_root: Path):
+    def open(cls, node_root: Path, _seen_nodes: "set[Path] | None" = None):
         """Resolve this node's store for this component. The ladder is
-        `resolve_store`, shared with the work store."""
-        return resolve_store(cls, node_root)
+        `resolve_store`, shared with the work store.
+
+        `_seen_nodes` is private and carries the projects already on a federation
+        path, so `extends` can resolve a sibling's store without a cycle becoming
+        infinite recursion. Callers outside federation never pass it.
+        """
+        return resolve_store(cls, node_root, _seen_nodes=_seen_nodes)
 
     @classmethod
     def _local_root(cls, node_root: Path, configured: str | None) -> Path:
@@ -1280,7 +1322,8 @@ class FsTreeStore:
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
-                 declaration: "RepositoryDeclaration | None" = None):
+                 declaration: "RepositoryDeclaration | None" = None,
+                 _seen_nodes: "set[Path] | None" = None):
         """Build the store at a candidate root, validating it only when
         something points at it.
 
@@ -1310,7 +1353,8 @@ class FsTreeStore:
         owner = (git_root(root) if external else node_root) or node_root
         # The node stays the node — federation resolves `extends` against it —
         # while writes follow the store into whatever repository holds it.
-        return cls(root, node_root=node_root, store_git_root=owner)
+        return cls(root, _seen_nodes=_seen_nodes, node_root=node_root,
+                   store_git_root=owner)
 
     # -- containment: a store id never names a file outside its own store --
     #
@@ -1525,12 +1569,14 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     CONFIG_NAME = "config.yaml"
 
     def __init__(self, root: Path, _seen: set[Path] | None = None, *,
+                 _seen_nodes: "set[Path] | None" = None,
                  node_root: Path | None = None, store_git_root: Path | None = None):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
         for project_id, ext in _extended_component_roots(
-            self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy"
+            self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy",
+            seen_nodes=_seen_nodes,
         ).items():
             if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
                 self.extends[project_id] = FsTaxonomyStore(ext, _seen=seen)
@@ -1985,12 +2031,14 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     CONFIG_NAME = ".config.yaml"
 
     def __init__(self, root: Path, _seen: set[Path] | None = None, *,
+                 _seen_nodes: "set[Path] | None" = None,
                  node_root: Path | None = None, store_git_root: Path | None = None):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsCapabilitiesStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
         for project_id, ext in _extended_component_roots(
-            self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities"
+            self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities",
+            seen_nodes=_seen_nodes,
         ).items():
             if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
                 self.extends[project_id] = FsCapabilitiesStore(ext, _seen=seen)
@@ -2791,7 +2839,7 @@ def _is_store_layout(root: Path, component: str) -> bool:
     return all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
-def resolve_store(store_cls, node_root: Path):
+def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
     """This node's store for `store_cls`'s component, in one ordered ladder.
 
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
@@ -2850,7 +2898,8 @@ def resolve_store(store_cls, node_root: Path):
         try:
             return store_cls._open_at(
                 raw_root, node_root, config_path,
-                external=configured is not None, must_exist=must_exist)
+                external=configured is not None, must_exist=must_exist,
+                _seen_nodes=_seen_nodes)
         except ValueError:
             # A valid local store keeps reads working even when an unused
             # declaration is malformed. When no local store can open, however,
@@ -2864,7 +2913,8 @@ def resolve_store(store_cls, node_root: Path):
     try:                                                        # rule 1
         return store_cls._open_at(
             raw_root, node_root, config_path,
-            external=configured is not None, must_exist=must_exist)
+            external=configured is not None, must_exist=must_exist,
+            _seen_nodes=_seen_nodes)
     except ValueError:
         pass
     try:                                                        # rule 2
@@ -2873,7 +2923,8 @@ def resolve_store(store_cls, node_root: Path):
         # publish — see `FsWorkStore.publishes`.
         return store_cls._open_at(
             provisioned_store_root(node_root, declaration), node_root, config_path,
-            external=True, must_exist=True, declaration=declaration)
+            external=True, must_exist=True, declaration=declaration,
+            _seen_nodes=_seen_nodes)
     except ValueError:
         pass
     raise StoreNotProvisioned(                                  # rule 3
@@ -3205,7 +3256,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
-                 declaration: "RepositoryDeclaration | None" = None) -> "FsWorkStore":
+                 declaration: "RepositoryDeclaration | None" = None,
+                 _seen_nodes: "set[Path] | None" = None) -> "FsWorkStore":
         """Validate a candidate root and build the store. `external` means the
         store is not the node's own `docs/work`, so the repository that owns its
         commits has to be discovered rather than assumed.
