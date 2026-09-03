@@ -134,9 +134,12 @@ category.
   A declaration lives on whichever node knows about an edge, so an ancestor
   routinely names a repository the caller is standing inside; the walk took that
   at face value and re-cloned it. Reachability is now checked by project id
-  before anything is fetched, seeded from the starting registry and extended as
-  the walk obtains nodes. `--refresh` bypasses the skip, since contacting the
-  remote for a copy you have is what it asks for.
+  before anything is fetched: the starting registry is asked directly, plus the
+  ids the walk obtains as it goes. **Asked**, not reconstructed from a chosen set
+  of relations — an intermediate version enumerated current/ancestors/descendants
+  and missed a sibling of an ancestor, which is the shape a workspace has, so a
+  machine holding every repository still planned a clone. `--refresh` bypasses
+  the skip, since contacting the remote for a copy you have is what it asks for.
 
 ## Fixed (unreachable is reported per project, not per edge)
 
