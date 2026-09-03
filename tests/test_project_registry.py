@@ -287,3 +287,49 @@ def test_an_absent_parent_leaves_the_child_usable(tmp_path):
     assert registry.parent() is None
     assert registry.unreachable_project("root-project") is not None
     assert registry.unreachable_project("nobody") is None
+
+
+def test_an_absent_counterpart_does_not_disprove_reciprocity(tmp_path):
+    """The parent is here and names its child at a path only another machine has."""
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: nested/child\n",
+    )
+    config(
+        child,
+        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert registry.parent().id == "root-project"
+
+
+def test_a_present_counterpart_pointing_elsewhere_still_fails(tmp_path):
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    decoy = tmp_path / "decoy"
+    config(decoy, "id: decoy-project\n")
+    config(
+        parent,
+        f"id: root-project\nconnected-projects:\n  children:\n"
+        f"    child-project: {decoy}\n",
+    )
+    config(
+        child,
+        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    problems = FsProjectRegistry.open(child).check()
+    assert any("does not point back to" in p for p in problems)
+
+
+def test_a_correct_pair_still_validates(tmp_path):
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    reciprocal(parent, "root-project", child, "child-project")
+    FsProjectRegistry.open(child).require_valid()
+    FsProjectRegistry.open(parent).require_valid()

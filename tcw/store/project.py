@@ -376,7 +376,7 @@ class FsProjectRegistry(ProjectRegistry):
                         child.path,
                         f"nonreciprocal connection: parent '{cfg.project.id}' is not declared",
                     )
-                elif self._target_path(child.path, reciprocal) != cfg.path:
+                elif self._points_elsewhere(child.path, reciprocal, cfg.path):
                     self._problem(
                         child.path,
                         f"parent locator for '{cfg.project.id}' does not point back to {cfg.path.parent}",
@@ -397,7 +397,7 @@ class FsProjectRegistry(ProjectRegistry):
                         parent.path,
                         f"nonreciprocal connection: child '{cfg.project.id}' is not declared",
                     )
-                elif self._target_path(parent.path, reciprocal) != cfg.path:
+                elif self._points_elsewhere(parent.path, reciprocal, cfg.path):
                     self._problem(
                         parent.path,
                         f"child locator for '{cfg.project.id}' does not point back to {cfg.path.parent}",
@@ -407,6 +407,27 @@ class FsProjectRegistry(ProjectRegistry):
                         parent.path,
                         f"registered key '{parent_id}' does not match target id '{parent.project.id}'",
                     )
+
+    def _points_elsewhere(self, source_config: Path, locator: str,
+                          expected: Path) -> bool:
+        """Whether `locator`, read from `source_config`, names a node other than
+        `expected` — as far as this machine can tell.
+
+        An **absent** target cannot answer the question and must not be read as
+        "no". Two nodes routinely name each other at paths that exist only on the
+        machine whose author wrote them: a monorepo nested inside an orchestrator
+        on one disk and cloned beside it on another. Comparing a path that is
+        here against a path that is not decides nothing, and deciding it against
+        the declaration made every such pair non-reciprocal — the failure that
+        made a provisioned parent unusable.
+
+        Where both are present the comparison is real and the check is unchanged;
+        the ids already agreed, or the caller would not have got this far.
+        """
+        target = self._target_path(source_config, locator)
+        if not target.is_file():
+            return False
+        return target != expected
 
     def _validate_cycles(self) -> None:
         visited: set[str] = set()
