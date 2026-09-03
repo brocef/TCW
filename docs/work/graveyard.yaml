@@ -16,6 +16,9 @@
 2026-09-03-connected-project-entries-declare-where-they-come-from-so-tcw-provision-can-obtain-a-node:
   resolution: done
   resolved: '2026-09-03'
+2026-09-03-retain-resolved-work-items-in-history-and-make-auto-delete-configurable:
+  resolution: done
+  resolved: '2026-09-03'
 2026-09-03-the-epic-owner-walk-stops-at-a-parent-that-has-no-work-store:
   resolution: done
   resolved: '2026-09-03'
