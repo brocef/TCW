@@ -34,6 +34,9 @@
 2026-09-03-the-epic-owner-walk-stops-at-a-parent-that-has-no-work-store:
   resolution: done
   resolved: '2026-09-03'
+2026-09-03-the-provisioning-skip-misses-a-project-that-is-reachable-but-neither-ancestor-nor-descendant:
+  resolution: done
+  resolved: '2026-09-03'
 2026-09-03-unreachable-connected-projects-degrade-instead-of-failing-every-command:
   resolution: done
   resolved: '2026-09-03'
