@@ -1,0 +1,11 @@
+slug: 2026-09-03-federation-is-broken-at-the-second-hop-and-exponential-in-chain-depth
+title: Federation is broken at the second hop and exponential in chain depth
+created: '2026-09-03'
+resolution: null
+priority: 80
+effort: medium
+complexity: high
+tags:
+- bug
+- taxonomy
+- capabilities
