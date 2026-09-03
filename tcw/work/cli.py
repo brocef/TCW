@@ -17,8 +17,9 @@ from tcw.store.base import (
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
     child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
-    git_commit_result, git_root, merge_worktree, nearest_work_ancestor,
-    parent_node, registered_parent,
+    declared_repository, git_commit_result, git_root, merge_worktree,
+    nearest_work_ancestor,
+    parent_node, registered_children, registered_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
     resolve_qualified_work_ref,
 )
@@ -176,14 +177,37 @@ def _nodes(args: argparse.Namespace) -> int:
                   f"(no work store)")
         else:
             print("parent: (none — root)")
-    children = child_nodes(node)
+    # Every registered child, not only the ones keeping a board. A routing node
+    # is still a child, and filtering it out made a node with one read as a leaf.
+    # Marked the same way the parent line marks its own case, so the two halves
+    # of this output describe the graph alike.
+    children = registered_children(node)
     if children:
         print("children:")
+        with_store = {c.resolve() for c in child_nodes(node)}
         for c in children:
-            print(f"  {registered_project_id(node, c)}")
+            print(f"  {registered_project_id(node, c)}"
+                  f"{'' if c.resolve() in with_store else _no_store_note(c)}")
     else:
         print("children: (none — leaf)")
     return 0
+
+
+def _no_store_note(child: Path) -> str:
+    """Why a registered child keeps no usable board here.
+
+    Two different situations that used to look identical by being omitted: a
+    routing node genuinely has no board, while a declared one has a board this
+    machine has not obtained — and only the second is something the reader can
+    act on.
+    """
+    try:
+        declaration, _ = declared_repository(child, "work")
+    except Exception:
+        declaration = None
+    if declaration is not None:
+        return "  (work store not provisioned here)"
+    return "  (no work store)"
 
 
 def _reconcile(args: argparse.Namespace) -> int:

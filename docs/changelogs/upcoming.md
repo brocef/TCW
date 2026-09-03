@@ -65,8 +65,13 @@ category.
   `tcw work nodes` prints `parent: <id> (no work store)` and `escalate` refuses
   with "no registered ancestor keeps a work store" rather than claiming the node
   is the root.
-- `parent_node()` is unchanged and still means the direct parent that keeps a
-  board.
+- **`registered_children()`** does the same for children: `tcw work nodes` lists
+  every registered child, marking one that keeps no board `(no work store)` and
+  one whose board this machine has not obtained
+  `(work store not provisioned here)`. Omitting them made a node with children
+  read as `(none — leaf)`.
+- `parent_node()` and `child_nodes()` are unchanged and still mean the direct
+  relations that keep a board — which is what the cross-node operations want.
 
 ## Added (resolved-item retention)
 

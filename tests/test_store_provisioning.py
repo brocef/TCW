@@ -631,8 +631,10 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
 
     out = capsys.readouterr().out
     assert "parent-project" in out
-    assert "children: (none — leaf)" in out, \
-        "an unprovisioned child has no usable store here, and says so by absence"
+    assert "child-project  (work store not provisioned here)" in out, \
+        ("a registered child is listed even when its store is not usable here — "
+         "omitting it made a node with children read as a leaf — and the marker "
+         "says which of the two reasons applies")
 
 
 # ── the `tcw provision` verb ─────────────────────────────────────────────────

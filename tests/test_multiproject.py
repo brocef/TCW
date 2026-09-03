@@ -192,3 +192,26 @@ def test_nodes_reports_a_registered_parent_that_keeps_no_board(tmp_path, monkeyp
     monkeypatch.chdir(a)
     assert main(["work", "nodes"]) == 0
     assert "parent: (none — root)" in capsys.readouterr().out
+
+
+def test_nodes_lists_a_registered_child_that_keeps_no_board(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+
+    a, b, c = _routing_graph(tmp_path)
+
+    monkeypatch.chdir(a)
+    assert main(["work", "nodes"]) == 0
+    out = capsys.readouterr().out
+    assert "children:" in out
+    assert "b-project  (no work store)" in out
+    assert "(none — leaf)" not in out
+
+    # `tcw work nodes` is a work subcommand and refuses at a node with no work
+    # store, so the routing node itself cannot be queried. Recorded rather than
+    # asserted away: it is existing behaviour and out of this item's scope.
+    monkeypatch.chdir(b)
+    assert main(["work", "nodes"]) == 1
+
+    monkeypatch.chdir(c)
+    assert main(["work", "nodes"]) == 0
+    assert "children: (none — leaf)" in capsys.readouterr().out

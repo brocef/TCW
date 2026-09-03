@@ -266,6 +266,17 @@ def registered_parent(root: Path) -> Path | None:
     return None if parent is None else Path(parent.locator)
 
 
+def registered_children(root: Path) -> list[Path]:
+    """Direct registered children, board or no board.
+
+    What `child_nodes` answers before the store filter. `tcw work nodes` needs
+    the unfiltered list: a routing node that keeps no board is still a child, and
+    omitting it made a node with one read as a leaf.
+    """
+    registry = FsProjectRegistry.open(root).require_valid()
+    return [Path(project.locator) for project in registry.children()]
+
+
 def nearest_work_ancestor(root: Path) -> Path | None:
     """The closest ancestor holding a work store, passing through any that do not.
 
