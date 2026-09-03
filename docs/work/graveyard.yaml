@@ -13,6 +13,9 @@
 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
   resolution: done
   resolved: '2026-09-02'
+2026-09-03-an-auto-delete-step-with-hooks-so-a-consumer-can-archive-an-item-before-it-is-removed:
+  resolution: done
+  resolved: '2026-09-03'
 2026-09-03-connected-project-entries-declare-where-they-come-from-so-tcw-provision-can-obtain-a-node:
   resolution: done
   resolved: '2026-09-03'
