@@ -1491,3 +1491,42 @@ def test_a_malformed_connected_declaration_refuses_and_names_the_line(tmp_path, 
     monkeypatch.chdir(here)
     assert main(["provision"]) == 1
     assert "url: expected a non-empty string" in capsys.readouterr().err
+
+
+def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
+    tmp_path, monkeypatch, capsys
+):
+    """The declaring node is often not the one you are standing in.
+
+    In a monorepo the edge out to another repository belongs to whichever
+    package knows about it; running `tcw provision` from a sibling must still
+    obtain it.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"children": {"knower-project": "nested/knower"}})
+    repo_root = _repo(tmp_path / "mono")
+    knower = tmp_path / "mono" / "knower"
+    standing = tmp_path / "mono" / "standing"
+    knower.mkdir(parents=True)
+    standing.mkdir(parents=True)
+    init(["work"], knower, "knower-project")
+    init(["work"], standing, "standing-project")
+    (knower / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "knower-project",
+        "connected-projects": {
+            "parent": {"away-project": {"path": "../../away-not-here",
+                                        "repository": {"url": str(away), "ref": "main"}}},
+            "children": {"standing-project": "../standing"},
+        },
+    }, sort_keys=False))
+    (standing / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "standing-project",
+        "connected-projects": {"parent": {"knower-project": "../knower"}},
+    }, sort_keys=False))
+    assert repo_root.exists()
+
+    monkeypatch.chdir(standing)
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "away-project" in out and "obtained" in out

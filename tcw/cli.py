@@ -120,13 +120,12 @@ def run_provision(components: list[str], *, refresh: bool = False,
             print(f"tcw provision: {problem}", file=sys.stderr)
         return 1
 
-    from tcw.store.fs import declared_connected_projects
-    declared_nodes, node_problems = declared_connected_projects(node_root)
+    declared_nodes, node_problems = _declared_nodes_in_graph(node_root)
     # Same rule as a component's: a declaration that is present and wrong
     # refuses, rather than reading as "nothing declared" and reporting success.
     if node_problems:
         for problem in node_problems:
-            print(f"tcw provision: {SENTINEL}: {problem}", file=sys.stderr)
+            print(f"tcw provision: {problem}", file=sys.stderr)
         return 1
     if not declared and not declared_nodes:
         print(f"Nothing to provision: no component or connected project declares "
@@ -163,6 +162,44 @@ def run_provision(components: list[str], *, refresh: bool = False,
     return 1 if failed else 0
 
 
+def _declared_nodes_in_graph(
+    root: Path, seen: set[Path] | None = None
+) -> tuple[list[tuple[Path, str, object]], list[str]]:
+    """Declarations on `root` and on every node reachable from it here.
+
+    Not just the node the command was run in: a declaration lives on whichever
+    node knows about that edge, which in a monorepo is routinely a sibling
+    package rather than the one the user happens to be standing in. Walking the
+    present graph is what makes "declarations follow the graph" true from
+    anywhere in it.
+
+    The registry is opened without `require_valid`, deliberately — a graph with
+    an unreachable node is exactly the graph this command exists to complete, and
+    refusing to read it would be circular.
+    """
+    from tcw.store.fs import declared_connected_projects
+
+    seen = set() if seen is None else seen
+    roots = [root]
+    try:
+        registry = FsProjectRegistry.open(root)
+        roots += [Path(p.locator) for p in
+                  (*registry.ancestors(), *registry.descendants())]
+    except Exception:
+        pass
+    found: list[tuple[Path, str, object]] = []
+    problems: list[str] = []
+    for candidate in roots:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        declared, candidate_problems = declared_connected_projects(candidate)
+        problems += [f"{candidate / SENTINEL}: {p}" for p in candidate_problems]
+        found += [(candidate, pid, d) for pid, d in declared]
+    return found, problems
+
+
 def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
     """Obtain the connected projects this node declares, and the ones they
     declare. Returns True if anything failed.
@@ -181,19 +218,19 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
     (url, ref), so a cycle among declarations revisits nothing and two entries
     naming one repository share one working copy.
     """
-    from tcw.store.fs import NODE_TARGET, declared_connected_projects
+    from tcw.store.fs import NODE_TARGET
 
     failed = False
     seen: set[Path] = set()
     queue: list[tuple[Path, str, object]] = []
 
     def enqueue(root: Path) -> None:
-        declared, problems = declared_connected_projects(root)
+        found, problems = _declared_nodes_in_graph(root, enqueued)
         for problem in problems:
-            print(f"tcw provision: {root / SENTINEL}: {problem}", file=sys.stderr)
-        for project_id, declaration in declared:
-            queue.append((root, project_id, declaration))
+            print(f"tcw provision: {problem}", file=sys.stderr)
+        queue.extend(found)
 
+    enqueued: set[Path] = set()
     enqueue(node_root)
     while queue:
         source, project_id, declaration = queue.pop(0)
