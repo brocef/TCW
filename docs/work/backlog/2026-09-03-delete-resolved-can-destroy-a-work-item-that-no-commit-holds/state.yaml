@@ -1,0 +1,11 @@
+slug: 2026-09-03-delete-resolved-can-destroy-a-work-item-that-no-commit-holds
+title: delete_resolved can destroy a work item that no commit holds
+created: '2026-09-03'
+resolution: null
+priority: 95
+effort: medium
+complexity: medium
+tags:
+- bug
+- work
+- cli
