@@ -1,0 +1,10 @@
+slug: 2026-09-03-an-unreachable-edge-is-reported-for-a-project-the-graph-resolved-anyway
+title: An unreachable edge is reported for a project the graph resolved anyway
+created: '2026-09-03'
+resolution: null
+priority: 45
+effort: low
+complexity: low
+tags:
+- cli
+- work
