@@ -1,7 +1,9 @@
 As a user, I raise something to the coordinating project with
 `tcw work escalate "<title>"`, piping the body on stdin and optionally stamping it
 with `--initiative <epic-slug>`. There is no target argument: a project has at
-most one registered parent, and TCW resolves it. At the root of the graph the
+most one registered parent, and TCW resolves it. The parent it reaches is the nearest registered ancestor that keeps a work store,
+so a grouping project between me and the board I mean is passed through rather
+than treated as a wall. At the root of the graph the
 command refuses — *"no parent node to escalate to (this is the root)"* — rather
 than silently doing nothing.
 

@@ -51,3 +51,19 @@ category.
 - `tcw/store/checkouts.py` holds the `(url, ref)` → working-copy-directory
   computation, which `fs.py` and `project.py` both need and neither may import
   from the other.
+
+## Fixed (routing nodes)
+
+- **`nearest_work_ancestor()`** replaces `parent_node()` in every upward walk —
+  `FsWorkStore.initiative_epic`, the descendant board's ownership walk, and
+  `escalate`. One `registry.ancestors()` traversal rather than repeated single
+  hops, so a filter cannot truncate it.
+- **`FsWorkStore.initiative_children`** uses `descendant_nodes` instead of
+  `child_nodes`, so a slice below a storeless node is found. The two directions
+  had disagreed about whether such a node is passable.
+- **`registered_parent()`** exposes the direct parent without the store filter;
+  `tcw work nodes` prints `parent: <id> (no work store)` and `escalate` refuses
+  with "no registered ancestor keeps a work store" rather than claiming the node
+  is the root.
+- `parent_node()` is unchanged and still means the direct parent that keeps a
+  board.

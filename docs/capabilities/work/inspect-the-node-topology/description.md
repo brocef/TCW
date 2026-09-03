@@ -3,7 +3,9 @@ connected-project graph. It prints the current node's canonical ID, its
 registered parent, and its registered children — each by ID, never by filesystem
 path, because IDs are identity and paths are only adapter locators. A project
 with no parent prints `parent: (none — root)`; one with no children prints
-`children: (none — leaf)`.
+`children: (none — leaf)`. A registered parent that keeps no work store prints
+`parent: <id> (no work store)` — it is a grouping project, not the top of the
+graph, and the two used to read identically.
 
 Only *registered* projects appear. TCW reads the `connected-projects` section of
 `tcw-config.yaml` rather than scanning the disk, so a git repository sitting next

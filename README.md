@@ -403,6 +403,13 @@ A command that *does* need the absent project says which one and where it was
 declared, rather than reporting that it was never registered. This is the same
 courtesy a declared store already gets when it has not been provisioned here.
 
+**A node need not keep a work store.** A repository root that only groups the
+packages owning the boards is a registered project like any other, and relations
+pass straight through it: an epic two levels up resolves, its slices below one
+are found, and `tcw work escalate` reaches the nearest ancestor that does keep a
+board. `tcw work nodes` says `parent: <id> (no work store)` for such a parent
+rather than calling this node the root.
+
 Configuration that is genuinely wrong still fails closed, unchanged: an invalid
 or duplicated project ID, a cycle, unparseable YAML, a registered key that
 disagrees with the target it names. The one thing that relaxes with it is

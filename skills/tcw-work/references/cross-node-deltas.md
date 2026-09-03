@@ -6,6 +6,12 @@ work item. Physical layout is irrelevant: direct child and parent connections
 must be reciprocal in `tcw-config.yaml`, and every project has a canonical ID.
 Use `--parent` children only when the slices are work items in the same project.
 
+A node in the chain need not keep a board of its own. A repository root that
+groups the packages owning the boards is a routing node: an epic resolves through
+it, its slices below it are found, and `tcw work escalate` reaches the nearest
+ancestor that does keep one. `tcw work nodes` marks such a parent
+`(no work store)`.
+
 Reciprocity is checked between the nodes this checkout can actually open. A
 connected project whose repository is not here is absent from the graph rather
 than fatal to it, so cross-node coordination is simply unavailable for that node
