@@ -50,6 +50,9 @@ from tcw.store.base import (
     TaxonomyStore, Term, TermDetail, Tombstone,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
+from tcw.store.checkouts import (
+    checkout_root, provisioned_root as provisioned_store_root,
+)
 from tcw.store.project import FsProjectRegistry, validate_project_id, worktree_anchors
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
@@ -2644,41 +2647,6 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 STORE_LAYOUT = ("inbox", *WORK_STATUSES)
 
 
-def _cache_root() -> Path:
-    """Where working copies land when a declaration names no `checkout`.
-
-    XDG, so it is outside every checkout and survives between sessions on one
-    machine. Read from the environment on each call rather than at import: a
-    test — and a user's shell — may set it after this module loads.
-    """
-    base = os.environ.get("XDG_CACHE_HOME") or "~/.cache"
-    return Path(base).expanduser() / "tcw" / "stores"
-
-
-def _cache_key(declaration: RepositoryDeclaration) -> str:
-    """A directory name for one (url, ref) pair: readable, then unambiguous.
-
-    The readable half is the tail of the URL, so a user browsing the cache can
-    tell whose repository a directory holds. The hash is what actually keeps two
-    declarations apart, because the readable half is lossy by design.
-
-    Keyed on url *and* ref: two projects naming the same repository at the same
-    ref should share one working copy, and two refs of it must not fight over
-    one checkout.
-    """
-    cleaned = declaration.url.strip().rstrip("/")
-    if cleaned.endswith(".git"):
-        cleaned = cleaned[:-4]
-    tokens = [token.rpartition("@")[2]                 # drop any `git@` user part
-              for token in re.split(r"[/:]", cleaned) if token]
-    slug = "-".join(re.sub(r"[^A-Za-z0-9._-]+", "-", token).strip("-.")
-                    for token in tokens[-3:])
-    slug = (slug.strip("-").lower() or "store")[:60]
-    digest = hashlib.sha256(
-        f"{declaration.url}\n{declaration.ref or ''}".encode("utf-8")).hexdigest()[:12]
-    return f"{slug}-{digest}"
-
-
 def _git_subcommand(argv: list[str]) -> str:
     """The verb in a git argv, for an error message.
 
@@ -2718,23 +2686,6 @@ def _normalize_remote(url: str) -> str:
     see `_require_declared_checkout` for why this stays deliberately literal."""
     cleaned = (url or "").strip().rstrip("/")
     return cleaned[:-4] if cleaned.endswith(".git") else cleaned
-
-
-def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
-    """The working copy's root for `declaration` — the declared `checkout`, or a
-    per-machine cache directory. `~` expands; a relative path is the node's."""
-    if declaration.checkout:
-        value = Path(declaration.checkout).expanduser()
-        return value if value.is_absolute() else (node_root / value)
-    return _cache_root() / _cache_key(declaration)
-
-
-def provisioned_store_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
-    """Where a provisioned store *would* live. Pure: computes a path, probes
-    nothing. `FsWorkStore.open` and the provisioner share it, so they can never
-    disagree about where a declared store is."""
-    root = checkout_root(node_root, declaration)
-    return (root / declaration.path) if declaration.path else root
 
 
 def _is_store_layout(root: Path, component: str) -> bool:
