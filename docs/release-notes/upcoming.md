@@ -45,3 +45,20 @@ Those relationships now pass through. `tcw work escalate` reaches the nearest
 project that actually keeps a board, and `tcw work nodes` tells you when your
 parent is one of these grouping projects instead of calling you the top of the
 graph.
+
+## Choose what happens to finished work
+
+Until now a completed or discarded item was left on your disk and kept out of
+git, which meant it never reached anybody else — a fresh clone of a project has
+no finished work in it at all.
+
+You can now say what you want instead, per status, in `tcw-config.yaml`. Leave it
+alone and nothing changes. Ask for finished work to be deleted and TCW commits
+the item first and removes it second, so the documents stay in the repository's
+history and `tcw work show` tells you which commit to fetch them from. Nothing is
+ever deleted unless you asked for it, and a typo in the setting is reported
+rather than treated as a yes.
+
+One thing to know before turning it on: it cannot be combined with the ignore
+rules that scaffolding writes, because git would remove the item before it was
+ever recorded. TCW refuses that combination and tells you which rules to drop.

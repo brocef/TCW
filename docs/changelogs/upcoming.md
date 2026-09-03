@@ -67,3 +67,25 @@ category.
   is the root.
 - `parent_node()` is unchanged and still means the direct parent that keeps a
   board.
+
+## Added (resolved-item retention)
+
+- **`work.retain`** — a mapping of resolved status to boolean, parsed by
+  `parse_retention`. Defaults every status to `True`. Unlike the repository
+  parser it does **not** fail closed to "nothing declared": a malformed setting
+  returns the safe value *and* a problem, which `tcw validate` surfaces.
+- **Auto-delete writes two commits.** `FsWorkStore.delete_resolved` removes the
+  folder and records the *previous* commit as the tombstone's `location` — the
+  record points back one commit rather than at itself, since a SHA cannot
+  contain itself. Re-runnable, and treats an already-absent folder as done.
+- **`Tombstone.location`** is a new opaque field, absent on every existing
+  record. `FsWorkStore.describe_location` resolves it before display, so a
+  handle that no longer exists is reported rather than printed.
+- **The interlock**: a resolving transition with `retain: false` into a
+  gitignored folder is refused before the move, naming the rules to remove.
+- **`tcw work show <slug>`** answers from the graveyard when the item is gone.
+- `tcw work init` writes no ignore rules for a status named in `retain`;
+  `resolved_ignore_rules(statuses=…)` takes the subset.
+- `WorkStore.transition` returns the settled item, or the moved item where
+  retention deleted it — re-reading would report it missing, which is true of
+  the store and false of the transition.

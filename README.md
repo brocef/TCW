@@ -190,13 +190,53 @@ mirror — `tcw taxonomy init`, `tcw capabilities init`, `tcw work init` —
 identical to `tcw init --id <project-id> <component>`. Existing configured nodes
 may omit `--id`; legacy ID-less markers use it once to backfill their identity.
 
-Scaffolding `work` also adds `.gitignore` rules for `docs/work/completed/` and
-`docs/work/discarded/`, keeping each folder's `.gitkeep` tracked. Resolved items
-therefore stay on your disk and in the history that tracked them while they were
-live, without piling up in the tree forever. Delete the rules to track resolved
-work instead; on a node that predates them, re-run `tcw work init` to add them
-and `git rm -r --cached docs/work/completed docs/work/discarded` to drop what git
-already tracks.
+### What happens to resolved work
+
+Three arrangements, and a project picks one per resolved status.
+
+**Gitignored** is what scaffolding gives you and what every existing project
+has: `tcw work init` writes `.gitignore` rules for `docs/work/completed/` and
+`docs/work/discarded/`, keeping each folder's `.gitkeep` tracked. A resolved item
+is untracked and left on disk, so it stays with the person who resolved it —
+and, worth knowing, reaches nobody else. A fresh clone has no resolved items at
+all.
+
+**Retained** tracks them: delete the rules, and `git rm -r --cached
+docs/work/completed docs/work/discarded` to drop what git already has.
+
+**Auto-deleted** removes the folder and keeps the content in history:
+
+```yaml
+work:
+    retain:
+        completed: false     # default: true, for both resolved statuses
+        discarded: false
+```
+
+The resolving transition then writes **two commits** — the item lands in its
+resolved folder and is committed, then the folder is removed — and the
+graveyard entry records the first commit, so `tcw work show <slug>` on a
+resolved item reports where its documents can still be fetched from. Nothing is
+deleted unless you ask: the default retains everything, and a malformed
+`retain` reads as the default and is reported by `tcw validate` rather than
+quietly becoming a deletion.
+
+**Auto-delete and the ignore rules cannot coexist**, and TCW refuses the
+combination before anything moves. Git untracks rather than moves a path into an
+ignored folder, so the first commit would record a removal and hold no item —
+leaving the record pointing at a commit that never contained anything, and no
+copy anywhere. Removing the rules is a precondition, not a companion change. Once
+a status is named in `retain`, `tcw work init` stops writing rules for it.
+
+Adopting auto-delete on an older board wants one more step first: the graveyard
+is what keeps a deleted slug from being reissued, and a board that predates it
+has none. `tcw work tombstone add <slug>` backfills the ones already resolved.
+
+A history that gets rewritten takes the content with it. A squash-merge or a
+shallow clone can leave a record whose commit no longer resolves — `tcw work
+show` says so rather than printing a dead pointer, but it cannot get the content
+back. That is the trade auto-delete makes, and it is why the default does not
+make it for you.
 
 To keep a project's work in another Git repository while preserving its own ID
 and lifecycle configuration, set `work.path` in its `tcw-config.yaml` or pass

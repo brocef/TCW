@@ -1,3 +1,25 @@
+As a user, I decide what becomes of a work item once it is resolved, per resolved
+status, and there are three answers.
+
+**Gitignored** — the default arrangement, and the one described below: the item
+stays on disk and out of the repository. Worth knowing what that costs: it stays
+on *my* disk, so nobody else's clone has it. **Retained** — I delete the ignore
+rules and the items are tracked like anything else. **Auto-deleted** — I set
+`work.retain.<status>: false` and TCW commits the item into its resolved folder,
+then removes it in a second commit, so my tree stays clean and the documents are
+in the history where any clone can fetch them; `tcw work show` on such an item
+tells me which commit, and says so plainly if that commit no longer exists here.
+
+Nothing is deleted unless I ask. The default retains, and a malformed `retain`
+reads as the default and is reported by `tcw validate` rather than quietly
+becoming a deletion. Auto-delete and the ignore rules cannot both apply to one
+status — git would untrack the item before it was ever committed, leaving no copy
+anywhere — so TCW refuses that combination before anything moves and names the
+rules to remove. Once I name a status in `retain`, scaffolding stops writing
+rules for it.
+
+The rest of this describes the gitignored arrangement in detail.
+
 As a user, I keep my resolved work items on disk but out of the repository, by
 gitignoring the status folders they land in. The record stays useful locally
 while the tracked tree carries only work that is still live — which matters for

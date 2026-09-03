@@ -13,7 +13,7 @@ explicitly, and TCW warns me (without blocking) if the item declared
 capabilities I should mark `Omitted`. A discarded item counts as resolved: it
 stops blocking whatever it blocked, and it lets its parent epic close.
 
-TCW commits the status move itself, scoped to the item's own folders so unrelated edits in my working tree are never swept in. I turn that off with `work.auto-commit-transitions: false` in `tcw-config.yaml`, and `work.trunk-branch` adds an advisory warning when I transition from some other branch.
+TCW commits the status move itself, scoped to the item's own folders so unrelated edits in my working tree are never swept in. Where `work.retain` says this status is not kept, that is two commits rather than one — the item is committed where it landed, then removed — so the documents are in the history even though the folder is gone (see [what happens to resolved work](tcw://C/work/keep-resolved-work-out-of-git)). I turn that off with `work.auto-commit-transitions: false` in `tcw-config.yaml`, and `work.trunk-branch` adds an advisory warning when I transition from some other branch.
 
 Discarding records the item's slug exactly as completing does, carrying the
 resolution I gave, so references to an abandoned item resolve rather than

@@ -20,6 +20,17 @@ produces a transition commit that _removes_ the item from git and leaves the
 files on disk. Nothing else changes: the item still moves, still lists, still
 reads. A node whose `.gitignore` lacks those rules gets a plain tracked rename.
 
+**`work.retain` decides whether the item survives the transition.** Default true
+for both resolved statuses, so nothing changes unless a node says otherwise.
+Where a status is set `false`, a resolving transition writes *two* commits — the
+item lands in its resolved folder and is committed, then the folder is removed —
+and the graveyard entry records the first commit, so `tcw work show <slug>` on a
+deleted item still names where its documents can be fetched from. This combination
+is refused while the destination is gitignored, because the first commit would
+then hold a removal rather than the item; the message names the rules to drop.
+Backfill the graveyard with `tcw work tombstone add` before adopting it on an
+older board, or a deleted slug can be reissued.
+
 Transitions are **never delegated to a subagent**. They carry the gates, and
 those are evaluated once, by the session holding the user relationship.
 

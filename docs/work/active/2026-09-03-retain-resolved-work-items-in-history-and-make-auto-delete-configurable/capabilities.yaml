@@ -1,2 +1,4 @@
 changed:
     - work/keep-resolved-work-out-of-git
+    - work/complete-a-work-item
+    - work/discard-a-work-item
