@@ -231,3 +231,27 @@ def test_worktree_anchors_survives_missing_git(tmp_path, monkeypatch):
     nowhere = tmp_path / "nowhere"
     nowhere.mkdir()
     assert worktree_anchors(nowhere) is None
+
+
+def test_a_fresh_registry_reports_nothing_unreachable(tmp_path):
+    root = tmp_path / "root"
+    child = tmp_path / "child"
+    reciprocal(root, "root-project", child, "child-project")
+    registry = FsProjectRegistry.open(root)
+    assert registry.unreachable() == []
+    registry.require_valid()
+
+
+def test_a_malformed_target_is_an_error_not_an_unreachable_edge(tmp_path):
+    root = tmp_path / "root"
+    child = tmp_path / "child"
+    config(
+        root,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: ../child\n",
+    )
+    config(child, "id: child-project\nid: duplicate\n")
+    registry = FsProjectRegistry.open(root)
+    assert registry.unreachable() == []
+    with pytest.raises(ValueError):
+        registry.require_valid()

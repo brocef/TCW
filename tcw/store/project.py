@@ -10,7 +10,9 @@ from typing import Any
 
 import yaml
 
-from tcw.store.base import Project, ProjectRegistry, WORK_STATUSES
+from tcw.store.base import (
+    Project, ProjectRegistry, UnreachableProject, WORK_STATUSES,
+)
 
 SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -111,6 +113,7 @@ class FsProjectRegistry(ProjectRegistry):
         self._cache: dict[Path, _Config] = {}
         self._by_id: dict[str, _Config] = {}
         self._problems: list[str] = []
+        self._unreachable: list[UnreachableProject] = []
         self._visiting: set[Path] = set()
         self._loaded = False
         self._current_path = self.node_root / SENTINEL
@@ -183,6 +186,9 @@ class FsProjectRegistry(ProjectRegistry):
 
     def check(self) -> list[str]:
         return list(self._problems)
+
+    def unreachable(self) -> list[UnreachableProject]:
+        return list(self._unreachable)
 
     def require_valid(self) -> "FsProjectRegistry":
         if self._problems:
@@ -420,3 +426,29 @@ class FsProjectRegistry(ProjectRegistry):
         rendered = f"{path}: {message}"
         if rendered not in self._problems:
             self._problems.append(rendered)
+
+    def _unreachable_edge(self, config_path: Path, project_id: str | None,
+                          locator: Path) -> None:
+        """Record a declared project that is not here, rather than a problem.
+
+        `project_id` is the key the declaring config used. It can be None only
+        for the current node's own config, which is never an edge — the guard is
+        here so a future caller cannot record a nameless entry that no message
+        could ever render.
+        """
+        if not project_id:
+            return
+        entry = UnreachableProject(id=project_id, locator=locator,
+                                   declared_in=config_path)
+        if entry not in self._unreachable:
+            self._unreachable.append(entry)
+
+    def unreachable_project(self, project_id: str) -> UnreachableProject | None:
+        """The recorded entry for `project_id`, or None.
+
+        The lookup every "declared but not here" message needs: a caller holding
+        an id that `get()` answered None for asks this before deciding which
+        message to print.
+        """
+        self._load_graph()
+        return next((u for u in self._unreachable if u.id == project_id), None)

@@ -96,6 +96,27 @@ class Project:
     locator: Any
 
 
+@dataclass(frozen=True)
+class UnreachableProject:
+    """A connected project that is declared here but not available here.
+
+    **Not a configuration error.** The declaration is well formed and names a
+    project this store simply cannot reach from this machine — a repository that
+    was never cloned, a tracker project the caller has no access to. Telling that
+    apart from a malformed declaration is the whole reason this type exists:
+    fail-closed is right for a declaration that is wrong, and wrong for one that
+    is merely unanswerable here.
+
+    ``locator`` is opaque exactly as ``Project.locator`` is, and ``declared_in``
+    names the configuration that carried the declaration. Both are presentation
+    only — nothing above the adapter may parse them.
+    """
+
+    id: str
+    locator: Any
+    declared_in: Any = ""
+
+
 class ProjectRegistry(ABC):
     """Storage-neutral connected-project graph."""
 
@@ -126,7 +147,21 @@ class ProjectRegistry(ABC):
 
     @abstractmethod
     def check(self) -> list[str]:
-        """Return graph/configuration problems; empty means valid."""
+        """Return graph/configuration problems; empty means valid.
+
+        Problems only. A project that is declared but not reachable here is not
+        one — see ``unreachable``.
+        """
+
+    @abstractmethod
+    def unreachable(self) -> list["UnreachableProject"]:
+        """Return the declared projects this store cannot reach from here.
+
+        Deliberately separate from ``check``: these are not defects to fix, and a
+        caller that treats them as such refuses to run in exactly the checkouts
+        this distinction exists to serve. Callers that need the graph complete
+        report them; callers that do not, ignore them.
+        """
 
 
 def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
