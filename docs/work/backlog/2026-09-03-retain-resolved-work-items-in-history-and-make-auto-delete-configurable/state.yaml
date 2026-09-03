@@ -1,0 +1,10 @@
+slug: 2026-09-03-retain-resolved-work-items-in-history-and-make-auto-delete-configurable
+title: Retain resolved work items in history, and make auto-delete configurable
+created: '2026-09-03'
+resolution: null
+priority: 40
+effort: medium
+complexity: medium
+tags:
+- work
+- cli

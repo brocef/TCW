@@ -1,0 +1,13 @@
+slug: 2026-09-03-an-auto-delete-step-with-hooks-so-a-consumer-can-archive-an-item-before-it-is-removed
+title: An auto-delete step with hooks, so a consumer can archive an item before it
+  is removed
+created: '2026-09-03'
+resolution: null
+priority: 35
+effort: medium
+complexity: medium
+tags:
+- work
+- cli
+blocked_by:
+- slug: 2026-09-03-retain-resolved-work-items-in-history-and-make-auto-delete-configurable
