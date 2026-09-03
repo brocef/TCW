@@ -45,7 +45,8 @@ from tcw.store.base import (
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
-    parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
+    parse_connected_entry, parse_repository_declaration, ProvisionResult,
+    RepositoryDeclaration,
     PublicationError, StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
     TaxonomyStore, Term, TermDetail, Tombstone,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
@@ -2694,6 +2695,12 @@ def _normalize_remote(url: str) -> str:
     return cleaned[:-4] if cleaned.endswith(".git") else cleaned
 
 
+# What a *node* is, for the provisioner: a directory carrying a sentinel. Not a
+# component, and deliberately not spelled as one anywhere it could be mistaken
+# for a store — `PROVISION_COMPONENTS` never contains it.
+NODE_TARGET = "node"
+
+
 def _is_store_layout(root: Path, component: str) -> bool:
     """Whether `root` holds `component`'s store, as far as the filesystem can say.
 
@@ -2720,6 +2727,12 @@ def _is_store_layout(root: Path, component: str) -> bool:
     """
     if not root.is_dir():
         return False
+    if component == NODE_TARGET:
+        # A node names one file and it is the same file everywhere. Stronger
+        # than a tree store's "the directory is there" and weaker than a work
+        # store's six folders, which is exactly how much a node can honestly
+        # claim.
+        return (root / SENTINEL).is_file()
     if component != "work":
         return True
     return all((root / name).is_dir() for name in STORE_LAYOUT)
@@ -2835,6 +2848,40 @@ def declared_repository(
                                         f"{component}.repository")
 
 
+def declared_connected_projects(
+    node_root: Path,
+) -> tuple[list[tuple[str, RepositoryDeclaration]], list[str]]:
+    """This node's connected projects that declare a repository, with problems.
+
+    Reads the config directly, exactly as `declared_repository` does and for the
+    same reason: it must answer for a graph that cannot be fully loaded, which is
+    the only situation in which anyone asks.
+
+    Returns every declared entry, provisioned or not — the caller decides what to
+    do about one that is already here, because "already available" is a result
+    worth printing rather than a silence.
+    """
+    config = load_yaml(node_root / SENTINEL, unique=True)
+    connected = config.get("connected-projects") if isinstance(config, dict) else None
+    if not isinstance(connected, dict):
+        return [], []
+    declared: list[tuple[str, RepositoryDeclaration]] = []
+    problems: list[str] = []
+    for label in ("parent", "children"):
+        relation = connected.get(label)
+        if not isinstance(relation, dict):
+            continue
+        for project_id, raw in relation.items():
+            if not isinstance(project_id, str):
+                continue
+            entry, entry_problems = parse_connected_entry(
+                project_id, raw, f"connected-projects.{label}.{project_id}")
+            problems.extend(entry_problems)
+            if entry is not None and entry.repository is not None:
+                declared.append((entry.id, entry.repository))
+    return declared, problems
+
+
 class FsStoreProvisioner(StoreProvisioner):
     """A declared store, realized as a git checkout.
 
@@ -2856,7 +2903,8 @@ class FsStoreProvisioner(StoreProvisioner):
             return f"{self.component}: no home repository declared"
         d = self.declaration
         at = f" at {d.ref}" if d.ref else ""
-        within = f", store at {d.path}" if d.path else ""
+        thing = "node" if self.component == NODE_TARGET else "store"
+        within = f", {thing} at {d.path}" if d.path else ""
         return (f"{self.component}: {d.url}{at}{within} → "
                 f"{provisioned_store_root(self.node_root, d)}")
 
@@ -2922,6 +2970,10 @@ class FsStoreProvisioner(StoreProvisioner):
         if _is_store_layout(root, self.component):
             return
         where = self.declaration.path or "."
+        if self.component == NODE_TARGET:
+            raise ValueError(
+                f"connected-projects: {self.declaration.url} has no tcw node at "
+                f"'{where}': no {SENTINEL} there")
         prefix = (f"{self.component}.repository: {self.declaration.url} has no "
                   f"{self.component} store at '{where}'")
         if not root.is_dir():

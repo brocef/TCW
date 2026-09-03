@@ -1355,3 +1355,139 @@ def test_a_usable_local_tree_still_masks_an_unused_malformed_declaration(
     monkeypatch.chdir(code)
 
     assert main([component, "list"]) == 0
+
+
+# ── provisioning a connected project ─────────────────────────────────────────
+
+
+def _node_repo(path: Path, project_id: str, connected: dict | None = None) -> Path:
+    """A committed git repository holding one tcw node."""
+    _repo(path)
+    init(["work"], path, project_id)
+    if connected:
+        config_path = path / "tcw-config.yaml"
+        config = yaml.safe_load(config_path.read_text()) or {}
+        config["connected-projects"] = connected
+        config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-qm", "node"], check=True)
+    return path
+
+
+def test_a_declared_connected_project_is_obtained(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"parent": {"here-project": "../here"}})
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"path": "../away-not-here",
+                                       "repository": {"url": str(away), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert str(away) in planned and "would obtain" in planned
+
+    assert main(["provision"]) == 0
+    assert "obtained" in capsys.readouterr().out
+
+    from tcw.store.project import FsProjectRegistry
+    registry = FsProjectRegistry.open(here)
+    registry.require_valid()
+    assert [c.id for c in registry.children()] == ["away-project"]
+
+    assert main(["provision"]) == 0
+    assert "already available" in capsys.readouterr().out
+
+
+def test_provisioning_follows_a_declaration_inside_an_obtained_node(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    c = _node_repo(tmp_path / "c", "c-project",
+                   {"parent": {"b-project": "../b"}})
+    b = _node_repo(
+        tmp_path / "b", "b-project",
+        {"parent": {"a-project": "../a"},
+         "children": {"c-project": {"path": "../c-not-here",
+                                    "repository": {"url": str(c), "ref": "main"}}}},
+    )
+    a = _node_repo(
+        tmp_path / "a", "a-project",
+        {"children": {"b-project": {"path": "../b-not-here",
+                                    "repository": {"url": str(b), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(a)
+
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert str(b) in planned
+    assert "cannot be listed until it is obtained" in planned
+    # `c` is two hops away, behind a node this run has not fetched.
+    assert "c-project" not in planned
+
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "b-project" in out and "c-project" in out
+
+
+def test_two_entries_naming_one_repository_share_a_working_copy(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project")
+    declaration = {"url": str(away), "ref": "main"}
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"parent": {"away-project": {"path": "../away-not-here",
+                                     "repository": dict(declaration)}},
+         "children": {"away-project": {"path": "../away-not-here",
+                                       "repository": dict(declaration)}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    cache = tmp_path / "cache" / "tcw" / "stores"
+    assert len(list(cache.iterdir())) == 1
+
+
+def test_a_repository_with_no_node_at_the_declared_path_is_refused(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _repo(tmp_path / "away")
+    (away / "README.md").write_text("no node here\n")
+    subprocess.run(["git", "-C", str(away), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(away), "commit", "-qm", "init"], check=True)
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"path": "../away-not-here",
+                                       "repository": {"url": str(away), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 1
+    assert "has no tcw node at" in capsys.readouterr().err
+    assert not (tmp_path / "cache" / "tcw" / "stores").exists() or not list(
+        (tmp_path / "cache" / "tcw" / "stores").iterdir())
+
+
+def test_an_occupied_checkout_is_refused_before_any_fetch(tmp_path, monkeypatch, capsys):
+    away = _node_repo(tmp_path / "away", "away-project")
+    squatter = _repo(tmp_path / "squatter")
+    (squatter / "f").write_text("x")
+    subprocess.run(["git", "-C", str(squatter), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(squatter), "commit", "-qm", "init"], check=True)
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {
+            "path": "../away-not-here",
+            "repository": {"url": str(away), "ref": "main",
+                           "checkout": str(squatter)}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 1
+    assert (squatter / "f").read_text() == "x"
+
+
+def test_a_malformed_connected_declaration_refuses_and_names_the_line(tmp_path, monkeypatch, capsys):
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"repository": {"ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 1
+    assert "url: expected a non-empty string" in capsys.readouterr().err

@@ -16,6 +16,7 @@ from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
     FsWorkStore, declared_repository, find_node_root, git_root, init,
+    provisioned_store_root,
 )
 from tcw.store.project import FsProjectRegistry
 import yaml
@@ -119,9 +120,17 @@ def run_provision(components: list[str], *, refresh: bool = False,
             print(f"tcw provision: {problem}", file=sys.stderr)
         return 1
 
-    if not declared:
-        print(f"Nothing to provision: no component declares a home repository "
-              f"in {SENTINEL}.")
+    from tcw.store.fs import declared_connected_projects
+    declared_nodes, node_problems = declared_connected_projects(node_root)
+    # Same rule as a component's: a declaration that is present and wrong
+    # refuses, rather than reading as "nothing declared" and reporting success.
+    if node_problems:
+        for problem in node_problems:
+            print(f"tcw provision: {SENTINEL}: {problem}", file=sys.stderr)
+        return 1
+    if not declared and not declared_nodes:
+        print(f"Nothing to provision: no component or connected project declares "
+              f"a home repository in {SENTINEL}.")
         return 0
 
     failed = False
@@ -149,7 +158,71 @@ def run_provision(components: list[str], *, refresh: bool = False,
             failed = True
             continue
         print(f"  {result.detail}")
+    if _provision_nodes(node_root, refresh=refresh, dry_run=dry_run):
+        failed = True
     return 1 if failed else 0
+
+
+def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
+    """Obtain the connected projects this node declares, and the ones they
+    declare. Returns True if anything failed.
+
+    **Transitive on purpose, and this is the one place a URL the user did not
+    write can be contacted.** A node obtained here may declare others, and that
+    is what lets declarations stay where the knowledge is: a repository names
+    only its own edges, and never has to know about a project two hops away.
+    The safeguard is not to refuse it but to make it visible — every remote is
+    printed before it is contacted, transitive ones included, and `--dry-run`
+    walks the whole queue without touching the network. A consent prompt would
+    be worse than useless: `tcw` is non-interactive by contract, and every
+    script calling `tcw provision` would hang on it.
+
+    The walk terminates on the resolved checkout path, which is keyed on
+    (url, ref), so a cycle among declarations revisits nothing and two entries
+    naming one repository share one working copy.
+    """
+    from tcw.store.fs import NODE_TARGET, declared_connected_projects
+
+    failed = False
+    seen: set[Path] = set()
+    queue: list[tuple[Path, str, object]] = []
+
+    def enqueue(root: Path) -> None:
+        declared, problems = declared_connected_projects(root)
+        for problem in problems:
+            print(f"tcw provision: {root / SENTINEL}: {problem}", file=sys.stderr)
+        for project_id, declaration in declared:
+            queue.append((root, project_id, declaration))
+
+    enqueue(node_root)
+    while queue:
+        source, project_id, declaration = queue.pop(0)
+        target = provisioned_store_root(source, declaration)
+        if target in seen:
+            continue
+        seen.add(target)
+        provisioner = FsStoreProvisioner(source, NODE_TARGET, declaration)
+        if provisioner.is_available() and not refresh:
+            print(f"  {project_id}: already available at {target}")
+            enqueue(target)
+            continue
+        print(f"→ {project_id}: {provisioner.describe().split(': ', 1)[1]}")
+        try:
+            result = provisioner.ensure_available(refresh=refresh, dry_run=dry_run)
+        except (ValueError, OSError) as error:
+            print(f"tcw provision: {error}", file=sys.stderr)
+            failed = True
+            continue
+        print(f"  {project_id}: {result.detail.split(': ', 1)[1]}")
+        if dry_run:
+            # Its own declarations live in a config we have not fetched, so
+            # saying nothing here would imply there are none. Say what is
+            # actually true instead.
+            print(f"  {project_id}: any projects it declares cannot be listed "
+                  f"until it is obtained")
+            continue
+        enqueue(target)
+    return failed
 
 
 def _cmd_provision(args: argparse.Namespace) -> int:
