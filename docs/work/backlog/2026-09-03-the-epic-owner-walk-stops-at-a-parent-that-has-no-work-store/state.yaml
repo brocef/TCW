@@ -1,0 +1,10 @@
+slug: 2026-09-03-the-epic-owner-walk-stops-at-a-parent-that-has-no-work-store
+title: The epic owner walk stops at a parent that has no work store
+created: '2026-09-03'
+resolution: null
+priority: 30
+effort: low
+complexity: medium
+tags:
+- work
+- cli
