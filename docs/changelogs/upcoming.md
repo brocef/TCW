@@ -281,3 +281,41 @@ the better description, the code changed to match it.
   fallback itself is unchanged and still reports a declared store that will not
   open.
 
+### A removal that starts is a removal that happened
+
+- **`_auto_delete` asks the store whether the folder went**, instead of
+  inferring it from the exception. A refused removal commit raises
+  `TransitionCommitError` *after* the `rmtree`, and the `except _ERRORS` branch
+  answered "still there" — so the completion line printed a path into
+  `docs/work/completed/` for a folder that no longer existed. The separate
+  `PublicationError` branch was the same question asked once; now it is asked
+  for every failure.
+- **`FsWorkStore.pending_removal(slug)`** — the sibling of `pending_deletion`,
+  for the other side of the boundary. `tcw work delete` short-circuited on the
+  tombstone's `location`, which is written *before* the removal is committed, so
+  it reported "already removed" and exited 0 while `git status` still showed an
+  unstaged deletion. The predicate is now "the item is gone, a record exists,
+  and either it carries no location or HEAD still holds the item".
+- **Resuming a removal may commit its own graveyard write.** The first attempt
+  writes the tombstone and then fails to commit it, so
+  `_require_writable_graveyard` refused the retry over dirt the first attempt
+  had created — leaving the state unfinishable through the very command that
+  exists to finish it. The guard's subject is a hand edit swept into a
+  transition commit; when resuming, the sweep is the point, and the graveyard
+  lock is held so nothing is mid-write.
+- **A tombstone no longer records a commit that never held the item.**
+  `_retained_location` fell back to `rev-parse HEAD` when no commit held the
+  item — which is exactly when `_require_retrievable` is skipped, because the
+  folder is already gone. It now records nothing, and the CLI says "no commit
+  held its documents" rather than naming one.
+- **`describe_location` takes the slug and checks it.** It probed
+  `ls-tree <location> -- <self.root.name>` — `work`, against a repository where
+  the store sits at `docs/work` — and `git ls-tree <sha> -- <anything>` exits 0
+  with empty output regardless, so the only detectable case was a missing commit
+  object. A commit this clone has and which never held the item is now reported
+  as unresolvable, which is the case `Tombstone` says must not fail silently.
+- **`delete_resolved` keeps the item's own resolution** when the graveyard has
+  no record — the state of a board adopting retention before backfilling.
+  Writing an empty resolution over a real one is the overwrite
+  `record_tombstone` refuses by name.
+

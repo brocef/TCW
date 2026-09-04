@@ -147,3 +147,22 @@ other, it has no board of its own — and `tcw validate` used to fail it for not
 having one, naming a folder you never asked for. It now passes. A project that
 *does* name a board and cannot open it still tells you why.
 
+## A deletion that goes wrong now tells you the truth about it
+
+If TCW removed a finished item and then could not commit the removal — a commit
+hook, a lock, an unset git identity — it used to report the item as still on
+disk, print a path to a folder that was gone, and then refuse to finish the job:
+`tcw work delete` said "already removed" and exited successfully while the
+deletion sat unstaged in your working tree. It now finishes the removal, and says
+so only when there is genuinely nothing left to do.
+
+Two things a finished item's record could get wrong are also fixed. If no commit
+ever held the item — because your project ignores the folder it was in — TCW
+recorded the latest commit anyway, which does not contain it; it now records
+nothing and says so. And `tcw work show` now checks that the commit it names
+really holds the item, rather than only that the commit exists, so a rewritten
+history is reported instead of printed as a working pointer.
+
+Finally, deleting an item whose resolution TCW had not recorded before keeps the
+item's own resolution instead of blanking it.
+

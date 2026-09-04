@@ -11,7 +11,7 @@ from tcw.store.base import (
     DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
-    PublicationError, StoreNotProvisioned, TransitionCommitError, WorkItem,
+    StoreNotProvisioned, TransitionCommitError, WorkItem,
     normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
 )
@@ -534,10 +534,11 @@ def _show(args: argparse.Namespace) -> int:
             if grave.resolved:
                 print(f"resolved:   {grave.resolved}")
             if grave.location:
-                # Resolved before it is shown. The whole reason a locator was
-                # once refused here is that a pointer must not fail silently, so
-                # one that no longer resolves says so instead of being printed.
-                print(f"content:    {st.describe_location(grave.location)}")
+                # Resolved before it is shown, *against this slug*. The whole
+                # reason a locator was once refused here is that a pointer must
+                # not fail silently — which includes a commit this clone has and
+                # which never held the item.
+                print(f"content:    {st.describe_location(grave.location, bare)}")
             return 0
         print(f"tcw work show: no such work item: {args.slug}", file=sys.stderr)
         return 1
@@ -610,18 +611,18 @@ def _auto_delete(st, slug: str, status: str, resolution: str) -> "tuple[int, boo
         return 1, False
     try:
         location = st.delete_resolved(slug, status)
-    except PublicationError as e:
-        # The removal and its commit landed; only the push did not. Reported as
-        # a failure, because a remote still holding a deleted item is exactly
-        # the divergence publication exists to prevent — but *not* as a removal
-        # that did not happen, which is what sent the caller on to describe a
-        # folder that is gone.
-        print(f"tcw work: {e}", file=sys.stderr)
-        return 1, True
     except _ERRORS as e:
+        # Whether the folder went is a question for the store, not for the
+        # exception type. A push that failed, a removal commit a hook refused,
+        # and a `pre` guard that refused before anything moved all arrive here,
+        # and the first two leave the item gone. Inferring "still there" from a
+        # non-zero result is what sent the caller on to print a location for a
+        # folder that no longer exists.
         print(f"tcw work: {e}", file=sys.stderr)
-        return 1, False
-    print(f"deleted {slug}; its documents remain in commit {location}")
+        return 1, st.get(slug) is None
+    print(f"deleted {slug}; " + (
+        f"its documents remain in commit {location}" if location else
+        "no commit held its documents, so none is recorded"))
     post_err = run_post(policy, "auto-delete", st.node_root, slug, status, item,
                         item_path=item_path, resolution=resolution)
     return _post_result(post_err, "auto-delete", slug), True
@@ -651,9 +652,9 @@ def _delete(args: argparse.Namespace) -> int:
             print(f"tcw work delete: no such work item: {args.slug}",
                   file=sys.stderr)
             return 1
-        if grave.location:
-            print(f"{bare} is already removed; its documents remain in "
-                  f"{st.describe_location(grave.location)}")
+        if not st.pending_removal(bare):
+            print(f"{bare} is already removed; its documents are "
+                  f"{st.describe_location(grave.location, bare)}")
             return 0
         code, _ = _auto_delete(st, bare, "", grave.resolution)
         return code

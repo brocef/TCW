@@ -1,5 +1,6 @@
 """`work.retain` — what happens to an item once it is resolved."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -663,3 +664,144 @@ def test_a_transition_over_a_concurrently_removed_item_says_so(tmp_path):
     with pytest.raises(ValueError) as excinfo:
         store.transition(item.slug, "review")
     assert "no such work item" in str(excinfo.value)
+
+
+# ── a removal that started and did not finish ────────────────────────────────
+
+def _refuse_removal_commits(root: Path) -> None:
+    """A commit hook that rejects the removal commit and nothing else.
+
+    Any commit failure produces the same state — an `index.lock`, a missing
+    identity, a signing failure — so the hook is a stand-in for all of them.
+    """
+    hooks = root / ".git" / "hooks"
+    hooks.mkdir(parents=True, exist_ok=True)
+    hook = hooks / "commit-msg"
+    hook.write_text('#!/bin/sh\ngrep -q "tcw work: delete" "$1" && exit 1\nexit 0\n')
+    hook.chmod(0o755)
+
+
+def test_a_failed_removal_commit_is_reported_as_removed(tmp_path, monkeypatch,
+                                                        capsys):
+    """The folder is gone by the time the commit runs, so a commit failure is a
+    removal that happened — the same distinction the publication case needed,
+    and the reason it is now asked of the store instead of the exception."""
+    root = _node(tmp_path, retain={"completed": False})
+    _refuse_removal_commits(root)
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    captured = capsys.readouterr()
+    assert not (root / "docs" / "work" / "completed" / item.slug).exists()
+    assert f"completed {item.slug} (done)" in captured.out
+    assert "docs/work/completed" not in captured.out
+
+
+def test_delete_finishes_a_removal_whose_commit_failed(tmp_path, monkeypatch,
+                                                       capsys):
+    """`tcw work delete` short-circuited on the tombstone's location — which is
+    written *before* the removal is committed — so it reported success and left
+    the tree holding an unstaged deletion forever."""
+    root = _node(tmp_path, retain={"completed": False})
+    _refuse_removal_commits(root)
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    capsys.readouterr()
+    assert FsWorkStore.open(root).pending_removal(item.slug) is True
+    assert subprocess.run(["git", "-C", str(root), "status", "--porcelain",
+                           "--", "docs/work"],
+                          capture_output=True, text=True,
+                          check=True).stdout.strip() != ""
+
+    (root / ".git" / "hooks" / "commit-msg").unlink()
+    assert main(["work", "delete", item.slug]) == 0
+    assert FsWorkStore.open(root).pending_removal(item.slug) is False
+    assert subprocess.run(["git", "-C", str(root), "status", "--porcelain",
+                           "--", "docs/work"],
+                          capture_output=True, text=True,
+                          check=True).stdout.strip() == ""
+
+
+def test_a_finished_removal_is_still_reported_as_already_done(tmp_path,
+                                                              monkeypatch,
+                                                              capsys):
+    """The idempotent half the pending check must not cost."""
+    root = _node(tmp_path, retain={"completed": False})
+    slug = _resolve(root)
+    monkeypatch.chdir(root)
+    assert FsWorkStore.open(root).pending_removal(slug) is False
+    assert main(["work", "delete", slug]) == 0
+    out = capsys.readouterr().out
+    assert "already removed" in out
+    assert "last present in commit" in out
+
+
+def test_no_commit_holding_the_item_records_no_commit(tmp_path, monkeypatch,
+                                                      capsys):
+    """Recording HEAD named a commit that demonstrably does not contain the
+    item — the one thing a tombstone's handle must never do."""
+    root = _node(tmp_path)                      # default rules ignore completed/
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 0
+    # The folder is gone before the removal runs, so nothing can be refused over
+    # it and no commit ever held it.
+    shutil.rmtree(root / "docs" / "work" / "completed" / item.slug)
+    capsys.readouterr()
+
+    store = FsWorkStore.open(root)
+    assert store.delete_resolved(item.slug, "completed") == ""
+    assert FsWorkStore.open(root).tombstone(item.slug).location == ""
+    assert "not retained" in store.describe_location("", item.slug)
+
+
+def test_a_commit_that_does_not_hold_the_item_is_reported_unresolvable(
+        tmp_path, monkeypatch, capsys):
+    """The check probed `self.root.name` — `work`, against a repository where the
+    store is at `docs/work` — and `git ls-tree <sha> -- <anything>` exits 0
+    regardless, so the only detectable case was a missing commit object."""
+    root = _node(tmp_path, retain={"completed": False})
+    slug = _resolve(root)
+    scaffold = subprocess.run(
+        ["git", "-C", str(root), "rev-list", "--max-parents=0", "HEAD"],
+        capture_output=True, text=True, check=True).stdout.strip()
+    # A handle that resolves to a commit this clone has and which never held the
+    # item — what a squash- or rebase-merge leaves behind.
+    graveyard = root / "docs" / "work" / "graveyard.yaml"
+    record = yaml.safe_load(graveyard.read_text()) or {}
+    record[slug]["location"] = scaffold
+    graveyard.write_text(yaml.safe_dump(record, sort_keys=False))
+    monkeypatch.chdir(root)
+    assert main(["work", "show", slug]) == 0
+    out = capsys.readouterr().out
+    assert "does not contain the item" in out
+    assert "last present in commit" not in out
+
+
+def test_the_item_s_own_resolution_survives_an_empty_graveyard(tmp_path):
+    """`delete_resolved` read the resolution only from the graveyard, defaulting
+    to empty and today's date — the overwrite `record_tombstone` refuses by
+    name — on a board adopting retention before backfilling its records."""
+    root = _node(tmp_path, retain={"completed": False, "discarded": False})
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    store.complete(item.slug, "wontfix", [], force=True)
+    (root / "docs" / "work" / "graveyard.yaml").write_text("{}\n")
+    subprocess.run(["git", "-C", str(root), "commit", "-qam", "empty graveyard"],
+                   check=True)
+
+    FsWorkStore.open(root).delete_resolved(item.slug, "discarded")
+    grave = FsWorkStore.open(root).tombstone(item.slug)
+    assert grave.resolution == "wontfix"
+    assert grave.resolved

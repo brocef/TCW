@@ -4236,25 +4236,60 @@ class FsWorkStore(FsTreeStore, WorkStore):
         assert recorded is not None                # just written, above
         return recorded
 
-    def describe_location(self, location: str) -> str:
+    def describe_location(self, location: str, slug: str = "") -> str:
         """A tombstone's retrieval handle, rendered for a reader.
 
         Checked before it is shown. The rule this store inherited is that a
-        pointer must never fail *silently*; a handle that no longer resolves in
-        this clone — history rewritten, a shallow fetch — is reported as
-        unresolvable rather than printed as if it worked.
+        pointer must never fail *silently*; a handle that does not resolve — the
+        commit is not in this clone, or it is and does not contain the item — is
+        reported as unresolvable rather than printed as if it worked.
+
+        **`slug` is what makes the check real.** It used to probe
+        `ls-tree <location> -- <self.root.name>`, which was wrong twice over: the
+        pathspec is resolved against `store_git_root`, where the store sits at
+        `docs/work` rather than `work`, and `git ls-tree <sha> -- <anything>`
+        exits 0 with empty output regardless — so the only thing the check could
+        detect was a missing commit *object*. A commit that exists and never held
+        the item is the case `Tombstone`'s docstring says must not fail silently,
+        and it was the one case that always passed.
         """
+        if not location:
+            return "no commit — its documents were not retained"
         try:
-            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
-                           location, "--", str(self.root.name)],
-                          capture_output=True, text=True, check=False)
-            present = listed.returncode == 0
+            held = self._commit_holds(location, slug) if slug else None
+            resolved = _git(["git", "-C", str(self.store_git_root), "rev-parse",
+                             "--verify", "--quiet", f"{location}^{{commit}}"],
+                            capture_output=True, text=True,
+                            check=False).returncode == 0
         except Exception:
-            present = False
-        if present:
-            return f"last present in commit {location}"
-        return (f"recorded in commit {location}, which this clone does not have "
-                f"(history rewritten, or a shallow clone)")
+            held, resolved = None, False
+        if not resolved:
+            return (f"recorded in commit {location}, which this clone does not "
+                    f"have (history rewritten, or a shallow clone)")
+        if held is False:
+            return (f"recorded in commit {location}, which this clone has but "
+                    f"which does not contain the item (history rewritten)")
+        return f"last present in commit {location}"
+
+    def _commit_holds(self, location: str, slug: str) -> bool:
+        """Whether `location` has a tree for `slug` under either resolved status.
+
+        Asked of git rather than derived, for the same reason
+        `_committed_item_path` is: by the time anyone asks, the item is gone from
+        the store and its status with it.
+        """
+        for status in RESOLVED_STATUSES:
+            try:
+                rel = (self.root / status / slug).resolve().relative_to(
+                    self.store_git_root.resolve())
+            except ValueError:
+                continue
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
+                           location, "--", str(rel)],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode == 0 and listed.stdout.strip():
+                return True
+        return False
 
     def pending_deletion(self, slug: str) -> bool:
         """Whether `slug` is resolved, still present, and not to be retained.
@@ -4274,6 +4309,29 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if item is None or item.status not in RESOLVED_STATUSES:
             return False
         return not self.retention().get(item.status, True)
+
+    def pending_removal(self, slug: str) -> bool:
+        """Whether `slug`'s removal started and has not finished.
+
+        The sibling of `pending_deletion`, for the other side of the boundary:
+        that one asks whether an item still here should go, this one whether an
+        item already gone is fully recorded. The half-deleted state is real —
+        a `pre` binding that moves the item and then fails, a removal commit
+        that a hook or a lock refused — and `tcw work delete` exists to finish
+        it, so it needs a way to tell that state from a finished one. Reading
+        the tombstone's `location` alone could not: it is written *before* the
+        removal is committed.
+        """
+        if self._get_now(slug) is not None:
+            return False                    # still here — `pending_deletion`'s question
+        if self.tombstone(slug) is None:
+            return False                    # never existed here
+        if not self.tombstone(slug).location:
+            return True                     # removed, and nothing recorded yet
+        # HEAD still holding the item means the removal was never committed.
+        # After a successful removal commit it does not, so this answers False
+        # exactly when there is nothing left to do.
+        return self._committed_item_path(slug) is not None
 
     def _committed_item_path(self, slug: str, status: str = "") -> Path | None:
         """The store-repo-relative path HEAD holds for `slug`, or None.
@@ -4353,6 +4411,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and (committed is None or listed.stdout.strip()):
                 return existing.location
+        if committed is None:
+            # No commit holds the item — the removal is reaching a folder git
+            # never had, which `_require_retrievable` cannot refuse because
+            # there is no folder left to refuse over. Recording HEAD here named
+            # a commit that demonstrably does *not* contain the item, which is
+            # the one thing `Tombstone` says a handle must never do. An empty
+            # location is honest: the slug is still remembered, and nothing is
+            # claimed about retrieving it.
+            return ""
         head = _git(["git", "-C", str(self.store_git_root), "rev-parse", "HEAD"],
                     capture_output=True, text=True, check=False)
         if head.returncode != 0 or not head.stdout.strip():
@@ -4399,6 +4466,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             item = self._get_now(slug)
             if item is None and self.tombstone(slug) is None:
                 raise ValueError(f"no such work item: {slug}")
+            resuming = self.pending_removal(slug)
             status = status or (item.status if item is not None else "")
             committed = self._committed_item_path(slug, status)
             folder = self._find(slug)
@@ -4408,13 +4476,32 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # Before the removal, for the reason it exists: a graveyard that
             # cannot be safely rewritten must stop this, not surface after the
             # folder is already gone.
-            self._require_writable_graveyard(slug)
+            #
+            # Except when resuming this store's own unfinished removal. The
+            # first attempt wrote the tombstone and then failed to commit it, so
+            # the graveyard is dirty *because of the very state being finished*,
+            # and refusing over it made the recovery command unable to recover —
+            # which is the state `tcw work delete` exists to leave. The guard's
+            # real subject is a hand edit being swept into a transition's commit;
+            # here the sweep is the point. Nothing is discarded either way, and
+            # the lock is held, so no other process is mid-write.
+            if not resuming:
+                self._require_writable_graveyard(slug)
             if folder is not None and folder.exists():
                 shutil.rmtree(folder)
             existing = self.tombstone(slug)
+            # The item is the better source for the resolution when the
+            # graveyard has no record — a board adopting retention before
+            # backfilling is the migration the README describes, and writing an
+            # empty resolution over a real one is the overwrite
+            # `record_tombstone` refuses by name. The *date* has no better
+            # source: `WorkItem` carries no resolved timestamp, and
+            # `_write_tombstone`'s default is the honest "known resolved by
+            # today" the backfill command already uses.
             self._write_tombstone(
                 slug,
-                existing.resolution if existing else "",
+                (existing.resolution if existing else "")
+                or (item.resolution if item is not None else "") or "",
                 existing.resolved if existing else "",
                 location=location)
             if self.auto_commit_transitions():
