@@ -361,3 +361,19 @@ the better description, the code changed to match it.
   the reader can tell which, so the wording states both facts — declared there,
   found here.
 
+### A bad declaration is reported, wherever it is found
+
+- **An unresolvable `repository.checkout` is a `StoreDeclarationError`.**
+  `Path.expanduser()` raises `RuntimeError` — not `ValueError`, not `OSError` —
+  for a `~name` naming no user, and `checkout_root` runs during the graph load,
+  on every command, for every connected project that declares a repository. One
+  such value put a raw traceback out of `tcw validate` and `tcw work list`.
+  `_target_path` records it against the config that carried it, so it is a graph
+  problem like any other. Two silent consequences go with it: the
+  `except Exception` in `_declared_nodes_in_graph` had been dropping that node's
+  declarations, and the one guarding `starting_registry` disabled the
+  already-here check entirely, re-cloning projects the checkout had.
+- **`tcw provision` exits non-zero for a declaration error found on a node it
+  obtained.** The same malformed entry exited 1 on the starting graph and 0 on
+  an obtained one, so a CI step gated on the command read the second as success.
+

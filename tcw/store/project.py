@@ -12,7 +12,8 @@ import yaml
 
 from tcw.store.base import (
     ConnectedProject, Project, ProjectRegistry, RepositoryDeclaration,
-    UnreachableProject, WORK_STATUSES, parse_connected_entry,
+    StoreDeclarationError, UnreachableProject, WORK_STATUSES,
+    parse_connected_entry,
 )
 from tcw.store.checkouts import provisioned_root
 
@@ -418,9 +419,17 @@ class FsProjectRegistry(ProjectRegistry):
         if entry.locator is not None:
             candidates.append(self._locator_path(source_config, entry.locator))
         if entry.repository is not None:
-            candidates.append(
-                (provisioned_root(source_config.parent, entry.repository)
-                 / SENTINEL).resolve())
+            try:
+                candidates.append(
+                    (provisioned_root(source_config.parent, entry.repository)
+                     / SENTINEL).resolve())
+            except StoreDeclarationError as error:
+                # A declaration this machine cannot turn into a path — a `~name`
+                # naming no user. Recorded against the config that carried it,
+                # because this runs during the graph load on every command, and
+                # letting it propagate put a raw traceback out of `tcw validate`
+                # and `tcw work list` from a value the parser accepted.
+                self._problem(source_config, str(error))
         for candidate in candidates:
             if candidate.is_file():
                 return candidate

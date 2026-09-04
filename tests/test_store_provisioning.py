@@ -1820,3 +1820,66 @@ def test_a_location_that_holds_no_store_still_falls_through_to_the_declaration(t
     with pytest.raises(StoreNotProvisioned) as excinfo:
         FsWorkStore.open(node)
     assert "tcw provision" in str(excinfo.value)
+
+
+# ── a declaration this machine cannot turn into a path ──────────────────────
+
+def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
+    """`Path.expanduser()` raises `RuntimeError` — not `ValueError`, not
+    `OSError` — for a `~name` naming no user, and this runs during the graph
+    load on every command. A single such value put a raw traceback out of
+    `tcw validate` and `tcw work list`, from a value the parser accepted."""
+    from tcw.store.project import FsProjectRegistry
+
+    node = _repo(tmp_path / "node")
+    init(["work"], node, "node-project")
+    config_path = node / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["connected-projects"] = {
+        "children": {
+            "away-project": {
+                "path": "../away",
+                "repository": {"url": "https://example.invalid/a.git",
+                               "checkout": "~nosuchuser12345/away"},
+            }
+        }
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    problems = FsProjectRegistry.open(node).check()          # must not raise
+    assert any("repository.checkout" in problem for problem in problems), problems
+    assert any("nosuchuser12345" in problem for problem in problems), problems
+    assert validate(node)                                    # reported, not a traceback
+
+
+def test_a_declaration_error_on_an_obtained_node_fails_the_run(tmp_path,
+                                                               monkeypatch,
+                                                               capsys):
+    """The same malformed declaration exits 1 on the starting graph and used to
+    exit 0 when it was found on a node obtained during the walk, so a CI step
+    gated on `tcw provision` read the second as success."""
+    remote = _repo(tmp_path / "remote")
+    init(["work"], remote, "remote-project")
+    config_path = remote / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["connected-projects"] = {
+        "children": {"far-project": {"path": "../far",
+                                     "repository": {"path": "docs/work"}}}
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "graph"], check=True)
+
+    node = _repo(tmp_path / "node")
+    init(["work"], node, "node-project")
+    config_path = node / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["connected-projects"] = {
+        "parent": {"remote-project": {"path": "../absent",
+                                      "repository": {"url": str(remote)}}}
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    monkeypatch.chdir(node)
+    assert main(["provision"]) == 1
+    assert "repository.url" in capsys.readouterr().err

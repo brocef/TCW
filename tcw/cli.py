@@ -274,9 +274,16 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         return located if located != target.resolve() else None
 
     def enqueue(root: Path) -> None:
+        nonlocal failed
         found, problems = _declared_nodes_in_graph(root, enqueued)
         for problem in problems:
             print(f"tcw provision: {problem}", file=sys.stderr)
+        # Counted, not merely printed. The same malformed declaration exits 1 on
+        # the starting graph and used to exit 0 on a node obtained during the
+        # walk, so a CI step gated on `tcw provision` read the second as success.
+        # A declaration that is present and wrong is present and wrong wherever
+        # it was found.
+        failed = failed or bool(problems)
         queue.extend(found)
 
     enqueued: set[Path] = set()

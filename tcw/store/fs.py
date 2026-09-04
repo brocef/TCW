@@ -3338,7 +3338,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
         repository = git_root(root) if external else node_root
         if repository is None and external:
-            raise StoreLocationUnusable(
+            # A plain `ValueError`, not `StoreLocationUnusable`. The store is
+            # *there* — a directory, with the full layout — and what is wrong is
+            # that its commits have no home. That is "present and wrong", which
+            # the ladder must surface rather than fall through: reported as
+            # `StoreLocationUnusable`, it read as "no store here", so a declared
+            # repository silently answered instead and every `tcw work` command
+            # then read and wrote a store the user had not configured, with
+            # their items invisible and nothing said anywhere.
+            raise ValueError(
                 f"{config_path}: work.path is not inside a Git repository: {root}")
         return cls(root, node_root=node_root, store_git_root=repository or node_root,
                    declaration=declaration)

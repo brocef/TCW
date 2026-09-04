@@ -15,7 +15,7 @@ import os
 import re
 from pathlib import Path
 
-from tcw.store.base import RepositoryDeclaration
+from tcw.store.base import RepositoryDeclaration, StoreDeclarationError
 
 
 def _cache_root() -> Path:
@@ -55,9 +55,23 @@ def _cache_key(declaration: RepositoryDeclaration) -> str:
 
 def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
     """The working copy's root for `declaration` — the declared `checkout`, or a
-    per-machine cache directory. `~` expands; a relative path is the node's."""
+    per-machine cache directory. `~` expands; a relative path is the node's.
+
+    A `~name` that names no user is a *declaration* error, not a crash.
+    `Path.expanduser()` raises `RuntimeError` for it — not `ValueError`, not
+    `OSError` — and this runs during `_load_graph`, on every command, for every
+    connected project that declares a repository. So a single unresolvable `~`
+    anywhere in the graph put a raw traceback out of `tcw validate` and
+    `tcw work list`, and the `except Exception` guards elsewhere turned it into
+    a silently dropped node and a re-clone of projects the checkout already had.
+    """
     if declaration.checkout:
-        value = Path(declaration.checkout).expanduser()
+        try:
+            value = Path(declaration.checkout).expanduser()
+        except RuntimeError as error:
+            raise StoreDeclarationError(
+                f"repository.checkout '{declaration.checkout}' cannot be "
+                f"resolved: {error}") from None
         return value if value.is_absolute() else (node_root / value)
     return _cache_root() / _cache_key(declaration)
 

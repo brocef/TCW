@@ -191,3 +191,13 @@ a project it found somewhere else — a typo looks exactly like a path written f
 a differently-arranged workspace, so it tells you both and leaves the reading to
 you.
 
+## Two provisioning papercuts
+
+A `checkout:` path starting with `~someone` where that user does not exist used
+to crash every `tcw` command in the project with a Python traceback. It is now
+reported as what it is — a mistake in that line of your config.
+
+And `tcw provision` now fails when it finds a broken declaration in a project it
+just fetched, instead of printing the error and exiting successfully. If you gate
+CI on it, that gate now works.
+
