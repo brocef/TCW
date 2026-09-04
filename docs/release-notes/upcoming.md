@@ -88,3 +88,27 @@ If a project you extend has moved its taxonomy or capabilities out of the defaul
 folder, extending it works now. It used to report that the project had no such
 tree at all — naming a folder you had never chosen — and if the tree was one you
 had yet to fetch, it said the same thing rather than telling you to fetch it.
+
+## Finishing an epic from a checkout that cannot see all of it
+
+Slices of an epic often live in other projects. If your checkout does not have
+one of them, TCW can no longer see whether that project's slices are finished —
+and it used to read "cannot see" as "nothing left", so completing the epic
+quietly closed it over work that was still open.
+
+It now stops and tells you which projects are missing, so you can complete the
+epic from a checkout that has them, or fetch them, or override it deliberately
+with `--force`.
+
+For the same reason, running a `tcw` command in a folder that is not a TCW
+project tells you so again, instead of behaving as though it were an empty one.
+
+## Extending a chain of projects
+
+Extending a project that itself extends another now works when any of them keeps
+its taxonomy or capabilities somewhere other than the default folder — the chain
+used to break one link past the first such project. Long chains are also much
+faster, and a loop of projects extending each other is now reported by
+`tcw taxonomy check` and `tcw capabilities check` instead of silently giving each
+side a different view.
+

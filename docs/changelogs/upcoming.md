@@ -168,8 +168,43 @@ category.
   from; one whose tree is declared and unprovisioned reports the remote and
   `tcw provision` rather than "has no docs/<component>/".
 - Federation carries the projects already on its path (`_seen_nodes`), so a cycle
-  is still reported by `check()` rather than recurring — resolving a sibling's
-  store now opens it, and opening a tree store resolves its own `extends`.
+  truncates rather than recurring — resolving a sibling's store now opens it, and
+  opening a tree store resolves its own `extends`, so the guard has to run on
+  project identity, before any store is built.
+- **The resolved store is reused, not rebuilt.** `_extended_component_roots`
+  became `_extended_component_stores` and returns the stores it opened.
+  Reconstructing them from `.root` dropped the node root — `FsTreeStore` falls
+  back to `root.parent.parent`, correct only for `docs/<component>` — so the hop
+  *past* a sibling with a moved tree resolved against the wrong project graph and
+  reported the next project unreachable. It also built each subtree twice per
+  edge: depth 11 went from 15.7 s to 0.10 s.
+- **`check()` reports an `extends` cycle.** The edge that closes one is recorded
+  by the store that truncates it and gathered up the tree by the
+  `_FederationCycles` mixin, so the store a caller is holding reports it. The
+  registry's own `check()` only knows `connected-projects`, which is a different
+  graph — two projects may be legitimately connected and still extend in a loop.
+  The two hand-rolled `_cycles` walkers are removed; both recomputed the
+  resolution with `parent.parent` as the node root.
+- **A sibling's own error survives.** `StoreNotProvisioned`,
+  `StoreDeclarationError` and `ValueError` are each prefixed with
+  `project '<id>':` rather than rewritten as `has no <component> component`,
+  which used to send readers to create a store that already existed.
+
+### A partial graph no longer reads as an empty one
+
+- **`WorkStore.incomplete_graph_note()`** joins the storage-neutral interface,
+  defaulting to `""`. `FsWorkStore` overrides it; the gate that needs it lives in
+  `WorkStore`.
+- **`complete` refuses to close an epic when the graph is partial**, naming the
+  missing projects and offering `--force`. `initiative_children` returns a
+  *shorter* list once unreachable nodes stopped being fatal, and the gate read
+  that as "no open children" — closing an epic over slices in an absent node.
+  `epic_completable` returns False for the same reason.
+- **A directory with no `tcw-config.yaml` fails `require_valid()` again.** The
+  root's own config is separated from the target edges before the unreachable
+  fail-open, which is argued for targets and said nothing about the node the
+  command was run in; every helper built on `require_valid()` had begun
+  answering "no parent, no children, valid" for any directory.
 
 ## Internal
 
