@@ -22,6 +22,9 @@
 2026-09-03-connected-project-entries-declare-where-they-come-from-so-tcw-provision-can-obtain-a-node:
   resolution: done
   resolved: '2026-09-03'
+2026-09-03-delete-resolved-can-destroy-a-work-item-that-no-commit-holds:
+  resolution: done
+  resolved: '2026-09-04'
 2026-09-03-extends-composes-docs-component-instead-of-resolving-the-sibling-s-store:
   resolution: done
   resolved: '2026-09-03'
