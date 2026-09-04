@@ -1,0 +1,9 @@
+slug: 2026-09-04-override-where-a-connected-project-lives-on-this-machine
+title: Override where a connected project lives on this machine
+created: '2026-09-04'
+resolution: null
+priority: 60
+effort: medium
+tags:
+- cli
+- remote
