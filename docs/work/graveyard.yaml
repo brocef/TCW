@@ -13,6 +13,9 @@
 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
   resolution: done
   resolved: '2026-09-02'
+2026-09-03-a-partial-graph-lets-the-epic-completion-gate-and-the-node-check-fail-open:
+  resolution: done
+  resolved: '2026-09-04'
 2026-09-03-an-auto-delete-step-with-hooks-so-a-consumer-can-archive-an-item-before-it-is-removed:
   resolution: done
   resolved: '2026-09-03'
