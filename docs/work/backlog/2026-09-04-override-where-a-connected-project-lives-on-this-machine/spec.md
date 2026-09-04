@@ -58,11 +58,15 @@ whole feature removed.
 2. That statement wins over both the declared locator and the `repository`
    declaration, so it can correct the case where the locator is the thing that
    is wrong.
-3. A statement that is itself wrong — naming a directory that is not a node, or
-   a node with a different id — fails loudly and names what it found.
-4. `tcw validate` reports which overrides are in effect, so a graph that
+3. An override may name a project this machine does not happen to have, and
+   that is not an error — so one set of variables can be configured once for an
+   environment and used by sessions that hold different subsets of the graph.
+4. A statement that is *present and wrong* — naming a directory that exists but
+   is not a node, or is a node with a different id — fails loudly and names what
+   it found.
+5. `tcw validate` reports which overrides are in effect, so a graph that
    resolves only because of one is never silently mysterious.
-5. Nothing changes for a machine that sets no override. The rung is absent, not
+6. Nothing changes for a machine that sets no override. The rung is absent, not
    empty.
 
 ## Non-goals
@@ -137,20 +141,59 @@ which is the only thing that resolves it.
 This is the litmus test applied rather than assumed: an env-var lookup is not a
 filesystem trick, and the value it yields is one.
 
-### Refusing a wrong override
+### Absent is not wrong
 
-An override naming a directory with no `tcw-config.yaml`, or naming one whose
-`id` is not the project being overridden, is a **problem**, not a fall-through.
+An override splits into two cases, and the split is not a new judgement — it is
+the one `_read_config` already makes for every locator
+(`tcw/store/project.py:308-315`):
 
-This is the decision most likely to be got wrong, and the reason is specific: a
-mistyped `TCW_PROJECT_PROPOSIT_CORE` that is silently ignored produces "my
-override does nothing" with nothing to read — the fail-open shape three
-adversarial review passes removed from this codebase in the run that shipped
-v1.3.0. The override is a deliberate instruction; an instruction that cannot be
-followed is reported.
+- **The path does not exist.** Not a defect. It means this machine does not have
+  that project, which is the same thing an unresolvable locator means, and the
+  ladder carries on to the `repository` declaration. This is what lets one set
+  of variables be configured once for an environment (see below) and used by
+  sessions holding different subsets of the graph.
+- **The path exists and is wrong** — no `tcw-config.yaml`, or a node whose `id`
+  is not the project being overridden. A **problem**, reported and fatal to
+  `require_valid()`.
+
+The second half is the decision most likely to be got wrong in the other
+direction. A mistyped `TCW_PROJECT_PROPOSIT_CORE` pointing at a real directory
+that is not that project, silently ignored, produces "my override does nothing"
+with nothing to read — the fail-open shape three adversarial review passes
+removed from this codebase in the run that shipped v1.3.0.
 
 An id mismatch names both ids, because the likely cause is pointing at the wrong
-sibling in a workspace of similar directories.
+sibling in a workspace of similar directories — and in this project's own
+workspace those two directories are genuinely easy to swap (see the table
+below).
+
+### Configuring an environment preemptively
+
+The case this makes possible, and arguably the main one. A Claude Code cloud
+environment clones each attached repository as a sibling under the session's
+base working directory — observed in this session:
+
+    /home/user/proposit-app  /home/user/proposit-core  /home/user/proposit-orchestration
+
+That layout is knowable ahead of time, so the variables can be set once in the
+environment's configuration rather than by any session. A session that attaches
+all three resolves the whole graph locally and fetches nothing; one that
+attaches only `proposit-app` finds the other two overrides pointing at absent
+paths, falls through to their `repository` declarations, and provisions exactly
+as it does today. Neither session needs to know which case it is in.
+
+**The variable names follow node ids, not repository names**, and for this
+workspace the two are crossed in a way that will cost somebody an hour:
+
+| Directory                        | Node id            | Variable                       |
+| -------------------------------- | ------------------ | ------------------------------ |
+| `.../proposit-core`              | `proposit-core`    | `TCW_PROJECT_PROPOSIT_CORE`    |
+| `.../proposit-orchestration`     | `proposit-app`     | `TCW_PROJECT_PROPOSIT_APP`     |
+| `.../proposit-app`               | `proposit-app-repo`| `TCW_PROJECT_PROPOSIT_APP_REPO`|
+
+`proposit-orchestration` is the node named `proposit-app`; the repository named
+`proposit-app` is the node `proposit-app-repo`. The id-mismatch refusal above is
+what turns getting this backwards into a message rather than a mystery.
 
 ### Reporting
 
@@ -177,21 +220,28 @@ environment makes the graph resolve and no other reader can tell why.
 3. In the flat-sibling reproduction from the intake, setting the override for
    `proposit-core` makes `tcw validate` report zero graph problems, where it
    reports two without it.
-4. `TCW_PROJECT_<ID>` naming a directory with no `tcw-config.yaml` makes
-   `FsProjectRegistry.check()` return a problem naming the variable and the
-   path, and `require_valid()` raise. It does not fall through to the config's
-   locator.
-5. `TCW_PROJECT_<ID>` naming a node whose `id` is different makes `check()`
+4. `TCW_PROJECT_<ID>` naming a path that **does not exist** is not a problem:
+   `check()` stays empty, and the ladder falls through to the `repository`
+   declaration, so `tcw provision` obtains the project exactly as it does with
+   no variable set.
+5. `TCW_PROJECT_<ID>` naming a directory that **exists** with no
+   `tcw-config.yaml` makes `check()` return a problem naming the variable and
+   the path, and `require_valid()` raise. It does not fall through.
+6. `TCW_PROJECT_<ID>` naming a node whose `id` is different makes `check()`
    return a problem naming **both** the expected and the found id.
-6. With no `TCW_PROJECT_*` variable set, `FsProjectRegistry` produces byte-identical
+7. One environment-wide set of variables serves both session shapes: with all
+   three Proposit directories present, `tcw provision` creates no cache entries;
+   with only `proposit-app` present and the same three variables set, it
+   provisions the other two and every node reports `validate OK`.
+8. With no `TCW_PROJECT_*` variable set, `FsProjectRegistry` produces byte-identical
    `check()`, `unreachable()` and `misdirected()` output to v1.3.0 for the
    Proposit workspace in its nested layout, and creates no cache entries.
-7. `tcw validate` prints one line per active override, exits 0 when the graph is
+9. `tcw validate` prints one line per active override, exits 0 when the graph is
    otherwise clean, and does not count overrides among its problem total.
-8. An id whose env-var form is ambiguous cannot exist: a test asserts
+10. An id whose env-var form is ambiguous cannot exist: a test asserts
    `validate_project_id` rejects every input that would make the
    uppercase-and-underscore mapping non-injective (`a_b`, `A-b`).
-9. `tcw provision`, `tcw work list`, `tcw validate` and `tcw taxonomy list` all
+11. `tcw provision`, `tcw work list`, `tcw validate` and `tcw taxonomy list` all
    honour the same override — it is applied in graph loading, not in one command.
 
 ## Risks
@@ -200,11 +250,23 @@ environment makes the graph resolve and no other reader can tell why.
   silently redirects every project of that id in every workspace on the machine.
   Criterion 7 is the mitigation and is not optional: if `tcw validate` does not
   say an override is in effect, this is a debugging trap rather than a feature.
-- **Env vars do not survive a shell.** For the motivating case — a workstation
-  whose layout permanently disagrees with its configs — the honest answer may be
-  the config file listed under Non-goals. Shipping env first is a deliberate bet
-  that the export is tolerable; if it is not, the file follows and this rung
-  stays as the CI and one-off mechanism.
+- **Env vars do not survive a shell.** Less of a concern than it first looked:
+  the strongest use is an environment's own configuration, which persists by
+  construction. It remains real for a workstation, where the honest answer may
+  still be the config file listed under Non-goals.
+- **A preemptive set of variables is invisible to the session using it.** Set in
+  an environment's configuration, they are not in any file the checkout holds,
+  so a graph that resolves for a reason nobody in the repository can see is
+  exactly the debugging trap criterion 9 exists to close. That reporting is more
+  load-bearing under this use than under the original one.
+- **The absent-path fall-through is a real fail-open, chosen deliberately.** A
+  variable pointing at a path that is simply mistyped — a transposition, a wrong
+  base directory — behaves identically to one naming a project this machine does
+  not have: silently nothing. The alternative refuses every preemptively
+  configured environment whose session holds a subset, which is worse. Criterion
+  9's reporting is what makes the difference visible: an override that took
+  effect is listed, so one that is silently doing nothing is conspicuous by its
+  absence from that list.
 - **A second way to say the same thing.** Two mechanisms now answer "where is
   this project" — the config's locator and the environment — and a reader
   debugging a graph has to know both. Reporting (criterion 7) is what keeps that
@@ -218,6 +280,13 @@ environment makes the graph resolve and no other reader can tell why.
 
 ## Notes
 
+- **Assumption, not established:** that a Claude Code cloud environment always
+  clones attached repositories as flat siblings under one base directory. It is
+  what this session shows and what `add_repo` describes, but it is not a
+  documented guarantee, and the preemptive configuration above depends on it. If
+  it ever stops holding, the failure is benign — the paths become absent, the
+  overrides fall through, and provisioning resumes — which is a further argument
+  for the absent-is-not-wrong rule.
 - **Assumption, not established:** that the real Proposit workstation will never
   want this, because its layout matches its configs. Verified only that the
   nested layout validates clean with zero fetches; whether the user's actual
