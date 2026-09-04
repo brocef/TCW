@@ -106,6 +106,36 @@ category.
 
 ## Fixed
 
+### Resolved-item deletion
+
+- **Nothing is removed that git does not already hold.** `delete_resolved` now
+  refuses unless the item's path is committed *and* `git status --porcelain
+  --ignored` over it is empty. The predicate is cleanliness, not existence: a
+  tree at the path proves something was committed there once, not that what is
+  about to be deleted is in it — an untracked attachment, a receipt a `pre`
+  binding wrote, an edit since the resolving commit, or a whole item `git_mv`
+  untracked into a gitignored folder all pass an existence check and die with
+  the removal. This is the guard that holds; `_require_deletable` is kept for
+  refusing earlier with a better message for its one known cause.
+- **The check gates the removal, not the record.** With no folder on disk there
+  is nothing to destroy, so the finishable state stays finishable.
+- **A re-run no longer downgrades the recorded commit.** The second run's HEAD
+  does not hold the item, and `_write_tombstone` assigns outright, so recording
+  HEAD again replaced a working reference with a useless one.
+- **`delete_resolved` takes the graveyard lock and calls
+  `_require_writable_graveyard`**, as a resolving transition does — the
+  read-modify-write was dropping a concurrent resolution's tombstone, and a
+  damaged graveyard surfaced only after the folder was gone. The lock is
+  documented as non-reentrant, with its three top-level acquirers named.
+- **The removal is committed at the path git holds**, not one derived from the
+  item — a binding that relocated the item left the deletion out of the commit,
+  and the push then sent a remote that still had it.
+- `describe_location` asks whether the recorded commit holds the store, not
+  merely whether the commit exists, and no longer leaks git's own error to
+  stderr ahead of the friendly one.
+- `delete_resolved` calls `_require_repository` and refuses a repository with no
+  commit, rather than recording an empty location.
+
 ### Routing nodes
 
 - **`nearest_work_ancestor()`** replaces `parent_node()` in every upward walk —

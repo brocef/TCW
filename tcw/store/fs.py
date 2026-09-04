@@ -3881,6 +3881,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """Hold one store's resolving transitions apart from each other, across
         the whole check-write-commit sequence.
 
+        **Not reentrant.** `flock` locks the open file description, and this
+        opens a fresh one each time, so a second acquisition in the same process
+        contends with the first exactly as another process would — spinning to
+        the timeout and then reporting somebody else's fault. Every acquirer is
+        therefore a top-level entry point: `_effect_transition`,
+        `record_tombstone` and `delete_resolved`, none of which calls another.
+
         Without this the sequence is three steps with nothing between them: the
         cleanliness check runs before the move, the write runs after it, and the
         commit after that. Two agents resolving *different* items in one working
@@ -4216,9 +4223,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         unresolvable rather than printed as if it worked.
         """
         try:
-            done = _git(["git", "-C", str(self.store_git_root), "cat-file", "-e",
-                         f"{location}^{{commit}}"], check=False)
-            present = done.returncode == 0
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
+                           location, "--", str(self.root.name)],
+                          capture_output=True, text=True, check=False)
+            present = listed.returncode == 0
         except Exception:
             present = False
         if present:
@@ -4245,51 +4253,168 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return False
         return not self.retention().get(item.status, True)
 
-    def delete_resolved(self, slug: str) -> str:
+    def _committed_item_path(self, slug: str, status: str = "") -> Path | None:
+        """The store-repo-relative path HEAD holds for `slug`, or None.
+
+        Asked of git rather than derived from the item, because by the time a
+        removal runs the item may be gone from the store — a `pre` binding that
+        relocated it, an interrupted earlier attempt — and its status with it.
+        Git still knows where it committed the thing.
+        """
+        candidates = [status] if status else list(RESOLVED_STATUSES)
+        for candidate in candidates:
+            try:
+                rel = (self.root / candidate / slug).resolve().relative_to(
+                    self.store_git_root.resolve())
+            except ValueError:
+                continue
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
+                           "HEAD", "--", str(rel)],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode == 0 and listed.stdout.strip():
+                return rel
+        return None
+
+    def _require_retrievable(self, slug: str, folder: Path,
+                             committed: Path | None) -> None:
+        """Refuse to remove a folder git does not already hold, byte for byte.
+
+        **The predicate is cleanliness, not existence.** "HEAD has a tree at this
+        path" proves something was committed there once, not that what is about
+        to be deleted is in it — an untracked attachment, a receipt a `pre` hook
+        wrote, an edit made since, or a whole item that `git_mv` untracked into a
+        gitignored folder all survive an existence check and die with the
+        `rmtree`. `git status --porcelain --ignored` over the path answers the
+        question actually being asked, and it is the same idiom
+        `_require_writable_graveyard` uses for the graveyard.
+
+        Both halves are needed: `status` over a pathspec git knows nothing about
+        is also empty, so the committed path has to be established separately.
+
+        This subsumes `_require_deletable`, which refuses the same condition
+        earlier and with a better message for its one known cause. That one is
+        kept for the message and for refusing before anything moves; this is the
+        guard that actually holds, and it holds on every entry point.
+        """
+        if committed is None:
+            hint = ("" if self.auto_commit_transitions() else
+                    " (work.auto-commit-transitions is false, so the resolving "
+                    "move was staged and never committed)")
+            raise ValueError(
+                f"refusing to delete {slug}: no commit holds "
+                f"{folder}{hint}. Deleting it would destroy the only copy. "
+                f"Commit the item, or set work.retain to keep it.")
+        dirty = _git(["git", "-C", str(self.store_git_root), "status",
+                      "--porcelain", "--ignored", "--", str(committed)],
+                     capture_output=True, text=True, check=False).stdout.strip()
+        if dirty:
+            raise ValueError(
+                f"refusing to delete {slug}: {folder} has content no commit "
+                f"holds —\n{dirty}\nDeleting it would destroy that content. "
+                f"Commit or remove it first.")
+
+    def _retained_location(self, slug: str, committed: Path | None) -> str:
+        """The commit to record for `slug`: the one already recorded when it
+        still holds the item, else HEAD.
+
+        A re-run must not downgrade a good pointer. The first run records the
+        commit containing the item and then commits the removal, so on a second
+        run HEAD no longer holds it — and `_write_tombstone` assigns outright,
+        so recording HEAD again would replace a working reference with a useless
+        one.
+        """
+        existing = self.tombstone(slug)
+        if existing is not None and existing.location:
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
+                           existing.location, "--",
+                           str(committed) if committed else "."],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode == 0 and (committed is None or listed.stdout.strip()):
+                return existing.location
+        head = _git(["git", "-C", str(self.store_git_root), "rev-parse", "HEAD"],
+                    capture_output=True, text=True, check=False)
+        if head.returncode != 0 or not head.stdout.strip():
+            raise ValueError(
+                f"refusing to delete {slug}: {self.store_git_root} has no commit "
+                f"to record it in.")
+        return head.stdout.strip()
+
+    def delete_resolved(self, slug: str, status: str = "") -> str:
         """Remove a resolved item's folder and record where it last existed.
 
         The second half of an auto-delete, and its own entry point so the state
         left by a failure is finishable rather than broken. Safe to re-run: an
-        item whose folder is already gone still gets its record updated, which is
-        what makes the folder-move case (a hook that relocates the item itself)
-        succeed instead of erroring.
+        item whose folder is already gone still gets its record confirmed, which
+        is what makes the folder-move case (a hook that relocates the item
+        itself) succeed instead of erroring.
 
-        **The location is the first commit's SHA, written in the second commit.**
-        Writing it in the first would be circular — the SHA is not known until
-        that commit exists — and amending afterwards would change the very hash
-        being recorded. Two commits, the record pointing back one, is the only
-        arrangement of these that is not self-referential.
+        **Nothing is removed that git does not already hold** — see
+        `_require_retrievable`. The check gates the removal, not the record: with
+        no folder on disk there is nothing to destroy, and refusing there would
+        break the finishability this entry point exists for.
+
+        **The location is a commit that demonstrably contains the item.**
+        Writing it in the resolving commit would be circular — the SHA is not
+        known until that commit exists — and amending afterwards would change the
+        hash being recorded. Two commits, the record pointing back one, is the
+        only arrangement of these that is not self-referential.
+
+        `status` comes from the caller where it knows it, because by this point
+        the item may be gone from the store and its status with it.
+
+        Takes the graveyard lock for the whole span, as a resolving transition
+        does. **The lock is not reentrant** — `flock` on a freshly opened
+        descriptor contends with itself — so this must stay a top-level entry
+        point and must never be called from inside `_effect_transition_locked`.
+
+        One thing no local check can promise: a commit that is never pushed, or
+        that a squash- or rebase-merge later makes unreachable, takes the content
+        with it. That is a property of the workflow around the store, not of this
+        operation.
         """
-        item = self._get_now(slug)
-        if item is None and self.tombstone(slug) is None:
-            raise ValueError(f"no such work item: {slug}")
-        status = item.status if item is not None else ""
-        folder = self._find(slug)
-        location = _git(["git", "-C", str(self.store_git_root), "rev-parse", "HEAD"],
-                        capture_output=True, text=True).stdout.strip()
-        if folder is not None and folder.exists():
-            shutil.rmtree(folder)
-        self._write_tombstone(
-            slug,
-            (self.tombstone(slug).resolution if self.tombstone(slug) else ""),
-            (self.tombstone(slug).resolved if self.tombstone(slug) else ""),
-            location=location)
-        if self.auto_commit_transitions():
-            paths = [self._graveyard_path()]
-            if status:
-                paths.append(self.root / status / slug)
-            err = git_commit_result(
-                self.store_git_root,
-                f"tcw work: delete {slug} (retained in {location[:12]})", *paths)
-            if err:
-                raise TransitionCommitError(
-                    f"{slug} was removed, but committing the removal failed:\n{err}")
-            # Its own push. The resolving transition published the first commit
-            # before this one existed, and a remote left holding an item the
-            # store has deleted is exactly the divergence publication exists to
-            # prevent.
-            self._publish_after_transition(slug, status or "removed")
-        return location
+        self._require_repository()
+        with self._graveyard_lock():
+            item = self._get_now(slug)
+            if item is None and self.tombstone(slug) is None:
+                raise ValueError(f"no such work item: {slug}")
+            status = status or (item.status if item is not None else "")
+            committed = self._committed_item_path(slug, status)
+            folder = self._find(slug)
+            if folder is not None and folder.exists():
+                self._require_retrievable(slug, folder, committed)
+            location = self._retained_location(slug, committed)
+            # Before the removal, for the reason it exists: a graveyard that
+            # cannot be safely rewritten must stop this, not surface after the
+            # folder is already gone.
+            self._require_writable_graveyard(slug)
+            if folder is not None and folder.exists():
+                shutil.rmtree(folder)
+            existing = self.tombstone(slug)
+            self._write_tombstone(
+                slug,
+                existing.resolution if existing else "",
+                existing.resolved if existing else "",
+                location=location)
+            if self.auto_commit_transitions():
+                paths = [self._graveyard_path()]
+                if committed is not None:
+                    # The path git holds, not one derived from the item — which
+                    # may have been moved away by a binding, leaving the removal
+                    # out of the commit and the remote still holding it.
+                    paths.append(self.store_git_root / committed)
+                err = git_commit_result(
+                    self.store_git_root,
+                    f"tcw work: delete {slug} (retained in {location[:12]})",
+                    *paths)
+                if err:
+                    raise TransitionCommitError(
+                        f"{slug} was removed, but committing the removal failed:\n{err}")
+                # Its own push. The resolving transition published the first
+                # commit before this one existed, and a remote left holding an
+                # item the store has deleted is exactly the divergence
+                # publication exists to prevent.
+                self._publish_after_transition(slug, status or "removed")
+            return location
 
     def tombstone(self, slug: str) -> Tombstone | None:
         """Read `slug`'s record out of the store's `graveyard.yaml`.

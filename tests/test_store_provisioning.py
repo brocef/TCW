@@ -1717,3 +1717,67 @@ def test_refresh_still_refreshes_a_provisioned_copy(tmp_path, monkeypatch, capsy
     assert main(["provision", "--refresh"]) == 0
     out = capsys.readouterr().out
     assert "away-project: refreshed" in out
+
+
+def test_a_present_project_is_still_read_for_its_own_declarations(tmp_path,
+                                                                  monkeypatch,
+                                                                  capsys):
+    """Not fetching a project is no reason to stop reading it.
+
+    The skip that stops `tcw provision` re-cloning a project the checkout has
+    also stopped the walk reading that project's declarations, so a repository
+    two hops out disappeared from provisioning precisely when the one hop
+    between was already in place — the steady state, and the only state a
+    workspace is usually in.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    far = _node_repo(tmp_path / "far", "far-project",
+                     {"parent": {"middle-project": "../middle"}})
+    middle = _node_repo(
+        tmp_path / "middle", "middle-project",
+        {"parent": {"top-project": "../top"},
+         "children": {"far-project": {"path": "../far-not-here",
+                                      "repository": {"url": str(far), "ref": "main"}}}},
+    )
+    top = _repo(tmp_path / "top")
+    init(["work"], top, "top-project")
+    (top / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "top-project",
+        "connected-projects": {"children": {
+            # `middle` is present on disk *and* declared. It used to be skipped
+            # and never read, so `far` was invisible.
+            "middle-project": {"path": str(middle),
+                               "repository": {"url": str(middle), "ref": "main"}},
+        }},
+    }, sort_keys=False))
+
+    monkeypatch.chdir(top)
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "middle-project: already available" in out
+    assert "far-project" in out and "obtained" in out
+
+
+def test_dry_run_does_not_call_a_planned_obtain_already_available(tmp_path,
+                                                                  monkeypatch,
+                                                                  capsys):
+    """Dry-run output is what a user reads to decide whether to run for real."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"parent": {"here-project": "../here"}})
+    declaration = {"url": str(away), "ref": "main"}
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        # Two declarations of one project, which is what a parent and a
+        # grandparent both naming it looks like.
+        {"parent": {"away-project": {"path": "../away-not-here",
+                                     "repository": dict(declaration)}},
+         "children": {"away-project": {"path": "../away-not-here",
+                                       "repository": dict(declaration)}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert "away-project: would obtain" in planned
+    assert "away-project: already available" not in planned
+    assert not (tmp_path / "cache").exists()

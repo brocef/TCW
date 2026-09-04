@@ -357,3 +357,116 @@ def test_a_skill_binding_is_reported_not_executed(tmp_path, monkeypatch, capsys)
     slug = _resolve(root)
     assert "invoke the some:archiver skill" in capsys.readouterr().err
     assert not (root / "docs" / "work" / "completed" / slug).exists()
+
+
+# ── nothing is removed that git does not hold ────────────────────────────────
+
+
+def _log_shas(root: Path) -> list[str]:
+    return subprocess.run(["git", "-C", str(root), "log", "--format=%H"],
+                          capture_output=True, text=True, check=True).stdout.split()
+
+
+def test_delete_refuses_an_item_no_commit_holds(tmp_path, monkeypatch, capsys):
+    """The shipped ignore rules untrack a resolved item, so no commit has it.
+
+    `tcw work delete` reaches the removal without passing the interlock the
+    resolving transition consults, so this is the case where an item that git
+    never held would be destroyed with a message naming a commit that does not
+    contain it.
+    """
+    root = _node(tmp_path)                       # default: the rules are written
+    slug = _resolve(root)
+    folder = root / "docs" / "work" / "completed" / slug
+    assert folder.is_dir()
+
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config.setdefault("work", {})["retain"] = {"completed": False}
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    monkeypatch.chdir(root)
+    assert main(["work", "delete", slug]) == 1
+    err = capsys.readouterr().err
+    assert "no commit holds" in err
+    assert folder.is_dir(), "the item was destroyed"
+
+
+def test_delete_refuses_an_item_with_uncommitted_content(tmp_path, monkeypatch, capsys):
+    """A `pre` binding's receipt, or any edit since the resolving commit."""
+    root = _node(tmp_path, retain={"completed": False})
+    slug = _resolve(root)
+    # Re-create the item as if a run had been interrupted before the removal.
+    folder = root / "docs" / "work" / "completed" / slug
+    subprocess.run(["git", "-C", str(root), "revert", "--no-edit", "HEAD"],
+                   capture_output=True, check=True)
+    assert folder.is_dir()
+    (folder / "receipt.txt").write_text("uploaded\n")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "delete", slug]) == 1
+    err = capsys.readouterr().err
+    assert "no commit holds" in err
+    assert (folder / "receipt.txt").is_file()
+
+
+def test_delete_refuses_when_the_move_was_never_committed(tmp_path, monkeypatch, capsys):
+    root = _node(tmp_path, retain={"completed": False})
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["work"]["auto-commit-transitions"] = False
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "config"], check=True)
+
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert "no commit holds" in err
+    assert "auto-commit-transitions is false" in err
+    assert (root / "docs" / "work" / "completed" / item.slug).is_dir()
+
+
+def test_a_re_run_keeps_the_commit_that_holds_the_item(tmp_path):
+    """The second run's HEAD no longer holds it; recording HEAD again would
+    replace a working reference with a useless one."""
+    root = _node(tmp_path, retain={"completed": False})
+    slug = _resolve(root)
+    store = FsWorkStore.open(root)
+    first = store.tombstone(slug).location
+    assert first
+
+    store.delete_resolved(slug)
+    assert FsWorkStore.open(root).tombstone(slug).location == first
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", first],
+        capture_output=True, text=True, check=True).stdout
+    assert f"docs/work/completed/{slug}/state.yaml" in listed
+
+
+def test_a_moved_away_item_still_has_its_removal_committed(tmp_path):
+    """A `pre` binding that relocates the item leaves nothing for `_get_now`,
+    and the removal used to be left out of the commit — so the remote kept an
+    item the store had deleted."""
+    root = _node(tmp_path, retain={"completed": False})
+    elsewhere = tmp_path / "cold"
+    elsewhere.mkdir()
+    _bind(root, pre=[{"command": f'mv "$TCW_ITEM_PATH" {elsewhere}/"$TCW_SLUG"'}])
+    slug = _resolve(root)
+
+    assert (elsewhere / slug / "state.yaml").is_file()
+    tracked = subprocess.run(["git", "-C", str(root), "ls-tree", "-r",
+                              "--name-only", "HEAD"],
+                             capture_output=True, text=True, check=True).stdout
+    assert f"docs/work/completed/{slug}" not in tracked
+    # Scoped to the store: `_bind` edits the config after the scaffold commit,
+    # which is fixture noise and not what this asserts.
+    assert subprocess.run(["git", "-C", str(root), "status", "--porcelain",
+                           "--", "docs/work"],
+                          capture_output=True, text=True,
+                          check=True).stdout.strip() == "", \
+        "the removal was left out of the commit"

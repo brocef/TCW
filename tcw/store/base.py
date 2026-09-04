@@ -147,6 +147,17 @@ class ProjectRegistry(ABC):
         """Return every descendant in deterministic depth-first order."""
 
     @abstractmethod
+    def projects(self) -> list["Project"]:
+        """Every project in the graph, the current one included.
+
+        Deliberately not `current + ancestors + descendants`: a graph is not a
+        line, and that triple omits a sibling, a sibling of an ancestor, and
+        anything else reached by a shape nobody enumerated. A caller asking
+        "what does this checkout have" wants the set, and reconstructing it from
+        relations is how the set silently loses a member.
+        """
+
+    @abstractmethod
     def check(self) -> list[str]:
         """Return graph/configuration problems; empty means valid.
 

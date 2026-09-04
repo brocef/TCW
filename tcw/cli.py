@@ -182,9 +182,12 @@ def _declared_nodes_in_graph(
     seen = set() if seen is None else seen
     roots = [root]
     try:
-        registry = FsProjectRegistry.open(root)
-        roots += [Path(p.locator) for p in
-                  (*registry.ancestors(), *registry.descendants())]
+        # Every project the registry holds, not `ancestors + descendants`. That
+        # triple omits a sibling and a sibling of an ancestor — the shapes a
+        # workspace is actually made of — so a declaration living on one was
+        # never read, and the repository it named never obtained.
+        roots += [Path(project.locator) for project in
+                  FsProjectRegistry.open(root).projects()]
     except Exception:
         pass
     found: list[tuple[Path, str, object]] = []
@@ -244,7 +247,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
     # Obtained during *this* run, so not in a registry read before they existed.
     have: set[str] = set()
 
-    def resolved_outside(project_id: str, target: Path) -> bool:
+    def resolved_outside(project_id: str, target: Path) -> "Path | None":
         """Whether the graph already resolves this project somewhere other than
         the copy this declaration would create.
 
@@ -257,17 +260,18 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         whatever the flags say.
         """
         if starting_registry is None:
-            return False
+            return None
         try:
             project = starting_registry.get(project_id)
         except Exception:
-            return False
+            return None
         if project is None:
-            return False
+            return None
         try:
-            return Path(project.locator).resolve() != target.resolve()
+            located = Path(project.locator).resolve()
         except Exception:                       # an unresolvable locator: not it
-            return True
+            return None
+        return located if located != target.resolve() else None
 
     def enqueue(root: Path) -> None:
         found, problems = _declared_nodes_in_graph(root, enqueued)
@@ -287,13 +291,19 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
             # Obtained or confirmed earlier in this same run.
             print(f"  {project_id}: already available")
             continue
-        if resolved_outside(project_id, target):
+        if (present := resolved_outside(project_id, target)) is not None:
             # A checkout of this project that is not the copy this declaration
             # would create — including, routinely, the one the command is being
             # run from. No location claimed: it may be in the working checkout
             # or in a copy provisioned earlier, and both mean "do not fetch".
+            #
+            # Still enqueued. Not fetching a project is no reason to stop
+            # reading it: its own declarations are how the walk reaches anything
+            # beyond it, and skipping them made a repository disappear from
+            # provisioning precisely when an earlier one was already in place.
             print(f"  {project_id}: already available")
             have.add(project_id)
+            enqueue(present)
             continue
         provisioner = FsStoreProvisioner(source, NODE_TARGET, declaration)
         if provisioner.is_available() and not refresh:
@@ -309,7 +319,6 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
             failed = True
             continue
         print(f"  {project_id}: {result.detail.split(': ', 1)[1]}")
-        have.add(project_id)
         if dry_run:
             # Its own declarations live in a config we have not fetched, so
             # saying nothing here would imply there are none. Say what is
@@ -317,6 +326,11 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
             print(f"  {project_id}: any projects it declares cannot be listed "
                   f"until it is obtained")
             continue
+        # After the dry-run return, never before it: recording a *planned*
+        # obtain as available made a second declaration of the same project —
+        # routine when a parent and a grandparent both name it — report
+        # "already available" in a run that fetched nothing.
+        have.add(project_id)
         enqueue(target)
     return failed
 

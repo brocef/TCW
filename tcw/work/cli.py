@@ -585,7 +585,7 @@ def _auto_delete(st, slug: str, status: str, resolution: str) -> int:
               file=sys.stderr)
         return 1
     try:
-        location = st.delete_resolved(slug)
+        location = st.delete_resolved(slug, status)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1

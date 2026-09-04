@@ -186,6 +186,10 @@ class FsProjectRegistry(ProjectRegistry):
             visit(cfg.project.id)
         return result
 
+    def projects(self) -> list[Project]:
+        self._load_graph()
+        return [cfg.project for cfg in self._by_id.values()]
+
     def check(self) -> list[str]:
         return list(self._problems)
 
