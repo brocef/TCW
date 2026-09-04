@@ -470,3 +470,137 @@ def test_a_moved_away_item_still_has_its_removal_committed(tmp_path):
                           capture_output=True, text=True,
                           check=True).stdout.strip() == "", \
         "the removal was left out of the commit"
+
+
+# ── the state a failed archive leaves, and what still has to happen ──────────
+
+def test_delete_finishes_a_removal_whose_binding_moved_the_item_and_failed(
+        tmp_path, monkeypatch, capsys):
+    """The half-deleted state: no folder, and no record of where it went.
+
+    `delete_resolved` is documented safe to re-run precisely so this is
+    finishable, but the CLI refused anything `get()` could not find — which is
+    every item in this state — so the tree kept an unstaged deletion forever.
+    """
+    root = _node(tmp_path, retain={"completed": False})
+    elsewhere = tmp_path / "cold"
+    elsewhere.mkdir()
+    _bind(root, pre=[{"command": f'mv "$TCW_ITEM_PATH" {elsewhere}/"$TCW_SLUG"; exit 3'}])
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    capsys.readouterr()
+    # Exactly the state the finding describes.
+    assert FsWorkStore.open(root).get(item.slug) is None
+    assert not FsWorkStore.open(root).tombstone(item.slug).location
+    assert (elsewhere / item.slug / "state.yaml").is_file()
+
+    _bind(root, pre=[{"command": "true"}])
+    assert main(["work", "delete", item.slug]) == 0
+    assert FsWorkStore.open(root).tombstone(item.slug).location
+    assert subprocess.run(["git", "-C", str(root), "status", "--porcelain",
+                           "--", "docs/work"],
+                          capture_output=True, text=True,
+                          check=True).stdout.strip() == ""
+
+
+def test_delete_says_so_when_the_removal_is_already_finished(
+        tmp_path, monkeypatch, capsys):
+    """Idempotent rather than an error: the command finishes a removal, and one
+    already finished is the state it was asked to reach."""
+    root = _node(tmp_path, retain={"completed": False})
+    slug = _resolve(root)
+    monkeypatch.chdir(root)
+    assert main(["work", "delete", slug]) == 0
+    assert "already removed" in capsys.readouterr().out
+
+
+def test_a_failed_auto_delete_still_reports_the_completion(
+        tmp_path, monkeypatch, capsys):
+    """`_complete` returned from the auto-delete branch, so the completion it
+    had already committed was never reported and its `post` result discarded."""
+    root = _node(tmp_path, retain={"completed": False})
+    _bind(root, pre=[{"command": "exit 3"}])
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    captured = capsys.readouterr()
+    assert f"completed {item.slug} (done)" in captured.out
+    assert "auto-delete pre" in captured.err
+
+
+def test_a_failed_auto_delete_still_removes_the_worktree(tmp_path, monkeypatch,
+                                                         capsys):
+    """`merge_worktree` has already run by then, so an early return orphaned the
+    worktree and its branch with nothing left that would clean them."""
+    root = _node(tmp_path, retain={"completed": False})
+    _bind(root, pre=[{"command": "exit 3"}])
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    monkeypatch.chdir(root)
+    assert main(["work", "start", item.slug, "--worktree"]) == 0
+    worktree = root / ".worktrees" / item.slug
+    assert worktree.is_dir()
+    capsys.readouterr()
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    assert not worktree.exists()
+
+
+def test_a_publication_failure_after_the_removal_is_not_a_failed_removal(
+        tmp_path, monkeypatch, capsys):
+    """The push is the only thing that did not land. Reading that as "still
+    here" made the caller print a location for a folder that is gone."""
+    from tcw.store.base import PublicationError
+    from tcw.store.fs import FsWorkStore as _Store
+
+    root = _node(tmp_path, retain={"completed": False})
+    store = _Store.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    # The removal's own push, not the completion's — the failure this is about
+    # happens after the folder is already gone and its removal committed.
+    calls = []
+
+    def _publish(self, slug, to_status):
+        calls.append(slug)
+        if len(calls) > 1:
+            raise PublicationError(
+                f"{slug} moved to {to_status} and was committed — your work is "
+                f"saved there — but publishing it to the declared remote failed:\n"
+                f"no remote")
+
+    monkeypatch.setattr(_Store, "_publish_after_transition", _publish)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    captured = capsys.readouterr()
+    assert not (root / "docs" / "work" / "completed" / item.slug).exists()
+    # The completion is reported, and never with a path to a folder that is gone.
+    assert f"completed {item.slug} (done)" in captured.out
+    assert "docs/work/completed" not in captured.out
+    assert "publishing it to the declared remote failed" in captured.err
+
+
+def test_show_json_on_a_removed_slug_prints_no_json_and_fails(
+        tmp_path, monkeypatch, capsys):
+    """The tombstone branch sat ahead of the `--json` branch, so a caller piping
+    to `jq` got the human block under a success exit code."""
+    root = _node(tmp_path, retain={"completed": False})
+    slug = _resolve(root)
+    monkeypatch.chdir(root)
+    capsys.readouterr()
+    assert main(["work", "show", slug, "--json"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "was resolved (done" in captured.err
+    assert "no item document to project" in captured.err
+    # The human form is unchanged.
+    assert main(["work", "show", slug]) == 0
+    assert "(resolved)" in capsys.readouterr().out

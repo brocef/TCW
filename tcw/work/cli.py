@@ -11,7 +11,8 @@ from tcw.store.base import (
     DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
-    StoreNotProvisioned, TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
+    PublicationError, StoreNotProvisioned, TransitionCommitError, WorkItem,
+    normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
@@ -508,6 +509,23 @@ def _show(args: argparse.Namespace) -> int:
     if item is None:
         grave = st.tombstone(bare)
         if grave is not None:
+            if getattr(args, "json", False):
+                # There is no item document to project, and this branch sat
+                # ahead of the `--json` one — so a caller piping to `jq` got the
+                # human block on stdout under a success exit. Empty stdout and a
+                # non-zero exit is the only answer that cannot be misread. The
+                # message still names the case, so a person reading a failed
+                # pipeline learns what `jq` could not be told; projecting the
+                # tombstone instead would mean a second document shape under a
+                # schema that is closed by construction, and `tcw serve` returns
+                # the same document, so that is a contract change rather than a
+                # fix. See the follow-up item.
+                said = ", ".join(x for x in (grave.resolution, grave.resolved) if x)
+                print(f"tcw work show: {grave.slug} was resolved"
+                      + (f" ({said})" if said else "")
+                      + " and removed; there is no item document to project.",
+                      file=sys.stderr)
+                return 1
             # The item is gone from the store but the store remembers it. Saying
             # "no such work item" here would call finished work a typo.
             print(f"{grave.slug}  (resolved)")
@@ -564,7 +582,7 @@ def _path(args: argparse.Namespace) -> int:
     return 0
 
 
-def _auto_delete(st, slug: str, status: str, resolution: str) -> int:
+def _auto_delete(st, slug: str, status: str, resolution: str) -> "tuple[int, bool]":
     """Run the `auto-delete` bindings around removing a resolved item.
 
     Ordered so the archive sees a complete, already-committed artifact and a
@@ -574,6 +592,12 @@ def _auto_delete(st, slug: str, status: str, resolution: str) -> int:
     A `pre` failure leaves the item exactly where it is — resolved, recorded in
     the graveyard, committed — which is a finishable state, and says so, because
     the user's first question is whether their work is safe.
+
+    Returns `(exit code, removed)`. The two are not the same question and the
+    caller needs both: a publication failure after the removal landed is a real
+    failure to report *and* an item that is genuinely gone, so a caller that read
+    the exit code as "still there" would print a location for a folder that no
+    longer exists and skip the cleanup it still owes.
     """
     policy = st.lifecycle_policy()
     item_path = st.path(slug)
@@ -583,16 +607,24 @@ def _auto_delete(st, slug: str, status: str, resolution: str) -> int:
         print(f"tcw work: {err}; {slug} was resolved and committed but not "
               f"removed. Fix the binding and run `tcw work delete {slug}`.",
               file=sys.stderr)
-        return 1
+        return 1, False
     try:
         location = st.delete_resolved(slug, status)
+    except PublicationError as e:
+        # The removal and its commit landed; only the push did not. Reported as
+        # a failure, because a remote still holding a deleted item is exactly
+        # the divergence publication exists to prevent — but *not* as a removal
+        # that did not happen, which is what sent the caller on to describe a
+        # folder that is gone.
+        print(f"tcw work: {e}", file=sys.stderr)
+        return 1, True
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
-        return 1
+        return 1, False
     print(f"deleted {slug}; its documents remain in commit {location}")
     post_err = run_post(policy, "auto-delete", st.node_root, slug, status, item,
                         item_path=item_path, resolution=resolution)
-    return _post_result(post_err, "auto-delete", slug)
+    return _post_result(post_err, "auto-delete", slug), True
 
 
 def _delete(args: argparse.Namespace) -> int:
@@ -608,8 +640,23 @@ def _delete(args: argparse.Namespace) -> int:
     st, bare = resolved
     item = st.get(bare)
     if item is None:
-        print(f"tcw work delete: no such work item: {args.slug}", file=sys.stderr)
-        return 1
+        # The half-deleted state: the folder is gone and the record does not yet
+        # say where it went, because a `pre` binding moved the item away or an
+        # earlier attempt was interrupted. Refusing it here made
+        # `delete_resolved`'s documented "safe to re-run" unreachable through the
+        # CLI and left the tree holding an unstaged deletion forever — which is
+        # the one state this command exists to finish.
+        grave = st.tombstone(bare)
+        if grave is None:
+            print(f"tcw work delete: no such work item: {args.slug}",
+                  file=sys.stderr)
+            return 1
+        if grave.location:
+            print(f"{bare} is already removed; its documents remain in "
+                  f"{st.describe_location(grave.location)}")
+            return 0
+        code, _ = _auto_delete(st, bare, "", grave.resolution)
+        return code
     if item.status not in RESOLVED_STATUSES:
         print(f"tcw work delete: {bare} is {item.status}, not resolved. "
               f"`tcw work drop` deletes a backlog item; this finishes the "
@@ -620,7 +667,8 @@ def _delete(args: argparse.Namespace) -> int:
               f"in this project, so {bare} is not pending removal.",
               file=sys.stderr)
         return 1
-    return _auto_delete(st, bare, item.status, item.resolution or "")
+    code, _ = _auto_delete(st, bare, item.status, item.resolution or "")
+    return code
 
 
 def _post_result(err: str | None, transition: str, slug: str) -> int:
@@ -1414,11 +1462,16 @@ def _complete(args: argparse.Namespace) -> int:
     post_err = run_post(policy, transition_id, st.node_root, bare,
                         resolved_status, item)
     loc = st.locate(bare)
+    delete_code = 0
     if st.pending_deletion(bare):
-        if (deleted := _auto_delete(st, bare, resolved_status,
-                                    args.resolution)) != 0:
-            return deleted
-        loc = None
+        # Never an early return. The completion has already landed and its `post`
+        # result, its own report line and the worktree cleanup are all still owed
+        # — `merge_worktree` ran further up, so returning here orphaned the
+        # worktree and its branch with nothing left to remove them.
+        delete_code, removed = _auto_delete(st, bare, resolved_status,
+                                            args.resolution)
+        if removed:
+            loc = None
     print(f"{'completed' if shipping else 'discarded'} {args.slug} "
           f"({args.resolution})" + (f" → {loc}" if loc else ""))
     if has_worktree:
@@ -1432,7 +1485,7 @@ def _complete(args: argparse.Namespace) -> int:
                   f"`git branch -D {branch}` if you're sure.", file=sys.stderr)
         for w in remove_worktree(st.node_root, bare, branch if shipping else None):
             print(f"tcw work complete: {w}", file=sys.stderr)
-    return _post_result(post_err, transition_id, args.slug)
+    return _post_result(post_err, transition_id, args.slug) or delete_code
 
 
 def _drop(args: argparse.Namespace) -> int:
