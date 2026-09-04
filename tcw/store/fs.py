@@ -48,7 +48,8 @@ from tcw.store.base import (
     parse_connected_entry, parse_repository_declaration, parse_retention,
     ProvisionResult,
     RepositoryDeclaration,
-    PublicationError, StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
+    PublicationError, StoreDeclarationError, StoreLocationUnusable,
+    StoreNotProvisioned, StoreProvisioner,
     TaxonomyStore, Term, TermDetail, Tombstone,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -1388,11 +1389,14 @@ class FsTreeStore:
         default and the contract every existing project relies on.
         """
         if must_exist:
+            # `StoreLocationUnusable`, not a bare `ValueError`: the ladder falls
+            # through on "there is no store here" and must *not* fall through on
+            # anything the store itself reports while opening.
             if raw_root.is_symlink() and not raw_root.exists():
-                raise ValueError(
+                raise StoreLocationUnusable(
                     f"{config_path}: {cls.COMPONENT}.path is a broken symlink: {raw_root}")
             if not raw_root.is_dir():
-                raise ValueError(
+                raise StoreLocationUnusable(
                     f"{config_path}: {cls.COMPONENT}.path is not a directory: {raw_root}")
         root = raw_root.resolve() if raw_root.exists() else raw_root
         owner = (git_root(root) if external else node_root) or node_root
@@ -2869,6 +2873,12 @@ def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
     have it. Rules 3 and 4 are the same failure told two ways: with a
     declaration it is actionable, so it says what to run.
 
+    **Only `StoreLocationUnusable` falls through.** Rules 1 and 2 mean "try here,
+    and if there is no store here try the next place" — which is a statement
+    about the *location*, not about every way opening can fail. A store that is
+    present and raises while opening has to surface, or the ladder answers a
+    config error with `tcw provision`.
+
     One function for every component, because the ladder is the contract and
     three copies of a contract drift. The two things that genuinely differ are
     hooks on the store class: `_local_root`, which knows the component's default
@@ -2929,7 +2939,12 @@ def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
             raw_root, node_root, config_path,
             external=configured is not None, must_exist=must_exist,
             _seen_nodes=_seen_nodes)
-    except ValueError:
+    except StoreLocationUnusable:
+        # Only this. A store that is *there* and fails to open — a federation
+        # error, a malformed `extends` — is a real error, and swallowing it here
+        # reported "not provisioned; run `tcw provision`", which then succeeded
+        # and left the store exactly as unopenable. `_extended_component_stores`
+        # raises for many more reasons than it used to, so the hole widened.
         pass
     try:                                                        # rule 2
         # The declaration travels with the store *only* here. Rule 1 above
@@ -2939,8 +2954,8 @@ def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
             provisioned_store_root(node_root, declaration), node_root, config_path,
             external=True, must_exist=True, declaration=declaration,
             _seen_nodes=_seen_nodes)
-    except ValueError:
-        pass
+    except StoreLocationUnusable:
+        pass                                                    # same rule
     raise StoreNotProvisioned(                                  # rule 3
         f"{config_path}: the {component} store is declared in "
         f"{declaration.url} but has not been provisioned here; "
@@ -3281,16 +3296,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
         that. The parameter exists because the shared ladder asks every
         component the same question."""
         if raw_root.is_symlink() and not raw_root.exists():
-            raise ValueError(f"{config_path}: work.path is a broken symlink: {raw_root}")
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is a broken symlink: {raw_root}")
         if not raw_root.is_dir():
-            raise ValueError(f"{config_path}: work.path is not a directory: {raw_root}")
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is not a directory: {raw_root}")
         root = raw_root.resolve()
         missing = [name for name in ("inbox", *WORK_STATUSES) if not (root / name).is_dir()]
         if missing:
-            raise ValueError(f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
         repository = git_root(root) if external else node_root
         if repository is None and external:
-            raise ValueError(f"{config_path}: work.path is not inside a Git repository: {root}")
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is not inside a Git repository: {root}")
         return cls(root, node_root=node_root, store_git_root=repository or node_root,
                    declaration=declaration)
 

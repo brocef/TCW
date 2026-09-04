@@ -1781,3 +1781,42 @@ def test_dry_run_does_not_call_a_planned_obtain_already_available(tmp_path,
     assert "away-project: would obtain" in planned
     assert "away-project: already available" not in planned
     assert not (tmp_path / "cache").exists()
+
+
+# ── what falls through the ladder, and what must not ─────────────────────────
+
+def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
+    """Rules 1 and 2 swallowed every `ValueError`, so a store that was present
+    and failed to open was answered with `tcw provision` — which then succeeded
+    and left the store exactly as unopenable."""
+    node = _repo(tmp_path / "node")
+    init(["capabilities"], node, "node-project")
+    _write_config(node, retain={"completed": True})     # unrelated; keeps shape
+    config_path = node / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["capabilities"] = {
+        "repository": {"url": "https://example.invalid/ledger.git"},
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    # A store that is right here, and whose own config is wrong.
+    (node / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  nope: ../somewhere\n")               # the legacy map form
+
+    with pytest.raises(ValueError) as excinfo:
+        FsCapabilitiesStore.open(node)
+    message = str(excinfo.value)
+    assert "legacy extends map is unsupported" in message
+    assert "tcw provision" not in message
+    assert not isinstance(excinfo.value, StoreNotProvisioned)
+
+
+def test_a_location_that_holds_no_store_still_falls_through_to_the_declaration(tmp_path):
+    """The other half: rule 1 must still yield when there is simply no store
+    where it looked, or the declaration could never answer for anything."""
+    node = _repo(tmp_path / "node")
+    init(["work"], node, "node-project")
+    _write_config(node, path="nowhere",
+                  repository={"url": "https://example.invalid/board.git"})
+    with pytest.raises(StoreNotProvisioned) as excinfo:
+        FsWorkStore.open(node)
+    assert "tcw provision" in str(excinfo.value)

@@ -604,3 +604,62 @@ def test_show_json_on_a_removed_slug_prints_no_json_and_fails(
     # The human form is unchanged.
     assert main(["work", "show", slug]) == 0
     assert "(resolved)" in capsys.readouterr().out
+
+
+def test_every_transition_gives_a_hook_the_item_path(tmp_path, monkeypatch):
+    """`hook_env` documents the variable as absent only when there is nothing to
+    put in it, and `complete` had both an item path and a resolution and passed
+    neither — so a binding testing `[ -n "$TCW_ITEM_PATH" ]` concluded there was
+    no item folder for the transition most likely to want one."""
+    root = _node(tmp_path)
+    seen = tmp_path / "seen"
+    seen.mkdir()
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text()) or {}
+    record = f'printf "%s\\n" "$TCW_ITEM_PATH" "${{TCW_RESOLUTION:-<none>}}" > {seen}/"$TCW_TRANSITION"'
+    config.setdefault("work", {}).setdefault("lifecycle", {})["transitions"] = {
+        name: {"pre": [{"command": record}]}
+        for name in ("start", "submit", "rework", "complete")
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    monkeypatch.chdir(root)
+    assert main(["work", "start", item.slug]) == 0
+    assert main(["work", "submit", item.slug]) == 0
+    assert main(["work", "rework", item.slug]) == 0
+    assert main(["work", "submit", item.slug]) == 0
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 0
+
+    for name in ("start", "submit", "rework", "complete"):
+        path, resolution = (seen / name).read_text().splitlines()
+        assert path.endswith(item.slug), name
+        assert Path(path).name == item.slug, name
+        # Only the resolving transitions have one.
+        assert resolution == ("done" if name == "complete" else "<none>"), name
+
+
+def test_a_transition_over_a_concurrently_removed_item_says_so(tmp_path):
+    """The fallback record claimed `work.retain: false` removes the item during
+    the move. The store never deletes during a transition — that is a separate
+    call the CLI makes — so the only way it is gone here is a concurrent
+    removal, and fabricating a success for that returns the pre-move `owner` and
+    `started` the move had just cleared."""
+    import shutil
+
+    root = _node(tmp_path)
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    original = store._effect_transition
+
+    def _and_then_vanish(slug, to_status, fields):
+        original(slug, to_status, fields)
+        shutil.rmtree(store._find(slug))
+
+    store._effect_transition = _and_then_vanish
+    with pytest.raises(ValueError) as excinfo:
+        store.transition(item.slug, "review")
+    assert "no such work item" in str(excinfo.value)

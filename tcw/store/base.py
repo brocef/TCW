@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
@@ -49,6 +49,28 @@ class StaleRevision(Exception):
 class SidecarError(ValueError):
     """A work item's capabilities.yaml sidecar could not be read as declarations
     (malformed YAML, or a non-list delta value)."""
+
+
+class StoreLocationUnusable(ValueError):
+    """A candidate location does not hold a usable store — it is absent, it is
+    not a directory, or it lacks the component's layout.
+
+    The distinction the resolution ladder needs, and could not make before it
+    existed. Rules 1 and 2 try a location and fall through when it does not work
+    out, which is right for "there is no store there" and wrong for every other
+    reason a store fails to open: a federation error in a node that also declares
+    a repository was reported as "not provisioned; run `tcw provision`", which
+    then succeeded and left the store just as unopenable, because the real error
+    had been swallowed two rules earlier.
+
+    Storage-neutral: "the place I was told to look does not hold one of these"
+    is a question any adapter answers — a missing table, a project id the tracker
+    does not have — and it is categorically different from "the thing I found
+    there is misconfigured".
+
+    A `ValueError` for the same reason as its siblings: every existing
+    `except ValueError` around a store `open()` keeps working unchanged.
+    """
 
 
 class StoreDeclarationError(ValueError):
@@ -2368,15 +2390,14 @@ class WorkStore(ABC):
         if item.status == "active" or to_status == "active":
             merged.update({"owner": "", "started": ""})
         self._effect_transition(slug, to_status, merged)
-        settled = self.get(slug)
-        if settled is not None:
-            return settled
-        # Under `work.retain: false` the item is gone by the time the move
-        # returns — deliberately, and the caller still asked what became of it.
-        # Re-reading would report the item missing, which is true of the store
-        # and false of the transition.
-        return replace(item, status=to_status, **{
-            k: v for k, v in merged.items() if k in {"resolution"}})
+        # Re-read, and require it. The store never deletes as part of a move —
+        # `pending_deletion` says so, and removal under `work.retain: false` is a
+        # separate call the CLI makes afterwards — so the only way the item is
+        # gone here is that something else removed it while this move was in
+        # flight. Fabricating a record for that case looks like a success and
+        # carries the pre-move `owner` and `started` this very method had just
+        # cleared, which is the one thing a caller must not be handed.
+        return self._require(slug)
 
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
         """Labels of blockers that still block `item`. An entry is unresolved if

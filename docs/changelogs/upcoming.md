@@ -236,3 +236,36 @@ category.
   document shape under `WORK_ITEM_SCHEMA`, which is closed by construction and
   which `tcw serve` returns as well; filed as its own item.
 
+### Comments that described behaviour the code did not have
+
+Each of these was a comment a reader would have relied on. Where the comment was
+the better description, the code changed to match it.
+
+- **`WorkStore.transition` requires the item again after the move.** Its fallback
+  claimed the item is gone under `work.retain: false` — the store never deletes
+  during a transition, and removal is a separate call the CLI makes. So the only
+  way `get()` is None there is a concurrent removal, where the fabricated record
+  looked like a success and carried the pre-move `owner`/`started` the move had
+  just cleared.
+- **Every transition passes `TCW_ITEM_PATH`, and the resolving ones pass
+  `TCW_RESOLUTION`.** `hook_env` documented them as absent only when the
+  transition has neither, while `complete` had both and passed neither — so a
+  binding testing `[ -n "$TCW_ITEM_PATH" ]` concluded there was no item folder.
+  The docstring now also says the path is the item's location *at the moment the
+  hook runs*, which is what makes `pre` and `post` differ.
+- **`StoreLocationUnusable`** separates "no store at this location" from every
+  other reason opening fails, and the resolution ladder's rules 1 and 2 fall
+  through only on that. A federation error in a node that also declared a
+  repository was reported as `run \`tcw provision\``, which then succeeded and
+  left the store just as unopenable — a hole that widened when
+  `_extended_component_stores` gained many more reasons to raise.
+- **The unreachable re-entry guard in `_visit` is removed.** It could never fire:
+  a config is cached before its own edges are walked, so a cycle terminates on
+  the cache hit above it. `_validate_cycles` now documents that it is the only
+  thing that reports one, that it walks `children` alone because every
+  connection is declared from both sides, and that a cycle expressed purely
+  through `parent` edges surfaces through reciprocity instead.
+- `describe_location` already captured its git output; the raw `fatal:` the
+  finding described was fixed with the `ls-tree` probe that replaced
+  `cat-file -e`, and a test covers it.
+

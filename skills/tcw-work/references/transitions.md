@@ -169,7 +169,10 @@ complete, already-recorded artifact and a failure costs nothing.
 - `post` bindings run after the removal is committed. A failure never undoes it.
 - `TCW_ITEM_PATH` and `TCW_RESOLUTION` are exported alongside the usual four, so
   an archive command needs no lookup. The path is the store's own answer — never
-  compose one from `TCW_NODE_ROOT`.
+  compose one from `TCW_NODE_ROOT` — and it is where the item is *when the hook
+  runs*, which is why a `pre` and a `post` on the same transition can differ.
+  `TCW_ITEM_PATH` is set on every transition, not only this one; `TCW_RESOLUTION`
+  only where there is a resolution.
 - A binding that moves the item away itself is supported: an already-absent
   folder counts as removed.
 - `tcw work delete <slug>` finishes a removal a failed `pre` left pending,

@@ -116,7 +116,6 @@ class FsProjectRegistry(ProjectRegistry):
         self._by_id: dict[str, _Config] = {}
         self._problems: list[str] = []
         self._unreachable: list[UnreachableProject] = []
-        self._visiting: set[Path] = set()
         self._loaded = False
         self._current_path = self.node_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
@@ -242,33 +241,32 @@ class FsProjectRegistry(ProjectRegistry):
                     f"registered key '{declared_id}' does not match target id '{cfg.project.id}'",
                 )
             return cfg
-        if config_path in self._visiting:
-            self._problem(config_path, "cycle in connected-projects")
+        # No re-entry guard, and none is needed. The config is cached *before*
+        # its own edges are walked, so a cycle comes back to a cached config and
+        # the walk terminates on the cache hit above. The guard that used to sit
+        # here could therefore never fire, and the comments around it were the
+        # only thing making it look as though something caught a cycle at load
+        # time. `_validate_cycles` is what reports one.
+        cfg = self._read_config(config_path, declared_id, declared_in,
+                                declaration)
+        if cfg is None:
             return None
-        self._visiting.add(config_path)
-        try:
-            cfg = self._read_config(config_path, declared_id, declared_in,
-                                    declaration)
-            if cfg is None:
-                return None
-            self._cache[config_path] = cfg
-            previous = self._by_id.get(cfg.project.id)
-            if previous and previous.path != config_path:
-                self._problem(
-                    config_path,
-                    f"duplicate project id '{cfg.project.id}' also used by {previous.path}",
-                )
-            else:
-                self._by_id[cfg.project.id] = cfg
-            for child_id, entry in cfg.children.items():
-                self._visit(self._target_path(config_path, entry), child_id,
-                            config_path, entry.repository)
-            for parent_id, entry in cfg.parent.items():
-                self._visit(self._target_path(config_path, entry), parent_id,
-                            config_path, entry.repository)
-            return cfg
-        finally:
-            self._visiting.discard(config_path)
+        self._cache[config_path] = cfg
+        previous = self._by_id.get(cfg.project.id)
+        if previous and previous.path != config_path:
+            self._problem(
+                config_path,
+                f"duplicate project id '{cfg.project.id}' also used by {previous.path}",
+            )
+        else:
+            self._by_id[cfg.project.id] = cfg
+        for child_id, entry in cfg.children.items():
+            self._visit(self._target_path(config_path, entry), child_id,
+                        config_path, entry.repository)
+        for parent_id, entry in cfg.parent.items():
+            self._visit(self._target_path(config_path, entry), parent_id,
+                        config_path, entry.repository)
+        return cfg
 
     def _read_config(self, path: Path, declared_id: str | None,
                      declared_in: Path | None = None,
@@ -497,6 +495,21 @@ class FsProjectRegistry(ProjectRegistry):
         return target != expected
 
     def _validate_cycles(self) -> None:
+        """Report a cycle among the loaded projects. The only thing that does.
+
+        `children` edges only, and deliberately: every connection is declared
+        from both sides, so walking `parent` as well would make each legitimate
+        reciprocal pair a two-cycle. Reciprocity is what guarantees a `parent`
+        edge has a `children` counterpart here to be walked — so a cycle
+        expressed *purely* through `parent` edges is reported by
+        `_validate_reciprocity` as a missing counterpart rather than by this, and
+        that is the honest description of the coverage rather than a claim that
+        one check sees everything.
+
+        Nothing catches a cycle during the load itself. `_visit` caches a config
+        before walking its edges, so a cycle terminates on the cache hit; the
+        re-entry guard that used to sit there could never fire.
+        """
         visited: set[str] = set()
         active: set[str] = set()
 

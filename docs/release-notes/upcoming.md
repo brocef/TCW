@@ -128,3 +128,15 @@ One smaller fix: `tcw work show --json` on an item that has been finished and
 removed now fails cleanly with an explanation, instead of printing the
 human-readable block into whatever was expecting JSON.
 
+## Two things that told you the wrong thing
+
+If you write lifecycle hooks, `$TCW_ITEM_PATH` is now set for every transition,
+including `complete` — where it was missing, so a script checking for it decided
+there was no item folder. `$TCW_RESOLUTION` is set wherever there is one.
+
+And if a taxonomy or capabilities file is misconfigured in a project that also
+names a repository to fetch it from, TCW now tells you what is actually wrong.
+It used to say the store had not been fetched yet and send you to
+`tcw provision`, which fetched nothing it did not already have and left you
+exactly where you started.
+

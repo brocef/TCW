@@ -33,14 +33,23 @@ def hook_env(node_root: Path, slug: str, status: str, transition: str,
     without re-deriving context it cannot see.
 
     `TCW_ITEM_PATH` and `TCW_RESOLUTION` are **omitted** rather than exported
-    empty when the transition has no item folder or no resolution — `start` and
-    `submit` have neither — so a script can test for presence instead of for
-    emptiness.
+    empty when the caller has nothing to put in them, so a script can test for
+    presence instead of for emptiness. `TCW_RESOLUTION` is the one that is
+    genuinely conditional: only `complete`, `discard` and `auto-delete` have a
+    resolution. **Every** transition has an item folder, and every caller passes
+    it — the docstring once said `start` and `submit` had neither, and while it
+    said so `complete` passed neither either, so a binding testing
+    `[ -n "$TCW_ITEM_PATH" ]` concluded there was no item folder for the one
+    transition most likely to want it.
 
-    The path is passed in by the caller, always the store's own answer for the
-    item, and is never composed here from `TCW_NODE_ROOT`: the work store may
-    live in a different repository entirely, which is the standing rule for
-    store paths everywhere in this codebase.
+    The path is the item's location *at the moment the hook runs* — before the
+    move for a `pre`, after it for a `post` — because that is the only answer a
+    hook can act on. It is passed in by the caller, always the store's own answer
+    for the item, and is never composed here from `TCW_NODE_ROOT`: the work store
+    may live in a different repository entirely, which is the standing rule for
+    store paths everywhere in this codebase. A caller with no answer — the item
+    is already gone — passes None and the variable is absent, which is the state
+    the presence test exists to detect.
     """
     env = {
         **os.environ,

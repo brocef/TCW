@@ -246,7 +246,9 @@ work:
 `pre` runs after the item is committed where it landed and before it is removed,
 so your command sees a complete artifact that is already recorded. Two variables
 join the usual four: `TCW_ITEM_PATH`, the store's own answer for where the item
-is, and `TCW_RESOLUTION`. **If your command fails, the item is not deleted** — it
+is at the moment the hook runs, and `TCW_RESOLUTION`. Both are set on any
+transition that has them — `TCW_ITEM_PATH` on all of them — and omitted rather
+than blank when they do not, so a script can test for presence. **If your command fails, the item is not deleted** — it
 stays resolved, recorded and committed, and `tcw work delete <slug>` finishes the
 removal once you have fixed things. A command that moves the item away itself is
 fine; an already-absent folder counts as removed.
