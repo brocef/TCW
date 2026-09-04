@@ -1,0 +1,10 @@
+slug: 2026-09-04-a-failed-removal-commit-reports-success-and-leaves-an-unfinishable-tree-and-the-tombstone-can-name-a-commit-that-never-h
+title: A failed removal commit reports success and leaves an unfinishable tree, and
+  the tombstone can name a commit that never held the item
+created: '2026-09-04'
+resolution: null
+priority: 90
+effort: high
+tags:
+- bug
+- work

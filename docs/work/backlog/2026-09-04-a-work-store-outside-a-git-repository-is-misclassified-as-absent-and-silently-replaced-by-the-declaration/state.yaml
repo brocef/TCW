@@ -1,0 +1,10 @@
+slug: 2026-09-04-a-work-store-outside-a-git-repository-is-misclassified-as-absent-and-silently-replaced-by-the-declaration
+title: A work store outside a git repository is misclassified as absent and silently
+  replaced by the declaration
+created: '2026-09-04'
+resolution: null
+priority: 75
+effort: medium
+tags:
+- bug
+- work
