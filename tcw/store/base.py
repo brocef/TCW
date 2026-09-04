@@ -74,8 +74,14 @@ class StoreLocationUnusable(ValueError):
 
 
 class StoreDeclarationError(ValueError):
-    """A store's home repository is *declared wrongly* — the configuration itself
-    is the problem, and the message names the line to fix.
+    """A store's configured location is *wrong* — the configuration itself is
+    the problem, and the message names the line to fix.
+
+    Originally scoped to a wrongly declared home repository, and widened to what
+    it always meant: any configured location the adapter can see is there and
+    cannot use. A `work.path` naming a complete store outside any repository is
+    the same kind of fact as a `repository` block missing its url — present, and
+    unusable as written — and it must reach the reader for the same reason.
 
     A sibling of `StoreNotProvisioned`, and a `ValueError` for the same reason:
     every existing `except ValueError` around a store keeps working, including

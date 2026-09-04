@@ -201,3 +201,11 @@ And `tcw provision` now fails when it finds a broken declaration in a project it
 just fetched, instead of printing the error and exiting successfully. If you gate
 CI on it, that gate now works.
 
+## A work folder outside Git is now reported, not quietly swapped out
+
+If your `work.path` points at a real work folder that is not inside a Git
+repository, and the project also names a repository to fetch its board from, TCW
+used to quietly use the fetched one instead. Every command then read and wrote a
+different board than the one you configured, your items were nowhere to be seen,
+and nothing said why. It now tells you which line is the problem.
+

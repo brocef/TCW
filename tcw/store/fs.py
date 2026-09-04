@@ -3385,15 +3385,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
         repository = git_root(root) if external else node_root
         if repository is None and external:
-            # A plain `ValueError`, not `StoreLocationUnusable`. The store is
-            # *there* — a directory, with the full layout — and what is wrong is
-            # that its commits have no home. That is "present and wrong", which
-            # the ladder must surface rather than fall through: reported as
-            # `StoreLocationUnusable`, it read as "no store here", so a declared
-            # repository silently answered instead and every `tcw work` command
-            # then read and wrote a store the user had not configured, with
-            # their items invisible and nothing said anywhere.
-            raise ValueError(
+            # `StoreDeclarationError`, and both halves of that choice matter.
+            #
+            # Not `StoreLocationUnusable`: the store is *there* — a directory,
+            # with the full layout — and what is wrong is that its commits have
+            # no home. That is "present and wrong", the side of the line the
+            # ladder must surface. Falling through meant a declared repository
+            # silently answered instead, so every `tcw work` command read and
+            # wrote a store the user had not configured, their items invisible
+            # and nothing said anywhere.
+            #
+            # And not a plain `ValueError`, which is worse than the bug:
+            # `find_node` re-raises only `StoreNotProvisioned` and
+            # `StoreDeclarationError` and flattens everything else to None, so a
+            # bare `ValueError` here makes `tcw work list` answer "no tcw work
+            # node here — run `tcw init`" for a node that plainly is one.
+            #
+            # Nothing legitimate depends on the old fallback: `tcw init` already
+            # refuses to create this configuration.
+            raise StoreDeclarationError(
                 f"{config_path}: work.path is not inside a Git repository: {root}")
         return cls(root, node_root=node_root, store_git_root=repository or node_root,
                    declaration=declaration)

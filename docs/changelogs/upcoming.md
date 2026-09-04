@@ -397,3 +397,21 @@ the better description, the code changed to match it.
   filter it fed could only fire for a self-extend the identity check already
   refuses by project id.
 
+### A configured store that is present and unusable is reported
+
+- **A `work.path` naming a complete store outside any Git repository raises
+  `StoreDeclarationError`.** It raised `StoreLocationUnusable`, so the ladder
+  fell through and a declared `work.repository` silently answered instead: every
+  `tcw work` command then read and wrote a store the user had not configured,
+  their items invisible and nothing said anywhere. Before provisioning, the
+  error was "run `tcw provision`" and `work.path` was never mentioned.
+
+  The class is as load-bearing as the refusal. `find_node` re-raises only
+  `StoreNotProvisioned` and `StoreDeclarationError` and flattens every other
+  `ValueError` to None, so a plain one would make `tcw work list` answer
+  "no tcw work node here — run `tcw init`" for a node that plainly is one.
+  `StoreDeclarationError`'s docstring widens accordingly: any configured
+  location the adapter can see is there and cannot use, not only a wrongly
+  declared repository. Nothing legitimate depended on the old fallback —
+  `tcw init` already refuses to create this configuration.
+

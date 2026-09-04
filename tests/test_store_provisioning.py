@@ -893,9 +893,16 @@ def test_an_unknown_component_is_still_refused(tmp_path, monkeypatch):
         main(["provision", "--component", "nonsense"])
 
 
-def test_an_unusable_local_layout_falls_through_to_the_provisioned_store(tmp_path):
-    """Status folders outside Git are not a usable external store and therefore
-    must not block the declaration's valid provisioned fallback."""
+def test_a_local_store_outside_git_is_reported_not_silently_replaced(tmp_path):
+    """A complete store outside a repository is *present and wrong*, not absent.
+
+    It used to fall through to the declaration, so every `tcw work` command read
+    and wrote a store the user had not configured, their items invisible and
+    nothing said anywhere. The class matters as much as the refusal: `find_node`
+    re-raises only `StoreNotProvisioned` and `StoreDeclarationError`, so a plain
+    `ValueError` would make `tcw work list` answer "run `tcw init`" for a node
+    that plainly is one.
+    """
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     local = _local_store(tmp_path / "not-a-repository" / "work")
@@ -908,8 +915,10 @@ def test_an_unusable_local_layout_falls_through_to_the_provisioned_store(tmp_pat
     )
     FsStoreProvisioner(code, "work", declaration).ensure_available()
 
-    assert FsWorkStore.open(code).root == fs.provisioned_store_root(
-        code, declaration).resolve()
+    with pytest.raises(StoreDeclarationError) as excinfo:
+        FsWorkStore.open(code)
+    assert "work.path is not inside a Git repository" in str(excinfo.value)
+    assert "tcw provision" not in str(excinfo.value)
 
 
 def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_path):
