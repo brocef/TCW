@@ -1,0 +1,9 @@
+slug: 2026-09-04-the-retention-operations-the-cli-calls-are-not-on-the-abstract-work-store
+title: The retention operations the CLI calls are not on the abstract work store
+created: '2026-09-04'
+resolution: null
+priority: 70
+effort: medium
+tags:
+- tech-debt
+- work
