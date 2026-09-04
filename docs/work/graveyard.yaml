@@ -67,6 +67,9 @@
 ? 2026-09-04-a-failed-removal-commit-reports-success-and-leaves-an-unfinishable-tree-and-the-tombstone-can-name-a-commit-that-never-h
 : resolution: done
   resolved: '2026-09-04'
+2026-09-04-an-unreachable-project-is-reported-as-never-declared-by-nodes-escalate-and-delegate:
+  resolution: done
+  resolved: '2026-09-04'
 2026-09-04-tcw-validate-reports-a-work-store-on-a-node-that-keeps-no-board:
   resolution: done
   resolved: '2026-09-04'
