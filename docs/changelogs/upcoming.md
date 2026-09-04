@@ -338,3 +338,26 @@ the better description, the code changed to match it.
   the one state where the graph is least likely to be whole; it now says the
   graph could not be read, and why.
 
+### A declared relation this checkout does not have is still declared
+
+- **`ProjectRegistry.declared_parent_id()` / `declared_child_ids()`** join the
+  storage-neutral interface. `parent()` and `children()` answer with `Project`s,
+  so they can only answer for projects the store has — which made "declared but
+  not here" indistinguishable from "never declared", the one thing
+  `UnreachableProject` exists to prevent. The ids are known from the declaration
+  alone. The default implementations are the reachable answers, correct for a
+  store that always sees the whole graph.
+- **`unreachable_parent()` and `unreachable_children()`** in the FS adapter, and
+  three commands stop erasing the relation: `tcw work nodes` prints
+  `<id>  (not in this checkout)` on either line instead of `(none — root)` or
+  `(none — leaf)`; `tcw work escalate` names the project and its remedy instead
+  of "this is the root"; `tcw work delegate` says the child is declared and not
+  here instead of "no child node".
+- **`FsProjectRegistry.misdirected()`** — declared locators that do not resolve
+  here for a project that does. Reciprocity abstains on an absent target and
+  `unreachable()` filters these out because the project is in the graph, so
+  nothing reported them at all. Reported by `tcw validate`, never counted: the
+  same shape is a typo and a locator that is right for another machine, and only
+  the reader can tell which, so the wording states both facts — declared there,
+  found here.
+

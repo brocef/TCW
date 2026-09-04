@@ -486,6 +486,16 @@ in this checkout (/home/you/orchestrator)
 A command that *does* need the absent project says which one and where it was
 declared, rather than reporting that it was never registered. This is the same
 courtesy a declared store already gets when it has not been provisioned here.
+`tcw work nodes` lists it as a parent or a child that is not in this checkout,
+and `tcw work escalate` and `tcw work delegate` name it instead of calling the
+node a root or a leaf.
+
+`tcw validate` also reports a declared locator that does not resolve here for a
+project it *does* have — declared there, found here — without calling it a
+problem. Nothing on disk separates a typo from a path that is simply right for
+another machine, and in a workspace whose repositories sit differently on
+different disks the second is routine, so it states both facts and draws no
+conclusion.
 
 **A node need not keep a work store.** A repository root that only groups the
 packages owning the boards is a registered project like any other, and relations

@@ -525,3 +525,55 @@ def test_a_directory_that_is_not_a_node_is_still_refused(tmp_path):
     assert registry.check(), "a directory with no sentinel validated"
     with pytest.raises(ValueError):
         registry.require_valid()
+
+
+# ── a declared relation this checkout does not have ─────────────────────────
+
+def test_a_declared_parent_that_is_absent_is_still_a_declared_parent(tmp_path):
+    """`parent()` answers with a Project, so it can only answer for a project
+    this checkout has — which made "declared but not here" indistinguishable from
+    "never declared", the one thing `UnreachableProject` exists to prevent."""
+    child = tmp_path / "child"
+    config(child, "id: child-project\nconnected-projects:\n  parent:\n"
+                  f"    away-project: {tmp_path / 'away'}\n")
+    registry = FsProjectRegistry.open(child).require_valid()
+    assert registry.parent() is None
+    assert registry.declared_parent_id() == "away-project"
+    assert [u.id for u in registry.unreachable()] == ["away-project"]
+
+
+def test_a_declared_child_that_is_absent_is_still_a_declared_child(tmp_path):
+    parent = tmp_path / "parent"
+    config(parent, "id: parent-project\nconnected-projects:\n  children:\n"
+                   f"    away-project: {tmp_path / 'away'}\n")
+    registry = FsProjectRegistry.open(parent).require_valid()
+    assert registry.children() == []
+    assert registry.declared_child_ids() == ["away-project"]
+
+
+def test_a_locator_that_misses_a_project_the_graph_has_is_reported(tmp_path):
+    """The typo nothing reported: reciprocity abstains on an absent target, and
+    `unreachable()` filters the entry out because the project is in the graph
+    via the other route. It is equally the shape of a locator that is right for
+    another machine, so it is reported and not called a problem."""
+    parent = tmp_path / "parent"
+    child = tmp_path / "child"
+    config(parent, "id: parent-project\nconnected-projects:\n  children:\n"
+                   f"    child-project: {child}\n")
+    config(child, "id: child-project\nconnected-projects:\n  parent:\n"
+                  f"    parent-project: {tmp_path / 'TYPO-parent'}\n")
+
+    registry = FsProjectRegistry.open(parent)
+    assert registry.check() == []                 # not a problem, deliberately
+    assert registry.unreachable() == []           # the project is here
+    misdirected = registry.misdirected()
+    assert [entry.id for entry in misdirected] == ["parent-project"]
+    assert str(misdirected[0].locator).endswith("TYPO-parent")
+
+
+def test_a_locator_that_resolves_is_never_misdirected(tmp_path):
+    parent = tmp_path / "parent"
+    child = tmp_path / "child"
+    reciprocal(parent, "parent-project", child, "child-project")
+    assert FsProjectRegistry.open(parent).misdirected() == []
+    assert FsProjectRegistry.open(child).misdirected() == []

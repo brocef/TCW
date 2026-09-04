@@ -178,3 +178,16 @@ you which project is missing, and `--force` works.
 The list of missing projects also no longer repeats a project once for each place
 it was declared.
 
+## A project you have not fetched is still a project you declared
+
+`tcw work nodes` used to call you the root of the graph, or a leaf, when the
+project above or below you was one this checkout does not have — so a config that
+plainly named a parent read as though it named nothing. It now lists that project
+and says it is not in this checkout, and `tcw work escalate` and
+`tcw work delegate` name it too, instead of telling you there is nothing there.
+
+`tcw validate` also mentions a locator that does not resolve on this machine for
+a project it found somewhere else — a typo looks exactly like a path written for
+a differently-arranged workspace, so it tells you both and leaves the reading to
+you.
+

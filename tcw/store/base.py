@@ -148,6 +148,26 @@ class ProjectRegistry(ABC):
     def current(self) -> Project:
         """The project from which this registry was opened."""
 
+    def declared_parent_id(self, project_id: str | None = None) -> str | None:
+        """The id of the declared parent, whether or not this store can reach it.
+
+        `parent()` answers with a `Project`, so it can only answer for a project
+        this store actually has — which made every "declared but not here"
+        relation indistinguishable from "never declared", the one thing
+        `UnreachableProject` exists to prevent. The id is known from the
+        declaration alone, so it is answerable either way.
+
+        The default is the reachable answer, which is correct for a store that
+        always sees the whole graph.
+        """
+        parent = self.parent(project_id)
+        return None if parent is None else parent.id
+
+    def declared_child_ids(self, project_id: str | None = None) -> list[str]:
+        """The ids of the declared children, reachable or not. See
+        `declared_parent_id`."""
+        return [child.id for child in self.children(project_id)]
+
     @abstractmethod
     def get(self, project_id: str) -> Project | None:
         """Return a connected project by canonical ID."""

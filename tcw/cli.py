@@ -368,9 +368,8 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         print(f"{len(registry_problems)} project graph problem(s).", file=sys.stderr)
         return 1
     # Reported, never counted, and never fatal. These are declarations this
-    # checkout cannot follow, not defects — but they are also how a genuine typo
-    # in a locator now surfaces, so they are printed every run rather than
-    # behind a flag.
+    # checkout cannot follow, not defects, so they are printed every run rather
+    # than behind a flag.
     for absent in registry.unreachable():
         if absent.declaration is not None:
             print(f"{absent.declared_in}: connected project '{absent.id}' is "
@@ -381,6 +380,16 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             print(f"{absent.declared_in}: connected project '{absent.id}' is declared "
                   f"but not reachable in this checkout ({absent.locator})",
                   file=sys.stderr)
+    # The locators that do not resolve here for a project that is here. Also
+    # never fatal: it is how a genuine typo surfaces — reciprocity abstains on an
+    # absent target, and `unreachable()` filters these out because the project is
+    # in the graph, so nothing said anything at all — but it is equally the shape
+    # of a locator that is simply right for another machine. Both facts, no
+    # conclusion.
+    for entry in registry.misdirected():
+        print(f"{entry.declared_in}: connected project '{entry.id}' is declared "
+              f"at {entry.locator}, which is not in this checkout; it was found "
+              f"at {registry.get(entry.id).locator}", file=sys.stderr)
     from tcw.validate import validate
     recurse = args.path is None and not args.no_recurse
     projects = [registry.current, *registry.descendants()] if recurse else [registry.current]

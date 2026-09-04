@@ -254,3 +254,99 @@ def test_the_parent_marker_says_which_reason_applies(tmp_path, monkeypatch, caps
     assert main(["work", "nodes"]) == 0
     out = capsys.readouterr().out
     assert "parent: parent-project  (work store not provisioned here)" in out
+
+
+# ── an unreachable relation is named, never erased ──────────────────────────
+
+def _child_missing_its_parent(tmp_path):
+    """A checkout holding only the child, whose config names an absent parent."""
+    import subprocess
+    import yaml
+    from tcw.store.fs import init
+
+    child = tmp_path / "child"
+    child.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(child)], check=True)
+    subprocess.run(["git", "-C", str(child), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(child), "config", "user.name", "t"], check=True)
+    init(["work"], child, "child-project")
+    doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    doc["connected-projects"] = {"parent": {"away-project": str(tmp_path / "away")}}
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    return child
+
+
+def test_nodes_names_a_parent_this_checkout_does_not_have(tmp_path, monkeypatch,
+                                                          capsys):
+    """It printed `(none — root)` for a config that plainly names a parent —
+    the confusion `child_nodes`' own comment forbids and README promises against."""
+    from tcw.cli import main
+
+    child = _child_missing_its_parent(tmp_path)
+    monkeypatch.chdir(child)
+    assert main(["work", "nodes"]) == 0
+    out = capsys.readouterr().out
+    assert "away-project" in out
+    assert "(none — root)" not in out
+
+
+def test_escalate_says_the_parent_is_not_here_rather_than_that_there_is_none(
+        tmp_path, monkeypatch):
+    import pytest as _pytest
+    from tcw.work.recursion import escalate
+
+    child = _child_missing_its_parent(tmp_path)
+    monkeypatch.chdir(child)
+    with _pytest.raises(ValueError) as excinfo:
+        escalate(child, "Test")
+    message = str(excinfo.value)
+    assert "away-project" in message
+    assert "this is the root" not in message
+
+
+def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
+                                                         capsys):
+    import subprocess
+    import yaml
+    from tcw.cli import main
+    from tcw.store.fs import init
+
+    parent = tmp_path / "parent"
+    parent.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(parent)], check=True)
+    subprocess.run(["git", "-C", str(parent), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
+    init(["work"], parent, "parent-project")
+    doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
+    doc["connected-projects"] = {"children": {"away-project": str(tmp_path / "away")}}
+    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+
+    monkeypatch.chdir(parent)
+    assert main(["work", "nodes"]) == 0
+    out = capsys.readouterr().out
+    assert "away-project" in out
+    assert "(none — leaf)" not in out
+
+
+def test_delegate_to_an_absent_child_says_which_one(tmp_path, monkeypatch):
+    import subprocess
+    import yaml
+    import pytest as _pytest
+    from tcw.store.fs import init
+    from tcw.work.recursion import delegate
+
+    parent = tmp_path / "parent"
+    parent.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(parent)], check=True)
+    subprocess.run(["git", "-C", str(parent), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
+    init(["work"], parent, "parent-project")
+    doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
+    doc["connected-projects"] = {"children": {"away-project": str(tmp_path / "away")}}
+    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+
+    with _pytest.raises(ValueError) as excinfo:
+        delegate(parent, "away-project", "Test")
+    message = str(excinfo.value)
+    assert "away-project" in message
+    assert "no child node" not in message

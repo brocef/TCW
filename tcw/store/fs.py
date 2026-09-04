@@ -49,7 +49,7 @@ from tcw.store.base import (
     ProvisionResult,
     RepositoryDeclaration,
     PublicationError, StoreDeclarationError, StoreLocationUnusable,
-    StoreNotProvisioned, StoreProvisioner,
+    StoreNotProvisioned, StoreProvisioner, UnreachableProject,
     TaxonomyStore, Term, TermDetail, Tombstone,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
@@ -276,6 +276,36 @@ def registered_children(root: Path) -> list[Path]:
     """
     registry = FsProjectRegistry.open(root).require_valid()
     return [Path(project.locator) for project in registry.children()]
+
+
+def unreachable_parent(root: Path) -> "UnreachableProject | None":
+    """The declared parent this checkout does not have, or None.
+
+    What `registered_parent` cannot answer: it returns a path, and a project
+    that is not here has none. Without this, `tcw work nodes` printed
+    `(none — root)` and `tcw work escalate` said "this is the root" for a node
+    whose config plainly names a parent — the exact confusion the comment above
+    `child_nodes` forbids, and which `README.md` promises does not happen.
+    """
+    registry = FsProjectRegistry.open(root).require_valid()
+    parent_id = registry.declared_parent_id()
+    if parent_id is None or registry.get(parent_id) is not None:
+        return None
+    return registry.unreachable_project(parent_id)
+
+
+def unreachable_children(root: Path) -> "list[UnreachableProject]":
+    """The declared children this checkout does not have. See
+    `unreachable_parent`."""
+    registry = FsProjectRegistry.open(root).require_valid()
+    absent = []
+    for child_id in registry.declared_child_ids():
+        if registry.get(child_id) is not None:
+            continue
+        entry = registry.unreachable_project(child_id)
+        if entry is not None:
+            absent.append(entry)
+    return absent
 
 
 def nearest_work_ancestor(root: Path) -> Path | None:

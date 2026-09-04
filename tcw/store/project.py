@@ -162,6 +162,16 @@ class FsProjectRegistry(ProjectRegistry):
             if child_id in self._by_id
         ]
 
+    def declared_parent_id(self, project_id: str | None = None) -> str | None:
+        cfg = self._config_for(project_id)
+        if not cfg or not cfg.parent:
+            return None
+        return next(iter(cfg.parent))
+
+    def declared_child_ids(self, project_id: str | None = None) -> list[str]:
+        cfg = self._config_for(project_id)
+        return list(cfg.children) if cfg else []
+
     def ancestors(self, project_id: str | None = None) -> list[Project]:
         result: list[Project] = []
         seen: set[str] = set()
@@ -206,6 +216,30 @@ class FsProjectRegistry(ProjectRegistry):
         project is followed.
         """
         return [entry for entry in self._unreachable if entry.id not in self._by_id]
+
+    def misdirected(self) -> list[UnreachableProject]:
+        """Declared locators that do not resolve here, for projects that do.
+
+        The other half of `unreachable()`, and the reason it cannot be one list.
+        `unreachable()` means "obtain this"; these entries name a project the
+        checkout already has, so that message would be wrong. What is left is
+        still worth saying: the locator written here does not point at it.
+
+        Two readings, and nothing on disk distinguishes them. It may be a typo —
+        which nothing reported at all, because reciprocity abstains on an absent
+        target and this project is filtered out of `unreachable()`. Or it may be
+        a locator that is simply right for another machine, which is routine in a
+        workspace whose repositories sit differently on different disks, and is
+        exactly why this is *not* a problem. So the wording states both facts and
+        draws no conclusion: declared there, found here.
+        """
+        out = []
+        for entry in self._unreachable:
+            cfg = self._by_id.get(entry.id)
+            if cfg is None or cfg.path == Path(str(entry.locator)) / SENTINEL:
+                continue
+            out.append(entry)
+        return out
 
     def require_valid(self) -> "FsProjectRegistry":
         if self._problems:

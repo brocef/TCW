@@ -21,6 +21,7 @@ from tcw.store.fs import (
     declared_repository, git_commit_result, git_root, merge_worktree,
     nearest_work_ancestor,
     parent_node, registered_children, registered_parent,
+    unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
     resolve_qualified_work_ref,
 )
@@ -176,6 +177,12 @@ def _nodes(args: argparse.Namespace) -> int:
         if registered is not None:
             print(f"parent: {registered_project_id(node, registered)}"
                   f"{_no_store_note(registered)}")
+        elif (absent := unreachable_parent(node)) is not None:
+            # Declared, and not here. `registered_parent` cannot report it — it
+            # answers with a path, and a project this checkout does not have has
+            # none — so this line used to read `(none — root)` for a node whose
+            # config plainly names a parent.
+            print(f"parent: {absent.id}  (not in this checkout)")
         else:
             print("parent: (none — root)")
     # Every registered child, not only the ones keeping a board. A routing node
@@ -183,12 +190,15 @@ def _nodes(args: argparse.Namespace) -> int:
     # Marked the same way the parent line marks its own case, so the two halves
     # of this output describe the graph alike.
     children = registered_children(node)
-    if children:
+    absent_children = unreachable_children(node)
+    if children or absent_children:
         print("children:")
         with_store = {c.resolve() for c in child_nodes(node)}
         for c in children:
             print(f"  {registered_project_id(node, c)}"
                   f"{'' if c.resolve() in with_store else _no_store_note(c)}")
+        for entry in absent_children:
+            print(f"  {entry.id}  (not in this checkout)")
     else:
         print("children: (none — leaf)")
     return 0
