@@ -1,0 +1,11 @@
+slug: 2026-09-04-tcw-provision-cannot-be-scoped-and-a-third-hop-config-can-name-a-checkout-directory
+title: tcw provision cannot be scoped, and a third-hop config can name a checkout
+  directory
+created: '2026-09-04'
+resolution: null
+priority: 35
+effort: low
+complexity: medium
+tags:
+- cli
+- remote
