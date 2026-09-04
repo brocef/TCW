@@ -40,7 +40,8 @@ def test_stage_ids_match_the_epic_contract():
 
 
 def test_transition_ids_match_the_epic_contract():
-    assert TRANSITION_IDS == ("start", "submit", "complete", "rework", "discard")
+    assert TRANSITION_IDS == ("start", "submit", "complete", "rework", "discard",
+                              "auto-delete")
 
 
 def test_produces_is_a_tuple_of_artifact_names():
@@ -70,13 +71,24 @@ def test_produces_and_produces_note_describe_the_same_artifacts():
 
 
 def test_every_transition_id_except_discard_is_a_cli_verb():
-    """`discard` is the one transition with no verb of its own — it is reached as
+    """Two transitions have no verb spelled the same way, for different reasons.
+
+    `discard` has no verb at all — it is reached as
     `complete --resolution <not-done>`, because the resolution picks the
     destination. Bindings key on the *move*, so the two resolutions of `complete`
-    fire different hooks. Pinned because a future reader will otherwise assume
-    the id set and the verb set are the same thing."""
+    fire different hooks.
+
+    `auto-delete` has one under a different name. It normally runs as part of a
+    resolving transition rather than being typed, and the manual entry point that
+    finishes an interrupted one is `tcw work delete <slug>` — "auto-delete" reads
+    wrong as something a person types, while the config key it binds must say
+    that the deletion is automatic.
+
+    Pinned because a future reader will otherwise assume the id set and the verb
+    set are the same thing."""
     from tcw.work.cli import SUBCOMMANDS
-    assert set(TRANSITION_IDS) - SUBCOMMANDS == {"discard"}
+    assert set(TRANSITION_IDS) - SUBCOMMANDS == {"discard", "auto-delete"}
+    assert "delete" in SUBCOMMANDS
 
 
 # ── valid shapes ─────────────────────────────────────────────────────────────

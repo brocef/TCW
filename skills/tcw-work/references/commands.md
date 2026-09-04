@@ -6,7 +6,7 @@
 | triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`; `<entry>` is either identifier `list` printed (ref or title) |
 | locate stores            | `tcw work path` (configured work root) · `tcw work inbox path` (its inbox); both print only the absolute resolved path                          |
 | the board                | `tcw work list [--status <s>] [--tag <t>] [--all] [-i]` — hides resolved; `-i` adds descendant boards                                           |
-| read an item             | `tcw work show <slug> [--json]` · `tcw work path <slug>`                                                                                        |
+| read an item             | `tcw work show <slug> [--json]` · `tcw work path <slug>` — `show` answers from the graveyard for an item retention deleted, naming the commit its documents are in                                                                                        |
 | the lifecycle contract   | `tcw work lifecycle [work-ref] [--json]` · `--stage <id> --directive`                                                                           |
 | the documentation gate   | `tcw work docs [--json]` — the documents this project keeps in sync with code                                                                   |
 | start work               | `tcw work start <slug> [--worktree] [--force]`                                                                                                  |
@@ -15,6 +15,7 @@
 | finish work              | `tcw work complete <slug> --resolution done --confirm [--already-integrated]`                                                                   |
 | close without shipping   | `tcw work complete <slug> --resolution wontfix\|duplicate\|superseded --confirm`                                                                |
 | delete a backlog item    | `tcw work drop <slug> --confirm` (no record kept)                                                                                               |
+| finish a pending removal | `tcw work delete <slug>` — for an item a `work.retain.<status>: false` node resolved but whose `auto-delete` archive failed; runs the same bindings, refuses a live or retained item |
 | record a resolved slug   | `tcw work tombstone add <slug> [--resolution <r>] [--resolved <ISO>]` — for work resolved *before* the store kept records; refuses only a **live** slug or one already recorded, so it works on the machine still holding the resolved folder and is safe to re-run; commits and publishes |
 | record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated                                |
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>`                                                                               |
@@ -28,7 +29,7 @@
 | a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
-| obtain a declared store | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores this node declares but does not have here; every declared component by default; idempotent |
+| obtain a declared store or project | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores **and connected projects** this node declares but does not have here; connected projects are followed transitively; every declared component by default; idempotent |
 
 **Not CLI subcommands.** Two workflows are AI-driven reviews with no `tcw` verb
 behind them — the CLI cannot run them, and asking it to is an argparse error:
@@ -79,7 +80,10 @@ named artifact — raw input that quietly changes is not raw input.
 ## Addressing
 
 A **bare slug** is local. `<project-id>/<slug>` resolves any node in the
-registered graph — descendant, ancestor, or sibling. A `<status>/…/<slug>` path
+registered graph this checkout can open — descendant, ancestor, or sibling. A
+qualifier naming a project that is declared but whose repository is not here
+fails saying exactly that, naming the config that declared it; a qualifier naming
+a project nobody declared still reports that there is no such project. A `<status>/…/<slug>` path
 also works, but the status segment must match the item's real status; the slug is
 always the identity.
 
@@ -115,9 +119,18 @@ gets it. Resolution prefers a store that is **already here** — the declaration
 answers only when the local one is absent, so one config serves a laptop that has
 the folder and a fresh clone that does not.
 
-`tcw provision` obtains the missing work store. `--component` currently accepts
-only `work`; taxonomy and capabilities remain local until their adapters gain
-the same resolution path. Nothing else reaches the network: a
+**A connected project declares the same way.** An entry under
+`connected-projects` may be `{path, repository}` instead of a bare locator, with
+the same ladder — the project at `path` wins when it is here — so a checkout that
+cloned one repository can still resolve `extends`, cross-node refs and the
+topology. Declarations follow the graph: each config names only its own edges.
+
+`tcw provision` obtains the missing stores and connected projects. `--component`
+scopes the component pass; connected projects are obtained after it and
+**transitively**, since a project just obtained may declare others. That is the
+one place a URL the user did not write is contacted, so every remote is printed
+first and `--dry-run` plans the whole queue without a network call. Nothing else
+reaches the network: a
 command that needs an unprovisioned store fails, names the declared remote, and
 tells the user to run it — do not work around that by composing a path or running
 `tcw init`, which would scaffold a second, empty store beside the real one. A

@@ -190,13 +190,86 @@ mirror — `tcw taxonomy init`, `tcw capabilities init`, `tcw work init` —
 identical to `tcw init --id <project-id> <component>`. Existing configured nodes
 may omit `--id`; legacy ID-less markers use it once to backfill their identity.
 
-Scaffolding `work` also adds `.gitignore` rules for `docs/work/completed/` and
-`docs/work/discarded/`, keeping each folder's `.gitkeep` tracked. Resolved items
-therefore stay on your disk and in the history that tracked them while they were
-live, without piling up in the tree forever. Delete the rules to track resolved
-work instead; on a node that predates them, re-run `tcw work init` to add them
-and `git rm -r --cached docs/work/completed docs/work/discarded` to drop what git
-already tracks.
+### What happens to resolved work
+
+Three arrangements, and a project picks one per resolved status.
+
+**Gitignored** is what scaffolding gives you and what every existing project
+has: `tcw work init` writes `.gitignore` rules for `docs/work/completed/` and
+`docs/work/discarded/`, keeping each folder's `.gitkeep` tracked. A resolved item
+is untracked and left on disk, so it stays with the person who resolved it —
+and, worth knowing, reaches nobody else. A fresh clone has no resolved items at
+all.
+
+**Retained** tracks them: delete the rules, and `git rm -r --cached
+docs/work/completed docs/work/discarded` to drop what git already has.
+
+**Auto-deleted** removes the folder and keeps the content in history:
+
+```yaml
+work:
+    retain:
+        completed: false     # default: true, for both resolved statuses
+        discarded: false
+```
+
+The resolving transition then writes **two commits** — the item lands in its
+resolved folder and is committed, then the folder is removed — and the
+graveyard entry records the first commit, so `tcw work show <slug>` on a
+resolved item reports where its documents can still be fetched from. Nothing is
+deleted unless you ask: the default retains everything, and a malformed
+`retain` reads as the default and is reported by `tcw validate` rather than
+quietly becoming a deletion.
+
+**Auto-delete and the ignore rules cannot coexist**, and TCW refuses the
+combination before anything moves. Git untracks rather than moves a path into an
+ignored folder, so the first commit would record a removal and hold no item —
+leaving the record pointing at a commit that never contained anything, and no
+copy anywhere. Removing the rules is a precondition, not a companion change. Once
+a status is named in `retain`, `tcw work init` stops writing rules for it.
+
+**Hand the item to your own archive before it goes.** The removal is a bindable
+lifecycle step, `auto-delete`, with `pre` and `post`:
+
+```yaml
+work:
+    retain:
+        completed: false
+    lifecycle:
+        transitions:
+            auto-delete:
+                pre:
+                    - command: tar -czf - -C "$TCW_ITEM_PATH" . |
+                        aws s3 cp - "s3://my-bucket/$TCW_RESOLUTION/$TCW_SLUG.tgz"
+```
+
+`pre` runs after the item is committed where it landed and before it is removed,
+so your command sees a complete artifact that is already recorded. Two variables
+join the usual four: `TCW_ITEM_PATH`, the store's own answer for where the item
+is at the moment the hook runs, and `TCW_RESOLUTION`. Both are set on any
+transition that has them — `TCW_ITEM_PATH` on all of them — and omitted rather
+than blank when they do not, so a script can test for presence. **If your command fails, the item is not deleted** — it
+stays resolved, recorded and committed, and `tcw work delete <slug>` finishes the
+removal once you have fixed things. A command that moves the item away itself is
+fine; an already-absent folder counts as removed.
+
+Two things this does not promise. TCW cannot tell whether your command really
+archived anything, and a `skill:` binding is reported for your agent to invoke
+rather than run — so anything you need guaranteed belongs in a `command:`.
+`tcw serve` runs no hooks, so an item resolved through the web UI waits for a CLI
+`tcw work delete` rather than being removed without your archive.
+
+Adopting auto-delete on an older board wants one more step first: the graveyard
+is what keeps a deleted slug from being reissued, and a board that predates it
+has none. `tcw work tombstone add <slug>` backfills the ones already resolved.
+
+A history that gets rewritten takes the content with it. A squash-merge or a
+shallow clone can leave a record whose commit no longer resolves — `tcw work
+show` says so rather than printing a dead pointer, but it cannot get the content
+back. That is the trade auto-delete makes, and it is why the default does not
+make it for you.
+
+### Where a component store lives
 
 To keep a project's work in another Git repository while preserving its own ID
 and lifecycle configuration, set `work.path` in its `tcw-config.yaml` or pass
@@ -231,6 +304,9 @@ taxonomy:
         path: docs/taxonomy
 ```
 
+A connected project takes the same block, in the same place its locator goes —
+see [Connected projects](#connected-projects).
+
 **A store that is already here always wins.** The declaration is consulted only
 when the local store is absent, so the same config keeps working untouched on a
 machine that has the folder, and answers for one that doesn't. Where the store is
@@ -239,17 +315,32 @@ instead of reporting that the project has no such component. That last part
 matters most for the trees: a checkout that cloned only the code has no
 `docs/taxonomy/` folder, which used to read as "this project has no taxonomy".
 
+### Obtaining a declared store or project
+
 `tcw provision` is what obtains it:
 
 ```sh
-tcw provision                 # every declared store, when it is not here yet
+tcw provision                 # every declared store and connected project
 tcw provision --dry-run       # print the plan; contact nothing
 tcw provision --refresh       # bring an existing copy to the declared version
 tcw provision --component taxonomy
 ```
 
 Each declared component is obtained on its own, so one bad declaration does not
-suppress another's result.
+suppress another's result. Connected projects are obtained after the components,
+and **transitively**: a project obtained because it was declared may declare
+others, and those are obtained in the same run. That is the one place `tcw`
+contacts a URL you did not write yourself, so every remote is printed before it
+is contacted — the transitive ones included — and `--dry-run` walks the whole
+queue without touching the network, saying plainly that a project it has not
+fetched may declare more. `--component` scopes the component pass only —
+connected projects are still obtained, and every remote is still printed first. A
+project this checkout can already reach is never fetched, however it is declared
+— the same "already here wins" rule the stores follow — so declaring an edge on
+both sides costs nothing. `--refresh` does not override that: it brings a copy
+`tcw` itself provisioned back to the declared version, and a project you resolve
+somewhere else has no such copy to bring anywhere — obtaining one would put a
+second node in the graph under a single ID.
 
 If the `repository` block itself is wrong — a missing `url`, a path that escapes
 the repository root, a key that is not one of the four — every command says which
@@ -352,12 +443,75 @@ connected-projects:
         orchestrator: ../orchestrator
 ```
 
+An entry may also say where the project *comes from*, taking the same
+`repository` block a component store takes (see [Where a component store
+lives](#where-a-component-store-lives)) in the place a locator goes:
+
+```yaml
+id: project-a
+connected-projects:
+    parent:
+        orchestrator:
+            path: ../orchestrator                # optional; where it is here
+            repository:
+                url: https://github.com/me/orchestrator.git
+                ref: main
+```
+
+A bare locator string stays a locator, so nothing already written changes. The
+ladder is the store's, and `tcw provision` is what walks it.
+
 Relative locators resolve from the declaring config; absolute locators are also
 allowed. `children` contains direct children only and `parent` has at most one
 entry. TCW derives deeper descendants and ancestors transitively, never by
 scanning directories to discover a project. `tcw work list --include-descendants`
 groups registered boards by project ID, and any work command accepts
 `<descendant-project-id>/<slug>`.
+
+**A locator is a fact about one machine, and a project that is not on it drops
+out of the graph rather than failing your commands.** A checkout holding only
+some of a graph's repositories — a fresh clone, a cloud session that cloned one
+repo — keeps working: the absent project is simply not in the graph, and
+everything that does not need it behaves normally. `tcw validate` names each
+project it could not reach, every run. A project some other declaration did
+resolve is not listed — in a
+reciprocal graph both sides name every connection, and on a machine holding only
+some of the repositories one of those two is routinely a path that is not here:
+
+```
+tcw-config.yaml: connected project 'orchestrator' is declared but not reachable
+in this checkout (/home/you/orchestrator)
+```
+
+A command that *does* need the absent project says which one and where it was
+declared, rather than reporting that it was never registered. This is the same
+courtesy a declared store already gets when it has not been provisioned here.
+`tcw work nodes` lists it as a parent or a child that is not in this checkout,
+and `tcw work escalate` and `tcw work delegate` name it instead of calling the
+node a root or a leaf.
+
+`tcw validate` also reports a declared locator that does not resolve here for a
+project it *does* have — declared there, found here — without calling it a
+problem. Nothing on disk separates a typo from a path that is simply right for
+another machine, and in a workspace whose repositories sit differently on
+different disks the second is routine, so it states both facts and draws no
+conclusion.
+
+**A node need not keep a work store.** A repository root that only groups the
+packages owning the boards is a registered project like any other, and relations
+pass straight through it: an epic two levels up resolves, its slices below one
+are found, and `tcw work escalate` reaches the nearest ancestor that does keep a
+board. `tcw work nodes` says `parent: <id>  (no work store)` for such a parent
+rather than calling this node the root, and `(work store not provisioned here)`
+for one whose declared board this machine has not obtained — the same two markers
+it puts on the children lines.
+
+Configuration that is genuinely wrong still fails closed, unchanged: an invalid
+or duplicated project ID, a cycle, unparseable YAML, a registered key that
+disagrees with the target it names. The one thing that relaxes with it is
+reciprocity — two nodes that name each other at paths belonging to different
+machines are correctly configured, and only a counterpart that is *present* and
+points somewhere else is a non-reciprocal declaration.
 
 Inside a **linked git worktree** a relative locator would otherwise be off by the
 worktree's nesting depth, because it was written against the project's position

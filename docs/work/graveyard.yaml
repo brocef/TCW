@@ -13,3 +13,84 @@
 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
   resolution: done
   resolved: '2026-09-02'
+2026-09-03-a-partial-graph-lets-the-epic-completion-gate-and-the-node-check-fail-open:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-03-an-auto-delete-step-with-hooks-so-a-consumer-can-archive-an-item-before-it-is-removed:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-an-unreachable-edge-is-reported-for-a-project-the-graph-resolved-anyway:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-comments-and-docstrings-that-describe-behaviour-the-code-does-not-have:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-03-connected-project-entries-declare-where-they-come-from-so-tcw-provision-can-obtain-a-node:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-delete-resolved-can-destroy-a-work-item-that-no-commit-holds:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-03-extends-composes-docs-component-instead-of-resolving-the-sibling-s-store:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-federation-is-broken-at-the-second-hop-and-exponential-in-chain-depth:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-03-provisioning-stops-walking-at-a-project-that-is-already-here:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-03-retain-resolved-work-items-in-history-and-make-auto-delete-configurable:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-tcw-provision-fetches-a-project-the-checkout-already-has:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-tcw-work-nodes-hides-a-registered-child-that-keeps-no-work-store:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-the-epic-owner-walk-stops-at-a-parent-that-has-no-work-store:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-the-half-deleted-state-is-unfinishable-and-an-auto-delete-failure-swallows-the-completion:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-03-the-provisioning-skip-misses-a-project-that-is-reachable-but-neither-ancestor-nor-descendant:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-03-unreachable-connected-projects-degrade-instead-of-failing-every-command:
+  resolution: done
+  resolved: '2026-09-03'
+2026-09-04-a-backlog-epic-in-a-partial-checkout-cannot-be-completed-even-with-force:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-04-a-checkout-value-crashes-every-command-and-a-transitive-declaration-error-exits-zero:
+  resolution: done
+  resolved: '2026-09-04'
+? 2026-09-04-a-failed-removal-commit-reports-success-and-leaves-an-unfinishable-tree-and-the-tombstone-can-name-a-commit-that-never-h
+: resolution: done
+  resolved: '2026-09-04'
+2026-09-04-a-work-store-outside-a-git-repository-is-misclassified-as-absent-and-silently-replaced-by-the-declaration:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-04-an-unreachable-project-is-reported-as-never-declared-by-nodes-escalate-and-delegate:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-04-docstrings-and-branches-the-last-round-left-false-or-dead:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-04-federation-is-still-exponential-on-a-diamond-and-the-docstring-says-it-is-fixed:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-04-git-background-maintenance-races-the-temp-directory-teardown-in-ci:
+  resolution: done
+  resolved: '2026-09-04'
+2026-09-04-tcw-validate-reports-a-work-store-on-a-node-that-keeps-no-board:
+  resolution: done
+  resolved: '2026-09-04'
+? 2026-09-04-the-removal-path-still-answers-removed-from-the-exception-crashes-on-an-ambiguous-slug-and-the-resuming-skip-defeats-its
+: resolution: done
+  resolved: '2026-09-04'
+2026-09-04-the-retention-operations-the-cli-calls-are-not-on-the-abstract-work-store:
+  resolution: done
+  resolved: '2026-09-04'

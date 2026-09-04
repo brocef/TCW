@@ -14,8 +14,10 @@ from tcw.store.base import (
     topo_order,
 )
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsWorkStore, child_nodes, parent_node,
-    registered_project_id, slugify,
+    FsCapabilitiesStore, FsProjectRegistry, FsWorkStore, child_nodes,
+    nearest_work_ancestor, parent_node, registered_parent,
+    registered_project_id, slugify, unreachable_children, unreachable_parent,
+    unreachable_project_note,
 )
 
 ROLLUP_RE = re.compile(r"<!-- tcw:rollup -->.*?<!-- /tcw:rollup -->", re.DOTALL)
@@ -289,6 +291,14 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
     node_root = node_root.resolve()
     children = {registered_project_id(node_root, c): c for c in child_nodes(node_root)}
     if child_ref not in children:
+        # A child declared here and not present is not "no such child". Saying so
+        # sends the reader to add a declaration that is already in their config.
+        registry = FsProjectRegistry.open(node_root).require_valid()
+        if any(entry.id == child_ref for entry in unreachable_children(node_root)):
+            raise ValueError(
+                f"cannot delegate to '{child_ref}': "
+                + (unreachable_project_note(registry, child_ref) or
+                   f"project '{child_ref}' is declared but not reachable here"))
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
     origin = registered_project_id(node_root, node_root)
@@ -299,8 +309,25 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
 def escalate(node_root: Path, title: str, body: str = "",
              initiative: str | None = None) -> Path:
     """Write a request UP into the parent node's inbox/ (boundary: inbox only)."""
-    parent = parent_node(node_root)
+    parent = nearest_work_ancestor(node_root)
     if parent is None:
+        # Two different situations, and telling a user the node is the root when
+        # it plainly has a parent sends them to fix the wrong thing.
+        registered = registered_parent(node_root)
+        if registered is not None:
+            raise ValueError(
+                "no parent node to escalate to: no registered ancestor keeps a "
+                "work store")
+        if (absent := unreachable_parent(node_root)) is not None:
+            # A third situation, and the one that read as "this is the root" for
+            # a config that names a parent outright: the parent is declared and
+            # this checkout does not have it. That has a remedy, so the message
+            # is the one that names it.
+            registry = FsProjectRegistry.open(node_root).require_valid()
+            raise ValueError(
+                "no parent node to escalate to: "
+                + (unreachable_project_note(registry, absent.id) or
+                   f"project '{absent.id}' is declared but not reachable here"))
         raise ValueError("no parent node to escalate to (this is the root)")
     origin = registered_project_id(node_root, node_root)
     return _inbox_write(FsWorkStore.open(parent), title, body, origin, initiative)

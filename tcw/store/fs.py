@@ -45,10 +45,16 @@ from tcw.store.base import (
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
-    parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
-    PublicationError, StoreDeclarationError, StoreNotProvisioned, StoreProvisioner,
+    parse_connected_entry, parse_repository_declaration, parse_retention,
+    ProvisionResult,
+    RepositoryDeclaration,
+    PublicationError, StoreDeclarationError, StoreLocationUnusable,
+    StoreNotProvisioned, StoreProvisioner, UnreachableProject,
     TaxonomyStore, Term, TermDetail, Tombstone,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
+)
+from tcw.store.checkouts import (
+    checkout_root, provisioned_root as provisioned_store_root,
 )
 from tcw.store.project import FsProjectRegistry, validate_project_id, worktree_anchors
 
@@ -218,6 +224,13 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     return nr if component == "work" or store.root.is_dir() else None
 
 
+# The three helpers below enumerate the graph, and a graph may now be partial —
+# a connected project whose repository is not in this checkout is absent from it
+# rather than fatal to it. Each therefore answers for what is here, deliberately:
+# a topology is the set of nodes this machine can actually open, and a caller
+# that needs the graph complete says so in its own message (see
+# `FsWorkStore.incomplete_graph_note`). What none of them may do is imply the
+# absent node was never declared.
 def child_nodes(root: Path) -> list[Path]:
     """Direct registered children that contain a work store."""
     registry = FsProjectRegistry.open(root).require_valid()
@@ -229,13 +242,91 @@ def child_nodes(root: Path) -> list[Path]:
 
 
 def parent_node(root: Path) -> Path | None:
-    """Direct registered parent that contains a work store."""
+    """Direct registered parent that contains a work store.
+
+    The *direct* question, for callers that mean it — `tcw work nodes` prints
+    this node's parent, not the nearest one that happens to keep a board. A walk
+    up the graph wants `nearest_work_ancestor` instead.
+    """
     registry = FsProjectRegistry.open(root).require_valid()
     parent = registry.parent()
     if parent is None:
         return None
     path = Path(parent.locator)
     return path if _has_work_store(path) else None
+
+
+def registered_parent(root: Path) -> Path | None:
+    """Direct registered parent, board or no board.
+
+    What `parent_node` answers before the store filter. `tcw work nodes` needs
+    both to tell "no parent registered" apart from "the registered parent keeps
+    no board", which used to print identically.
+    """
+    parent = FsProjectRegistry.open(root).require_valid().parent()
+    return None if parent is None else Path(parent.locator)
+
+
+def registered_children(root: Path) -> list[Path]:
+    """Direct registered children, board or no board.
+
+    What `child_nodes` answers before the store filter. `tcw work nodes` needs
+    the unfiltered list: a routing node that keeps no board is still a child, and
+    omitting it made a node with one read as a leaf.
+    """
+    registry = FsProjectRegistry.open(root).require_valid()
+    return [Path(project.locator) for project in registry.children()]
+
+
+def unreachable_parent(root: Path) -> "UnreachableProject | None":
+    """The declared parent this checkout does not have, or None.
+
+    What `registered_parent` cannot answer: it returns a path, and a project
+    that is not here has none. Without this, `tcw work nodes` printed
+    `(none — root)` and `tcw work escalate` said "this is the root" for a node
+    whose config plainly names a parent — the exact confusion the comment above
+    `child_nodes` forbids, and which `README.md` promises does not happen.
+    """
+    registry = FsProjectRegistry.open(root).require_valid()
+    parent_id = registry.declared_parent_id()
+    if parent_id is None or registry.get(parent_id) is not None:
+        return None
+    return registry.unreachable_project(parent_id)
+
+
+def unreachable_children(root: Path) -> "list[UnreachableProject]":
+    """The declared children this checkout does not have. See
+    `unreachable_parent`."""
+    registry = FsProjectRegistry.open(root).require_valid()
+    absent = []
+    for child_id in registry.declared_child_ids():
+        if registry.get(child_id) is not None:
+            continue
+        entry = registry.unreachable_project(child_id)
+        if entry is not None:
+            absent.append(entry)
+    return absent
+
+
+def nearest_work_ancestor(root: Path) -> Path | None:
+    """The closest ancestor holding a work store, passing through any that do not.
+
+    **Not `parent_node` in a loop**, and the difference is the whole point. A
+    node that groups other nodes without keeping a board of its own — a
+    repository root whose packages own the boards — is a legitimate shape, and
+    hopping store-to-store ended every upward walk at the first one, silently.
+    An epic two levels up simply stopped existing.
+
+    Asking the registry for `ancestors()` is one traversal that no filter can
+    truncate, so a caller cannot reintroduce the bug by forgetting to keep
+    looping.
+    """
+    registry = FsProjectRegistry.open(root).require_valid()
+    for ancestor in registry.ancestors():
+        path = Path(ancestor.locator)
+        if _has_work_store(path):
+            return path
+    return None
 
 
 def descendant_nodes(root: Path) -> list[Path]:
@@ -267,6 +358,26 @@ def _has_work_store(node_root: Path) -> bool:
         return False
 
 
+def unreachable_project_note(registry, project_id: str) -> str | None:
+    """"Declared but not reachable here" for `project_id`, or None.
+
+    One renderer for every site that resolves a project id and got None back.
+    Without it each message says the project was never registered, which sends
+    the reader to their config to add a declaration that is already there.
+    """
+    absent = registry.unreachable_project(project_id)
+    if absent is None:
+        return None
+    if absent.declaration is not None:
+        # A declared project has a remedy, so the message names it rather than
+        # only the symptom — the same shape `StoreNotProvisioned` uses.
+        return (f"project '{project_id}' is declared in {absent.declaration.url} "
+                f"but has not been provisioned here; run `tcw provision` to "
+                f"obtain it")
+    return (f"project '{project_id}' is declared in {absent.declared_in} but is "
+            f"not reachable in this checkout ({absent.locator})")
+
+
 def registered_project_id(anchor: Path, target: Path) -> str:
     """Return the canonical ID for a project reachable from ``anchor``."""
     target = target.resolve()
@@ -276,7 +387,6 @@ def registered_project_id(anchor: Path, target: Path) -> str:
         if Path(project.locator).resolve() == target:
             return project.id
     raise ValueError(f"{target} is not registered from project '{registry.current.id}'")
-
 
 def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, str] | None":
     """Resolve a (possibly qualified) work ref against `anchor`.
@@ -382,7 +492,12 @@ def qualified_work_ref_problem(anchor: Path, ref: str) -> str:
     except Exception:
         return generic
     if project is None:
-        return f"no such project in this graph: {qualifier}"
+        try:
+            note = unreachable_project_note(
+                FsProjectRegistry.open(anchor), qualifier)
+        except Exception:
+            note = None
+        return note or f"no such project in this graph: {qualifier}"
     if not _has_work_store(Path(project.locator)):
         return f"{qualifier} has no work component"
     return generic                                 # project resolved; the slug didn't
@@ -717,7 +832,8 @@ def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> li
 
 RESOLVED_IGNORE_COMMENT = "# Resolved work: kept on disk and in history, out of the tracked tree."
 
-def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None) -> list[str]:
+def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None = None,
+                          statuses: "list[str] | None" = None) -> list[str]:
     """The .gitignore rules that make the end-state work folders untracked while
     keeping the folders themselves. `<dir>/*` rather than `<dir>/`: git cannot
     re-include a file whose *parent directory* is excluded, which would make the
@@ -725,8 +841,11 @@ def resolved_ignore_rules(work_root: Path | None = None, repository: Path | None
     prefix = "docs/work"
     if work_root is not None and repository is not None:
         prefix = work_root.resolve().relative_to(repository.resolve()).as_posix()
+    wanted = RESOLVED_STATUSES if statuses is None else statuses
+    if not wanted:
+        return []
     return [RESOLVED_IGNORE_COMMENT,
-            *(rule for s in RESOLVED_STATUSES
+            *(rule for s in wanted
               for rule in (f"{prefix}/{s}/*", f"!{prefix}/{s}/.gitkeep"))]
 
 
@@ -899,10 +1018,21 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             target_git = git_root(base)
             if target_git is None and work_path is not None:
                 raise ValueError(f"work.path target is not inside a Git repository: {base}")
+            # A node that has declared retention has said what it wants to happen
+            # to resolved work, and the ignore rules are one adapter's way of
+            # saying something else. Only the statuses it has *not* spoken for
+            # get the default rules; a node declaring nothing gets both, exactly
+            # as before.
+            declared = existing_config.get("work") or {}
+            declared = declared.get("retain") if isinstance(declared, dict) else None
+            declared = declared if isinstance(declared, dict) else {}
+            statuses = [s for s in RESOLVED_STATUSES if s not in declared]
             if target_git is None:
-                ensure_ignored(root, *resolved_ignore_rules())
+                ensure_ignored(root, *resolved_ignore_rules(statuses=statuses))
             else:
-                ensure_ignored(target_git, *resolved_ignore_rules(base, target_git))
+                ensure_ignored(target_git,
+                               *resolved_ignore_rules(base, target_git,
+                                                      statuses=statuses))
     return created
 
 
@@ -962,25 +1092,145 @@ def _extends_ids(config: dict, config_path: Path) -> list[str]:
     return ids
 
 
-def _extended_component_roots(
-    node_root: Path, config: dict, config_path: Path, component: str
-) -> dict[str, Path]:
+class _FederationWalk:
+    """State threaded down an `extends` walk.
+
+    Two things with different lifetimes, which is why they cannot be one set.
+    `seen` is the projects on *this* path, copied at every descent, and is what
+    detects a cycle: a project is a back edge only relative to the route that
+    reached it. `built` is shared by the whole walk and is what stops a diamond
+    from rebuilding the same subtree once per route — `seen` alone terminated a
+    cycle and memoised nothing, so a graph where two extended projects reach a
+    common ancestor cost 2^depth store constructions.
+
+    **Only a subtree that truncated nothing is cached.** A store built with a
+    cycle truncated in it is correct for the path that built it and wrong for any
+    other, since a back edge is a property of the route. A cycle-free subtree is
+    path-independent, so it can be reused anywhere — and that is the common case,
+    which is the one the cost was in.
+    """
+
+    __slots__ = ("seen", "built")
+
+    def __init__(self, seen: "frozenset[Path]" = frozenset(),
+                 built: "dict | None" = None):
+        self.seen = seen
+        self.built = {} if built is None else built
+
+    def descend(self, node_root: Path) -> "_FederationWalk":
+        """The walk as seen one project further down. Shares `built`."""
+        return _FederationWalk(self.seen | {node_root}, self.built)
+
+
+class _FederationCycles:
+    """Mixin for the two tree stores: the cycles anywhere below this one.
+
+    A cycle is recorded by the store that closes it — the deepest one built —
+    so a caller checking the store at the top of the chain finds nothing on
+    itself. Gathering the whole tree is what makes `check()` report a cycle
+    from wherever it is run.
+    """
+
+    def _federation_cycles(self) -> list[str]:
+        cached = getattr(self, "_cycles_cache", None)
+        if cached is not None:
+            return cached
+        found: list[str] = list(getattr(self, "extends_cycles", []))
+        for store in getattr(self, "extends", {}).values():
+            for project_id in store._federation_cycles():
+                if project_id not in found:
+                    found.append(project_id)
+        # Memoised because the `extends` tree is fixed once construction
+        # returns, and because the walk asks this of every store it builds to
+        # decide whether the subtree may be cached — recomputing it there would
+        # trade one quadratic for another.
+        self._cycles_cache = found
+        return found
+
+
+def _extended_component_stores(
+    node_root: Path, config: dict, config_path: Path, component: str,
+    walk: "_FederationWalk | None" = None,
+) -> "tuple[dict[str, object], list[str]]":
+    """Each extended project's component store, by project id, and the ids whose
+    edge closed a cycle.
+
+    `walk` carries the state of the whole `extends` walk — see
+    `_FederationWalk`. Its `seen` half is the *projects* already on this path,
+    and it is checked before the store is opened, which it has to be: resolving a
+    sibling's store now opens it, and opening a tree store resolves its own
+    `extends`, so a cycle would recur infinitely instead of being reported.
+    Project identity is known before any store is touched, which is what makes
+    the guard possible at all — and a cycle in `extends` is a cycle among
+    projects, so this is also the
+    honest place to detect one.
+    """
     registry = FsProjectRegistry.open(node_root).require_valid()
-    roots: dict[str, Path] = {}
+    walk = (walk or _FederationWalk()).descend(node_root.resolve())
+    stores: dict[str, object] = {}
+    cyclic: list[str] = []
     for project_id in _extends_ids(config, config_path):
         project = registry.get(project_id)
         if project is None:
+            note = unreachable_project_note(registry, project_id)
             raise ValueError(
+                f"{config_path}: extends {note}" if note else
                 f"{config_path}: extends project '{project_id}' is not reachable "
                 "through connected-projects"
             )
-        target = Path(project.locator) / "docs" / component
-        if not target.is_dir():
-            raise ValueError(f"project '{project_id}' has no docs/{component}/")
+        # Identity first: extending yourself is wrong whatever the store does,
+        # and asking the store about it would make a config error depend on
+        # whether a tree happens to be provisioned.
         if Path(project.locator).resolve() == node_root.resolve():
             raise ValueError(f"a {component} store cannot extend itself")
-        roots[project_id] = target.resolve()
-    return roots
+        if Path(project.locator).resolve() in walk.seen:
+            # The back edge of a federation cycle. Truncated here so the walk
+            # terminates, and *named*, because a truncated tree cannot show a
+            # cycle to anyone looking at it afterwards — which is why `check()`
+            # used to report nothing at all.
+            cyclic.append(project_id)
+            continue
+        # The extended project's *configured* store, not `docs/<component>` under
+        # its root. Composing that path skipped the whole resolution ladder, so a
+        # sibling that had moved its tree with `<component>.path` could not be
+        # extended from, and one whose tree was declared but unprovisioned read
+        # as having no tree at all — the confusion the ladder exists to end.
+        # Failures are re-worded for a reader standing in a *different* node than
+        # the one that failed.
+        cache_key = (component, Path(project.locator).resolve())
+        if (cached := walk.built.get(cache_key)) is not None:
+            # Built already, somewhere else on this walk, with nothing truncated
+            # in it — see `_FederationWalk`. This is what makes a diamond cost
+            # one construction of the shared subtree instead of one per route.
+            stores[project_id] = cached
+            continue
+        try:
+            # The store itself, not its root. Rebuilding it from the root is
+            # what broke the hop past a moved tree — `FsTreeStore` falls back to
+            # `root.parent.parent` for `node_root`, correct only for the
+            # `docs/<component>` shape this resolution exists to stop assuming.
+            store = STORE_CLASSES[component].open(
+                Path(project.locator), _walk=walk)
+        except StoreNotProvisioned as error:
+            raise ValueError(f"project '{project_id}': {error}") from None
+        except StoreDeclarationError as error:
+            raise ValueError(f"project '{project_id}': {error}") from None
+        except ValueError as error:
+            # The sibling's own error, quoted. Rewriting every `ValueError` as
+            # "has no <component> component" sent readers to create a store that
+            # already existed — a legacy `extends` map, a failed `require_valid`
+            # and a self-extend all arrived here wearing that message.
+            raise ValueError(f"project '{project_id}': {error}") from None
+        # Rule 4 of the ladder validates nothing for a bare default, so a project
+        # with no tree at all resolves to a path that is simply not there. That
+        # is the honest answer for the project's *own* store and the wrong one to
+        # federate from.
+        if not store.root.is_dir():
+            raise ValueError(f"project '{project_id}' has no {component} component")
+        if not store._federation_cycles():
+            walk.built[cache_key] = store
+        stores[project_id] = store
+    return stores, cyclic
 
 
 # ── Revision tokens & atomic writes (FS-adapter private details) ─────────────
@@ -1170,10 +1420,17 @@ class FsTreeStore:
         self.config = load_yaml(root / self.CONFIG_NAME) if self.CONFIG_NAME else {}
 
     @classmethod
-    def open(cls, node_root: Path):
+    def open(cls, node_root: Path, _walk: "_FederationWalk | None" = None):
         """Resolve this node's store for this component. The ladder is
-        `resolve_store`, shared with the work store."""
-        return resolve_store(cls, node_root)
+        `resolve_store`, shared with the work store.
+
+        `_walk` is private and carries the federation walk's state: the projects
+        already on this path, so `extends` can resolve a sibling's store without
+        a cycle becoming infinite recursion, and the stores already built
+        anywhere on the walk, so a shared subtree is built once. Callers outside
+        federation never pass it.
+        """
+        return resolve_store(cls, node_root, _walk=_walk)
 
     @classmethod
     def _local_root(cls, node_root: Path, configured: str | None) -> Path:
@@ -1190,7 +1447,8 @@ class FsTreeStore:
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
-                 declaration: "RepositoryDeclaration | None" = None):
+                 declaration: "RepositoryDeclaration | None" = None,
+                 _walk: "_FederationWalk | None" = None):
         """Build the store at a candidate root, validating it only when
         something points at it.
 
@@ -1210,17 +1468,21 @@ class FsTreeStore:
         default and the contract every existing project relies on.
         """
         if must_exist:
+            # `StoreLocationUnusable`, not a bare `ValueError`: the ladder falls
+            # through on "there is no store here" and must *not* fall through on
+            # anything the store itself reports while opening.
             if raw_root.is_symlink() and not raw_root.exists():
-                raise ValueError(
+                raise StoreLocationUnusable(
                     f"{config_path}: {cls.COMPONENT}.path is a broken symlink: {raw_root}")
             if not raw_root.is_dir():
-                raise ValueError(
+                raise StoreLocationUnusable(
                     f"{config_path}: {cls.COMPONENT}.path is not a directory: {raw_root}")
         root = raw_root.resolve() if raw_root.exists() else raw_root
         owner = (git_root(root) if external else node_root) or node_root
         # The node stays the node — federation resolves `extends` against it —
         # while writes follow the store into whatever repository holds it.
-        return cls(root, node_root=node_root, store_git_root=owner)
+        return cls(root, _walk=_walk, node_root=node_root,
+                   store_git_root=owner)
 
     # -- containment: a store id never names a file outside its own store --
     #
@@ -1425,7 +1687,7 @@ def _wrong_kind_ref(ref: str, kind: str) -> str:
     return f"vocabulary ref '{ref}' points to {kind}, expected Vocabulary"
 
 
-class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
+class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     """`TaxonomyStore` over nested dirs under `docs/taxonomy/` (Phase 2 B.3).
 
     A term's slug is its directory path under the taxonomy root. `extends`
@@ -1434,16 +1696,21 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     COMPONENT = "taxonomy"
     CONFIG_NAME = "config.yaml"
 
-    def __init__(self, root: Path, _seen: set[Path] | None = None, *,
+    def __init__(self, root: Path, *,
+                 _walk: "_FederationWalk | None" = None,
                  node_root: Path | None = None, store_git_root: Path | None = None):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
-        seen = (_seen or set()) | {root.resolve()}
-        for project_id, ext in _extended_component_roots(
-            self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy"
-        ).items():
-            if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
-                self.extends[project_id] = FsTaxonomyStore(ext, _seen=seen)
+        # Reused, never rebuilt: the resolution below already constructed each
+        # store with the right node root and the right walk state. There is no
+        # second filter on the results — the `_seen` set that used to be one was
+        # dead once recursion moved into `_extended_component_stores`, since the
+        # only case it could refuse is a self-extend the identity check there
+        # already refuses by project id.
+        self.extends, self.extends_cycles = _extended_component_stores(
+            self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy",
+            walk=_walk,
+        )
 
     # -- reads --
 
@@ -1596,7 +1863,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         registry = FsProjectRegistry.open(self.node_root).require_valid()
         project = registry.get(project_id)
         if project is None:
-            raise ValueError(f"project '{project_id}' is not registered")
+            note = unreachable_project_note(registry, project_id)
+            raise ValueError(note or f"project '{project_id}' is not registered")
         if project_id == registry.current.id:
             raise ValueError("a taxonomy cannot extend itself")
         if not (Path(project.locator) / "docs" / "taxonomy").is_dir():
@@ -1691,9 +1959,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             problems.append(f"config.yaml: {e}")
 
         top_level = {s.split("/")[0] for s in self._local_slugs()}
-        for project_id, store in self.extends.items():
-            if self._cycles(store.root.resolve(), {self.root.resolve()}):
-                problems.append(f"extends '{project_id}': cycle in taxonomy federation")
+        for project_id in self._federation_cycles():
+            problems.append(f"extends '{project_id}': cycle in taxonomy federation")
         for project_id in self._inherited_stores():
             if project_id in top_level:
                 problems.append(
@@ -1746,24 +2013,6 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         # its own root, not this one.
         return [path for path in (folder / "meta.yaml", folder / "description.md")
                 if path.is_file() and owner._within_store(path)]
-
-    def _cycles(self, taxonomy_root: Path, seen: set[Path]) -> bool:
-        if taxonomy_root in seen:
-            return True
-        if not taxonomy_root.is_dir():
-            return False
-        cfg = load_yaml(taxonomy_root / "config.yaml")
-        node_root = taxonomy_root.parent.parent
-        try:
-            roots = _extended_component_roots(
-                node_root, cfg, taxonomy_root / self.CONFIG_NAME, "taxonomy"
-            )
-        except ValueError:
-            return False
-        for nxt in roots.values():
-            if self._cycles(nxt, seen | {taxonomy_root}):
-                return True
-        return False
 
     # -- revision-bearing detail + update --
 
@@ -1881,7 +2130,7 @@ def _as_list(v) -> list[str]:
     return [s.strip() for s in str(v).split(",") if s.strip()]
 
 
-class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
+class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     """`CapabilitiesStore` over folder-per-capability nodes under
     `docs/capabilities/`, optionally federated via `extends`.
 
@@ -1893,16 +2142,21 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     COMPONENT = "capabilities"
     CONFIG_NAME = ".config.yaml"
 
-    def __init__(self, root: Path, _seen: set[Path] | None = None, *,
+    def __init__(self, root: Path, *,
+                 _walk: "_FederationWalk | None" = None,
                  node_root: Path | None = None, store_git_root: Path | None = None):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsCapabilitiesStore"] = {}
-        seen = (_seen or set()) | {root.resolve()}
-        for project_id, ext in _extended_component_roots(
-            self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities"
-        ).items():
-            if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
-                self.extends[project_id] = FsCapabilitiesStore(ext, _seen=seen)
+        # Reused, never rebuilt: the resolution below already constructed each
+        # store with the right node root and the right walk state. There is no
+        # second filter on the results — the `_seen` set that used to be one was
+        # dead once recursion moved into `_extended_component_stores`, since the
+        # only case it could refuse is a self-extend the identity check there
+        # already refuses by project id.
+        self.extends, self.extends_cycles = _extended_component_stores(
+            self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities",
+            walk=_walk,
+        )
 
     # -- resolution --
 
@@ -2284,7 +2538,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         registry = FsProjectRegistry.open(self.node_root).require_valid()
         project = registry.get(project_id)
         if project is None:
-            raise ValueError(f"project '{project_id}' is not registered")
+            note = unreachable_project_note(registry, project_id)
+            raise ValueError(note or f"project '{project_id}' is not registered")
         if project_id == registry.current.id:
             raise ValueError("a capabilities store cannot extend itself")
         if not (Path(project.locator) / "docs" / "capabilities").is_dir():
@@ -2310,24 +2565,6 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                                                  allow_unicode=True))])
 
     # -- validation --
-
-    def _cycles(self, cap_root: Path, seen: set[Path]) -> bool:
-        if cap_root in seen:
-            return True
-        if not cap_root.is_dir():
-            return False
-        cfg = load_yaml(cap_root / self.CONFIG_NAME)
-        node_root = cap_root.parent.parent
-        try:
-            roots = _extended_component_roots(
-                node_root, cfg, cap_root / self.CONFIG_NAME, "capabilities"
-            )
-        except ValueError:
-            return False
-        for nxt in roots.values():
-            if self._cycles(nxt, seen | {cap_root}):
-                return True
-        return False
 
     def _taxonomy(self) -> "FsTaxonomyStore | None":
         """The sibling taxonomy store for this node, or None if it has none.
@@ -2356,9 +2593,9 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             problems.append(f"{self.CONFIG_NAME}: {e}")
 
         top_level = {s.split("/")[0] for s in self._local_paths()}
-        for project_id, store in self.extends.items():
-            if self._cycles(store.root.resolve(), {self.root.resolve()}):
-                problems.append(f"extends '{project_id}': cycle in capability federation")
+        for project_id in self._federation_cycles():
+            problems.append(f"extends '{project_id}': cycle in capability federation")
+        for project_id in self.extends:
             if project_id in top_level:
                 problems.append(
                     f"project ID '{project_id}' collides with local top-level capability"
@@ -2615,41 +2852,6 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 STORE_LAYOUT = ("inbox", *WORK_STATUSES)
 
 
-def _cache_root() -> Path:
-    """Where working copies land when a declaration names no `checkout`.
-
-    XDG, so it is outside every checkout and survives between sessions on one
-    machine. Read from the environment on each call rather than at import: a
-    test — and a user's shell — may set it after this module loads.
-    """
-    base = os.environ.get("XDG_CACHE_HOME") or "~/.cache"
-    return Path(base).expanduser() / "tcw" / "stores"
-
-
-def _cache_key(declaration: RepositoryDeclaration) -> str:
-    """A directory name for one (url, ref) pair: readable, then unambiguous.
-
-    The readable half is the tail of the URL, so a user browsing the cache can
-    tell whose repository a directory holds. The hash is what actually keeps two
-    declarations apart, because the readable half is lossy by design.
-
-    Keyed on url *and* ref: two projects naming the same repository at the same
-    ref should share one working copy, and two refs of it must not fight over
-    one checkout.
-    """
-    cleaned = declaration.url.strip().rstrip("/")
-    if cleaned.endswith(".git"):
-        cleaned = cleaned[:-4]
-    tokens = [token.rpartition("@")[2]                 # drop any `git@` user part
-              for token in re.split(r"[/:]", cleaned) if token]
-    slug = "-".join(re.sub(r"[^A-Za-z0-9._-]+", "-", token).strip("-.")
-                    for token in tokens[-3:])
-    slug = (slug.strip("-").lower() or "store")[:60]
-    digest = hashlib.sha256(
-        f"{declaration.url}\n{declaration.ref or ''}".encode("utf-8")).hexdigest()[:12]
-    return f"{slug}-{digest}"
-
-
 def _git_subcommand(argv: list[str]) -> str:
     """The verb in a git argv, for an error message.
 
@@ -2691,21 +2893,10 @@ def _normalize_remote(url: str) -> str:
     return cleaned[:-4] if cleaned.endswith(".git") else cleaned
 
 
-def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
-    """The working copy's root for `declaration` — the declared `checkout`, or a
-    per-machine cache directory. `~` expands; a relative path is the node's."""
-    if declaration.checkout:
-        value = Path(declaration.checkout).expanduser()
-        return value if value.is_absolute() else (node_root / value)
-    return _cache_root() / _cache_key(declaration)
-
-
-def provisioned_store_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
-    """Where a provisioned store *would* live. Pure: computes a path, probes
-    nothing. `FsWorkStore.open` and the provisioner share it, so they can never
-    disagree about where a declared store is."""
-    root = checkout_root(node_root, declaration)
-    return (root / declaration.path) if declaration.path else root
+# What a *node* is, for the provisioner: a directory carrying a sentinel. Not a
+# component, and deliberately not spelled as one anywhere it could be mistaken
+# for a store — `PROVISION_COMPONENTS` never contains it.
+NODE_TARGET = "node"
 
 
 def _is_store_layout(root: Path, component: str) -> bool:
@@ -2734,12 +2925,18 @@ def _is_store_layout(root: Path, component: str) -> bool:
     """
     if not root.is_dir():
         return False
+    if component == NODE_TARGET:
+        # A node names one file and it is the same file everywhere. Stronger
+        # than a tree store's "the directory is there" and weaker than a work
+        # store's six folders, which is exactly how much a node can honestly
+        # claim.
+        return (root / SENTINEL).is_file()
     if component != "work":
         return True
     return all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
-def resolve_store(store_cls, node_root: Path):
+def resolve_store(store_cls, node_root: Path, _walk=None):
     """This node's store for `store_cls`'s component, in one ordered ladder.
 
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
@@ -2754,6 +2951,12 @@ def resolve_store(store_cls, node_root: Path):
     machine changes; the declaration answers only for a machine that does not
     have it. Rules 3 and 4 are the same failure told two ways: with a
     declaration it is actionable, so it says what to run.
+
+    **Only `StoreLocationUnusable` falls through.** Rules 1 and 2 mean "try here,
+    and if there is no store here try the next place" — which is a statement
+    about the *location*, not about every way opening can fail. A store that is
+    present and raises while opening has to surface, or the ladder answers a
+    config error with `tcw provision`.
 
     One function for every component, because the ladder is the contract and
     three copies of a contract drift. The two things that genuinely differ are
@@ -2798,7 +3001,8 @@ def resolve_store(store_cls, node_root: Path):
         try:
             return store_cls._open_at(
                 raw_root, node_root, config_path,
-                external=configured is not None, must_exist=must_exist)
+                external=configured is not None, must_exist=must_exist,
+                _walk=_walk)
         except ValueError:
             # A valid local store keeps reads working even when an unused
             # declaration is malformed. When no local store can open, however,
@@ -2812,8 +3016,14 @@ def resolve_store(store_cls, node_root: Path):
     try:                                                        # rule 1
         return store_cls._open_at(
             raw_root, node_root, config_path,
-            external=configured is not None, must_exist=must_exist)
-    except ValueError:
+            external=configured is not None, must_exist=must_exist,
+            _walk=_walk)
+    except StoreLocationUnusable:
+        # Only this. A store that is *there* and fails to open — a federation
+        # error, a malformed `extends` — is a real error, and swallowing it here
+        # reported "not provisioned; run `tcw provision`", which then succeeded
+        # and left the store exactly as unopenable. `_extended_component_stores`
+        # raises for many more reasons than it used to, so the hole widened.
         pass
     try:                                                        # rule 2
         # The declaration travels with the store *only* here. Rule 1 above
@@ -2821,9 +3031,10 @@ def resolve_store(store_cls, node_root: Path):
         # publish — see `FsWorkStore.publishes`.
         return store_cls._open_at(
             provisioned_store_root(node_root, declaration), node_root, config_path,
-            external=True, must_exist=True, declaration=declaration)
-    except ValueError:
-        pass
+            external=True, must_exist=True, declaration=declaration,
+            _walk=_walk)
+    except StoreLocationUnusable:
+        pass                                                    # same rule
     raise StoreNotProvisioned(                                  # rule 3
         f"{config_path}: the {component} store is declared in "
         f"{declaration.url} but has not been provisioned here; "
@@ -2849,6 +3060,40 @@ def declared_repository(
                                         f"{component}.repository")
 
 
+def declared_connected_projects(
+    node_root: Path,
+) -> tuple[list[tuple[str, RepositoryDeclaration]], list[str]]:
+    """This node's connected projects that declare a repository, with problems.
+
+    Reads the config directly, exactly as `declared_repository` does and for the
+    same reason: it must answer for a graph that cannot be fully loaded, which is
+    the only situation in which anyone asks.
+
+    Returns every declared entry, provisioned or not — the caller decides what to
+    do about one that is already here, because "already available" is a result
+    worth printing rather than a silence.
+    """
+    config = load_yaml(node_root / SENTINEL, unique=True)
+    connected = config.get("connected-projects") if isinstance(config, dict) else None
+    if not isinstance(connected, dict):
+        return [], []
+    declared: list[tuple[str, RepositoryDeclaration]] = []
+    problems: list[str] = []
+    for label in ("parent", "children"):
+        relation = connected.get(label)
+        if not isinstance(relation, dict):
+            continue
+        for project_id, raw in relation.items():
+            if not isinstance(project_id, str):
+                continue
+            entry, entry_problems = parse_connected_entry(
+                project_id, raw, f"connected-projects.{label}.{project_id}")
+            problems.extend(entry_problems)
+            if entry is not None and entry.repository is not None:
+                declared.append((entry.id, entry.repository))
+    return declared, problems
+
+
 class FsStoreProvisioner(StoreProvisioner):
     """A declared store, realized as a git checkout.
 
@@ -2870,7 +3115,8 @@ class FsStoreProvisioner(StoreProvisioner):
             return f"{self.component}: no home repository declared"
         d = self.declaration
         at = f" at {d.ref}" if d.ref else ""
-        within = f", store at {d.path}" if d.path else ""
+        thing = "node" if self.component == NODE_TARGET else "store"
+        within = f", {thing} at {d.path}" if d.path else ""
         return (f"{self.component}: {d.url}{at}{within} → "
                 f"{provisioned_store_root(self.node_root, d)}")
 
@@ -2936,6 +3182,10 @@ class FsStoreProvisioner(StoreProvisioner):
         if _is_store_layout(root, self.component):
             return
         where = self.declaration.path or "."
+        if self.component == NODE_TARGET:
+            raise ValueError(
+                f"connected-projects: {self.declaration.url} has no tcw node at "
+                f"'{where}': no {SENTINEL} there")
         prefix = (f"{self.component}.repository: {self.declaration.url} has no "
                   f"{self.component} store at '{where}'")
         if not root.is_dir():
@@ -3114,7 +3364,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
     @classmethod
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
-                 declaration: "RepositoryDeclaration | None" = None) -> "FsWorkStore":
+                 declaration: "RepositoryDeclaration | None" = None,
+                 _walk: "_FederationWalk | None" = None) -> "FsWorkStore":
         """Validate a candidate root and build the store. `external` means the
         store is not the node's own `docs/work`, so the repository that owns its
         commits has to be discovered rather than assumed.
@@ -3124,16 +3375,38 @@ class FsWorkStore(FsTreeStore, WorkStore):
         that. The parameter exists because the shared ladder asks every
         component the same question."""
         if raw_root.is_symlink() and not raw_root.exists():
-            raise ValueError(f"{config_path}: work.path is a broken symlink: {raw_root}")
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is a broken symlink: {raw_root}")
         if not raw_root.is_dir():
-            raise ValueError(f"{config_path}: work.path is not a directory: {raw_root}")
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is not a directory: {raw_root}")
         root = raw_root.resolve()
         missing = [name for name in ("inbox", *WORK_STATUSES) if not (root / name).is_dir()]
         if missing:
-            raise ValueError(f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
         repository = git_root(root) if external else node_root
         if repository is None and external:
-            raise ValueError(f"{config_path}: work.path is not inside a Git repository: {root}")
+            # `StoreDeclarationError`, and both halves of that choice matter.
+            #
+            # Not `StoreLocationUnusable`: the store is *there* — a directory,
+            # with the full layout — and what is wrong is that its commits have
+            # no home. That is "present and wrong", the side of the line the
+            # ladder must surface. Falling through meant a declared repository
+            # silently answered instead, so every `tcw work` command read and
+            # wrote a store the user had not configured, their items invisible
+            # and nothing said anywhere.
+            #
+            # And not a plain `ValueError`, which is worse than the bug:
+            # `find_node` re-raises only `StoreNotProvisioned` and
+            # `StoreDeclarationError` and flattens everything else to None, so a
+            # bare `ValueError` here makes `tcw work list` answer "no tcw work
+            # node here — run `tcw init`" for a node that plainly is one.
+            #
+            # Nothing legitimate depends on the old fallback: `tcw init` already
+            # refuses to create this configuration.
+            raise StoreDeclarationError(
+                f"{config_path}: work.path is not inside a Git repository: {root}")
         return cls(root, node_root=node_root, store_git_root=repository or node_root,
                    declaration=declaration)
 
@@ -3244,7 +3517,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not force:
             if item.initiative:
                 epic = self.initiative_epic(item)
-                if epic is None or epic.status != "active":
+                if epic is None:
+                    # "Not active" is the wrong thing to say about an epic this
+                    # checkout cannot see. Since a graph may now be partial, an
+                    # unresolvable epic is as likely to mean "that node is not
+                    # here" as "that slug is wrong", and the two want different
+                    # responses from the user.
+                    raise ValueError(
+                        f"Cannot resolve epic {item.initiative} for {slug}"
+                        f"{self.incomplete_graph_note()}. Run from a node that "
+                        f"can resolve the epic, or use --force.")
+                if epic.status != "active":
                     raise ValueError(f"Cannot start work item {slug} before epic {item.initiative} is active")
             blockers = self.unresolved_blockers(item)
             if blockers:
@@ -3717,6 +4000,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """Hold one store's resolving transitions apart from each other, across
         the whole check-write-commit sequence.
 
+        **Not reentrant.** `flock` locks the open file description, and this
+        opens a fresh one each time, so a second acquisition in the same process
+        contends with the first exactly as another process would — spinning to
+        the timeout and then reporting somebody else's fault. Every acquirer is
+        therefore a top-level entry point: `_effect_transition`,
+        `record_tombstone` and `delete_resolved`, none of which calls another.
+
         Without this the sequence is three steps with nothing between them: the
         cleanliness check runs before the move, the write runs after it, and the
         commit after that. Two agents resolving *different* items in one working
@@ -3769,7 +4059,118 @@ class FsWorkStore(FsTreeStore, WorkStore):
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
-    def _require_writable_graveyard(self, slug: str) -> None:
+    def retention_conflicts(self) -> list[str]:
+        """Where this node says it retains resolved work and git disagrees.
+
+        The state every existing project is in the moment it declares retention:
+        the `.gitignore` rules `tcw work init` wrote are still there, so the
+        items are untracked whatever the config now says. Reported rather than
+        refused — a project mid-migration is legitimately here.
+        """
+        # Only an *explicit* `retain: true` conflicts. The default is also true,
+        # and every project that has ever run `tcw work init` has the ignore
+        # rules — reporting those would make this fire on every existing node
+        # and turn a real contradiction into noise nobody reads.
+        declared = self._work_config().get("retain")
+        declared = declared if isinstance(declared, dict) else {}
+        conflicts: list[str] = []
+        for status, keep in self.retention().items():
+            if not keep or declared.get(status) is not True:
+                continue
+            probe = self.root / status / ".tcw-retention-probe"
+            folder = self.root / status
+            try:
+                ignored = git_ignored(self.store_git_root, probe, no_index=True)
+            except Exception:
+                continue
+            if ignored:
+                conflicts.append(
+                    f"work.retain.{status} is true, but {folder} is gitignored, "
+                    f"so resolved items there are not tracked. Remove the "
+                    f"resolved-work rules from .gitignore, or set "
+                    f"work.retain.{status}: false.")
+        return conflicts
+
+    def _require_deletable(self, to_status: str) -> None:
+        """Refuse an auto-delete that would leave nothing behind.
+
+        **The interlock.** `git_mv` untracks rather than moves when the
+        destination is gitignored, which is how the default `completed/` and
+        `discarded/` rules keep resolved work out of the tracked tree. Deleting
+        on top of that would commit a *removal* first — a commit holding no item
+        — and then remove the folder from disk, so the graveyard's location would
+        name a commit that never contained anything and no clone would have the
+        content at all. That is strictly worse than the ignore rules alone, where
+        at least the resolving machine keeps a copy.
+
+        So the rules and auto-delete cannot coexist, and dropping the rules is a
+        precondition of the feature rather than a companion change. Refused
+        before the move, so a refusal means nothing happened.
+        """
+        if self.retention().get(to_status, True):
+            return
+        # Asked of a path *inside* the folder, not the folder itself: the rule
+        # the scaffolding writes is `<prefix>/<status>/*`, which matches the
+        # folder's contents and not the folder, so `check-ignore` on the
+        # directory answers no however the rules read. The probe name never
+        # exists; `--no-index` asks the rules rather than the index.
+        probe = self.root / to_status / ".tcw-retention-probe"
+        if not git_ignored(self.store_git_root, probe, no_index=True):
+            return
+        raise ValueError(
+            f"work.retain.{to_status} is false, but {self.root / to_status} is "
+            f"gitignored. "
+            f"Deleting an item that was never tracked would leave no copy "
+            f"anywhere: the commit would record a removal, not the item. Remove "
+            f"the resolved-work rules for '{to_status}' from .gitignore (and run "
+            f"`git rm -r --cached` on the folder if git already tracks it), then "
+            f"retry.")
+
+    @staticmethod
+    def _removal_commit_subject(slug: str, location: str) -> str:
+        """The removal commit's subject line.
+
+        Named rather than interpolated inline because the empty-location case is
+        easy to reach and hard to see: `(retained in {location[:12]})` renders as
+        `(retained in )` — an empty parenthesis where a SHA belongs — and the
+        history is the one place that contradiction survives, since the line the
+        CLI prints alongside says plainly that no commit held the documents.
+        """
+        return (f"tcw work: delete {slug} (retained in {location[:12]})"
+                if location else f"tcw work: delete {slug} (no commit held it)")
+
+    def _graveyard_dirt_is_only(self, slug: str) -> bool:
+        """Whether the graveyard's uncommitted change touches only `slug`.
+
+        Compared entry by entry against the committed file rather than by
+        reading the diff, because the question is about records and not about
+        lines: a reformat, a key reorder or a trailing-newline change is not
+        someone else's record. Answers False whenever it cannot tell — the
+        caller uses this only to *relax* a refusal, so uncertainty has to mean
+        "keep refusing".
+        """
+        path = self._graveyard_path()
+        try:
+            rel = str(path.relative_to(self.store_git_root))
+            shown = subprocess.run(
+                ["git", "-C", str(self.store_git_root), "show", f"HEAD:{rel}"],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True)
+            if shown.returncode != 0:
+                return False              # untracked: someone else's first write
+            committed = yaml.safe_load(shown.stdout) or {}
+            current = load_yaml(path) or {}
+        except Exception:
+            return False
+        if not isinstance(committed, dict) or not isinstance(current, dict):
+            return False
+        changed = {
+            key for key in set(committed) | set(current)
+            if committed.get(key) != current.get(key)
+        }
+        return changed <= {slug}
+
+    def _require_writable_graveyard(self, slug: str,
+                                    only_own_entry: bool = False) -> None:
         """Refuse a resolving transition when the graveyard cannot be safely
         rewritten. Called *before* the move, so a refusal moves nothing.
 
@@ -3784,7 +4185,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         **Uncommitted changes, when auto-commit is on.** The transition commit
         is scoped to the item's folders plus this one shared path, so a
         concurrent agent's in-flight graveyard edit would be committed under
-        *this* item's message. Since every graveyard write commits itself, a
+        *this* item's message. `only_own_entry` relaxes this one refusal to the
+        case where the uncommitted change is `slug`'s record and nothing else —
+        which is what a removal resuming its own failed commit is looking at, and
+        is never what the refusal is protecting against. Since every graveyard write commits itself, a
         dirty graveyard means something already went wrong. Skipped when
         `auto-commit-transitions` is off: there the user manages commits and an
         uncommitted graveyard is the expected steady state, so refusing would
@@ -3820,6 +4224,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
             ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", rel],
             stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
+            if only_own_entry and self._graveyard_dirt_is_only(slug):
+                # This store's own unfinished write, and nothing else. The first
+                # attempt at a removal writes the tombstone and can then fail to
+                # commit it, so refusing here made that state unfinishable
+                # through the command that exists to finish it. Narrowed to the
+                # single entry, because "the item is already gone" is *also* the
+                # state a `pre` binding that relocates the item leaves on a
+                # first attempt — with a perfectly clean graveyard — and blanket
+                # skipping there swept a concurrent agent's edit into this
+                # item's commit.
+                return
             raise ValueError(
                 f"cannot record {slug}: the graveyard at {rel} has uncommitted "
                 f"changes, and this transition's commit would carry them. TCW "
@@ -3831,7 +4246,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"and leaves the item resolved with no tombstone.")
 
     def _write_tombstone(self, slug: str, resolution: str,
-                         resolved: str = "") -> None:
+                         resolved: str = "", location: str = "") -> None:
         """Record `slug` in the graveyard, preserving every entry already there.
 
         Read-modify-write rather than append: one file serves the whole store, so
@@ -3861,8 +4276,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             loaded = load_yaml(path)
             if isinstance(loaded, dict):
                 doc = loaded
-        doc[slug] = {"resolution": resolution or "",
-                     "resolved": resolved or date.today().isoformat()}
+        record = {"resolution": resolution or "",
+                  "resolved": resolved or date.today().isoformat()}
+        if location:
+            record["location"] = location
+        doc[slug] = record
         self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
                                                   allow_unicode=True))])
 
@@ -3973,6 +4391,293 @@ class FsWorkStore(FsTreeStore, WorkStore):
         assert recorded is not None                # just written, above
         return recorded
 
+    def describe_location(self, location: str, slug: str = "") -> str:
+        """A tombstone's retrieval handle, rendered for a reader.
+
+        Checked before it is shown. The rule this store inherited is that a
+        pointer must never fail *silently*; a handle that does not resolve — the
+        commit is not in this clone, or it is and does not contain the item — is
+        reported as unresolvable rather than printed as if it worked.
+
+        **`slug` is what makes the check real.** It used to probe
+        `ls-tree <location> -- <self.root.name>`, which was wrong twice over: the
+        pathspec is resolved against `store_git_root`, where the store sits at
+        `docs/work` rather than `work`, and `git ls-tree <sha> -- <anything>`
+        exits 0 with empty output regardless — so the only thing the check could
+        detect was a missing commit *object*. A commit that exists and never held
+        the item is the case `Tombstone`'s docstring says must not fail silently,
+        and it was the one case that always passed.
+        """
+        if not location:
+            return "no commit — its documents were not retained"
+        try:
+            held = self._commit_holds(location, slug) if slug else None
+            resolved = _git(["git", "-C", str(self.store_git_root), "rev-parse",
+                             "--verify", "--quiet", f"{location}^{{commit}}"],
+                            capture_output=True, text=True,
+                            check=False).returncode == 0
+        except Exception:
+            held, resolved = None, False
+        if not resolved:
+            return (f"recorded in commit {location}, which this clone does not "
+                    f"have (history rewritten, or a shallow clone)")
+        if held is False:
+            return (f"recorded in commit {location}, which this clone has but "
+                    f"which does not contain the item (history rewritten)")
+        return f"last present in commit {location}"
+
+    def _commit_holds(self, location: str, slug: str) -> bool:
+        """Whether `location` has a tree for `slug` under either resolved status.
+
+        Asked of git rather than derived, for the same reason
+        `_committed_item_path` is: by the time anyone asks, the item is gone from
+        the store and its status with it.
+        """
+        for status in RESOLVED_STATUSES:
+            try:
+                rel = (self.root / status / slug).resolve().relative_to(
+                    self.store_git_root.resolve())
+            except ValueError:
+                continue
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
+                           location, "--", str(rel)],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode == 0 and listed.stdout.strip():
+                return True
+        return False
+
+    def pending_deletion(self, slug: str) -> bool:
+        """Whether `slug` is resolved, still present, and not to be retained.
+
+        The state a resolving transition leaves under `work.retain: false`, and
+        the question the CLI asks before running the `auto-delete` bindings.
+
+        **The store does not delete on its own**, deliberately. The deletion has
+        `pre` and `post` bindings, running a command is a CLI concern (see
+        `tcw/work/hooks.py`), and a `pre` that refuses has to leave the item
+        intact — which is only expressible if the removal is a second call the
+        CLI makes rather than something buried inside the move. It also means a
+        surface that runs no hooks, `tcw serve`, stops here instead of deleting
+        without the archive anyone configured.
+        """
+        item = self._get_now(slug)
+        if item is None or item.status not in RESOLVED_STATUSES:
+            return False
+        return not self.retention().get(item.status, True)
+
+    def pending_removal(self, slug: str) -> bool:
+        """Whether `slug`'s removal started and has not finished.
+
+        The sibling of `pending_deletion`, for the other side of the boundary:
+        that one asks whether an item still here should go, this one whether an
+        item already gone is fully recorded. The half-deleted state is real —
+        a `pre` binding that moves the item and then fails, a removal commit
+        that a hook or a lock refused — and `tcw work delete` exists to finish
+        it, so it needs a way to tell that state from a finished one. Reading
+        the tombstone's `location` alone could not: it is written *before* the
+        removal is committed.
+        """
+        if self._get_now(slug) is not None:
+            return False                    # still here — `pending_deletion`'s question
+        if self.tombstone(slug) is None:
+            return False                    # never existed here
+        if not self.tombstone(slug).location:
+            return True                     # removed, and nothing recorded yet
+        # HEAD still holding the item means the removal was never committed.
+        # After a successful removal commit it does not, so this answers False
+        # exactly when there is nothing left to do.
+        return self._committed_item_path(slug) is not None
+
+    def _committed_item_path(self, slug: str, status: str = "") -> Path | None:
+        """The store-repo-relative path HEAD holds for `slug`, or None.
+
+        Asked of git rather than derived from the item, because by the time a
+        removal runs the item may be gone from the store — a `pre` binding that
+        relocated it, an interrupted earlier attempt — and its status with it.
+        Git still knows where it committed the thing.
+        """
+        candidates = [status] if status else list(RESOLVED_STATUSES)
+        for candidate in candidates:
+            try:
+                rel = (self.root / candidate / slug).resolve().relative_to(
+                    self.store_git_root.resolve())
+            except ValueError:
+                continue
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
+                           "HEAD", "--", str(rel)],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode == 0 and listed.stdout.strip():
+                return rel
+        return None
+
+    def _require_retrievable(self, slug: str, folder: Path,
+                             committed: Path | None) -> None:
+        """Refuse to remove a folder git does not already hold, byte for byte.
+
+        **The predicate is cleanliness, not existence.** "HEAD has a tree at this
+        path" proves something was committed there once, not that what is about
+        to be deleted is in it — an untracked attachment, a receipt a `pre` hook
+        wrote, an edit made since, or a whole item that `git_mv` untracked into a
+        gitignored folder all survive an existence check and die with the
+        `rmtree`. `git status --porcelain --ignored` over the path answers the
+        question actually being asked, and it is the same idiom
+        `_require_writable_graveyard` uses for the graveyard.
+
+        Both halves are needed: `status` over a pathspec git knows nothing about
+        is also empty, so the committed path has to be established separately.
+
+        This subsumes `_require_deletable`, which refuses the same condition
+        earlier and with a better message for its one known cause. That one is
+        kept for the message and for refusing before anything moves; this is the
+        guard that actually holds, and it holds on every entry point.
+        """
+        if committed is None:
+            hint = ("" if self.auto_commit_transitions() else
+                    " (work.auto-commit-transitions is false, so the resolving "
+                    "move was staged and never committed)")
+            raise ValueError(
+                f"refusing to delete {slug}: no commit holds "
+                f"{folder}{hint}. Deleting it would destroy the only copy. "
+                f"Commit the item, or set work.retain to keep it.")
+        dirty = _git(["git", "-C", str(self.store_git_root), "status",
+                      "--porcelain", "--ignored", "--", str(committed)],
+                     capture_output=True, text=True, check=False).stdout.strip()
+        if dirty:
+            raise ValueError(
+                f"refusing to delete {slug}: {folder} has content no commit "
+                f"holds —\n{dirty}\nDeleting it would destroy that content. "
+                f"Commit or remove it first.")
+
+    def _retained_location(self, slug: str, committed: Path | None) -> str:
+        """The commit to record for `slug`: the one already recorded when it
+        still holds the item, else HEAD.
+
+        A re-run must not downgrade a good pointer. The first run records the
+        commit containing the item and then commits the removal, so on a second
+        run HEAD no longer holds it — and `_write_tombstone` assigns outright,
+        so recording HEAD again would replace a working reference with a useless
+        one.
+        """
+        existing = self.tombstone(slug)
+        if existing is not None and existing.location:
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
+                           existing.location, "--",
+                           str(committed) if committed else "."],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode == 0 and (committed is None or listed.stdout.strip()):
+                return existing.location
+        if committed is None:
+            # No commit holds the item — the removal is reaching a folder git
+            # never had, which `_require_retrievable` cannot refuse because
+            # there is no folder left to refuse over. Recording HEAD here named
+            # a commit that demonstrably does *not* contain the item, which is
+            # the one thing `Tombstone` says a handle must never do. An empty
+            # location is honest: the slug is still remembered, and nothing is
+            # claimed about retrieving it.
+            return ""
+        head = _git(["git", "-C", str(self.store_git_root), "rev-parse", "HEAD"],
+                    capture_output=True, text=True, check=False)
+        if head.returncode != 0 or not head.stdout.strip():
+            raise ValueError(
+                f"refusing to delete {slug}: {self.store_git_root} has no commit "
+                f"to record it in.")
+        return head.stdout.strip()
+
+    def delete_resolved(self, slug: str, status: str = "") -> str:
+        """Remove a resolved item's folder and record where it last existed.
+
+        The second half of an auto-delete, and its own entry point so the state
+        left by a failure is finishable rather than broken. Safe to re-run: an
+        item whose folder is already gone still gets its record confirmed, which
+        is what makes the folder-move case (a hook that relocates the item
+        itself) succeed instead of erroring.
+
+        **Nothing is removed that git does not already hold** — see
+        `_require_retrievable`. The check gates the removal, not the record: with
+        no folder on disk there is nothing to destroy, and refusing there would
+        break the finishability this entry point exists for.
+
+        **The location is a commit that demonstrably contains the item.**
+        Writing it in the resolving commit would be circular — the SHA is not
+        known until that commit exists — and amending afterwards would change the
+        hash being recorded. Two commits, the record pointing back one, is the
+        only arrangement of these that is not self-referential.
+
+        `status` comes from the caller where it knows it, because by this point
+        the item may be gone from the store and its status with it.
+
+        Takes the graveyard lock for the whole span, as a resolving transition
+        does. **The lock is not reentrant** — `flock` on a freshly opened
+        descriptor contends with itself — so this must stay a top-level entry
+        point and must never be called from inside `_effect_transition_locked`.
+
+        One thing no local check can promise: a commit that is never pushed, or
+        that a squash- or rebase-merge later makes unreachable, takes the content
+        with it. That is a property of the workflow around the store, not of this
+        operation.
+        """
+        self._require_repository()
+        with self._graveyard_lock():
+            item = self._get_now(slug)
+            if item is None and self.tombstone(slug) is None:
+                raise ValueError(f"no such work item: {slug}")
+            resuming = self.pending_removal(slug)
+            status = status or (item.status if item is not None else "")
+            committed = self._committed_item_path(slug, status)
+            folder = self._find(slug)
+            if folder is not None and folder.exists():
+                self._require_retrievable(slug, folder, committed)
+            location = self._retained_location(slug, committed)
+            # Before the removal, for the reason it exists: a graveyard that
+            # cannot be safely rewritten must stop this, not surface after the
+            # folder is already gone.
+            #
+            # The guard runs on every path. What `resuming` changes is only
+            # *how much* dirt it tolerates: a removal finishing its own failed
+            # commit is looking at the tombstone that attempt wrote, and
+            # refusing over it made that state unfinishable through the command
+            # that exists to finish it. Skipping the guard outright was wrong —
+            # `pending_removal` is also true on a *first* attempt whose `pre`
+            # binding relocated the item, where the graveyard is clean and any
+            # dirt found is somebody else's.
+            self._require_writable_graveyard(slug, only_own_entry=resuming)
+            if folder is not None and folder.exists():
+                shutil.rmtree(folder)
+            existing = self.tombstone(slug)
+            # The item is the better source for the resolution when the
+            # graveyard has no record — a board adopting retention before
+            # backfilling is the migration the README describes, and writing an
+            # empty resolution over a real one is the overwrite
+            # `record_tombstone` refuses by name. The *date* has no better
+            # source: `WorkItem` carries no resolved timestamp, and
+            # `_write_tombstone`'s default is the honest "known resolved by
+            # today" the backfill command already uses.
+            self._write_tombstone(
+                slug,
+                (existing.resolution if existing else "")
+                or (item.resolution if item is not None else "") or "",
+                existing.resolved if existing else "",
+                location=location)
+            if self.auto_commit_transitions():
+                paths = [self._graveyard_path()]
+                if committed is not None:
+                    # The path git holds, not one derived from the item — which
+                    # may have been moved away by a binding, leaving the removal
+                    # out of the commit and the remote still holding it.
+                    paths.append(self.store_git_root / committed)
+                err = git_commit_result(
+                    self.store_git_root,
+                    self._removal_commit_subject(slug, location), *paths)
+                if err:
+                    raise TransitionCommitError(
+                        f"{slug} was removed, but committing the removal failed:\n{err}")
+                # Its own push. The resolving transition published the first
+                # commit before this one existed, and a remote left holding an
+                # item the store has deleted is exactly the divergence
+                # publication exists to prevent.
+                self._publish_after_transition(slug, status or "removed")
+            return location
+
     def tombstone(self, slug: str) -> Tombstone | None:
         """Read `slug`'s record out of the store's `graveyard.yaml`.
 
@@ -4017,6 +4722,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             slug=slug,
             resolution=str(entry.get("resolution") or ""),
             resolved=str(entry.get("resolved") or ""),
+            location=str(entry.get("location") or ""),
         )
 
     def get(self, slug: str) -> WorkItem | None:
@@ -4049,23 +4755,57 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return [i for i in items
                 if i is not None and (status is None or i.status == status)]
 
+    def incomplete_graph_note(self) -> str:
+        """This adapter's answer to the base store's question: the missing nodes.
+
+        A relation that spans a node this checkout does not have resolves to
+        nothing, and nothing is indistinguishable from a typo without this. Kept
+        as a suffix rather than a separate message so every caller that walks the
+        graph can append it without restructuring its own error — including the
+        completion gate in `WorkStore`, which is why the name is not private.
+        """
+        try:
+            absent = FsProjectRegistry.open(self.node_root).unreachable()
+        except Exception as error:
+            # Not `""`. Every caller reads an empty note as "the graph is
+            # complete", and a registry that cannot be opened is the one state
+            # where that is least likely to be true — failing open here is the
+            # direction the completion gate exists to prevent.
+            return f" (this checkout's project graph could not be read: {error})"
+        if not absent:
+            return ""
+        # By project, not by edge. `_unreachable_edge` records one entry per
+        # declaring config, so a project two present configs both name rendered
+        # as "proj-c, proj-c".
+        return (" (this checkout is missing connected project(s): "
+                + ", ".join(sorted({u.id for u in absent})) + ")")
+
     def initiative_epic(self, item: WorkItem) -> WorkItem | None:
         if not item.initiative:
             return None
         local = self.get(item.initiative)
         if local is not None:
             return local
-        parent = parent_node(self.node_root)
-        while parent is not None:
-            got = FsWorkStore.open(parent).get(item.initiative)
+        registry = FsProjectRegistry.open(self.node_root).require_valid()
+        for ancestor in registry.ancestors():
+            path = Path(ancestor.locator)
+            if not _has_work_store(path):
+                continue            # a routing node between two boards
+            got = FsWorkStore.open(path).get(item.initiative)
             if got is not None:
                 return got
-            parent = parent_node(parent)
         return None
 
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
+        """Slices of `epic_slug`, here and below.
+
+        `descendant_nodes` rather than `child_nodes`: a node that keeps no board
+        is a routing node, and a slice below one is still a slice. The two
+        directions used to disagree about that — the downward walk stopped at a
+        storeless child while the registry's own descendant walk crossed it.
+        """
         children = [i for i in self.query() if i.initiative == epic_slug]
-        for node in child_nodes(self.node_root):
+        for node in descendant_nodes(self.node_root):
             children.extend(i for i in FsWorkStore.open(node).query()
                             if i.initiative == epic_slug)
         return children
@@ -4293,6 +5033,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         value = self._work_config().get("publish-transitions")
         return value if isinstance(value, bool) else True
+
+    def retention(self) -> dict[str, bool]:
+        """Whether each resolved status keeps its items. Default: everything.
+
+        The default is what every project has today, so a node declaring nothing
+        behaves exactly as it did — which is the promise this feature rests on.
+        A malformed setting reads as the default *and* is reported by
+        `tcw validate`; it must never quietly become a deletion.
+        """
+        retention, _ = parse_retention(self._work_config().get("retain"))
+        return retention
+
+    def retention_problems(self) -> list[str]:
+        """Problems in `work.retain`, for `tcw validate` to surface."""
+        _, problems = parse_retention(self._work_config().get("retain"))
+        return problems
 
     def auto_commit_transitions(self) -> bool:
         """Whether a transition commits its own status move. Default True.
@@ -4812,6 +5568,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # graveyard, and a refusal has to mean nothing happened.
         if resolving:
             self._require_writable_graveyard(slug)
+            self._require_deletable(to_status)
         # Read the item *before* the move: afterwards `_find` points at the new
         # location and the pre-move branch/worktree fields are what the
         # trunk-branch check needs.

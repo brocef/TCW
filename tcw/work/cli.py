@@ -11,13 +11,17 @@ from tcw.store.base import (
     DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
-    StoreNotProvisioned, TransitionCommitError, WorkItem, normalize_tag, AlreadyClaimed,
+    StoreNotProvisioned, TransitionCommitError, WorkItem,
+    normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status,
 )
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
     child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
-    git_commit_result, git_root, merge_worktree, parent_node,
+    declared_repository, git_commit_result, git_root, merge_worktree,
+    nearest_work_ancestor,
+    parent_node, registered_children, registered_parent,
+    unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
     resolve_qualified_work_ref,
 )
@@ -32,7 +36,8 @@ from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
-               "rework", "edit", "complete", "drop", "nodes", "reconcile", "delegate",
+               "rework", "edit", "complete", "drop", "delete", "nodes", "reconcile",
+               "delegate",
                "escalate", "tags", "lifecycle", "stage", "scaffold", "docs"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
@@ -163,15 +168,57 @@ def _nodes(args: argparse.Namespace) -> int:
         return 1
     parent = parent_node(node)
     print(f"node:   {registered_project_id(node, node)}")
-    print(f"parent: {registered_project_id(node, parent) if parent else '(none — root)'}")
-    children = child_nodes(node)
-    if children:
+    if parent is not None:
+        print(f"parent: {registered_project_id(node, parent)}")
+    else:
+        # A registered parent that keeps no board is not the top of the graph,
+        # and printing "(none — root)" for it hid a whole node from the reader.
+        registered = registered_parent(node)
+        if registered is not None:
+            print(f"parent: {registered_project_id(node, registered)}"
+                  f"{_no_store_note(registered)}")
+        elif (absent := unreachable_parent(node)) is not None:
+            # Declared, and not here. `registered_parent` cannot report it — it
+            # answers with a path, and a project this checkout does not have has
+            # none — so this line used to read `(none — root)` for a node whose
+            # config plainly names a parent.
+            print(f"parent: {absent.id}  (not in this checkout)")
+        else:
+            print("parent: (none — root)")
+    # Every registered child, not only the ones keeping a board. A routing node
+    # is still a child, and filtering it out made a node with one read as a leaf.
+    # Marked the same way the parent line marks its own case, so the two halves
+    # of this output describe the graph alike.
+    children = registered_children(node)
+    absent_children = unreachable_children(node)
+    if children or absent_children:
         print("children:")
+        with_store = {c.resolve() for c in child_nodes(node)}
         for c in children:
-            print(f"  {registered_project_id(node, c)}")
+            print(f"  {registered_project_id(node, c)}"
+                  f"{'' if c.resolve() in with_store else _no_store_note(c)}")
+        for entry in absent_children:
+            print(f"  {entry.id}  (not in this checkout)")
     else:
         print("children: (none — leaf)")
     return 0
+
+
+def _no_store_note(child: Path) -> str:
+    """Why a registered child keeps no usable board here.
+
+    Two different situations that used to look identical by being omitted: a
+    routing node genuinely has no board, while a declared one has a board this
+    machine has not obtained — and only the second is something the reader can
+    act on.
+    """
+    try:
+        declaration, _ = declared_repository(child, "work")
+    except Exception:
+        declaration = None
+    if declaration is not None:
+        return "  (work store not provisioned here)"
+    return "  (no work store)"
 
 
 def _reconcile(args: argparse.Namespace) -> int:
@@ -417,7 +464,7 @@ def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
                 if candidate is not None and candidate[2].type == "epic":
                     owner = candidate_key
                     break
-                candidate_root = parent_node(candidate_root)
+                candidate_root = nearest_work_ancestor(candidate_root)
         if owner is not None and owner != key:
             children.setdefault(owner, []).append(entry)
             owned.add(key)
@@ -470,6 +517,41 @@ def _show(args: argparse.Namespace) -> int:
         print(f"tcw work show: {e}", file=sys.stderr)
         return 1
     if item is None:
+        grave = st.tombstone(bare)
+        if grave is not None:
+            if getattr(args, "json", False):
+                # There is no item document to project, and this branch sat
+                # ahead of the `--json` one — so a caller piping to `jq` got the
+                # human block on stdout under a success exit. Empty stdout and a
+                # non-zero exit is the only answer that cannot be misread. The
+                # message still names the case, so a person reading a failed
+                # pipeline learns what `jq` could not be told; projecting the
+                # tombstone instead would mean a second document shape under a
+                # schema that is closed by construction, and `tcw serve` returns
+                # the same document, so that is a contract change rather than a
+                # fix. See the follow-up item.
+                said = ", ".join(x for x in (grave.resolution, grave.resolved) if x)
+                print(f"tcw work show: {grave.slug} was resolved"
+                      + (f" ({said})" if said else "")
+                      + " and removed; there is no item document to project.",
+                      file=sys.stderr)
+                return 1
+            # The item is gone from the store but the store remembers it. Saying
+            # "no such work item" here would call finished work a typo.
+            print(f"{grave.slug}  (resolved)")
+            if grave.resolution:
+                print(f"resolution: {grave.resolution}")
+            if grave.resolved:
+                print(f"resolved:   {grave.resolved}")
+            # Always, not only when a location was recorded. Resolved before it
+            # is shown, *against this slug*, because the whole reason a locator
+            # was once refused here is that a pointer must not fail silently —
+            # which includes a commit this clone has and which never held the
+            # item. Guarding on a non-empty location skipped the one case the
+            # reader most needs told: an item whose documents were never
+            # retained anywhere, which now says so instead of saying nothing.
+            print(f"content:    {st.describe_location(grave.location, bare)}")
+            return 0
         print(f"tcw work show: no such work item: {args.slug}", file=sys.stderr)
         return 1
     if getattr(args, "json", False):
@@ -513,6 +595,129 @@ def _path(args: argparse.Namespace) -> int:
     return 0
 
 
+def _removed(st, slug: str) -> bool:
+    """Whether the store no longer holds `slug`. Never raises.
+
+    Asked at *every* exit from `_auto_delete`, including the `pre`-failure one —
+    the binding that just failed is the one thing in that function able to move
+    the item, so hard-coding "still there" there reproduced exactly the symptom
+    asking the store was introduced to end.
+
+    `get()` can raise `MultipleMatch`, which is an `Exception` and not a
+    `ValueError`, so a bare call escapes the CLI as a traceback and — from
+    inside an `except` handler — skips the completion report and the worktree
+    cleanup `_complete` still owes. Anything it cannot answer is treated as
+    removed, because the consequence of this answer is whether a *location* is
+    printed, and printing a path that may not exist is the failure being fixed.
+    """
+    try:
+        return st.get(slug) is None
+    except Exception:
+        return True
+
+
+def _auto_delete(st, slug: str, status: str, resolution: str) -> "tuple[int, bool]":
+    """Run the `auto-delete` bindings around removing a resolved item.
+
+    Ordered so the archive sees a complete, already-committed artifact and a
+    failure costs nothing: the resolving commit has landed, `pre` runs while the
+    item is still on disk, the removal and its commit come next, `post` last.
+
+    A `pre` failure leaves the item wherever the binding left it — usually
+    exactly where it was, and sometimes moved, since relocating the item is a
+    supported thing for an archive command to do. Either way the state is
+    finishable, and the message says which one it is, because the user's first
+    question is whether their work is safe.
+
+    Returns `(exit code, removed)`. The two are not the same question and the
+    caller needs both: a publication failure after the removal landed is a real
+    failure to report *and* an item that is genuinely gone, so a caller that read
+    the exit code as "still there" would print a location for a folder that no
+    longer exists and skip the cleanup it still owes.
+    """
+    policy = st.lifecycle_policy()
+    item_path = st.path(slug)
+    item = st.get(slug)
+    if (err := run_pre(policy, "auto-delete", st.node_root, slug, status, item,
+                       item_path=item_path, resolution=resolution)):
+        gone = _removed(st, slug)
+        print(f"tcw work: {err}; {slug} was resolved and committed but its "
+              + ("removal was not recorded — the binding moved the item before "
+                 "it failed" if gone else "folder was not removed")
+              + f". Fix the binding and run `tcw work delete {slug}`.",
+              file=sys.stderr)
+        return 1, gone
+    try:
+        location = st.delete_resolved(slug, status)
+    except _ERRORS as e:
+        # Whether the folder went is a question for the store, not for the
+        # exception type. A push that failed, a removal commit a hook refused,
+        # and a `pre` guard that refused before anything moved all arrive here,
+        # and the first two leave the item gone. Inferring "still there" from a
+        # non-zero result is what sent the caller on to print a location for a
+        # folder that no longer exists.
+        print(f"tcw work: {e}", file=sys.stderr)
+        return 1, _removed(st, slug)
+    print(f"deleted {slug}; " + (
+        f"its documents remain in commit {location}" if location else
+        "no commit held its documents, so none is recorded"))
+    post_err = run_post(policy, "auto-delete", st.node_root, slug, status, item,
+                        item_path=item_path, resolution=resolution)
+    return _post_result(post_err, "auto-delete", slug), True
+
+
+def _delete(args: argparse.Namespace) -> int:
+    """`tcw work delete <slug>` — finish a removal an archive failure left pending.
+
+    The same code path the automatic step takes, under a name that reads as
+    something a person types. Refuses anything that is not a resolved item this
+    node has stopped retaining, so it can never be mistaken for `drop`.
+    """
+    resolved = _resolve(args.slug, "delete")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        # Wrapped exactly as `_show` and `_complete` wrap it. `MultipleMatch` is
+        # an `Exception`, not a `ValueError`, so `main()`'s catch-all does not
+        # see it and an unguarded read here left a raw traceback where every
+        # other subcommand reports and exits 1.
+        print(f"tcw work delete: {e}", file=sys.stderr)
+        return 1
+    if item is None:
+        # The half-deleted state: the folder is gone and the record does not yet
+        # say where it went, because a `pre` binding moved the item away or an
+        # earlier attempt was interrupted. Refusing it here made
+        # `delete_resolved`'s documented "safe to re-run" unreachable through the
+        # CLI and left the tree holding an unstaged deletion forever — which is
+        # the one state this command exists to finish.
+        grave = st.tombstone(bare)
+        if grave is None:
+            print(f"tcw work delete: no such work item: {args.slug}",
+                  file=sys.stderr)
+            return 1
+        if not st.pending_removal(bare):
+            print(f"{bare} is already removed; its documents are "
+                  f"{st.describe_location(grave.location, bare)}")
+            return 0
+        code, _ = _auto_delete(st, bare, "", grave.resolution)
+        return code
+    if item.status not in RESOLVED_STATUSES:
+        print(f"tcw work delete: {bare} is {item.status}, not resolved. "
+              f"`tcw work drop` deletes a backlog item; this finishes the "
+              f"removal of one already resolved.", file=sys.stderr)
+        return 1
+    if not st.pending_deletion(bare):
+        print(f"tcw work delete: work.retain.{item.status} keeps resolved items "
+              f"in this project, so {bare} is not pending removal.",
+              file=sys.stderr)
+        return 1
+    code, _ = _auto_delete(st, bare, item.status, item.resolution or "")
+    return code
+
+
 def _post_result(err: str | None, transition: str, slug: str) -> int:
     """Report a `post` hook failure without pretending the transition failed.
 
@@ -551,7 +756,7 @@ def _start(args: argparse.Namespace) -> int:
     # move. A hook is allowed to refuse the transition, and a refusal has to mean
     # nothing happened; evaluating one after any store call would make that false.
     if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog",
-                       st.get(bare))):
+                       st.get(bare), item_path=st.path(bare))):
         print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
         return 1
     owner = (args.owner or os.environ.get("TCW_WORK_OWNER", "")).strip()
@@ -573,7 +778,7 @@ def _start(args: argparse.Namespace) -> int:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
     post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active",
-                        st.get(bare))
+                        st.get(bare), item_path=st.path(bare))
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
@@ -641,7 +846,7 @@ def _submit(args: argparse.Namespace) -> int:
         return 1
     st, bare = resolved
     if (err := run_pre(st.lifecycle_policy(), "submit", st.node_root, bare, "active",
-                       st.get(bare))):
+                       st.get(bare), item_path=st.path(bare))):
         print(f"tcw work submit: {err}; {bare} not moved", file=sys.stderr)
         return 1
     try:
@@ -650,7 +855,7 @@ def _submit(args: argparse.Namespace) -> int:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
     post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review",
-                        st.get(bare))
+                        st.get(bare), item_path=st.path(bare))
     print(f"submitted {args.slug} → review")
     print(f"→ next: verify the work, then either "
           f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
@@ -665,7 +870,7 @@ def _rework(args: argparse.Namespace) -> int:
         return 1
     st, bare = resolved
     if (err := run_pre(st.lifecycle_policy(), "rework", st.node_root, bare, "review",
-                       st.get(bare))):
+                       st.get(bare), item_path=st.path(bare))):
         print(f"tcw work rework: {err}; {bare} not moved", file=sys.stderr)
         return 1
     try:
@@ -674,7 +879,7 @@ def _rework(args: argparse.Namespace) -> int:
         print(f"tcw work: {e}", file=sys.stderr)
         return 1
     post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
-                        st.get(bare))
+                        st.get(bare), item_path=st.path(bare))
     print(f"reworking {args.slug} → active")
     print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
           file=sys.stderr)
@@ -1292,7 +1497,8 @@ def _complete(args: argparse.Namespace) -> int:
     # completion, and a refusal has to mean the item is untouched — so the hook
     # runs before `complete()` is entered at all, not somewhere inside it.
     if (err := run_pre(policy, transition_id, st.node_root, bare, item.status,
-                       item)):
+                       item, item_path=st.path(bare),
+                       resolution=args.resolution)):
         print(f"tcw work complete: {err}; {bare} not closed", file=sys.stderr)
         return 1
     try:
@@ -1300,9 +1506,21 @@ def _complete(args: argparse.Namespace) -> int:
     except _ERRORS as e:
         print(f"tcw work complete: {e}", file=sys.stderr)
         return 1
+    resolved_status = "completed" if shipping else "discarded"
     post_err = run_post(policy, transition_id, st.node_root, bare,
-                        "completed" if shipping else "discarded", item)
+                        resolved_status, item, item_path=st.path(bare),
+                        resolution=args.resolution)
     loc = st.locate(bare)
+    delete_code = 0
+    if st.pending_deletion(bare):
+        # Never an early return. The completion has already landed and its `post`
+        # result, its own report line and the worktree cleanup are all still owed
+        # — `merge_worktree` ran further up, so returning here orphaned the
+        # worktree and its branch with nothing left to remove them.
+        delete_code, removed = _auto_delete(st, bare, resolved_status,
+                                            args.resolution)
+        if removed:
+            loc = None
     print(f"{'completed' if shipping else 'discarded'} {args.slug} "
           f"({args.resolution})" + (f" → {loc}" if loc else ""))
     if has_worktree:
@@ -1316,7 +1534,7 @@ def _complete(args: argparse.Namespace) -> int:
                   f"`git branch -D {branch}` if you're sure.", file=sys.stderr)
         for w in remove_worktree(st.node_root, bare, branch if shipping else None):
             print(f"tcw work complete: {w}", file=sys.stderr)
-    return _post_result(post_err, transition_id, args.slug)
+    return _post_result(post_err, transition_id, args.slug) or delete_code
 
 
 def _drop(args: argparse.Namespace) -> int:
@@ -1535,3 +1753,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pd.add_argument("slug")
     pd.add_argument("--confirm", action="store_true")
     pd.set_defaults(func=_drop)
+
+    pdel = g.add_parser(
+        "delete",
+        help="finish removing a resolved item this project does not retain")
+    pdel.add_argument("slug")
+    pdel.set_defaults(func=_delete)

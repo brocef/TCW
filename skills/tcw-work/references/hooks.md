@@ -65,7 +65,9 @@ refusal message itself. Read those there rather than here.
 ## What runs, and what does not
 
 A transition's `pre` checks are `[gated]` — a non-zero exit aborts the move
-before anything is written. Its `post` checks are `[auto]`: a failure there never
+before anything is written. (`auto-delete` is the exception: it runs between the
+commit that lands the item and the one that removes it, so its `pre` gates the
+removal, not the move.) Its `post` checks are `[auto]`: a failure there never
 rolls back.
 
 A check carrying a `when:` runs only when it matches — and a check that cannot be
@@ -86,7 +88,8 @@ though it ran, and never build anything that depends on such a check firing.
 
 **`tcw serve` runs no hooks.** A transition made from the web app performs and
 commits the move but skips every binding — a `pre` hook that would block it does
-not block it there.
+not block it there — and, where a status is not retained, performs no removal:
+the item waits in its resolved folder for `tcw work delete`.
 
 `tcw-config.yaml` is a file in the user's own repository and is trusted exactly
 as much as any other file there. This is not a sandbox.

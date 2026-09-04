@@ -646,3 +646,38 @@ def test_a_diverged_store_says_how_to_get_unwedged(tmp_path, monkeypatch, capsys
     assert "every transition will stop here" in err, err
     assert f"git -C {checkout} log" in err, err
     assert "Not possible to fast-forward" not in err, err
+
+
+def test_both_commits_of_an_auto_delete_reach_the_remote(tmp_path, monkeypatch):
+    """`work.retain: false` writes two commits; the push must carry both.
+
+    The item lands in `completed/` in the first and is removed in the second, so
+    a push that carried only one would leave the remote holding either an item
+    the store no longer has or a record pointing at content nobody can fetch.
+    """
+    code = _node(tmp_path, local_store=False, declaration=True, provisioned=True)
+    _write_config(code, retain={"completed": False})
+    monkeypatch.chdir(code)
+    assert main(["provision"]) == 0
+
+    store = FsWorkStore.open(code)
+    assert store.publishes is True
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    # Through the CLI: the deletion is orchestrated there, because it carries
+    # `auto-delete` bindings and the store deliberately does not shell out.
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 0
+
+    remote = subprocess.run(
+        ["git", "-C", str(tmp_path / "checkout"), "log", "--format=%s",
+         "origin/HEAD", "-3"],
+        capture_output=True, text=True).stdout
+    if not remote:
+        remote = subprocess.run(
+            ["git", "-C", str(tmp_path / "checkout"), "log", "--format=%s",
+             "@{u}", "-3"],
+            capture_output=True, text=True, check=True).stdout
+    lines = remote.splitlines()
+    assert lines[0].startswith(f"tcw work: delete {item.slug}")
+    assert lines[1] == f"tcw work: {item.slug} → completed"

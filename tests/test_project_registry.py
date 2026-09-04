@@ -231,3 +231,349 @@ def test_worktree_anchors_survives_missing_git(tmp_path, monkeypatch):
     nowhere = tmp_path / "nowhere"
     nowhere.mkdir()
     assert worktree_anchors(nowhere) is None
+
+
+def test_a_fresh_registry_reports_nothing_unreachable(tmp_path):
+    root = tmp_path / "root"
+    child = tmp_path / "child"
+    reciprocal(root, "root-project", child, "child-project")
+    registry = FsProjectRegistry.open(root)
+    assert registry.unreachable() == []
+    registry.require_valid()
+
+
+def test_a_malformed_target_is_an_error_not_an_unreachable_edge(tmp_path):
+    root = tmp_path / "root"
+    child = tmp_path / "child"
+    config(
+        root,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: ../child\n",
+    )
+    config(child, "id: child-project\nid: duplicate\n")
+    registry = FsProjectRegistry.open(root)
+    assert registry.unreachable() == []
+    with pytest.raises(ValueError):
+        registry.require_valid()
+
+
+def test_an_absent_target_is_unreachable_not_a_problem(tmp_path):
+    root = tmp_path / "root"
+    config(
+        root,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: ../child\n",
+    )
+    registry = FsProjectRegistry.open(root)
+    registry.require_valid()
+    assert registry.check() == []
+    assert [u.id for u in registry.unreachable()] == ["child-project"]
+    assert registry.unreachable()[0].locator == (tmp_path / "child").resolve()
+    assert registry.unreachable()[0].declared_in == (root / "tcw-config.yaml").resolve()
+    assert registry.get("child-project") is None
+    assert registry.children() == []
+
+
+def test_an_absent_parent_leaves_the_child_usable(tmp_path):
+    child = tmp_path / "a" / "b" / "child"
+    config(
+        child,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        "    root-project: ../../..\n",
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert registry.current.id == "child-project"
+    assert registry.parent() is None
+    assert registry.unreachable_project("root-project") is not None
+    assert registry.unreachable_project("nobody") is None
+
+
+def test_an_absent_counterpart_does_not_disprove_reciprocity(tmp_path):
+    """The parent is here and names its child at a path only another machine has."""
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: nested/child\n",
+    )
+    config(
+        child,
+        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert registry.parent().id == "root-project"
+
+
+def test_a_present_counterpart_pointing_elsewhere_still_fails(tmp_path):
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    decoy = tmp_path / "decoy"
+    config(decoy, "id: decoy-project\n")
+    config(
+        parent,
+        f"id: root-project\nconnected-projects:\n  children:\n"
+        f"    child-project: {decoy}\n",
+    )
+    config(
+        child,
+        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    problems = FsProjectRegistry.open(child).check()
+    assert any("does not point back to" in p for p in problems)
+
+
+def test_a_correct_pair_still_validates(tmp_path):
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    reciprocal(parent, "root-project", child, "child-project")
+    FsProjectRegistry.open(child).require_valid()
+    FsProjectRegistry.open(parent).require_valid()
+
+
+# ── connected-project repository declarations ────────────────────────────────
+
+
+def test_a_mapping_entry_with_a_path_matches_the_bare_string_form(tmp_path):
+    for style in ("bare", "mapping"):
+        base = tmp_path / style
+        parent, child = base / "orchestrator", base / "child"
+        locator = "path: ../child" if style == "mapping" else "../child"
+        entry = f"    child-project:\n      {locator}\n" if style == "mapping" \
+            else f"    child-project: {locator}\n"
+        config(parent, f"id: root-project\nconnected-projects:\n  children:\n{entry}")
+        config(
+            child,
+            "id: child-project\nconnected-projects:\n  parent:\n"
+            "    root-project: ../orchestrator\n",
+        )
+        registry = FsProjectRegistry.open(parent)
+        registry.require_valid()
+        assert [c.id for c in registry.children()] == ["child-project"]
+
+
+def test_a_present_locator_wins_over_a_declaration(tmp_path, monkeypatch):
+    """The declaration must not be consulted at all — its url is unreachable."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent, child = tmp_path / "orchestrator", tmp_path / "child"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n        url: https://example.invalid/nope.git\n",
+    )
+    config(
+        child,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        "    root-project: ../orchestrator\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert [c.id for c in registry.children()] == ["child-project"]
+
+
+def test_a_declaration_answers_when_the_locator_does_not(tmp_path, monkeypatch):
+    from tcw.store.base import RepositoryDeclaration
+    from tcw.store.checkouts import provisioned_root
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
+                                        ref="main")
+    obtained = provisioned_root(parent, declaration)
+    config(
+        obtained,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n"
+        "        url: https://example.invalid/child.git\n        ref: main\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert [c.id for c in registry.children()] == ["child-project"]
+    assert registry.unreachable() == []
+
+
+def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n        url: https://example.invalid/child.git\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    absent = registry.unreachable_project("child-project")
+    assert absent is not None
+    assert absent.locator == (tmp_path / "child").resolve()
+
+
+@pytest.mark.parametrize(
+    "entry, expected",
+    [
+        ("      nonsense: 1\n", "unknown key"),
+        ("      path: ''\n", "expected a non-empty string"),
+        ("      repository:\n        ref: main\n", "url: expected a non-empty string"),
+        ("      repository:\n        url: u\n        path: /abs\n",
+         "must be relative to the repository root"),
+        ("      {}\n", "needs 'path', 'repository', or both"),
+    ],
+)
+def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected):
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        f"    child-project:\n{entry}",
+    )
+    problems = FsProjectRegistry.open(parent).check()
+    assert any(expected in problem for problem in problems), problems
+    assert FsProjectRegistry.open(parent).unreachable() == []
+
+
+def test_a_declared_project_says_to_provision_it(tmp_path, monkeypatch):
+    from tcw.store.fs import unreachable_project_note
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n"
+        "      repository:\n        url: https://example.invalid/child.git\n",
+    )
+    registry = FsProjectRegistry.open(parent)
+    note = unreachable_project_note(registry, "child-project")
+    assert "https://example.invalid/child.git" in note
+    assert "tcw provision" in note
+
+
+def test_an_undeclared_absent_project_does_not_say_to_provision(tmp_path):
+    from tcw.store.fs import unreachable_project_note
+
+    parent = tmp_path / "orchestrator"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: ../child\n",
+    )
+    note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
+    assert "not reachable in this checkout" in note
+    assert "tcw provision" not in note
+
+
+def test_a_project_another_route_resolved_is_not_reported_unreachable(tmp_path):
+    """Both sides declare the connection; only one side's locator resolves here.
+
+    Routine in a multi-repository workspace, where the two configs were written
+    against different machines. The project is in the graph, so nothing about it
+    is unreachable.
+    """
+    parent = tmp_path / "orchestrator"
+    child = tmp_path / "child"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: nested/child\n",          # not here
+    )
+    config(
+        child,
+        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",              # here
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert registry.parent().id == "root-project"
+    assert registry.unreachable() == []
+    assert registry.unreachable_project("child-project") is None
+
+
+def test_a_project_no_route_resolves_is_still_reported(tmp_path):
+    child = tmp_path / "child"
+    config(
+        child,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        "    root-project: ../nowhere\n",
+    )
+    registry = FsProjectRegistry.open(child)
+    registry.require_valid()
+    assert [u.id for u in registry.unreachable()] == ["root-project"]
+    assert registry.unreachable_project("root-project") is not None
+
+
+def test_a_directory_that_is_not_a_node_is_still_refused(tmp_path):
+    """The fail-open is argued for declared *targets*, not for the root.
+
+    Recording nothing for a directory with no sentinel made `require_valid()`
+    accept anything on the disk, and every helper built on it answer "no parent,
+    no children, valid".
+    """
+    plain = tmp_path / "not-a-node"
+    plain.mkdir()
+    registry = FsProjectRegistry.open(plain)
+    assert registry.check(), "a directory with no sentinel validated"
+    with pytest.raises(ValueError):
+        registry.require_valid()
+
+
+# ── a declared relation this checkout does not have ─────────────────────────
+
+def test_a_declared_parent_that_is_absent_is_still_a_declared_parent(tmp_path):
+    """`parent()` answers with a Project, so it can only answer for a project
+    this checkout has — which made "declared but not here" indistinguishable from
+    "never declared", the one thing `UnreachableProject` exists to prevent."""
+    child = tmp_path / "child"
+    config(child, "id: child-project\nconnected-projects:\n  parent:\n"
+                  f"    away-project: {tmp_path / 'away'}\n")
+    registry = FsProjectRegistry.open(child).require_valid()
+    assert registry.parent() is None
+    assert registry.declared_parent_id() == "away-project"
+    assert [u.id for u in registry.unreachable()] == ["away-project"]
+
+
+def test_a_declared_child_that_is_absent_is_still_a_declared_child(tmp_path):
+    parent = tmp_path / "parent"
+    config(parent, "id: parent-project\nconnected-projects:\n  children:\n"
+                   f"    away-project: {tmp_path / 'away'}\n")
+    registry = FsProjectRegistry.open(parent).require_valid()
+    assert registry.children() == []
+    assert registry.declared_child_ids() == ["away-project"]
+
+
+def test_a_locator_that_misses_a_project_the_graph_has_is_reported(tmp_path):
+    """The typo nothing reported: reciprocity abstains on an absent target, and
+    `unreachable()` filters the entry out because the project is in the graph
+    via the other route. It is equally the shape of a locator that is right for
+    another machine, so it is reported and not called a problem."""
+    parent = tmp_path / "parent"
+    child = tmp_path / "child"
+    config(parent, "id: parent-project\nconnected-projects:\n  children:\n"
+                   f"    child-project: {child}\n")
+    config(child, "id: child-project\nconnected-projects:\n  parent:\n"
+                  f"    parent-project: {tmp_path / 'TYPO-parent'}\n")
+
+    registry = FsProjectRegistry.open(parent)
+    assert registry.check() == []                 # not a problem, deliberately
+    assert registry.unreachable() == []           # the project is here
+    misdirected = registry.misdirected()
+    assert [entry.id for entry in misdirected] == ["parent-project"]
+    assert str(misdirected[0].locator).endswith("TYPO-parent")
+
+
+def test_a_locator_that_resolves_is_never_misdirected(tmp_path):
+    parent = tmp_path / "parent"
+    child = tmp_path / "child"
+    reciprocal(parent, "parent-project", child, "child-project")
+    assert FsProjectRegistry.open(parent).misdirected() == []
+    assert FsProjectRegistry.open(child).misdirected() == []

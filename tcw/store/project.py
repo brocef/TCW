@@ -10,7 +10,12 @@ from typing import Any
 
 import yaml
 
-from tcw.store.base import Project, ProjectRegistry, WORK_STATUSES
+from tcw.store.base import (
+    ConnectedProject, Project, ProjectRegistry, RepositoryDeclaration,
+    StoreDeclarationError, UnreachableProject, WORK_STATUSES,
+    parse_connected_entry,
+)
+from tcw.store.checkouts import provisioned_root
 
 SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -98,8 +103,8 @@ def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
 class _Config:
     project: Project
     path: Path
-    parent: dict[str, str]
-    children: dict[str, str]
+    parent: dict[str, ConnectedProject]
+    children: dict[str, ConnectedProject]
     raw: dict[str, Any]
 
 
@@ -111,7 +116,7 @@ class FsProjectRegistry(ProjectRegistry):
         self._cache: dict[Path, _Config] = {}
         self._by_id: dict[str, _Config] = {}
         self._problems: list[str] = []
-        self._visiting: set[Path] = set()
+        self._unreachable: list[UnreachableProject] = []
         self._loaded = False
         self._current_path = self.node_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
@@ -158,6 +163,16 @@ class FsProjectRegistry(ProjectRegistry):
             if child_id in self._by_id
         ]
 
+    def declared_parent_id(self, project_id: str | None = None) -> str | None:
+        cfg = self._config_for(project_id)
+        if not cfg or not cfg.parent:
+            return None
+        return next(iter(cfg.parent))
+
+    def declared_child_ids(self, project_id: str | None = None) -> list[str]:
+        cfg = self._config_for(project_id)
+        return list(cfg.children) if cfg else []
+
     def ancestors(self, project_id: str | None = None) -> list[Project]:
         result: list[Project] = []
         seen: set[str] = set()
@@ -181,8 +196,49 @@ class FsProjectRegistry(ProjectRegistry):
             visit(cfg.project.id)
         return result
 
+    def projects(self) -> list[Project]:
+        self._load_graph()
+        return [cfg.project for cfg in self._by_id.values()]
+
     def check(self) -> list[str]:
         return list(self._problems)
+
+    def unreachable(self) -> list[UnreachableProject]:
+        """Declared projects this checkout does not have.
+
+        Filtered by what the graph ended up holding, not by what each locator
+        did. Every connection is declared twice — once by each side — and in a
+        multi-repository workspace the two sides are written against different
+        machines, so a locator failing to resolve is routine and says nothing on
+        its own. Only the project being absent from the graph does.
+
+        Filtered here rather than at the point of record so the walk order cannot
+        matter: an edge may be recorded before the route that resolves the same
+        project is followed.
+        """
+        return [entry for entry in self._unreachable if entry.id not in self._by_id]
+
+    def misdirected(self) -> list[UnreachableProject]:
+        """Declared locators that do not resolve here, for projects that do.
+
+        The other half of `unreachable()`, and the reason it cannot be one list.
+        `unreachable()` means "obtain this"; these entries name a project the
+        checkout already has, so that message would be wrong. What is left is
+        still worth saying: the locator written here does not point at it.
+
+        Two readings, and nothing on disk distinguishes them. It may be a typo —
+        which nothing reported at all, because reciprocity abstains on an absent
+        target and this project is filtered out of `unreachable()`. Or it may be
+        a locator that is simply right for another machine, which is routine in a
+        workspace whose repositories sit differently on different disks, and is
+        exactly why this is *not* a problem. So the wording states both facts and
+        draws no conclusion: declared there, found here.
+        """
+        # No comparison of the two paths: an entry reaches `_unreachable` only
+        # from the branch that could not read a config file, and `cfg.path` is by
+        # construction a file that was read, so they can never be equal. A guard
+        # that cannot fire tells the next reader a state exists when it does not.
+        return [entry for entry in self._unreachable if entry.id in self._by_id]
 
     def require_valid(self) -> "FsProjectRegistry":
         if self._problems:
@@ -206,7 +262,9 @@ class FsProjectRegistry(ProjectRegistry):
         self._validate_reciprocity()
         self._validate_cycles()
 
-    def _visit(self, config_path: Path, declared_id: str | None) -> _Config | None:
+    def _visit(self, config_path: Path, declared_id: str | None,
+               declared_in: Path | None = None,
+               declaration: RepositoryDeclaration | None = None) -> _Config | None:
         config_path = config_path.resolve()
         if config_path in self._cache:
             cfg = self._cache[config_path]
@@ -216,34 +274,57 @@ class FsProjectRegistry(ProjectRegistry):
                     f"registered key '{declared_id}' does not match target id '{cfg.project.id}'",
                 )
             return cfg
-        if config_path in self._visiting:
-            self._problem(config_path, "cycle in connected-projects")
+        # No re-entry guard, and none is needed. The config is cached *before*
+        # its own edges are walked, so a cycle comes back to a cached config and
+        # the walk terminates on the cache hit above. The guard that used to sit
+        # here could therefore never fire, and the comments around it were the
+        # only thing making it look as though something caught a cycle at load
+        # time. `_validate_cycles` is what reports one.
+        cfg = self._read_config(config_path, declared_id, declared_in,
+                                declaration)
+        if cfg is None:
             return None
-        self._visiting.add(config_path)
-        try:
-            cfg = self._read_config(config_path, declared_id)
-            if cfg is None:
-                return None
-            self._cache[config_path] = cfg
-            previous = self._by_id.get(cfg.project.id)
-            if previous and previous.path != config_path:
-                self._problem(
-                    config_path,
-                    f"duplicate project id '{cfg.project.id}' also used by {previous.path}",
-                )
-            else:
-                self._by_id[cfg.project.id] = cfg
-            for child_id, locator in cfg.children.items():
-                self._visit(self._target_path(config_path, locator), child_id)
-            for parent_id, locator in cfg.parent.items():
-                self._visit(self._target_path(config_path, locator), parent_id)
-            return cfg
-        finally:
-            self._visiting.discard(config_path)
+        self._cache[config_path] = cfg
+        previous = self._by_id.get(cfg.project.id)
+        if previous and previous.path != config_path:
+            self._problem(
+                config_path,
+                f"duplicate project id '{cfg.project.id}' also used by {previous.path}",
+            )
+        else:
+            self._by_id[cfg.project.id] = cfg
+        for child_id, entry in cfg.children.items():
+            self._visit(self._target_path(config_path, entry), child_id,
+                        config_path, entry.repository)
+        for parent_id, entry in cfg.parent.items():
+            self._visit(self._target_path(config_path, entry), parent_id,
+                        config_path, entry.repository)
+        return cfg
 
-    def _read_config(self, path: Path, declared_id: str | None) -> _Config | None:
+    def _read_config(self, path: Path, declared_id: str | None,
+                     declared_in: Path | None = None,
+                     declaration: RepositoryDeclaration | None = None,
+                     ) -> _Config | None:
         if not path.is_file():
-            self._problem(path, "registered target has no tcw-config.yaml")
+            # Not a defect. A locator is a fact about one machine — the same
+            # thing `work.path` is — so a target that is not here means this
+            # checkout does not have that project, not that the declaration
+            # is wrong. Failing closed here refused every command in exactly
+            # the checkouts that have only some of a graph's repositories.
+            # Everything else below stays an error: those targets are present
+            # and wrong, which is what fail-closed was written for.
+            if declared_id is None and declared_in is None:
+                # The node the command was run in, not a target it declared.
+                # The fail-open below is argued for *targets* — "this checkout
+                # does not have that project" — and says nothing about a
+                # directory that is not a node at all. Recording nothing for it
+                # made `require_valid()` accept any directory on the disk, and
+                # every helper built on it answer "no parent, no children,
+                # valid".
+                self._problem(path, "no tcw-config.yaml here")
+                return None
+            self._unreachable_edge(declared_in or path, declared_id, path.parent,
+                                   declaration)
             return None
         try:
             raw = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader) or {}
@@ -291,26 +372,68 @@ class FsProjectRegistry(ProjectRegistry):
             raw=raw,
         )
 
-    def _relation(self, path: Path, value: Any, label: str) -> dict[str, str]:
+    def _relation(self, path: Path, value: Any,
+                  label: str) -> dict[str, ConnectedProject]:
         if value is None:
             return {}
         if not isinstance(value, dict):
             self._problem(path, f"connected-projects.{label} must be a mapping")
             return {}
-        result: dict[str, str] = {}
-        for project_id, locator in value.items():
+        result: dict[str, ConnectedProject] = {}
+        for project_id, raw in value.items():
             try:
                 valid_id = validate_project_id(project_id if isinstance(project_id, str) else "")
             except ValueError as error:
                 self._problem(path, f"{label} key: {error}")
                 continue
-            if not isinstance(locator, str) or not locator.strip():
-                self._problem(path, f"locator for '{valid_id}' must be a nonempty string")
+            entry, problems = parse_connected_entry(
+                valid_id, raw, f"connected-projects.{label}.{valid_id}")
+            if entry is None:
+                # A declaration that is present and wrong is an error, never an
+                # unreachable edge: the difference is whether we were told
+                # something incorrect or told nothing this machine can act on.
+                for problem in problems or [f"locator for '{valid_id}' must be a "
+                                            f"nonempty string"]:
+                    self._problem(path, problem)
                 continue
-            result[valid_id] = locator
+            result[valid_id] = entry
         return result
 
-    def _target_path(self, source_config: Path, locator: str) -> Path:
+    def _target_path(self, source_config: Path,
+                     entry: ConnectedProject) -> Path:
+        """Where `entry`'s `tcw-config.yaml` is, on this machine.
+
+        The same ladder a component store resolves through, for the same reason:
+        **a locator that is here always wins, and a declaration answers only when
+        it cannot.** One configuration then serves the machine that has the
+        project nested beside its siblings and the machine that cloned one
+        repository, without either being told about the other.
+
+        Falls back to the locator when neither rung answers, so the unreachable
+        record names the place the user actually wrote — the declaration is what
+        `tcw provision` acts on, not what the reader should be sent to check.
+        """
+        candidates: list[Path] = []
+        if entry.locator is not None:
+            candidates.append(self._locator_path(source_config, entry.locator))
+        if entry.repository is not None:
+            try:
+                candidates.append(
+                    (provisioned_root(source_config.parent, entry.repository)
+                     / SENTINEL).resolve())
+            except StoreDeclarationError as error:
+                # A declaration this machine cannot turn into a path — a `~name`
+                # naming no user. Recorded against the config that carried it,
+                # because this runs during the graph load on every command, and
+                # letting it propagate put a raw traceback out of `tcw validate`
+                # and `tcw work list` from a value the parser accepted.
+                self._problem(source_config, str(error))
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return candidates[0] if candidates else (source_config.parent / SENTINEL)
+
+    def _locator_path(self, source_config: Path, locator: str) -> Path:
         target = Path(locator)
         source_dir = source_config.parent.resolve()
         resolved = (
@@ -348,8 +471,8 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():
-            for child_id, locator in cfg.children.items():
-                child_path = self._target_path(cfg.path, locator)
+            for child_id, entry in cfg.children.items():
+                child_path = self._target_path(cfg.path, entry)
                 child = self._cache.get(child_path)
                 if child is None:
                     continue
@@ -359,7 +482,7 @@ class FsProjectRegistry(ProjectRegistry):
                         child.path,
                         f"nonreciprocal connection: parent '{cfg.project.id}' is not declared",
                     )
-                elif self._target_path(child.path, reciprocal) != cfg.path:
+                elif self._points_elsewhere(child.path, reciprocal, cfg.path):
                     self._problem(
                         child.path,
                         f"parent locator for '{cfg.project.id}' does not point back to {cfg.path.parent}",
@@ -369,8 +492,8 @@ class FsProjectRegistry(ProjectRegistry):
                         child.path,
                         f"registered key '{child_id}' does not match target id '{child.project.id}'",
                     )
-            for parent_id, locator in cfg.parent.items():
-                parent_path = self._target_path(cfg.path, locator)
+            for parent_id, entry in cfg.parent.items():
+                parent_path = self._target_path(cfg.path, entry)
                 parent = self._cache.get(parent_path)
                 if parent is None:
                     continue
@@ -380,7 +503,7 @@ class FsProjectRegistry(ProjectRegistry):
                         parent.path,
                         f"nonreciprocal connection: child '{cfg.project.id}' is not declared",
                     )
-                elif self._target_path(parent.path, reciprocal) != cfg.path:
+                elif self._points_elsewhere(parent.path, reciprocal, cfg.path):
                     self._problem(
                         parent.path,
                         f"child locator for '{cfg.project.id}' does not point back to {cfg.path.parent}",
@@ -391,7 +514,43 @@ class FsProjectRegistry(ProjectRegistry):
                         f"registered key '{parent_id}' does not match target id '{parent.project.id}'",
                     )
 
+    def _points_elsewhere(self, source_config: Path, locator: ConnectedProject,
+                          expected: Path) -> bool:
+        """Whether `locator`, read from `source_config`, names a node other than
+        `expected` — as far as this machine can tell.
+
+        An **absent** target cannot answer the question and must not be read as
+        "no". Two nodes routinely name each other at paths that exist only on the
+        machine whose author wrote them: a monorepo nested inside an orchestrator
+        on one disk and cloned beside it on another. Comparing a path that is
+        here against a path that is not decides nothing, and deciding it against
+        the declaration made every such pair non-reciprocal — the failure that
+        made a provisioned parent unusable.
+
+        Where both are present the comparison is real and the check is unchanged;
+        the ids already agreed, or the caller would not have got this far.
+        """
+        target = self._target_path(source_config, locator)
+        if not target.is_file():
+            return False
+        return target != expected
+
     def _validate_cycles(self) -> None:
+        """Report a cycle among the loaded projects. The only thing that does.
+
+        `children` edges only, and deliberately: every connection is declared
+        from both sides, so walking `parent` as well would make each legitimate
+        reciprocal pair a two-cycle. Reciprocity is what guarantees a `parent`
+        edge has a `children` counterpart here to be walked — so a cycle
+        expressed *purely* through `parent` edges is reported by
+        `_validate_reciprocity` as a missing counterpart rather than by this, and
+        that is the honest description of the coverage rather than a claim that
+        one check sees everything.
+
+        Nothing catches a cycle during the load itself. `_visit` caches a config
+        before walking its edges, so a cycle terminates on the cache hit; the
+        re-entry guard that used to sit there could never fire.
+        """
         visited: set[str] = set()
         active: set[str] = set()
 
@@ -420,3 +579,34 @@ class FsProjectRegistry(ProjectRegistry):
         rendered = f"{path}: {message}"
         if rendered not in self._problems:
             self._problems.append(rendered)
+
+    def _unreachable_edge(self, config_path: Path, project_id: str | None,
+                          locator: Path,
+                          declaration: RepositoryDeclaration | None = None) -> None:
+        """Record a declared project that is not here, rather than a problem.
+
+        `project_id` is the key the declaring config used. It can be None only
+        for the current node's own config, which is never an edge — the guard is
+        here so a future caller cannot record a nameless entry that no message
+        could ever render.
+        """
+        if not project_id:
+            return
+        entry = UnreachableProject(id=project_id, locator=locator,
+                                   declared_in=config_path,
+                                   declaration=declaration)
+        if entry not in self._unreachable:
+            self._unreachable.append(entry)
+
+    def unreachable_project(self, project_id: str) -> UnreachableProject | None:
+        """The recorded entry for `project_id`, or None.
+
+        The lookup every "declared but not here" message needs: a caller holding
+        an id that `get()` answered None for asks this before deciding which
+        message to print.
+        """
+        self._load_graph()
+        # Through `unreachable()`, not the raw list: a project another route
+        # resolved is not missing, and a message telling the user to obtain a
+        # repository they already have is worse than no message.
+        return next((u for u in self.unreachable() if u.id == project_id), None)

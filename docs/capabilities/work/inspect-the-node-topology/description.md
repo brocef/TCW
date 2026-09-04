@@ -9,8 +9,13 @@ Only *registered* projects appear. TCW reads the `connected-projects` section of
 `tcw-config.yaml` rather than scanning the disk, so a git repository sitting next
 to or inside this one is invisible to the topology until it is registered — being
 nearby is not a relationship. A registered project whose work store cannot be
-opened is also omitted, so what this prints is the set of nodes the cross-node
-commands can actually reach, not merely the set someone declared.
+opened here — parent or child alike, marked the same way on both lines — is
+still listed, with which of the two reasons applies: `(no work store)` where it
+keeps no board at all, `(work store not provisioned here)` where it declares one
+this machine has not obtained. Leaving them out made a project with children read
+as a leaf, and calling a grouping parent the root hid a whole project from me.
+What the *unmarked* entries print is the set of nodes the cross-node commands can
+actually reach.
 
 That makes it the command to run first when a cross-node operation is not
 behaving: the IDs listed here are exactly the ones

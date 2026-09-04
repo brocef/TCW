@@ -106,3 +106,21 @@ def test_unregistered_and_legacy_path_qualifiers_fail(tmp_path):
         f"/absolute/{item.slug}",
     ):
         assert resolve_qualified_work_ref(root, ref) is None
+
+
+def test_a_declared_but_absent_project_says_so(tmp_path):
+    """An id that *is* declared reads differently from one that never was."""
+    root = node(tmp_path / "root", "root-project")
+    cfg = yaml.safe_load((root / "tcw-config.yaml").read_text()) or {}
+    cfg.setdefault("connected-projects", {})["children"] = {
+        "away-project": str(tmp_path / "away")
+    }
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+    message = qualified_work_ref_problem(root, "away-project/some-slug")
+    assert "away-project" in message
+    assert "not reachable in this checkout" in message
+    assert "no such project in this graph" not in message
+
+    assert "no such project in this graph: ghost" == qualified_work_ref_problem(
+        root, "ghost/some-slug")

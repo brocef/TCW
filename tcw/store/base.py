@@ -51,9 +51,37 @@ class SidecarError(ValueError):
     (malformed YAML, or a non-list delta value)."""
 
 
+class StoreLocationUnusable(ValueError):
+    """A candidate location does not hold a usable store — it is absent, it is
+    not a directory, or it lacks the component's layout.
+
+    The distinction the resolution ladder needs, and could not make before it
+    existed. Rules 1 and 2 try a location and fall through when it does not work
+    out, which is right for "there is no store there" and wrong for every other
+    reason a store fails to open: a federation error in a node that also declares
+    a repository was reported as "not provisioned; run `tcw provision`", which
+    then succeeded and left the store just as unopenable, because the real error
+    had been swallowed two rules earlier.
+
+    Storage-neutral: "the place I was told to look does not hold one of these"
+    is a question any adapter answers — a missing table, a project id the tracker
+    does not have — and it is categorically different from "the thing I found
+    there is misconfigured".
+
+    A `ValueError` for the same reason as its siblings: every existing
+    `except ValueError` around a store `open()` keeps working unchanged.
+    """
+
+
 class StoreDeclarationError(ValueError):
-    """A store's home repository is *declared wrongly* — the configuration itself
-    is the problem, and the message names the line to fix.
+    """A store's configured location is *wrong* — the configuration itself is
+    the problem, and the message names the line to fix.
+
+    Originally scoped to a wrongly declared home repository, and widened to what
+    it always meant: any configured location the adapter can see is there and
+    cannot use. A `work.path` naming a complete store outside any repository is
+    the same kind of fact as a `repository` block missing its url — present, and
+    unusable as written — and it must reach the reader for the same reason.
 
     A sibling of `StoreNotProvisioned`, and a `ValueError` for the same reason:
     every existing `except ValueError` around a store keeps working, including
@@ -96,6 +124,28 @@ class Project:
     locator: Any
 
 
+@dataclass(frozen=True)
+class UnreachableProject:
+    """A connected project that is declared here but not available here.
+
+    **Not a configuration error.** The declaration is well formed and names a
+    project this store simply cannot reach from this machine — a repository that
+    was never cloned, a tracker project the caller has no access to. Telling that
+    apart from a malformed declaration is the whole reason this type exists:
+    fail-closed is right for a declaration that is wrong, and wrong for one that
+    is merely unanswerable here.
+
+    ``locator`` is opaque exactly as ``Project.locator`` is, and ``declared_in``
+    names the configuration that carried the declaration. Both are presentation
+    only — nothing above the adapter may parse them.
+    """
+
+    id: str
+    locator: Any
+    declared_in: Any = ""
+    declaration: "RepositoryDeclaration | None" = None
+
+
 class ProjectRegistry(ABC):
     """Storage-neutral connected-project graph."""
 
@@ -103,6 +153,26 @@ class ProjectRegistry(ABC):
     @abstractmethod
     def current(self) -> Project:
         """The project from which this registry was opened."""
+
+    def declared_parent_id(self, project_id: str | None = None) -> str | None:
+        """The id of the declared parent, whether or not this store can reach it.
+
+        `parent()` answers with a `Project`, so it can only answer for a project
+        this store actually has — which made every "declared but not here"
+        relation indistinguishable from "never declared", the one thing
+        `UnreachableProject` exists to prevent. The id is known from the
+        declaration alone, so it is answerable either way.
+
+        The default is the reachable answer, which is correct for a store that
+        always sees the whole graph.
+        """
+        parent = self.parent(project_id)
+        return None if parent is None else parent.id
+
+    def declared_child_ids(self, project_id: str | None = None) -> list[str]:
+        """The ids of the declared children, reachable or not. See
+        `declared_parent_id`."""
+        return [child.id for child in self.children(project_id)]
 
     @abstractmethod
     def get(self, project_id: str) -> Project | None:
@@ -125,8 +195,33 @@ class ProjectRegistry(ABC):
         """Return every descendant in deterministic depth-first order."""
 
     @abstractmethod
+    def projects(self) -> list["Project"]:
+        """Every project in the graph, the current one included.
+
+        Deliberately not `current + ancestors + descendants`: a graph is not a
+        line, and that triple omits a sibling, a sibling of an ancestor, and
+        anything else reached by a shape nobody enumerated. A caller asking
+        "what does this checkout have" wants the set, and reconstructing it from
+        relations is how the set silently loses a member.
+        """
+
+    @abstractmethod
     def check(self) -> list[str]:
-        """Return graph/configuration problems; empty means valid."""
+        """Return graph/configuration problems; empty means valid.
+
+        Problems only. A project that is declared but not reachable here is not
+        one — see ``unreachable``.
+        """
+
+    @abstractmethod
+    def unreachable(self) -> list["UnreachableProject"]:
+        """Return the declared projects this store cannot reach from here.
+
+        Deliberately separate from ``check``: these are not defects to fix, and a
+        caller that treats them as such refuses to run in exactly the checkouts
+        this distinction exists to serve. Callers that need the graph complete
+        report them; callers that do not, ignore them.
+        """
 
 
 def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
@@ -500,6 +595,11 @@ LEGAL_TRANSITIONS = {
     ("review", "discarded"),                        # complete, any other resolution
     ("backlog", "discarded"),                       # abandon without a throwaway start
 }
+# `auto-delete` is deliberately absent from the set above and its absence is not
+# an oversight. It is a `LIFECYCLE_STEPS` transition — bindable, with `pre` and
+# `post` — but it changes no status: the item is already resolved and it leaves
+# the store rather than moving within it. `postmortem` is the existing precedent
+# for a step that never changes status.
 WORK_RESOLUTIONS = {"done", "wontfix", "duplicate", "superseded"}
 
 
@@ -606,7 +706,8 @@ STAGE_IDS = ("inbox", "request", "spec", "plan", "implement", "verify", "postmor
 # instead would make one binding fire for two opposite outcomes — "we shipped it"
 # and "we gave up on it" — which is exactly the distinction `discard` exists to
 # preserve.
-TRANSITION_IDS = ("start", "submit", "complete", "rework", "discard")
+TRANSITION_IDS = ("start", "submit", "complete", "rework", "discard",
+                  "auto-delete")
 
 
 # Bound on a `generate` hook's stdout, in **raw bytes before decoding**.
@@ -723,6 +824,26 @@ class RepositoryDeclaration:
     ref: str | None = None
     path: str = ""
     checkout: str | None = None
+
+
+@dataclass(frozen=True)
+class ConnectedProject:
+    """One `connected-projects` entry: where a project is, and where it comes from.
+
+    Both halves are optional individually and one of them is required. `locator`
+    is the adapter locator the entry has always been — a path, for the filesystem
+    adapter. `repository` says how a machine that does not have the project can
+    obtain it, and is exactly the declaration a component store takes, because
+    "where does this come from" is the same question either way.
+
+    The two are a ladder, not alternatives: the locator answers when it can, and
+    the declaration answers only when it cannot. A project already here is never
+    fetched.
+    """
+
+    id: str
+    locator: str | None = None
+    repository: "RepositoryDeclaration | None" = None
 
 
 @dataclass(frozen=True)
@@ -930,6 +1051,15 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
                   "`complete --resolution <not-done>`, not a verb of its own.",
         moves="backlog | active | review → discarded",
         gates=("--confirm",)),
+    LifecycleStep(
+        id="auto-delete", kind="transition",
+        objective="Remove a resolved item from the store, after it has been "
+                  "committed where it landed. Reached as part of a resolving "
+                  "transition under `work.retain: <status>: false`, not as a "
+                  "verb of its own; `tcw work delete` finishes one a failed "
+                  "`pre` binding left pending.",
+        moves="completed | discarded → (removed)",
+        gates=("work.retain must say the status is not kept",)),
 )
 
 LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}
@@ -1258,6 +1388,97 @@ def parse_repository_declaration(
                                  checkout=checkout), problems
 
 
+def parse_connected_entry(
+    project_id: str, raw: Any, where: str
+) -> tuple["ConnectedProject | None", list[str]]:
+    """Parse one `connected-projects` entry into a `ConnectedProject` plus problems.
+
+    Two accepted forms, and the first must never stop working:
+
+        child-id: ../child                      # a bare locator, as always
+        child-id:
+            path: ../child                      # optional
+            repository: {url: ..., ref: ...}    # optional
+
+    Pure, filesystem-free, and fails closed like `parse_repository_declaration`
+    — which it delegates the `repository` half to wholesale, so a malformed
+    declaration reads the same here as it does under `work.repository` rather
+    than growing a second vocabulary of error messages.
+
+    An entry naming neither is refused. It would be a project that cannot be
+    found and cannot be obtained, which is not a state worth representing.
+    """
+    problems: list[str] = []
+    if isinstance(raw, str):
+        if not raw.strip():
+            return None, [f"{where}: locator must be a nonempty string"]
+        return ConnectedProject(id=project_id, locator=raw), problems
+    if not isinstance(raw, dict):
+        return None, [f"{where}: expected a locator string or a mapping, "
+                      f"got {type(raw).__name__}"]
+
+    known = {"path", "repository"}
+    unknown = set(raw) - known
+    if unknown:
+        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
+                        f"expected {', '.join(repr(k) for k in sorted(known))}")
+
+    locator = raw.get("path")
+    if locator is not None and (not isinstance(locator, str) or not locator.strip()):
+        problems.append(f"{where}.path: expected a non-empty string")
+        locator = None
+
+    declaration = None
+    if "repository" in raw:
+        declaration, declaration_problems = parse_repository_declaration(
+            raw.get("repository"), f"{where}.repository")
+        problems.extend(declaration_problems)
+
+    if locator is None and declaration is None and not problems:
+        problems.append(f"{where}: needs 'path', 'repository', or both")
+    if problems:
+        return None, problems
+    return ConnectedProject(id=project_id, locator=locator,
+                            repository=declaration), problems
+
+
+def parse_retention(raw: Any) -> tuple[dict[str, bool], list[str]]:
+    """Parse `work.retain` into `{status: keep?}`, defaulting every resolved
+    status to True, plus problems.
+
+    Pure and filesystem-free like its neighbours, with one deliberate difference
+    from `parse_repository_declaration`: it does **not** fail closed to "nothing
+    declared". A malformed repository block reading as absent costs a fetch that
+    does not happen; a malformed retention setting reading as absent would be
+    indistinguishable from the default, and the default and the mistake differ by
+    whether files are deleted. So it returns the safe value *and* the problem,
+    and the caller is expected to surface both.
+
+    Expressed as retention rather than as a `.gitignore` mechanic on purpose: a
+    tracker-backed store can honor "do not retain resolved items" by closing and
+    dropping the ticket, while an ignore rule has no meaning anywhere but a
+    filesystem.
+    """
+    retention = {status: True for status in RESOLVED_STATUSES}
+    if raw is None:
+        return retention, []
+    if not isinstance(raw, dict):
+        return retention, [f"work.retain: expected a mapping, got {type(raw).__name__}"]
+    problems: list[str] = []
+    for key, value in raw.items():
+        if key not in RESOLVED_STATUSES:
+            problems.append(
+                f"work.retain: unknown status {key!r}; expected "
+                f"{', '.join(repr(s) for s in RESOLVED_STATUSES)}")
+            continue
+        if not isinstance(value, bool):
+            problems.append(f"work.retain.{key}: expected true or false, "
+                            f"got {type(value).__name__}")
+            continue
+        retention[key] = value
+    return retention, problems
+
+
 def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
     """Parse a `work.documentation` list into entries plus a problem list.
 
@@ -1564,14 +1785,29 @@ class Tombstone:
     nobody created. `resolution` and `resolved` are context for the reader; both
     may be empty on a degraded record, and neither changes the answer.
 
-    **There is deliberately no locator.** Recording where the item's documents
-    went would promise they are retrievable there, and that promise does not
-    survive a squash-merge, a rebase, or a shallow clone. A pointer that
-    silently stops working is worse than no pointer.
+    **`location` is opaque and may be empty, and it never promises retrieval.**
+    The original rule here was that there must be no locator at all, because
+    recording where the documents went would promise they are retrievable and
+    that promise does not survive a squash-merge, a rebase, or a shallow clone.
+    That reasoning held while a resolved item was never committed in the first
+    place: any pointer was to something no clone had, so every pointer was
+    broken.
+
+    Retention changes the premise. Under `work.retain: false` the adapter commits
+    the item before removing it, so the recorded handle names a commit that
+    demonstrably contained it — the failure narrows from *always* to *only if
+    history is rewritten*. The remaining half of the original rule is the half
+    that mattered, and it is kept: nothing may fail **silently**. A reader
+    resolves the handle before showing it and says plainly when it no longer
+    resolves, rather than printing a dead pointer.
+
+    Presentation only, never parsed — the filesystem adapter writes a commit
+    SHA, another adapter writes whatever its own retrieval handle is.
     """
     slug: str
     resolution: str = ""
     resolved: str = ""
+    location: str = ""
 
 
 @dataclass
@@ -1731,6 +1967,90 @@ class WorkStore(ABC):
         A `None` here means the store has genuinely never held this id, which is
         what lets a caller report a typo as a typo.
         """
+
+    # ── retention: what becomes of an item once it is resolved ──────────────
+    #
+    # These are on the interface, not on the filesystem adapter, because the
+    # question each answers is one any store can answer. `parse_retention`'s own
+    # docstring makes the case: a tracker-backed store honors "do not retain
+    # resolved items" by closing and dropping the ticket. They were adapter-only
+    # while the CLI that calls them is storage-neutral, so a second adapter
+    # driven through `tcw work complete` would have raised `AttributeError`.
+    #
+    # Concrete, not abstract, and every default describes an adapter that simply
+    # does not do retention: it keeps everything, so nothing is ever pending and
+    # `delete_resolved` is unreachable through the CLI. That is a legitimate
+    # implementation — the same shape `incomplete_graph_note` uses — rather than
+    # a stub, and it means adding retention to an adapter is opt-in.
+
+    def retention(self) -> dict[str, bool]:
+        """Whether each resolved status is retained, by status name.
+
+        The default retains everything, which is also the default a store that
+        *does* implement retention reads from an absent declaration.
+        """
+        return {status: True for status in RESOLVED_STATUSES}
+
+    def retention_problems(self) -> list[str]:
+        """Complaints about how retention is configured, for `tcw validate`.
+
+        A malformed setting reads as the safe default, so this is the only place
+        a user learns about one — which is why it is a list of strings rather
+        than an exception.
+        """
+        return []
+
+    def retention_conflicts(self) -> list[str]:
+        """Contradictions between retention and the store's own mechanics.
+
+        Separate from `retention_problems` because these are not malformed
+        configuration: each is a pair of settings that are individually fine and
+        cannot both be honored.
+        """
+        return []
+
+    def pending_deletion(self, slug: str) -> bool:
+        """Whether `slug` is resolved, still here, and not to be retained.
+
+        The store never removes on its own: the removal carries `pre`/`post`
+        bindings, running a command is a CLI concern, and a `pre` that refuses
+        has to leave the item intact — which is only expressible if the removal
+        is a second call the caller makes.
+        """
+        return False
+
+    def pending_removal(self, slug: str) -> bool:
+        """Whether `slug`'s removal started and has not finished.
+
+        The other side of the same boundary: `pending_deletion` asks whether an
+        item still here should go, this asks whether one already gone is fully
+        recorded. An adapter whose removal is a single durable operation has no
+        such half-state and answers False.
+        """
+        return False
+
+    def delete_resolved(self, slug: str, status: str = "") -> str:
+        """Remove a resolved item and return the handle its record should carry.
+
+        The handle is opaque and may be empty — see `Tombstone.location`. Only
+        reachable when `pending_deletion` said yes, so an adapter that retains
+        everything never sees this call.
+
+        `status` is passed by the caller because the item may already be gone
+        from the store by this point, and its status with it.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement removing resolved items")
+
+    def describe_location(self, location: str, slug: str = "") -> str:
+        """A tombstone's handle, rendered for a reader.
+
+        Rendering, never resolution: `Tombstone.location` is opaque and is never
+        parsed above the adapter. The contract is that a handle must not fail
+        *silently* — an adapter able to tell that a handle no longer retrieves
+        anything says so here rather than printing it as though it worked.
+        """
+        return location or "no record of where its documents went"
 
     @abstractmethod
     def record_tombstone(self, slug: str, resolution: str = "",
@@ -2043,6 +2363,19 @@ class WorkStore(ABC):
         """
         return self.get(item.initiative) if item.initiative else None
 
+    def incomplete_graph_note(self) -> str:
+        """" (this checkout is missing …)" when this store can see only part of
+        the project graph, else "".
+
+        Storage-neutral because the consequence is: a relation that spans a
+        project this store cannot reach resolves to *nothing*, and nothing is
+        indistinguishable from "there is no such relation" unless somebody says
+        so. Any adapter with a partial view — a tracker without access to a
+        project, a checkout without a repository — owes its callers this
+        sentence. The default is "" for an adapter that always sees everything.
+        """
+        return ""
+
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
         """Items related to `epic_slug` by `initiative:`.
 
@@ -2144,6 +2477,27 @@ class WorkStore(ABC):
         adapters that override it), so the "all resolved" signal and the
         `complete` gate share one source of truth. An empty epic is not
         completable (nothing resolved)."""
+        if not self.epic_children_all_resolved(item):
+            return False
+        if self.incomplete_graph_note():
+            return False        # not "no", but "not knowable from this checkout"
+        return True
+
+    def epic_children_all_resolved(self, item: WorkItem) -> bool:
+        """Whether every initiative child this store can see is resolved.
+
+        The *structural* half of `epic_completable`, separated because the two
+        questions have different jobs. This one decides whether an epic is the
+        kind of thing that may close straight from `backlog` — a coordinator epic
+        that never needed its own start. Whether the answer is trustworthy from
+        here is a **gate** question, and it belongs with the other gates, where
+        `--force` can reach it and the refusal can name the missing projects.
+
+        Folding the partial-graph refusal into the transition-legality check made
+        a backlog epic in a partial checkout unreachable by any route: the
+        `IllegalTransition` fired before the force check, and it blamed the
+        status transition for a condition that had nothing to do with it.
+        """
         if item.type != "epic" or item.status in RESOLVED_STATUSES:
             return False
         children = self.initiative_children(item.slug)
@@ -2165,6 +2519,13 @@ class WorkStore(ABC):
         if item.status == "active" or to_status == "active":
             merged.update({"owner": "", "started": ""})
         self._effect_transition(slug, to_status, merged)
+        # Re-read, and require it. The store never deletes as part of a move —
+        # `pending_deletion` says so, and removal under `work.retain: false` is a
+        # separate call the CLI makes afterwards — so the only way the item is
+        # gone here is that something else removed it while this move was in
+        # flight. Fabricating a record for that case looks like a success and
+        # carries the pre-move `owner` and `started` this very method had just
+        # cleared, which is the one thing a caller must not be handed.
         return self._require(slug)
 
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
@@ -2270,7 +2631,7 @@ class WorkStore(ABC):
         # and it is `done`-only: `(backlog, discarded)` is a real transition that
         # any item may take, so it needs no exception.
         from_backlog_epic = (dest == "completed" and item.status == "backlog"
-                             and self.epic_completable(item))
+                             and self.epic_children_all_resolved(item))
         if (item.status, dest) not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
             raise IllegalTransition(f"cannot complete from {item.status} "
                                     f"as '{resolution}' (→ {dest})")
@@ -2286,6 +2647,19 @@ class WorkStore(ABC):
                                      f"children are still open: "
                                      f"{', '.join(open_children)}. Complete or "
                                      f"defer them first.")
+                # An empty answer from a partial graph is not the same as an
+                # empty answer. Slices live in child nodes, so a checkout
+                # missing one cannot see whether they are resolved — and this
+                # gate's whole job is to refuse closing an epic over them.
+                # Failing open here strands work silently; the `start` gate
+                # already refuses on the same reasoning, and it is the one
+                # without a destructive consequence.
+                if (note := self.incomplete_graph_note()):
+                    raise ValueError(
+                        f"Cannot verify the initiative children of epic {slug}"
+                        f"{note}. Its slices may live in a project this checkout "
+                        f"cannot reach. Run from a checkout that has them, or "
+                        f"use --force.")
             # Blockers gate a *shipment*, not an abandonment. "Don't claim you
             # shipped this while its dependency is unfinished" says nothing
             # about giving up — being blocked indefinitely is one of the most
