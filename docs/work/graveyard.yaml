@@ -73,6 +73,9 @@
 2026-09-04-an-unreachable-project-is-reported-as-never-declared-by-nodes-escalate-and-delegate:
   resolution: done
   resolved: '2026-09-04'
+2026-09-04-federation-is-still-exponential-on-a-diamond-and-the-docstring-says-it-is-fixed:
+  resolution: done
+  resolved: '2026-09-04'
 2026-09-04-tcw-validate-reports-a-work-store-on-a-node-that-keeps-no-board:
   resolution: done
   resolved: '2026-09-04'
