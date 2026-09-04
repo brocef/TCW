@@ -1,0 +1,11 @@
+slug: 2026-09-04-git-background-maintenance-races-the-temp-directory-teardown-in-ci
+title: Git background maintenance races the temp-directory teardown in CI
+created: '2026-09-04'
+resolution: null
+priority: 85
+effort: low
+tags:
+- bug
+- cli
+owner: noreply@anthropic.com
+started: '2026-09-04T07:13:16.647620Z'
