@@ -623,6 +623,62 @@ def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
     assert any("cycle in capability federation" in p for p in problems)
 
 
+def _diamond(tmp_path, levels: int):
+    """`levels` pairs of nodes, each pair extending *both* nodes of the next.
+
+    Every `connected-projects` relation goes through one hub, because a node may
+    declare only one parent — the `extends` edges are what form the DAG, which is
+    the graph this measures.
+    """
+    import subprocess
+    import yaml
+    from tcw.store.fs import write_sentinel
+
+    names = [f"n{level}x{side}" for level in range(levels) for side in (0, 1)]
+    for name in [*names, "hub"]:
+        d = tmp_path / name
+        (d / "docs" / "capabilities").mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(d)], check=True)
+        write_sentinel(d, name)
+    (tmp_path / "hub" / "tcw-config.yaml").write_text(yaml.safe_dump(
+        {"id": "hub",
+         "connected-projects": {"children": {n: f"../{n}" for n in names}}},
+        sort_keys=False))
+    for level in range(levels):
+        for side in (0, 1):
+            d = tmp_path / f"n{level}x{side}"
+            (d / "tcw-config.yaml").write_text(yaml.safe_dump(
+                {"id": f"n{level}x{side}",
+                 "connected-projects": {"parent": {"hub": "../hub"}}},
+                sort_keys=False))
+            if level + 1 < levels:
+                (d / "docs" / "capabilities" / ".config.yaml").write_text(
+                    f"extends:\n  - n{level+1}x0\n  - n{level+1}x1\n")
+    return tmp_path / "n0x0"
+
+
+def test_a_shared_subtree_is_built_once(tmp_path, monkeypatch):
+    """`seen_nodes` terminated a cycle and memoised nothing, so a graph where two
+    extended projects reach a common ancestor rebuilt that subtree once per
+    route: 2^levels − 1 constructions, measured at 1023 and twelve seconds for
+    ten levels. The count is asserted rather than the time, because the count is
+    the property."""
+    from tcw.store import fs as fs_module
+
+    calls = []
+    real = fs_module._extended_component_stores
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(fs_module, "_extended_component_stores", counted)
+    root = _diamond(tmp_path, 8)
+    store(root).list_all()
+    # One per node on the path plus the root's own: linear, not 255.
+    assert len(calls) <= 4 * 8
+
+
 def test_federation_stays_linear_in_chain_depth(tmp_path):
     """Each edge used to build the same subtree twice — 2^depth, measured at
     15.7 s for eleven links. The bound is generous; what it guards is the shape.

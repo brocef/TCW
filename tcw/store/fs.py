@@ -1092,6 +1092,36 @@ def _extends_ids(config: dict, config_path: Path) -> list[str]:
     return ids
 
 
+class _FederationWalk:
+    """State threaded down an `extends` walk.
+
+    Two things with different lifetimes, which is why they cannot be one set.
+    `seen` is the projects on *this* path, copied at every descent, and is what
+    detects a cycle: a project is a back edge only relative to the route that
+    reached it. `built` is shared by the whole walk and is what stops a diamond
+    from rebuilding the same subtree once per route — `seen` alone terminated a
+    cycle and memoised nothing, so a graph where two extended projects reach a
+    common ancestor cost 2^depth store constructions.
+
+    **Only a subtree that truncated nothing is cached.** A store built with a
+    cycle truncated in it is correct for the path that built it and wrong for any
+    other, since a back edge is a property of the route. A cycle-free subtree is
+    path-independent, so it can be reused anywhere — and that is the common case,
+    which is the one the cost was in.
+    """
+
+    __slots__ = ("seen", "built")
+
+    def __init__(self, seen: "frozenset[Path]" = frozenset(),
+                 built: "dict | None" = None):
+        self.seen = seen
+        self.built = {} if built is None else built
+
+    def descend(self, node_root: Path) -> "_FederationWalk":
+        """The walk as seen one project further down. Shares `built`."""
+        return _FederationWalk(self.seen | {node_root}, self.built)
+
+
 class _FederationCycles:
     """Mixin for the two tree stores: the cycles anywhere below this one.
 
@@ -1102,17 +1132,25 @@ class _FederationCycles:
     """
 
     def _federation_cycles(self) -> list[str]:
+        cached = getattr(self, "_cycles_cache", None)
+        if cached is not None:
+            return cached
         found: list[str] = list(getattr(self, "extends_cycles", []))
         for store in getattr(self, "extends", {}).values():
             for project_id in store._federation_cycles():
                 if project_id not in found:
                     found.append(project_id)
+        # Memoised because the `extends` tree is fixed once construction
+        # returns, and because the walk asks this of every store it builds to
+        # decide whether the subtree may be cached — recomputing it there would
+        # trade one quadratic for another.
+        self._cycles_cache = found
         return found
 
 
 def _extended_component_stores(
     node_root: Path, config: dict, config_path: Path, component: str,
-    seen_nodes: "set[Path] | None" = None,
+    walk: "_FederationWalk | None" = None,
 ) -> "tuple[dict[str, object], list[str]]":
     """Each extended project's component store, by project id, and the ids whose
     edge closed a cycle.
@@ -1126,7 +1164,7 @@ def _extended_component_stores(
     honest place to detect one.
     """
     registry = FsProjectRegistry.open(node_root).require_valid()
-    seen_nodes = (seen_nodes or set()) | {node_root.resolve()}
+    walk = (walk or _FederationWalk()).descend(node_root.resolve())
     stores: dict[str, object] = {}
     cyclic: list[str] = []
     for project_id in _extends_ids(config, config_path):
@@ -1143,7 +1181,7 @@ def _extended_component_stores(
         # whether a tree happens to be provisioned.
         if Path(project.locator).resolve() == node_root.resolve():
             raise ValueError(f"a {component} store cannot extend itself")
-        if Path(project.locator).resolve() in seen_nodes:
+        if Path(project.locator).resolve() in walk.seen:
             # The back edge of a federation cycle. Truncated here so the walk
             # terminates, and *named*, because a truncated tree cannot show a
             # cycle to anyone looking at it afterwards — which is why `check()`
@@ -1157,15 +1195,20 @@ def _extended_component_stores(
         # as having no tree at all — the confusion the ladder exists to end.
         # Failures are re-worded for a reader standing in a *different* node than
         # the one that failed.
+        cache_key = (component, Path(project.locator).resolve())
+        if (cached := walk.built.get(cache_key)) is not None:
+            # Built already, somewhere else on this walk, with nothing truncated
+            # in it — see `_FederationWalk`. This is what makes a diamond cost
+            # one construction of the shared subtree instead of one per route.
+            stores[project_id] = cached
+            continue
         try:
             # The store itself, not its root. Rebuilding it from the root is
             # what broke the hop past a moved tree — `FsTreeStore` falls back to
             # `root.parent.parent` for `node_root`, correct only for the
-            # `docs/<component>` shape this resolution exists to stop assuming —
-            # and it is also what made federation exponential, since each edge
-            # built the same subtree twice.
+            # `docs/<component>` shape this resolution exists to stop assuming.
             store = STORE_CLASSES[component].open(
-                Path(project.locator), _seen_nodes=seen_nodes)
+                Path(project.locator), _walk=walk)
         except StoreNotProvisioned as error:
             raise ValueError(f"project '{project_id}': {error}") from None
         except StoreDeclarationError as error:
@@ -1182,6 +1225,8 @@ def _extended_component_stores(
         # federate from.
         if not store.root.is_dir():
             raise ValueError(f"project '{project_id}' has no {component} component")
+        if not store._federation_cycles():
+            walk.built[cache_key] = store
         stores[project_id] = store
     return stores, cyclic
 
@@ -1373,15 +1418,17 @@ class FsTreeStore:
         self.config = load_yaml(root / self.CONFIG_NAME) if self.CONFIG_NAME else {}
 
     @classmethod
-    def open(cls, node_root: Path, _seen_nodes: "set[Path] | None" = None):
+    def open(cls, node_root: Path, _walk: "_FederationWalk | None" = None):
         """Resolve this node's store for this component. The ladder is
         `resolve_store`, shared with the work store.
 
-        `_seen_nodes` is private and carries the projects already on a federation
-        path, so `extends` can resolve a sibling's store without a cycle becoming
-        infinite recursion. Callers outside federation never pass it.
+        `_walk` is private and carries the federation walk's state: the projects
+        already on this path, so `extends` can resolve a sibling's store without
+        a cycle becoming infinite recursion, and the stores already built
+        anywhere on the walk, so a shared subtree is built once. Callers outside
+        federation never pass it.
         """
-        return resolve_store(cls, node_root, _seen_nodes=_seen_nodes)
+        return resolve_store(cls, node_root, _walk=_walk)
 
     @classmethod
     def _local_root(cls, node_root: Path, configured: str | None) -> Path:
@@ -1399,7 +1446,7 @@ class FsTreeStore:
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
                  declaration: "RepositoryDeclaration | None" = None,
-                 _seen_nodes: "set[Path] | None" = None):
+                 _walk: "_FederationWalk | None" = None):
         """Build the store at a candidate root, validating it only when
         something points at it.
 
@@ -1432,7 +1479,7 @@ class FsTreeStore:
         owner = (git_root(root) if external else node_root) or node_root
         # The node stays the node — federation resolves `extends` against it —
         # while writes follow the store into whatever repository holds it.
-        return cls(root, _seen_nodes=_seen_nodes, node_root=node_root,
+        return cls(root, _walk=_walk, node_root=node_root,
                    store_git_root=owner)
 
     # -- containment: a store id never names a file outside its own store --
@@ -1647,21 +1694,21 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     COMPONENT = "taxonomy"
     CONFIG_NAME = "config.yaml"
 
-    def __init__(self, root: Path, _seen: set[Path] | None = None, *,
-                 _seen_nodes: "set[Path] | None" = None,
+    def __init__(self, root: Path, *,
+                 _walk: "_FederationWalk | None" = None,
                  node_root: Path | None = None, store_git_root: Path | None = None):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
-        seen = (_seen or set()) | {root.resolve()}
-        built, self.extends_cycles = _extended_component_stores(
+        # Reused, never rebuilt: the resolution below already constructed each
+        # store with the right node root and the right walk state. There is no
+        # second filter on the results — the `_seen` set that used to be one was
+        # dead once recursion moved into `_extended_component_stores`, since the
+        # only case it could refuse is a self-extend the identity check there
+        # already refuses by project id.
+        self.extends, self.extends_cycles = _extended_component_stores(
             self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy",
-            seen_nodes=_seen_nodes,
+            walk=_walk,
         )
-        for project_id, store in built.items():
-            # Reused, never rebuilt: the resolution above already constructed it
-            # with the right node root and the right cycle guard.
-            if store.root.resolve() not in seen:
-                self.extends[project_id] = store
 
     # -- reads --
 
@@ -2093,21 +2140,21 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     COMPONENT = "capabilities"
     CONFIG_NAME = ".config.yaml"
 
-    def __init__(self, root: Path, _seen: set[Path] | None = None, *,
-                 _seen_nodes: "set[Path] | None" = None,
+    def __init__(self, root: Path, *,
+                 _walk: "_FederationWalk | None" = None,
                  node_root: Path | None = None, store_git_root: Path | None = None):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsCapabilitiesStore"] = {}
-        seen = (_seen or set()) | {root.resolve()}
-        built, self.extends_cycles = _extended_component_stores(
+        # Reused, never rebuilt: the resolution below already constructed each
+        # store with the right node root and the right walk state. There is no
+        # second filter on the results — the `_seen` set that used to be one was
+        # dead once recursion moved into `_extended_component_stores`, since the
+        # only case it could refuse is a self-extend the identity check there
+        # already refuses by project id.
+        self.extends, self.extends_cycles = _extended_component_stores(
             self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities",
-            seen_nodes=_seen_nodes,
+            walk=_walk,
         )
-        for project_id, store in built.items():
-            # Reused, never rebuilt: the resolution above already constructed it
-            # with the right node root and the right cycle guard.
-            if store.root.resolve() not in seen:
-                self.extends[project_id] = store
 
     # -- resolution --
 
@@ -2887,7 +2934,7 @@ def _is_store_layout(root: Path, component: str) -> bool:
     return all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
-def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
+def resolve_store(store_cls, node_root: Path, _walk=None):
     """This node's store for `store_cls`'s component, in one ordered ladder.
 
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
@@ -2953,7 +3000,7 @@ def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
             return store_cls._open_at(
                 raw_root, node_root, config_path,
                 external=configured is not None, must_exist=must_exist,
-                _seen_nodes=_seen_nodes)
+                _walk=_walk)
         except ValueError:
             # A valid local store keeps reads working even when an unused
             # declaration is malformed. When no local store can open, however,
@@ -2968,7 +3015,7 @@ def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
         return store_cls._open_at(
             raw_root, node_root, config_path,
             external=configured is not None, must_exist=must_exist,
-            _seen_nodes=_seen_nodes)
+            _walk=_walk)
     except StoreLocationUnusable:
         # Only this. A store that is *there* and fails to open — a federation
         # error, a malformed `extends` — is a real error, and swallowing it here
@@ -2983,7 +3030,7 @@ def resolve_store(store_cls, node_root: Path, _seen_nodes=None):
         return store_cls._open_at(
             provisioned_store_root(node_root, declaration), node_root, config_path,
             external=True, must_exist=True, declaration=declaration,
-            _seen_nodes=_seen_nodes)
+            _walk=_walk)
     except StoreLocationUnusable:
         pass                                                    # same rule
     raise StoreNotProvisioned(                                  # rule 3
@@ -3316,7 +3363,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
                  declaration: "RepositoryDeclaration | None" = None,
-                 _seen_nodes: "set[Path] | None" = None) -> "FsWorkStore":
+                 _walk: "_FederationWalk | None" = None) -> "FsWorkStore":
         """Validate a candidate root and build the store. `external` means the
         store is not the node's own `docs/work`, so the repository that owns its
         commits has to be discovered rather than assumed.

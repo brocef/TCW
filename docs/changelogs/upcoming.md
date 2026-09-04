@@ -377,3 +377,23 @@ the better description, the code changed to match it.
   obtained.** The same malformed entry exited 1 on the starting graph and 0 on
   an obtained one, so a CI step gated on the command read the second as success.
 
+### Federation builds a shared subtree once
+
+- **`_FederationWalk`** replaces the bare `_seen_nodes` set and carries two
+  things with different lifetimes. `seen` is the projects on *this* path, copied
+  at every descent, and is what detects a cycle — a back edge is a property of
+  the route that reached it. `built` is shared by the whole walk, keyed by
+  component and node root, and is what stops a diamond rebuilding the same
+  subtree once per route: a graph of `levels` pairs each extending both nodes of
+  the next went from 2^levels − 1 constructions (1023 and twelve seconds at ten
+  levels) to 2·levels − 1.
+- **Only a subtree that truncated nothing is cached**, because a store built
+  with a cycle truncated in it is correct for the path that built it and wrong
+  for any other. `_federation_cycles()` memoises its answer, since the walk asks
+  it of every store it builds.
+- **The dead `_seen` parameter is gone** from both tree-store constructors.
+  Nothing had passed it since recursion moved into
+  `_extended_component_stores`, so `seen` was always `{self.root}` and the
+  filter it fed could only fire for a self-extend the identity check already
+  refuses by project id.
+
