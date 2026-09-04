@@ -2367,10 +2367,29 @@ class WorkStore(ABC):
         adapters that override it), so the "all resolved" signal and the
         `complete` gate share one source of truth. An empty epic is not
         completable (nothing resolved)."""
-        if item.type != "epic" or item.status in RESOLVED_STATUSES:
+        if not self.epic_children_all_resolved(item):
             return False
         if self.incomplete_graph_note():
             return False        # not "no", but "not knowable from this checkout"
+        return True
+
+    def epic_children_all_resolved(self, item: WorkItem) -> bool:
+        """Whether every initiative child this store can see is resolved.
+
+        The *structural* half of `epic_completable`, separated because the two
+        questions have different jobs. This one decides whether an epic is the
+        kind of thing that may close straight from `backlog` — a coordinator epic
+        that never needed its own start. Whether the answer is trustworthy from
+        here is a **gate** question, and it belongs with the other gates, where
+        `--force` can reach it and the refusal can name the missing projects.
+
+        Folding the partial-graph refusal into the transition-legality check made
+        a backlog epic in a partial checkout unreachable by any route: the
+        `IllegalTransition` fired before the force check, and it blamed the
+        status transition for a condition that had nothing to do with it.
+        """
+        if item.type != "epic" or item.status in RESOLVED_STATUSES:
+            return False
         children = self.initiative_children(item.slug)
         return bool(children) and all(c.status in RESOLVED_STATUSES for c in children)
 
@@ -2502,7 +2521,7 @@ class WorkStore(ABC):
         # and it is `done`-only: `(backlog, discarded)` is a real transition that
         # any item may take, so it needs no exception.
         from_backlog_epic = (dest == "completed" and item.status == "backlog"
-                             and self.epic_completable(item))
+                             and self.epic_children_all_resolved(item))
         if (item.status, dest) not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
             raise IllegalTransition(f"cannot complete from {item.status} "
                                     f"as '{resolution}' (→ {dest})")

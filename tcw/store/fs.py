@@ -4613,12 +4613,19 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         try:
             absent = FsProjectRegistry.open(self.node_root).unreachable()
-        except Exception:
-            return ""
+        except Exception as error:
+            # Not `""`. Every caller reads an empty note as "the graph is
+            # complete", and a registry that cannot be opened is the one state
+            # where that is least likely to be true — failing open here is the
+            # direction the completion gate exists to prevent.
+            return f" (this checkout's project graph could not be read: {error})"
         if not absent:
             return ""
+        # By project, not by edge. `_unreachable_edge` records one entry per
+        # declaring config, so a project two present configs both name rendered
+        # as "proj-c, proj-c".
         return (" (this checkout is missing connected project(s): "
-                + ", ".join(sorted(u.id for u in absent)) + ")")
+                + ", ".join(sorted({u.id for u in absent})) + ")")
 
     def initiative_epic(self, item: WorkItem) -> WorkItem | None:
         if not item.initiative:

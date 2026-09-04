@@ -166,3 +166,15 @@ history is reported instead of printed as a working pointer.
 Finally, deleting an item whose resolution TCW had not recorded before keeps the
 item's own resolution instead of blanking it.
 
+## Completing an epic you never started
+
+An epic whose slices are all finished can be completed without ever being
+started — coordinator epics rarely need a start of their own. In a checkout
+missing one of the projects its slices live in, that stopped working entirely:
+TCW refused it, `--force` could not get past the refusal, and the message talked
+about the status change rather than the project you were missing. It now tells
+you which project is missing, and `--force` works.
+
+The list of missing projects also no longer repeats a project once for each place
+it was declared.
+

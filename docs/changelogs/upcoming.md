@@ -319,3 +319,22 @@ the better description, the code changed to match it.
   Writing an empty resolution over a real one is the overwrite
   `record_tombstone` refuses by name.
 
+### A partial graph gates, it does not make a state unreachable
+
+- **`WorkStore.epic_children_all_resolved`** is the structural half of
+  `epic_completable`, split out because the two answers have different jobs.
+  Whether an epic may close straight from `backlog` is a question about the
+  epic; whether the answer is trustworthy from this checkout is a *gate*
+  question. Folding the second into the first made a backlog epic in a partial
+  checkout unreachable by any route: the `IllegalTransition` fired before the
+  force check, and it blamed the status transition for a condition that had
+  nothing to do with it. `epic_completable` is unchanged for its own caller —
+  a hint that says "ready" must not invite what the gate refuses.
+- **`incomplete_graph_note` lists each project once.** `_unreachable_edge`
+  records one entry per declaring config, so a project two present configs both
+  name rendered as `proj-c, proj-c`.
+- **A registry that cannot be opened is no longer reported as a complete
+  graph.** `except Exception: return ""` failed the completion gate *open* in
+  the one state where the graph is least likely to be whole; it now says the
+  graph could not be read, and why.
+

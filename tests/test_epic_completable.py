@@ -227,3 +227,99 @@ def test_epic_completable_is_false_when_the_graph_is_partial(tmp_path):
     # Every child this checkout can see is resolved, and the answer is still
     # "not knowable from here" rather than "ready".
     assert st.epic_completable(FsWorkStore.open(root).get(epic.slug)) is False
+
+
+def test_a_backlog_epic_in_a_partial_checkout_is_refused_for_the_right_reason(tmp_path):
+    """Folding the partial-graph refusal into `epic_completable` made a backlog
+    epic unreachable by any route: `from_backlog_epic` went False, the
+    `IllegalTransition` fired *before* the force check, and it blamed the status
+    transition for a condition that has nothing to do with it."""
+    from tcw.store.fs import FsWorkStore
+
+    root = _partial_graph(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create("Epic", created="2026-01-01")
+    st.set_field(epic.slug, "type", "epic")
+    child = st.create("Slice", created="2026-01-01")
+    st.set_field(child.slug, "initiative", epic.slug)
+    st.start(child.slug, force=True)          # the epic stays in backlog
+    st.complete(child.slug, "done", [], force=True)
+
+    st = FsWorkStore.open(root)
+    epic = st.get(epic.slug)
+    assert epic.status == "backlog"
+    with pytest.raises(ValueError) as excinfo:
+        st.complete(epic.slug, "done", [], force=False)
+    message = str(excinfo.value)
+    assert "away-project" in message
+    assert "cannot complete from backlog" not in message
+
+
+def test_a_backlog_epic_in_a_partial_checkout_can_be_forced(tmp_path):
+    """The escape hatch the sibling gate advertises has to actually be reachable
+    from the same state."""
+    from tcw.store.fs import FsWorkStore
+
+    root = _partial_graph(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create("Epic", created="2026-01-01")
+    st.set_field(epic.slug, "type", "epic")
+    child = st.create("Slice", created="2026-01-01")
+    st.set_field(child.slug, "initiative", epic.slug)
+    st.start(child.slug, force=True)          # the epic stays in backlog
+    st.complete(child.slug, "done", [], force=True)
+
+    st = FsWorkStore.open(root)
+    assert st.get(epic.slug).status == "backlog"
+    st.complete(epic.slug, "done", [], force=True)
+    assert FsWorkStore.open(root).get(epic.slug).status == "completed"
+
+
+def test_the_missing_projects_are_listed_once_each(tmp_path):
+    """`_unreachable_edge` records one entry per declaring config, so a project
+    two present configs both name rendered as `proj-c, proj-c`."""
+    import subprocess
+    import yaml
+    from tcw.store.fs import FsWorkStore, init
+
+    root = tmp_path / "top"
+    child = tmp_path / "here"
+    for path, project_id in ((root, "top-project"), (child, "here-project")):
+        path.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True)
+        init(["work"], path, project_id)
+    away = str(tmp_path / "away")
+    for path, doc in (
+        (root, {"children": {"here-project": str(child), "away-project": away}}),
+        (child, {"parent": {"top-project": str(root)},
+                 "children": {"away-project": away}}),
+    ):
+        config = yaml.safe_load((path / "tcw-config.yaml").read_text())
+        config["connected-projects"] = doc
+        (path / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+
+    note = FsWorkStore.open(root).incomplete_graph_note()
+    assert note.count("away-project") == 1
+
+
+def test_a_graph_that_cannot_be_read_is_not_reported_complete(tmp_path,
+                                                              monkeypatch):
+    """`except Exception: return ""` told every caller the graph was complete in
+    the one state where that is least likely — failing the completion gate open,
+    the direction it exists to prevent."""
+    from tcw.store import fs as fs_module
+    from tcw.store.fs import FsWorkStore
+
+    root = _partial_graph(tmp_path)
+    st = FsWorkStore.open(root)
+
+    def _boom(_node_root):
+        raise RuntimeError("registry is unreadable")
+
+    monkeypatch.setattr(fs_module.FsProjectRegistry, "open",
+                        staticmethod(_boom))
+    note = st.incomplete_graph_note()
+    assert note != ""
+    assert "could not be read" in note
