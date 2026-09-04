@@ -120,3 +120,47 @@ def _git_identity(monkeypatch):
     """
     for key, value in _GIT_IDENTITY.items():
         monkeypatch.setenv(key, value)
+
+
+# Git's own background maintenance, switched off for the whole suite. Supplied
+# through `GIT_CONFIG_*` rather than `git config --global`: the suite runs `git`
+# both directly and through TCW, in repositories it creates *and* in ones
+# `tcw provision` clones, and only the environment reaches all of them without a
+# fixture having to remember.
+_GIT_NO_MAINTENANCE = {
+    "GIT_CONFIG_COUNT": "2",
+    "GIT_CONFIG_KEY_0": "gc.auto",
+    "GIT_CONFIG_VALUE_0": "0",
+    "GIT_CONFIG_KEY_1": "maintenance.auto",
+    "GIT_CONFIG_VALUE_1": "false",
+}
+
+
+@pytest.fixture(autouse=True)
+def _no_git_background_maintenance(monkeypatch):
+    """No repository the suite builds runs maintenance behind the test.
+
+    **`git fetch` starts it**, not `git commit` — observable in `GIT_TRACE`:
+
+        trace: run_command: git maintenance run --auto --no-quiet
+
+    That subprocess writes `.git/maintenance.lock`, which then vanishes between
+    the `scandir` and the `unlink` of `tmp_path`'s teardown, and the *test* is
+    reported as an error after it has already passed:
+
+        ERROR tests/test_non_git_writes.py::test_every_cli_write_refuses…
+        FileNotFoundError: [Errno 2] No such file or directory: 'maintenance.lock'
+
+    Nothing about that error involves the test that carries it — it is whichever
+    one happened to be holding the temp directory when the race landed, which is
+    why it moves around and why it appears on one Python version and not
+    another. The suite only began fetching when `tcw provision` gained a store
+    to clone, which is why this had never fired before.
+
+    `maintenance.auto` is the key that matters; `gc.auto` covers the other
+    background process for the same reason. Turning both off removes the second
+    process rather than teaching the cleanup to tolerate it, because a cleanup
+    that ignores a missing file would also ignore a real one.
+    """
+    for key, value in _GIT_NO_MAINTENANCE.items():
+        monkeypatch.setenv(key, value)

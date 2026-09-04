@@ -470,3 +470,16 @@ of two branches.
   `_unreachable` only from the branch that could not read a config, and the
   compared path is by construction one that was read.
 
+## Internal
+
+- **Git's background maintenance is off for the test suite.** `git fetch` starts
+  `git maintenance run --auto`, which writes `.git/maintenance.lock` from a
+  process pytest knows nothing about; the file vanished between the `scandir`
+  and the `unlink` of `tmp_path`'s teardown and `shutil.rmtree` raised, failing
+  whichever test happened to hold the directory *after it had passed*. The suite
+  only began fetching when `tcw provision` gained a store to clone, which is why
+  it had never fired before. Supplied through `GIT_CONFIG_*` so it reaches the
+  `git` calls the fixtures make, the ones TCW makes, and the ones inside
+  repositories `tcw provision` cloned — the same reasoning as the existing
+  identity guard.
+
