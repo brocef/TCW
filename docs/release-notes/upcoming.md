@@ -140,3 +140,10 @@ It used to say the store had not been fetched yet and send you to
 `tcw provision`, which fetched nothing it did not already have and left you
 exactly where you started.
 
+## A project that keeps no work board
+
+If you register a repository root purely so the packages inside it can reach each
+other, it has no board of its own — and `tcw validate` used to fail it for not
+having one, naming a folder you never asked for. It now passes. A project that
+*does* name a board and cannot open it still tells you why.
+

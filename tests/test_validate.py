@@ -335,3 +335,51 @@ def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(root)
     assert main(["validate"]) == 1
     assert "duplicate key" in capsys.readouterr().err
+
+
+# ── a node that keeps no board ───────────────────────────────────────────────
+
+def _bare_node(tmp_path: Path, name: str, project_id: str) -> Path:
+    """A registered node with no component scaffolded at all — which `init`
+    cannot produce, because an empty component list means "the usual three"."""
+    root = tmp_path / name
+    root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    (root / "tcw-config.yaml").write_text(f"id: {project_id}\n")
+    return root
+
+
+def test_a_node_that_keeps_no_board_validates_clean(tmp_path):
+    """A repository root registered purely so its packages can reach each other
+    keeps no work store, and every other command already knows it — `tcw work
+    nodes` prints `(no work store)`. `validate` checked the component anyway,
+    because "has a tcw-config.yaml" is true of every node, and reported the
+    default `docs/work` as a missing directory.
+    """
+    root = _bare_node(tmp_path, "routing", "routing-project")
+    assert not (root / "docs" / "work").exists()
+    assert validate(root) == []
+
+
+def test_a_node_that_claims_a_board_it_cannot_open_still_says_so(tmp_path):
+    """The other half. The fallback exists so a declared store that will not open
+    reports why rather than being skipped, and narrowing what counts as a claim
+    must not lose that."""
+    root = _bare_node(tmp_path, "claims", "claims-project")
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["work"] = {"path": "nowhere"}
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    problems = validate(root)
+    assert any("work.path is not a directory" in p for p in problems)
+
+
+def test_a_node_declaring_only_tags_is_not_claiming_a_board(tmp_path):
+    """A `work:` section that carries tags or documentation entries says nothing
+    about where a store is, so it must not conjure one."""
+    root = _bare_node(tmp_path, "tagged", "tagged-project")
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["work"] = {"tags": ["bug", "docs"]}
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    assert validate(root) == []

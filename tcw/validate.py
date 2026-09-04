@@ -74,6 +74,25 @@ def _under(p: Path, d: Path) -> bool:
     return p == d or d in p.parents
 
 
+def _claims_work(node_root: Path) -> bool:
+    """Whether the node's config asks for a work store at all.
+
+    A `work:` section that configures only tags or documentation entries is not
+    a claim about *where* the store is; a `path` or a `repository` is. Read
+    permissively — a config too broken to parse is reported by the graph check
+    long before this, and answering True there would bury that behind a
+    second, worse message.
+    """
+    try:
+        config = load_yaml(node_root / "tcw-config.yaml", unique=True)
+    except Exception:
+        return False
+    section = config.get("work") if isinstance(config, dict) else None
+    if not isinstance(section, dict):
+        return False
+    return section.get("path") is not None or section.get("repository") is not None
+
+
 def _components_to_check(node_root: Path, path) -> list[str]:
     """Which component check()s to run: both when scanning the whole node, else
     the one whose tree the path falls under (a path under docs/work — or spanning
@@ -85,7 +104,14 @@ def _components_to_check(node_root: Path, path) -> list[str]:
             FsWorkStore.open(node_root)
             present.append("work")
         except ValueError:
-            if (node_root / "docs" / "work").exists() or (node_root / "tcw-config.yaml").exists():
+            # A node that *claims* a work store and cannot open one has to say
+            # why — a declared-but-unprovisioned board, a `work.path` typo —
+            # rather than silently skipping the check. But "has a
+            # tcw-config.yaml" is true of every node, and a node may legitimately
+            # keep no board at all: a repository root registered purely so its
+            # packages can reach each other. Claiming one means a `work:` section
+            # or a tree on disk.
+            if (node_root / "docs" / "work").exists() or _claims_work(node_root):
                 present.append("work")
         return present
     p = Path(path).resolve()

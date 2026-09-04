@@ -269,3 +269,15 @@ the better description, the code changed to match it.
   finding described was fixed with the `ls-tree` probe that replaced
   `cat-file -e`, and a test covers it.
 
+### A node may keep no board
+
+- **`tcw validate` no longer conjures a work store for a node that has none.**
+  `_components_to_check` appended `work` when the store failed to open and
+  either `docs/work` existed *or* `tcw-config.yaml` did — the second is true of
+  every node, so a repository root registered purely to give its packages a
+  route to each other reported its default `docs/work` as a missing directory.
+  A claim is now a `work.path` or a `work.repository`, or a tree on disk; a
+  `work:` section carrying only tags or documentation entries is not one. The
+  fallback itself is unchanged and still reports a declared store that will not
+  open.
+
