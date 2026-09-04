@@ -22,6 +22,9 @@
 2026-09-03-an-unreachable-edge-is-reported-for-a-project-the-graph-resolved-anyway:
   resolution: done
   resolved: '2026-09-03'
+2026-09-03-comments-and-docstrings-that-describe-behaviour-the-code-does-not-have:
+  resolution: done
+  resolved: '2026-09-04'
 2026-09-03-connected-project-entries-declare-where-they-come-from-so-tcw-provision-can-obtain-a-node:
   resolution: done
   resolved: '2026-09-03'
