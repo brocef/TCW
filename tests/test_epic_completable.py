@@ -167,3 +167,63 @@ def test_cross_node_open_child_blocks_completable(tmp_path):
     assert pst.epic_completable(pst.get(epic.slug)) is False
     with pytest.raises((IllegalTransition, ValueError)):
         pst.complete(epic.slug, "done", [])
+
+
+def _partial_graph(tmp_path):
+    """A node whose registered child's repository is not in this checkout."""
+    import subprocess
+    import yaml
+    from tcw.store.fs import init
+
+    root = tmp_path / "top"
+    root.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    init(["work"], root, "top-project")
+    doc = yaml.safe_load((root / "tcw-config.yaml").read_text())
+    doc["connected-projects"] = {"children": {"away-project": str(tmp_path / "away")}}
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    return root
+
+
+def test_an_epic_is_not_completed_over_slices_this_checkout_cannot_see(tmp_path):
+    """Slices live in child nodes. A checkout missing one cannot see whether
+    they are resolved, and this gate exists to refuse closing an epic over
+    them — so an empty answer from a partial graph must not read as "none"."""
+    import pytest as _pytest
+    from tcw.store.fs import FsWorkStore
+
+    root = _partial_graph(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create("Epic", created="2026-01-01")
+    st.set_field(epic.slug, "type", "epic")
+    st.start(epic.slug)
+
+    with _pytest.raises(ValueError) as excinfo:
+        st.complete(epic.slug, "done", [], force=False)
+    message = str(excinfo.value)
+    assert "Cannot verify the initiative children" in message
+    assert "away-project" in message
+    assert FsWorkStore.open(root).get(epic.slug).status == "active"
+
+    # --force is still the documented way past every gate here.
+    st.complete(epic.slug, "done", [], force=True)
+    assert FsWorkStore.open(root).tombstone(epic.slug) is not None
+
+
+def test_epic_completable_is_false_when_the_graph_is_partial(tmp_path):
+    from tcw.store.fs import FsWorkStore
+
+    root = _partial_graph(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = st.create("Epic", created="2026-01-01")
+    st.set_field(epic.slug, "type", "epic")
+    st.start(epic.slug)
+    child = st.create("Slice", created="2026-01-01")
+    st.set_field(child.slug, "initiative", epic.slug)
+    st.start(child.slug)
+    st.complete(child.slug, "done", [], force=True)
+    # Every child this checkout can see is resolved, and the answer is still
+    # "not knowable from here" rather than "ready".
+    assert st.epic_completable(FsWorkStore.open(root).get(epic.slug)) is False

@@ -282,6 +282,16 @@ class FsProjectRegistry(ProjectRegistry):
             # the checkouts that have only some of a graph's repositories.
             # Everything else below stays an error: those targets are present
             # and wrong, which is what fail-closed was written for.
+            if declared_id is None and declared_in is None:
+                # The node the command was run in, not a target it declared.
+                # The fail-open below is argued for *targets* — "this checkout
+                # does not have that project" — and says nothing about a
+                # directory that is not a node at all. Recording nothing for it
+                # made `require_valid()` accept any directory on the disk, and
+                # every helper built on it answer "no parent, no children,
+                # valid".
+                self._problem(path, "no tcw-config.yaml here")
+                return None
             self._unreachable_edge(declared_in or path, declared_id, path.parent,
                                    declaration)
             return None

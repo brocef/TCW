@@ -228,7 +228,7 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
 # rather than fatal to it. Each therefore answers for what is here, deliberately:
 # a topology is the set of nodes this machine can actually open, and a caller
 # that needs the graph complete says so in its own message (see
-# `FsWorkStore._incomplete_graph_note`). What none of them may do is imply the
+# `FsWorkStore.incomplete_graph_note`). What none of them may do is imply the
 # absent node was never declared.
 def child_nodes(root: Path) -> list[Path]:
     """Direct registered children that contain a work store."""
@@ -1061,11 +1061,30 @@ def _extends_ids(config: dict, config_path: Path) -> list[str]:
     return ids
 
 
-def _extended_component_roots(
+class _FederationCycles:
+    """Mixin for the two tree stores: the cycles anywhere below this one.
+
+    A cycle is recorded by the store that closes it — the deepest one built —
+    so a caller checking the store at the top of the chain finds nothing on
+    itself. Gathering the whole tree is what makes `check()` report a cycle
+    from wherever it is run.
+    """
+
+    def _federation_cycles(self) -> list[str]:
+        found: list[str] = list(getattr(self, "extends_cycles", []))
+        for store in getattr(self, "extends", {}).values():
+            for project_id in store._federation_cycles():
+                if project_id not in found:
+                    found.append(project_id)
+        return found
+
+
+def _extended_component_stores(
     node_root: Path, config: dict, config_path: Path, component: str,
     seen_nodes: "set[Path] | None" = None,
-) -> dict[str, Path]:
-    """Where each extended project's component store is, by project id.
+) -> "tuple[dict[str, object], list[str]]":
+    """Each extended project's component store, by project id, and the ids whose
+    edge closed a cycle.
 
     `seen_nodes` carries the *projects* already on the federation path. It is
     checked before the store is opened, and it has to be: resolving a sibling's
@@ -1077,7 +1096,8 @@ def _extended_component_roots(
     """
     registry = FsProjectRegistry.open(node_root).require_valid()
     seen_nodes = (seen_nodes or set()) | {node_root.resolve()}
-    roots: dict[str, Path] = {}
+    stores: dict[str, object] = {}
+    cyclic: list[str] = []
     for project_id in _extends_ids(config, config_path):
         project = registry.get(project_id)
         if project is None:
@@ -1093,7 +1113,12 @@ def _extended_component_roots(
         if Path(project.locator).resolve() == node_root.resolve():
             raise ValueError(f"a {component} store cannot extend itself")
         if Path(project.locator).resolve() in seen_nodes:
-            continue                      # cyclic → `check()` reports it
+            # The back edge of a federation cycle. Truncated here so the walk
+            # terminates, and *named*, because a truncated tree cannot show a
+            # cycle to anyone looking at it afterwards — which is why `check()`
+            # used to report nothing at all.
+            cyclic.append(project_id)
+            continue
         # The extended project's *configured* store, not `docs/<component>` under
         # its root. Composing that path skipped the whole resolution ladder, so a
         # sibling that had moved its tree with `<component>.path` could not be
@@ -1102,23 +1127,32 @@ def _extended_component_roots(
         # Failures are re-worded for a reader standing in a *different* node than
         # the one that failed.
         try:
-            roots[project_id] = STORE_CLASSES[component].open(
-                Path(project.locator), _seen_nodes=seen_nodes).root.resolve()
+            # The store itself, not its root. Rebuilding it from the root is
+            # what broke the hop past a moved tree — `FsTreeStore` falls back to
+            # `root.parent.parent` for `node_root`, correct only for the
+            # `docs/<component>` shape this resolution exists to stop assuming —
+            # and it is also what made federation exponential, since each edge
+            # built the same subtree twice.
+            store = STORE_CLASSES[component].open(
+                Path(project.locator), _seen_nodes=seen_nodes)
         except StoreNotProvisioned as error:
             raise ValueError(f"project '{project_id}': {error}") from None
-        except (StoreDeclarationError, ValueError) as error:
-            if isinstance(error, StoreDeclarationError):
-                raise ValueError(f"project '{project_id}': {error}") from None
-            raise ValueError(
-                f"project '{project_id}' has no {component} component") from None
+        except StoreDeclarationError as error:
+            raise ValueError(f"project '{project_id}': {error}") from None
+        except ValueError as error:
+            # The sibling's own error, quoted. Rewriting every `ValueError` as
+            # "has no <component> component" sent readers to create a store that
+            # already existed — a legacy `extends` map, a failed `require_valid`
+            # and a self-extend all arrived here wearing that message.
+            raise ValueError(f"project '{project_id}': {error}") from None
         # Rule 4 of the ladder validates nothing for a bare default, so a project
         # with no tree at all resolves to a path that is simply not there. That
         # is the honest answer for the project's *own* store and the wrong one to
         # federate from.
-        if not roots[project_id].is_dir():
-            del roots[project_id]
+        if not store.root.is_dir():
             raise ValueError(f"project '{project_id}' has no {component} component")
-    return roots
+        stores[project_id] = store
+    return stores, cyclic
 
 
 # ── Revision tokens & atomic writes (FS-adapter private details) ─────────────
@@ -1570,7 +1604,7 @@ def _wrong_kind_ref(ref: str, kind: str) -> str:
     return f"vocabulary ref '{ref}' points to {kind}, expected Vocabulary"
 
 
-class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
+class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     """`TaxonomyStore` over nested dirs under `docs/taxonomy/` (Phase 2 B.3).
 
     A term's slug is its directory path under the taxonomy root. `extends`
@@ -1585,12 +1619,15 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
-        for project_id, ext in _extended_component_roots(
+        built, self.extends_cycles = _extended_component_stores(
             self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy",
             seen_nodes=_seen_nodes,
-        ).items():
-            if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
-                self.extends[project_id] = FsTaxonomyStore(ext, _seen=seen)
+        )
+        for project_id, store in built.items():
+            # Reused, never rebuilt: the resolution above already constructed it
+            # with the right node root and the right cycle guard.
+            if store.root.resolve() not in seen:
+                self.extends[project_id] = store
 
     # -- reads --
 
@@ -1839,9 +1876,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             problems.append(f"config.yaml: {e}")
 
         top_level = {s.split("/")[0] for s in self._local_slugs()}
-        for project_id, store in self.extends.items():
-            if self._cycles(store.root.resolve(), {self.root.resolve()}):
-                problems.append(f"extends '{project_id}': cycle in taxonomy federation")
+        for project_id in self._federation_cycles():
+            problems.append(f"extends '{project_id}': cycle in taxonomy federation")
         for project_id in self._inherited_stores():
             if project_id in top_level:
                 problems.append(
@@ -1894,24 +1930,6 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         # its own root, not this one.
         return [path for path in (folder / "meta.yaml", folder / "description.md")
                 if path.is_file() and owner._within_store(path)]
-
-    def _cycles(self, taxonomy_root: Path, seen: set[Path]) -> bool:
-        if taxonomy_root in seen:
-            return True
-        if not taxonomy_root.is_dir():
-            return False
-        cfg = load_yaml(taxonomy_root / "config.yaml")
-        node_root = taxonomy_root.parent.parent
-        try:
-            roots = _extended_component_roots(
-                node_root, cfg, taxonomy_root / self.CONFIG_NAME, "taxonomy"
-            )
-        except ValueError:
-            return False
-        for nxt in roots.values():
-            if self._cycles(nxt, seen | {taxonomy_root}):
-                return True
-        return False
 
     # -- revision-bearing detail + update --
 
@@ -2029,7 +2047,7 @@ def _as_list(v) -> list[str]:
     return [s.strip() for s in str(v).split(",") if s.strip()]
 
 
-class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
+class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     """`CapabilitiesStore` over folder-per-capability nodes under
     `docs/capabilities/`, optionally federated via `extends`.
 
@@ -2047,12 +2065,15 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         super().__init__(root, node_root=node_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsCapabilitiesStore"] = {}
         seen = (_seen or set()) | {root.resolve()}
-        for project_id, ext in _extended_component_roots(
+        built, self.extends_cycles = _extended_component_stores(
             self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities",
             seen_nodes=_seen_nodes,
-        ).items():
-            if ext.is_dir() and ext not in seen:        # broken/cyclic → check() reports
-                self.extends[project_id] = FsCapabilitiesStore(ext, _seen=seen)
+        )
+        for project_id, store in built.items():
+            # Reused, never rebuilt: the resolution above already constructed it
+            # with the right node root and the right cycle guard.
+            if store.root.resolve() not in seen:
+                self.extends[project_id] = store
 
     # -- resolution --
 
@@ -2462,24 +2483,6 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     # -- validation --
 
-    def _cycles(self, cap_root: Path, seen: set[Path]) -> bool:
-        if cap_root in seen:
-            return True
-        if not cap_root.is_dir():
-            return False
-        cfg = load_yaml(cap_root / self.CONFIG_NAME)
-        node_root = cap_root.parent.parent
-        try:
-            roots = _extended_component_roots(
-                node_root, cfg, cap_root / self.CONFIG_NAME, "capabilities"
-            )
-        except ValueError:
-            return False
-        for nxt in roots.values():
-            if self._cycles(nxt, seen | {cap_root}):
-                return True
-        return False
-
     def _taxonomy(self) -> "FsTaxonomyStore | None":
         """The sibling taxonomy store for this node, or None if it has none.
 
@@ -2507,9 +2510,9 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             problems.append(f"{self.CONFIG_NAME}: {e}")
 
         top_level = {s.split("/")[0] for s in self._local_paths()}
-        for project_id, store in self.extends.items():
-            if self._cycles(store.root.resolve(), {self.root.resolve()}):
-                problems.append(f"extends '{project_id}': cycle in capability federation")
+        for project_id in self._federation_cycles():
+            problems.append(f"extends '{project_id}': cycle in capability federation")
+        for project_id in self.extends:
             if project_id in top_level:
                 problems.append(
                     f"project ID '{project_id}' collides with local top-level capability"
@@ -3406,7 +3409,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     # responses from the user.
                     raise ValueError(
                         f"Cannot resolve epic {item.initiative} for {slug}"
-                        f"{self._incomplete_graph_note()}. Run from a node that "
+                        f"{self.incomplete_graph_note()}. Run from a node that "
                         f"can resolve the epic, or use --force.")
                 if epic.status != "active":
                     raise ValueError(f"Cannot start work item {slug} before epic {item.initiative} is active")
@@ -4493,13 +4496,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return [i for i in items
                 if i is not None and (status is None or i.status == status)]
 
-    def _incomplete_graph_note(self) -> str:
-        """" (this checkout is missing …)" when the graph is partial, else "".
+    def incomplete_graph_note(self) -> str:
+        """This adapter's answer to the base store's question: the missing nodes.
 
         A relation that spans a node this checkout does not have resolves to
         nothing, and nothing is indistinguishable from a typo without this. Kept
         as a suffix rather than a separate message so every caller that walks the
-        graph can append it without restructuring its own error.
+        graph can append it without restructuring its own error — including the
+        completion gate in `WorkStore`, which is why the name is not private.
         """
         try:
             absent = FsProjectRegistry.open(self.node_root).unreachable()

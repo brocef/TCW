@@ -2231,6 +2231,19 @@ class WorkStore(ABC):
         """
         return self.get(item.initiative) if item.initiative else None
 
+    def incomplete_graph_note(self) -> str:
+        """" (this checkout is missing …)" when this store can see only part of
+        the project graph, else "".
+
+        Storage-neutral because the consequence is: a relation that spans a
+        project this store cannot reach resolves to *nothing*, and nothing is
+        indistinguishable from "there is no such relation" unless somebody says
+        so. Any adapter with a partial view — a tracker without access to a
+        project, a checkout without a repository — owes its callers this
+        sentence. The default is "" for an adapter that always sees everything.
+        """
+        return ""
+
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
         """Items related to `epic_slug` by `initiative:`.
 
@@ -2334,6 +2347,8 @@ class WorkStore(ABC):
         completable (nothing resolved)."""
         if item.type != "epic" or item.status in RESOLVED_STATUSES:
             return False
+        if self.incomplete_graph_note():
+            return False        # not "no", but "not knowable from this checkout"
         children = self.initiative_children(item.slug)
         return bool(children) and all(c.status in RESOLVED_STATUSES for c in children)
 
@@ -2482,6 +2497,19 @@ class WorkStore(ABC):
                                      f"children are still open: "
                                      f"{', '.join(open_children)}. Complete or "
                                      f"defer them first.")
+                # An empty answer from a partial graph is not the same as an
+                # empty answer. Slices live in child nodes, so a checkout
+                # missing one cannot see whether they are resolved — and this
+                # gate's whole job is to refuse closing an epic over them.
+                # Failing open here strands work silently; the `start` gate
+                # already refuses on the same reasoning, and it is the one
+                # without a destructive consequence.
+                if (note := self.incomplete_graph_note()):
+                    raise ValueError(
+                        f"Cannot verify the initiative children of epic {slug}"
+                        f"{note}. Its slices may live in a project this checkout "
+                        f"cannot reach. Run from a checkout that has them, or "
+                        f"use --force.")
             # Blockers gate a *shipment*, not an abandonment. "Don't claim you
             # shipped this while its dependency is unfinished" says nothing
             # about giving up — being blocked indefinitely is one of the most

@@ -510,3 +510,18 @@ def test_a_project_no_route_resolves_is_still_reported(tmp_path):
     registry.require_valid()
     assert [u.id for u in registry.unreachable()] == ["root-project"]
     assert registry.unreachable_project("root-project") is not None
+
+
+def test_a_directory_that_is_not_a_node_is_still_refused(tmp_path):
+    """The fail-open is argued for declared *targets*, not for the root.
+
+    Recording nothing for a directory with no sentinel made `require_valid()`
+    accept anything on the disk, and every helper built on it answer "no parent,
+    no children, valid".
+    """
+    plain = tmp_path / "not-a-node"
+    plain.mkdir()
+    registry = FsProjectRegistry.open(plain)
+    assert registry.check(), "a directory with no sentinel validated"
+    with pytest.raises(ValueError):
+        registry.require_valid()

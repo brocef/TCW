@@ -550,3 +550,86 @@ def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path,
     assert "project 'base'" in message
     assert "https://example.invalid/ledger.git" in message
     assert "tcw provision" in message
+
+
+def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):
+    """A linear `extends` chain `n0 → n1 → …`, optionally with moved trees."""
+    import subprocess
+    import yaml
+    from tcw.store.fs import write_sentinel
+
+    for i in range(depth):
+        d = tmp_path / f"n{i}"
+        tree = d / ("ledger" if i in moved else "docs/capabilities")
+        tree.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(d)], check=True)
+        write_sentinel(d, f"n{i}")
+    for i in range(depth):
+        d = tmp_path / f"n{i}"
+        doc = {"id": f"n{i}", "connected-projects": {}}
+        if i in moved:
+            doc["capabilities"] = {"path": "ledger"}
+        if i + 1 < depth:
+            doc["connected-projects"]["children"] = {f"n{i+1}": f"../n{i+1}"}
+        if i:
+            doc["connected-projects"]["parent"] = {f"n{i-1}": f"../n{i-1}"}
+        (d / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+        if i + 1 < depth:
+            tree = d / ("ledger" if i in moved else "docs/capabilities")
+            (tree / ".config.yaml").write_text(f"extends:\n  - n{i+1}\n")
+    return tmp_path / "n0"
+
+
+def test_a_moved_sibling_that_extends_further_still_resolves(tmp_path):
+    """Resolving the sibling's store enabled this, and rebuilding it broke it.
+
+    The nested store used to be reconstructed from its root with no `node_root`,
+    and `FsTreeStore` falls back to `root.parent.parent` — correct only for the
+    `docs/<component>` shape this resolution exists to stop assuming. A sibling
+    whose tree had moved got a node root two levels above its repo, so its own
+    `extends` was resolved against the wrong project graph and the chain broke
+    one link past the hop that had just been made to work.
+    """
+    root = _chain(tmp_path, 3, moved={1})
+    (tmp_path / "n1" / "ledger" / "own").mkdir()
+    (tmp_path / "n1" / "ledger" / "own" / "meta.yaml").write_text(
+        "id: cap-ddd222\nname: Own\nStatus: Supported\n")
+    (tmp_path / "n1" / "ledger" / "own" / "description.md").write_text("")
+    assert {c.qualified for c in store(root).list_all()} == {"n1/own"}
+    assert store(root).check() == []
+
+
+def test_a_broken_sibling_reports_its_own_error(tmp_path):
+    """Every ValueError used to be rewritten as "has no capabilities component",
+    which sends the reader to create a store that already exists."""
+    base, child = child_of(tmp_path, {})
+    (base / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  nope: ../somewhere\n"          # the legacy map form
+    )
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    message = str(excinfo.value)
+    assert "legacy extends map is unsupported" in message
+    assert "has no capabilities component" not in message
+
+
+def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
+    """A cycle is truncated by the store that closes it — the deepest one —
+    so the store someone is checking never holds the record itself."""
+    base, child = child_of(tmp_path, {})
+    (base / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - child\n")
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    problems = store(child).check()
+    assert any("cycle in capability federation" in p for p in problems)
+
+
+def test_federation_stays_linear_in_chain_depth(tmp_path):
+    """Each edge used to build the same subtree twice — 2^depth, measured at
+    15.7 s for eleven links. The bound is generous; what it guards is the shape.
+    """
+    import time
+
+    root = _chain(tmp_path, 14)
+    started = time.monotonic()
+    store(root).list_all()
+    assert time.monotonic() - started < 5.0
