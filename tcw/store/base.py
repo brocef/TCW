@@ -1968,6 +1968,90 @@ class WorkStore(ABC):
         what lets a caller report a typo as a typo.
         """
 
+    # ── retention: what becomes of an item once it is resolved ──────────────
+    #
+    # These are on the interface, not on the filesystem adapter, because the
+    # question each answers is one any store can answer. `parse_retention`'s own
+    # docstring makes the case: a tracker-backed store honors "do not retain
+    # resolved items" by closing and dropping the ticket. They were adapter-only
+    # while the CLI that calls them is storage-neutral, so a second adapter
+    # driven through `tcw work complete` would have raised `AttributeError`.
+    #
+    # Concrete, not abstract, and every default describes an adapter that simply
+    # does not do retention: it keeps everything, so nothing is ever pending and
+    # `delete_resolved` is unreachable through the CLI. That is a legitimate
+    # implementation — the same shape `incomplete_graph_note` uses — rather than
+    # a stub, and it means adding retention to an adapter is opt-in.
+
+    def retention(self) -> dict[str, bool]:
+        """Whether each resolved status is retained, by status name.
+
+        The default retains everything, which is also the default a store that
+        *does* implement retention reads from an absent declaration.
+        """
+        return {status: True for status in RESOLVED_STATUSES}
+
+    def retention_problems(self) -> list[str]:
+        """Complaints about how retention is configured, for `tcw validate`.
+
+        A malformed setting reads as the safe default, so this is the only place
+        a user learns about one — which is why it is a list of strings rather
+        than an exception.
+        """
+        return []
+
+    def retention_conflicts(self) -> list[str]:
+        """Contradictions between retention and the store's own mechanics.
+
+        Separate from `retention_problems` because these are not malformed
+        configuration: each is a pair of settings that are individually fine and
+        cannot both be honored.
+        """
+        return []
+
+    def pending_deletion(self, slug: str) -> bool:
+        """Whether `slug` is resolved, still here, and not to be retained.
+
+        The store never removes on its own: the removal carries `pre`/`post`
+        bindings, running a command is a CLI concern, and a `pre` that refuses
+        has to leave the item intact — which is only expressible if the removal
+        is a second call the caller makes.
+        """
+        return False
+
+    def pending_removal(self, slug: str) -> bool:
+        """Whether `slug`'s removal started and has not finished.
+
+        The other side of the same boundary: `pending_deletion` asks whether an
+        item still here should go, this asks whether one already gone is fully
+        recorded. An adapter whose removal is a single durable operation has no
+        such half-state and answers False.
+        """
+        return False
+
+    def delete_resolved(self, slug: str, status: str = "") -> str:
+        """Remove a resolved item and return the handle its record should carry.
+
+        The handle is opaque and may be empty — see `Tombstone.location`. Only
+        reachable when `pending_deletion` said yes, so an adapter that retains
+        everything never sees this call.
+
+        `status` is passed by the caller because the item may already be gone
+        from the store by this point, and its status with it.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement removing resolved items")
+
+    def describe_location(self, location: str, slug: str = "") -> str:
+        """A tombstone's handle, rendered for a reader.
+
+        Rendering, never resolution: `Tombstone.location` is opaque and is never
+        parsed above the adapter. The contract is that a handle must not fail
+        *silently* — an adapter able to tell that a handle no longer retrieves
+        anything says so here rather than printing it as though it worked.
+        """
+        return location or "no record of where its documents went"
+
     @abstractmethod
     def record_tombstone(self, slug: str, resolution: str = "",
                          resolved: str = "") -> Tombstone:

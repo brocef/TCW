@@ -209,3 +209,17 @@ used to quietly use the fetched one instead. Every command then read and wrote a
 different board than the one you configured, your items were nowhere to be seen,
 and nothing said why. It now tells you which line is the problem.
 
+## More on deletions that go wrong
+
+If your archive command moves the item somewhere and then fails, TCW no longer
+tells you the item is still in your work folder — it says the binding moved it,
+and points you at `tcw work delete` to finish. Running that command on a slug
+that somehow exists twice now reports the ambiguity instead of showing you a
+Python traceback.
+
+One safety detail: while finishing an interrupted removal, TCW will now commit
+only its own half-written record, not whatever else happens to be uncommitted in
+the shared record file. And `tcw work show` now always tells you where a finished
+item's documents went, including when the honest answer is that nothing kept
+them.
+

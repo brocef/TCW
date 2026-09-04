@@ -1155,12 +1155,14 @@ def _extended_component_stores(
     """Each extended project's component store, by project id, and the ids whose
     edge closed a cycle.
 
-    `seen_nodes` carries the *projects* already on the federation path. It is
-    checked before the store is opened, and it has to be: resolving a sibling's
-    store now opens it, and opening a tree store resolves its own `extends`, so a
-    cycle would recur infinitely instead of being reported. Project identity is
-    known before any store is touched, which is what makes the guard possible at
-    all — and a cycle in `extends` is a cycle among projects, so this is also the
+    `walk` carries the state of the whole `extends` walk — see
+    `_FederationWalk`. Its `seen` half is the *projects* already on this path,
+    and it is checked before the store is opened, which it has to be: resolving a
+    sibling's store now opens it, and opening a tree store resolves its own
+    `extends`, so a cycle would recur infinitely instead of being reported.
+    Project identity is known before any store is touched, which is what makes
+    the guard possible at all — and a cycle in `extends` is a cycle among
+    projects, so this is also the
     honest place to detect one.
     """
     registry = FsProjectRegistry.open(node_root).require_valid()
@@ -4124,7 +4126,51 @@ class FsWorkStore(FsTreeStore, WorkStore):
             f"`git rm -r --cached` on the folder if git already tracks it), then "
             f"retry.")
 
-    def _require_writable_graveyard(self, slug: str) -> None:
+    @staticmethod
+    def _removal_commit_subject(slug: str, location: str) -> str:
+        """The removal commit's subject line.
+
+        Named rather than interpolated inline because the empty-location case is
+        easy to reach and hard to see: `(retained in {location[:12]})` renders as
+        `(retained in )` — an empty parenthesis where a SHA belongs — and the
+        history is the one place that contradiction survives, since the line the
+        CLI prints alongside says plainly that no commit held the documents.
+        """
+        return (f"tcw work: delete {slug} (retained in {location[:12]})"
+                if location else f"tcw work: delete {slug} (no commit held it)")
+
+    def _graveyard_dirt_is_only(self, slug: str) -> bool:
+        """Whether the graveyard's uncommitted change touches only `slug`.
+
+        Compared entry by entry against the committed file rather than by
+        reading the diff, because the question is about records and not about
+        lines: a reformat, a key reorder or a trailing-newline change is not
+        someone else's record. Answers False whenever it cannot tell — the
+        caller uses this only to *relax* a refusal, so uncertainty has to mean
+        "keep refusing".
+        """
+        path = self._graveyard_path()
+        try:
+            rel = str(path.relative_to(self.store_git_root))
+            shown = subprocess.run(
+                ["git", "-C", str(self.store_git_root), "show", f"HEAD:{rel}"],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True)
+            if shown.returncode != 0:
+                return False              # untracked: someone else's first write
+            committed = yaml.safe_load(shown.stdout) or {}
+            current = load_yaml(path) or {}
+        except Exception:
+            return False
+        if not isinstance(committed, dict) or not isinstance(current, dict):
+            return False
+        changed = {
+            key for key in set(committed) | set(current)
+            if committed.get(key) != current.get(key)
+        }
+        return changed <= {slug}
+
+    def _require_writable_graveyard(self, slug: str,
+                                    only_own_entry: bool = False) -> None:
         """Refuse a resolving transition when the graveyard cannot be safely
         rewritten. Called *before* the move, so a refusal moves nothing.
 
@@ -4139,7 +4185,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         **Uncommitted changes, when auto-commit is on.** The transition commit
         is scoped to the item's folders plus this one shared path, so a
         concurrent agent's in-flight graveyard edit would be committed under
-        *this* item's message. Since every graveyard write commits itself, a
+        *this* item's message. `only_own_entry` relaxes this one refusal to the
+        case where the uncommitted change is `slug`'s record and nothing else —
+        which is what a removal resuming its own failed commit is looking at, and
+        is never what the refusal is protecting against. Since every graveyard write commits itself, a
         dirty graveyard means something already went wrong. Skipped when
         `auto-commit-transitions` is off: there the user manages commits and an
         uncommitted graveyard is the expected steady state, so refusing would
@@ -4175,6 +4224,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
             ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", rel],
             stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
+            if only_own_entry and self._graveyard_dirt_is_only(slug):
+                # This store's own unfinished write, and nothing else. The first
+                # attempt at a removal writes the tombstone and can then fail to
+                # commit it, so refusing here made that state unfinishable
+                # through the command that exists to finish it. Narrowed to the
+                # single entry, because "the item is already gone" is *also* the
+                # state a `pre` binding that relocates the item leaves on a
+                # first attempt — with a perfectly clean graveyard — and blanket
+                # skipping there swept a concurrent agent's edit into this
+                # item's commit.
+                return
             raise ValueError(
                 f"cannot record {slug}: the graveyard at {rel} has uncommitted "
                 f"changes, and this transition's commit would carry them. TCW "
@@ -4572,16 +4632,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # cannot be safely rewritten must stop this, not surface after the
             # folder is already gone.
             #
-            # Except when resuming this store's own unfinished removal. The
-            # first attempt wrote the tombstone and then failed to commit it, so
-            # the graveyard is dirty *because of the very state being finished*,
-            # and refusing over it made the recovery command unable to recover —
-            # which is the state `tcw work delete` exists to leave. The guard's
-            # real subject is a hand edit being swept into a transition's commit;
-            # here the sweep is the point. Nothing is discarded either way, and
-            # the lock is held, so no other process is mid-write.
-            if not resuming:
-                self._require_writable_graveyard(slug)
+            # The guard runs on every path. What `resuming` changes is only
+            # *how much* dirt it tolerates: a removal finishing its own failed
+            # commit is looking at the tombstone that attempt wrote, and
+            # refusing over it made that state unfinishable through the command
+            # that exists to finish it. Skipping the guard outright was wrong —
+            # `pending_removal` is also true on a *first* attempt whose `pre`
+            # binding relocated the item, where the graveyard is clean and any
+            # dirt found is somebody else's.
+            self._require_writable_graveyard(slug, only_own_entry=resuming)
             if folder is not None and folder.exists():
                 shutil.rmtree(folder)
             existing = self.tombstone(slug)
@@ -4608,8 +4667,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     paths.append(self.store_git_root / committed)
                 err = git_commit_result(
                     self.store_git_root,
-                    f"tcw work: delete {slug} (retained in {location[:12]})",
-                    *paths)
+                    self._removal_commit_subject(slug, location), *paths)
                 if err:
                     raise TransitionCommitError(
                         f"{slug} was removed, but committing the removal failed:\n{err}")

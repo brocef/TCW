@@ -234,13 +234,11 @@ class FsProjectRegistry(ProjectRegistry):
         exactly why this is *not* a problem. So the wording states both facts and
         draws no conclusion: declared there, found here.
         """
-        out = []
-        for entry in self._unreachable:
-            cfg = self._by_id.get(entry.id)
-            if cfg is None or cfg.path == Path(str(entry.locator)) / SENTINEL:
-                continue
-            out.append(entry)
-        return out
+        # No comparison of the two paths: an entry reaches `_unreachable` only
+        # from the branch that could not read a config file, and `cfg.path` is by
+        # construction a file that was read, so they can never be equal. A guard
+        # that cannot fire tells the next reader a state exists when it does not.
+        return [entry for entry in self._unreachable if entry.id in self._by_id]
 
     def require_valid(self) -> "FsProjectRegistry":
         if self._problems:

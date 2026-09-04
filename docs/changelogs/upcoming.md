@@ -415,3 +415,58 @@ the better description, the code changed to match it.
   declared repository. Nothing legitimate depended on the old fallback —
   `tcw init` already refuses to create this configuration.
 
+### The removal path, again
+
+A third review pass found the previous round's own principle applied to only one
+of two branches.
+
+- **`_removed(st, slug)`** answers "did the folder go?" at *every* exit from
+  `_auto_delete`. The `pre`-failure branch still hard-coded `False`, and the
+  `pre` binding is the one thing in that function able to move the item — so the
+  completion still printed a path into `docs/work/completed/` for a folder the
+  hook had taken away. The helper also never raises: `MultipleMatch` is an
+  `Exception` and not a `ValueError`, so the bare call it replaces escaped the
+  CLI as a traceback and, from inside an `except` handler, skipped the
+  completion report and the worktree cleanup `_complete` still owed.
+- **`tcw work delete` reports an ambiguous slug** the way `tcw work show` and
+  `tcw work complete` do, instead of leaving a traceback.
+- **The resuming graveyard relaxation is narrowed to this slug's own entry.**
+  Skipping `_require_writable_graveyard` outright was wrong: `pending_removal` is
+  also true on a *first* attempt whose `pre` binding relocated the item, where
+  the graveyard is clean and any dirt found belongs to somebody else — so an
+  unrelated uncommitted record rode into this item's commit. The guard now takes
+  `only_own_entry`, and `_graveyard_dirt_is_only` compares records rather than
+  lines, answering False whenever it cannot tell.
+- **`_removal_commit_subject`** is named rather than interpolated inline, because
+  an empty location rendered as `(retained in )` — an empty parenthesis where a
+  SHA belongs, and the history is the one place that contradiction survived.
+- **`tcw work show` always prints the `content:` line** for a resolved item. It
+  guarded on a non-empty location, which skipped the case the reader most needs
+  told — documents that were never retained anywhere — and left
+  `describe_location`'s wording for it unreachable.
+
+### Retention joins the storage-neutral interface
+
+- **`retention`, `retention_problems`, `retention_conflicts`,
+  `pending_deletion`, `pending_removal`, `delete_resolved` and
+  `describe_location`** move onto `WorkStore`. They were adapter-only while the
+  CLI calling them is storage-neutral, so a second adapter driven through
+  `tcw work complete` would have raised `AttributeError` — an inconsistency
+  inside one feature, since `tombstone` and `record_tombstone` were already
+  abstract.
+- Concrete, not abstract, and every default describes an adapter that does not
+  do retention: it keeps everything, so nothing is ever pending and
+  `delete_resolved` is unreachable through the CLI. Adding retention to an
+  adapter is opt-in rather than a new obligation.
+
+### Corrections
+
+- `_extended_component_stores`' docstring described `seen_nodes`, a parameter
+  renamed to `walk`.
+- `hook_env` claimed both that every caller passes `TCW_ITEM_PATH` and that a
+  caller with none passes None. Both cannot hold: the variable is conditional on
+  the *state*, not the transition, and the resume path is where it is absent.
+- `misdirected()`'s path comparison could never be true — an entry reaches
+  `_unreachable` only from the branch that could not read a config, and the
+  compared path is by construction one that was read.
+

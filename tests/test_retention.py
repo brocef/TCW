@@ -805,3 +805,174 @@ def test_the_item_s_own_resolution_survives_an_empty_graveyard(tmp_path):
     grave = FsWorkStore.open(root).tombstone(item.slug)
     assert grave.resolution == "wontfix"
     assert grave.resolved
+
+
+def test_a_pre_binding_that_moves_the_item_and_fails_is_reported_as_removed(
+        tmp_path, monkeypatch, capsys):
+    """The `pre`-failure branch hard-coded "still there" while the binding that
+    just failed is the one thing able to move the item — so the completion
+    printed a path into `docs/work/completed/` for a folder the hook had already
+    taken away."""
+    root = _node(tmp_path, retain={"completed": False})
+    elsewhere = tmp_path / "cold"
+    elsewhere.mkdir()
+    _bind(root, pre=[{"command": f'mv "$TCW_ITEM_PATH" {elsewhere}/"$TCW_SLUG"; exit 3'}])
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    captured = capsys.readouterr()
+    assert f"completed {item.slug} (done)" in captured.out
+    assert "docs/work/completed" not in captured.out
+    assert "moved the item before it failed" in captured.err
+
+
+def test_delete_reports_an_ambiguous_slug_instead_of_crashing(tmp_path,
+                                                              monkeypatch,
+                                                              capsys):
+    """`MultipleMatch` is an `Exception`, not a `ValueError`, so the CLI's
+    catch-all does not see it and an unguarded read left a raw traceback where
+    every other subcommand reports and exits 1."""
+    root = _node(tmp_path, retain={"completed": False})
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    store.complete(item.slug, "done", [], force=True)
+    # The shape a bad merge leaves: the same slug under two status folders.
+    shutil.copytree(root / "docs" / "work" / "completed" / item.slug,
+                    root / "docs" / "work" / "discarded" / item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "delete", item.slug]) == 1
+    assert "resolves to 2 items" in capsys.readouterr().err
+
+
+def test_a_first_attempt_does_not_sweep_someone_elses_graveyard_edit(
+        tmp_path, monkeypatch, capsys):
+    """`pending_removal` is true on a *first* attempt whose `pre` binding moved
+    the item, where the graveyard is clean — so skipping the guard outright
+    there let an unrelated uncommitted edit ride into this item's commit."""
+    root = _node(tmp_path, retain={"completed": False})
+    elsewhere = tmp_path / "cold"
+    elsewhere.mkdir()
+    _bind(root, pre=[{"command": f'mv "$TCW_ITEM_PATH" {elsewhere}/"$TCW_SLUG"; exit 3'}])
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    capsys.readouterr()
+    assert FsWorkStore.open(root).pending_removal(item.slug) is True
+
+    # Somebody else's record, uncommitted. Not this item's, so it must refuse.
+    graveyard = root / "docs" / "work" / "graveyard.yaml"
+    doc = yaml.safe_load(graveyard.read_text()) or {}
+    doc["2026-01-01-someone-elses-item"] = {"resolution": "done",
+                                            "resolved": "2026-01-01"}
+    graveyard.write_text(yaml.safe_dump(doc, sort_keys=False))
+
+    _bind(root, pre=[{"command": "true"}])
+    assert main(["work", "delete", item.slug]) == 1
+    assert "has uncommitted changes" in capsys.readouterr().err
+    tracked = subprocess.run(["git", "-C", str(root), "show", "HEAD:docs/work/graveyard.yaml"],
+                             capture_output=True, text=True, check=True).stdout
+    assert "someone-elses-item" not in tracked
+
+
+def test_resuming_still_finishes_over_its_own_uncommitted_record(tmp_path,
+                                                                 monkeypatch,
+                                                                 capsys):
+    """The other half. A removal whose commit failed left *its own* tombstone
+    uncommitted, and refusing over that made the state unfinishable through the
+    command that exists to finish it."""
+    root = _node(tmp_path, retain={"completed": False})
+    _refuse_removal_commits(root)
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 1
+    capsys.readouterr()
+    (root / ".git" / "hooks" / "commit-msg").unlink()
+    assert main(["work", "delete", item.slug]) == 0
+    assert subprocess.run(["git", "-C", str(root), "status", "--porcelain",
+                           "--", "docs/work"],
+                          capture_output=True, text=True,
+                          check=True).stdout.strip() == ""
+
+
+def test_a_removal_with_no_commit_says_so_in_the_commit_message():
+    """`(retained in )` — an empty parenthesis where a SHA belongs. The history
+    is the one place the contradiction survives, since the line the CLI prints
+    alongside says plainly that no commit held the documents."""
+    subject = FsWorkStore._removal_commit_subject
+    assert subject("a-thing", "0123456789abcdef") == \
+        "tcw work: delete a-thing (retained in 0123456789ab)"
+    assert subject("a-thing", "") == "tcw work: delete a-thing (no commit held it)"
+    assert "retained in )" not in subject("a-thing", "")
+
+
+# ── the interface, not the adapter ──────────────────────────────────────────
+
+def test_the_retention_operations_are_on_the_abstract_store():
+    """The CLI that calls them is storage-neutral, so a second adapter driven
+    through `tcw work complete` used to raise `AttributeError`. Each answers a
+    question any store can answer — `parse_retention`'s own docstring makes the
+    case for a tracker closing and dropping the ticket."""
+    from tcw.store.base import WorkStore
+
+    for name in ("retention", "retention_problems", "retention_conflicts",
+                 "pending_deletion", "pending_removal", "delete_resolved",
+                 "describe_location"):
+        assert name in vars(WorkStore), name
+
+
+def test_the_defaults_describe_a_store_that_does_not_retain_anything():
+    """Concrete rather than abstract, and every default is a legitimate
+    implementation: an adapter that keeps everything has nothing pending, so
+    `delete_resolved` is unreachable through the CLI."""
+    from tcw.store.base import RESOLVED_STATUSES, WorkStore
+
+    # Every abstract method stubbed, so what is left to check is that none of
+    # the seven is among them.
+    class _Minimal(WorkStore):
+        pass
+
+    for name in WorkStore.__abstractmethods__:
+        setattr(_Minimal, name, lambda self, *a, **k: None)
+    _Minimal.__abstractmethods__ = frozenset()
+    store = _Minimal()
+    assert store.retention() == {s: True for s in RESOLVED_STATUSES}
+    assert store.retention_problems() == []
+    assert store.retention_conflicts() == []
+    assert store.pending_deletion("anything") is False
+    assert store.pending_removal("anything") is False
+    assert store.describe_location("abc123") == "abc123"
+    assert "no record" in store.describe_location("")
+    with pytest.raises(NotImplementedError):
+        store.delete_resolved("anything")
+
+
+def test_show_says_when_no_commit_held_the_documents(tmp_path, monkeypatch,
+                                                      capsys):
+    """`_show` guarded on a non-empty location, so the one case the reader most
+    needs told — an item whose documents were never retained anywhere — printed
+    nothing at all, and `describe_location`'s wording for it was unreachable."""
+    root = _node(tmp_path)                      # default rules ignore completed/
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", item.slug,
+                 "--resolution", "done", "--confirm"]) == 0
+    shutil.rmtree(root / "docs" / "work" / "completed" / item.slug)
+    assert FsWorkStore.open(root).delete_resolved(item.slug, "completed") == ""
+    capsys.readouterr()
+
+    assert main(["work", "show", item.slug]) == 0
+    out = capsys.readouterr().out
+    assert "content:" in out
+    assert "not retained" in out

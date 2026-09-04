@@ -543,12 +543,14 @@ def _show(args: argparse.Namespace) -> int:
                 print(f"resolution: {grave.resolution}")
             if grave.resolved:
                 print(f"resolved:   {grave.resolved}")
-            if grave.location:
-                # Resolved before it is shown, *against this slug*. The whole
-                # reason a locator was once refused here is that a pointer must
-                # not fail silently — which includes a commit this clone has and
-                # which never held the item.
-                print(f"content:    {st.describe_location(grave.location, bare)}")
+            # Always, not only when a location was recorded. Resolved before it
+            # is shown, *against this slug*, because the whole reason a locator
+            # was once refused here is that a pointer must not fail silently —
+            # which includes a commit this clone has and which never held the
+            # item. Guarding on a non-empty location skipped the one case the
+            # reader most needs told: an item whose documents were never
+            # retained anywhere, which now says so instead of saying nothing.
+            print(f"content:    {st.describe_location(grave.location, bare)}")
             return 0
         print(f"tcw work show: no such work item: {args.slug}", file=sys.stderr)
         return 1
@@ -593,6 +595,27 @@ def _path(args: argparse.Namespace) -> int:
     return 0
 
 
+def _removed(st, slug: str) -> bool:
+    """Whether the store no longer holds `slug`. Never raises.
+
+    Asked at *every* exit from `_auto_delete`, including the `pre`-failure one —
+    the binding that just failed is the one thing in that function able to move
+    the item, so hard-coding "still there" there reproduced exactly the symptom
+    asking the store was introduced to end.
+
+    `get()` can raise `MultipleMatch`, which is an `Exception` and not a
+    `ValueError`, so a bare call escapes the CLI as a traceback and — from
+    inside an `except` handler — skips the completion report and the worktree
+    cleanup `_complete` still owes. Anything it cannot answer is treated as
+    removed, because the consequence of this answer is whether a *location* is
+    printed, and printing a path that may not exist is the failure being fixed.
+    """
+    try:
+        return st.get(slug) is None
+    except Exception:
+        return True
+
+
 def _auto_delete(st, slug: str, status: str, resolution: str) -> "tuple[int, bool]":
     """Run the `auto-delete` bindings around removing a resolved item.
 
@@ -600,9 +623,11 @@ def _auto_delete(st, slug: str, status: str, resolution: str) -> "tuple[int, boo
     failure costs nothing: the resolving commit has landed, `pre` runs while the
     item is still on disk, the removal and its commit come next, `post` last.
 
-    A `pre` failure leaves the item exactly where it is — resolved, recorded in
-    the graveyard, committed — which is a finishable state, and says so, because
-    the user's first question is whether their work is safe.
+    A `pre` failure leaves the item wherever the binding left it — usually
+    exactly where it was, and sometimes moved, since relocating the item is a
+    supported thing for an archive command to do. Either way the state is
+    finishable, and the message says which one it is, because the user's first
+    question is whether their work is safe.
 
     Returns `(exit code, removed)`. The two are not the same question and the
     caller needs both: a publication failure after the removal landed is a real
@@ -615,10 +640,13 @@ def _auto_delete(st, slug: str, status: str, resolution: str) -> "tuple[int, boo
     item = st.get(slug)
     if (err := run_pre(policy, "auto-delete", st.node_root, slug, status, item,
                        item_path=item_path, resolution=resolution)):
-        print(f"tcw work: {err}; {slug} was resolved and committed but not "
-              f"removed. Fix the binding and run `tcw work delete {slug}`.",
+        gone = _removed(st, slug)
+        print(f"tcw work: {err}; {slug} was resolved and committed but its "
+              + ("removal was not recorded — the binding moved the item before "
+                 "it failed" if gone else "folder was not removed")
+              + f". Fix the binding and run `tcw work delete {slug}`.",
               file=sys.stderr)
-        return 1, False
+        return 1, gone
     try:
         location = st.delete_resolved(slug, status)
     except _ERRORS as e:
@@ -629,7 +657,7 @@ def _auto_delete(st, slug: str, status: str, resolution: str) -> "tuple[int, boo
         # non-zero result is what sent the caller on to print a location for a
         # folder that no longer exists.
         print(f"tcw work: {e}", file=sys.stderr)
-        return 1, st.get(slug) is None
+        return 1, _removed(st, slug)
     print(f"deleted {slug}; " + (
         f"its documents remain in commit {location}" if location else
         "no commit held its documents, so none is recorded"))
@@ -649,7 +677,15 @@ def _delete(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
-    item = st.get(bare)
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        # Wrapped exactly as `_show` and `_complete` wrap it. `MultipleMatch` is
+        # an `Exception`, not a `ValueError`, so `main()`'s catch-all does not
+        # see it and an unguarded read here left a raw traceback where every
+        # other subcommand reports and exits 1.
+        print(f"tcw work delete: {e}", file=sys.stderr)
+        return 1
     if item is None:
         # The half-deleted state: the folder is gone and the record does not yet
         # say where it went, because a `pre` binding moved the item away or an

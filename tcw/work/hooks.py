@@ -34,22 +34,27 @@ def hook_env(node_root: Path, slug: str, status: str, transition: str,
 
     `TCW_ITEM_PATH` and `TCW_RESOLUTION` are **omitted** rather than exported
     empty when the caller has nothing to put in them, so a script can test for
-    presence instead of for emptiness. `TCW_RESOLUTION` is the one that is
-    genuinely conditional: only `complete`, `discard` and `auto-delete` have a
-    resolution. **Every** transition has an item folder, and every caller passes
-    it — the docstring once said `start` and `submit` had neither, and while it
-    said so `complete` passed neither either, so a binding testing
-    `[ -n "$TCW_ITEM_PATH" ]` concluded there was no item folder for the one
-    transition most likely to want it.
+    presence instead of for emptiness. `TCW_RESOLUTION` is conditional on the
+    transition: only `complete`, `discard` and `auto-delete` have a resolution.
+    `TCW_ITEM_PATH` is conditional on the *state*: every transition has an item
+    folder and every caller passes what the store answers, but that answer is
+    None once the item is gone — which is the state `tcw work delete` resumes
+    into, and the one case where the variable is genuinely absent. The docstring
+    once said `start` and `submit` had neither, and while it said so `complete`
+    passed neither either, so a binding testing `[ -n "$TCW_ITEM_PATH" ]`
+    concluded there was no item folder for the one transition most likely to
+    want it.
 
     The path is the item's location *at the moment the hook runs* — before the
     move for a `pre`, after it for a `post` — because that is the only answer a
     hook can act on. It is passed in by the caller, always the store's own answer
     for the item, and is never composed here from `TCW_NODE_ROOT`: the work store
     may live in a different repository entirely, which is the standing rule for
-    store paths everywhere in this codebase. A caller with no answer — the item
-    is already gone — passes None and the variable is absent, which is the state
-    the presence test exists to detect.
+    store paths everywhere in this codebase. A binding that must work on the
+    resume path therefore has to tolerate the variable being absent — an archive
+    command written as `tar -C "$TCW_ITEM_PATH"` will fail there rather than
+    silently archiving the working directory, which is the behaviour the presence
+    test exists to give it.
     """
     env = {
         **os.environ,
