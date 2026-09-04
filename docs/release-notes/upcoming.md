@@ -112,3 +112,19 @@ faster, and a loop of projects extending each other is now reported by
 `tcw taxonomy check` and `tcw capabilities check` instead of silently giving each
 side a different view.
 
+## Finishing a removal that stopped halfway
+
+If your archive command moved a finished item somewhere and then failed, TCW
+could not pick the removal back up: `tcw work delete` said there was no such item,
+and the deletion sat in your working tree unstaged. It now finishes the job, and
+tells you plainly when there is nothing left to finish.
+
+A completion whose deletion failed also now reports itself. Before, the
+"completed" line never printed and a worktree TCW had already merged was left
+behind with nothing to clean it up — so the deletion failing looked like the
+completion failing, which it never was.
+
+One smaller fix: `tcw work show --json` on an item that has been finished and
+removed now fails cleanly with an explanation, instead of printing the
+human-readable block into whatever was expecting JSON.
+

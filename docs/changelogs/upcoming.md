@@ -214,3 +214,25 @@ category.
 - `tests/fixtures/lifecycle_baseline/*.json` regenerated for the new step. A
   deliberate contract change, visible in the diff exactly as those fixtures are
   meant to make it.
+
+### Finishing a removal, and reporting one that half-failed
+
+- **`tcw work delete` accepts the state it exists to finish.** It refused every
+  slug `get()` could not find, which is every item whose folder a `pre` binding
+  moved away before failing — making `delete_resolved`'s documented "safe to
+  re-run" unreachable through the CLI and leaving an unstaged deletion in the
+  tree. It now reads the tombstone: absent is still a typo, one with a location
+  reports the removal already finished and exits 0, one without is finished.
+- **`_complete` never returns from the auto-delete branch.** The completion is
+  committed by then, so returning discarded its `post` result, skipped the
+  report line, and orphaned the worktree and branch `merge_worktree` had already
+  merged.
+- **`_auto_delete` returns `(exit code, removed)`.** A `PublicationError` is a
+  failure *and* an item that is gone; one answer cannot carry both, and reading
+  the exit code as "still there" printed a location for a deleted folder.
+- **`tcw work show --json` on a removed slug exits 1 with empty stdout.** The
+  tombstone branch sat ahead of the `--json` branch, so `jq` got the human block
+  under a success code. Projecting the tombstone instead would put a second
+  document shape under `WORK_ITEM_SCHEMA`, which is closed by construction and
+  which `tcw serve` returns as well; filed as its own item.
+
