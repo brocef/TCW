@@ -13,9 +13,9 @@ script this is modelled on, says the same thing in its own docstring.
 **Re-capture only when a release intends the text to move, and say which one.**
 Twice so far it has been touched, and the two are opposites worth telling apart:
 
-- The `prompt`/`begin` split hand-edited the six `argv` arrays and left every
-  recorded byte of stdout alone, because that change was text-preserving and the
-  frozen bytes were the proof.
+- Splitting the one stage verb in two hand-edited the six `argv` arrays and left
+  every recorded byte of stdout alone, because that change was text-preserving
+  and the frozen bytes were the proof.
 - 2.0.0 then wrapped every resolved prompt in a gate header and a next-step
   footer. That moves the text on purpose, so the file was **re-captured**: the
   old bytes would have asserted something this release makes false. What it

@@ -1,6 +1,7 @@
 """`tcw work stage` — legality, stream discipline, and writing nothing."""
 
 import hashlib
+import re
 import subprocess
 from pathlib import Path
 
@@ -88,6 +89,81 @@ def test_each_row_is_what_the_lifecycle_contract_says():
         # without shipping, and a post-mortem on work nobody did is not this.
         "postmortem": ("review", "completed"),
     }
+
+
+def test_the_next_step_table_covers_every_stage():
+    """Its sibling `STAGE_STATUSES` has exactly this check. A stage missing from
+    here raises `KeyError` inside the footer, which surfaces as a stage whose
+    instructions cannot be printed at all."""
+    assert set(STAGE_NEXT_STEPS) == set(STAGE_IDS)
+
+
+def test_every_next_step_names_a_command_that_exists():
+    """The footer is the one place TCW tells a reader what to run next, and it is
+    prose in a table — nothing resolves it against the parser. A verb renamed
+    without touching this table would send every reader of every stage to a
+    command that exits 2."""
+    import re
+    from tcw.cli import build_parser
+
+    def verbs(parser, prefix=()):
+        found = {" ".join(prefix)} if prefix else set()
+        for action in parser._actions:
+            choices = getattr(action, "choices", None) or {}
+            if hasattr(choices, "items"):
+                for name, sub in choices.items():
+                    if hasattr(sub, "_actions"):
+                        found |= verbs(sub, (*prefix, name))
+        return found
+
+    shipped = {v for v in verbs(build_parser()) if v}
+    for stage_id, text in STAGE_NEXT_STEPS.items():
+        for cited in re.findall(r"`tcw ([a-z][a-z -]*?)(?: <|`)", text):
+            words = cited.split()
+            # Longest shipped prefix, so `work stage gate request` is read as the
+            # verb `work stage gate` applied to the stage `request` — and the
+            # stage id is checked too, not skipped as leftovers.
+            verb = next((" ".join(words[:n]) for n in range(len(words), 0, -1)
+                         if " ".join(words[:n]) in shipped), None)
+            assert verb, (f"{stage_id}'s next step names `tcw {cited}`, whose "
+                          f"leading words are not a command")
+            rest = words[len(verb.split()):]
+            assert all(w in STAGE_IDS for w in rest), (
+                f"{stage_id}'s next step names `tcw {cited}`, and {rest} is not "
+                f"a stage id")
+
+
+def test_a_next_step_names_a_transition_only_where_one_is_needed():
+    """Derived from `STAGE_STATUSES`, because the footer is prose asserting a
+    lifecycle fact and prose does not check itself.
+
+    A footer sending the reader straight to the next stage is claiming that stage
+    is legal where they already are. A footer naming a transition first is
+    claiming it is not. Both directions are wrong to get wrong: an unnecessary
+    `tcw work submit` moves an item to `review` for no reason, and a missing
+    `tcw work start` sends the reader to a stage that refuses them.
+
+    `implement` was the one this caught. It named `tcw work submit` before
+    `verify`, which is legal from `active` too — so the transition was optional
+    and the `verify` instructions already own that decision.
+    """
+    for stage_id, text in STAGE_NEXT_STEPS.items():
+        m = re.search(r"`tcw work stage gate (\w+)", text)
+        if not m:                     # `verify` ends in a transition; `postmortem` in nothing
+            continue
+        nxt = m.group(1)
+        here, there = set(STAGE_STATUSES[stage_id]), set(STAGE_STATUSES[nxt])
+        if not here:                  # `inbox` runs before an item has a status
+            continue
+        names_transition = "tcw work " in text.split("`tcw work stage gate")[0]
+        if names_transition:
+            assert not (here & there), (
+                f"{stage_id} names a transition before {nxt}, but {nxt} is "
+                f"already legal in {sorted(here & there)}")
+        else:
+            assert here & there, (
+                f"{stage_id} sends the reader straight to {nxt}, which is legal "
+                f"only in {sorted(there)} — a transition is needed first")
 
 
 @pytest.fixture
@@ -270,7 +346,7 @@ def test_no_mutating_store_method_is_called(tmp_path, monkeypatch):
 
     monkeypatch.chdir(root)
     assert main(["work", "stage", "gate", "spec", item.slug]) == 0
-    assert called == [], f"`begin` called mutators: {called}"
+    assert called == [], f"`gate` called mutators: {called}"
 
     # `prompt` skips the gate, so it reaches resolution by a different path and
     # needs its own guard — the property is the same and the route is not.
@@ -461,7 +537,7 @@ def test_prompt_prints_the_built_in_for_every_stage_unconfigured(one_of_each):
 
 
 def test_prompt_answers_for_an_item_in_any_status(one_of_each):
-    """The whole point: `begin` refuses most of this matrix, and `prompt` is how
+    """The whole point: `gate` refuses most of this matrix, and `prompt` is how
     you ask anyway. Swept over the same product as the legality test, so the two
     disagree by design rather than by omission."""
     root, slugs = one_of_each
@@ -503,7 +579,7 @@ def test_the_two_verbs_no_longer_print_the_same_bytes(tmp_path):
 
 def test_prompt_runs_no_gate_and_the_gate_verb_does(tmp_path):
     """The paired assertion. A `pre` binding that leaves a trace is the only way
-    to observe non-execution: without the `begin` half, the `prompt` half passes
+    to observe non-execution: without the `gate` half, the `prompt` half passes
     just as well when the gate is broken and never runs at all.
 
     A throwaway sentinel command rather than this repository's
@@ -576,7 +652,7 @@ def test_a_qualified_reference_reads_the_owning_nodes_bindings(tmp_path):
 
 
 def test_prompt_refuses_a_work_item_for_inbox(one_of_each):
-    """Same rule as `begin`, and for the same reason: there is no item yet, so a
+    """Same rule as `gate`, and for the same reason: there is no item yet, so a
     reference is a mistake to report rather than something to interpret."""
     root, slugs = one_of_each
     r = _prompt(root, "inbox", slugs["backlog"])

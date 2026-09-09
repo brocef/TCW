@@ -49,10 +49,12 @@ runs nothing, and changes nothing. Consult it before performing a stage.
 context injection and **never the path**: Codex receives no injection, so nothing
 may depend on it.
 
-`tcw work stage gate <id> <slug>` runs the stage's `pre` checks. It prints no
-instructions; `tcw work stage prompt <id> <slug>` resolves the
-resolved prompt on stdout. **It writes nothing** — no artifact, no draft, no
-status change — so it is safe to run purely to find out what to do.
+`tcw work stage gate <id> <slug>` runs the stage's `pre` checks and prints no
+instructions: success is exit 0 with empty stdout.
+`tcw work stage prompt <id> [<slug>]` puts the resolved prompt on stdout and runs
+neither the checks nor the legality test. **Neither writes anything** — no
+artifact, no draft, no status change — so both are safe to run purely to find out
+what to do.
 
 `tcw work scaffold <artifact> <slug>` writes `<artifact>.draft.md` from that
 artifact's template. **A draft is not the artifact.** `spec.draft.md` is a file

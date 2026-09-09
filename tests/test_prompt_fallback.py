@@ -18,8 +18,8 @@ actually changed.
 The whole file was **re-captured** by 2.0.0, which wrapped every resolved prompt
 in those bookends. That moved the text deliberately, so the old bytes would have
 asserted something false. What it pins from here is the bookended output; it no
-longer says anything about the `prompt`/`begin` split, which was text-preserving
-and hand-edited the `argv` arrays alone.
+longer says anything about the verb split that preceded it, which was
+text-preserving and hand-edited the `argv` arrays alone.
 
 Before that, the `spec`, `plan`, and `postmortem` entries were **re-baselined
 once**, by

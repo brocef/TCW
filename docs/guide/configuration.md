@@ -120,17 +120,20 @@ The shipped instructions include a short self-review pass at the stages where on
 earns its place — `spec`, `plan`, and `implement`. The `spec` and `plan` instructions name
 the item's **own** body artifact rather than a fixed filename: `initial-request.md`
 once the `request` stage has written one, and the `intake.md` it arrived as
-otherwise, resolved exactly the way `tcw work show` resolves a body. It refuses a stage that makes no sense
-for the item's current status, runs the stage's `pre` checks, resolves its
-prompts, and prints the result — **on stdout, alone**, so you can pipe it. Every
-check's output goes to stderr, and any failure prints nothing on stdout at all,
-so a pipeline gets the whole instruction or none of it.
+otherwise, resolved exactly the way `tcw work show` resolves a body.
 
-It **writes nothing**: no document, no draft, no status change. Running it purely
-to find out what to do is safe, which is the point. The one thing it does run is
-your own `pre` checks and `generate` scripts — and `--no-exec` skips even those,
-printing what would have run instead. That is how you read an unfamiliar
-repository's lifecycle before triggering it.
+`prompt` puts the instructions on **stdout, alone**, so you can pipe them. Its
+own diagnostics — the note about an illegal stage, the `--no-exec` plan — go to
+stderr, and any failure prints nothing on stdout at all, so a pipeline gets the
+whole instruction or none of it. `gate` puts nothing on stdout ever, including
+whatever a `pre` check writes to its own.
+
+**Neither writes anything**: no document, no draft, no status change. Running
+either purely to find out where you stand is safe, which is the point. Between
+them they run two things you configured — `gate` your `pre` checks, `prompt` your
+`generate` scripts — and `--no-exec` on each skips even those, printing what
+would have run instead. That is how you read an unfamiliar repository's lifecycle
+before triggering any part of it.
 
 **Starting the document itself** is `tcw work scaffold <artifact> <ref>`. It
 resolves that artifact's template — yours if you configured one under

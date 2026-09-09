@@ -981,10 +981,10 @@ def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
     resolved — an item or nothing, this node or another — and decides it before
     calling; this function decides none of it.
 
-    It runs no checks. It used to take a `run_checks` flag because `begin` shared
-    it, and that verb is now `gate`, which resolves no prompt: the two verbs have
-    no tail in common any more, so the flag is gone rather than left as a
-    parameter one caller never passes.
+    It runs no checks. It used to take a `run_checks` flag, from when one verb
+    both gated and printed; `gate` resolves no prompt, so the two share no tail
+    any more and the flag is gone rather than left as a parameter a single
+    caller never passes.
 
     `item` is `None` on the itemless path, which `resolve_prompts` and
     `hook_env` both already accept. A `when:`-condition then never matches

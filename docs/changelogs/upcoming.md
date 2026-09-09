@@ -52,6 +52,14 @@ category.
     also the `pre` verb the split's intake specified and dropped for want of a
     caller — a reason now answered, since the prompt's own header names it and
     the composing skill runs it.
+- `STAGE_NEXT_STEPS` is checked three ways, because it is prose asserting
+  lifecycle facts and prose does not check itself: it covers every id in
+  `STAGE_IDS`, every command it names resolves against the real parser (verb and
+  stage id both, by longest matching prefix), and it names a transition **only**
+  where `STAGE_STATUSES` says one is needed. The third caught `implement`, which
+  named `tcw work submit` before `verify` — a transition `verify` does not
+  require, since it is legal from `active` too, and one the `verify` instructions
+  already own the decision about.
 - **Generated bookends around every resolved prompt** (`bookend` in
   `tcw/work/resolve.py`, `STAGE_NEXT_STEPS` in `tcw/store/base.py`). A header
   naming that stage's `gate` invocation and saying the text ran no checks, and a

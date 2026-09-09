@@ -1171,8 +1171,10 @@ STAGE_NEXT_STEPS: dict[str, str] = {
     "spec": "run `tcw work stage gate plan <slug>`",
     "plan": ("run `tcw work start <slug>`, then "
              "`tcw work stage gate implement <slug>`"),
-    "implement": ("run `tcw work submit <slug>`, then "
-                  "`tcw work stage gate verify <slug>`"),
+    # No `tcw work submit` first: `verify` is legal from `active` as well as
+    # `review`, and the `verify` instructions own that decision — naming it here
+    # would assert a transition this stage does not require.
+    "implement": "run `tcw work stage gate verify <slug>`",
     "verify": "run `tcw work complete <slug> --resolution done --confirm`",
     "postmortem": "",
 }

@@ -322,7 +322,7 @@ def test_the_composing_skill_reads_a_router_that_exists_for_every_stage():
 
 def test_the_composing_skill_reads_with_prompt_and_names_begin_for_entry():
     """The whole hazard of composing a stage out of `prompt`: it resolves the
-    instructions without the gate. A skill that stopped naming `begin` would be
+    instructions without the gate. A skill that stopped naming `gate` would be
     a documented route around the legality check and the `pre` bindings."""
     body = STAGE_SKILL.read_text()
     assert "tcw work stage prompt $stage $item" in body
