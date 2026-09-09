@@ -326,6 +326,21 @@ def test_without_no_exec_the_same_stage_runs_everything(tmp_path):
     assert r.stdout == "static text\n\nfrom a file\n\ngen\n"
 
 
+def test_no_exec_names_the_verb_that_accepts_it(tmp_path):
+    """The plan header is the one place `--no-exec` names a command, and only
+    `begin` takes the flag. It printed `tcw work stage <id>`, which 2.0.0
+    removed — a reader copying it out of a log gets a usage error."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Thing", body="req\n")
+    _configure(root, {"stages": {"spec": {"prompt": [{"blob": "text"}]}}})
+
+    r = _cli(root, "spec", item.slug, "--no-exec")
+    assert r.returncode == 0
+    assert "tcw work stage begin spec: --no-exec" in r.stderr
+    assert "tcw work stage spec:" not in r.stderr
+
+
 def test_no_exec_reports_a_condition_that_did_not_match(tmp_path):
     root = _node(tmp_path)
     st = FsWorkStore.open(root)

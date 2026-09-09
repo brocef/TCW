@@ -1018,8 +1018,10 @@ def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
     if args.no_exec:
         # The plan is a diagnostic, so it goes to stderr: a caller piping stdout
         # should get the (partial) prompt, never a plan they might act on.
-        print(f"tcw work stage {step.id}: --no-exec, nothing was executed",
-              file=sys.stderr)
+        # `begin` is named because only `begin` accepts `--no-exec`, and the
+        # bare `tcw work stage <id>` this used to print is no longer a command.
+        print(f"tcw work stage begin {step.id}: --no-exec, nothing was "
+              f"executed", file=sys.stderr)
         for b in select(policy.stage_checks(step.id), item):
             print(f"  pre check would run: {b.ref}", file=sys.stderr)
         for entry in res.plan:
