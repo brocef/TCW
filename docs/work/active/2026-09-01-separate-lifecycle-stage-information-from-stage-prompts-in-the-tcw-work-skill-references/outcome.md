@@ -53,9 +53,9 @@ Every criterion verified from command output, except as noted.
 | 10 | Pass |
 | 11 | Pass — the grep prints nothing |
 | 12 | Pass, with corrections to the list itself (below) |
-| **13** | **Not met, for a pre-existing reason — see below** |
+| 13 | Pass — `tcw validate` exits 0; see the status note at the foot |
 | 14 | Pass — `tcw capabilities check` exits 0 |
-| 15 | Deferred to `complete`, as the spec scheduled it |
+| 15 | Pass — the capability body was rewritten at completion, in `81623de` |
 | 16 | Pass — 60 lines, at budget |
 
 ## What the plan and spec got wrong
@@ -144,23 +144,39 @@ The full Cartesian legality sweep in `test_stage_verb.py` still covers
 work item passed, `inbox` is refused. It passes unchanged, by a different code
 path than before.
 
-## Status as of 2026-09-09
+## Status as of 2026-09-09, at completion
 
-The item is still `active` on `claude/tcw-work-list-zx961v` and has not been
-submitted for verification. Nothing about the work above changed; what follows is
-where it sits.
+Two things recorded above have since changed. Nothing about the implementation
+did.
 
-- **Awaiting `verify` and `complete`.** The outcome above is written and the
-  criteria are assessed, so the next step is submission, not more implementation.
-- **Criterion 13 stays unmet for a reason outside this item**, as recorded above:
-  `tcw validate` exits 1 on dangling `tcw://` references in three other backlog
-  items. It is tracked as
-  `2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes`.
-  Completion of this item should not wait on it.
-- **Nothing ships between this item and the one that follows it.** The
-  `prompt`/`begin` split on the same branch supersedes some of this item's
-  release-note wording, and that reconciliation belongs to that item's Task 6.
-  See its `plan.md`.
-- **The branch has been merged up to `main`** at commit `028dec7`, which
-  re-applied the README edits into `docs/guide/` after main's restructure. The
-  full suite passes there.
+**Criterion 13 is met.** `tcw validate` exits **0**. The four dangling `tcw://`
+references it failed on lived in three other backlog items and pointed at two
+items that no longer existed; accepting the outstanding inbox entries and merging
+`main` resolved them. The finding above stands as a record of why it was reported
+unmet — the item never touched those files — but the criterion itself now passes,
+and it did not need
+`2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes`
+to. That item remains open on its own merits.
+
+**Criterion 15's deferral is discharged.** `capabilities.yaml` declared
+`work/run-a-lifecycle-stage` as changed and said its body would be rewritten at
+completion, because shipping a built-in `inbox` prompt falsified two claims in
+it: that TCW ships defaults for six stages, and that `tcw work stage inbox` is
+refused. That rewrite landed in `81623de`, folded together with the sibling
+item's own edit to the same file — the two would otherwise have written the same
+paragraphs twice. The description now says all seven stages ship a default and
+that what `inbox` refuses is a *reference*, on either verb.
+
+**The branch has been merged up to `main`** at `028dec7`, which re-applied the
+README edits into `docs/guide/` after main's restructure.
+
+**Nothing ships between this item and the one that follows it.** The
+`prompt`/`begin` split on the same branch supersedes some of this item's
+release-note wording; that reconciliation is done, in `9740f4c`, and belonged to
+that item by its plan. Both `upcoming.md` files were rewritten rather than
+appended to, so the claims this item's release notes made — that inbox "is the
+one stage you run without naming a work item", and that "Every other stage is
+unchanged and still takes its work item" — are gone rather than left to
+contradict the shipped behaviour.
+
+The `2.0.0` cut follows the completion of all three items on this branch.
