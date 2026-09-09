@@ -1,7 +1,7 @@
 ---
 name: tcw-work-stage
 description: Read a TCW lifecycle stage in one piece — the stage's own working document composed with the instructions this project resolves for it. Use when entering or reading a lifecycle stage (inbox, request, spec, plan, implement, verify, postmortem) for a work item, instead of opening the stage document and running the CLI separately.
-when_to_use: Use when about to work a TCW lifecycle stage and you want the stage document and the project's resolved instructions together. Takes the stage id and, for every stage but `inbox`, the work item reference. It reads only — `tcw work stage begin` is still what enters the stage.
+when_to_use: Use when about to work a TCW lifecycle stage and you want the stage document and the project's resolved instructions together. Takes the stage id and, for every stage but `inbox`, the work item reference. It reads only — `tcw work stage gate` is still what refuses.
 arguments: [stage, item]
 allowed-tools: Bash(tcw *), Bash(cat *)
 metadata:
@@ -27,18 +27,16 @@ both before producing anything.
 
 The second block came from `tcw work stage prompt`, the **reading** verb. It runs
 no legality check and no `pre` bindings, so it answers for a stage the item is
-not ready for — which is the whole reason it can be composed into a skill. It is
-not a licence to skip the gate.
+not ready for — which is the whole reason it can be composed into a skill.
 
-**To enter the stage, run `tcw work stage begin $stage $item`.** That is the verb
-that checks the stage is legal for the item's status and runs whatever the
-project bound to it, and it refuses when either says no. If it refuses, the
+It carries its own reminder of that, at the top and bottom of the block: what to
+run to gate the stage, and what to do when its output is written. Follow those.
+This skill does not repeat them, because two copies drift and the copy in the
+CLI's output is the one a Codex reader gets too.
+
+**`tcw work stage gate $stage $item` is what refuses.** If it refuses, the
 refusal is the answer; do not proceed on the strength of having read the
 instructions here.
-
-`begin` prints the same bytes the second block already gave you, so running it
-tells you nothing new — which is exactly why skipping it is tempting and wrong.
-What you are missing is not text. It is the check.
 
 If a block above is missing, empty, or shows a command error, this harness did
 not run the injected commands. Nothing is lost — run them yourself:

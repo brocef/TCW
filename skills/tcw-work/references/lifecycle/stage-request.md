@@ -3,8 +3,8 @@
 ## Purpose
 
 Capturing the request.
-Enter the stage with `tcw work stage begin request <slug>` — it runs the
-gate, then prints the instructions for producing the output.
+Check the stage with `tcw work stage gate request <slug>`, then read what
+to produce with `tcw work stage prompt request <slug>`.
 
 ## Inputs
 

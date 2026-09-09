@@ -3,8 +3,8 @@
 ## Purpose
 
 Locating the earliest catchable miss.
-Enter the stage with `tcw work stage begin postmortem <slug>` — it runs the
-gate, then prints the instructions for producing the output.
+Check the stage with `tcw work stage gate postmortem <slug>`, then read what
+to produce with `tcw work stage prompt postmortem <slug>`.
 
 ## Inputs
 

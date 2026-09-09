@@ -50,9 +50,9 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
   it. Never batch several stages into one commit. TCW commits the _transitions_
   itself; do not commit those by hand.
-- **Run `tcw work stage begin <id> <slug>`** at every stage entry — it carries the
-  methodology, the stage document only what the CLI cannot. Bindings →
-  [`hooks.md`](references/hooks.md) · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
+- **`tcw work stage gate <id> <slug>`, then `prompt`** at every stage entry —
+  `gate` refuses, `prompt` carries the methodology, the stage document only what
+  the CLI cannot. Bindings → [`hooks.md`](references/hooks.md) · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
 - For a small change, ask whether to compress planning detail — but keep the item
   the durable source of truth and write whatever is needed to resume or review.
 

@@ -27,8 +27,9 @@ tcw work stage prompt <id> [<slug>]  # `inbox` takes no reference — it runs fi
 `prompt` is the reading verb: no legality check and no `pre` checks, so it
 answers for a stage the item is not ready for. The reference is optional — give
 one and the item-dependent parts resolve against it, omit it and you get the
-stage's generic text. To *enter* the stage instead, with its gates, run
-`tcw work stage begin <id> <slug>`.
+stage's generic text. To check the stage may run at all, and run whatever the
+project bound to it, that is `tcw work stage gate <id> <slug>` — it prints no
+instructions.
 
 No checkout required: either command resolves the prompt out of the installed
 package. What it prints is what a stage actually receives, which a file in this

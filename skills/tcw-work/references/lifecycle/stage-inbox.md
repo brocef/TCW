@@ -3,8 +3,9 @@
 ## Purpose
 
 Turning a raw drop into a tracked item.
-Enter the stage with `tcw work stage begin inbox` — no work item reference,
-because none exists yet. It prints the instructions for producing the output.
+Check the stage with `tcw work stage gate inbox`, then read what to
+produce with `tcw work stage prompt inbox` — neither takes a work item
+reference, because none exists yet.
 
 A **GitHub issue is the same shape from a different source**: someone else's raw
 text, accepted or rejected. The `tcw-triage-issues` skill sweeps a project's open

@@ -3,8 +3,8 @@
 ## Purpose
 
 Deciding what to build.
-Enter the stage with `tcw work stage begin spec <slug>` — it runs the
-gate, then prints the instructions for producing the output.
+Check the stage with `tcw work stage gate spec <slug>`, then read what
+to produce with `tcw work stage prompt spec <slug>`.
 
 ## Inputs
 

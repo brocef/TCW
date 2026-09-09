@@ -87,26 +87,33 @@ by `tcw validate`, in both spellings — `prompt: []` and a bare
 falls back to TCW's own instructions it reads as an opt-out it is not. A stage
 that should genuinely say nothing binds `{blob: ""}`.
 
-**Entering a stage** is `tcw work stage begin <id> <ref>`. With nothing
-configured it prints TCW's own instructions for that stage, so the command is
-useful before you have written any lifecycle configuration at all. The one
-exception to the reference is `inbox`: it runs before an item exists, so it is
-`tcw work stage begin inbox` with nothing after it, and passing a work item is
-refused rather than interpreted.
+**Checking a stage may run** is `tcw work stage gate <id> <ref>`. It checks the
+status legality and runs the stage's `pre` bindings, and that is all it does: it
+prints no instructions, so success is exit 0 with nothing on stdout and a line on
+stderr naming the verb that does print. The one exception to the reference is
+`inbox`: it runs before an item exists, so it is `tcw work stage gate inbox` with
+nothing after it, and passing a work item is refused rather than interpreted.
 
-**Reading a stage's instructions without entering it** is
-`tcw work stage prompt <id> [<ref>]`. It resolves and prints the same
-instructions, but checks no status legality and runs no `pre` bindings — so you
-can find out what the `plan` stage asks for on an item whose spec is not written
-yet, which `begin` correctly refuses. The reference is optional: without one the
-instructions resolve generically, with one they resolve for that item, and a
+**Reading a stage's instructions** is `tcw work stage prompt <id> [<ref>]`. This
+is the only verb that prints them. It checks no status legality and runs no `pre`
+bindings — so you can find out what the `plan` stage asks for on an item whose
+spec is not written yet, which `gate` correctly refuses. With nothing configured
+it prints TCW's own instructions for that stage, so it is useful before you have
+written any lifecycle configuration at all. The reference is optional: without one
+the instructions resolve generically, with one they resolve for that item, and a
 `<project-id>/<slug>` qualifier reads that node's configuration. If the stage is
 not legal for the item's status it still prints, and says so on stderr, leaving
 stdout to carry the instructions alone.
 
+Because `prompt` gates nothing, what it prints says so: every resolved prompt is
+wrapped in a line naming the `gate` command for that stage and a closing section
+saying what to do once the stage's output is written. Your own `prompt:` bindings
+are wrapped too — overriding what a stage says is not overriding where the
+lifecycle goes next.
+
 ```sh
+tcw work stage gate plan "$slug"       # may it run? checks only, prints nothing
 tcw work stage prompt plan             # what does the plan stage ask for?
-tcw work stage begin plan "$slug"      # enter it: gates first, then instructions
 ```
 
 The shipped instructions include a short self-review pass at the stages where one
@@ -198,7 +205,7 @@ tcw work docs                          # path, trigger, and what to write
 tcw work docs --json                   # {"schema", "source", "entries"}
 ```
 
-`tcw work stage begin plan` and `tcw work stage begin implement` include the
+`tcw work stage prompt plan` and `tcw work stage prompt implement` include the
 entries inline,
 so the documentation gate is part of the stage's instructions rather than a
 convention an agent has to remember. **A project that declares nothing is

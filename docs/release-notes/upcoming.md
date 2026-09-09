@@ -23,38 +23,61 @@ refused because the spec was not written yet, and you were told nothing about
 planning. The command you would use to find out what to do required you to have
 already done it.
 
-The two questions are now two commands:
+It is now two commands, and each does one job:
 
 ```sh
+tcw work stage gate plan my-item       # may it run? checks only — prints nothing
 tcw work stage prompt plan             # what does the plan stage ask for?
-tcw work stage begin plan my-item      # enter it: gates first, then instructions
 ```
 
-**`begin` is the old command, renamed and otherwise untouched** — same gates,
-same output, same exit codes. If all you want is to keep working the way you
-were, insert the word `begin` and you are done.
+**`gate` is the refusal.** It checks the stage makes sense for where the item is
+and runs whatever your project bound to it, and then it stops. Success is exit 0
+and silence; the exit code is the answer. It changes nothing — no status, no
+document, no field — so there is nothing else for it to report.
 
-**`prompt` is new.** It runs no gate at all, so it answers for a stage the item
-is not ready for, which is exactly when you want to ask. Naming the item is
-optional: without one you get the stage's generic instructions, with one you get
-them resolved for that item — its tags, its documents, and, across a set of
-connected repositories, that project's own configuration rather than the one you
-happen to be standing in.
+**`prompt` is the instructions**, and the only command that prints them. It runs
+no check at all, so it answers for a stage the item is not ready for, which is
+exactly when you want to ask. Naming the item is optional: without one you get
+the stage's generic instructions, with one you get them resolved for that item —
+its tags, its documents, and, across a set of connected repositories, that
+project's own configuration rather than the one you happen to be standing in.
 
 If you read a stage that is not legal for the item, it prints the instructions
 anyway and says so in a note on the side. Worth knowing rather than silently
 allowed: the built-in instructions for some stages name commands that change an
 item's state, so reading them early is fine and following them is not.
 
+Splitting them this way means the instructions exist in one place instead of
+coming out of two commands identically, which is what made anything that showed
+you a stage show you the same text twice.
+
 The old spelling is not accepted and does not quietly do something else. It tells
-you which of the two commands you meant and stops:
+you both commands and stops:
 
 ```
 $ tcw work stage spec my-item
-tcw work stage: 'spec' is not a subcommand; run `tcw work stage begin spec my-item`
-to enter the stage, or `tcw work stage prompt spec` to read its instructions
-without entering it
+tcw work stage: 'spec' is not a subcommand; run `tcw work stage gate spec my-item`
+to check the stage and run its checks, or `tcw work stage prompt spec my-item` for
+its instructions
 ```
+
+## Every stage's instructions now say where they sit
+
+Because `prompt` runs no checks, wanting the instructions is no longer a reason
+to run the gate. So the instructions say so themselves. What `prompt` prints is
+wrapped in two lines you did not write:
+
+- at the top, that this text ran no checks, and the exact `gate` command for
+  this stage and item;
+- at the bottom, what to do once the stage's output is written — the next stage,
+  or the transition that has to happen first.
+
+Your own stage instructions get the same wrapper. Overriding what a stage says is
+not overriding where the lifecycle goes next. A stage you have deliberately
+silenced stays silent.
+
+If you compare stage output byte for byte anywhere, that comparison will move
+once. It is the only text this release changes.
 
 ## Reading a stage in one piece, if you drive TCW with Claude
 
@@ -63,9 +86,9 @@ it, and the instructions your project resolves for it. The plugin now ships a
 skill, `tcw-work-stage`, that hands you both at once — give it the stage and the
 item and it returns one document.
 
-It is built on the reading verb, so it runs no gate. It says so, and it names
-`tcw work stage begin` as the command that actually enters the stage. Treat it
-as a way to see everything before you start, not as a way to start.
+It is built on the reading verb, so it runs no gate — and the instructions it
+hands you carry that reminder themselves, along with the `gate` command to run.
+Treat it as a way to see everything before you start, not as a way to start.
 
 This one is Claude-only: it works by running commands and folding their output
 into the skill, which Codex does not do. Nothing moved behind it — the stage
@@ -80,15 +103,14 @@ and return an error for that one, so the guidance on how to turn an incoming
 request into a work item was only available to people who had installed the agent
 plugin. Anyone who installed `tcw` on its own got nothing.
 
-Because the inbox stage runs before an item exists, it is the one stage `begin`
-takes with nothing after it:
+Because the inbox stage runs before an item exists, it is the one stage that
+takes nothing after it, on either verb:
 
 ```sh
-tcw work stage begin inbox
+tcw work stage prompt inbox
 ```
 
-Naming an item there is reported as a mistake rather than guessed at, on both
-verbs.
+Naming an item there is reported as a mistake rather than guessed at.
 
 If you have written your own instructions for a stage, nothing about how they are
 chosen has changed — the inbox stage now simply has a TCW default to fall back

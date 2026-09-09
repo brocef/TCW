@@ -3,8 +3,8 @@
 ## Purpose
 
 Building it.
-Enter the stage with `tcw work stage begin implement <slug>` — it runs the
-gate, then prints the instructions for producing the output.
+Check the stage with `tcw work stage gate implement <slug>`, then read what
+to produce with `tcw work stage prompt implement <slug>`.
 
 ## Inputs
 

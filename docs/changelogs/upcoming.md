@@ -5,21 +5,26 @@ category.
 
 ## Removed
 
-- **`tcw work stage <id> <ref>` — the bare form is gone.** It is `tcw work stage
-  begin <id> <ref>`, byte-identical in output, gates, and exit codes. No alias
-  and no deprecation period: the old spelling is registered as a hidden
-  per-stage-id parser that resolves nothing, names both replacement verbs on
-  stderr, and exits 2 as the usage error it is. See
-  [`docs/migration-guide-1.X-to-2.0.0.md`](../migration-guide-1.X-to-2.0.0.md).
+- **`tcw work stage <id> <ref>` — the bare form is gone**, and so is `begin`,
+  which never shipped. The command is two verbs: `tcw work stage gate <id> <ref>`
+  checks the stage and runs its `pre` bindings, `tcw work stage prompt <id>
+  [<ref>]` prints the instructions. No alias and no deprecation period: the old
+  spelling is registered as a hidden per-stage-id parser that resolves nothing,
+  names both replacement verbs on stderr, and exits 2 as the usage error it is.
+  See [`docs/migration-guide-1.X-to-2.0.0.md`](../migration-guide-1.X-to-2.0.0.md).
+- **The prompt text no longer comes out of two commands.** `gate` prints none of
+  it. The two used to emit byte-identical stdout, which is what made every view
+  composing a stage out of both show the instructions twice, and what every piece
+  of wording around them was written to excuse.
 
 ## Added
 
-- **`tcw work stage prompt <id> [<ref>]`** — a stage's instructions without
-  entering the stage. Runs no legality check and no `pre` bindings, so it answers
-  on an item the stage is not legal for, which `begin` correctly refuses. It
-  still resolves `file:` and `generate:` bindings, because that is how the text
-  is produced at all; the guarantee is that TCW runs no check of its own, not
-  that no process starts.
+- **`tcw work stage prompt <id> [<ref>]`** — the only verb that prints a stage's
+  instructions. Runs no legality check and no `pre` bindings, so it answers on an
+  item the stage is not legal for, which `gate` correctly refuses. It still
+  resolves `file:` and `generate:` bindings, because that is how the text is
+  produced at all; the guarantee is that TCW runs no check of its own, not that
+  no process starts.
   - The work item reference is optional and changes what resolves. Without one,
     `when:` conditions never match, `generate:` receives a null item, and the
     body token falls back to its no-body text. With one, all three resolve
@@ -28,30 +33,45 @@ category.
   - An illegal stage prints anyway: the instructions on stdout, a `note —` line
     on stderr naming the statuses the stage runs in, exit 0. stdout stays
     byte-pure for a caller piping it.
-  - `inbox` refuses a work item on both verbs, each with its own message.
-  - `--no-exec` is rejected by `prompt`, because suppressing `file:` and
-    `generate:` would leave the incomplete instructions the verb exists to
-    produce. The message names `tcw work stage begin --no-exec` instead.
-- **`skills/tcw-work-stage`** — a Claude-only skill that composes a stage into
-  one document: `lifecycle/stage-<id>.md` followed by the output of
-  `tcw work stage prompt <id> [<item>]`, both injected with `` !`cmd` ``. Takes
-  `stage` and `item` as named arguments.
-  - Both injected commands end `|| true`. A non-zero exit aborts the whole skill
-    invocation and the model is shown *nothing* — not an error — so an unknown
-    stage or slug would render as silence. Tolerating the exit puts the CLI's own
-    message in front of the reader instead.
-  - No `2>&1` is needed: injection captures stderr as well as stdout, so
-    `prompt`'s illegal-stage note arrives with the instructions rather than being
-    lost.
-  - `allowed-tools` declares both commands. An injected command that is not
-    pre-approved aborts the invocation the same silent way.
-  - It reads with `prompt` and therefore runs no gate, which is the hazard of
-    composing a stage this way. The skill names `tcw work stage begin` as the
-    verb that enters, and `test_skill_lifecycle_parity.py` fails if it stops.
-  - Claude-only by construction, and an ergonomic rather than a route: the seven
-    routers still name `begin`, so a Codex user runs the two commands and loses
-    nothing but the concatenation.
-- **`tcw work stage begin inbox`** — `inbox` was the one stage in `STAGE_IDS`
+  - It now **accepts** `--no-exec`, which it previously refused. The refusal's
+    reason was that suppressing `file:` and `generate:` would leave incomplete
+    instructions on stdout — true only if it printed any. It prints none: the
+    plan goes to stderr and stdout stays empty. Refusing would have dropped the
+    conditioned matched/skipped diagnostic from the CLI entirely, since `gate`
+    reports only its own bindings.
+- **`tcw work stage gate <id> [<ref>]`** — status legality, then the stage's
+  `pre` bindings, and nothing else. Success is exit 0 with **empty stdout** and
+  one line on stderr naming `prompt`; the exit code is the answer.
+  - It resolves no prompt, not even to discard one, so a `generate:` binding does
+    not run a script for output nobody reads.
+  - `--no-exec` lists the `pre` checks it would run and no prompt entries.
+  - Named `gate` rather than `begin` because the verb begins nothing: it runs no
+    transition, writes no artifact, and changes no field, so a user who ran it
+    and saw silence had nothing to tell them whether it worked. `gate` is the
+    word this repository's own documents already use for what it runs. This is
+    also the `pre` verb the split's intake specified and dropped for want of a
+    caller — a reason now answered, since the prompt's own header names it and
+    the composing skill runs it.
+- **Generated bookends around every resolved prompt** (`bookend` in
+  `tcw/work/resolve.py`, `STAGE_NEXT_STEPS` in `tcw/store/base.py`). A header
+  naming that stage's `gate` invocation and saying the text ran no checks, and a
+  footer saying what to do once the stage's output is written.
+  - Generated rather than written into the seven prompt files: those are capped
+    at 50 lines and `spec.md` is at 49, and navigation text repeated seven times
+    drifts on the first edit that forgets one.
+  - Applied by the CLI at print time, not inside `resolve_prompts`, which keeps
+    its promise that a stage whose only binding does not match resolves to
+    **nothing**. Wrapping that would turn silence into a header and footer around
+    an empty middle, which reads as a stage that failed to resolve.
+  - Wraps a project's own `prompt:` bindings too. Overriding what a stage says is
+    not overriding where the lifecycle goes next.
+  - The header is what replaces a guarantee this release gives up: once `gate`
+    prints nothing, wanting the instructions no longer makes anyone run it, and
+    the reminder has to reach every reader under either harness rather than only
+    through the Claude-only composing skill.
+  - `postmortem` renders "Nothing follows" rather than omitting the section, so a
+    missing footer never reads as one that failed to resolve.
+- **`inbox` reaches both verbs** — it was the one stage in `STAGE_IDS`
   that shipped no default instructions, so its methodology lived only in the
   plugin's `stage-inbox.md` and was unavailable to a PyPI-only install. It now
   ships a built-in prompt (`tcw/work/prompts/inbox.md`), takes no work item
@@ -72,15 +92,15 @@ category.
 ## Changed
 
 - **`pstg` is a subparser group** holding `prompt` and `begin` rather than two
-  positionals. `begin` is the former `_stage` unchanged; `prompt` resolves the
-  store via `_store()` with no reference and `_resolve()` with one, then shares
-  the tail. The unknown-stage error names the verb it was reached through.
-- **The tail of both verbs is one function.** `_stage_tail` covers everything
-  from the pre-check block through the final `print(res.text)` — the two copies
-  had already drifted, and the comment explaining why the `--no-exec` plan goes
-  to stderr existed in only one of them.
-- The `--no-exec` plan header names `tcw work stage begin <id>`. It printed
-  `tcw work stage <id>`, which is no longer a command.
+  positionals. `prompt` resolves the store via `_store()` with no reference and
+  `_resolve()` with one; `gate` resolves the item, checks legality, runs the
+  checks. The unknown-stage error names the verb it was reached through.
+- **`_stage_tail` is `prompt`'s alone**, and its `run_checks` flag is gone. It
+  was extracted because the two verbs shared a tail; `gate` now resolves no
+  prompt, so they share nothing, and a parameter one caller never passes is
+  worse than two functions.
+- Each `--no-exec` plan header names the verb that printed it, so a reader
+  copying one out of a log runs the command that produced it.
 - `load_builtins()` ships `sorted(STAGE_IDS)` rather than
   `sorted(set(STAGE_IDS) - {"inbox"})`.
 - `STAGE_STATUSES["inbox"]` stays `()` and is no longer read as a refusal — the
@@ -93,14 +113,15 @@ category.
 - `stage-inbox.md` is a four-section router under the 40-line ceiling like its
   six siblings, keeping only what the CLI cannot say: non-delegability, the
   enforcement markers, and the pointers to plugin-only documents.
-- All seven stage documents now instruct rather than describe, and the
-  instruction is about **entering**: "Enter the stage with `tcw work stage begin
-  <id> <slug>` — it runs the gate, then prints the instructions for producing the
-  output." Worded that way because `begin` and `prompt` print byte-identical
-  text, so a sentence promising instructions reads as a duplicate wherever the
-  instructions are already on screen — which is every composed view. The gate is
-  the part only `begin` supplies, so the gate is what the sentence names.
-- **Every agent-facing surface says `begin`.** The seven routers, `SKILL.md`,
+- All seven stage documents name both verbs: "Check the stage with `tcw work
+  stage gate <id> <slug>`, then read what to produce with `tcw work stage prompt
+  <id> <slug>`." Both, because naming only the reading verb would leave a Codex
+  reader — who gets no context injection and so no skill — with no route to the
+  gate at all.
+- **Every agent-facing surface names the right one of the two.** Where the
+  meaning was the refusal it says `gate`; where the meaning was the instructions
+  — the documentation entries arriving inline, the built-in floor, the body
+  substitution — it says `prompt`. The seven routers, `SKILL.md`,
   `commands.md`, `hooks.md`, `documentation-sync`, `AGENTS.md`, three capability
   descriptions, and the docstrings in `templates.py`, `resolve.py`,
   `store/base.py`, and `require_artifact.py`. `prompt` appears only where reading
@@ -166,10 +187,21 @@ track which changes` opened at line 1084 and the next `###` was at 1432, so
   `test_every_stage_but_inbox_ships_a_prompt` became
   `test_every_stage_ships_a_prompt`.
 - `tests/test_skill_lifecycle_parity.py` — `ROUTER_IDS` is now `STAGE_IDS` and
-  the binding-command literal is `f"tcw work stage begin {stage_id}"`, so a
-  router naming the bare form or `prompt` fails the check; the `inbox` branches
+  `test_every_stage_document_names_the_harness_neutral_binding_command` requires
+  **both** `f"tcw work stage gate {stage_id}"` and
+  `f"tcw work stage prompt {stage_id}"`, so a router that drops either fails; the `inbox` branches
   are gone from the section-order and binding-command checks; path constants
   resolve under `lifecycle/`; the ordinal and reachability sweeps use `rglob`,
   and reachability matches each file by its path relative to `references/`.
+- `tests/fixtures/prompt_fallback/unconfigured.json` — **re-captured**, which is
+  the opposite of what the split did to it and for the opposite reason. That file
+  froze the prompt bytes to prove a change did not move them; the bookends move
+  them on purpose, so the old bytes would have asserted something false. The
+  capture script's docstring now records both events and the rule: re-capture
+  only when a release intends the text to move, and say which release did it.
+  The recorded stdout also normalizes the item's slug to `<slug>`, because the
+  bookends quote the reference back and a slug carries its creation date — the
+  fixture would otherwise have expired at midnight rather than when the text
+  changed.
 - `tests/cli/scenarios/` — 03, 04, 05, and 11 restate their `tcw work stage`
   invocations with the verb.
