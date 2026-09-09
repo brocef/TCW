@@ -7,6 +7,7 @@ packaging. Nothing here invokes `tcw work stage`: the registry is C3's library
 and is tested as such.
 """
 
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -104,13 +105,39 @@ def test_a_missing_prompt_file_is_a_loud_failure(monkeypatch):
     assert "implement" in str(e.value) and "tcw/work/prompts" in str(e.value)
 
 
+def _pristine_checkout(tmp_path: Path) -> Path:
+    """The tracked tree, copied out, with no build artifacts in it.
+
+    Building from `REPO` itself reads whatever `build/` a developer happens to
+    have. `setuptools` reuses that staging directory, so a file deleted from the
+    source tree months ago is still copied into the wheel — which made this test
+    report a packaging defect that existed only on one machine. `build/` is
+    gitignored, so CI never had one and the failure never reproduced there.
+
+    `git ls-files` rather than `git archive HEAD`: uncommitted edits to tracked
+    files are part of what a packaging test should be checking, and archiving
+    `HEAD` would drop them silently. Untracked files are correctly left out —
+    package data that git does not track would not ship from CI either.
+    """
+    names = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "-z"],
+        check=True, capture_output=True, text=True).stdout.split("\0")
+    source = tmp_path / "source"
+    for name in filter(None, names):
+        target = source / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / name, target)
+    return source
+
+
 def test_the_prompts_are_in_the_built_wheel(tmp_path):
     """Package data, not source-tree files. Reading the zip rather than
     installing it is also what proves the content survives a zipimport-style
     install, where no path composed from `__file__` would resolve."""
     subprocess.run(
         [sys.executable, "-m", "pip", "wheel", "--no-deps",
-         "--no-build-isolation", "-w", str(tmp_path), str(REPO)],
+         "--no-build-isolation", "-w", str(tmp_path),
+         str(_pristine_checkout(tmp_path))],
         check=True, capture_output=True)
     wheels = list(tmp_path.glob("*.whl"))
     assert len(wheels) == 1, wheels
