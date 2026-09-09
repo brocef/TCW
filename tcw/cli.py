@@ -368,6 +368,19 @@ def _cmd_validate(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 1
     registry = FsProjectRegistry.open(node_root)
+    # Before the problem block, not after it, and that ordering is the point.
+    # An override is set in an environment rather than in any file this checkout
+    # holds, so a graph that resolves because of one resolves for a reason no
+    # reader can grep — and an override that landed on the *wrong* node names a
+    # path that appears in no config at all. This block returns as soon as it
+    # finds a problem, so anything printed below it is absent from exactly the
+    # run where the reader needs it most.
+    #
+    # Never counted and never fatal, like `unreachable()` and `misdirected()`:
+    # an override is a statement about this machine, not a defect.
+    for override in registry.overrides():
+        print(f"connected project '{override.id}' is overridden by "
+              f"{override.source} to {override.locator}", file=sys.stderr)
     registry_problems = registry.check()
     if registry_problems:
         for problem in registry_problems:
