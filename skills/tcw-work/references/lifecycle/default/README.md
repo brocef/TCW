@@ -21,10 +21,16 @@ and Codex while a skill only reaches whoever installed the plugin.
 ## Reading one
 
 ```sh
-tcw work stage begin <id> <slug>  # `inbox` takes no reference — it runs first
+tcw work stage prompt <id> [<slug>]  # `inbox` takes no reference — it runs first
 ```
 
-No checkout required: the command resolves the prompt out of the installed
+`prompt` is the reading verb: no legality check and no `pre` checks, so it
+answers for a stage the item is not ready for. The reference is optional — give
+one and the item-dependent parts resolve against it, omit it and you get the
+stage's generic text. To *enter* the stage instead, with its gates, run
+`tcw work stage begin <id> <slug>`.
+
+No checkout required: either command resolves the prompt out of the installed
 package. What it prints is what a stage actually receives, which a file in this
 repository would only approximate.
 
