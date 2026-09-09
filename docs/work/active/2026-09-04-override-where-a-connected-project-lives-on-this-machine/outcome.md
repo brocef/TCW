@@ -122,6 +122,52 @@ bounded: the failure is loud in `tcw validate`, and what `tcw provision` does is
 what it did before this feature existed. Flagged for the verify decision; it
 wants a follow-up item if it is wanted at all.
 
+## Second pass — the rework
+
+`rework.md` sent this back on 2026-09-09 over the gap recorded under
+*Deliberately not done* below, which the user assigned to this item rather than a
+follow-up. That section now describes something that has been fixed; it is left
+standing because it is the record of what verification found.
+
+| Task | Commit    | What landed                                                        |
+| ---- | --------- | ------------------------------------------------------------------ |
+| R1   | `e05c6e7` | `tcw provision` refuses a failed override before contacting anything |
+| R2   | `da130aa` | The wheel test builds from a pristine tracked tree                   |
+| —    | `7c4d374` | Documentation sync for both                                          |
+
+**R1.** `ProjectOverride` gained a `problem` field, and `_load_graph` now ends
+with `_reconcile_overrides`. The test it applies is the outcome rather than a
+list of failure modes: an override is satisfied when the graph holds its project,
+under its id, at the place it pointed. That covers both shapes with one rule,
+which mattered because they are found at different moments — a directory with no
+config when the override resolves, a directory holding the wrong node only after
+that node's config is read. `run_provision` refuses on any override carrying a
+problem, and the gate is failed overrides only, never graph problems at large.
+
+Verified in the reproduction, all four cases: a wrong-node override exits 1 with
+`TCW_PROJECT_PROPOSIT_CORE names …/ws/proposit-app, which is 'proposit-app-repo',
+not 'proposit-core'` and no cache entry; a not-a-node override exits 1 likewise;
+a good override still reports `already available` at exit 0; an absent one still
+falls through and fetches. Mutation-checked three ways, including deleting the
+`problem` filter so the gate refuses everything, which fails the two tests that
+assert a good override and an absent one still work.
+
+**R2, and the diagnosis changed.** `test_the_prompts_are_in_the_built_wheel` was
+recorded below as a pre-existing packaging failure. It is not a packaging failure
+at all. `tcw/work/prompts/` holds six files and git tracks exactly those six; the
+wheel gained a seventh because a stale `build/lib/tcw/work/prompts/inbox.md`
+dated 2026-09-02 sat in setuptools' staging directory, which
+`pip wheel --no-build-isolation` reuses. `build/` is gitignored, so CI never had
+one and this only ever failed on a machine that had built before — a test reading
+developer-local state and reporting it as a repository defect, the same class of
+problem the `TCW_PROJECT_*` conftest fixture was added for.
+
+It now copies the files `git ls-files` names into `tmp_path` and builds there.
+`git ls-files` rather than `git archive HEAD`, so uncommitted edits to tracked
+files are still exercised. It passes with the stale `inbox.md` still in `build/`,
+and still goes red when package data is genuinely missing — emptying `tcw.work`'s
+`package-data` in `pyproject.toml` fails it.
+
 ## Notes
 
 - Provisioning needed no code change for the *working* case. `_provision_nodes`
