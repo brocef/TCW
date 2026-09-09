@@ -52,6 +52,26 @@ def validate_project_id(project_id: str) -> str:
     return value
 
 
+def override_variable(project_id: str) -> str:
+    """The environment variable that says where `project_id` lives on this machine.
+
+    The id, uppercased, with `-` as `_`: `proposit-core` →
+    `TCW_PROJECT_PROPOSIT_CORE`. **Node ids, not repository names** — the two are
+    routinely different, and a workspace where they are crossed is what this
+    mapping is most often got wrong against.
+
+    Injective, and only because `PROJECT_ID_PATTERN` admits neither an
+    underscore nor an uppercase letter: with either allowed, `a_b` or `A-b` would
+    claim the same variable as `a-b`. `test_invalid_or_reserved_project_ids`
+    holds that guarantee, so this function may not be given a laxer id.
+
+    `TCW_PROJECT_` cannot collide with `TCW_WORK_OWNER`, the existing precedent
+    for this shape — an environment supplying a machine fact no shared config
+    can carry, read as one rung of an ordered fallback.
+    """
+    return "TCW_PROJECT_" + project_id.upper().replace("-", "_")
+
+
 # A CLI invocation never outlives the process, and a graph walk re-probes the
 # same handful of directories, so an unbounded module-level dict is the right
 # cache here — don't "fix" it into an LRU.

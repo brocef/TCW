@@ -5,6 +5,7 @@ import pytest
 from tcw.store.fs import init, write_sentinel
 from tcw.store.project import (
     FsProjectRegistry,
+    override_variable,
     validate_project_id,
     worktree_anchors,
 )
@@ -30,11 +31,34 @@ def reciprocal(parent: Path, parent_id: str, child: Path, child_id: str) -> None
 
 @pytest.mark.parametrize(
     "value",
-    ["Upper", "two_words", "-leading", "trailing-", "two--hyphens", "local", "active"],
+    ["Upper", "two_words", "-leading", "trailing-", "two--hyphens", "local", "active",
+     # `a_b` and `A-b` are here for a second reason, and it is the one that
+     # would be missed if they were ever pruned as duplicates of `two_words`
+     # and `Upper`. `override_variable` maps an id to an environment variable by
+     # uppercasing it and turning `-` into `_`, and that mapping is injective
+     # only because an id can contain neither an underscore nor an uppercase
+     # letter. Admit `a_b` and it collides with `a-b`; admit `A-b` and it
+     # collides with `a-b`. The id pattern is what keeps two distinct projects
+     # from claiming one variable, so it is tested as that guarantee.
+     "a_b", "A-b"],
 )
 def test_invalid_or_reserved_project_ids(value):
     with pytest.raises(ValueError):
         validate_project_id(value)
+
+
+def test_the_override_variable_name_follows_the_id():
+    """The id, uppercased with `-` as `_` — node ids, never repository names.
+
+    The distinction costs an hour when the two are crossed, which they are in
+    the workspace that prompted this: the directory `proposit-orchestration`
+    holds the node `proposit-app`, and the directory `proposit-app` holds the
+    node `proposit-app-repo`.
+    """
+    assert override_variable("proposit-core") == "TCW_PROJECT_PROPOSIT_CORE"
+    assert override_variable("proposit-app") == "TCW_PROJECT_PROPOSIT_APP"
+    assert override_variable("proposit-app-repo") == "TCW_PROJECT_PROPOSIT_APP_REPO"
+    assert override_variable("a") == "TCW_PROJECT_A"
 
 
 def test_arbitrary_absolute_layout_and_lookup(tmp_path):

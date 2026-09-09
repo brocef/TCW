@@ -164,3 +164,25 @@ def _no_git_background_maintenance(monkeypatch):
     """
     for key, value in _GIT_NO_MAINTENANCE.items():
         monkeypatch.setenv(key, value)
+
+
+@pytest.fixture(autouse=True)
+def _no_project_overrides(monkeypatch):
+    """No test sees a `TCW_PROJECT_*` variable from the developer's shell.
+
+    `override_variable` maps a project id to `TCW_PROJECT_<ID>`, and the
+    registry treats such a variable as the authoritative statement of where that
+    project sits — above the declared locator. A suite that inherits one
+    resolves a different graph than the one its fixture built, and the failure
+    is arbitrary: it depends on which ids the shell happens to name.
+
+    The acceptance criterion this exists for is "with no variable set, nothing
+    changes". A process that cannot say whether a variable is set cannot assert
+    it. So this is a correctness guard, not tidiness — the same register as the
+    desktop-opener guard above.
+
+    A test that *wants* an override sets it with `monkeypatch.setenv`, which
+    lands after this fixture and wins.
+    """
+    for name in [k for k in os.environ if k.startswith("TCW_PROJECT_")]:
+        monkeypatch.delenv(name, raising=False)
