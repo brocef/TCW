@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -11,9 +12,9 @@ from typing import Any
 import yaml
 
 from tcw.store.base import (
-    ConnectedProject, Project, ProjectRegistry, RepositoryDeclaration,
-    StoreDeclarationError, UnreachableProject, WORK_STATUSES,
-    parse_connected_entry,
+    ConnectedProject, Project, ProjectOverride, ProjectRegistry,
+    RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
+    WORK_STATUSES, parse_connected_entry,
 )
 from tcw.store.checkouts import provisioned_root
 
@@ -137,6 +138,16 @@ class FsProjectRegistry(ProjectRegistry):
         self._by_id: dict[str, _Config] = {}
         self._problems: list[str] = []
         self._unreachable: list[UnreachableProject] = []
+        # Rule 0's answer per project id, memoised. `_target_path` runs again for
+        # every edge during the reciprocity walk, so without this the disk is
+        # re-probed and `_overrides` grows with the graph's edge count.
+        self._override_cache: dict[str, Path | None] = {}
+        self._overrides: list[ProjectOverride] = []
+        # Ids whose override was present and wrong. They are not "not obtained
+        # yet", so they must not also be reported as unreachable — that would
+        # answer a refusal with `run tcw provision`, which is advice that
+        # contradicts it.
+        self._override_refused: set[str] = set()
         self._loaded = False
         self._current_path = self.node_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
@@ -222,6 +233,21 @@ class FsProjectRegistry(ProjectRegistry):
 
     def check(self) -> list[str]:
         return list(self._problems)
+
+    def overrides(self) -> list[ProjectOverride]:
+        """The `TCW_PROJECT_*` locators that took effect in this graph.
+
+        Discovered by walking, so the graph is loaded first: an override is in
+        force only where some config actually declares that project, and one
+        naming a project nothing connects to is never consulted. Listing it
+        would claim the graph depends on something it does not.
+
+        Includes an override that resolved to the *wrong* node. The id mismatch
+        is reported separately, and a reader who sees only that message is
+        looking at a path written in no config they can find.
+        """
+        self._load_graph()
+        return list(self._overrides)
 
     def unreachable(self) -> list[UnreachableProject]:
         """Declared projects this checkout does not have.
@@ -429,10 +455,21 @@ class FsProjectRegistry(ProjectRegistry):
         project nested beside its siblings and the machine that cloned one
         repository, without either being told about the other.
 
+        Above both sits rule 0, the environment's own statement — see
+        `_override_path`. It is first, not last, and that is load-bearing: the
+        case it exists for is a declared locator that resolves to the *wrong*
+        existing node, which no rung below rule 1 can reach. It is also the
+        honest ordering, since the ladder's standing rule is that the more
+        specific answer wins, and *I am telling you where this is on this
+        machine* is as specific as an answer gets.
+
         Falls back to the locator when neither rung answers, so the unreachable
         record names the place the user actually wrote — the declaration is what
         `tcw provision` acts on, not what the reader should be sent to check.
         """
+        override = self._override_path(entry.id)
+        if override is not None:
+            return override
         candidates: list[Path] = []
         if entry.locator is not None:
             candidates.append(self._locator_path(source_config, entry.locator))
@@ -452,6 +489,63 @@ class FsProjectRegistry(ProjectRegistry):
             if candidate.is_file():
                 return candidate
         return candidates[0] if candidates else (source_config.parent / SENTINEL)
+
+    def _override_path(self, project_id: str) -> Path | None:
+        """Rule 0: where `TCW_PROJECT_<ID>` says this project is, or None.
+
+        None means the ladder carries on — either no variable, or one naming a
+        path this machine does not have. A `Path` means it answered, and the
+        caller must not consult a lower rung.
+
+        **Absent is not wrong.** A variable pointing at a directory that is not
+        here means this machine does not have that project, which is the same
+        thing an unresolvable locator means, and `_read_config` has drawn that
+        distinction for every locator since fail-closed refused every checkout
+        holding part of a graph. It is what lets one set of variables be
+        configured once for an environment — a cloud session's base directory,
+        say — and used by sessions that attach different subsets of the
+        repositories, with neither needing to know which case it is in.
+
+        **Present and wrong is wrong.** A directory that is here and is not a
+        node is a mistake with no benign reading, and it is refused rather than
+        skipped. Skipping it is the fail-open shape that produces "my override
+        does nothing" with nothing at all to read.
+
+        A relative value resolves against the *process's working directory*, not
+        the declaring config — the one path in this module that does. A locator
+        is written in a file, so it means "relative to that file"; a variable is
+        written in a shell, so it means what the shell means.
+        """
+        if project_id not in self._override_cache:
+            self._override_cache[project_id] = self._resolve_override(project_id)
+        return self._override_cache[project_id]
+
+    def _resolve_override(self, project_id: str) -> Path | None:
+        name = override_variable(project_id)
+        value = (os.environ.get(name) or "").strip()
+        if not value:
+            # An exported-but-empty variable names no path. Reading it as one
+            # yields the working directory, which nobody means by `FOO=`.
+            return None
+        root = Path(value).expanduser()
+        if not root.is_absolute():
+            root = Path.cwd() / root
+        root = root.resolve()
+        if not root.is_dir():
+            return None
+        config_path = root / SENTINEL
+        if not config_path.is_file():
+            self._problem(root, f"{name} names a directory with no {SENTINEL}")
+            self._override_refused.add(project_id)
+            return config_path
+        # Recorded before the id is known to be right. An override that landed
+        # on the wrong node still explains a path the reader will otherwise find
+        # in no config, and `_read_config` reports the mismatch itself, naming
+        # both ids — parsing the config here to say it again would print two
+        # messages for one cause.
+        self._overrides.append(ProjectOverride(id=project_id, source=name,
+                                               locator=root))
+        return config_path
 
     def _locator_path(self, source_config: Path, locator: str) -> Path:
         target = Path(locator)
@@ -611,6 +705,10 @@ class FsProjectRegistry(ProjectRegistry):
         could ever render.
         """
         if not project_id:
+            return
+        if project_id in self._override_refused:
+            # Told where it is, and it is not a node. That is a refusal, not a
+            # thing to obtain, and `run tcw provision` would contradict it.
             return
         entry = UnreachableProject(id=project_id, locator=locator,
                                    declared_in=config_path,

@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from tcw.store.base import ProjectOverride
 from tcw.store.fs import init, write_sentinel
 from tcw.store.project import (
     FsProjectRegistry,
@@ -615,3 +616,222 @@ def test_a_graph_with_no_override_reports_none(tmp_path):
     registry = FsProjectRegistry.open(parent)
     registry.require_valid()
     assert registry.overrides() == []
+
+
+# --- Rule 0: the environment says where a project is on this machine ----------
+#
+# Each test below sets the variable explicitly and builds its own layout. There
+# is no helper defaulting a rung, deliberately: the resolution ladder is exactly
+# what these tests branch on, and a fixture that quietly fixed one axis is how
+# the store-provisioning epic left cells no test could reach.
+
+
+def _decoy_layout(tmp_path):
+    """A parent whose declared locator resolves to a *different existing node*.
+
+    The motivating case, and the one no lower rung can fix: the locator is not
+    absent, it is wrong, and it lands on a real node with another id.
+
+    Returns `(parent, real, decoy)`.
+    """
+    parent, real, decoy = tmp_path / "orchestrator", tmp_path / "real", tmp_path / "decoy"
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project: ../decoy\n",
+    )
+    config(decoy, "id: decoy-project\n")
+    config(
+        real,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    return parent, real, decoy
+
+
+def test_without_an_override_a_locator_on_the_wrong_node_is_an_error(tmp_path):
+    """The state the override exists to correct — asserted so the next test
+    cannot pass by resolving something that was never broken."""
+    parent, _real, _decoy = _decoy_layout(tmp_path)
+    registry = FsProjectRegistry.open(parent)
+    assert any("does not match target id 'decoy-project'" in p
+               for p in registry.check())
+    assert registry.get("child-project") is None
+
+
+def test_an_override_beats_a_locator_that_resolves_elsewhere(tmp_path, monkeypatch):
+    """Rule 0 beats rule 1, not merely rule 2 (criterion 1).
+
+    An override that only won where the locator was absent would leave the
+    motivating case exactly as broken as it was.
+    """
+    parent, real, _decoy = _decoy_layout(tmp_path)
+    monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(real))
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert Path(registry.get("child-project").locator) == real.resolve()
+    assert [c.id for c in registry.children()] == ["child-project"]
+    assert registry.overrides() == [
+        ProjectOverride(id="child-project", source="TCW_PROJECT_CHILD_PROJECT",
+                        locator=real.resolve()),
+    ]
+
+
+def test_an_override_at_an_absent_path_falls_through_to_the_declaration(
+        tmp_path, monkeypatch):
+    """Absent is not wrong (criterion 4).
+
+    This is what lets one set of variables be configured once for an
+    environment and used by sessions holding different subsets of the graph: a
+    variable naming a project this machine does not have must behave exactly as
+    no variable at all.
+    """
+    from tcw.store.base import RepositoryDeclaration
+    from tcw.store.checkouts import provisioned_root
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
+                                        ref="main")
+    obtained = provisioned_root(parent, declaration)
+    config(
+        obtained,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n      repository:\n"
+        "        url: https://example.invalid/child.git\n        ref: main\n",
+    )
+    monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(tmp_path / "not-here"))
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert registry.check() == []
+    assert [c.id for c in registry.children()] == ["child-project"]
+    assert registry.unreachable() == []
+    # Nothing took effect, so nothing is listed — which is what makes a
+    # mistyped variable conspicuous by its absence from `tcw validate`.
+    assert registry.overrides() == []
+
+
+def test_an_override_at_a_directory_that_is_not_a_node_is_a_problem(
+        tmp_path, monkeypatch):
+    """Present and wrong fails loudly, and does not fall through (criterion 5).
+
+    The fail-open shape this refuses: a mistyped variable landing on a real
+    directory, silently ignored, produces "my override does nothing" with
+    nothing to read.
+    """
+    from tcw.store.base import RepositoryDeclaration
+    from tcw.store.checkouts import provisioned_root
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    parent = tmp_path / "orchestrator"
+    declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
+                                        ref="main")
+    obtained = provisioned_root(parent, declaration)
+    config(
+        obtained,
+        "id: child-project\nconnected-projects:\n  parent:\n"
+        f"    root-project: {parent}\n",
+    )
+    config(
+        parent,
+        "id: root-project\nconnected-projects:\n  children:\n"
+        "    child-project:\n      path: ../child\n      repository:\n"
+        "        url: https://example.invalid/child.git\n        ref: main\n",
+    )
+    not_a_node = tmp_path / "empty"
+    not_a_node.mkdir()
+    monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(not_a_node))
+    registry = FsProjectRegistry.open(parent)
+    problems = registry.check()
+    assert len(problems) == 1
+    assert "TCW_PROJECT_CHILD_PROJECT" in problems[0]
+    assert str(not_a_node.resolve()) in problems[0]
+    with pytest.raises(ValueError):
+        registry.require_valid()
+    # It does NOT fall through: the provisioned copy is right there and is not
+    # used. Refusing and then quietly using the declaration anyway would make
+    # the message a lie.
+    assert registry.get("child-project") is None
+
+
+def test_an_override_naming_the_wrong_node_names_both_ids(tmp_path, monkeypatch):
+    """Criterion 6 — the likely mistake is the wrong sibling in a workspace of
+    similar directories, so the message has to say which one it found."""
+    parent, _real, decoy = _decoy_layout(tmp_path)
+    monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(decoy))
+    registry = FsProjectRegistry.open(parent)
+    problems = registry.check()
+    assert any("child-project" in p and "decoy-project" in p for p in problems)
+    with pytest.raises(ValueError):
+        registry.require_valid()
+    # Listed even though it is wrong, so `tcw validate` can print the override
+    # beside the mismatch. Otherwise the error names a path the reader cannot
+    # find in any config.
+    assert [o.source for o in registry.overrides()] == ["TCW_PROJECT_CHILD_PROJECT"]
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_an_empty_override_variable_does_not_adopt_the_working_directory(
+        tmp_path, monkeypatch, value):
+    """`FOO=` names no path, and must not be read as one.
+
+    The failure this guards is specific and silent. `Path("")` is `Path(".")`,
+    so an unguarded empty value resolves to the process's working directory —
+    and if the command happens to be run from a directory that *is* a node with
+    the right id, the override silently takes effect from a variable the user
+    deliberately blanked. So the test runs from exactly such a directory: if the
+    guard goes, `overrides()` is no longer empty.
+    """
+    parent, real, _decoy = _decoy_layout(tmp_path)
+    monkeypatch.chdir(real)                       # a real node for this very id
+    monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", value)
+    registry = FsProjectRegistry.open(parent)
+    assert registry.overrides() == []
+    assert any("does not match target id 'decoy-project'" in p
+               for p in registry.check())
+
+
+def test_an_override_value_survives_stray_surrounding_whitespace(
+        tmp_path, monkeypatch):
+    """A path exported with a trailing space is the path, not a missing one.
+
+    The same strip as the guard above, in the direction where dropping it fails
+    open rather than closed: the value would name a directory that is not there,
+    and absent-is-not-wrong would silently carry on to the declaration.
+    """
+    parent, real, _decoy = _decoy_layout(tmp_path)
+    monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", f"  {real}  ")
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert Path(registry.get("child-project").locator) == real.resolve()
+
+
+def test_the_override_is_probed_once_per_project(tmp_path, monkeypatch):
+    """The reciprocity walk re-enters `_target_path` for every edge.
+
+    Without memoisation each pass re-probes the disk and re-appends to the
+    override list, so `overrides()` grows with the graph's edge count. That
+    fails silently — the graph still resolves — which is why it is asserted
+    rather than left to review.
+    """
+    import tcw.store.project as project_module
+
+    parent, real, _decoy = _decoy_layout(tmp_path)
+    monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(real))
+    calls: list[str] = []
+    real_mapping = project_module.override_variable
+
+    def counting(project_id: str) -> str:
+        calls.append(project_id)
+        return real_mapping(project_id)
+
+    monkeypatch.setattr(project_module, "override_variable", counting)
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert calls.count("child-project") == 1
+    assert len(registry.overrides()) == 1
