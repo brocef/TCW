@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-08-20-claiming-lookup-embeds-an-unvalidated-slug-into-a-glob.md`
+
+## Inbox body
+
 # `_claiming_dirs` embeds an unvalidated slug into a glob
 
 ## Origin

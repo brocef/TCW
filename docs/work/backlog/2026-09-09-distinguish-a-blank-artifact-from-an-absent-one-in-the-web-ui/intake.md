@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `distinguish-a-blank-artifact-from-an-absent-one-in-the-web-ui.md`
+
+## Inbox body
+
 # Distinguish a blank artifact from an absent one in the web UI
 
 Follow-up from `2026-08-18-reconcile-read-artifact-with-the-canonical-presence-rule`.
