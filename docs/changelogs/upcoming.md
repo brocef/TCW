@@ -153,6 +153,11 @@ track which changes` opened at line 1084 and the next `###` was at 1432, so
   have overwritten the recorded output with what the code does now, destroying
   the back-compatibility evidence the file exists to hold, and the suite would
   still have passed.
+- `tests/test_generate_hook.py` — `test_a_grandchild_does_not_survive_the_timeout`
+  polls for the grandchild to disappear instead of sleeping 0.5s once. The kill
+  is synchronous but reaping is not, and the fixed wait failed about one run in
+  three under load. It still fails at its deadline when the grandchild genuinely
+  survives.
 - `tests/test_shipped_prompts.py` — `SHIPPED` is `set(STAGE_IDS)`;
   `test_every_stage_but_inbox_ships_a_prompt` became
   `test_every_stage_ships_a_prompt`.
