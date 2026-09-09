@@ -152,6 +152,16 @@ falls through and fetches. Mutation-checked three ways, including deleting the
 `problem` filter so the gate refuses everything, which fails the two tests that
 assert a good override and an absent one still work.
 
+**The suite after the rework**, run whole:
+
+```
+2403 passed in 1067.98s (0:17:47)
+```
+
+Zero failures — the first fully green run in this item, since the wheel test that
+failed in the first pass and at `ea11807` is the one R2 addresses. 24 tests added
+across both passes against the 2379-passing pre-work baseline.
+
 **R2, and the diagnosis changed.** `test_the_prompts_are_in_the_built_wheel` was
 recorded below as a pre-existing packaging failure. It is not a packaging failure
 at all. `tcw/work/prompts/` holds six files and git tracks exactly those six; the
