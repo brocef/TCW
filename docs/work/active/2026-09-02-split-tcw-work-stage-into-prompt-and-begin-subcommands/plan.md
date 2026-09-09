@@ -198,3 +198,54 @@ on that branch, because nothing ships between the two items.
 
 `pre` was specified and dropped during intake. Should a caller ever appear,
 `begin` already contains it and Task 1's `_stage_tail` is the seam to add it on.
+
+## Where this stands, and what is left
+
+Recorded 2026-09-09, on `claude/tcw-work-list-zx961v`, after merging `main` into
+the branch. Work continues in a different session, so this is what a reader
+picking it up needs to know.
+
+### Landed
+
+| Task | Commit | Note |
+| --- | --- | --- |
+| 1 — shared tail of `_stage` | `9194b2a` | |
+| 2 — `prompt` and `begin`, bare form removed | `67edccd` | |
+| 3 — illegal-status notice, node-qualified resolution | `67edccd` | |
+| 4 — gate-non-execution evidence | `67edccd` | the paired sentinel assertions are in `tests/test_stage_verb.py` |
+| 5 — documentation surface | `67edccd` | |
+| 6 — migration guide only | `102dd42` | the rest of Task 6 is outstanding |
+
+`pytest -q` on the merge commit: 2416 passed.
+
+### Outstanding — the rest of Task 6
+
+1. **Rewrite both `upcoming.md` files.** They still carry the in-flight claims
+   the plan says this item owns reconciling: that inbox "is the one stage you run
+   without naming a work item", and that "Every other stage is unchanged and
+   still takes its work item". Both are false once this item ships. Neither file
+   yet says anything about the `prompt`/`begin` split at all — the split commit
+   added no changelog or release-note entry, which is the gap this task closes.
+2. **`README.md` and `skills/tcw-work/SKILL.md`, the final documentation pass.**
+   `SKILL.md` already says `begin` from Task 5; confirm nothing else in it needs
+   the reading verb. The README no longer holds the prose Task 6 was written
+   against — see the merge note below.
+3. **Cut `2.0.0`** with `python scripts/cut_version.py 2.0.0`, after the two
+   `upcoming.md` rewrites land, since it rotates them.
+
+### What the merge from `main` changed about Task 6
+
+`main` restructured `README.md` from 1628 lines to about 320 and moved the
+reference material into `docs/guide/`. The stage prose this item edits now lives
+in `docs/guide/configuration.md` (entering versus reading, and the inbox
+exception) and `docs/guide/work.md` (the command reference). The merge already
+re-applied this branch's README edits into both, so Task 6's README pass is
+smaller than written: check that the pitch does not need a mention, rather than
+rewriting a reference section that is no longer there.
+
+Both `upcoming.md` files also now carry `main`'s entries for that restructure.
+The rewrite in item 1 above replaces this item's own claims, not those.
+
+### Still to verify by hand
+
+The four checks in `## Verification` above are all still open. None was run.

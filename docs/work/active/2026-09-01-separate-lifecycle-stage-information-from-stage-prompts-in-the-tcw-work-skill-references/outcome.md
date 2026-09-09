@@ -143,3 +143,24 @@ The full Cartesian legality sweep in `test_stage_verb.py` still covers
 `inbox` × every status and still expects rejection, which is correct: with a
 work item passed, `inbox` is refused. It passes unchanged, by a different code
 path than before.
+
+## Status as of 2026-09-09
+
+The item is still `active` on `claude/tcw-work-list-zx961v` and has not been
+submitted for verification. Nothing about the work above changed; what follows is
+where it sits.
+
+- **Awaiting `verify` and `complete`.** The outcome above is written and the
+  criteria are assessed, so the next step is submission, not more implementation.
+- **Criterion 13 stays unmet for a reason outside this item**, as recorded above:
+  `tcw validate` exits 1 on dangling `tcw://` references in three other backlog
+  items. It is tracked as
+  `2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes`.
+  Completion of this item should not wait on it.
+- **Nothing ships between this item and the one that follows it.** The
+  `prompt`/`begin` split on the same branch supersedes some of this item's
+  release-note wording, and that reconciliation belongs to that item's Task 6.
+  See its `plan.md`.
+- **The branch has been merged up to `main`** at commit `028dec7`, which
+  re-applied the README edits into `docs/guide/` after main's restructure. The
+  full suite passes there.
