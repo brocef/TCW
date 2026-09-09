@@ -121,3 +121,29 @@ release makes the first true only of `begin` and the second the break itself.
 The `2.0.0` cut is deliberately the last step, after all three items complete —
 `AGENTS.md` sequences it that way, and `cut_version.py` rotates the two
 `upcoming.md` files this item spent its last task writing.
+
+
+## Superseded within the same release
+
+`begin` never shipped. `2026-09-09-make-stage-begin-the-gate-alone-and-bookend-the-prompt-with-its-lifecycle-position`
+renamed it to `gate` and stopped it printing the instructions, both before 2.0.0
+was cut, so what a user migrates from is 1.x's bare form to two verbs in one
+edit.
+
+Three findings above are the reason that item exists, and they read differently
+now:
+
+- **Criterion 6 — the two verbs print byte-identical stdout.** Recorded here as
+  a pass, and it was: the criterion asked for exactly that. It was also the
+  defect. Identical output is what made every view composing a stage out of both
+  show the instructions twice, and what the stage documents' wording was twice
+  rewritten to excuse. `gate` prints none of it.
+- **The `--no-exec` header fix.** Still correct, and now moot in its particulars:
+  both verbs take the flag, and each header names the verb that printed it.
+- **"Is `prompt` worth its cost?"** Answered twice over. Its second caller, the
+  composing skill, is joined by the CLI itself — `gate`'s success line names
+  `prompt` as the verb that prints, so the split is now load-bearing inside the
+  tool and not only in the plugin.
+
+The acceptance criteria above were all met on the tree that existed when they
+were written. They are not re-asserted against `gate`; that item carries its own.

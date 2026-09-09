@@ -180,3 +180,20 @@ unchanged and still takes its work item" — are gone rather than left to
 contradict the shipped behaviour.
 
 The `2.0.0` cut follows the completion of all three items on this branch.
+
+
+## Superseded within the same release
+
+The `inbox` prompt this item shipped is unchanged and still the point. Two things
+said about how it is reached are not:
+
+- The command is `tcw work stage prompt inbox` to read it and
+  `tcw work stage gate inbox` to run the stage's checks. `tcw work stage inbox`,
+  the spelling every criterion above names, was replaced twice before 2.0.0 was
+  cut — first by `begin`, then by the two verbs.
+- What it prints is now wrapped in a gate header and a next-step footer, so the
+  byte-for-byte claims above hold of the prompt as resolved, not of stdout.
+
+Both come from
+`2026-09-09-make-stage-begin-the-gate-alone-and-bookend-the-prompt-with-its-lifecycle-position`.
+Nothing this item built was undone; only the verb that reaches it changed.
