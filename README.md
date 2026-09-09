@@ -461,6 +461,36 @@ connected-projects:
 A bare locator string stays a locator, so nothing already written changes. The
 ladder is the store's, and `tcw provision` is what walks it.
 
+**Telling TCW where a project actually is on this machine.** A locator is a fact
+about one machine, written in a file every machine reads — so it cannot describe
+a machine that lays the graph out differently. Set `TCW_PROJECT_<ID>` to say
+where a connected project really sits here:
+
+```sh
+export TCW_PROJECT_PROPOSIT_CORE=/home/you/proposit-core
+```
+
+The name is the project's ID, uppercased, with hyphens as underscores. **It
+follows node IDs, not repository names** — the two are often different.
+
+It is consulted first, above the declared locator and above `repository`. That
+ordering is the point: the case it exists for is a locator that resolves to the
+*wrong* place, and a rung below the locator could never correct it.
+
+Naming a project this machine does not have is **not** an error. The variable
+falls through to `repository` exactly as if it were unset, so one set of
+variables can be configured once for an environment — a cloud session, a CI
+runner — and used by sessions that check out different subsets of the
+repositories, with no session needing to know which case it is in. Naming
+something that *is* here and is wrong — a directory with no `tcw-config.yaml`, or
+a node with a different ID — is refused and says what it found.
+
+Every command honours it, because it is read when the graph is loaded rather than
+by any one command: `tcw provision` does not fetch a project an override
+resolves, and `tcw validate` prints a line naming each variable in effect and
+where it points, so a graph that resolves only because of one is never a mystery
+to the next reader.
+
 Relative locators resolve from the declaring config; absolute locators are also
 allowed. `children` contains direct children only and `parent` has at most one
 entry. TCW derives deeper descendants and ancestors transitively, never by

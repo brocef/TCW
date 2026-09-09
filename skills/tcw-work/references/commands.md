@@ -125,6 +125,18 @@ the same ladder — the project at `path` wins when it is here — so a checkout
 cloned one repository can still resolve `extends`, cross-node refs and the
 topology. Declarations follow the graph: each config names only its own edges.
 
+**One rung sits above both: `TCW_PROJECT_<ID>`** (the id uppercased, `-` as `_`),
+naming where that project is on *this* machine. It wins over the declared path
+and the declaration, because the case it exists for is a path that resolves to
+the *wrong* node — a workspace laid out flat where the config describes it
+nested, which is what makes `tcw provision` fetch a second copy of a project the
+machine already has. Reach for it before editing a shared config to match one
+machine. A variable naming a path that is not here is not an error and falls
+through to `repository`, so one set can serve a whole environment; one naming a
+directory that is present and wrong is refused. `tcw validate` lists the ones in
+effect — if a graph resolves for a reason no config explains, that list is where
+to look.
+
 `tcw provision` obtains the missing stores and connected projects. `--component`
 scopes the component pass; connected projects are obtained after it and
 **transitively**, since a project just obtained may declare others. That is the
