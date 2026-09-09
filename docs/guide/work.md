@@ -13,17 +13,40 @@ Raw requests enter through a permissive inbox, then accepted requests become
 formal work in a **single-node state machine** where status is the folder a work
 item lives in and a transition is a move between folders:
 
+```mermaid
+flowchart LR
+    inbox("raw inbox entry"):::outside
+    backlog("backlog")
+    active("active")
+    review("review")
+    completed("completed"):::terminal
+    discarded("discarded"):::terminal
+    gone(["deleted"]):::outside
+
+    inbox -->|accept| backlog
+    backlog -->|start| active
+    active -->|submit| review
+    review -.->|rework| active
+
+    active -->|done| completed
+    review -->|done| completed
+    backlog -.->|"done<br/>(completable epic only)"| completed
+
+    active -->|"wontfix · duplicate · superseded"| discarded
+    review -->|"wontfix · duplicate · superseded"| discarded
+    backlog -->|"wontfix · duplicate · superseded"| discarded
+
+    backlog -.->|drop| gone
+
+    classDef outside stroke-dasharray: 4 3
+    classDef terminal stroke-width:3px
 ```
-raw inbox entry  --accept-->  backlog  --start-->  active  --submit-->  review
-                                  |                    |                   |
-                                  |                    |     <--rework-----+
-                                  |                    |                   |
-                                  |   --resolution done-+-------------------+--> completed
-                                  |                    |                   |    ("we shipped it")
-                                  +--- wontfix / duplicate / superseded ---+--> discarded
-                                                            ("we closed it without shipping")
-                         (drop deletes a backlog item outright)
-```
+
+Each of the four solid boxes is a status, and therefore a folder. The two dashed
+boxes are not: an inbox entry is a raw file that has not become an item yet, and
+a dropped item is gone. Every edge into `completed` or `discarded` is
+`tcw work complete --resolution <r>`, labelled here by the resolution; the dashed
+edges are the exceptions to the ordinary forward path.
 
 The **resolution picks the destination**, so `completed/` answers "what
 shipped?" on its own. A backlog item can be discarded directly — abandoning an
