@@ -237,12 +237,15 @@ def test_documented_verbs_and_flags_exist(doc, tree):
 # Not derived from the CLI: a list of every subcommand would make this a
 # documentation mandate for `tcw work path`, which nobody needs a paragraph for.
 # Entries are added when a verb is worth finding by reading rather than by
-# `--help`.
+# `--help`. The prose home for the work commands is `docs/guide/work.md`; the
+# README is the pitch and links out to it, so it is not checked here.
 DOCUMENTED_VERBS = ("tcw work stage", "tcw work scaffold")
 
 
 @pytest.mark.parametrize("verb", DOCUMENTED_VERBS)
-@pytest.mark.parametrize("doc", ("README.md", "skills/tcw-work/references/commands.md"))
+@pytest.mark.parametrize(
+    "doc", ("docs/guide/work.md", "skills/tcw-work/references/commands.md")
+)
 def test_a_shipped_verb_is_findable_in_the_docs(verb, doc):
     assert verb in (REPO / doc).read_text(encoding="utf-8"), \
         f"{doc} never mentions `{verb}`"
