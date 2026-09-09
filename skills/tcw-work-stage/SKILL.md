@@ -36,6 +36,10 @@ project bound to it, and it refuses when either says no. If it refuses, the
 refusal is the answer; do not proceed on the strength of having read the
 instructions here.
 
+`begin` prints the same bytes the second block already gave you, so running it
+tells you nothing new — which is exactly why skipping it is tempting and wrong.
+What you are missing is not text. It is the check.
+
 If a block above is missing, empty, or shows a command error, this harness did
 not run the injected commands. Nothing is lost — run them yourself:
 

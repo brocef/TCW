@@ -3,8 +3,8 @@
 ## Purpose
 
 Getting the user's decision.
-Get your instructions on how to produce the output by running
-`tcw work stage begin verify <slug>`.
+Enter the stage with `tcw work stage begin verify <slug>` — it runs the
+gate, then prints the instructions for producing the output.
 
 ## Inputs
 

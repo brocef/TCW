@@ -93,9 +93,13 @@ category.
 - `stage-inbox.md` is a four-section router under the 40-line ceiling like its
   six siblings, keeping only what the CLI cannot say: non-delegability, the
   enforcement markers, and the pointers to plugin-only documents.
-- All seven stage documents now instruct rather than describe: "Get your
-  instructions on how to produce the output by running `tcw work stage begin
-  <id> <slug>`."
+- All seven stage documents now instruct rather than describe, and the
+  instruction is about **entering**: "Enter the stage with `tcw work stage begin
+  <id> <slug>` — it runs the gate, then prints the instructions for producing the
+  output." Worded that way because `begin` and `prompt` print byte-identical
+  text, so a sentence promising instructions reads as a duplicate wherever the
+  instructions are already on screen — which is every composed view. The gate is
+  the part only `begin` supplies, so the gate is what the sentence names.
 - **Every agent-facing surface says `begin`.** The seven routers, `SKILL.md`,
   `commands.md`, `hooks.md`, `documentation-sync`, `AGENTS.md`, three capability
   descriptions, and the docstrings in `templates.py`, `resolve.py`,
