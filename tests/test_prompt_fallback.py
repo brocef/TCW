@@ -9,7 +9,20 @@ change.
 It passes trivially on the tree it was captured from. That is the point — it is a
 tripwire armed ahead of the change, not a description of it.
 
-The `spec`, `plan`, and `postmortem` entries were **re-baselined once**, by
+The recorded bytes normalize the item's slug to `<slug>`, and the replay
+normalizes the same way. Since 2.0.0 the prompt's gate header and next-step
+footer quote the reference back, and a slug carries the date it was created —
+without this the fixture would expire at midnight rather than when the text
+actually changed.
+
+The whole file was **re-captured** by 2.0.0, which wrapped every resolved prompt
+in those bookends. That moved the text deliberately, so the old bytes would have
+asserted something false. What it pins from here is the bookended output; it no
+longer says anything about the `prompt`/`begin` split, which was text-preserving
+and hand-edited the `argv` arrays alone.
+
+Before that, the `spec`, `plan`, and `postmortem` entries were **re-baselined
+once**, by
 `2026-08-19-name-the-item-s-actual-body-artifact-in-the-builtin-spec-and-plan-stage-prompts`,
 which rewrote those prompts to name the item's own body artifact. Only those
 stdouts were replaced, and only after asserting the remaining stages were
@@ -55,12 +68,13 @@ def replayed(tmp_path_factory):
                            capture_output=True, check=True,
                            stdin=subprocess.DEVNULL)
             current = status
-        r = subprocess.run(["tcw", "work", "stage", "begin", stage, slug],
+        r = subprocess.run(["tcw", "work", "stage", "prompt", stage, slug],
                            cwd=root,
                            capture_output=True, text=True,
                            stdin=subprocess.DEVNULL)
-        out[stage] = {"returncode": r.returncode, "stdout": r.stdout,
-                      "stderr": r.stderr}
+        out[stage] = {"returncode": r.returncode,
+                      "stdout": r.stdout.replace(slug, "<slug>"),
+                      "stderr": r.stderr.replace(slug, "<slug>")}
     return out
 
 

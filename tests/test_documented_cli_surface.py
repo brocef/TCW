@@ -243,7 +243,7 @@ def test_documented_verbs_and_flags_exist(doc, tree):
 # Entries are added when a verb is worth finding by reading rather than by
 # `--help`. The prose home for the work commands is `docs/guide/work.md`; the
 # README is the pitch and links out to it, so it is not checked here.
-DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage begin",
+DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage gate",
                     "tcw work scaffold")
 
 

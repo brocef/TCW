@@ -30,7 +30,7 @@ STAGE_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "stage")
 TRANSITION_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "transition")
 
 # Every stage is a router over a prompt the CLI prints, `inbox` included: it
-# ships one too, reached by `tcw work stage begin inbox` with no work item
+# ships one too, reached by `tcw work stage prompt inbox` with no work item
 # reference.
 ROUTER_IDS = STAGE_IDS
 
@@ -171,15 +171,20 @@ def test_every_stage_document_names_the_harness_neutral_binding_command(stage_id
     """Codex receives no context injection, so every stage must carry the command
     both harnesses can run. `--directive` is sugar, never the path.
 
-    The command that answers "what do I do here" is `tcw work stage begin`,
-    which
-    resolves a binding *and* falls back to TCW's own instructions — for every
-    stage, `inbox` included.
+    Two commands now, and the document has to carry both. `tcw work stage gate`
+    is the only thing that refuses, and `tcw work stage prompt` is the only thing
+    that answers "what do I do here" — resolving a binding *and* falling back to
+    TCW's own instructions, for every stage, `inbox` included.
+
+    Naming only the second would leave a Codex reader with no route to the gate,
+    which is the failure this release's split makes possible: `prompt` never
+    refuses, so nothing about wanting the instructions makes anyone run the gate.
     """
     text = stage_doc(stage_id).read_text(encoding="utf-8")
-    wanted = f"tcw work stage begin {stage_id}"
-    assert wanted in text, \
-        f"stage-{stage_id}.md never tells the agent how to find its instructions"
+    for wanted in (f"tcw work stage gate {stage_id}",
+                   f"tcw work stage prompt {stage_id}"):
+        assert wanted in text, \
+            f"stage-{stage_id}.md never names `{wanted}`"
 
 
 # ── the routers stay routers ─────────────────────────────────────────────────
@@ -321,7 +326,7 @@ def test_the_composing_skill_reads_with_prompt_and_names_begin_for_entry():
     a documented route around the legality check and the `pre` bindings."""
     body = STAGE_SKILL.read_text()
     assert "tcw work stage prompt $stage $item" in body
-    assert "tcw work stage begin $stage $item" in body
+    assert "tcw work stage gate $stage $item" in body
 
 
 def test_the_composing_skill_declares_the_commands_it_injects():

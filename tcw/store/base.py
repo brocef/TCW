@@ -1152,6 +1152,32 @@ STAGE_STATUSES: dict[str, tuple[str, ...]] = {
 }
 
 
+# What a reader does once a stage's output is written, keyed by stage id.
+#
+# Navigation text, not a graph edge. `LIFECYCLE_STEPS` records what each step
+# gates and produces and deliberately carries no "next" pointer, because the
+# answer is not always a stage: after `plan` and after `implement` a *transition*
+# comes first, and a table that only knew about stages would send a reader to a
+# stage its status makes illegal. Rather than teach the model an edge it does not
+# need — which every store would then have to answer for — the sequence lives
+# here as the sentence a reader is shown.
+#
+# `postmortem` is the empty string, meaning nothing follows. It is rendered as a
+# sentence saying so rather than omitted, because a missing section reads as a
+# footer that failed to resolve.
+STAGE_NEXT_STEPS: dict[str, str] = {
+    "inbox": "run `tcw work stage gate request <slug>` on the item you accepted",
+    "request": "run `tcw work stage gate spec <slug>`",
+    "spec": "run `tcw work stage gate plan <slug>`",
+    "plan": ("run `tcw work start <slug>`, then "
+             "`tcw work stage gate implement <slug>`"),
+    "implement": ("run `tcw work submit <slug>`, then "
+                  "`tcw work stage gate verify <slug>`"),
+    "verify": "run `tcw work complete <slug> --resolution done --confirm`",
+    "postmortem": "",
+}
+
+
 def _parse_condition(raw: Any, where: str, problems: list[str]) -> "Condition | None":
     """Parse a `when:` mapping. Every shape is validated, not just `type`'s value.
 

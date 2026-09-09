@@ -1,14 +1,26 @@
-"""Capture `tcw work stage` output on a node that configures nothing.
+"""Capture `tcw work stage prompt` output on a node that configures nothing.
 
-Run **before** the documentation-entry substitution is built, and the recorded
-bytes become the back-compat tripwire for it: a project with no
-`work.documentation` must see byte-identical stage instructions afterwards.
+Run **before** a change that must not move the prompt text, and the recorded
+bytes become its back-compat tripwire: a project with no `work.documentation`
+must see byte-identical stage instructions afterwards.
 
     python tests/fixtures/prompt_fallback/capture.py <outdir>
 
 Captured before, this is evidence. Captured after, it would only record what the
 code now does — which is why `tests/fixtures/lifecycle_baseline/capture.py`, the
 script this is modelled on, says the same thing in its own docstring.
+
+**Re-capture only when a release intends the text to move, and say which one.**
+Twice so far it has been touched, and the two are opposites worth telling apart:
+
+- The `prompt`/`begin` split hand-edited the six `argv` arrays and left every
+  recorded byte of stdout alone, because that change was text-preserving and the
+  frozen bytes were the proof.
+- 2.0.0 then wrapped every resolved prompt in a gate header and a next-step
+  footer. That moves the text on purpose, so the file was **re-captured**: the
+  old bytes would have asserted something this release makes false. What it
+  pins from here is the bookended text, and it no longer says anything about
+  the split.
 
 Every stage is exercised at a status where it is **legal**, because
 `tcw work stage` refuses out-of-status stages and a refusal message pins nothing
@@ -32,11 +44,20 @@ WALK = [
 ]
 
 
-def _run(root: Path, *args: str) -> dict:
+# The item's slug carries the date it was created, and since 2.0.0 the prompt's
+# own header and footer quote it back. Recording it verbatim would make these
+# bytes expire at midnight, so every occurrence is normalized to this token on
+# the way in — and the replay normalizes the same way before comparing.
+SLUG_TOKEN = "<slug>"
+
+
+def _run(root: Path, slug: str, *args: str) -> dict:
     r = subprocess.run(["tcw", *args], cwd=str(root), capture_output=True,
                        text=True, stdin=subprocess.DEVNULL)
-    return {"argv": list(args), "returncode": r.returncode,
-            "stdout": r.stdout, "stderr": r.stderr}
+    def norm(t: str) -> str:
+        return t.replace(slug, SLUG_TOKEN)
+    return {"argv": [norm(a) for a in args], "returncode": r.returncode,
+            "stdout": norm(r.stdout), "stderr": norm(r.stderr)}
 
 
 def build_node(root: Path) -> str:
@@ -67,7 +88,7 @@ def capture_one(root: Path, slug: str) -> list[dict]:
                 cwd=str(root), capture_output=True,    # a legal transition
                 check=True, stdin=subprocess.DEVNULL)
             current = status
-        out.append(_run(root, "work", "stage", "begin", stage, slug))
+        out.append(_run(root, slug, "work", "stage", "prompt", stage, slug))
     return out
 
 

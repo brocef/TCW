@@ -8,11 +8,12 @@ import pytest
 import yaml
 
 from tcw.store.base import (
-    STAGE_IDS, STAGE_STATUSES, WORK_STATUSES, Artifact, WorkStore,
+    STAGE_IDS, STAGE_NEXT_STEPS, STAGE_STATUSES, WORK_STATUSES, Artifact,
+    WorkStore,
 )
 from tcw.store.fs import FsWorkStore, init
 from tcw.work.resolve import (
-    load_builtins, substitute_body, substitute_documentation)
+    bookend, load_builtins, substitute_body, substitute_documentation)
 
 
 def _node(tmp_path: Path, name: str = "repo") -> Path:
@@ -33,9 +34,9 @@ def _configure(root: Path, lifecycle: dict) -> None:
 
 
 def _cli(root: Path, *args: str):
-    """`tcw work stage begin …` — the verb that gates, which is what most of
-    this module is about. `_prompt` is the ungated sibling."""
-    return subprocess.run(["tcw", "work", "stage", "begin", *args],
+    """`tcw work stage gate …` — the verb that gates, which is what most of this
+    module is about. It prints no instructions; `_prompt` is what does."""
+    return subprocess.run(["tcw", "work", "stage", "gate", *args],
                           cwd=str(root), capture_output=True, text=True)
 
 
@@ -171,7 +172,10 @@ def test_a_transition_id_is_not_a_stage(one_of_each):
 # ── streams ──────────────────────────────────────────────────────────────────
 
 
-def test_stdout_is_only_prompt_text(tmp_path):
+def test_the_gate_prints_nothing_on_stdout(tmp_path):
+    """The verb's contract: an exit code, and everything else on stderr. A check
+    that writes to stdout must not reach the caller's, or a pipeline reading
+    `prompt` elsewhere cannot trust that this one is silent."""
     root = _node(tmp_path)
     st = FsWorkStore.open(root)
     item = st.create("Thing", body="req\n")
@@ -181,11 +185,31 @@ def test_stdout_is_only_prompt_text(tmp_path):
 
     r = _cli(root, "spec", item.slug)
     assert r.returncode == 0
-    assert r.stdout == "THE PROMPT\n"
+    assert r.stdout == ""
+    assert "THE PROMPT" not in r.stderr        # the gate resolves no prompt
     assert "check-out" in r.stderr and "check-err" in r.stderr
+    assert "tcw work stage prompt spec" in r.stderr
 
 
-def test_a_failing_check_resolves_nothing(tmp_path):
+def test_the_gate_resolves_no_prompt_at_all(tmp_path):
+    """Not "resolves and discards": a `generate:` binding must not run a script
+    for output nobody reads. Paired with the `prompt` half so that a generator
+    which never worked cannot pass the first assertion on its own."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Thing", body="req\n")
+    sentinel = (tmp_path / "GENERATED").resolve()
+    _configure(root, {"stages": {"spec": {
+        "prompt": [{"generate": f"touch {sentinel}; printf 'x'"}]}}})
+
+    assert _cli(root, "spec", item.slug).returncode == 0
+    assert not sentinel.exists(), "the gate resolved the stage's prompt"
+
+    assert _prompt(root, "spec", item.slug).returncode == 0
+    assert sentinel.exists(), "the generator never ran, so the check above proves nothing"
+
+
+def test_a_failing_check_stops_before_the_prompt_would_have_run(tmp_path):
     root = _node(tmp_path)
     st = FsWorkStore.open(root)
     item = st.create("Thing", body="req\n")
@@ -197,7 +221,7 @@ def test_a_failing_check_resolves_nothing(tmp_path):
     r = _cli(root, "spec", item.slug)
     assert r.returncode == 1
     assert r.stdout == ""
-    assert "exit 7" in r.stderr and "nothing resolved" in r.stderr
+    assert "exit 7" in r.stderr
     assert not sentinel.exists()
 
 
@@ -211,7 +235,7 @@ def test_a_late_generator_failure_leaves_stdout_empty(tmp_path):
         {"blob": "resolved first"},
         {"generate": "exit 5"}]}}})
 
-    r = _cli(root, "spec", item.slug)
+    r = _prompt(root, "spec", item.slug)
     assert r.returncode == 1
     assert r.stdout == ""
     assert "resolved first" not in r.stdout
@@ -245,7 +269,7 @@ def test_no_mutating_store_method_is_called(tmp_path, monkeypatch):
                             (lambda n: lambda *a, **k: called.append(n))(name))
 
     monkeypatch.chdir(root)
-    assert main(["work", "stage", "begin", "spec", item.slug]) == 0
+    assert main(["work", "stage", "gate", "spec", item.slug]) == 0
     assert called == [], f"`begin` called mutators: {called}"
 
     # `prompt` skips the gate, so it reaches resolution by a different path and
@@ -295,16 +319,21 @@ def test_no_exec_runs_nothing_and_names_what_it_skipped(tmp_path):
                    {"file": "guide.md"},
                    {"generate": f"touch {gen_sentinel}; printf 'gen'"}]}}})
 
-    r = _cli(root, "spec", item.slug, "--no-exec")
-    assert r.returncode == 0
-    assert not check_sentinel.exists() and not gen_sentinel.exists()
-    # Still a dry *run*: what resolves without executing is printed.
-    assert r.stdout == "static text\n"
-    assert "from a file" not in r.stdout          # a file read is observable too
-    assert "gen" not in r.stdout
-    assert "pre check would run" in r.stderr
-    assert f"touch {gen_sentinel}" in r.stderr
+    # Each verb reports its own half and nothing else, and neither prints on
+    # stdout: a dry run that emitted partial text could be mistaken for the
+    # instructions, which is the whole reason the plan goes to stderr.
+    g = _cli(root, "spec", item.slug, "--no-exec")
+    assert g.returncode == 0 and g.stdout == ""
+    assert "pre check would run" in g.stderr
+    assert "prompt file" not in g.stderr       # the prompt is not the gate's business
+
+    r = _prompt(root, "spec", item.slug, "--no-exec")
+    assert r.returncode == 0 and r.stdout == ""
     assert "prompt file" in r.stderr
+    assert f"touch {gen_sentinel}" in r.stderr
+    assert "pre check would run" not in r.stderr
+
+    assert not check_sentinel.exists() and not gen_sentinel.exists()
 
 
 def test_without_no_exec_the_same_stage_runs_everything(tmp_path):
@@ -320,25 +349,34 @@ def test_without_no_exec_the_same_stage_runs_everything(tmp_path):
         "prompt": [{"blob": "static text"}, {"file": "guide.md"},
                    {"generate": "printf 'gen'"}]}}})
 
-    r = _cli(root, "spec", item.slug)
-    assert r.returncode == 0
+    g = _cli(root, "spec", item.slug)
+    assert g.returncode == 0
     assert check_sentinel.exists()
-    assert r.stdout == "static text\n\nfrom a file\n\ngen\n"
+
+    r = _prompt(root, "spec", item.slug)
+    assert r.returncode == 0
+    assert "static text\n\nfrom a file\n\ngen" in r.stdout
 
 
-def test_no_exec_names_the_verb_that_accepts_it(tmp_path):
-    """The plan header is the one place `--no-exec` names a command, and only
-    `begin` takes the flag. It printed `tcw work stage <id>`, which 2.0.0
-    removed — a reader copying it out of a log gets a usage error."""
+def test_each_no_exec_header_names_the_verb_that_printed_it(tmp_path):
+    """Both verbs take the flag, so the header has to say which one ran or a
+    reader copying it out of a log runs the wrong command. Neither may name the
+    bare form, which is not a command at all."""
     root = _node(tmp_path)
     st = FsWorkStore.open(root)
     item = st.create("Thing", body="req\n")
     _configure(root, {"stages": {"spec": {"prompt": [{"blob": "text"}]}}})
 
-    r = _cli(root, "spec", item.slug, "--no-exec")
+    g = _cli(root, "spec", item.slug, "--no-exec")
+    assert g.returncode == 0
+    assert "tcw work stage gate spec: --no-exec" in g.stderr
+
+    r = _prompt(root, "spec", item.slug, "--no-exec")
     assert r.returncode == 0
-    assert "tcw work stage begin spec: --no-exec" in r.stderr
-    assert "tcw work stage spec:" not in r.stderr
+    assert "tcw work stage prompt spec: --no-exec" in r.stderr
+
+    for out in (g.stderr, r.stderr):
+        assert "tcw work stage spec:" not in out
 
 
 def test_no_exec_reports_a_condition_that_did_not_match(tmp_path):
@@ -350,9 +388,9 @@ def test_no_exec_reports_a_condition_that_did_not_match(tmp_path):
         {"blob": "for bugs", "when": {"tags": ["bug"]}},
         {"blob": "for all"}]}}})
 
-    r = _cli(root, "spec", item.slug, "--no-exec")
+    r = _prompt(root, "spec", item.slug, "--no-exec")
     assert "skipped (condition)" in r.stderr
-    assert r.stdout == "for all\n"
+    assert r.stdout == ""
 
 
 # ── the built-in floor, end to end ───────────────────────────────────────────
@@ -378,11 +416,12 @@ def test_an_unconfigured_node_prints_tcws_own_instructions(one_of_each):
     has_request = [Artifact("initial-request", True)]
     for stage in sorted(set(STAGE_IDS) - {"inbox"}):
         status = STAGE_STATUSES[stage][0]
-        r = _cli(root, stage, slugs[status])
+        slug = slugs[status]
+        r = _prompt(root, stage, slug)
         assert r.returncode == 0, r.stderr
-        expected = substitute_body(
+        resolved = substitute_body(
             substitute_documentation(shipped[stage], ()), has_request)
-        assert r.stdout == expected.rstrip() + "\n"
+        assert r.stdout == bookend(resolved, stage, slug) + "\n"
 
 
 def test_inbox_prints_its_prompt_with_no_item(one_of_each):
@@ -395,9 +434,10 @@ def test_inbox_prints_its_prompt_with_no_item(one_of_each):
     presence-only check.
     """
     root, _ = one_of_each
-    r = _cli(root, "inbox")
+    r = _prompt(root, "inbox")
     assert r.returncode == 0, r.stderr
-    assert r.stdout == load_builtins().stage_prompts["inbox"].rstrip() + "\n"
+    assert r.stdout == bookend(
+        load_builtins().stage_prompts["inbox"], "inbox", "<slug>") + "\n"
     assert r.stderr == ""
     assert "runs before an item exists" not in r.stderr
 
@@ -443,11 +483,10 @@ def test_prompt_says_so_on_stderr_when_the_stage_is_not_legal(one_of_each):
     assert "not legal" in r.stderr and "backlog" in r.stderr
 
 
-def test_prompt_and_begin_print_the_same_bytes_where_begin_is_allowed(tmp_path):
-    """`prompt` skips the gate, not the resolution. With deterministic bindings
-    and a legal stage the two verbs must be indistinguishable on stdout —
-    otherwise `prompt` is answering a different question than the one `begin`
-    would have answered."""
+def test_the_two_verbs_no_longer_print_the_same_bytes(tmp_path):
+    """They did, and that was the defect. Any view composing a stage out of both
+    showed the instructions twice, and every wording around it was an apology for
+    the repetition. `gate` now prints none of it."""
     root = _node(tmp_path)
     st = FsWorkStore.open(root)
     item = st.create("Thing", body="req\n")
@@ -455,13 +494,14 @@ def test_prompt_and_begin_print_the_same_bytes_where_begin_is_allowed(tmp_path):
     _configure(root, {"stages": {"spec": {
         "prompt": [{"blob": "static text"}, {"file": "guide.md"}]}}})
 
-    begun = _cli(root, "spec", item.slug)
+    gated = _cli(root, "spec", item.slug)
     read = _prompt(root, "spec", item.slug)
-    assert begun.returncode == 0 and read.returncode == 0, begun.stderr
-    assert begun.stdout == read.stdout != ""
+    assert gated.returncode == 0 and read.returncode == 0, gated.stderr
+    assert gated.stdout == ""
+    assert "static text" in read.stdout and "from a file" in read.stdout
 
 
-def test_prompt_runs_no_gate_and_begin_does(tmp_path):
+def test_prompt_runs_no_gate_and_the_gate_verb_does(tmp_path):
     """The paired assertion. A `pre` binding that leaves a trace is the only way
     to observe non-execution: without the `begin` half, the `prompt` half passes
     just as well when the gate is broken and never runs at all.
@@ -479,12 +519,12 @@ def test_prompt_runs_no_gate_and_begin_does(tmp_path):
 
     read = _prompt(root, "plan", item.slug)
     assert read.returncode == 0, read.stderr
-    assert read.stdout == "plan instructions\n"
+    assert "plan instructions" in read.stdout
     assert not sentinel.exists(), "prompt ran the stage's pre binding"
 
-    begun = _cli(root, "plan", item.slug)
-    assert begun.returncode == 1
-    assert begun.stdout == ""
+    gated = _cli(root, "plan", item.slug)
+    assert gated.returncode == 1
+    assert gated.stdout == ""
     assert sentinel.exists(), "the gate never ran, so the check above proves nothing"
 
 
@@ -502,11 +542,11 @@ def test_a_condition_matches_only_when_an_item_is_named(tmp_path):
 
     generic = _prompt(root, "spec")
     assert generic.returncode == 0, generic.stderr
-    assert generic.stdout == "for all\n"
+    assert "for all" in generic.stdout and "for bugs" not in generic.stdout
 
     for_item = _prompt(root, "spec", item.slug)
     assert for_item.returncode == 0, for_item.stderr
-    assert for_item.stdout == "for bugs\n\nfor all\n"
+    assert "for bugs\n\nfor all" in for_item.stdout
 
 
 def test_a_qualified_reference_reads_the_owning_nodes_bindings(tmp_path):
@@ -532,7 +572,7 @@ def test_a_qualified_reference_reads_the_owning_nodes_bindings(tmp_path):
 
     r = _prompt(anchor, "spec", f"child/{item.slug}")
     assert r.returncode == 0, r.stderr
-    assert r.stdout == "CHILD TEXT\n"
+    assert "CHILD TEXT" in r.stdout and "ANCHOR TEXT" not in r.stdout
 
 
 def test_prompt_refuses_a_work_item_for_inbox(one_of_each):
@@ -546,11 +586,12 @@ def test_prompt_refuses_a_work_item_for_inbox(one_of_each):
 
     ok = _prompt(root, "inbox")
     assert ok.returncode == 0, ok.stderr
-    assert ok.stdout == load_builtins().stage_prompts["inbox"].rstrip() + "\n"
+    assert ok.stdout == bookend(
+        load_builtins().stage_prompts["inbox"], "inbox", "<slug>") + "\n"
 
 
-def test_begin_inbox_runs_the_stages_pre_bindings(tmp_path):
-    """`begin inbox` skips the *legality* check because there is no status to
+def test_gate_inbox_runs_the_stages_pre_bindings(tmp_path):
+    """`gate inbox` skips the *legality* check because there is no status to
     check, not the `pre` checks. Nothing else asserts this, and an inbox branch
     written as an early return would silently drop them."""
     root = _node(tmp_path)
@@ -561,19 +602,29 @@ def test_begin_inbox_runs_the_stages_pre_bindings(tmp_path):
 
     r = _cli(root, "inbox")
     assert r.returncode == 0, r.stderr
-    assert r.stdout == "triage it\n"
-    assert sentinel.exists()
-
-
-def test_prompt_rejects_no_exec_and_names_the_verb_that_takes_it(tmp_path):
-    """Not "there is nothing to report": `--no-exec` suppresses the `file:` and
-    `generate:` bindings `prompt` exists to resolve, so it would print text that
-    looks complete and is not."""
-    root = _node(tmp_path)
-    r = _prompt(root, "spec", "--no-exec")
-    assert r.returncode == 1
     assert r.stdout == ""
-    assert "tcw work stage begin --no-exec" in r.stderr
+    assert sentinel.exists()
+    assert "triage it" in _prompt(root, "inbox").stdout
+
+
+def test_prompt_accepts_no_exec_and_prints_no_text(tmp_path):
+    """It used to refuse the flag, because suppressing `file:` and `generate:`
+    would leave incomplete *instructions* on stdout. It leaves none there at all:
+    the plan goes to stderr. Refusing now would drop the conditioned
+    matched/skipped diagnostic from the CLI, since `gate` reports only its own
+    bindings."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Thing", body="req\n")
+    (root / "guide.md").write_text("from a file\n")
+    _configure(root, {"stages": {"spec": {
+        "prompt": [{"blob": "text"}, {"file": "guide.md"}]}}})
+
+    r = _prompt(root, "spec", item.slug, "--no-exec")
+    assert r.returncode == 0
+    assert r.stdout == ""
+    assert "from a file" not in r.stderr        # the file is not read either
+    assert "prompt file — matched: guide.md" in r.stderr
 
 
 def test_prompt_reports_its_own_errors_on_stderr_alone(tmp_path):
@@ -596,7 +647,7 @@ def test_an_unknown_stage_names_the_verb_it_was_reached_through(tmp_path):
     the reader typed or it names a command they did not run."""
     root = _node(tmp_path)
     assert "tcw work stage prompt: unknown stage" in _prompt(root, "speck").stderr
-    assert "tcw work stage begin: unknown stage" in _cli(root, "speck", "x").stderr
+    assert "tcw work stage gate: unknown stage" in _cli(root, "speck", "x").stderr
 
 
 # ── the form removed in 2.0.0 ────────────────────────────────────────────────
@@ -609,8 +660,8 @@ def test_the_bare_form_is_a_usage_error_naming_both_verbs(one_of_each):
     r = _bare(root, "spec", slugs["backlog"])
     assert r.returncode == 2
     assert r.stdout == ""
-    assert f"tcw work stage begin spec {slugs['backlog']}" in r.stderr
-    assert "tcw work stage prompt spec" in r.stderr
+    assert f"tcw work stage gate spec {slugs['backlog']}" in r.stderr
+    assert f"tcw work stage prompt spec {slugs['backlog']}" in r.stderr
 
 
 def test_the_bare_form_resolves_nothing_and_runs_nothing(tmp_path):
@@ -629,3 +680,79 @@ def test_the_bare_form_resolves_nothing_and_runs_nothing(tmp_path):
     assert r.returncode == 2
     assert "THE PROMPT" not in r.stdout + r.stderr
     assert not sentinel.exists()
+
+
+# ── the bookends ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("stage_id", STAGE_IDS)
+def test_every_stage_is_bookended_with_its_own_gate_and_next_step(stage_id,
+                                                                  one_of_each):
+    """The header is the replacement for a guarantee this release gave up.
+    `prompt` gates nothing, so wanting the instructions no longer makes anyone
+    run `gate` — the reminder has to ride with the text, where every reader sees
+    it under either harness rather than only through the Claude-only skill."""
+    root, slugs = one_of_each
+    if stage_id == "inbox":
+        # Resolved without a reference, so the commands keep the placeholder —
+        # and `inbox`'s own gate invocation takes none at all.
+        r, ref, gate = _prompt(root, "inbox"), "<slug>", "tcw work stage gate inbox"
+    else:
+        ref = slugs[STAGE_STATUSES[stage_id][0]]
+        r = _prompt(root, stage_id, ref)
+        gate = f"tcw work stage gate {stage_id} {ref}"
+    assert r.returncode == 0, r.stderr
+
+    assert r.stdout.startswith("> **This text ran no checks.**")
+    assert gate in r.stdout.splitlines()[0]
+    assert "## When this stage's output is written" in r.stdout
+    nxt = STAGE_NEXT_STEPS[stage_id].replace("<slug>", ref)
+    expected = (nxt[0].upper() + nxt[1:] + "." if nxt else
+                "Nothing follows. This stage runs out of band and moves no item.")
+    assert r.stdout.rstrip().endswith(expected)
+
+
+def test_postmortem_says_nothing_follows_rather_than_omitting_the_section(
+        one_of_each):
+    """A missing section reads as a footer that failed to resolve. `postmortem`
+    is the one stage nothing follows, so it says so."""
+    root, slugs = one_of_each
+    r = _prompt(root, "postmortem", slugs["review"])
+    assert r.returncode == 0, r.stderr
+    assert "## When this stage's output is written" in r.stdout
+    assert "Nothing follows" in r.stdout
+    assert "tcw work stage gate " in r.stdout.splitlines()[0]   # header only
+
+
+def test_the_bookends_wrap_a_projects_own_bindings_too(tmp_path):
+    """Overriding what a stage *says* is not overriding where the lifecycle goes
+    next, and a reader of the overridden text needs the gate reminder just as
+    much. A wrapper applied only to the built-in floor would give the reminder
+    to exactly the projects that configured nothing."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Thing", body="req\n")
+    _configure(root, {"stages": {"spec": {"prompt": [{"blob": "OURS ALONE"}]}}})
+
+    r = _prompt(root, "spec", item.slug)
+    assert r.returncode == 0, r.stderr
+    assert "OURS ALONE" in r.stdout
+    assert r.stdout.startswith("> **This text ran no checks.**")
+    assert f"tcw work stage gate plan {item.slug}" in r.stdout
+
+
+def test_a_stage_that_resolves_to_nothing_is_not_bookended(tmp_path):
+    """`resolve_prompts` promises that a stage whose only binding does not match
+    resolves to nothing. Wrapping that nothing would turn silence into a header
+    and a footer around an empty middle, which reads as a stage that failed to
+    resolve rather than one the project deliberately silenced."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    st.register_tags(["bug"])
+    item = st.create("Thing", body="req\n")          # no tags
+    _configure(root, {"stages": {"spec": {"prompt": [
+        {"blob": "only for bugs", "when": {"tags": ["bug"]}}]}}})
+
+    r = _prompt(root, "spec", item.slug)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == ""
