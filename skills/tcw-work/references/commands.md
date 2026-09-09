@@ -133,9 +133,10 @@ nested, which is what makes `tcw provision` fetch a second copy of a project the
 machine already has. Reach for it before editing a shared config to match one
 machine. A variable naming a path that is not here is not an error and falls
 through to `repository`, so one set can serve a whole environment; one naming a
-directory that is present and wrong is refused. `tcw validate` lists the ones in
-effect — if a graph resolves for a reason no config explains, that list is where
-to look.
+directory that is present and wrong is refused — by `tcw provision` too, which
+stops before contacting anything rather than falling back to a fetch.
+`tcw validate` lists the ones in effect — if a graph resolves for a reason no
+config explains, that list is where to look.
 
 `tcw provision` obtains the missing stores and connected projects. `--component`
 scopes the component pass; connected projects are obtained after it and

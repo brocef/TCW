@@ -25,6 +25,24 @@ category.
 - **`tcw validate` reports active overrides**, one line each, on stderr, before
   the graph-problem block — that block returns, so a line after it is absent from
   the run where a wrong override is being diagnosed. Never counted, never fatal.
+- **`tcw provision` refuses a failed override** and returns 1 before contacting
+  anything. `ProjectOverride.problem` carries the reason, filled in by
+  `_reconcile_overrides` at the end of `_load_graph` — an override is satisfied
+  only when the graph holds its project, under its id, at the overridden
+  location, so both failure shapes are covered by one test rather than a list.
+  The gate is failed overrides only, never graph problems at large:
+  `_declared_nodes_in_graph` opens the registry without `require_valid`
+  deliberately, since completing an incomplete graph is what the command is for.
+
+### Fixed
+
+- **`test_the_prompts_are_in_the_built_wheel` no longer reads developer-local
+  state.** It built from the repository directory, so `setuptools` reused
+  whatever `build/` was present and copied long-deleted files into the wheel. It
+  now copies the files `git ls-files` names into `tmp_path` and builds there —
+  `git ls-files` rather than `git archive HEAD`, so uncommitted edits to tracked
+  files are still exercised. `build/` is gitignored, so this only ever failed on
+  a machine that had built before.
 
 ### Internal
 

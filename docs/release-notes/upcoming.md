@@ -18,9 +18,12 @@ make TCW download a second copy of a project you already had.
 A variable naming a folder you do not have is not an error. It quietly falls
 back to fetching, exactly as if you had set nothing. So one set of variables can
 be set up once for a whole environment — a cloud session, a build runner — and
-reused by sessions that have different repositories checked out. A variable
-naming a folder that *is* there but holds the wrong thing is refused, and the
-message says what it found instead.
+reused by sessions that have different repositories checked out.
+
+A variable naming a folder that *is* there but holds the wrong thing is refused,
+and the message says what it found instead. `tcw provision` refuses it too, and
+stops before downloading anything — so a typo cannot quietly go back to
+downloading the second copy this feature exists to prevent.
 
 `tcw validate` now prints a line for each variable in effect and where it points,
 so a project graph that only works because of one is never a mystery to whoever

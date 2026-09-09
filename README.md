@@ -487,9 +487,10 @@ a node with a different ID — is refused and says what it found.
 
 Every command honours it, because it is read when the graph is loaded rather than
 by any one command: `tcw provision` does not fetch a project an override
-resolves, and `tcw validate` prints a line naming each variable in effect and
-where it points, so a graph that resolves only because of one is never a mystery
-to the next reader.
+resolves, and refuses outright — before contacting anything — when a variable
+names something that is present and wrong. `tcw validate` prints a line naming
+each variable in effect and where it points, so a graph that resolves only
+because of one is never a mystery to the next reader.
 
 Relative locators resolve from the declaring config; absolute locators are also
 allowed. `children` contains direct children only and `parent` has at most one
