@@ -400,3 +400,232 @@ def test_inbox_prints_its_prompt_with_no_item(one_of_each):
     assert r.stdout == load_builtins().stage_prompts["inbox"].rstrip() + "\n"
     assert r.stderr == ""
     assert "runs before an item exists" not in r.stderr
+
+
+# ── the reading verb ─────────────────────────────────────────────────────────
+
+
+def test_prompt_prints_the_built_in_for_every_stage_unconfigured(one_of_each):
+    """`prompt` reaches all seven stages on a node that configured nothing.
+
+    `inbox` is included and is the one that takes no reference, which is why the
+    loop cannot simply pass a slug to each.
+    """
+    root, slugs = one_of_each
+    shipped = load_builtins().stage_prompts
+    for stage in STAGE_IDS:
+        r = _prompt(root, stage) if stage == "inbox" else _prompt(
+            root, stage, slugs["backlog"])
+        assert r.returncode == 0, f"{stage}: {r.stderr}"
+        assert shipped[stage].strip().splitlines()[0] in r.stdout
+
+
+def test_prompt_answers_for_an_item_in_any_status(one_of_each):
+    """The whole point: `begin` refuses most of this matrix, and `prompt` is how
+    you ask anyway. Swept over the same product as the legality test, so the two
+    disagree by design rather than by omission."""
+    root, slugs = one_of_each
+    for stage in sorted(set(STAGE_IDS) - {"inbox"}):
+        for status in WORK_STATUSES:
+            r = _prompt(root, stage, slugs[status])
+            assert r.returncode == 0, (
+                f"{stage} in {status}: rc={r.returncode} {r.stderr}")
+            assert r.stdout != ""
+
+
+def test_prompt_says_so_on_stderr_when_the_stage_is_not_legal(one_of_each):
+    """Exit 0 and a note, not an error. stdout carries the instructions alone,
+    so a caller piping it gets the whole text and nothing else."""
+    root, slugs = one_of_each
+    r = _prompt(root, "implement", slugs["backlog"])
+    assert r.returncode == 0
+    assert r.stdout != "" and "not legal" not in r.stdout
+    assert "not legal" in r.stderr and "backlog" in r.stderr
+
+
+def test_prompt_and_begin_print_the_same_bytes_where_begin_is_allowed(tmp_path):
+    """`prompt` skips the gate, not the resolution. With deterministic bindings
+    and a legal stage the two verbs must be indistinguishable on stdout —
+    otherwise `prompt` is answering a different question than the one `begin`
+    would have answered."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Thing", body="req\n")
+    (root / "guide.md").write_text("from a file\n")
+    _configure(root, {"stages": {"spec": {
+        "prompt": [{"blob": "static text"}, {"file": "guide.md"}]}}})
+
+    begun = _cli(root, "spec", item.slug)
+    read = _prompt(root, "spec", item.slug)
+    assert begun.returncode == 0 and read.returncode == 0, begun.stderr
+    assert begun.stdout == read.stdout != ""
+
+
+def test_prompt_runs_no_gate_and_begin_does(tmp_path):
+    """The paired assertion. A `pre` binding that leaves a trace is the only way
+    to observe non-execution: without the `begin` half, the `prompt` half passes
+    just as well when the gate is broken and never runs at all.
+
+    A throwaway sentinel command rather than this repository's
+    `require_artifact.py`, which writes nothing and so can evidence nothing.
+    """
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Thing", body="req\n")     # backlog: `plan` is legal…
+    sentinel = (tmp_path / "GATE-RAN").resolve()
+    _configure(root, {"stages": {"plan": {
+        "pre": [{"command": f"touch {sentinel}; exit 1"}],
+        "prompt": [{"blob": "plan instructions"}]}}})
+
+    read = _prompt(root, "plan", item.slug)
+    assert read.returncode == 0, read.stderr
+    assert read.stdout == "plan instructions\n"
+    assert not sentinel.exists(), "prompt ran the stage's pre binding"
+
+    begun = _cli(root, "plan", item.slug)
+    assert begun.returncode == 1
+    assert begun.stdout == ""
+    assert sentinel.exists(), "the gate never ran, so the check above proves nothing"
+
+
+def test_a_condition_matches_only_when_an_item_is_named(tmp_path):
+    """What makes the optional reference worth having rather than cosmetic: the
+    two invocations resolve different text on purpose."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    st.register_tags(["bug"])
+    item = st.create("Thing", body="req\n")
+    st.update_work(item.slug, tags=["bug"])
+    _configure(root, {"stages": {"spec": {"prompt": [
+        {"blob": "for bugs", "when": {"tags": ["bug"]}},
+        {"blob": "for all"}]}}})
+
+    generic = _prompt(root, "spec")
+    assert generic.returncode == 0, generic.stderr
+    assert generic.stdout == "for all\n"
+
+    for_item = _prompt(root, "spec", item.slug)
+    assert for_item.returncode == 0, for_item.stderr
+    assert for_item.stdout == "for bugs\n\nfor all\n"
+
+
+def test_a_qualified_reference_reads_the_owning_nodes_bindings(tmp_path):
+    """`prompt <stage> <project-id>/<slug>` answers with the *other* node's
+    configuration. Both nodes bind the stage, to different text, so a resolution
+    that quietly stayed in the anchor node would still print something."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t"],
+                   check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "t"],
+                   check=True)
+    anchor, child = tmp_path / "anchor", tmp_path / "child"
+    for path, name in ((anchor, "anchor"), (child, "child")):
+        path.mkdir()
+        init(["work"], path, name)
+    (anchor / "tcw-config.yaml").write_text(
+        "id: anchor\nconnected-projects:\n  children:\n    child: ../child\n")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    anchor: ../anchor\n")
+    _configure(anchor, {"stages": {"spec": {"prompt": [{"blob": "ANCHOR TEXT"}]}}})
+    _configure(child, {"stages": {"spec": {"prompt": [{"blob": "CHILD TEXT"}]}}})
+    item = FsWorkStore.open(child).create("Thing", body="req\n")
+
+    r = _prompt(anchor, "spec", f"child/{item.slug}")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == "CHILD TEXT\n"
+
+
+def test_prompt_refuses_a_work_item_for_inbox(one_of_each):
+    """Same rule as `begin`, and for the same reason: there is no item yet, so a
+    reference is a mistake to report rather than something to interpret."""
+    root, slugs = one_of_each
+    r = _prompt(root, "inbox", slugs["backlog"])
+    assert r.returncode == 1
+    assert r.stdout == ""
+    assert "takes no work item" in r.stderr
+
+    ok = _prompt(root, "inbox")
+    assert ok.returncode == 0, ok.stderr
+    assert ok.stdout == load_builtins().stage_prompts["inbox"].rstrip() + "\n"
+
+
+def test_begin_inbox_runs_the_stages_pre_bindings(tmp_path):
+    """`begin inbox` skips the *legality* check because there is no status to
+    check, not the `pre` checks. Nothing else asserts this, and an inbox branch
+    written as an early return would silently drop them."""
+    root = _node(tmp_path)
+    sentinel = (tmp_path / "INBOX-CHECK").resolve()
+    _configure(root, {"stages": {"inbox": {
+        "pre": [{"command": f"touch {sentinel}"}],
+        "prompt": [{"blob": "triage it"}]}}})
+
+    r = _cli(root, "inbox")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == "triage it\n"
+    assert sentinel.exists()
+
+
+def test_prompt_rejects_no_exec_and_names_the_verb_that_takes_it(tmp_path):
+    """Not "there is nothing to report": `--no-exec` suppresses the `file:` and
+    `generate:` bindings `prompt` exists to resolve, so it would print text that
+    looks complete and is not."""
+    root = _node(tmp_path)
+    r = _prompt(root, "spec", "--no-exec")
+    assert r.returncode == 1
+    assert r.stdout == ""
+    assert "tcw work stage begin --no-exec" in r.stderr
+
+
+def test_prompt_reports_its_own_errors_on_stderr_alone(tmp_path):
+    """Every failure originating in the verb's own handler: exit 1, nothing on
+    stdout, the reason on stderr."""
+    root = _node(tmp_path)
+    for args, expected in (
+            (("speck",), "unknown stage 'speck'"),
+            (("complete",), "unknown stage 'complete'"),
+            (("spec", "no-such-item"), "no such work item"),
+    ):
+        r = _prompt(root, *args)
+        assert r.returncode == 1, args
+        assert r.stdout == "", args
+        assert expected in r.stderr, (args, r.stderr)
+
+
+def test_an_unknown_stage_names_the_verb_it_was_reached_through(tmp_path):
+    """The two verbs share `_stage_step`, so the message has to carry which one
+    the reader typed or it names a command they did not run."""
+    root = _node(tmp_path)
+    assert "tcw work stage prompt: unknown stage" in _prompt(root, "speck").stderr
+    assert "tcw work stage begin: unknown stage" in _cli(root, "speck", "x").stderr
+
+
+# ── the form removed in 2.0.0 ────────────────────────────────────────────────
+
+
+def test_the_bare_form_is_a_usage_error_naming_both_verbs(one_of_each):
+    """Exit 2, argparse's code for a command line that is not a command — not 1,
+    which would say the stage was attempted and failed."""
+    root, slugs = one_of_each
+    r = _bare(root, "spec", slugs["backlog"])
+    assert r.returncode == 2
+    assert r.stdout == ""
+    assert f"tcw work stage begin spec {slugs['backlog']}" in r.stderr
+    assert "tcw work stage prompt spec" in r.stderr
+
+
+def test_the_bare_form_resolves_nothing_and_runs_nothing(tmp_path):
+    """It reports the command to run; it does not quietly run it. An alias is
+    the thing this release decided against, and a bare form that resolved the
+    prompt would be one in all but name."""
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    item = st.create("Thing", body="req\n")
+    sentinel = (tmp_path / "RAN").resolve()
+    _configure(root, {"stages": {"spec": {
+        "pre": [{"command": f"touch {sentinel}"}],
+        "prompt": [{"blob": "THE PROMPT"}]}}})
+
+    r = _bare(root, "spec", item.slug)
+    assert r.returncode == 2
+    assert "THE PROMPT" not in r.stdout + r.stderr
+    assert not sentinel.exists()
