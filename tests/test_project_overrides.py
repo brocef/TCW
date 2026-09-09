@@ -301,3 +301,81 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
     assert registry.overrides() == []
     assert [c.id for c in registry.children()] == ["core-project"]
     assert not (cache / "tcw").exists(), "a resolved graph must fetch nothing"
+
+
+# --- a broken override stops the one command that touches the network --------
+#
+# The registry refuses a present-and-wrong override everywhere. `tcw provision`
+# reads declarations straight from config, so without a gate of its own it
+# fetched a second copy while `tcw validate` was refusing — the refusal was real
+# everywhere except the command that acts on it.
+
+
+def _assert_refused_before_fetching(capsys, cache: Path, variable: str) -> str:
+    """One named assertion for the whole family: refused, said why, fetched nothing.
+
+    "It refused" and "it refused *before* contacting anything" are different
+    claims, and a sibling test that checked only the first would look identical
+    in review.
+    """
+    err = capsys.readouterr().err
+    assert variable in err, f"the refusal must name the variable, got: {err}"
+    assert _cache_entries(cache) == [], "refused, and must not have fetched first"
+    return err
+
+
+def test_provision_refuses_an_override_that_is_not_a_node(
+        provisionable, capsys, monkeypatch, tmp_path):
+    """Shape one: the directory is there and holds no `tcw-config.yaml`."""
+    _orchestrator, _local_core, cache = provisionable
+    not_a_node = tmp_path / "notes"
+    not_a_node.mkdir()
+    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(not_a_node))
+    assert main(["provision"]) == 1
+    err = _assert_refused_before_fetching(capsys, cache, "TCW_PROJECT_CORE_PROJECT")
+    assert "tcw-config.yaml" in err
+
+
+def test_provision_refuses_an_override_naming_the_wrong_node(
+        provisionable, capsys, monkeypatch, tmp_path):
+    """Shape two: a real node, wrong id — known only after its config is read.
+
+    The two shapes are found at different moments, which is why the gate cannot
+    live in the override lookup alone.
+    """
+    _orchestrator, _local_core, cache = provisionable
+    _node(tmp_path / "wrong", "id: other-project\n")
+    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(tmp_path / "wrong"))
+    assert main(["provision"]) == 1
+    err = _assert_refused_before_fetching(capsys, cache, "TCW_PROJECT_CORE_PROJECT")
+    assert "other-project" in err
+
+
+def test_a_failed_override_is_reported_with_its_problem(
+        provisionable, monkeypatch, tmp_path):
+    """`overrides()` carries the reason, rather than a second structure holding it.
+
+    Both shapes reach the same place, which is what lets one gate cover them.
+    """
+    from tcw.store.project import FsProjectRegistry
+
+    orchestrator, _local_core, _cache = provisionable
+    _node(tmp_path / "wrong", "id: other-project\n")
+    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(tmp_path / "wrong"))
+    failed = [o for o in FsProjectRegistry.open(orchestrator).overrides() if o.problem]
+    assert [o.id for o in failed] == ["core-project"]
+    assert "other-project" in failed[0].problem
+
+    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(tmp_path / "notes"))
+    (tmp_path / "notes").mkdir()
+    failed = [o for o in FsProjectRegistry.open(orchestrator).overrides() if o.problem]
+    assert [o.id for o in failed] == ["core-project"]
+
+
+def test_a_satisfied_override_carries_no_problem(provisionable, monkeypatch):
+    """The gate must not pass by refusing everything."""
+    from tcw.store.project import FsProjectRegistry
+
+    orchestrator, local_core, _cache = provisionable
+    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(local_core))
+    assert [o.problem for o in FsProjectRegistry.open(orchestrator).overrides()] == [None]

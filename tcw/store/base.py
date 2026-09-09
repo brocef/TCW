@@ -165,11 +165,20 @@ class ProjectOverride:
     nobody else can resolve is the inverse of works-on-my-machine, and the only
     thing standing between it and a debugging trap is that every command that
     reports graph state says which overrides are in effect.
+
+    ``problem`` is ``None`` when the override did what it said — the project it
+    names is in the graph, under the right id, where it pointed. Anything else
+    fills it in: the location is not a project at all, or is a different one.
+    Carried on the record rather than in a second structure beside it, because
+    the two failures are discovered at different moments — one when the override
+    is resolved, one only after the target's configuration is read — and a caller
+    that has to consult two places to learn "did this work" will consult one.
     """
 
     id: str
     source: str
     locator: Any
+    problem: str | None = None
 
 
 class ProjectRegistry(ABC):
@@ -218,6 +227,11 @@ class ProjectRegistry(ABC):
         Only overrides that took **effect** belong here. One naming a project
         this graph never consults is not in force, and listing it would say the
         graph depends on something it does not.
+
+        Includes the ones that took effect and *failed* — an override that
+        stopped the ladder and produced nothing is in force in the way that
+        matters, and it is the entry a caller has to see. Its ``problem`` says
+        which.
         """
         return []
 

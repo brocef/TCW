@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -307,6 +307,7 @@ class FsProjectRegistry(ProjectRegistry):
         self._visit(self._current_path.resolve(), declared_id=None)
         self._validate_reciprocity()
         self._validate_cycles()
+        self._reconcile_overrides()
 
     def _visit(self, config_path: Path, declared_id: str | None,
                declared_in: Path | None = None,
@@ -535,8 +536,15 @@ class FsProjectRegistry(ProjectRegistry):
             return None
         config_path = root / SENTINEL
         if not config_path.is_file():
-            self._problem(root, f"{name} names a directory with no {SENTINEL}")
+            problem = f"{name} names a directory with no {SENTINEL}"
+            self._problem(root, problem)
             self._override_refused.add(project_id)
+            # Recorded as an override too, not only as a problem. It stopped the
+            # ladder, so it is in force; a caller asking "which overrides are
+            # acting on this graph" must not be told none.
+            self._overrides.append(ProjectOverride(id=project_id, source=name,
+                                                   locator=root,
+                                                   problem=f"{root}: {problem}"))
             return config_path
         # Recorded before the id is known to be right. An override that landed
         # on the wrong node still explains a path the reader will otherwise find
@@ -688,6 +696,38 @@ class FsProjectRegistry(ProjectRegistry):
 
         for project_id in list(self._by_id):
             visit(project_id)
+
+    def _reconcile_overrides(self) -> None:
+        """Fill in `problem` for every override that did not deliver its project.
+
+        Run after the walk because one of the two failures cannot be seen before
+        it. A directory holding no `tcw-config.yaml` is known the moment the
+        override resolves; a directory holding the *wrong* node is known only
+        once that node's config has been read, by the same mismatch check that
+        catches a wrong declared locator.
+
+        The test is deliberately the outcome rather than a list of failure
+        modes: an override is satisfied when the graph ended up holding its
+        project, under its id, at the place it pointed. Anything else failed,
+        including a mode nobody has thought of yet.
+        """
+        for index, override in enumerate(self._overrides):
+            if override.problem is not None:
+                continue
+            cfg = self._by_id.get(override.id)
+            if cfg is not None and cfg.path.parent == Path(override.locator):
+                continue
+            # Not `cfg`: that is whatever answered for this id, which is not
+            # necessarily what the override pointed at. Name the node actually
+            # sitting at the overridden location, read from the walk's cache.
+            at_location = self._cache.get(Path(override.locator) / SENTINEL)
+            found = (f"which is '{at_location.project.id}', not '{override.id}'"
+                     if at_location is not None
+                     else f"which did not yield '{override.id}'")
+            self._overrides[index] = replace(
+                override,
+                problem=f"{override.source} names {override.locator}, {found}",
+            )
 
     def _problem(self, path: Path, message: str) -> None:
         rendered = f"{path}: {message}"

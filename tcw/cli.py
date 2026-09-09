@@ -104,6 +104,29 @@ def run_provision(components: list[str], *, refresh: bool = False,
               file=sys.stderr)
         return 1
 
+    # An override that is present and wrong refuses here too, and it has to be
+    # said here rather than left to the registry. Every other command reaches a
+    # broken override through `check()`, but this one reads declarations straight
+    # from the configs — so without this gate the registry refused the override
+    # while `tcw provision` went and cloned a second copy of the very project the
+    # override was pointing at. That is the bug the whole feature exists to stop.
+    #
+    # Deliberately only overrides, not graph problems at large:
+    # `_declared_nodes_in_graph` opens the registry without `require_valid` on
+    # purpose, because a graph with an unreachable node is the graph this command
+    # exists to complete. An override is a declaration the environment made, and
+    # a declaration that is present and wrong refuses — the same rule the two
+    # blocks below apply to the ones written in files.
+    try:
+        failed_overrides = [o for o in FsProjectRegistry.open(node_root).overrides()
+                            if o.problem is not None]
+    except Exception:
+        failed_overrides = []
+    if failed_overrides:
+        for override in failed_overrides:
+            print(f"tcw provision: {override.problem}", file=sys.stderr)
+        return 1
+
     declared: list[tuple[str, object]] = []
     problems: list[str] = []
     for component in components:
