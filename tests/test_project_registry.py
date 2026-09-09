@@ -601,3 +601,17 @@ def test_a_locator_that_resolves_is_never_misdirected(tmp_path):
     reciprocal(parent, "parent-project", child, "child-project")
     assert FsProjectRegistry.open(parent).misdirected() == []
     assert FsProjectRegistry.open(child).misdirected() == []
+
+
+def test_a_graph_with_no_override_reports_none(tmp_path):
+    """`overrides()` answers, and answers empty, without any adapter opting in.
+
+    The default on `ProjectRegistry` is concrete rather than abstract precisely
+    so this holds for a store that has no override mechanism at all — a caller
+    may always ask, and no existing adapter had to change to be asked.
+    """
+    parent, child = tmp_path / "orchestrator", tmp_path / "child"
+    reciprocal(parent, "root-project", child, "child-project")
+    registry = FsProjectRegistry.open(parent)
+    registry.require_valid()
+    assert registry.overrides() == []

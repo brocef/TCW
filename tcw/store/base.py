@@ -146,6 +146,32 @@ class UnreachableProject:
     declaration: "RepositoryDeclaration | None" = None
 
 
+@dataclass(frozen=True)
+class ProjectOverride:
+    """A locator the caller supplied, standing in place of the declared one.
+
+    **Not a defect and not a declaration.** It is a third thing: a statement
+    made by the machine running the command, about where a project sits *here*,
+    that no file another machine reads can carry. The declared locator is a fact
+    about one machine written into a file every machine shares, which is exactly
+    the case it cannot express.
+
+    ``source`` names whatever supplied the value — an environment variable, for
+    the filesystem adapter — so a message can say where to go and change it.
+    ``locator`` is opaque exactly as ``Project.locator`` is: a path here, a
+    tracker key elsewhere, and nothing above the adapter may parse either.
+
+    Reported rather than silent, always. An override that resolves a graph
+    nobody else can resolve is the inverse of works-on-my-machine, and the only
+    thing standing between it and a debugging trap is that every command that
+    reports graph state says which overrides are in effect.
+    """
+
+    id: str
+    source: str
+    locator: Any
+
+
 class ProjectRegistry(ABC):
     """Storage-neutral connected-project graph."""
 
@@ -173,6 +199,27 @@ class ProjectRegistry(ABC):
         """The ids of the declared children, reachable or not. See
         `declared_parent_id`."""
         return [child.id for child in self.children(project_id)]
+
+    def overrides(self) -> list["ProjectOverride"]:
+        """The locators the caller supplied for this graph, in place of declared ones.
+
+        Empty by default, and concrete rather than abstract on purpose: a store
+        with no override mechanism has none to report, and that is a correct
+        answer rather than a gap. Every existing adapter is right without
+        changing, so a caller may always ask.
+
+        Storage-neutral despite the filesystem adapter's answer being a path.
+        The question — *did the caller say where this project is, rather than
+        the configuration?* — is one a tracker-backed registry answers too, by
+        reading the same environment for a project key instead of a directory.
+        Only the value is a filesystem particular, and it stays opaque here for
+        the same reason ``Project.locator`` does.
+
+        Only overrides that took **effect** belong here. One naming a project
+        this graph never consults is not in force, and listing it would say the
+        graph depends on something it does not.
+        """
+        return []
 
     @abstractmethod
     def get(self, project_id: str) -> Project | None:
