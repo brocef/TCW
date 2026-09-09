@@ -32,6 +32,25 @@ category.
   - `--no-exec` is rejected by `prompt`, because suppressing `file:` and
     `generate:` would leave the incomplete instructions the verb exists to
     produce. The message names `tcw work stage begin --no-exec` instead.
+- **`skills/tcw-work-stage`** — a Claude-only skill that composes a stage into
+  one document: `lifecycle/stage-<id>.md` followed by the output of
+  `tcw work stage prompt <id> [<item>]`, both injected with `` !`cmd` ``. Takes
+  `stage` and `item` as named arguments.
+  - Both injected commands end `|| true`. A non-zero exit aborts the whole skill
+    invocation and the model is shown *nothing* — not an error — so an unknown
+    stage or slug would render as silence. Tolerating the exit puts the CLI's own
+    message in front of the reader instead.
+  - No `2>&1` is needed: injection captures stderr as well as stdout, so
+    `prompt`'s illegal-stage note arrives with the instructions rather than being
+    lost.
+  - `allowed-tools` declares both commands. An injected command that is not
+    pre-approved aborts the invocation the same silent way.
+  - It reads with `prompt` and therefore runs no gate, which is the hazard of
+    composing a stage this way. The skill names `tcw work stage begin` as the
+    verb that enters, and `test_skill_lifecycle_parity.py` fails if it stops.
+  - Claude-only by construction, and an ergonomic rather than a route: the seven
+    routers still name `begin`, so a Codex user runs the two commands and loses
+    nothing but the concatenation.
 - **`tcw work stage begin inbox`** — `inbox` was the one stage in `STAGE_IDS`
   that shipped no default instructions, so its methodology lived only in the
   plugin's `stage-inbox.md` and was unavailable to a PyPI-only install. It now

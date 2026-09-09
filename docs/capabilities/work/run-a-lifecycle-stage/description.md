@@ -79,3 +79,11 @@ A project-qualified reference resolves against the owning node, so I can ask
 about a descendant's item from the enclosing project — including on `prompt`,
 where it reads that node's `prompt:` bindings rather than the one I am standing
 in.
+
+**Under Claude I can take both halves in one read.** The `tcw-work-stage` skill
+puts the stage's own working document and the instructions `prompt` resolves for
+it into a single document, so I am not opening a file and running a command and
+joining them in my head. It is an ergonomic over the two commands and nothing
+more: it reads with `prompt`, so it runs no gate, and it says so and names
+`begin`. A Codex user, who gets no context injection, runs the two commands —
+which is why the guarantee lives in them and not in the skill.

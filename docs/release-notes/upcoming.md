@@ -56,6 +56,22 @@ to enter the stage, or `tcw work stage prompt spec` to read its instructions
 without entering it
 ```
 
+## Reading a stage in one piece, if you drive TCW with Claude
+
+Working a stage has always meant two reads: the document describing how to work
+it, and the instructions your project resolves for it. The plugin now ships a
+skill, `tcw-work-stage`, that hands you both at once — give it the stage and the
+item and it returns one document.
+
+It is built on the reading verb, so it runs no gate. It says so, and it names
+`tcw work stage begin` as the command that actually enters the stage. Treat it
+as a way to see everything before you start, not as a way to start.
+
+This one is Claude-only: it works by running commands and folding their output
+into the skill, which Codex does not do. Nothing moved behind it — the stage
+documents and both commands are unchanged, so running them yourself gets you the
+same text in two pieces.
+
 ## Instructions for the inbox stage, from the command line
 
 TCW now answers for every stage of the lifecycle, including the inbox — the point

@@ -293,3 +293,42 @@ def test_the_router_routes_to_every_reference_file():
                                      for p in REFS.rglob("*.md"))
                if rel not in text]
     assert not orphans, f"unreachable from SKILL.md: {orphans}"
+
+
+# ── the composing skill ──────────────────────────────────────────────────────
+
+STAGE_SKILL = REPO / "skills/tcw-work-stage/SKILL.md"
+
+
+def test_the_composing_skill_reads_a_router_that_exists_for_every_stage():
+    """`tcw-work-stage` interpolates the stage id into a path. Nothing at
+    runtime checks that path — a failed `cat` is swallowed by `|| true` so the
+    rest of the skill still renders, which is the right behaviour and also the
+    reason a rename would go unnoticed. Resolve the template here instead."""
+    body = STAGE_SKILL.read_text()
+    m = re.search(r'cat "\$\{CLAUDE_PLUGIN_ROOT\}/(\S+?)"', body)
+    assert m, "the skill no longer cats a router out of the plugin root"
+    template = m.group(1)
+    assert "$stage" in template, template
+    for stage_id in STAGE_IDS:
+        target = REPO / template.replace("$stage", stage_id)
+        assert target.is_file(), f"{stage_id}: {target} does not exist"
+
+
+def test_the_composing_skill_reads_with_prompt_and_names_begin_for_entry():
+    """The whole hazard of composing a stage out of `prompt`: it resolves the
+    instructions without the gate. A skill that stopped naming `begin` would be
+    a documented route around the legality check and the `pre` bindings."""
+    body = STAGE_SKILL.read_text()
+    assert "tcw work stage prompt $stage $item" in body
+    assert "tcw work stage begin $stage $item" in body
+
+
+def test_the_composing_skill_declares_the_commands_it_injects():
+    """An injected command that is not pre-approved aborts the whole skill
+    invocation — the model is shown nothing at all, not an error. Both commands
+    have to be in `allowed-tools` or the skill silently renders empty."""
+    body = STAGE_SKILL.read_text()
+    front = body.split("---")[1]
+    allowed = next(l for l in front.splitlines() if l.startswith("allowed-tools:"))
+    assert "Bash(tcw *)" in allowed and "Bash(cat *)" in allowed, allowed
