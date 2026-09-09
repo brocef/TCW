@@ -51,7 +51,7 @@ recorded separately rather than folded in.
 
 ## References
 
-- [Resolve taxonomy refs against symlinks, not just lexically](tcw://W/2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically)
+- `2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically`
   — the item whose adversarial review found this and classed it as needing a
   different mechanism; its containment work is the thing this is not.
 
@@ -63,3 +63,6 @@ recorded separately rather than folded in.
   requester's decision rather than folded into the item that found it.
 - The exposure assessment above is the requester's answer at the request stage,
   not an inference from the code.
+- Its predecessor is named as a plain slug rather than a `tcw://` reference:
+  it resolved and was removed before tombstoning existed, so the record
+  cannot answer for it and a link would dangle permanently.

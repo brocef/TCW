@@ -46,7 +46,7 @@ rather than a licence to widen the item.
 
 ## References
 
-- [Reconcile read_artifact with the canonical presence rule](tcw://W/2026-08-18-reconcile-read-artifact-with-the-canonical-presence-rule)
+- `2026-08-18-reconcile-read-artifact-with-the-canonical-presence-rule`
   — the item this follows up; it establishes the single presence story that must
   survive, and separated the two facts this item wants surfaced.
 
@@ -57,3 +57,6 @@ rather than a licence to widen the item.
 - The intake floats a second field (`exists` alongside `present`) as one shape.
   Recorded as the requester's illustration of what they mean, not as a chosen
   solution — the spec picks the mechanism.
+- Its predecessor is named as a plain slug rather than a `tcw://` reference:
+  it resolved and was removed before tombstoning existed, so the record
+  cannot answer for it and a link would dangle permanently.
