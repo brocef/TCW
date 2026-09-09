@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-02-epic-completability-depends-on-which-checkout-is-asking.md`
+
+## Inbox body
+
 # Epic completability depends on which checkout is asking
 
 ## Desired outcome

@@ -891,3 +891,30 @@ def test_reconcile_stages_nothing_when_the_rollup_is_unchanged(tmp_path):
     reconcile(parent, epic)
 
     assert porcelain(parent) == ""
+
+
+def test_an_unresolvable_epic_names_the_missing_projects(tmp_path):
+    """A partial graph makes an epic unresolvable, and that is not "not active"."""
+    import subprocess
+    import yaml
+    from tcw.store.fs import FsWorkStore, init
+
+    root = tmp_path / "child"
+    root.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    init(["work"], root, "child-project")
+    cfg_path = root / "tcw-config.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text()) or {}
+    cfg["connected-projects"] = {"parent": {"away-project": str(tmp_path / "away")}}
+    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+    store = FsWorkStore.open(root)
+    task = store.create("A slice of an epic we cannot see")
+    store.set_field(task.slug, "initiative", "an-epic-somewhere-else")
+    with pytest.raises(ValueError) as excinfo:
+        store.start(task.slug)
+    message = str(excinfo.value)
+    assert "Cannot resolve epic an-epic-somewhere-else" in message
+    assert "away-project" in message

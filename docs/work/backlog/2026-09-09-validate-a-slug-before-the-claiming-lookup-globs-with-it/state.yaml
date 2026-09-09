@@ -1,0 +1,9 @@
+slug: 2026-09-09-validate-a-slug-before-the-claiming-lookup-globs-with-it
+title: Validate a slug before the claiming lookup globs with it
+created: '2026-09-09'
+resolution: null
+priority: 20
+effort: medium
+tags:
+- cli
+- work

@@ -631,8 +631,10 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
 
     out = capsys.readouterr().out
     assert "parent-project" in out
-    assert "children: (none — leaf)" in out, \
-        "an unprovisioned child has no usable store here, and says so by absence"
+    assert "child-project  (work store not provisioned here)" in out, \
+        ("a registered child is listed even when its store is not usable here — "
+         "omitting it made a node with children read as a leaf — and the marker "
+         "says which of the two reasons applies")
 
 
 # ── the `tcw provision` verb ─────────────────────────────────────────────────
@@ -891,9 +893,16 @@ def test_an_unknown_component_is_still_refused(tmp_path, monkeypatch):
         main(["provision", "--component", "nonsense"])
 
 
-def test_an_unusable_local_layout_falls_through_to_the_provisioned_store(tmp_path):
-    """Status folders outside Git are not a usable external store and therefore
-    must not block the declaration's valid provisioned fallback."""
+def test_a_local_store_outside_git_is_reported_not_silently_replaced(tmp_path):
+    """A complete store outside a repository is *present and wrong*, not absent.
+
+    It used to fall through to the declaration, so every `tcw work` command read
+    and wrote a store the user had not configured, their items invisible and
+    nothing said anywhere. The class matters as much as the refusal: `find_node`
+    re-raises only `StoreNotProvisioned` and `StoreDeclarationError`, so a plain
+    `ValueError` would make `tcw work list` answer "run `tcw init`" for a node
+    that plainly is one.
+    """
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     local = _local_store(tmp_path / "not-a-repository" / "work")
@@ -906,8 +915,10 @@ def test_an_unusable_local_layout_falls_through_to_the_provisioned_store(tmp_pat
     )
     FsStoreProvisioner(code, "work", declaration).ensure_available()
 
-    assert FsWorkStore.open(code).root == fs.provisioned_store_root(
-        code, declaration).resolve()
+    with pytest.raises(StoreDeclarationError) as excinfo:
+        FsWorkStore.open(code)
+    assert "work.path is not inside a Git repository" in str(excinfo.value)
+    assert "tcw provision" not in str(excinfo.value)
 
 
 def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_path):
@@ -1355,3 +1366,529 @@ def test_a_usable_local_tree_still_masks_an_unused_malformed_declaration(
     monkeypatch.chdir(code)
 
     assert main([component, "list"]) == 0
+
+
+# ── provisioning a connected project ─────────────────────────────────────────
+
+
+def _node_repo(path: Path, project_id: str, connected: dict | None = None) -> Path:
+    """A committed git repository holding one tcw node."""
+    _repo(path)
+    init(["work"], path, project_id)
+    if connected:
+        config_path = path / "tcw-config.yaml"
+        config = yaml.safe_load(config_path.read_text()) or {}
+        config["connected-projects"] = connected
+        config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-qm", "node"], check=True)
+    return path
+
+
+def test_a_declared_connected_project_is_obtained(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"parent": {"here-project": "../here"}})
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"path": "../away-not-here",
+                                       "repository": {"url": str(away), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert str(away) in planned and "would obtain" in planned
+
+    assert main(["provision"]) == 0
+    assert "obtained" in capsys.readouterr().out
+
+    from tcw.store.project import FsProjectRegistry
+    registry = FsProjectRegistry.open(here)
+    registry.require_valid()
+    assert [c.id for c in registry.children()] == ["away-project"]
+
+    assert main(["provision"]) == 0
+    assert "already available" in capsys.readouterr().out
+
+
+def test_provisioning_follows_a_declaration_inside_an_obtained_node(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    c = _node_repo(tmp_path / "c", "c-project",
+                   {"parent": {"b-project": "../b"}})
+    b = _node_repo(
+        tmp_path / "b", "b-project",
+        {"parent": {"a-project": "../a"},
+         "children": {"c-project": {"path": "../c-not-here",
+                                    "repository": {"url": str(c), "ref": "main"}}}},
+    )
+    a = _node_repo(
+        tmp_path / "a", "a-project",
+        {"children": {"b-project": {"path": "../b-not-here",
+                                    "repository": {"url": str(b), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(a)
+
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert str(b) in planned
+    assert "cannot be listed until it is obtained" in planned
+    # `c` is two hops away, behind a node this run has not fetched.
+    assert "c-project" not in planned
+
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "b-project" in out and "c-project" in out
+
+
+def test_two_entries_naming_one_repository_share_a_working_copy(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project")
+    declaration = {"url": str(away), "ref": "main"}
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"parent": {"away-project": {"path": "../away-not-here",
+                                     "repository": dict(declaration)}},
+         "children": {"away-project": {"path": "../away-not-here",
+                                       "repository": dict(declaration)}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    cache = tmp_path / "cache" / "tcw" / "stores"
+    assert len(list(cache.iterdir())) == 1
+
+
+def test_a_repository_with_no_node_at_the_declared_path_is_refused(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _repo(tmp_path / "away")
+    (away / "README.md").write_text("no node here\n")
+    subprocess.run(["git", "-C", str(away), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(away), "commit", "-qm", "init"], check=True)
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"path": "../away-not-here",
+                                       "repository": {"url": str(away), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 1
+    assert "has no tcw node at" in capsys.readouterr().err
+    assert not (tmp_path / "cache" / "tcw" / "stores").exists() or not list(
+        (tmp_path / "cache" / "tcw" / "stores").iterdir())
+
+
+def test_an_occupied_checkout_is_refused_before_any_fetch(tmp_path, monkeypatch, capsys):
+    away = _node_repo(tmp_path / "away", "away-project")
+    squatter = _repo(tmp_path / "squatter")
+    (squatter / "f").write_text("x")
+    subprocess.run(["git", "-C", str(squatter), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(squatter), "commit", "-qm", "init"], check=True)
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {
+            "path": "../away-not-here",
+            "repository": {"url": str(away), "ref": "main",
+                           "checkout": str(squatter)}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 1
+    assert (squatter / "f").read_text() == "x"
+
+
+def test_a_malformed_connected_declaration_refuses_and_names_the_line(tmp_path, monkeypatch, capsys):
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"repository": {"ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 1
+    assert "url: expected a non-empty string" in capsys.readouterr().err
+
+
+def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
+    tmp_path, monkeypatch, capsys
+):
+    """The declaring node is often not the one you are standing in.
+
+    In a monorepo the edge out to another repository belongs to whichever
+    package knows about it; running `tcw provision` from a sibling must still
+    obtain it.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"children": {"knower-project": "nested/knower"}})
+    repo_root = _repo(tmp_path / "mono")
+    knower = tmp_path / "mono" / "knower"
+    standing = tmp_path / "mono" / "standing"
+    knower.mkdir(parents=True)
+    standing.mkdir(parents=True)
+    init(["work"], knower, "knower-project")
+    init(["work"], standing, "standing-project")
+    (knower / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "knower-project",
+        "connected-projects": {
+            "parent": {"away-project": {"path": "../../away-not-here",
+                                        "repository": {"url": str(away), "ref": "main"}}},
+            "children": {"standing-project": "../standing"},
+        },
+    }, sort_keys=False))
+    (standing / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "standing-project",
+        "connected-projects": {"parent": {"knower-project": "../knower"}},
+    }, sort_keys=False))
+    assert repo_root.exists()
+
+    monkeypatch.chdir(standing)
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "away-project" in out and "obtained" in out
+
+
+def test_a_project_the_checkout_already_has_is_not_fetched(tmp_path, monkeypatch, capsys):
+    """An ancestor declares where a project comes from; that project is you.
+
+    Declarations live on whichever node knows about an edge, so an ancestor
+    routinely names a repository the caller is standing inside. Obtaining it
+    would clone the current repository a second time and put two nodes in the
+    graph under one id.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    absent = _node_repo(tmp_path / "absent", "absent-project",
+                        {"parent": {"away-project": "../away"}})
+    here = _node_repo(tmp_path / "here", "here-project",
+                      {"parent": {"away-project": "../away-not-here"}})
+    away = _node_repo(
+        tmp_path / "away", "away-project",
+        {"children": {
+            # One the caller has, one it does not.
+            "here-project": {"path": "../here-not-here",
+                             "repository": {"url": str(here), "ref": "main"}},
+            "absent-project": {"path": "../absent-not-here",
+                               "repository": {"url": str(absent), "ref": "main"}},
+        }},
+    )
+    # Point `here` at the real `away` remote now that it exists.
+    cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
+    cfg["connected-projects"]["parent"]["away-project"] = {
+        "path": "../away-not-here",
+        "repository": {"url": str(away), "ref": "main"},
+    }
+    (here / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    subprocess.run(["git", "-C", str(here), "commit", "-aqm", "declare"], check=True)
+
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "here-project: already available" in out
+    assert "absent-project" in out and "obtained" in out
+
+    # And again as a plan, now that the declaring node is here to be read —
+    # which is the shape the real reproduction had.
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert "here-project: already available" in planned
+    assert "here-project: would obtain" not in planned
+
+    cache = tmp_path / "cache" / "tcw" / "stores"
+    names = sorted(p.name for p in cache.iterdir())
+    assert not any("here" in n for n in names), names
+    assert len(names) == 2, names          # away + absent, never a second `here`
+
+
+def _cache_suffix(url: str) -> str:
+    from tcw.store.base import RepositoryDeclaration
+    from tcw.store.checkouts import _cache_key
+    return _cache_key(RepositoryDeclaration(url=url, ref="main")).rsplit("-", 1)[1]
+
+
+def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkeypatch, capsys):
+    """The shape a workspace actually has.
+
+    An earlier version of the skip enumerated current/ancestors/descendants and
+    missed this: a project that is a child of the caller's grandparent is present
+    and in the graph, and a machine holding every repository still planned a
+    clone of it.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    workspace = _repo(tmp_path / "ws")
+    sibling = tmp_path / "ws" / "sibling"
+    middle = tmp_path / "ws" / "mono"
+    leaf = tmp_path / "ws" / "mono" / "pkg"
+    for d in (sibling, middle, leaf):
+        d.mkdir(parents=True)
+    init(["work"], sibling, "sibling-project")
+    init(["work"], middle, "middle-project")
+    init(["work"], leaf, "leaf-project")
+    absent = _node_repo(tmp_path / "absent", "absent-project",
+                        {"parent": {"top-project": "../ws"}})
+
+    (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "top-project",
+        "connected-projects": {"children": {
+            # Both declared with a repository, as a workspace root would be.
+            "sibling-project": {"path": "sibling",
+                                "repository": {"url": str(sibling), "ref": "main"}},
+            "middle-project": "mono",
+            "absent-project": {"path": "../absent-not-here",
+                               "repository": {"url": str(absent), "ref": "main"}},
+        }},
+    }, sort_keys=False))
+    for path, doc in (
+        (middle, {"id": "middle-project", "connected-projects": {
+            "parent": {"top-project": ".."},
+            "children": {"leaf-project": "pkg"}}}),
+        (leaf, {"id": "leaf-project", "connected-projects": {
+            "parent": {"middle-project": ".."}}}),
+        (sibling, {"id": "sibling-project", "connected-projects": {
+            "parent": {"top-project": ".."}}}),
+    ):
+        existing = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
+        existing.update(doc)
+        (path / "tcw-config.yaml").write_text(yaml.safe_dump(existing, sort_keys=False))
+
+    monkeypatch.chdir(leaf)
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert "sibling-project: already available" in planned
+    assert "sibling-project: would obtain" not in planned
+    assert "absent-project: would obtain" in planned
+
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "sibling-project: already available" in out
+    assert "absent-project" in out and "obtained" in out
+    # One working copy — the genuinely absent project — and nothing for the
+    # sibling. (The directory names embed the test name, so a substring check
+    # for "sibling" would match either way.)
+    names = sorted(p.name for p in (tmp_path / "cache" / "tcw" / "stores").iterdir())
+    assert len(names) == 1, names
+    assert names[0].endswith(_cache_suffix(str(absent))), names
+
+
+def test_refresh_does_not_fetch_a_project_the_checkout_already_has(tmp_path,
+                                                                  monkeypatch,
+                                                                  capsys):
+    """`--refresh` does not outrank "already here wins", and must not.
+
+    Refreshing means bringing a *provisioned* copy back to the declared ref, and
+    that copy is the only thing there is to refresh. A project resolved somewhere
+    else is a checkout the user has: nothing has drifted, and obtaining one
+    anyway puts a second node in the graph under a single id — which
+    `require_valid` then rejects as a duplicate, on a graph the command reported
+    success for.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    here = _node_repo(tmp_path / "here", "here-project",
+                      {"parent": {"away-project": "../away-not-here"}})
+    away = _node_repo(
+        tmp_path / "away", "away-project",
+        {"children": {"here-project": {"path": "../here-not-here",
+                                       "repository": {"url": str(here), "ref": "main"}}}},
+    )
+    # Point `here` at the real `away` remote now that it exists.
+    cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
+    cfg["connected-projects"]["parent"]["away-project"] = {
+        "path": "../away-not-here",
+        "repository": {"url": str(away), "ref": "main"},
+    }
+    (here / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    subprocess.run(["git", "-C", str(here), "commit", "-aqm", "declare"], check=True)
+
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    assert "here-project: already available" in capsys.readouterr().out
+
+    assert main(["provision", "--refresh"]) == 0
+    assert "here-project: already available" in capsys.readouterr().out
+
+    cache = tmp_path / "cache" / "tcw" / "stores"
+    assert not any(n.name.endswith(_cache_suffix(str(here)))
+                   for n in cache.iterdir()), \
+        "a second copy of the checkout we are standing in"
+    # The graph is still one node per id, which is what the duplicate would break.
+    from tcw.store.project import FsProjectRegistry
+    FsProjectRegistry.open(here).require_valid()
+
+
+def test_refresh_still_refreshes_a_provisioned_copy(tmp_path, monkeypatch, capsys):
+    """The case `--refresh` is actually for: a copy `tcw` obtained, gone stale."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"parent": {"here-project": "../here"}})
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        {"children": {"away-project": {"path": "../away-not-here",
+                                       "repository": {"url": str(away), "ref": "main"}}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision"]) == 0
+    assert "away-project: obtained" in capsys.readouterr().out
+
+    assert main(["provision", "--refresh"]) == 0
+    out = capsys.readouterr().out
+    assert "away-project: refreshed" in out
+
+
+def test_a_present_project_is_still_read_for_its_own_declarations(tmp_path,
+                                                                  monkeypatch,
+                                                                  capsys):
+    """Not fetching a project is no reason to stop reading it.
+
+    The skip that stops `tcw provision` re-cloning a project the checkout has
+    also stopped the walk reading that project's declarations, so a repository
+    two hops out disappeared from provisioning precisely when the one hop
+    between was already in place — the steady state, and the only state a
+    workspace is usually in.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    far = _node_repo(tmp_path / "far", "far-project",
+                     {"parent": {"middle-project": "../middle"}})
+    middle = _node_repo(
+        tmp_path / "middle", "middle-project",
+        {"parent": {"top-project": "../top"},
+         "children": {"far-project": {"path": "../far-not-here",
+                                      "repository": {"url": str(far), "ref": "main"}}}},
+    )
+    top = _repo(tmp_path / "top")
+    init(["work"], top, "top-project")
+    (top / "tcw-config.yaml").write_text(yaml.safe_dump({
+        "id": "top-project",
+        "connected-projects": {"children": {
+            # `middle` is present on disk *and* declared. It used to be skipped
+            # and never read, so `far` was invisible.
+            "middle-project": {"path": str(middle),
+                               "repository": {"url": str(middle), "ref": "main"}},
+        }},
+    }, sort_keys=False))
+
+    monkeypatch.chdir(top)
+    assert main(["provision"]) == 0
+    out = capsys.readouterr().out
+    assert "middle-project: already available" in out
+    assert "far-project" in out and "obtained" in out
+
+
+def test_dry_run_does_not_call_a_planned_obtain_already_available(tmp_path,
+                                                                  monkeypatch,
+                                                                  capsys):
+    """Dry-run output is what a user reads to decide whether to run for real."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    away = _node_repo(tmp_path / "away", "away-project",
+                      {"parent": {"here-project": "../here"}})
+    declaration = {"url": str(away), "ref": "main"}
+    here = _node_repo(
+        tmp_path / "here", "here-project",
+        # Two declarations of one project, which is what a parent and a
+        # grandparent both naming it looks like.
+        {"parent": {"away-project": {"path": "../away-not-here",
+                                     "repository": dict(declaration)}},
+         "children": {"away-project": {"path": "../away-not-here",
+                                       "repository": dict(declaration)}}},
+    )
+    monkeypatch.chdir(here)
+    assert main(["provision", "--dry-run"]) == 0
+    planned = capsys.readouterr().out
+    assert "away-project: would obtain" in planned
+    assert "away-project: already available" not in planned
+    assert not (tmp_path / "cache").exists()
+
+
+# ── what falls through the ladder, and what must not ─────────────────────────
+
+def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
+    """Rules 1 and 2 swallowed every `ValueError`, so a store that was present
+    and failed to open was answered with `tcw provision` — which then succeeded
+    and left the store exactly as unopenable."""
+    node = _repo(tmp_path / "node")
+    init(["capabilities"], node, "node-project")
+    _write_config(node, retain={"completed": True})     # unrelated; keeps shape
+    config_path = node / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["capabilities"] = {
+        "repository": {"url": "https://example.invalid/ledger.git"},
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    # A store that is right here, and whose own config is wrong.
+    (node / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  nope: ../somewhere\n")               # the legacy map form
+
+    with pytest.raises(ValueError) as excinfo:
+        FsCapabilitiesStore.open(node)
+    message = str(excinfo.value)
+    assert "legacy extends map is unsupported" in message
+    assert "tcw provision" not in message
+    assert not isinstance(excinfo.value, StoreNotProvisioned)
+
+
+def test_a_location_that_holds_no_store_still_falls_through_to_the_declaration(tmp_path):
+    """The other half: rule 1 must still yield when there is simply no store
+    where it looked, or the declaration could never answer for anything."""
+    node = _repo(tmp_path / "node")
+    init(["work"], node, "node-project")
+    _write_config(node, path="nowhere",
+                  repository={"url": "https://example.invalid/board.git"})
+    with pytest.raises(StoreNotProvisioned) as excinfo:
+        FsWorkStore.open(node)
+    assert "tcw provision" in str(excinfo.value)
+
+
+# ── a declaration this machine cannot turn into a path ──────────────────────
+
+def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
+    """`Path.expanduser()` raises `RuntimeError` — not `ValueError`, not
+    `OSError` — for a `~name` naming no user, and this runs during the graph
+    load on every command. A single such value put a raw traceback out of
+    `tcw validate` and `tcw work list`, from a value the parser accepted."""
+    from tcw.store.project import FsProjectRegistry
+
+    node = _repo(tmp_path / "node")
+    init(["work"], node, "node-project")
+    config_path = node / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["connected-projects"] = {
+        "children": {
+            "away-project": {
+                "path": "../away",
+                "repository": {"url": "https://example.invalid/a.git",
+                               "checkout": "~nosuchuser12345/away"},
+            }
+        }
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    problems = FsProjectRegistry.open(node).check()          # must not raise
+    assert any("repository.checkout" in problem for problem in problems), problems
+    assert any("nosuchuser12345" in problem for problem in problems), problems
+    assert validate(node)                                    # reported, not a traceback
+
+
+def test_a_declaration_error_on_an_obtained_node_fails_the_run(tmp_path,
+                                                               monkeypatch,
+                                                               capsys):
+    """The same malformed declaration exits 1 on the starting graph and used to
+    exit 0 when it was found on a node obtained during the walk, so a CI step
+    gated on `tcw provision` read the second as success."""
+    remote = _repo(tmp_path / "remote")
+    init(["work"], remote, "remote-project")
+    config_path = remote / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["connected-projects"] = {
+        "children": {"far-project": {"path": "../far",
+                                     "repository": {"path": "docs/work"}}}
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "graph"], check=True)
+
+    node = _repo(tmp_path / "node")
+    init(["work"], node, "node-project")
+    config_path = node / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["connected-projects"] = {
+        "parent": {"remote-project": {"path": "../absent",
+                                      "repository": {"url": str(remote)}}}
+    }
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    monkeypatch.chdir(node)
+    assert main(["provision"]) == 1
+    assert "repository.url" in capsys.readouterr().err

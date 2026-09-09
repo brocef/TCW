@@ -1,0 +1,9 @@
+slug: 2026-09-04-let-a-work-store-outside-git-be-read-and-refuse-only-its-writes
+title: Let a work store outside Git be read, and refuse only its writes
+created: '2026-09-04'
+resolution: null
+priority: 45
+effort: medium
+tags:
+- cli
+- work

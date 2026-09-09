@@ -1,0 +1,9 @@
+id: cap-596612
+name: Declare a connected project's home repository
+Status: Supported
+Planning doc: 2026-09-03-connected-project-entries-declare-where-they-come-from-so-tcw-provision-can-obtain-a-node
+Feature: provisioned-component-stores
+Subject:
+- store/home-repository
+- node
+- cli

@@ -79,6 +79,13 @@ def _item_payload(work, slug: str, item, qslug: str | None = None) -> dict:
     data = work_item_json(item, work.artifacts(slug))
     if qslug:
         data["slug"] = qslug
+    # A `work.retain: false` node leaves an item resolved here and *not* removed:
+    # this surface runs no hooks (see `tcw/work/hooks.py`), and deleting without
+    # the archive someone configured is the one destructive thing it could do.
+    # Saying so in the payload would mean a new key in a versioned DTO whose
+    # every property is required and whose key set the CLI shares — a change out
+    # of proportion to this note, and its own item. Until then the pending
+    # removal is visible through `tcw work list`, where the item still appears.
     return data
 
 

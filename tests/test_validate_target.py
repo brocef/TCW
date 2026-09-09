@@ -34,11 +34,30 @@ def test_missing_target_is_explicit(tmp_path, axis):
 
 def test_graph_problems_precede_target_resolution(tmp_path):
     root = _node(tmp_path)
+    broken = tmp_path / "broken-node"
+    broken.mkdir()
+    (broken / "tcw-config.yaml").write_text("id: broken-node\nid: dupe\n")
     config = yaml.safe_load((root / "tcw-config.yaml").read_text())
-    config["connected-projects"] = {"children": {"missing": "missing-node"}}
+    config["connected-projects"] = {"children": {"broken-node": str(broken)}}
     (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     problems = validate(root, target=ValidationTarget("work", "missing"))
     assert problems and all(problem.startswith("project graph:") for problem in problems)
+
+
+def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
+    """The case above used to be spelled with a target that is simply not here.
+
+    That is no longer a graph problem — a locator naming nothing on this machine
+    is a fact about the checkout — so validation proceeds to the target instead
+    of refusing before it.
+    """
+    root = _node(tmp_path)
+    config = yaml.safe_load((root / "tcw-config.yaml").read_text())
+    config["connected-projects"] = {"children": {"missing": "missing-node"}}
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    assert validate(root, target=ValidationTarget("work", "missing")) == [
+        "work target: no such object 'missing'"
+    ]
 
 
 def test_target_scans_only_selected_yaml_and_links(tmp_path):

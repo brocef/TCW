@@ -266,6 +266,38 @@ def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
     assert qualified.count("charlie/shared") == 1
 
 
+def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
+    """`bravo` keeps its taxonomy somewhere other than `docs/taxonomy`.
+
+    Resolving a sibling's *store* is what let `alpha` reach it at all; rebuilding
+    that store from its root then broke the hop past it, because `FsTreeStore`
+    falls back to `root.parent.parent` for the node root — correct only for the
+    `docs/<component>` shape this resolution exists to stop assuming. `bravo`
+    got a node root above its own repo, so its `extends: charlie` resolved
+    against the wrong graph and `charlie` vanished from `alpha`'s view.
+    """
+    a, b, c = transitive_taxonomy(tmp_path)
+    (b / "ledger").mkdir()
+    for entry in (b / "docs" / "taxonomy").iterdir():
+        entry.rename(b / "ledger" / entry.name)
+    (b / "tcw-config.yaml").write_text(
+        "id: bravo\ntaxonomy:\n  path: ledger\nconnected-projects:\n"
+        "  parent:\n    alpha: ../alpha\n  children:\n    charlie: ../charlie\n"
+    )
+
+    st = FsTaxonomyStore.open(a)
+    assert {(term.qualified, term.origin) for term in st.list_all()} == {
+        ("bravo/shared", "bravo"),
+        ("charlie/deep", "charlie"),
+        ("charlie/shared", "charlie"),
+    }
+    assert st.check() == []
+    assert st._validation_resources("charlie/deep") == [
+        c / "docs/taxonomy/deep/meta.yaml",
+        c / "docs/taxonomy/deep/description.md",
+    ]
+
+
 def test_resolution_unique_extended(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
@@ -628,3 +660,39 @@ def test_cli_extends_is_not_treated_as_a_term_path(tmp_path, monkeypatch, capsys
     # "extends" must dispatch to the subcommand, not the `taxonomy <path>` show-sugar
     assert main(["taxonomy", "extends", "rm", "ghost"]) == 1   # absent alias → handled error, not "no such term"
     assert "no such term" not in capsys.readouterr().err
+
+
+# ── the extended store is resolved, not composed ─────────────────────────────
+
+def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
+    """`taxonomy.path` is exactly what `tcw init --taxonomy-path` writes.
+
+    The extended project's store used to be composed as `docs/taxonomy` under
+    its root, so a project that had moved its tree became unextendable and the
+    error blamed a path nobody had written. Resolution is component-generic, so
+    this is the taxonomy half of a fix whose capabilities half is already
+    covered — and the half that would go unnoticed if the two ever diverged.
+    """
+    import shutil
+    base = node(tmp_path, "base")
+    elsewhere = base / "vocabulary"
+    elsewhere.mkdir(parents=True)
+    write_term(base, "argument", name="Argument", description="A claim with support.")
+    shutil.move(str(base / "docs" / "taxonomy" / "argument"),
+                str(elsewhere / "argument"))
+    shutil.rmtree(base / "docs" / "taxonomy")
+    (base / "tcw-config.yaml").write_text(
+        "id: base\ntaxonomy:\n  path: vocabulary\n"
+        "connected-projects:\n  children:\n    consumer: ../consumer\n"
+    )
+
+    cons = node(tmp_path, "consumer")
+    (cons / "tcw-config.yaml").write_text(
+        "id: consumer\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    write_config(cons, "extends:\n  - base\n")
+
+    st = FsTaxonomyStore.open(cons)
+    assert {term.qualified for term in st.list_all()} == {"base/argument"}
+    assert st.get("base/argument").name == "Argument"
+    assert st.get("argument").origin == "base"

@@ -1,0 +1,9 @@
+id: cap-75c7e9
+name: Point TCW at a project I already have
+Status: Supported
+Planning doc: 2026-09-04-override-where-a-connected-project-lives-on-this-machine
+Feature: provisioned-component-stores
+Subject:
+- store/home-repository
+- node
+- cli

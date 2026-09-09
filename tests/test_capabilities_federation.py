@@ -435,3 +435,257 @@ def test_reviewed_via_alias_qualified_override_key(tmp_path):
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/login", overrides="base/cap-aaa111", Status="Missing")
     assert store(child).unreviewed_inherited() == []
+
+
+def test_extending_a_declared_but_absent_project_says_so(tmp_path):
+    """A node whose extended sibling is in a repository this checkout lacks.
+
+    Written straight to `.config.yaml` rather than through `extends_add`,
+    because that is how such a config arrives: authored on a machine that had
+    the sibling, then cloned somewhere that does not.
+    """
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  - base\n"
+    )
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    message = str(excinfo.value)
+    assert "'base'" in message
+    assert "not reachable in this checkout" in message
+
+
+def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text("id: child\n")
+    (child / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  - nowhere\n"
+    )
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    assert "is not reachable through connected-projects" in str(excinfo.value)
+
+
+def test_extends_add_names_a_declared_but_absent_project(tmp_path):
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    with pytest.raises(ValueError) as excinfo:
+        FsCapabilitiesStore.open(child).extends_add("base")
+    assert "not reachable in this checkout" in str(excinfo.value)
+
+
+# ── the extended store is resolved, not composed ─────────────────────────────
+
+
+def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
+    """`capabilities.path` is exactly what `tcw init --capabilities-path` writes.
+
+    The extended project's store used to be composed as `docs/capabilities` under
+    its root, so moving it made the project unextendable and the error blamed a
+    path nobody had written.
+    """
+    base = repo(tmp_path, "base")
+    elsewhere = tmp_path / "base" / "ledger"
+    elsewhere.mkdir(parents=True)
+    (base / "docs" / "capabilities").rmdir()
+    (base / "tcw-config.yaml").write_text(
+        "id: base\ncapabilities:\n  path: ledger\n"
+        "connected-projects:\n  children:\n    child: ../child\n"
+    )
+    (base / "docs" / "capabilities").mkdir(parents=True, exist_ok=True)
+    write_cap(base, "auth/login", id="cap-aaa111", Status="Supported", body="Log in.")
+    import shutil
+    shutil.move(str(base / "docs" / "capabilities" / "auth"), str(elsewhere / "auth"))
+    shutil.rmtree(base / "docs" / "capabilities")
+
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+
+    caps = {c.qualified for c in store(child).list_all()}
+    assert "base/auth/login" in caps
+
+
+def test_a_sibling_with_no_component_names_the_project(tmp_path):
+    base = repo(tmp_path, "base")
+    (base / "docs" / "capabilities").rmdir()
+    (base / "tcw-config.yaml").write_text(
+        "id: base\nconnected-projects:\n  children:\n    child: ../child\n"
+    )
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    assert "project 'base' has no capabilities component" in str(excinfo.value)
+
+
+def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    base = repo(tmp_path, "base")
+    (base / "docs" / "capabilities").rmdir()
+    (base / "tcw-config.yaml").write_text(
+        "id: base\ncapabilities:\n"
+        "  path: ledger\n"
+        "  repository:\n    url: https://example.invalid/ledger.git\n"
+        "connected-projects:\n  children:\n    child: ../child\n"
+    )
+    child = repo(tmp_path, "child")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+    )
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    message = str(excinfo.value)
+    assert "project 'base'" in message
+    assert "https://example.invalid/ledger.git" in message
+    assert "tcw provision" in message
+
+
+def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):
+    """A linear `extends` chain `n0 → n1 → …`, optionally with moved trees."""
+    import subprocess
+    import yaml
+    from tcw.store.fs import write_sentinel
+
+    for i in range(depth):
+        d = tmp_path / f"n{i}"
+        tree = d / ("ledger" if i in moved else "docs/capabilities")
+        tree.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(d)], check=True)
+        write_sentinel(d, f"n{i}")
+    for i in range(depth):
+        d = tmp_path / f"n{i}"
+        doc = {"id": f"n{i}", "connected-projects": {}}
+        if i in moved:
+            doc["capabilities"] = {"path": "ledger"}
+        if i + 1 < depth:
+            doc["connected-projects"]["children"] = {f"n{i+1}": f"../n{i+1}"}
+        if i:
+            doc["connected-projects"]["parent"] = {f"n{i-1}": f"../n{i-1}"}
+        (d / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+        if i + 1 < depth:
+            tree = d / ("ledger" if i in moved else "docs/capabilities")
+            (tree / ".config.yaml").write_text(f"extends:\n  - n{i+1}\n")
+    return tmp_path / "n0"
+
+
+def test_a_moved_sibling_that_extends_further_still_resolves(tmp_path):
+    """Resolving the sibling's store enabled this, and rebuilding it broke it.
+
+    The nested store used to be reconstructed from its root with no `node_root`,
+    and `FsTreeStore` falls back to `root.parent.parent` — correct only for the
+    `docs/<component>` shape this resolution exists to stop assuming. A sibling
+    whose tree had moved got a node root two levels above its repo, so its own
+    `extends` was resolved against the wrong project graph and the chain broke
+    one link past the hop that had just been made to work.
+    """
+    root = _chain(tmp_path, 3, moved={1})
+    (tmp_path / "n1" / "ledger" / "own").mkdir()
+    (tmp_path / "n1" / "ledger" / "own" / "meta.yaml").write_text(
+        "id: cap-ddd222\nname: Own\nStatus: Supported\n")
+    (tmp_path / "n1" / "ledger" / "own" / "description.md").write_text("")
+    assert {c.qualified for c in store(root).list_all()} == {"n1/own"}
+    assert store(root).check() == []
+
+
+def test_a_broken_sibling_reports_its_own_error(tmp_path):
+    """Every ValueError used to be rewritten as "has no capabilities component",
+    which sends the reader to create a store that already exists."""
+    base, child = child_of(tmp_path, {})
+    (base / "docs" / "capabilities" / ".config.yaml").write_text(
+        "extends:\n  nope: ../somewhere\n"          # the legacy map form
+    )
+    with pytest.raises(ValueError) as excinfo:
+        store(child).list_all()
+    message = str(excinfo.value)
+    assert "legacy extends map is unsupported" in message
+    assert "has no capabilities component" not in message
+
+
+def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
+    """A cycle is truncated by the store that closes it — the deepest one —
+    so the store someone is checking never holds the record itself."""
+    base, child = child_of(tmp_path, {})
+    (base / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - child\n")
+    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    problems = store(child).check()
+    assert any("cycle in capability federation" in p for p in problems)
+
+
+def _diamond(tmp_path, levels: int):
+    """`levels` pairs of nodes, each pair extending *both* nodes of the next.
+
+    Every `connected-projects` relation goes through one hub, because a node may
+    declare only one parent — the `extends` edges are what form the DAG, which is
+    the graph this measures.
+    """
+    import subprocess
+    import yaml
+    from tcw.store.fs import write_sentinel
+
+    names = [f"n{level}x{side}" for level in range(levels) for side in (0, 1)]
+    for name in [*names, "hub"]:
+        d = tmp_path / name
+        (d / "docs" / "capabilities").mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(d)], check=True)
+        write_sentinel(d, name)
+    (tmp_path / "hub" / "tcw-config.yaml").write_text(yaml.safe_dump(
+        {"id": "hub",
+         "connected-projects": {"children": {n: f"../{n}" for n in names}}},
+        sort_keys=False))
+    for level in range(levels):
+        for side in (0, 1):
+            d = tmp_path / f"n{level}x{side}"
+            (d / "tcw-config.yaml").write_text(yaml.safe_dump(
+                {"id": f"n{level}x{side}",
+                 "connected-projects": {"parent": {"hub": "../hub"}}},
+                sort_keys=False))
+            if level + 1 < levels:
+                (d / "docs" / "capabilities" / ".config.yaml").write_text(
+                    f"extends:\n  - n{level+1}x0\n  - n{level+1}x1\n")
+    return tmp_path / "n0x0"
+
+
+def test_a_shared_subtree_is_built_once(tmp_path, monkeypatch):
+    """`seen_nodes` terminated a cycle and memoised nothing, so a graph where two
+    extended projects reach a common ancestor rebuilt that subtree once per
+    route: 2^levels − 1 constructions, measured at 1023 and twelve seconds for
+    ten levels. The count is asserted rather than the time, because the count is
+    the property."""
+    from tcw.store import fs as fs_module
+
+    calls = []
+    real = fs_module._extended_component_stores
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(fs_module, "_extended_component_stores", counted)
+    root = _diamond(tmp_path, 8)
+    store(root).list_all()
+    # One per node on the path plus the root's own: linear, not 255.
+    assert len(calls) <= 4 * 8
+
+
+def test_federation_stays_linear_in_chain_depth(tmp_path):
+    """Each edge used to build the same subtree twice — 2^depth, measured at
+    15.7 s for eleven links. The bound is generous; what it guards is the shape.
+    """
+    import time
+
+    root = _chain(tmp_path, 14)
+    started = time.monotonic()
+    store(root).list_all()
+    assert time.monotonic() - started < 5.0

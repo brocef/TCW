@@ -316,3 +316,39 @@ def test_a_blank_artifact_still_reads_back_with_its_revision(server, seeded_node
                  if a["name"] == "outcome")
     assert entry["present"] is False
     assert entry.get("revision"), "revision must survive so edits stay safe"
+
+
+def test_serve_leaves_a_pending_removal_for_the_cli(tmp_path):
+    """`tcw serve` runs no hooks, so it must not perform an auto-delete.
+
+    Deleting without the archive anyone configured would be the one genuinely
+    destructive thing this surface could do. It resolves the item and says the
+    removal is pending instead.
+    """
+    import yaml
+    from tcw.store.fs import FsWorkStore
+
+    root = node(tmp_path)
+    config_path = root / "tcw-config.yaml"
+    config = yaml.safe_load(config_path.read_text()) or {}
+    config.setdefault("work", {})["retain"] = {"completed": False}
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    (root / ".gitignore").write_text("")
+
+    store = FsWorkStore.open(root)
+    item = store.create("A thing", created="2026-01-01")
+    store.start(item.slug)
+    store.complete(item.slug, "done", [], force=True)
+
+    assert FsWorkStore.open(root).pending_deletion(item.slug) is True
+    assert (root / "docs" / "work" / "completed" / item.slug).is_dir()
+    # And the removal is still available to a CLI that does run hooks.
+    from tcw.cli import main
+    import os
+    cwd = os.getcwd()
+    try:
+        os.chdir(root)
+        assert main(["work", "delete", item.slug]) == 0
+    finally:
+        os.chdir(cwd)
+    assert not (root / "docs" / "work" / "completed" / item.slug).exists()
