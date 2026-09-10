@@ -1,7 +1,7 @@
 ---
 name: tcw-work-stage-spec
 description: Read the TCW `spec` stage in one piece — the stage's own working document composed with the instructions this project resolves for it. Use when about to decide what to build for a work item, instead of opening the stage document and running the CLI separately.
-when_to_use: Use when about to work the `spec` stage of a TCW work item and you want the stage document and the project's resolved instructions together. Takes the work item reference, or nothing — without one the instructions still resolve, with `<slug>` where a reference would go. It reads only, produces nothing, and runs no gate: `tcw work stage gate` is still what refuses. It is not `/tcw-plan-work`, which drives request through plan and writes the artifacts.
+when_to_use: Use when about to work the `spec` stage of a TCW work item and you want the stage document and the project's resolved instructions together. Takes the work item reference, or nothing — without one the instructions still resolve, with `<slug>` where a reference would go. It reads only, produces nothing, and runs no gate — `tcw work stage gate` is still what refuses. It is not `/tcw-plan-work`, which drives request through plan and writes the artifacts.
 arguments: [item]
 allowed-tools: Bash(tcw *), Bash(cat *)
 metadata:
