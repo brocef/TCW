@@ -133,6 +133,32 @@ def test_every_next_step_names_a_command_that_exists():
                 f"a stage id")
 
 
+def test_a_silenced_stage_prints_nothing_and_is_not_bookended(tmp_path):
+    """The end-to-end half of the opt-out: `prompt: [{blob: ""}]` has to reach
+    stdout as zero bytes, not as a header and footer wrapped around an empty
+    middle. A silenced stage that still printed its bookends would read as a
+    stage that failed to resolve, which is the outcome `bookend` is applied by
+    the CLI to avoid.
+
+    The unconfigured stage in the same node is the control: it must still fall
+    back to TCW's built-in instructions, so this proves the opt-out is a choice
+    the project made rather than resolution quietly breaking.
+    """
+    root = _node(tmp_path)
+    _configure(root, {"stages": {"spec": {"prompt": [{"blob": ""}]}}})
+    item = FsWorkStore.open(root).create("Thing", body="req\n")
+
+    silenced = _prompt(root, "spec", item.slug)
+    assert silenced.returncode == 0, silenced.stderr
+    assert silenced.stdout == "", silenced.stdout
+    assert "This text ran no checks" not in silenced.stdout
+
+    floor = _prompt(root, "plan", item.slug)
+    assert floor.returncode == 0, floor.stderr
+    assert "This text ran no checks" in floor.stdout, (
+        "the unconfigured control stage stopped falling back to the built-in")
+
+
 def test_a_stage_producing_two_artifacts_names_a_branch_for_each():
     """Derived from `LifecycleStep.produces`, not from a list naming `verify`.
 

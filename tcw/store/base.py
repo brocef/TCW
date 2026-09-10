@@ -1287,7 +1287,18 @@ def _parse_binding(raw: Any, where: str, legal: "frozenset[str] | set[str]",
             return None
         text = ""
     else:
-        if not isinstance(value, str) or not value.strip():
+        if not isinstance(value, str):
+            problems.append(f"{where}: binding '{kind}' must be a non-blank string")
+            return None
+        # A blank `blob` is the one exception, and it means something: "this
+        # stage says nothing". It is not the ambiguity an empty prompt list is —
+        # that one is indistinguishable after parsing from never writing the key,
+        # which is why it stays refused. This is a list with an entry in it, and
+        # the entry is the opt-out. It resolves to empty text, which the resolver
+        # drops like any other empty part, so the stage prints nothing and is not
+        # bookended. Every other kind names something to run or read, and a blank
+        # one of those is a mistake with no meaning to give it.
+        if not value.strip() and kind != "blob":
             problems.append(f"{where}: binding '{kind}' must be a non-blank string")
             return None
         # `blob` is literal text: stripping it would silently edit a prompt.
@@ -1365,9 +1376,9 @@ def _empty_prompt(where: str, problems: list[str]) -> None:
         f"{where}: an empty prompt list is not an opt-out — a stage with no "
         f"prompts resolves to TCW's built-in instructions, and after parsing "
         f"this is indistinguishable from not writing the key at all. Remove "
-        f"it, or give the stage a binding whose `when:` cannot match — that is "
-        f"what resolves to nothing today. A blank `blob` is refused: this "
-        f"parser rejects it as a non-blank string")
+        f"it, or bind [{{blob: ''}}] for a stage that should genuinely say "
+        f"nothing — a list with the opt-out in it, which is not the same as an "
+        f"empty list")
 
 
 def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":

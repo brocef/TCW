@@ -258,23 +258,37 @@ def test_an_explicit_empty_prompt_list_is_rejected():
     assert "spec" in p and "blob" in p
 
 
-def test_the_empty_prompt_message_does_not_advise_what_the_parser_refuses():
-    """The message tells the reader how to say "this stage says nothing". It used
-    to name `[{blob: ''}]` — which `_parse_binding` rejects as a blank string, so
-    the error advised writing a second error. That advice had also been copied
-    into two migration guides, the configuration guide, and a capability
-    description before anyone tried it.
+def test_the_empty_prompt_message_advises_a_shape_the_parser_accepts():
+    """The message tells the reader how to say "this stage says nothing", and for
+    two releases it named `[{blob: ''}]` while `_parse_binding` rejected a blank
+    string — so the error advised writing a second error. The same advice had
+    been copied into both migration guides, the configuration guide, and a
+    capability description before anyone tried it.
 
-    The last assertion is the one that matters: whatever the message names has to
-    be a shape this parser actually accepts.
+    2.0.0 settled it by making the advice true rather than by rewording it. This
+    test pins the property, not the wording: whatever the message names has to be
+    a shape this parser accepts. A rewording that starts advising something
+    unusable fails here.
     """
     p = only({"stages": {"spec": {"prompt": []}}})
-    assert "when" in p, p
-    assert "blob: ''" not in p and 'blob: ""' not in p, (
-        "the empty-prompt error advises a blank blob, which the parser refuses")
-    assert problems({"stages": {"spec": {"prompt": [
-        {"blob": "-", "when": {"tags": ["never-applied"]}}]}}}) == [], (
-        "the message names a shape that does not validate")
+    assert "blob" in p, p
+    assert problems({"stages": {"spec": {"prompt": [{"blob": ""}]}}}) == [], (
+        "the empty-prompt error names a shape that does not validate")
+
+
+def test_a_blank_blob_is_the_opt_out_and_the_only_blank_accepted():
+    """`prompt: [{blob: ""}]` is a list with the opt-out written in it. That is
+    what separates it from `prompt: []`, which after parsing cannot be told apart
+    from never writing the key — so the empty list stays refused.
+
+    The exception is confined to `blob`. Every other kind names something to run
+    or read, and a blank one of those is a mistake with no meaning to give it.
+    """
+    assert problems({"stages": {"spec": {"prompt": [{"blob": ""}]}}}) == []
+    assert only({"stages": {"spec": {"prompt": []}}})
+    for kind in ("file", "generate", "skill"):
+        assert problems({"stages": {"spec": {"prompt": [{kind: ""}]}}}), kind
+        assert problems({"stages": {"spec": {"prompt": [{kind: "  "}]}}}), kind
 
 
 def test_an_empty_pre_list_is_untouched():

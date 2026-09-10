@@ -117,6 +117,54 @@ If you have written your own instructions for a stage, nothing about how they ar
 chosen has changed — the inbox stage now simply has a TCW default to fall back
 to, the same as the rest.
 
+## Things that were wrong, found in review before this shipped
+
+A last review pass over this release found several things worth naming, because
+two of them would have cost you something real.
+
+**Finishing a rejected work item.** The `verify` stage ends one of two ways: you
+accept the work, or you send it back. The closing line of its instructions named
+only the first, and it is the last thing you read before acting. Follow it after
+a rejection and the item closed as *done*, carrying the record of the rejection
+into the completed folder with it. That line now names both endings.
+
+The command that closes an item still does not refuse one you rejected, and that
+is deliberate. An item sent back once, reworked, and then accepted legitimately
+carries both records, so refusing on the presence of a rejection record would
+refuse perfectly good work. Getting there is the reviewer's call, and the
+instructions now point both ways rather than one.
+
+**Reading a stage for an item in another repository.** TCW lets you name an item
+in a connected project, and the instructions come back resolved against *that*
+project. But the commands quoted back at you had the project prefix stripped, so
+running one acted on your own repository instead. Where two projects had filed a
+similarly-named request, that silently pointed at the wrong item. The prefix now
+survives.
+
+**Silencing a stage never worked as documented, and now it does.** If you wanted
+a stage to say nothing, four different documents told you to write
+`prompt: [{blob: ""}]`. TCW rejected it as blank, dropped the binding, and fell
+back to printing its own built-in instructions — the loudest possible outcome
+from the setting meant to produce silence.
+
+Rather than correct four documents to describe a workaround, that spelling now
+works. A stage silenced this way prints nothing at all, and gets no header or
+footer either. If you tried it once and gave up, try it again.
+
+An empty list, `prompt: []`, is still refused, and the difference is the whole
+point: writing the opt-out down is a choice you made, while an empty list cannot
+be told apart from never having written the setting.
+
+**Smaller things.** `tcw work stage inbox` pointed you at a command that is
+itself refused. A typo in the verb was told the seven old spellings were valid.
+Asking what an inbox stage would run stayed silent about checks it was skipping
+rather than naming them. The Codex plugin listed eight skills while shipping
+nine, so the newest was invisible to anyone reading the description.
+
+**One thing to check if you bound hooks to the inbox stage.** Those bindings
+could never run before, because the old command refused that stage outright. They
+run now.
+
 ## A shorter README, and a set of guides behind it
 
 The README had grown to 1628 lines and read as a reference manual. Someone

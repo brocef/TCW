@@ -258,3 +258,29 @@ itself at the cut.
 Both `docs/changelogs/upcoming.md` and `docs/release-notes/upcoming.md` are
 written and substantial. The release notes are correct on the verbs; the
 changelog is not, per finding 1.
+
+---
+
+## Resolved, 2026-09-10, on `fix/pre-2.0.0-review-findings`
+
+All seven defects above are fixed, along with three more found by a multi review
+run afterwards. Each fix carries a test that was checked by mutation — the fix
+reverted, the test observed to fail, the fix restored — because a guard that has
+never failed has not been shown to guard anything.
+
+| Finding | Fixed by |
+| --- | --- |
+| 1 — stale changelog lines | the three bullets now name `gate`; lines 8 and 48 kept, they exist to say the verb does not exist |
+| 2 — false capability statement | names `gate` where the meaning is the refusal, and now names both verbs |
+| 3 — the silencing advice | fixed at its source and all five copies; see the companion note |
+| 4 — `inbox` advised a refused command | the one stage taking no reference is shown none |
+| 5 — the guard that stopped biting | fenced blocks stripped before the assertion |
+| 6 — plugin manifest undercount | corrected, and both the count and the enumeration are now checked |
+| 7 — capture docstring wrong verb | rewritten, and the third re-capture recorded under the rule the docstring sets |
+
+**The records inaccuracies above are left as they stand.** They describe what the
+completed items claimed at their own commits, which is what an outcome is for.
+
+**The lost fixture evidence stays lost**, as recorded. The reconstruction done
+during verification is not in the suite and was not added: what the file pins from
+here is the bookended text.

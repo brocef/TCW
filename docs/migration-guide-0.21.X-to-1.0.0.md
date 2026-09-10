@@ -38,11 +38,11 @@ Fix it one of two ways, depending on what you meant:
 
 ```yaml
 spec:
-    # "this stage should say nothing" — a binding that cannot fire.
-    # `{blob: ""}` looks like the way to say it and is refused: a blank
-    # string fails validation exactly as the empty list does.
-    prompt: [{ blob: "-", when: { tags: [never-applied] } }]
+    prompt: [{ blob: "" }] # "this stage should say nothing" — deliberate
 ```
+
+> Between 1.0.0 and 2.0.0 this spelling was refused as a blank string, despite
+> being documented here as the way to do it. 2.0.0 makes it work.
 
 ...or delete the line entirely, if you meant nothing in particular.
 

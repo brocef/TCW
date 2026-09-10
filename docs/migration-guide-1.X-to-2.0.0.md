@@ -1,9 +1,16 @@
 # Migrating from 1.x to 2.0.0
 
 Version 2.0.0 has **exactly one break**: `tcw work stage` is now two commands
-instead of one. Nothing about your `tcw-config.yaml`, your work items, your
-store, or your hooks changes. If you never type `tcw work stage` and never wrote
-it into an agent guide or a script, there is nothing to do.
+instead of one. Nothing about your `tcw-config.yaml`, your work items, or your
+store changes. If you never type `tcw work stage` and never wrote it into an
+agent guide or a script, there is nothing to do.
+
+**One thing to check if you bound hooks to the `inbox` stage.** Those bindings
+were unreachable in 1.x, because the stage verb refused `inbox` outright, so a
+`pre:` binding there had never run. `tcw work stage gate inbox` now runs it. If
+you wrote one expecting it to be inert, it no longer is. A conditioned one still
+cannot fire — there is no item to condition on at the inbox stage — and
+`tcw work stage gate inbox --no-exec` now names those rather than omitting them.
 
 ## The break: `tcw work stage <id> <slug>` is now two verbs
 
@@ -39,8 +46,13 @@ answer.
 | Before | After |
 | --- | --- |
 | `tcw work stage spec my-item` | `tcw work stage prompt spec my-item` (to read) · `tcw work stage gate spec my-item` (to check) |
-| `tcw work stage inbox` | `tcw work stage prompt inbox` · `tcw work stage gate inbox` |
+| *(nothing — `inbox` had no working 1.x spelling)* | `tcw work stage prompt inbox` · `tcw work stage gate inbox` |
 | `tcw work stage plan my-item --no-exec` | `tcw work stage gate plan my-item --no-exec` · `tcw work stage prompt plan my-item --no-exec` |
+
+The `inbox` row has no "Before": in 1.x the slug was a required positional, so
+`tcw work stage inbox` was an argparse usage error and the form *with* a slug was
+refused by the stage handler. There is no 1.x call to search for and migrate —
+the row is there because the instructions are new, not because the command moved.
 
 The old form is not accepted and does not silently do anything. It reports both
 commands and exits 2:
@@ -108,9 +120,12 @@ not overriding where the lifecycle goes next. A stage that resolves to **nothing
 stays silent and is not wrapped — a header and footer around an empty middle
 would read as a stage that failed to resolve.
 
-Silencing a stage is not `{blob: ""}`, which `tcw validate` rejects as a blank
-string. What resolves to nothing is a stage whose every binding is conditioned
-out, so a `when:` naming a tag no item carries is the way to do it today.
+**Silencing a stage now works the way it always read.** `prompt: [{blob: ""}]`
+means "this stage says nothing": the stage resolves to nothing, prints nothing,
+and gets no bookend. In 1.x that spelling was refused as a blank string even
+though four separate documents described it as the way — so if you tried it and
+gave up, try it again. An empty list is still refused, and for the unchanged
+reason: after parsing it cannot be told apart from never writing the key.
 
 **If you have a byte-comparison against stage output, it will move.** That is the
 only place this release changes text rather than commands.

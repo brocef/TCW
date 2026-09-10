@@ -86,10 +86,10 @@ by `tcw validate`, in both spellings — `prompt: []` and a bare
 `stages.<id>: []`. It never said anything, and now that an unconfigured stage
 falls back to TCW's own instructions it reads as an opt-out it is not.
 
-A stage that should genuinely say nothing needs a binding that never fires, not a
-blank one: `{blob: ""}` is refused for the same reason the empty list is. Give it
-a `when:` that cannot match — a tag no item carries — and the stage resolves to
-nothing and prints nothing. There is no dedicated opt-out binding yet.
+A stage that should genuinely say nothing binds `{blob: ""}`. That is a list with
+the opt-out written in it, which is what makes it different from the empty list:
+one states a choice, the other is indistinguishable from silence in the config
+file. A silenced stage resolves to nothing, prints nothing, and gets no bookend.
 
 **Checking a stage may run** is `tcw work stage gate <id> <ref>`. It checks the
 status legality and runs the stage's `pre` bindings, and that is all it does: it

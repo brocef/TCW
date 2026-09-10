@@ -92,3 +92,53 @@ branch, so it is recorded in the companion note rather than here:
 `test_the_composing_skill_reads_with_prompt_and_names_begin_for_entry` stopped
 biting once a second copy of the literal it looks for appeared in the skill's
 manual-fallback fence.
+
+---
+
+## Resolved, 2026-09-10, on `fix/pre-2.0.0-review-findings`
+
+Both were fixed rather than deferred, once it turned out neither needed the design
+decision this note assumed.
+
+**1 — the silencing advice.** The design question does not have to be answered to
+stop advising something that does not work. A stage whose every binding is
+conditioned out already resolves to nothing, verified end to end: that shape
+validates and prints zero bytes where an unconfigured stage prints the 2398-byte
+built-in floor. All six places now name it — the error message that originated the
+advice, both migration guides, the configuration guide, the capability
+description, and the release notes, which asserted the premise without naming the
+mechanism. Archived release notes are untouched; they record what was believed
+when written.
+
+The new test checks the property rather than the wording: whatever the message
+names has to be a shape this parser accepts. That closes the class, not the
+instance.
+
+**What is still open** is the narrower question this note actually raised: there
+is no first-class way to say "this stage says nothing". Conditioning a binding on
+a tag no item carries works, but it reads as a trick rather than an intention.
+Whether to accept a blank `blob` as a deliberate silence, or add an explicit
+opt-out, is still a design decision nobody has made. Filed on its own below.
+
+**2 — the untested fallbacks.** Six lines, so they were written rather than
+tracked. Every injected command in the composing skill is now checked to end with
+its `|| true`, closing the second of the two silent-empty-render causes the item
+measured.
+
+## Still open: a first-class way to silence a stage
+
+`prompt: [{ blob: "-", when: { tags: [never-applied] } }]` is the documented way
+to make a stage say nothing. It works, and it is a trick: the binding exists only
+so it can fail to match, and the placeholder text is never read by anyone. A
+reader has to be told why it is shaped that way, which is why it now costs three
+lines of comment in the migration guide.
+
+Two candidate answers, and this is a decision rather than a defect:
+
+- **Accept a blank `blob` as deliberate silence**, distinguishing it from an
+  absent binding. This is what four documents already believed was true, which is
+  some evidence about what people expect.
+- **Add an explicit opt-out** — a `silent: true` on the stage, or similar — and
+  keep rejecting the blank blob.
+
+Doing nothing is also defensible. The trick works and is now documented honestly.

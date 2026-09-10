@@ -1078,7 +1078,8 @@ def _stage_gate(args: argparse.Namespace, step, st, item, slug: str,
     the bookend needs it: a stripped qualifier names a different node's item.
     """
     policy = st.lifecycle_policy()
-    checks = select(policy.stage_checks(step.id), item)
+    declared = policy.stage_checks(step.id)
+    checks = select(declared, item)
     if args.no_exec:
         # A plan, so stderr — and only this verb's own bindings. The prompt
         # bindings are `tcw work stage prompt --no-exec`'s to report now, and
@@ -1086,8 +1087,15 @@ def _stage_gate(args: argparse.Namespace, step, st, item, slug: str,
         # resolving at all.
         print(f"tcw work stage gate {step.id}: --no-exec, nothing was executed",
               file=sys.stderr)
-        for b in checks:
-            print(f"  pre check would run: {b.ref}", file=sys.stderr)
+        # Conditioned-out checks are named rather than omitted, the way the
+        # reading verb already names its skipped prompt bindings. Silence here
+        # is ambiguous between "you bound none" and "yours did not match" — and
+        # on `inbox` there is no item at all, so every `when:` is filtered and a
+        # bare list would report a project's own bindings as though absent.
+        kept = {id(b) for b in checks}
+        for b in declared:
+            state = "would run" if id(b) in kept else "skipped (condition)"
+            print(f"  pre check {state}: {b.ref}", file=sys.stderr)
         return 0
 
     err = run_bindings(checks, st.node_root,
@@ -1211,6 +1219,12 @@ def _stage_without_item(args: argparse.Namespace, step) -> int:
     status are what the hook environment carries when there is no item to name.
     The stage's `pre` bindings still run: `inbox` skips the *legality* check,
     which has no status to judge, not the checks the project bound.
+
+    **An unconditioned binding, though.** `select` answers False for every
+    `when:` when the item is `None`, so a conditioned `inbox` check can never
+    fire — there is no item to condition on, which is the stage's whole nature.
+    That is not a bug to fix here, but it is silent, so `--no-exec` names the
+    skipped ones rather than printing a list that looks like "you bound none".
     """
     st = _store()
     if st is None:

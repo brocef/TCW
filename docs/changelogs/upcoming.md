@@ -99,7 +99,19 @@ category.
 
 ## Changed
 
-- **`pstg` is a subparser group** holding `prompt` and `begin` rather than two
+- **A blank `blob` is the stage opt-out.** `prompt: [{blob: ""}]` now validates
+  and means "this stage says nothing": it resolves to empty text, which the
+  resolver drops like any other empty part, so the stage prints nothing and is
+  not bookended. It was refused as a blank string for two releases while four
+  separate documents described it as the way to do it.
+  - **An empty prompt list stays refused**, and the distinction is the point. A
+    list with the opt-out written in it states a choice; `prompt: []` cannot be
+    told apart after parsing from never writing the key at all.
+  - The exception is confined to `blob`. `file`, `generate`, and `skill` each
+    name something to run or read, and a blank one of those is a mistake with no
+    meaning to give it, so they keep the non-blank rule.
+
+- **`pstg` is a subparser group** holding `prompt` and `gate` rather than two
   positionals. `prompt` resolves the store via `_store()` with no reference and
   `_resolve()` with one; `gate` resolves the item, checks legality, runs the
   checks. The unknown-stage error names the verb it was reached through.
@@ -135,7 +147,7 @@ category.
   `store/base.py`, and `require_artifact.py`. `prompt` appears only where reading
   rather than entering is meant. Nothing under `ARCHIVAL` was touched: past
   changelogs, release notes, and `docs/work/` record what was true when written.
-- `run-a-lifecycle-stage` states the refusal guarantee applies to `begin`, and no
+- `run-a-lifecycle-stage` states the refusal guarantee applies to `gate`, and no
   longer claims `tcw work stage inbox` is refused.
 - **README.md restructured from a reference manual into an adoption pitch.**
   Reduced from 1628 to ~320 lines. The opening now leads with the problem, a
@@ -151,6 +163,82 @@ category.
   discovers the new guides through `git ls-files`.
 
 ## Fixed
+
+- **The `verify` stage's generated footer named only the acceptance branch.** The
+  stage produces `refined-outcome.md` **or** `rework.md`, and the footer is the
+  last line its reader sees — it said "run `tcw work complete`" unconditionally,
+  contradicting the stage's own step 6. Following it after a rejection closed the
+  item as `done`, because `tcw work complete` has no guard against an item
+  carrying `rework.md`. `STAGE_NEXT_STEPS["verify"]` now names both branches.
+  - **The missing guard in `complete` is left alone deliberately.** Nothing
+    deletes `rework.md` — `implement` reads it as input on a second pass, and
+    `verify` never says to remove it after a later acceptance — so an item
+    reworked and then accepted legitimately carries both files, and a guard
+    refusing whenever `rework.md` is present would refuse every one of them. The
+    condition that matters is "the last verdict was a rejection", which is a
+    design decision rather than a release patch. `transitions.md` records the
+    asymmetry.
+  - `test_a_next_step_names_a_transition_only_where_one_is_needed` could not have
+    caught it: it examines only rows containing a stage gate command, so any row
+    ending in a transition escapes every assertion in it. The new check derives
+    from `LifecycleStep.produces` and requires one command per outcome.
+- **Both verbs dropped the project qualifier from the commands they advise.**
+  `_resolve` returns a bare slug by contract, and that bare slug was what the
+  bookend header and the gate's success line quoted back. Reading or gating
+  another node's item advised a command that resolves against the node you are
+  standing in. Slugs are date-prefixed and derived from titles, so two nodes
+  filing the same request on one day collide and the advised command then gates
+  the wrong item and runs the wrong node's `pre` bindings. Both functions now
+  take the typed reference for display and keep the bare slug for addressing.
+- **`tcw work stage inbox` advised a command that is itself refused.** The
+  migration message handed every stage the same `<slug>` placeholder; `inbox`
+  takes no reference on either verb, so following the advice earned a second
+  refusal. It is now shown without one.
+- **A typo was offered the seven removed spellings as valid verbs.** They are
+  registered as subparsers so the old form gets a migration message rather than a
+  bare "invalid choice", and the metavar keeps them out of `--help` — but
+  argparse builds its own "choose from" list off the action's choices. A narrow
+  `_check_value` override on the `work` subparsers makes the comment claiming
+  they are hidden actually true; every other subcommand group is untouched.
+- **`[{blob: ''}]` was advised as the way to silence a stage, in six places, and
+  the parser refused it.** `_parse_binding` rejected a blank string, so the
+  binding was dropped and the stage fell back to the built-in floor — bookended.
+  The loudest possible outcome from the setting meant to produce silence. The
+  advice originated in the empty-prompt error message and had been copied into
+  both migration guides, `docs/guide/configuration.md`, and the
+  `configure-the-work-lifecycle` capability.
+  - **Settled by making the advice true**, not by rewording it: see *A blank
+    `blob` is the stage opt-out* under Changed. Four documents independently
+    describing the same behaviour is evidence about what the shape should mean.
+  - The test pins the property rather than the wording — whatever the message
+    names has to be a shape this parser accepts — so a future rewording cannot
+    reintroduce the class.
+- **`read-the-documentation-gate-for-a-change` asserted a refusal the reading
+  verb cannot perform.** It said `tcw work stage prompt implement` is "correctly
+  refused because the item is closed"; `prompt` checks nothing and exits 0 with a
+  note. The verb there is `gate`, and the description now names both.
+- `tcw work stage gate --no-exec` omitted conditioned-out `pre` checks entirely,
+  so silence was ambiguous between "you bound none" and "yours did not match".
+  It now names them with their reason, the way the reading verb already named its
+  skipped prompt bindings. This matters most on `inbox`, where there is no item,
+  so **every** `when:` is filtered.
+- `.codex-plugin/plugin.json` said the plugin ships eight skills and named eight;
+  nine ship. `tcw-work-stage` was undiscoverable to anyone reading the
+  description, which is that field's whole audience. Both the count and the
+  enumeration are now checked against the `skills/` directory.
+- The guard against the composing skill becoming a documented route around the
+  gate stopped biting once a second copy of the literal it searched for appeared
+  in the skill's manual-fallback fence — the prose warning could be deleted with
+  the suite green. Fenced blocks are stripped before the assertion now. The
+  skill's two `|| true` fallbacks are also covered, closing the second of the two
+  silent-empty-render causes its own item measured and left unguarded.
+- The migration guide's "Before" column listed `tcw work stage inbox`, which was
+  an argparse usage error in 1.x — there was no working call to migrate from.
+- The migration guide claimed nothing about hooks changes. An `inbox` `pre:`
+  binding was unreachable in 1.x and `tcw work stage gate inbox` now runs it.
+- `tests/fixtures/prompt_fallback/capture.py` said `tcw work stage` refuses
+  out-of-status stages — true of `gate`, false of `prompt`, the verb it captures.
+
 
 - `decompose.md` linked to `cross-node-epic.md`, which has never existed. It now
   points at `cross-node-deltas.md`, the document it meant.
@@ -170,11 +258,11 @@ track which changes` opened at line 1084 and the next `###` was at 1432, so
 
 ## Internal
 
-- `tests/test_stage_verb.py` — `_cli` invokes `begin`, `_prompt` and `_bare` are
-  its siblings for the new verb and the removed form. Adds the paired
+- `tests/test_stage_verb.py` — `_cli` invokes `gate`, `_prompt` and `_bare` are
+  its siblings for the reading verb and the removed form. Adds the paired
   gate-non-execution evidence: a node whose `plan.pre` creates a sentinel, where
-  `prompt` exits 0 leaving no sentinel and `begin` exits 1 having written one.
-  Without the `begin` half the `prompt` half passes just as well when the gate is
+  `prompt` exits 0 leaving no sentinel and `gate` exits 1 having written one.
+  Without the `gate` half the `prompt` half passes just as well when the gate is
   broken and never runs at all. `test_inbox_is_rejected_with_its_reason` and
   `test_inbox_still_ships_no_prompt` are replaced by
   `test_inbox_refuses_a_work_item_argument` and

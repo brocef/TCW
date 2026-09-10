@@ -79,6 +79,14 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
 `tcw work complete <slug> --resolution done --confirm`
 
 - `--confirm` is required. `[gated]`
+- **It does not refuse an item whose last verdict was a rejection.** `[judgment]`
+  `rework` guards the mirror case and this does not, so an item carrying
+  `rework.md` and no `refined-outcome.md` completes as `done`. Not an oversight
+  to route around: nothing ever deletes `rework.md`, the `implement` stage reads
+  it as input on a second pass, and an item legitimately reworked and then
+  accepted carries both files — so "refuse whenever `rework.md` exists" would
+  refuse every one of those. Reaching `complete` is the verifier's decision to
+  get right; the stage's own next-step line names both branches.
 - Unresolved blockers refuse a shipment. `[gated]`
 - An epic refuses while initiative children are open. `[gated]`
 - **Capability reconciliation is enforced**, not merely acknowledged: it fails if
