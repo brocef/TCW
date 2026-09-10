@@ -80,14 +80,14 @@ untouched.
 
 ### Steps to reproduce
 
-1. <exact command or action>
+1. <the exact command or action, under mirrored names>
 2. <...>
 3. <...>
 
 ### Expected vs. actual
 
 - Expected: <what should have happened>
-- Actual: <what happened — paste the error / output verbatim>
+- Actual: <what happened — the error / output verbatim, from the mirrored run>
 
 ### Remediation
 
