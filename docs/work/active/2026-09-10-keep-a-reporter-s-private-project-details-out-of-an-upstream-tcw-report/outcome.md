@@ -1,21 +1,23 @@
 # Outcome: keep a reporter's private project details out of an upstream TCW report
 
-Nine commits on `claude/kind-babbage-epcpqy`, rebased onto `0029663` (`main` at
-v2.0.2) partway through — the seven task commits below, plus the `→ active`
-transition that opens them and this record that closes them. No Python changed: `git diff origin/main..HEAD -- tcw
+Eleven commits on `claude/kind-babbage-epcpqy`, rebased twice while in flight —
+onto `0029663` (`main` at v2.0.2), then onto `1f1d80b` after the cloud-session
+suite fix merged. The seven task commits below, plus the `→ active` transition
+that opens them, this record, and the two commits correcting it and the skill
+prose. No Python changed: `git diff origin/main..HEAD -- tcw
 tests scripts pyproject.toml` is empty.
 
 ## What shipped, by task
 
 | Task | Commit    | What landed                                                                                                                                                                           |
 | ---- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `878c8e6` | `plugin/report-an-issue-upstream` seeded `Missing` with the `Planning doc` back-pointer, its `description.md` written in its two siblings' voice, and the item's `capabilities.yaml`. |
-| 2    | `551e877` | `## What goes in the report` — the public/private asymmetry, the mirrored default, the swap and keep lists, and the output preference.                                                |
-| 3    | `32c65d0` | Fresh-environment reproduction encouraged and explicitly optional; delegating it to a subagent or agent team member in a temporary directory.                                         |
-| 4    | `64a58c3` | The before/after block (7 lines including its fences), and the closing paragraph relocated from "real vs. abstract" to the command's shape.                                           |
-| 5    | `93ff51e` | The bug skeleton's `Steps to reproduce` and `Actual` placeholders point at the mirrored run. Environment block and `tcw --version` step untouched.                                    |
-| 6    | `c573d70` | Capability flipped to `Supported`.                                                                                                                                                    |
-| 7    | `f919ffe` | `docs/changelogs/upcoming.md`, `docs/release-notes/upcoming.md`, and one clause in `skills/tcw-plugin/SKILL.md`'s router bullet. README unchanged, deliberately.                      |
+| 1    | `a86c21a` | `plugin/report-an-issue-upstream` seeded `Missing` with the `Planning doc` back-pointer, its `description.md` written in its two siblings' voice, and the item's `capabilities.yaml`. |
+| 2    | `5178c9b` | `## What goes in the report` — the public/private asymmetry, the mirrored default, the swap and keep lists, and the output preference.                                                |
+| 3    | `be381aa` | Fresh-environment reproduction encouraged and explicitly optional; delegating it to a subagent or agent team member in a temporary directory.                                         |
+| 4    | `f32f5c0` | The before/after block (7 lines including its fences), and the closing paragraph relocated from "real vs. abstract" to the command's shape.                                           |
+| 5    | `1f2c85c` | The bug skeleton's `Steps to reproduce` and `Actual` placeholders point at the mirrored run. Environment block and `tcw --version` step untouched.                                    |
+| 6    | `f675730` | Capability flipped to `Supported`.                                                                                                                                                    |
+| 7    | `14d4642` | `docs/changelogs/upcoming.md`, `docs/release-notes/upcoming.md`, and one clause in `skills/tcw-plugin/SKILL.md`'s router bullet. README unchanged, deliberately.                      |
 
 `skills/tcw-report/SKILL.md` is 118 lines, against the criterion's 120.
 `allowed-tools` is byte-identical to `origin/main`, and the file contains no
@@ -23,18 +25,21 @@ command that posts to GitHub.
 
 ## Test result
 
-`python3 -m pytest -q` at `f919ffe`: **2523 passed, 4 failed** in 379s. Every
-failure is this container, not the diff — which touches no Python at all:
+**`python3 -m pytest -q` on the rebased head: 2529 passed, 1 skipped, exit 0.**
 
-- `tests/test_scaffold.py::test_an_unwritable_target_reports_and_prints_no_path`
-  and the two `tests/test_store_editor.py` atomic-write failure tests each
-  `chmod` a directory to drop write permission and assert the write fails. The
-  session runs as uid 0, which bypasses the permission bits, so the writes
-  succeed and the assertions invert.
-- `tests/test_shipped_prompts.py::test_the_prompts_are_in_the_built_wheel` builds
-  a wheel, and the build dies in this image's setuptools with
-  `AttributeError: install_layout`. Reproduced outside pytest with a bare
-  `pip wheel --no-deps --no-build-isolation`.
+The first run of this item, before the rebase, was 2523 passed and 4 failed, and
+all four were this container rather than the diff — which touches no Python at
+all. `main` then merged
+`2026-09-10-make-the-test-suite-pass-in-a-claude-code-cloud-session`, which fixed
+three of them at their seams and skipped the fourth under root, and raised the
+provisioner's setuptools floor to 70.1 so the wheel test can build. This session
+provisioned before that change, so its setuptools was still 68.1.2 and
+`tests/test_shipped_prompts.py` kept failing on the rebased head until the
+interpreter was raised the way the provisioner now does; the test passes after
+that, and nothing in this item's diff was involved either way.
+
+The single skip is `tests/test_scaffold.py::test_an_unwritable_target_reports_and_prints_no_path`,
+skipped by design when the effective uid is 0.
 
 `tests/test_plugin_manifests.py` passes on its own (25 tests). `tcw validate` and
 `tcw capabilities check` both exit 0. `pnpm prettier --check` passes on every file
