@@ -100,3 +100,18 @@ more: it reads with `prompt`, so it runs no gate — and the text it delivers sa
 so itself, in the header every resolved prompt carries. A Codex user, who gets no
 context injection, runs the two commands and reads the same header, which is why
 that reminder lives in the CLI's output and not in the skill.
+
+**And I can ask for a stage by name.** `tcw-work-stage` takes the stage id as an
+argument, which means restating the one thing I am most certain of — I am
+reaching for it *because* I am about to work `spec`. So each stage a person
+actually drives has its own skill with the stage already in it:
+`tcw-work-stage-request`, `-spec`, `-plan`, `-implement`, `-verify`. That leaves
+the work item reference as the only argument, and it is optional, because
+`tcw work stage prompt` is. Invoked bare, I still get both halves, with `<slug>`
+standing where a reference would go.
+
+`inbox` and `postmortem` have no such skill and that is deliberate: `inbox` takes
+no work item reference on either verb, and `postmortem` already has
+`tcw-post-mortem`. `tcw-work-stage` still reaches both, which is why it stays.
+None of the five gates either — the same header carries the same warning, for the
+same reason.
