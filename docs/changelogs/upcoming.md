@@ -35,7 +35,8 @@ category.
 - `test_every_skill_has_name_and_description_frontmatter` scanned frontmatter
   line by line, so a plain scalar containing `": "` — a YAML error — passed it
   while Codex would refuse to load the skill. It parses the frontmatter as YAML
-  now. All five per-stage skills hit exactly this on first write.
+  now. A per-stage skill shipped with exactly that defect and the suite stayed
+  green, which is what prompted the change.
 - `test_the_codex_description_counts_the_skills_it_ships` matched each skill name
   as a bare substring. `tcw-work-stage` is a substring of every
   `tcw-work-stage-<stage>` name, so the generic skill could have been dropped
