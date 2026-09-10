@@ -9,7 +9,7 @@ a correction rather than an extension.
 | --- | --- | --- |
 | `cli/point-tcw-at-a-project-i-already-have` (`cap-75c7e9`) | Amend | It says "every command that resolves the graph honours the same variable, because it is read when the graph is loaded". True, and store resolution is not graph resolution — so the variable does not reach it. After this item, a store declared in a repository the graph has already located is found there. |
 | `cli/validate-a-node` (`cap-2bd014`) | **Correct** | It already claims validation "tells a store's three failure modes apart in different words". `tcw validate` does not do this when a broken `<component>.path` and an unprovisioned declaration are both present: it reports the declaration only. The claim is standing and reality does not meet it. |
-| `cli/provision-declared-stores` (`cap-28abaf`) | Amend | It says a project already reachable "is never fetched, whoever declared where it comes from". That holds for connected projects and not for component stores; a store whose repository is already on disk is still cloned into the cache. |
+| `cli/provision-declared-stores` (`cap-28abaf`) | Amend | It says a store that already resolves "is reported as already available and no network call is made". That is true of whatever the resolution ladder can resolve, so the ladder gaining a rung widens it for free. The wording gains nothing new to promise; it is listed because the set of stores it covers changes. |
 
 No status flips. All three stay `Supported`; `cli/validate-a-node` is
 `Supported` today on a claim it does not meet, which is the defect.
@@ -215,21 +215,30 @@ Two spellings of "same repository" in one codebase is the drift this avoids.
 `_cache_key`'s output must not change — it names existing cache directories on
 users' machines, and a changed key orphans them.
 
-### 4. `tcw provision` asks the same question
+### 4. `tcw provision` needs no change
 
-`run_provision`'s component loop (`tcw/cli.py:158-160`) builds an
-`FsStoreProvisioner` per declared component with no registry check, while
-`_provision_nodes` (`tcw/cli.py:229`) does exactly that check via
-`resolved_outside` (`tcw/cli.py:273`).
+Checked rather than assumed, and the first draft of this spec had it wrong.
 
-The component loop gains the same question, with the same outcome: a component
-whose store the new rung resolves is reported as already available and no
-network call is made. `FsStoreProvisioner.is_available` (`tcw/store/fs.py:3123`)
-answers only about the provisioned target, so the check belongs in the caller
-beside the existing node-side one rather than inside the provisioner.
+`run_provision`'s component loop already asks whether the component's store
+resolves, at `tcw/cli.py:161-172`: when the provisioned copy is absent it calls
+`STORE_CLASSES[component].open(node_root)` and, on success, prints
+`"  <component>: already available at <root>"` and skips to the next component
+without contacting anything.
 
-Without this, requirement 1 is met for reads and the user still watches a clone
-happen, and `describe()` still prints a cache path as the store's location.
+That call goes through `resolve_store`. So the new rung propagates: a store the
+rung resolves makes `open` succeed, and the loop reports it as already available
+for the same reason it already does for a usable `<component>.path`. The
+existing test `test_provision_reports_a_local_store_without_contacting_the_remote`
+(`tests/test_store_provisioning.py:393`) pins that behaviour for the rung-1 case.
+
+**No production change is planned here.** Requirement 5 is met by §1 alone, and
+criterion 7 exists to prove that rather than to drive an edit.
+
+One pre-existing limit, out of scope: `declared_available =
+provisioner.is_available()` runs first (`tcw/cli.py:161`), so a machine that
+already has a stale cache clone from before this change still takes the
+provisioned branch. That is equally true of a usable `<component>.path` today,
+so it is not a defect this item introduces or is asked to fix.
 
 ### 5. Carrying the failed rung's reason
 
@@ -269,12 +278,12 @@ the registry whether it is already here*. Every call site of
 | Site | Verdict |
 | --- | --- |
 | `resolve_store` rung 2, `tcw/store/fs.py:3028` | **The reported defect.** Fixed by §1. |
-| `run_provision` component loop, `tcw/cli.py:158-160` | **Sibling defect.** Fixed by §4. |
+| `run_provision` component loop, `tcw/cli.py:158-172` | **Not a defect.** It already asks the resolution ladder before provisioning (`tcw/cli.py:163-172`) and inherits the new rung. See §4. |
 | `FsStoreProvisioner.describe`, `tcw/store/fs.py:3121` | Consequence of the above, not separate. Correct once the caller stops reaching it. |
 | `FsStoreProvisioner.is_available` / `ensure_available`, `tcw/store/fs.py:3123,3141` | **Not a defect.** These answer "is the provisioned copy there", which is their contract. The question about the registry belongs to the caller, which is where `_provision_nodes` puts it. |
 | `_target_path`, `tcw/store/project.py:477` | **Not a defect.** This is the ladder that already does it right. |
 
-The sweep found one sibling, and it is in scope.
+The sweep found **no** sibling defect. Every other site that turns a declaration into a path either already consults the ladder or is contractually about the provisioned copy alone. The whole production change is therefore in `resolve_store` and the two diagnostic paths that read its outcome.
 
 ## Acceptance criteria
 
@@ -303,9 +312,10 @@ Each is checkable by someone else without asking what was meant.
    project's checkout is on a branch other than the declaration's `ref`, with no
    warning and no failure.
 7. **`tcw provision` reports already-available.** In the case from criterion 1,
-   `tcw provision` prints the component as already available, makes no network
-   call, and exits 0. Checked with `--dry-run` and again without it against a URL
-   that would fail if contacted.
+   `tcw provision` prints `already available at` for the component, makes no
+   `git clone` or `git fetch` call, and exits 0. Checked with the existing
+   `_count_git` counter in `tests/test_store_provisioning.py`. This criterion
+   proves §1 propagates; it drives no production edit of its own.
 8. **Two problems are two problems.** For a node with `work.path` naming a
    directory that exists and lacks the layout, plus an unprovisioned
    declaration, `tcw validate` prints a line naming the unusable `work.path`,
@@ -355,7 +365,10 @@ Each is checkable by someone else without asking what was meant.
   identically under Claude and Codex. No skill, command, or hook carries any
   part of the requirement. Nothing here is Claude-only.
 - Every `file:line` citation above was resolved against the working tree at
-  commit `db80623`. The absorbed item's own quotation of `except ValueError` is
+  commit `db80623`. Section 4 and the `run_provision` row of the sweep were
+  corrected at the `plan` stage: the first draft called the component loop a
+  sibling defect, and reading `tcw/cli.py:161-172` showed it already consults
+  the ladder. The absorbed item's own quotation of `except ValueError` is
   stale — the ladder now catches `StoreLocationUnusable`
   (`tcw/store/base.py:54`) — and the Problem section quotes the current code
   rather than the item's.
