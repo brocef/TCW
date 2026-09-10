@@ -972,7 +972,7 @@ def _binding_json(b) -> dict:
 
 
 def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
-                status: str) -> int:
+                display: str) -> int:
     """Everything `tcw work stage prompt` does once it knows what to resolve.
 
     Shared by the path that has a work item and the path that does not, so the
@@ -990,6 +990,13 @@ def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
     `hook_env` both already accept. A `when:`-condition then never matches
     (`Condition.matches` answers False for no item), so a project's conditioned
     binding does not fire on nothing.
+
+    `slug` addresses the item in `st` and is always **bare**, because `_resolve`
+    strips any `<project-id>/` qualifier by contract. `display` is what the user
+    typed, and is the only thing that may appear in a command this prints: the
+    bookend quotes a `tcw work stage gate` line back, and a bare slug there would
+    send a cross-node reader to their own node. Slugs are date-prefixed and
+    derived from titles, so two nodes filing the same request on one day collide.
 
     Stream discipline: stdout carries the resolved prompt and nothing else,
     emitted once at the end after everything that could fail has succeeded, and
@@ -1023,12 +1030,12 @@ def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
     # nothing prints nothing, and a header wrapped around an empty middle would
     # make silence look like a stage that failed to resolve.
     if res.text:
-        print(bookend(res.text, step.id, slug or "<slug>"))
+        print(bookend(res.text, step.id, display or "<slug>"))
     return 0
 
 
 def _stage_gate(args: argparse.Namespace, step, st, item, slug: str,
-                status: str) -> int:
+                status: str, display: str) -> int:
     """`tcw work stage gate` once it knows what it is gating.
 
     The whole verb: the stage's `pre` bindings, and nothing else. It resolves no
@@ -1039,6 +1046,11 @@ def _stage_gate(args: argparse.Namespace, step, st, item, slug: str,
     goes to stderr with every other diagnostic, so a caller piping this verb gets
     nothing rather than a line it would have to strip. Silence on stdout is the
     contract; the exit code is the answer.
+
+    `slug` is bare and addresses the item; it is what the hook environment
+    carries. `display` is what the user typed and is the only thing that may
+    appear in the `tcw work stage prompt` line this prints, for the same reason
+    the bookend needs it: a stripped qualifier names a different node's item.
     """
     policy = st.lifecycle_policy()
     checks = select(policy.stage_checks(step.id), item)
@@ -1060,7 +1072,7 @@ def _stage_gate(args: argparse.Namespace, step, st, item, slug: str,
         print(f"tcw work stage gate: {err}", file=sys.stderr)
         return 1
 
-    ref = "" if step.id == "inbox" else f" {slug}"
+    ref = "" if step.id == "inbox" else f" {display}"
     print(f"tcw work stage gate {step.id}: checks passed; run "
           f"`tcw work stage prompt {step.id}{ref}` for the instructions",
           file=sys.stderr)
@@ -1156,7 +1168,7 @@ def _stage_prompt(args: argparse.Namespace) -> int:
               f"its instructions anyway because you asked to read them, not to "
               f"enter the stage.", file=sys.stderr)
 
-    return _stage_tail(args, step, st, item, bare, item.status)
+    return _stage_tail(args, step, st, item, bare, args.slug)
 
 
 def _stage_without_item(args: argparse.Namespace, step) -> int:
@@ -1171,7 +1183,7 @@ def _stage_without_item(args: argparse.Namespace, step) -> int:
     st = _store()
     if st is None:
         return 1
-    return _stage_gate(args, step, st, None, "", "")
+    return _stage_gate(args, step, st, None, "", "", "")
 
 
 def _stage(args: argparse.Namespace) -> int:
@@ -1228,7 +1240,7 @@ def _stage(args: argparse.Namespace) -> int:
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
         return 1
 
-    return _stage_gate(args, step, st, item, bare, item.status)
+    return _stage_gate(args, step, st, item, bare, item.status, args.slug)
 
 
 # Which stage writes each artifact, inverted from the one table that says so.

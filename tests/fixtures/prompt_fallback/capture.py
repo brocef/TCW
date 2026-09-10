@@ -21,11 +21,20 @@ Twice so far it has been touched, and the two are opposites worth telling apart:
   old bytes would have asserted something this release makes false. What it
   pins from here is the bookended text, and it no longer says anything about
   the split.
+- Still before 2.0.0 shipped, the `verify` footer was corrected to name both
+  verdicts rather than acceptance alone — it had been sending a reader who
+  rejected the work to `tcw work complete`. Re-captured again for the same
+  reason: the release intends that line to move. Only the `verify` entry
+  changes; the other five are byte-identical across this re-capture, which is
+  itself worth checking if anyone repeats it.
 
-Every stage is exercised at a status where it is **legal**, because
-`tcw work stage` refuses out-of-status stages and a refusal message pins nothing
-about prompt text. The item walks backlog → active → review, and each stage is
-captured at the point it becomes legal.
+Every stage is exercised at a status where it is **legal**. Not because
+`prompt` would refuse otherwise — it refuses nothing, which is the whole point of
+the reading verb — but because an illegal stage adds a `note —` line on stderr
+and the bookend quotes the stage's own gate command back, so capturing out of
+status would pin text about the wrong situation. `gate` is the verb that
+refuses. The item walks backlog → active → review, and each stage is captured at
+the point it becomes legal.
 """
 
 import json

@@ -675,6 +675,49 @@ def test_a_qualified_reference_reads_the_owning_nodes_bindings(tmp_path):
     assert "CHILD TEXT" in r.stdout and "ANCHOR TEXT" not in r.stdout
 
 
+def test_a_qualified_reference_survives_into_the_advised_commands(tmp_path):
+    """Both verbs quote a command back at the reader — the bookend header names
+    the gate, the gate's success line names the prompt. `_resolve` returns a
+    **bare** slug by contract, so displaying that drops the `<project-id>/`
+    qualifier and advises a command that resolves against the anchor node.
+
+    Slugs are date-prefixed and derived from titles, so two nodes filing the same
+    request on one day produce the same slug. The advised command then silently
+    gates the wrong node's item and runs the wrong node's `pre` bindings, which
+    is why this is worth a test rather than a cosmetic note. Both nodes here hold
+    an item of the same slug, so a stripped qualifier resolves rather than
+    erroring.
+    """
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t"],
+                   check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "t"],
+                   check=True)
+    anchor, child = tmp_path / "anchor", tmp_path / "child"
+    for path, name in ((anchor, "anchor"), (child, "child")):
+        path.mkdir()
+        init(["work"], path, name)
+    (anchor / "tcw-config.yaml").write_text(
+        "id: anchor\nconnected-projects:\n  children:\n    child: ../child\n")
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    anchor: ../anchor\n")
+    mine = FsWorkStore.open(anchor).create("Same Title", body="req\n")
+    theirs = FsWorkStore.open(child).create("Same Title", body="req\n")
+    assert mine.slug == theirs.slug, "the collision this test needs did not happen"
+    ref = f"child/{theirs.slug}"
+
+    r = _prompt(anchor, "spec", ref)
+    assert r.returncode == 0, r.stderr
+    assert f"tcw work stage gate spec {ref}" in r.stdout, (
+        "the bookend dropped the project qualifier, so it advises gating the "
+        f"anchor node's own {theirs.slug}")
+
+    g = _cli(anchor, "spec", ref)
+    assert g.returncode == 0, g.stderr
+    assert f"tcw work stage prompt spec {ref}" in g.stderr, (
+        "the gate's success line dropped the project qualifier")
+
+
 def test_prompt_refuses_a_work_item_for_inbox(one_of_each):
     """Same rule as `gate`, and for the same reason: there is no item yet, so a
     reference is a mistake to report rather than something to interpret."""
