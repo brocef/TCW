@@ -5,6 +5,7 @@ and `scaffold` refuses rather than overwrite either the real artifact or a draft
 someone has already started.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -316,6 +317,11 @@ def test_a_failed_resolution_writes_nothing_and_retries_clean(item, broken, fixe
     assert Path(r.stdout.strip()).read_text() == "recovered"
 
 
+@pytest.mark.skipif(
+    os.geteuid() == 0,
+    reason="root holds CAP_DAC_OVERRIDE, so the chmod below does not make "
+           "the target unwritable and the command succeeds",
+)
 def test_an_unwritable_target_reports_and_prints_no_path(item):
     root, st, slug = item
     folder = st.path(slug)
