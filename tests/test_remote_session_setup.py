@@ -35,11 +35,13 @@ def _stub(bindir: Path, name: str, body: str) -> Path:
 
 
 def _python3(bindir: Path, log: Path) -> None:
-    """A `python3` that records argv and answers the three calls the script makes.
+    """A `python3` that records argv and answers the four calls the script makes.
 
-    `-` is the already-installed guard (heredoc on stdin), `-m pip` the install,
-    `-m site --user-base` the PATH repair. Return codes come from the
-    environment so a test can make any one of them fail without a new stub.
+    `-` is the already-installed guard (heredoc on stdin), `-c` the setuptools
+    floor check, `-m pip` the install, `-m site --user-base` the PATH repair.
+    Return codes come from the environment so a test can make any one of them
+    fail without a new stub. The floor check defaults to 0 — "already current" —
+    so a test that says nothing about setuptools sees no upgrade.
     """
     _stub(
         bindir,
@@ -47,6 +49,7 @@ def _python3(bindir: Path, log: Path) -> None:
         f'printf "%s\\n" "$*" >> "{log}"\n'
         "case \"$1\" in\n"
         '  -) exit "${STUB_GUARD_RC:-1}" ;;\n'
+        '  -c) exit "${STUB_SETUPTOOLS_RC:-0}" ;;\n'
         "  -m)\n"
         '    case "$2" in\n'
         '      pip) exit "${STUB_PIP_RC:-0}" ;;\n'
@@ -115,6 +118,16 @@ def _run(tmp_path: Path, root: Path, *args: str, **env_overrides: str):
 # --- the script itself ------------------------------------------------------
 
 
+def _calls(log) -> list[str]:
+    """The recorded calls without the setuptools floor check.
+
+    The check runs on every path and says nothing about installing this checkout
+    or its plugin, so the tests that assert on call *order* filter it out rather
+    than shifting their indices every time a step is added.
+    """
+    return [line for line in log if not line.startswith("-c ")]
+
+
 def test_script_parses_and_is_executable():
     subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
     assert SCRIPT.stat().st_mode & stat.S_IXUSR, f"{SCRIPT} is not executable"
@@ -141,9 +154,10 @@ def test_remote_session_installs_package_then_plugin(tmp_path):
     proc, log = _run(tmp_path, root, CLAUDE_CODE_REMOTE="true")
     assert proc.returncode == 0
     assert proc.stdout == "", proc.stdout
-    assert log[0] == f"-m pip install -e {root}[dev]"
-    assert log[1] == f"plugin marketplace add {root}"
-    assert log[2] == "plugin install tcw@tcw -y"
+    calls = _calls(log)
+    assert calls[0] == f"-m pip install -e {root}[dev]"
+    assert calls[1] == f"plugin marketplace add {root}"
+    assert calls[2] == "plugin install tcw@tcw -y"
 
 
 def test_force_runs_outside_a_remote_session(tmp_path):
@@ -183,15 +197,16 @@ def test_installed_checkout_skips_pip_but_still_ensures_the_plugin(tmp_path):
     )
     assert proc.returncode == 0
     assert not any("pip install" in line for line in log), log
-    assert log[0] == f"- {root}", log
-    assert log[1] == f"plugin marketplace add {root}"
+    calls = _calls(log)
+    assert calls[0] == f"- {root}", log
+    assert calls[1] == f"plugin marketplace add {root}"
 
 
 def test_guard_is_not_consulted_without_a_tcw_on_path(tmp_path):
     """No `tcw` to identify means nothing is installed — ask pip, not the guard."""
     root = _project(tmp_path)
     _, log = _run(tmp_path, root, CLAUDE_CODE_REMOTE="true", STUB_GUARD_RC="0")
-    assert log[0] == f"-m pip install -e {root}[dev]", log
+    assert _calls(log)[0] == f"-m pip install -e {root}[dev]", log
 
 
 # --- failure paths: one line each, and the session still starts -------------
@@ -207,6 +222,45 @@ def test_failing_pip_retries_once_then_reports(tmp_path):
     lines = proc.stdout.strip().splitlines()
     assert len(lines) == 1, proc.stdout
     assert "pip install" in lines[0]
+
+
+def _upgrades(log) -> list[str]:
+    return [line for line in log if "pip install --upgrade" in line]
+
+
+def test_a_current_setuptools_is_not_upgraded(tmp_path):
+    """The floor check answers 0, so nothing is installed and nothing is said."""
+    root = _project(tmp_path)
+    proc, log = _run(tmp_path, root, CLAUDE_CODE_REMOTE="true")
+    assert proc.returncode == 0
+    assert _upgrades(log) == [], log
+    assert "setuptools" not in proc.stdout
+
+
+def test_an_old_setuptools_is_raised_to_the_floor(tmp_path):
+    root = _project(tmp_path)
+    proc, log = _run(tmp_path, root, CLAUDE_CODE_REMOTE="true",
+                     STUB_SETUPTOOLS_RC="1")
+    assert proc.returncode == 0
+    upgrades = _upgrades(log)
+    assert len(upgrades) == 1, upgrades
+    assert "setuptools>=70.1" in upgrades[0]
+    assert proc.stdout == "", proc.stdout
+
+
+def test_a_failing_setuptools_upgrade_reports_once_and_exits_zero(tmp_path):
+    """STUB_PIP_RC fails every pip call, so the upgrade lines are filtered out
+    of the editable install's own two attempts before being counted."""
+    root = _project(tmp_path)
+    proc, log = _run(tmp_path, root, CLAUDE_CODE_REMOTE="true",
+                     STUB_SETUPTOOLS_RC="1", STUB_PIP_RC="1")
+    assert proc.returncode == 0
+    upgrades = _upgrades(log)
+    assert len(upgrades) == 2, upgrades
+    assert upgrades[1].endswith("--break-system-packages")
+    said = [line for line in proc.stdout.strip().splitlines()
+            if "could not raise setuptools" in line]
+    assert len(said) == 1, proc.stdout
 
 
 def test_a_failing_marketplace_add_does_not_attempt_the_install(tmp_path):
@@ -228,7 +282,7 @@ def test_a_missing_claude_still_installs_the_package(tmp_path):
     root = _project(tmp_path)
     proc, log = _run(tmp_path, root, CLAUDE_CODE_REMOTE="true", _no_claude="yes")
     assert proc.returncode == 0
-    assert log == [f"-m pip install -e {root}[dev]"], log
+    assert _calls(log) == [f"-m pip install -e {root}[dev]"], log
     lines = proc.stdout.strip().splitlines()
     assert len(lines) == 1 and "claude" in lines[0]
 
