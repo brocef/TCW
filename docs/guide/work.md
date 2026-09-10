@@ -239,7 +239,8 @@ tcw work tags rm tech-debt             # unregister (warns about items still car
 tcw work new "Login crash" --tag bug   # apply a registered tag (repeatable; unregistered → error)
 
 tcw work list                          # the board: priority first, then topologically ordered
-                                       # (hides completed and discarded)
+                                       # (hides completed and discarded; reports untriaged
+                                       #  inbox entries per node on stderr)
 tcw work list --status active          # filter to one column (backlog|active|review|completed|discarded)
 tcw work list --tag bug                # only items carrying a tag (repeatable = match any)
 tcw work list --all                    # include completed and discarded items too
@@ -396,6 +397,16 @@ It sorts by priority first (higher integer above lower, unspecified-priority
 items keeping creation order), then topologically — blockers appear before the
 items they block, since a priority preference can't jump a hard dependency —
 and annotates blocked items with their unresolved blockers.
+
+After the rows, **on stderr**, the board says how much raw intake is still
+waiting: `→ inbox: 2 entries awaiting triage (\`tcw work inbox list\`)`. An inbox
+entry is not a work item — it has no slug, status, or lifecycle — so it never
+becomes a row, and stdout keeps its one-line-per-item contract for anything
+piping the board. A node whose inbox is empty says nothing at all. Under
+`--include-descendants` every node holding entries is counted and named by its
+project ID (`→ inbox: 1 entry awaiting triage, in project-a`); the
+`tcw work inbox list` hint is printed only for the current node, since that is
+the only inbox the command reads.
 
 `tcw work show <slug> --json` prints the item as a machine-readable document
 instead of the human-readable summary: an explicit `schema` version, every field

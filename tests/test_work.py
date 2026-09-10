@@ -1743,6 +1743,70 @@ def test_list_without_flag_has_no_node_headers(tmp_path, monkeypatch, capsys):
     assert "# ." not in out and "project-a" not in out      # descendants untouched without the flag
 
 
+def test_list_reports_the_inbox_count_on_stderr(tmp_path, monkeypatch, capsys):
+    """Untriaged intake is named beside the board, but never as a board row."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+    (root / "docs/work/inbox/one.md").write_text("first\n")
+    (root / "docs/work/inbox/two.md").write_text("second\n")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list"]) == 0
+    captured = capsys.readouterr()
+    assert "→ inbox: 2 entries awaiting triage (`tcw work inbox list`)" in captured.err
+    assert "inbox" not in captured.out                     # stdout stays the item rows
+    assert "2026-01-01-root-thing" in captured.out
+
+
+def test_list_says_entry_singular_for_one_inbox_item(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    (root / "docs/work/inbox/only.md").write_text("just one\n")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list"]) == 0
+    assert "→ inbox: 1 entry awaiting triage" in capsys.readouterr().err
+
+
+def test_list_stays_silent_about_an_empty_inbox(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list"]) == 0
+    assert "inbox" not in capsys.readouterr().err
+
+
+def test_list_include_descendants_counts_each_node_s_inbox(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    child = subnode(root, "project-a")
+    subnode(root, "project-b")                             # empty inbox → never named
+    (root / "docs/work/inbox/here.md").write_text("mine\n")
+    (child / "docs/work/inbox/theirs.md").write_text("theirs\n")
+    (child / "docs/work/inbox/more.md").write_text("theirs too\n")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
+    err = capsys.readouterr().err
+    assert "→ inbox: 1 entry awaiting triage (`tcw work inbox list`)" in err
+    assert "→ inbox: 2 entries awaiting triage, in project-a" in err
+    assert "project-b" not in err
+
+
+def test_list_without_flag_ignores_a_descendant_inbox(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    child = subnode(root, "project-a")
+    (child / "docs/work/inbox/theirs.md").write_text("theirs\n")
+
+    monkeypatch.chdir(root)
+    assert main(["work", "list"]) == 0
+    assert "inbox" not in capsys.readouterr().err
+
+
 # ── effort/complexity level normalization ────────────────────────────────────
 
 def test_normalize_work_level_aliases_case_and_passthrough():

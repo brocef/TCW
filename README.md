@@ -87,7 +87,8 @@ TCW adds on top is one model across all of them:
 - **One board for the whole estate.** `tcw work list --include-descendants` and
   `tcw serve` aggregate every registered repository's board into a single view,
   and `tcw validate` checks them all in one pass and exits non-zero — so it works
-  as a CI gate.
+  as a CI gate. The board also counts each repository's untriaged inbox, so
+  requests nobody has looked at are visible next to the work already tracked.
 
 Projects are identified by a canonical ID, never by a filesystem path. A checkout
 holding only some of the repositories still works: the absent ones drop out of

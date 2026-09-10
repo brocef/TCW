@@ -424,7 +424,41 @@ def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
         emit(it, 0)
 
 
-def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
+def _node_boards(anchor: FsWorkStore) -> list[tuple[str, Path, FsWorkStore]]:
+    """The anchor node and its registered descendants, in board order.
+
+    The label is the group header the aggregate view prints — `.` for the
+    anchor, the canonical project id for every node below it — so a caller that
+    reports something per node names it the same way the board does.
+    """
+    anchor_root = anchor.node_root.resolve()
+    return [("." if root == anchor_root else registered_project_id(anchor_root, root),
+             root, FsWorkStore.open(root))
+            for root in [anchor_root, *descendant_nodes(anchor_root)]]
+
+
+def _render_inbox_counts(boards: list[tuple[str, FsWorkStore]]) -> None:
+    """Say how much untriaged intake each node holds, on stderr, after the board.
+
+    An inbox entry is not a work item — it has no slug, status, or lifecycle —
+    so it is never a board row: stdout keeps the `|`-delimited per-item contract
+    a caller may be piping. A node holding nothing stays silent, so a wide
+    `--include-descendants` sweep names only the nodes that need a look.
+    """
+    sys.stdout.flush()             # both streams may be the same file; keep the order
+    for label, st in boards:
+        count = len(st.inbox_list())
+        if not count:
+            continue
+        noun = "entry" if count == 1 else "entries"
+        # `tcw work inbox list` reads the current node, so naming it beside a
+        # descendant's count would print a command answering a different question.
+        where = " (`tcw work inbox list`)" if label == "." else f", in {label}"
+        print(f"→ inbox: {count} {noun} awaiting triage{where}", file=sys.stderr)
+
+
+def _render_descendant_boards(boards: list[tuple[str, Path, FsWorkStore]],
+                              status: str | None,
                               show_all: bool, tags: list[str] | None) -> None:
     """Render the anchor plus registered descendants as one ownership forest.
 
@@ -434,13 +468,10 @@ def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
     child only toward its local node or ancestors; nearby/unregistered stores
     never participate.
     """
-    anchor_root = anchor.node_root.resolve()
-    roots = [anchor_root, *descendant_nodes(anchor_root)]
-    stores = {root: FsWorkStore.open(root) for root in roots}
-    prefixes = {
-        root: "" if root == anchor_root else f"{registered_project_id(anchor_root, root)}/"
-        for root in roots
-    }
+    roots = [root for _, root, _ in boards]
+    stores = {root: st for _, root, st in boards}
+    labels = {root: label for label, root, _ in boards}
+    prefixes = {root: "" if label == "." else f"{label}/" for label, root, _ in boards}
     entries: list[tuple[Path, FsWorkStore, WorkItem]] = []
     for root in roots:
         st = stores[root]
@@ -484,8 +515,7 @@ def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
     for index, root in enumerate(roots):
         if index:
             print()
-        label = "." if root == anchor_root else registered_project_id(anchor_root, root)
-        print(f"# {label}")
+        print(f"# {labels[root]}")
         node_entries = [entry for entry in entries if entry[0] == root]
         for entry in node_entries:
             key = (root, entry[2].slug)
@@ -501,8 +531,11 @@ def _list(args: argparse.Namespace) -> int:
         return 1
     if not args.include_descendants:
         _render_board(st, args.status, args.all, tags=args.tag)
+        _render_inbox_counts([(".", st)])
         return 0
-    _render_descendant_boards(st, args.status, args.all, args.tag)
+    boards = _node_boards(st)
+    _render_descendant_boards(boards, args.status, args.all, args.tag)
+    _render_inbox_counts([(label, node_store) for label, _, node_store in boards])
     return 0
 
 

@@ -23,3 +23,17 @@ those adapters were not built; it now says plainly that only filesystem storage
 ships today. And a missing heading meant the whole `tcw work` command reference
 was filed under a section about documentation settings, in GitHub's outline and
 in every Markdown viewer.
+
+## The board now tells you what is waiting in the inbox
+
+Raw requests dropped into a project's inbox are not work items yet, so they have
+never appeared on the board — which made them easy to forget entirely.
+
+`tcw work list` now says how many are waiting. The count prints under the board,
+and a project with an empty inbox says nothing. Listing descendant projects with
+`-i` counts each one separately and names it, so you can see at a glance which
+repository has requests nobody has looked at.
+
+The board itself is unchanged: the counts are printed alongside it, not as rows,
+so anything you pipe the board into still sees one line per work item.
+

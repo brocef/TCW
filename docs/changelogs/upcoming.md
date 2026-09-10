@@ -19,6 +19,18 @@ category.
 
 ## Added
 
+- **`tcw work list` reports untriaged inbox entries per node.** After the board
+  rows, on stderr, `_render_inbox_counts` prints
+  `→ inbox: <n> entr(y|ies) awaiting triage` for the current node and, under
+  `--include-descendants`, one line per descendant node holding entries, each
+  named by its canonical project ID. Nodes with an empty inbox print nothing.
+  The count comes from the store's existing `inbox_list()` operation, so no new
+  abstraction surface was added; stdout is untouched, keeping the
+  `|`-delimited one-row-per-item contract. `_render_descendant_boards` now takes
+  the `(label, root, store)` list built by the new `_node_boards()` helper
+  instead of re-deriving labels and stores itself, so the board headers and the
+  inbox lines cannot disagree about a node's name.
+
 - `docs/guide/work.md`, `docs/guide/taxonomy-and-capabilities.md`,
   `docs/guide/multi-repo.md`, `docs/guide/configuration.md`,
   `docs/guide/web-viewer.md`, `docs/guide/linking-and-validation.md` — the
