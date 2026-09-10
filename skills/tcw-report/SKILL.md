@@ -28,6 +28,45 @@ project; it is not a channel to the TCW maintainers.)
 3. **Grab the version.** For a bug, run `tcw --version` and include the output —
    most reports are unactionable without it.
 
+## What goes in the report
+
+These are guidelines, not rules — what the report contains is your call.
+
+The tracker at https://github.com/brocef/TCW/issues is **public**, and the
+project you are reporting from may not be. So write the report from a **generic
+example that mirrors your setup** rather than from the real thing, and keep
+whatever real detail you do want in it.
+
+- **Swap** repository, branch and directory names; node ids; work-item slugs;
+  capability paths and wording; absolute paths; taxonomy terms and any other
+  domain vocabulary.
+- **Keep** the command's shape and its flags, the config's shape, the error type
+  and the fixed part of its message, and the sequence that triggered it — and the
+  real values in the Environment block (`tcw --version`, OS, install method),
+  which describe the install rather than the project.
+
+Written down, the swap is small:
+
+```text
+# yours:    tcw work new --initiative q3-pci-audit "Rotate the payment keys"
+# mirrored: tcw work new --initiative example-epic "Rotate the service keys"
+#
+# yours:    work store root does not exist: ~/acme/payments-api/docs/work
+# mirrored: work store root does not exist: ~/example-project/docs/work
+```
+
+Output works the same way: the output of a generic reproduction is the more
+useful one to receive, and you may paste output from your own system and
+environment instead if you would rather.
+
+Where you can, sketch the steps that reproduce the problem on a **fresh
+environment** — a clean install and a scratch project, starting from nothing.
+Those steps are generic already, and they tell the maintainer the problem is not
+something local to you. A clean-room reproduction is often impractical, and a
+report is welcome without one. It is also worth delegating: a subagent or an
+agent team member can run it in a temporary directory, leaving your own checkout
+untouched.
+
 ## Bug skeleton
 
 ```markdown
@@ -41,14 +80,14 @@ project; it is not a channel to the TCW maintainers.)
 
 ### Steps to reproduce
 
-1. <exact command or action>
+1. <the exact command or action, under mirrored names>
 2. <...>
 3. <...>
 
 ### Expected vs. actual
 
 - Expected: <what should have happened>
-- Actual: <what happened — paste the error / output verbatim>
+- Actual: <what happened — the error / output verbatim, from the mirrored run>
 
 ### Remediation
 
@@ -73,6 +112,7 @@ project; it is not a channel to the TCW maintainers.)
 <who it helps and how; what it unlocks or simplifies>
 ```
 
-Keep it concrete: a real command, a real error, a real scenario beats an
-abstract description. When it touches TCW's design, note which axis it concerns
+Keep it concrete in the shape: a real command with its real flags, a real error
+with its real type, the real sequence that produced it — under names that are not
+your project's. When it touches TCW's design, note which axis it concerns
 (taxonomy / capabilities / work) so it lands with the right maintainer context.

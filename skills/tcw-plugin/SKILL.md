@@ -28,8 +28,9 @@ opposite directions:
 
 - **Report (`tcw-report`)** teaches a user how to send feedback about TCW
   _itself_ — a `tcw` bug or a suggestion — upstream as a GitHub issue, with a
-  ready-to-fill skeleton. It is not for the user's own project work (that is
-  `tcw-work`).
+  ready-to-fill skeleton and a mirrored example in place of the project's own
+  names, since that tracker is public. It is not for the user's own project work
+  (that is `tcw-work`).
 - **Triage (`tcw-triage-issues`)** reads the issues **on the user's own project**
   and turns the ones worth doing into work items, rejecting the rest with a
   reply. It is the intake counterpart to `stage-inbox.md`: a GitHub issue is an
