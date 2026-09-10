@@ -13,17 +13,24 @@
 
 ## Capability changes
 
-None expected. This item adds contributor-facing measurement machinery under
-`evals/` and tunes the prose an agent reads — the nine skill routers **and** the
-seven stage prompts the CLI ships. No command-surface change, but a prompt edit
-changes what `tcw work stage prompt` prints, which *is* user-visible: re-run the
-gate at closeout against `work/run-a-lifecycle-stage` (`cap-f42255`) and write a
-release note for any prompt refinement. The `capabilities.yaml` sidecar is
-deliberately absent unless a refinement crosses that line.
+**No ledger delta planned.** Checked against the standing ledger before the
+technical design, per the product-first rule; two entries are in the blast
+radius and neither changes status:
 
-Re-run the gate at closeout: if a refinement changes _what_ a skill instructs an
-agent to do rather than how reliably it does it, the affected `plugin/*` or
-`work/*` entries may need a body edit, not a status flip.
+- **`work/run-a-lifecycle-stage` (`cap-f42255`, Supported)** — owns the two
+  verbs and what each prints. A refinement to any of the seven shipped stage
+  prompts changes what `tcw work stage prompt` emits, which is user-visible, so
+  it needs a body edit and a release note rather than a status flip.
+- **`work/configure-the-work-lifecycle` (`cap-b9711e`, Supported)** — owns the
+  binding model this item measures: the five prompt kinds, their concatenation
+  in declaration order, and the `prompt: [{blob: ""}]` opt-out. It changes only
+  if axis A finds the injection layer itself defective and the fix moves what a
+  binding does.
+
+The `capabilities.yaml` sidecar is deliberately absent unless a refinement
+crosses one of those lines. Re-run the gate at closeout: if a refinement changes
+*what* a skill instructs an agent to do rather than how reliably it does it, the
+affected `plugin/*` or `work/*` entries need a body edit.
 
 ## Problem
 
@@ -35,8 +42,8 @@ too.
 
 | Layer | What it is | What guards it today |
 | ----- | ---------- | -------------------- |
-| What the resolver **emits** | `tcw work stage prompt` output for a given node and stage | `tests/fixtures/prompt_fallback/` — byte-frozen stdout for all seven stages on a node configuring nothing |
-| What the skill file **declares** | `skills/tcw-work-stage/SKILL.md`'s injected commands, `allowed-tools`, fallback fence | `tests/test_skill_lifecycle_parity.py` — the declaration guard and the `\|\| true` guard |
+| What the resolver **emits** | `tcw work stage prompt` output for a given node and stage | `tests/fixtures/prompt_fallback/unconfigured.json` — byte-frozen stdout for all seven stages on a node configuring nothing, captured by `capture.py:114` |
+| What the skill file **declares** | the two injected commands at `skills/tcw-work-stage/SKILL.md:20` and `:24`, the `allowed-tools` line at `:6`, and the fallback fence | `tests/test_skill_lifecycle_parity.py:365` (declaration), `:344` (every injected command ends `\|\| true`), `:323` (the gate is named outside a fence) |
 | What the agent **receives and does** | whether either block reached the context, and whether the project's bound instructions changed the artifact | **nothing** |
 
 The third layer is where this item's value is, and it is not reachable from
@@ -60,9 +67,12 @@ inbox notes now cleared (see **Notes**):
   document is measuring the document, not the behavior.
 
 **The customization question has never been asked at all.** A project binds
-instructions to a stage with five kinds — `builtin`, `file`, `blob`, `generate`,
-`skill` — and this repository binds three of them in its own `tcw-config.yaml`.
-The resolver's unit tests prove each kind composes into the right text. Nothing
+instructions to a stage with five prompt kinds — `PROMPT_KINDS` at
+`tcw/store/base.py:791` is `blob`, `file`, `generate`, `builtin`, `skill` — and
+`resolve_prompts` (`tcw/work/resolve.py:429`) concatenates **every** matching
+binding in declaration order. This repository binds two of the five in its own
+`tcw-config.yaml`: `builtin` and `file`, on `spec`, `plan` and `implement`. The
+resolver's unit tests prove each kind composes into the right text. Nothing
 establishes that the resolved text changes what an agent produces. If it does
 not, every project-specific lifecycle instruction TCW ships is decoration, and
 the CLI's tests would report the same green either way.
@@ -113,35 +123,76 @@ Numbered so acceptance criteria can be crossed against them.
 
 1. **I1 — nothing renders.** Both injected blocks are absent; the invocation
    aborts with no error. The mode the composing item measured and the two static
-   guards were written for.
+   guards at `tests/test_skill_lifecycle_parity.py:344` and `:365` were written
+   for.
 2. **I2 — one block renders, the other does not.** The blocks come from
-   different sources: a `cat` of a plugin-relative path, and a CLI subprocess.
-   An unset `CLAUDE_PLUGIN_ROOT`, a stage id with no router file, or a broken
-   `tcw` install kills one and leaves the other — and `|| true` makes that
-   silent by design.
+   different sources: `cat "${CLAUDE_PLUGIN_ROOT}/…/stage-$stage.md"`
+   (`skills/tcw-work-stage/SKILL.md:20`) and `tcw work stage prompt $stage $item`
+   (`:24`). An unset `CLAUDE_PLUGIN_ROOT`, a stage id with no router file, or a
+   broken `tcw` install kills one and leaves the other — and the `|| true` on
+   each makes that silent by design.
 3. **I3 — both render, the agent uses one.** The skill's central claim is that
    the router and the project prompt are different documents and neither
    replaces the other. An agent that follows the router and ignores the bound
    instructions produces an artifact that looks correct unless the fixture makes
    the project's ask separately visible.
-4. **I4 — a binding kind resolves but does not act.** Five prompt kinds.
-   `generate` runs a script whose stdout is the text; `skill` names a skill;
-   `file` reads a path relative to the node. Each composes correctly in unit
-   tests. Whether an agent acts on the resolved text of each is untested.
+4. **I4 — a binding kind resolves but does not act.** Five prompt kinds
+   (`tcw/store/base.py:791`). `generate` runs a script that receives the work
+   item as JSON on stdin — the `work_item_json` projection at
+   `tcw/work/projection.py:142` — and whose stdout becomes the text
+   (`tcw/work/generate.py:99`); `skill` names an agent skill; `file` reads a path
+   relative to the node. Each composes correctly in unit tests. Whether an agent
+   acts on the resolved text of each is untested.
 5. **I5 — the silence opt-out is not silent in effect.** `prompt: [{blob: ""}]`
-   resolves to empty text, the resolver drops it, and the stage prints nothing
-   with no bookend. The behavioral question is what the agent does with a stage
-   that asks nothing — proceed on the router alone, or invent instructions to
-   fill the gap.
-6. **I6 — the gate reminder does not move the reader.** The bookend header
-   exists because `prompt` runs no checks, and its design claim is that putting
-   the reminder in the resolved text puts it in front of every reader under
-   every harness. Measurable in the transcript: did `tcw work stage gate` run
-   before the artifact was produced.
+   resolves to empty text — the one blank-value exception in `_parse_binding`
+   (`tcw/store/base.py:1293`) — the resolver drops it, and the stage prints
+   nothing with no bookend. A `when:` that never matches is a second route to
+   the same silence and is **not** the same shape: a stage the node configured
+   but whose binding did not match also resolves to nothing
+   (`tcw/work/resolve.py:434`), while a stage with no bindings at all falls back
+   to the builtin floor. The behavioral question is common to both — what does
+   an agent do with a stage that asks nothing: proceed on the router alone, or
+   invent instructions to fill the gap.
+6. **I6 — the gate reminder does not move the reader.** `bookend`
+   (`tcw/work/resolve.py:386`, applied at print time by `tcw/work/cli.py:1058`)
+   wraps every resolved prompt in a gate header and a next-step footer. Its
+   design claim, stated in its own docstring, is that putting the reminder in
+   the resolved text puts it in front of every reader under every harness rather
+   than in a skill only one of them has. Measurable in the transcript: did
+   `tcw work stage gate` run before the artifact was produced.
 7. **I7 — the manual fallback does not fire where injection does not exist.**
-   Codex has no `!` injection. The skill carries a fenced fallback naming the
-   three commands to run by hand. Nothing has measured whether a Codex agent
-   runs them.
+   Codex has no `` !`cmd` `` injection; the syntax is inert there rather than
+   fatal. The skill carries a fenced fallback naming the three commands to run
+   by hand. Nothing has measured whether a Codex agent runs them.
+
+### What the result means, under the harness-compatibility rule
+
+This repository's standing rule is that **anything that must be guaranteed
+belongs in the `tcw` CLI**, which behaves identically under both harnesses;
+Claude-only mechanisms — `` !`cmd` `` injection, skill arguments, hooks — are
+welcome as ergonomics and never as the sole carrier of a requirement. The
+composing skill is built entirely out of one of those mechanisms.
+
+That rule is what turns each finding into a verdict rather than a bug report,
+and it should be written into the findings before the numbers arrive, so the
+conclusion is not chosen after seeing them:
+
+- **Injection renders under Claude and the fallback fires under Codex.** The
+  skill is doing its job as an enhancement. Nothing moves.
+- **Injection renders under Claude, the fallback does not fire under Codex.**
+  The skill is a Claude-only carrier for something a Codex user also needs. The
+  fix is in the CLI or the fallback's wording, not in more prose about it.
+- **Injection does not render at all.** The skill is inert everywhere and the
+  guarantee never existed. This is the case the two static guards were written
+  against and cannot see.
+- **Everything renders and the nonces do not arrive.** The delivery mechanism is
+  sound and the instructions are not being acted on. That is a prose problem in
+  the bookend or the routers, and the only one of the four that a wording change
+  fixes.
+
+I7 is therefore not a coverage nicety. It is the rule applied: a requirement
+carried only by Claude's injection is a requirement a Codex user does not get,
+and this item is the first thing able to detect that.
 
 ### Fingerprints are nonces, not plausible requirements
 
@@ -162,7 +213,7 @@ so the fingerprints are separable:
 | ---- | -------- | ----------- |
 | `file` | `spec` | a node-relative doc requiring a `## Blast radius (<nonce>)` heading |
 | `blob` | `plan` | inline text requiring the phase list to end with the nonce line |
-| `generate` | `implement` | a script emitting a requirement built from a value read out of the node at run time |
+| `generate` | `implement` | a script emitting a requirement built from the work item JSON it receives on stdin, so the nonce is derived at run time |
 | `skill` | `verify` | a skill whose instruction carries its own nonce |
 | `builtin` | every stage | present in all arms; the floor, not a fingerprint |
 | `blob: ""` | `postmortem` | the silence case — the assertion is that **no** project instruction appears |
@@ -172,9 +223,13 @@ that block reached the agent *and* was acted on, which collapses I3 and I4 into
 one mechanical read. A nonce absent while the artifact is otherwise well-formed
 is the finding this item exists to produce.
 
-`generate` gets the computed variant deliberately: its nonce cannot exist in the
-fixture's committed text at all, so it is unforgeable by an agent that read the
-repository instead of the prompt.
+`generate` gets the computed variant deliberately. A `generate` binding receives
+the work item as JSON on stdin (`tcw/work/projection.py:142`), so its script can
+build the nonce from the item it is being asked about rather than from anything
+written down. That nonce exists in no committed file, which makes it the one
+fingerprint an agent cannot produce by reading the repository instead of the
+prompt — the strongest single piece of evidence the harness can collect, and the
+reason `generate` is worth binding even though this repository does not use it.
 
 ### Axis B — skill lift
 
@@ -319,6 +374,20 @@ failed has not been shown to measure anything, which is exactly how the parity
 guard came to pass on a file with its warning deleted. Assertions failing in both
 arms are investigated as broken before iteration 2.
 
+### Sibling sweep
+
+The spec stage asks for a repo-wide sweep for defects sibling to the reported
+one, or a reason for narrowing. The genre here is *a guarantee that exists only
+because a Claude-only mechanism delivered it*, and the sweep was run over the
+plugin's whole surface rather than the composing skill alone. Two other
+`!`-injection or argument users would fall in it, and both are excluded for a
+stated reason rather than an unexamined one: the `commands/` slash commands are
+already known to be Claude-only and are covered by the standing rule that every
+command must also be reachable by invoking its skill directly, and the
+`SessionStart` hook that installs the CLI has `tcw-plugin` as its documented
+manual equivalent. Neither carries a lifecycle guarantee, which is what axis A
+is about. Anything the run turns up in the same genre is in scope for this item.
+
 ## Abstraction litmus test
 
 *Could a non-filesystem store implement this?*
@@ -428,6 +497,27 @@ what remained in them was evidence about measurement, which belongs here.
   error message printed was accepted by the parser that printed it — generalizes
   to the instrument: what the harness measures is derived from the shipped
   surface, not from a parallel description of it that can drift.
+
+### Self-review record
+
+Run before committing, per the stage's own checklist:
+
+- Every `file:line` in this document was resolved against the tree at the commit
+  that carries it. They move on the next edit to those files; re-check rather
+  than trusting them at `implement`.
+- **Criterion 10 does not hold in every environment today, and the spec says so
+  rather than shipping a criterion that reads as met.** `pytest` on this
+  checkout reports 2446 passed, 4 failed, 9 skipped. All four fail with the
+  working tree clean and reproduce with this item's changes stashed:
+  `test_the_prompts_are_in_the_built_wheel` needs a wheel build, and
+  `test_atomic_write_preserves_prior_on_failure`,
+  `test_atomic_write_temp_cleanup_on_failure` and
+  `test_an_unwritable_target_reports_and_prints_no_path` simulate permission
+  failures that a root user cannot be subject to. Criterion 10 means green
+  against the pre-existing baseline, not an absolute count.
+- The `postmortem` stage takes the silence binding because it is the one stage
+  with no downstream consumer of its artifact, so a wrong result there costs the
+  least. Stated because two readers could otherwise pick differently.
 
 ### Dependencies and related work
 
