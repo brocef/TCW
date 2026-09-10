@@ -964,20 +964,22 @@ def test_atomic_write_preserves_prior_on_failure(tmp_path):
         os.chmod(d, stat.S_IRWXU)  # restore for cleanup
 
 
-def test_atomic_write_temp_cleanup_on_failure(tmp_path):
-    """If the write step fails, no temp file is left behind."""
+def test_atomic_write_temp_cleanup_on_failure(tmp_path, monkeypatch):
+    """If the write step fails, no temp file is left behind.
+
+    The failure lands at `Path.write_text`, one statement after `mkstemp`, so a
+    temp exists for the handler to remove. Inducing it earlier — by making the
+    parent unwritable — kills `mkstemp` itself, and the assertion below then
+    holds whether or not the handler unlinks anything: with the unlink deleted,
+    that version of this test still passed.
+    """
     d = tmp_path / "subdir"
     d.mkdir()
     p = d / "data.yaml"
+    _fail_writing(monkeypatch, "data.yaml")
 
-    # Make directory read-only — mkstemp-style write will fail
-    os.chmod(d, stat.S_IRUSR | stat.S_IXUSR)
-
-    try:
-        with pytest.raises(PermissionError):
-            _atomic_write_all([(p, "content\n")])
-    finally:
-        os.chmod(d, stat.S_IRWXU)
+    with pytest.raises(OSError):
+        _atomic_write_all([(p, "content\n")])
 
     # No .tmp file should remain
     tmp_files = list(d.glob("*.tmp"))
