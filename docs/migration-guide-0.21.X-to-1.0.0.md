@@ -38,7 +38,10 @@ Fix it one of two ways, depending on what you meant:
 
 ```yaml
 spec:
-    prompt: [{ blob: "" }] # "this stage should say nothing" — deliberate
+    # "this stage should say nothing" — a binding that cannot fire.
+    # `{blob: ""}` looks like the way to say it and is refused: a blank
+    # string fails validation exactly as the empty list does.
+    prompt: [{ blob: "-", when: { tags: [never-applied] } }]
 ```
 
 ...or delete the line entirely, if you meant nothing in particular.

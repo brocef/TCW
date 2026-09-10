@@ -84,8 +84,12 @@ stage id is still valid, still means "prompt", and still renders identically.
 One exception, and it is the only one: an **empty** prompt list is now rejected
 by `tcw validate`, in both spellings — `prompt: []` and a bare
 `stages.<id>: []`. It never said anything, and now that an unconfigured stage
-falls back to TCW's own instructions it reads as an opt-out it is not. A stage
-that should genuinely say nothing binds `{blob: ""}`.
+falls back to TCW's own instructions it reads as an opt-out it is not.
+
+A stage that should genuinely say nothing needs a binding that never fires, not a
+blank one: `{blob: ""}` is refused for the same reason the empty list is. Give it
+a `when:` that cannot match — a tag no item carries — and the stage resolves to
+nothing and prints nothing. There is no dedicated opt-out binding yet.
 
 **Checking a stage may run** is `tcw work stage gate <id> <ref>`. It checks the
 status legality and runs the stage's `pre` bindings, and that is all it does: it

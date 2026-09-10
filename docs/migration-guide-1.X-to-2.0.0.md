@@ -104,8 +104,13 @@ prompt is wrapped in two generated sections:
   next stage, or the transition that has to happen first.
 
 Your own `prompt:` bindings are wrapped too. Overriding what a stage *says* is
-not overriding where the lifecycle goes next. A stage you have deliberately
-silenced with `{blob: ""}` stays silent and is not wrapped.
+not overriding where the lifecycle goes next. A stage that resolves to **nothing**
+stays silent and is not wrapped — a header and footer around an empty middle
+would read as a stage that failed to resolve.
+
+Silencing a stage is not `{blob: ""}`, which `tcw validate` rejects as a blank
+string. What resolves to nothing is a stage whose every binding is conditioned
+out, so a `when:` naming a tag no item carries is the way to do it today.
 
 **If you have a byte-comparison against stage output, it will move.** That is the
 only place this release changes text rather than commands.

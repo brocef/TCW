@@ -62,6 +62,34 @@ def test_claude_agents_key_is_md_files_not_a_directory():
     assert all(p.endswith(".md") for p in paths), f"agents must be .md files: {agents}"
 
 
+NUMBER_WORDS = {
+    1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+    7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+}
+
+
+def test_the_codex_description_counts_the_skills_it_ships():
+    """The Codex manifest describes the plugin in prose and enumerates every
+    skill by name. Prose does not check itself: it said "eight skills" and named
+    eight while nine shipped, so the newest one was undiscoverable to anyone
+    reading the description — which is the whole audience for it.
+
+    Both halves are checked, because either can rot alone: a skill added without
+    touching the sentence leaves the count wrong, and a count bumped without
+    naming the skill leaves the list short.
+    """
+    import json
+    desc = json.loads((REPO / ".codex-plugin" / "plugin.json").read_text())
+    blob = json.dumps(desc)
+    names = sorted(p.parent.name for p in (REPO / "skills").glob("*/SKILL.md"))
+    word = NUMBER_WORDS[len(names)]
+    assert f"{word} skills" in blob, (
+        f"the Codex description does not say '{word} skills' for the "
+        f"{len(names)} that ship: {', '.join(names)}")
+    missing = [n for n in names if n not in blob]
+    assert not missing, f"shipped but unnamed in the description: {missing}"
+
+
 @pytest.mark.parametrize("skill", sorted((REPO / "skills").glob("*/SKILL.md")), ids=lambda p: p.parent.name)
 def test_every_skill_has_name_and_description_frontmatter(skill):
     """Codex refuses to load a skill whose SKILL.md lacks `---` frontmatter with

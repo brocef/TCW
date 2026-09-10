@@ -258,6 +258,25 @@ def test_an_explicit_empty_prompt_list_is_rejected():
     assert "spec" in p and "blob" in p
 
 
+def test_the_empty_prompt_message_does_not_advise_what_the_parser_refuses():
+    """The message tells the reader how to say "this stage says nothing". It used
+    to name `[{blob: ''}]` — which `_parse_binding` rejects as a blank string, so
+    the error advised writing a second error. That advice had also been copied
+    into two migration guides, the configuration guide, and a capability
+    description before anyone tried it.
+
+    The last assertion is the one that matters: whatever the message names has to
+    be a shape this parser actually accepts.
+    """
+    p = only({"stages": {"spec": {"prompt": []}}})
+    assert "when" in p, p
+    assert "blob: ''" not in p and 'blob: ""' not in p, (
+        "the empty-prompt error advises a blank blob, which the parser refuses")
+    assert problems({"stages": {"spec": {"prompt": [
+        {"blob": "-", "when": {"tags": ["never-applied"]}}]}}}) == [], (
+        "the message names a shape that does not validate")
+
+
 def test_an_empty_pre_list_is_untouched():
     """Asserted so the check cannot overreach into a different key: `pre: []`
     has no built-in behind it and means exactly what it says."""

@@ -1365,7 +1365,9 @@ def _empty_prompt(where: str, problems: list[str]) -> None:
         f"{where}: an empty prompt list is not an opt-out — a stage with no "
         f"prompts resolves to TCW's built-in instructions, and after parsing "
         f"this is indistinguishable from not writing the key at all. Remove "
-        f"it, or bind [{{blob: ''}}] for a stage that should say nothing")
+        f"it, or give the stage a binding whose `when:` cannot match — that is "
+        f"what resolves to nothing today. A blank `blob` is refused: this "
+        f"parser rejects it as a non-blank string")
 
 
 def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":

@@ -73,8 +73,9 @@ wrapped in two lines you did not write:
   or the transition that has to happen first.
 
 Your own stage instructions get the same wrapper. Overriding what a stage says is
-not overriding where the lifecycle goes next. A stage you have deliberately
-silenced stays silent.
+not overriding where the lifecycle goes next. A stage that resolves to nothing
+stays silent and gets no wrapper, since a header and footer around an empty
+middle would read as a stage that failed.
 
 If you compare stage output byte for byte anywhere, that comparison will move
 once. It is the only text this release changes.
