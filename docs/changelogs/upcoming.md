@@ -9,6 +9,22 @@ category.
   which the `tcw-report` skill has answered since it shipped without the ledger
   ever saying so. Its two siblings in the same namespace (`triage-github-issues`,
   `run-a-post-mortem`) already carried one.
+- **`/tcw-work-search` — an AI-driven search over the work items.** A new command
+  routing to `skills/tcw-work/references/procedures/search.md`: narrow with
+  `tcw work list`'s own flags first, grep the store folder from `tcw work path`
+  to choose which bodies to open, judge relevance rather than substring-match,
+  and report a Markdown table carrying the board's columns with a `Notes` column
+  for the segments a board row prints only conditionally (`ready-to-close`,
+  `blocked-by`, an active item's `owner`/`started`). Cells are transcribed from
+  the board rather than recomputed, so the table cannot disagree with
+  `tcw work list` about stage letters. Read-only by contract. New capability
+  `work/search-the-work-items`.
+- **README: installing in a cloud environment.** A worked session-start hook for
+  a disposable agent container — `pipx install tcw-cli`, a `pip` fallback for an
+  image whose interpreter is externally managed, the `$CLAUDE_ENV_FILE` PATH
+  repair, and the exit-0/stdout-only rules a `SessionStart` hook has to obey —
+  plus `tcw provision` for a board that lives in a repository the container did
+  not clone.
 
 ## Changed
 
@@ -49,7 +65,7 @@ category.
   the suite failed for anyone running as root. The promote-failure test now
   patches `Path.replace`, the seam
   `test_atomic_write_all_promote_failure_is_the_recorded_ceiling` already used,
-  and keeps its single-pair shape — that test fails on the *second* of two
+  and keeps its single-pair shape — that test fails on the _second_ of two
   promotes, so a first-promote failure is covered nowhere else.
 - **`test_atomic_write_temp_cleanup_on_failure` now measures cleanup.** Its
   read-only parent killed `tempfile.mkstemp` itself, which is the first
@@ -80,3 +96,11 @@ category.
   added to that script does not break them. The stubbed `python3` gained a `-c`
   case defaulting to "already at the floor", which is what keeps every existing
   test's pip count unchanged.
+- **CI skips the suite for a board-only change.** `test.yml` gained
+  `paths-ignore: ["docs/work/**"]` on its `push` and `pull_request` triggers. No
+  test reads this repository's own board (every test builds its own fixture
+  tree), so a run over a backlog edit could only repeat the previous commit's
+  result. `workflow_call` takes no path filter, so a release still runs the full
+  suite. The workflow must not become a _required_ status check while the filter
+  is there: a run skipped by `paths-ignore` reports nothing rather than success.
+- **README slash-command roster.** `/tcw-consolidate-plans` was missing from it.

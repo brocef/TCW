@@ -63,7 +63,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - [`tags.md`](references/tags.md) — the node's tag vocabulary
 - [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences
 - [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
-- **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources
+- **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources · [`search.md`](references/procedures/search.md): answering a described question about the board as a table
 
 > **Web editing:** items, artifacts (Request/Spec/Plan as tabs), and the `capabilities.yaml`
 > sidecar use the configured store through `tcw serve`; it commits transitions but runs **no** hooks.
