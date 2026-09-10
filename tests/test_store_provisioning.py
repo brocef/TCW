@@ -445,6 +445,131 @@ def test_a_store_already_here_wins_over_the_declaration(tmp_path):
         "resolution must not provision, and must not even look in the cache"
 
 
+# ── the registry rung: a store inside a project already on this disk ─────────
+#
+# The flat-workspace case from issue #31. The config is written for a nested
+# layout and is correct there; this machine cloned the same repositories side by
+# side, and says so with `TCW_PROJECT_*`.
+
+
+def _flat_workspace(tmp_path, monkeypatch, *, component="work",
+                    inner="docs/work/corelib", url=None, ref="main",
+                    configured_path="../orchestrator/stores/corelib"):
+    """A child whose parent is a checkout of the repository its store is
+    declared in, laid out flat rather than nested.
+
+    Nothing is defaulted that the resolution path branches on: the configured
+    path, the declared url, and the parent's real location are all arguments,
+    because a fixture that fixed any of them would make a cell of this ladder
+    unreachable by construction.
+    """
+    orchestration = _repo(tmp_path / "orchestration")
+    store = orchestration / inner
+    for name in (("inbox", *("backlog", "active", "review", "completed", "discarded"))
+                 if component == "work" else ()):
+        (store / name).mkdir(parents=True, exist_ok=True)
+        (store / name / ".gitkeep").write_text("")
+    if component != "work":
+        store.mkdir(parents=True, exist_ok=True)
+        (store / ".gitkeep").write_text("")
+    subprocess.run(["git", "-C", str(orchestration), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(orchestration), "commit", "-qm", "seed"], check=True)
+
+    code = _repo(tmp_path / "core")
+    init([component], code, "core")
+    url = url if url is not None else "https://github.invalid/acme/orchestration.git"
+
+    (orchestration / "tcw-config.yaml").write_text(
+        f"id: orchestration\nconnected-projects:\n  children:\n    core: {code}\n")
+    config = yaml.safe_load((code / "tcw-config.yaml").read_text()) or {}
+    config.setdefault(component, {}).update({
+        "path": configured_path,
+        "repository": {"url": url, "ref": ref, "path": inner},
+    })
+    config["connected-projects"] = {
+        "parent": {"orchestration": {
+            "path": "../orchestrator",          # right for the nested layout, wrong here
+            "repository": {"url": url, "ref": ref},
+        }}
+    }
+    (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+
+    monkeypatch.setenv("TCW_PROJECT_ORCHESTRATION", str(orchestration))
+    return code, orchestration, store
+
+
+def test_a_store_in_a_project_the_registry_located_is_used(tmp_path, monkeypatch):
+    code, _orchestration, store = _flat_workspace(tmp_path, monkeypatch)
+
+    assert FsWorkStore.open(code).root == store.resolve()
+
+
+def test_a_store_found_through_the_registry_does_not_publish(tmp_path, monkeypatch):
+    """It is on the user's own disk and they push it themselves — the same
+    reason a store at a configured `work.path` does not publish. The rung
+    achieves it by not passing the declaration, which is all `publishes` reads.
+    """
+    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
+
+    store = FsWorkStore.open(code)
+
+    assert store.declaration is None
+    assert store.publishes is False
+
+
+def test_the_registry_rung_never_touches_the_cache(tmp_path, monkeypatch):
+    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
+    calls = _count_git(monkeypatch)
+
+    FsWorkStore.open(code)
+
+    assert not (tmp_path / "cache" / "tcw").exists(), \
+        "a repository already on disk must never be re-cloned"
+    assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
+
+
+@pytest.mark.parametrize("component,inner,store_cls", [
+    ("work", "docs/work/corelib", FsWorkStore),
+    ("taxonomy", "trees/taxonomy", FsTaxonomyStore),
+    ("capabilities", "trees/capabilities", FsCapabilitiesStore),
+])
+def test_the_registry_rung_serves_all_three_components(
+    tmp_path, monkeypatch, component, inner, store_cls,
+):
+    """The ladder is one function for one contract, so a taxonomy or
+    capabilities store declared in a sibling repository has the same problem."""
+    code, _orchestration, store = _flat_workspace(
+        tmp_path, monkeypatch, component=component, inner=inner)
+
+    assert store_cls.open(code).root == store.resolve()
+
+
+def test_a_ref_mismatch_does_not_stop_the_registry_rung(tmp_path, monkeypatch, capsys):
+    """A checkout the user is standing in wins whatever branch it is on, which
+    is what rung 1 already does with a configured path."""
+    code, orchestration, store = _flat_workspace(tmp_path, monkeypatch, ref="main")
+    subprocess.run(["git", "-C", str(orchestration), "checkout", "-q", "-b", "other"],
+                   check=True)
+
+    assert FsWorkStore.open(code).root == store.resolve()
+    assert "ref" not in capsys.readouterr().err
+
+
+def test_provision_reports_a_registry_resolved_store_as_available(
+    tmp_path, monkeypatch, capsys,
+):
+    """No production change backs this: `run_provision` already asks the ladder
+    before provisioning, so the new rung reaches the command for free."""
+    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
+    monkeypatch.chdir(code)
+    calls = _count_git(monkeypatch)
+
+    assert main(["provision"]) == 0
+
+    assert "already available" in capsys.readouterr().out
+    assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
+
+
 def test_provision_reports_a_local_store_without_contacting_the_remote(
     tmp_path, monkeypatch, capsys,
 ):

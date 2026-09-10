@@ -2936,11 +2936,41 @@ def _is_store_layout(root: Path, component: str) -> bool:
     return all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
+def _registry_checkout_root(
+    node_root: Path, declaration: "RepositoryDeclaration"
+) -> Path | None:
+    """Where the declared store sits inside a project this machine already has.
+
+    The join the ladder's rung 1.5 needs: ask the project registry which project
+    is a checkout of the declared repository, then descend to the store's path
+    within it. None when the registry cannot answer, which sends the ladder on
+    to the provisioned copy.
+
+    **Every failure here is "no answer", never an error.** This rung is a
+    fallback reached only after a configured path has already failed, and a
+    graph problem must not turn a working provisioned store into a refusal. So
+    the registry is opened without `require_valid()` — the shape `run_provision`
+    already uses for the same reason — and anything raised is swallowed.
+    """
+    try:
+        found = FsProjectRegistry.open(node_root).checkout_of(declaration.url)
+    except Exception:
+        return None
+    if found is None:
+        return None
+    return (found / declaration.path) if declaration.path else found
+
+
 def resolve_store(store_cls, node_root: Path, _walk=None):
     """This node's store for `store_cls`'s component, in one ordered ladder.
 
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
        usable;
+    1.5. else inside a project the registry has already located here, when one
+       is a checkout of the declared repository — local before remote, the same
+       rule `ConnectedProject` states for a project's own location. Numbered as
+       a half because it was added after the others and renumbering them would
+       silently rewrite what every message and comment elsewhere calls "rule 2";
     2. else the declared home repository's provisioned location, if usable;
     3. else `StoreNotProvisioned`, when a home repository is declared;
     4. else exactly what the component did before a declaration existed — the
@@ -3025,10 +3055,25 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
         # and left the store exactly as unopenable. `_extended_component_stores`
         # raises for many more reasons than it used to, so the hole widened.
         pass
+    local = _registry_checkout_root(node_root, declaration)
+    if local is not None:
+        try:                                                    # rule 1.5
+            # No `declaration=`, and that omission is the whole of "must not
+            # publish". This store is on the user's own disk and they push it
+            # themselves — the same reasoning rule 1 relies on. `publishes`
+            # consults nothing else.
+            return store_cls._open_at(
+                local, node_root, config_path,
+                external=True, must_exist=True, _walk=_walk)
+        except StoreLocationUnusable:
+            # The project is here but holds no store at the declared path.
+            # A location that did not work out, so the ladder carries on —
+            # the same rule rules 1 and 2 follow.
+            pass
     try:                                                        # rule 2
-        # The declaration travels with the store *only* here. Rule 1 above
-        # resolved without it, so a store built there carries None and does not
-        # publish — see `FsWorkStore.publishes`.
+        # The declaration travels with the store *only* here. Rules 1 and 1.5
+        # above resolved without it, so a store built there carries None and
+        # does not publish — see `FsWorkStore.publishes`.
         return store_cls._open_at(
             provisioned_store_root(node_root, declaration), node_root, config_path,
             external=True, must_exist=True, declaration=declaration,
