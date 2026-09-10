@@ -16,7 +16,7 @@ from tcw.store.base import (
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
     WORK_STATUSES, parse_connected_entry,
 )
-from tcw.store.checkouts import provisioned_root
+from tcw.store.checkouts import normalized_url, provisioned_root
 
 SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -230,6 +230,45 @@ class FsProjectRegistry(ProjectRegistry):
     def projects(self) -> list[Project]:
         self._load_graph()
         return [cfg.project for cfg in self._by_id.values()]
+
+    def checkout_of(self, url: str) -> Path | None:
+        """Where a project this graph holds is a checkout of `url`, or None.
+
+        **Filesystem-adapter private, deliberately not on `ProjectRegistry`.**
+        The question itself is storage-neutral — a tracker-backed registry could
+        answer "which of your projects comes from this source" perfectly well —
+        but answering it here means comparing `RepositoryDeclaration.url` and
+        returning a `Project.locator`, and both are documented as things nothing
+        above the adapter may read. The one caller is `resolve_store` in
+        `fs.py`, which is the same adapter reading its own values.
+
+        Asks the *resolved* project rather than the declaration that named it.
+        That is the entire point: a declaration says where a project comes from,
+        and only the graph knows where it landed here, `TCW_PROJECT_<ID>`
+        included. A lookup that returned the declared locator would answer with
+        the path the config wrote, which on a machine needing this is exactly
+        the path that does not exist.
+
+        A project is reached through the edges pointing at it, since a node's
+        own repository is declared by whoever knows about that edge rather than
+        by the node itself. A declared project the graph does not hold answers
+        None: it names a repository but no location here, and sending the store
+        ladder to a path that is not there is worse than sending it nowhere.
+        """
+        self._load_graph()
+        wanted = normalized_url(url)
+        if not wanted:
+            return None
+        for cfg in list(self._cache.values()):
+            for entry in (*cfg.parent.values(), *cfg.children.values()):
+                if entry.repository is None:
+                    continue
+                if normalized_url(entry.repository.url) != wanted:
+                    continue
+                target = self._by_id.get(entry.id)
+                if target is not None:
+                    return Path(target.project.locator).resolve()
+        return None
 
     def check(self) -> list[str]:
         return list(self._problems)

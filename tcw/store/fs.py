@@ -1552,7 +1552,8 @@ class FsTreeStore:
 
     def _write_staged(self, pairs: list[tuple[Path, str]], *,
                       owned_dir: Path | None = None,
-                      also_stage: tuple[Path, ...] = ()) -> None:
+                      also_stage: tuple[Path, ...] = (),
+                      stage_root: Path | None = None) -> None:
         """Write every `(path, content)` and stage the lot, undoing what *this
         call* created if either half fails, then re-raising.
 
@@ -1575,6 +1576,12 @@ class FsTreeStore:
 
         Best-effort and silent: the undo must not mask the original error, and
         must not add a second line to a refusal whose one-line shape is pinned.
+
+        `stage_root` names the repository to stage in, for the one write that is
+        not a store file: the node's own `tcw-config.yaml`. The store root and
+        the node root vary independently — in the orchestrator layout they are
+        different repositories — and `git add` refuses a path outside the
+        repository it is given. Everything else defaults to the store's.
         """
         # `exists() or is_symlink()`: `exists()` follows the link, so a
         # pre-existing *dangling* symlink read as absent, was replaced by a real
@@ -1583,7 +1590,12 @@ class FsTreeStore:
         new = [p for p, _ in pairs if not (p.exists() or p.is_symlink())]
         try:
             _atomic_write_all(pairs)
-            self._stage(*(p for p, _ in pairs), *also_stage)
+            paths = (*(p for p, _ in pairs), *also_stage)
+            if stage_root is None:
+                self._stage(*paths)
+            else:
+                self._require_repository()
+                git_stage(stage_root, *paths)
         except BaseException:
             if owned_dir is not None:
                 shutil.rmtree(owned_dir, ignore_errors=True)
@@ -2936,11 +2948,41 @@ def _is_store_layout(root: Path, component: str) -> bool:
     return all((root / name).is_dir() for name in STORE_LAYOUT)
 
 
+def _registry_checkout_root(
+    node_root: Path, declaration: "RepositoryDeclaration"
+) -> Path | None:
+    """Where the declared store sits inside a project this machine already has.
+
+    The join the ladder's rung 1.5 needs: ask the project registry which project
+    is a checkout of the declared repository, then descend to the store's path
+    within it. None when the registry cannot answer, which sends the ladder on
+    to the provisioned copy.
+
+    **Every failure here is "no answer", never an error.** This rung is a
+    fallback reached only after a configured path has already failed, and a
+    graph problem must not turn a working provisioned store into a refusal. So
+    the registry is opened without `require_valid()` — the shape `run_provision`
+    already uses for the same reason — and anything raised is swallowed.
+    """
+    try:
+        found = FsProjectRegistry.open(node_root).checkout_of(declaration.url)
+    except Exception:
+        return None
+    if found is None:
+        return None
+    return (found / declaration.path) if declaration.path else found
+
+
 def resolve_store(store_cls, node_root: Path, _walk=None):
     """This node's store for `store_cls`'s component, in one ordered ladder.
 
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
        usable;
+    1.5. else inside a project the registry has already located here, when one
+       is a checkout of the declared repository — local before remote, the same
+       rule `ConnectedProject` states for a project's own location. Numbered as
+       a half because it was added after the others and renumbering them would
+       silently rewrite what every message and comment elsewhere calls "rule 2";
     2. else the declared home repository's provisioned location, if usable;
     3. else `StoreNotProvisioned`, when a home repository is declared;
     4. else exactly what the component did before a declaration existed — the
@@ -3018,17 +3060,46 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
             raw_root, node_root, config_path,
             external=configured is not None, must_exist=must_exist,
             _walk=_walk)
-    except StoreLocationUnusable:
+    except StoreLocationUnusable as unusable:
         # Only this. A store that is *there* and fails to open — a federation
         # error, a malformed `extends` — is a real error, and swallowing it here
         # reported "not provisioned; run `tcw provision`", which then succeeded
         # and left the store exactly as unopenable. `_extended_component_stores`
         # raises for many more reasons than it used to, so the hole widened.
-        pass
+        #
+        # The reason is carried rather than discarded, but **only when the
+        # configured path is actually there**. A path that does not exist,
+        # beside a declaration, is the ordinary case the declaration exists for
+        # — reporting it would make every provisioned node noisy. A path that
+        # exists and holds no store is a second configuration problem, and it
+        # used to vanish behind rule 3's message entirely.
+        #
+        # Presence is tested here rather than read out of the message: `_open_at`
+        # raises the same "is not a directory" for an absent path and for one
+        # that is a file, so the message cannot tell them apart.
+        local_failure = str(unusable) if raw_root.exists() else None
+        prefix = f"{config_path}: "
+        if local_failure and local_failure.startswith(prefix):
+            local_failure = local_failure[len(prefix):]
+    local = _registry_checkout_root(node_root, declaration)
+    if local is not None:
+        try:                                                    # rule 1.5
+            # No `declaration=`, and that omission is the whole of "must not
+            # publish". This store is on the user's own disk and they push it
+            # themselves — the same reasoning rule 1 relies on. `publishes`
+            # consults nothing else.
+            return store_cls._open_at(
+                local, node_root, config_path,
+                external=True, must_exist=True, _walk=_walk)
+        except StoreLocationUnusable:
+            # The project is here but holds no store at the declared path.
+            # A location that did not work out, so the ladder carries on —
+            # the same rule rules 1 and 2 follow.
+            pass
     try:                                                        # rule 2
-        # The declaration travels with the store *only* here. Rule 1 above
-        # resolved without it, so a store built there carries None and does not
-        # publish — see `FsWorkStore.publishes`.
+        # The declaration travels with the store *only* here. Rules 1 and 1.5
+        # above resolved without it, so a store built there carries None and
+        # does not publish — see `FsWorkStore.publishes`.
         return store_cls._open_at(
             provisioned_store_root(node_root, declaration), node_root, config_path,
             external=True, must_exist=True, declaration=declaration,
@@ -3038,7 +3109,8 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
     raise StoreNotProvisioned(                                  # rule 3
         f"{config_path}: the {component} store is declared in "
         f"{declaration.url} but has not been provisioned here; "
-        f"run `tcw provision` to obtain it")
+        f"run `tcw provision` to obtain it"
+        + (f" — and the configured {local_failure}" if local_failure else ""))
 
 
 def declared_repository(
@@ -3383,8 +3455,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         root = raw_root.resolve()
         missing = [name for name in ("inbox", *WORK_STATUSES) if not (root / name).is_dir()]
         if missing:
+            # Names the directory, as the two branches above already do. Without
+            # it the user is told `work.path` is not a work store and never told
+            # which path that is — which matters most exactly when the value is
+            # relative and resolved somewhere they did not expect.
             raise StoreLocationUnusable(
-                f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
+                f"{config_path}: work.path is not a work store: {root}; "
+                f"missing: {', '.join(missing)}")
         repository = git_root(root) if external else node_root
         if repository is None and external:
             # `StoreDeclarationError`, and both halves of that choice matter.
@@ -5158,7 +5235,18 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _write_tags(self, tags: set[str]) -> list[str]:
         """Read-modify-write `work.tags` (preserving other config keys), stage
         the file. `dump_yaml` rewrites the sentinel wholesale, dropping its stub
-        comments — accepted per plan."""
+        comments — accepted per plan.
+
+        **Staged in the node's repository, not the store's.** This is the only
+        write here that touches a file outside the store, and with an external
+        `work.path` the two are different repositories — the intended
+        orchestrator layout, not an edge case. Staging it against the store's
+        repository made `tcw work tags add` fail outright with *is outside
+        repository at …*, so the whole verb was unusable there.
+
+        A node outside git stages nothing rather than failing: the file is
+        written and that is the whole of what a non-git node can do.
+        """
         self._require_repository()
         config = self._config()
         work = config.get("work")
@@ -5167,9 +5255,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         result = sorted(tags)
         work["tags"] = result
         config["work"] = work
-        self._write_staged([(self._config_path(),
-                             yaml.safe_dump(config, sort_keys=False,
-                                            allow_unicode=True))])
+        config_path = self._config_path()
+        node_repository = git_root(config_path.parent)
+        payload = [(config_path, yaml.safe_dump(config, sort_keys=False,
+                                                allow_unicode=True))]
+        if node_repository is None:
+            _atomic_write_all(payload)
+        else:
+            self._write_staged(payload, stage_root=node_repository)
         return result
 
     def register_tags(self, tags: list[str]) -> list[str]:

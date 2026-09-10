@@ -835,3 +835,106 @@ def test_the_override_is_probed_once_per_project(tmp_path, monkeypatch):
     registry.require_valid()
     assert calls.count("child-project") == 1
     assert len(registry.overrides()) == 1
+
+
+# ── locating a project by the repository it comes from ───────────────────────
+#
+# The question the store-resolution ladder asks when its configured path does
+# not resolve: *is a checkout of this repository already on this disk?* The
+# registry is the only thing that knows, because it is the only thing that has
+# consulted `TCW_PROJECT_<ID>`.
+
+
+def _workspace(tmp_path: Path, url: str, *, parent_at: str = "orchestration") -> tuple[Path, Path]:
+    """A child declaring its parent, and naming the repository the parent is a
+    checkout of. Returns `(child_root, parent_root)`.
+
+    Every axis the lookup branches on is written here rather than defaulted:
+    the declared locator, the repository url, and where the parent actually is.
+    """
+    parent = tmp_path / parent_at
+    child = tmp_path / "core"
+    config(parent, f"id: orchestration\nconnected-projects:\n  children:\n    core: {child}\n")
+    config(
+        child,
+        "id: core\n"
+        "connected-projects:\n"
+        "  parent:\n"
+        "    orchestration:\n"
+        f"      path: {parent}\n"
+        "      repository:\n"
+        f"        url: {url}\n"
+        "        ref: main\n",
+    )
+    return child, parent
+
+
+def test_checkout_of_finds_a_project_declared_from_that_repository(tmp_path):
+    url = "https://github.invalid/acme/orchestration.git"
+    child, parent = _workspace(tmp_path, url)
+
+    registry = FsProjectRegistry.open(child)
+
+    assert registry.checkout_of(url) == parent.resolve()
+
+
+@pytest.mark.parametrize("asked", [
+    "https://github.invalid/acme/orchestration",
+    "https://github.invalid/acme/orchestration/",
+    "git@github.invalid:acme/orchestration.git",
+])
+def test_checkout_of_matches_across_url_spellings(tmp_path, asked):
+    """The two sides of a connection are written at different times by
+    different people, so one spelling is not a safe assumption."""
+    child, parent = _workspace(tmp_path, "https://github.invalid/acme/orchestration.git")
+
+    assert FsProjectRegistry.open(child).checkout_of(asked) == parent.resolve()
+
+
+def test_checkout_of_returns_none_for_an_unrelated_repository(tmp_path):
+    child, _parent = _workspace(tmp_path, "https://github.invalid/acme/orchestration.git")
+
+    registry = FsProjectRegistry.open(child)
+
+    assert registry.checkout_of("https://github.invalid/acme/something-else.git") is None
+
+
+def test_checkout_of_follows_an_override(tmp_path, monkeypatch):
+    """The whole point of the item this exists for.
+
+    The declared locator is right for the nested layout and wrong here; the
+    environment says where the parent actually is. A lookup that read the
+    declaration instead of the resolved project would answer with a directory
+    this machine does not have.
+    """
+    url = "https://github.invalid/acme/orchestration.git"
+    child, declared = _workspace(tmp_path, url)
+    elsewhere = tmp_path / "flat" / "orchestration"
+    config(elsewhere, f"id: orchestration\nconnected-projects:\n  children:\n    core: {child}\n")
+    monkeypatch.setenv("TCW_PROJECT_ORCHESTRATION", str(elsewhere))
+
+    found = FsProjectRegistry.open(child).checkout_of(url)
+
+    assert found == elsewhere.resolve()
+    assert found != declared.resolve(), "the declared locator must not win over the override"
+
+
+def test_checkout_of_ignores_a_project_the_graph_does_not_hold(tmp_path):
+    """A declaration whose target is not on this machine names a repository but
+    no location. Answering with a path that is not there would send the store
+    ladder somewhere worse than nowhere."""
+    url = "https://github.invalid/acme/orchestration.git"
+    child = tmp_path / "core"
+    config(
+        child,
+        "id: core\n"
+        "connected-projects:\n"
+        "  parent:\n"
+        "    orchestration:\n"
+        f"      path: {tmp_path / 'not-here'}\n"
+        "      repository:\n"
+        f"        url: {url}\n"
+        "        ref: main\n",
+    )
+
+    assert FsProjectRegistry.open(child).checkout_of(url) is None

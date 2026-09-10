@@ -18,6 +18,45 @@ from pathlib import Path
 from tcw.store.base import RepositoryDeclaration, StoreDeclarationError
 
 
+def normalized_url(url: str) -> str:
+    """A canonical form of `url`, for asking whether two declarations name the
+    **same repository**.
+
+    Identity, not display, and the distinction is load-bearing. `_cache_key`
+    below does similar-looking text handling, but only for the *readable* half
+    of a directory name: the half that decides which directory a store lands in
+    is a digest of the raw url. So it deliberately keeps two spellings of one
+    repository apart, which is the opposite of what this answers. The two must
+    not be folded into one helper — routing that digest through here would
+    rename every provisioned directory on every machine at once, silently, and
+    orphan every store already in the cache.
+
+    Handles the spellings one workspace actually mixes, because the two sides of
+    a connection are written by different people at different times: a trailing
+    slash, a `.git` suffix, and `git@host:owner/repo` against
+    `https://host/owner/repo`. A local filesystem path round-trips unchanged,
+    which the tests rely on — they use real repositories in a temporary
+    directory as remotes.
+
+    The host is lowercased because hostnames are case-insensitive. The path is
+    not, because whether a forge treats `Owner/Repo` and `owner/repo` as one
+    thing varies, and merging them here would be this function claiming to know.
+    A port is kept as though it were a path segment: two spellings carrying the
+    same port still match each other, which is all identity needs, and dropping
+    it could merge two genuinely different hosts.
+    """
+    cleaned = url.strip().rstrip("/")
+    if cleaned.endswith(".git"):
+        cleaned = cleaned[:-4]
+    cleaned = re.sub(r"^[A-Za-z][A-Za-z0-9+.-]*://", "", cleaned)
+    cleaned = cleaned.rpartition("@")[2]           # drop any `git@` user part
+    host, slash, rest = cleaned.partition("/")
+    if ":" in host:                                # scp-style `host:owner/repo`
+        host, _, prefix = host.partition(":")
+        rest = f"{prefix}/{rest}" if slash else prefix
+    return f"{host.lower()}/{rest}"
+
+
 def _cache_root() -> Path:
     """Where working copies land when a declaration names no `checkout`.
 

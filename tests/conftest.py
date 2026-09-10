@@ -186,3 +186,22 @@ def _no_project_overrides(monkeypatch):
     """
     for name in [k for k in os.environ if k.startswith("TCW_PROJECT_")]:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _cache_in_tmp(tmp_path, monkeypatch):
+    """No test writes to the developer's real `~/.cache/tcw/stores`.
+
+    Suite-wide, for the reason the guards above give: the dependency is
+    invisible until a test happens to provision something, so no individual file
+    can be trusted to remember it. This lived as a local fixture in
+    `test_store_provisioning.py` and covered only that file — a test added to
+    `test_validate.py` called `ensure_available()`, and four working copies
+    landed in the developer's real cache before anyone noticed.
+
+    `tmp_path / "cache"` specifically, because tests assert the negative —
+    `not (tmp_path / "cache" / "tcw").exists()` is how "resolution must not even
+    look in the cache" is stated — and those assertions are only worth something
+    if this is the directory the code would have used.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))

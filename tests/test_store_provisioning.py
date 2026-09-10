@@ -22,7 +22,7 @@ from tcw.store.base import (
     parse_repository_declaration,
 )
 from tcw.cli import main
-from tcw.store import fs
+from tcw.store import checkouts, fs
 from tcw.store.fs import (
     STORE_CLASSES, FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore,
     FsWorkStore, init,
@@ -189,12 +189,6 @@ def _provisioner(tmp_path, node_root: Path, remote: Path, **overrides):
     return FsStoreProvisioner(node_root, "work", declaration)
 
 
-@pytest.fixture(autouse=True)
-def _cache_in_tmp(tmp_path, monkeypatch):
-    """No test may write to the developer's real cache directory."""
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-
-
 def _count_git(monkeypatch):
     """Count git invocations made by the provisioner, letting them run."""
     calls: list[list[str]] = []
@@ -342,6 +336,61 @@ def test_the_cache_key_separates_refs_and_shares_a_repository(tmp_path):
     assert roots[one] == roots[same], "one (url, ref) pair is one working copy"
 
 
+# ── repository identity, kept apart from cache naming ────────────────────────
+
+def test_the_cache_key_is_unchanged():
+    """`_cache_key` names directories that already exist on users' machines.
+
+    Pinned to literal strings rather than to a property, because the failure
+    this guards is a *silent* rename: every provisioned store becomes
+    unreachable and a fresh clone appears beside it, with nothing raised. The
+    four cases differ only in URL spelling and ref, and their readable halves
+    are identical — so only the digest tells them apart, and the digest is
+    exactly what a shared normalizer would change.
+    """
+    expected = {
+        ("https://github.com/Proposit-App/proposit-orchestration.git", "main"):
+            "github.com-proposit-app-proposit-orchestration-73cbcd814e44",
+        ("https://github.com/Proposit-App/proposit-orchestration", "main"):
+            "github.com-proposit-app-proposit-orchestration-bc251d728153",
+        ("git@github.com:Proposit-App/proposit-orchestration.git", "main"):
+            "github.com-proposit-app-proposit-orchestration-d5bbabd1bdc8",
+        ("https://github.com/Proposit-App/proposit-orchestration.git", "dev"):
+            "github.com-proposit-app-proposit-orchestration-447264907fc6",
+    }
+    for (url, ref), key in expected.items():
+        assert checkouts._cache_key(RepositoryDeclaration(url=url, ref=ref)) == key
+
+
+@pytest.mark.parametrize("spelling", [
+    "https://github.com/Proposit-App/proposit-orchestration",
+    "https://github.com/Proposit-App/proposit-orchestration.git",
+    "https://github.com/Proposit-App/proposit-orchestration/",
+    "  https://github.com/Proposit-App/proposit-orchestration.git  ",
+    "git@github.com:Proposit-App/proposit-orchestration.git",
+])
+def test_two_spellings_of_one_repository_normalize_alike(spelling):
+    """The question `_cache_key` deliberately answers the other way.
+
+    A declaration and a connected project routinely spell one repository
+    differently — one config was written for HTTPS, the other for SSH — and the
+    new resolution rung has to see through that.
+    """
+    canonical = checkouts.normalized_url(
+        "https://github.com/Proposit-App/proposit-orchestration")
+    assert checkouts.normalized_url(spelling) == canonical
+
+
+@pytest.mark.parametrize("other", [
+    "https://github.com/Proposit-App/proposit-core",
+    "https://github.com/Someone-Else/proposit-orchestration",
+    "https://gitlab.invalid/Proposit-App/proposit-orchestration",
+])
+def test_two_different_repositories_do_not_normalize_alike(other):
+    assert checkouts.normalized_url(other) != checkouts.normalized_url(
+        "https://github.com/Proposit-App/proposit-orchestration")
+
+
 def test_an_undeclared_component_is_a_no_op(tmp_path):
     code = _repo(tmp_path / "code")
     result = FsStoreProvisioner(code, "work", None).ensure_available()
@@ -388,6 +437,131 @@ def test_a_store_already_here_wins_over_the_declaration(tmp_path):
     assert FsWorkStore.open(code).root == here.resolve()
     assert not (tmp_path / "cache" / "tcw").exists(), \
         "resolution must not provision, and must not even look in the cache"
+
+
+# ── the registry rung: a store inside a project already on this disk ─────────
+#
+# The flat-workspace case from issue #31. The config is written for a nested
+# layout and is correct there; this machine cloned the same repositories side by
+# side, and says so with `TCW_PROJECT_*`.
+
+
+def _flat_workspace(tmp_path, monkeypatch, *, component="work",
+                    inner="docs/work/corelib", url=None, ref="main",
+                    configured_path="../orchestrator/stores/corelib"):
+    """A child whose parent is a checkout of the repository its store is
+    declared in, laid out flat rather than nested.
+
+    Nothing is defaulted that the resolution path branches on: the configured
+    path, the declared url, and the parent's real location are all arguments,
+    because a fixture that fixed any of them would make a cell of this ladder
+    unreachable by construction.
+    """
+    orchestration = _repo(tmp_path / "orchestration")
+    store = orchestration / inner
+    for name in (("inbox", *("backlog", "active", "review", "completed", "discarded"))
+                 if component == "work" else ()):
+        (store / name).mkdir(parents=True, exist_ok=True)
+        (store / name / ".gitkeep").write_text("")
+    if component != "work":
+        store.mkdir(parents=True, exist_ok=True)
+        (store / ".gitkeep").write_text("")
+    subprocess.run(["git", "-C", str(orchestration), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(orchestration), "commit", "-qm", "seed"], check=True)
+
+    code = _repo(tmp_path / "core")
+    init([component], code, "core")
+    url = url if url is not None else "https://github.invalid/acme/orchestration.git"
+
+    (orchestration / "tcw-config.yaml").write_text(
+        f"id: orchestration\nconnected-projects:\n  children:\n    core: {code}\n")
+    config = yaml.safe_load((code / "tcw-config.yaml").read_text()) or {}
+    config.setdefault(component, {}).update({
+        "path": configured_path,
+        "repository": {"url": url, "ref": ref, "path": inner},
+    })
+    config["connected-projects"] = {
+        "parent": {"orchestration": {
+            "path": "../orchestrator",          # right for the nested layout, wrong here
+            "repository": {"url": url, "ref": ref},
+        }}
+    }
+    (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+
+    monkeypatch.setenv("TCW_PROJECT_ORCHESTRATION", str(orchestration))
+    return code, orchestration, store
+
+
+def test_a_store_in_a_project_the_registry_located_is_used(tmp_path, monkeypatch):
+    code, _orchestration, store = _flat_workspace(tmp_path, monkeypatch)
+
+    assert FsWorkStore.open(code).root == store.resolve()
+
+
+def test_a_store_found_through_the_registry_does_not_publish(tmp_path, monkeypatch):
+    """It is on the user's own disk and they push it themselves — the same
+    reason a store at a configured `work.path` does not publish. The rung
+    achieves it by not passing the declaration, which is all `publishes` reads.
+    """
+    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
+
+    store = FsWorkStore.open(code)
+
+    assert store.declaration is None
+    assert store.publishes is False
+
+
+def test_the_registry_rung_never_touches_the_cache(tmp_path, monkeypatch):
+    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
+    calls = _count_git(monkeypatch)
+
+    FsWorkStore.open(code)
+
+    assert not (tmp_path / "cache" / "tcw").exists(), \
+        "a repository already on disk must never be re-cloned"
+    assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
+
+
+@pytest.mark.parametrize("component,inner,store_cls", [
+    ("work", "docs/work/corelib", FsWorkStore),
+    ("taxonomy", "trees/taxonomy", FsTaxonomyStore),
+    ("capabilities", "trees/capabilities", FsCapabilitiesStore),
+])
+def test_the_registry_rung_serves_all_three_components(
+    tmp_path, monkeypatch, component, inner, store_cls,
+):
+    """The ladder is one function for one contract, so a taxonomy or
+    capabilities store declared in a sibling repository has the same problem."""
+    code, _orchestration, store = _flat_workspace(
+        tmp_path, monkeypatch, component=component, inner=inner)
+
+    assert store_cls.open(code).root == store.resolve()
+
+
+def test_a_ref_mismatch_does_not_stop_the_registry_rung(tmp_path, monkeypatch, capsys):
+    """A checkout the user is standing in wins whatever branch it is on, which
+    is what rung 1 already does with a configured path."""
+    code, orchestration, store = _flat_workspace(tmp_path, monkeypatch, ref="main")
+    subprocess.run(["git", "-C", str(orchestration), "checkout", "-q", "-b", "other"],
+                   check=True)
+
+    assert FsWorkStore.open(code).root == store.resolve()
+    assert "ref" not in capsys.readouterr().err
+
+
+def test_provision_reports_a_registry_resolved_store_as_available(
+    tmp_path, monkeypatch, capsys,
+):
+    """No production change backs this: `run_provision` already asks the ladder
+    before provisioning, so the new rung reaches the command for free."""
+    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
+    monkeypatch.chdir(code)
+    calls = _count_git(monkeypatch)
+
+    assert main(["provision"]) == 0
+
+    assert "already available" in capsys.readouterr().out
+    assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
 
 
 def test_provision_reports_a_local_store_without_contacting_the_remote(
@@ -446,6 +620,51 @@ def test_not_provisioned_names_the_remote_and_the_command(tmp_path):
     assert "tcw provision" in message
     assert "not a directory" not in message, \
         "a declared store that simply is not here yet is not a misconfiguration"
+
+
+def test_the_not_provisioned_error_names_a_broken_configured_path(tmp_path):
+    """Two configuration problems, and only one used to be reported.
+
+    A `work.path` that exists but holds no store, beside a declaration that has
+    not been provisioned. The declaration is genuinely unprovisioned, so that
+    half of the message is right — what was missing is any word about the path
+    the user actually wrote, which they will keep believing is fine.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    half = tmp_path / "half-a-store"
+    (half / "backlog").mkdir(parents=True)
+    _write_config(code, path=str(half),
+                  repository={"url": "https://example.invalid/orchestrator.git"})
+
+    with pytest.raises(StoreNotProvisioned) as caught:
+        FsWorkStore.open(code)
+
+    message = str(caught.value)
+    assert "https://example.invalid/orchestrator.git" in message
+    assert "tcw provision" in message
+    assert str(half) in message, \
+        "the configured path is the second problem and must be named"
+    assert "inbox" in message, "and why it is unusable, not merely that it is"
+
+
+def test_the_not_provisioned_error_stays_quiet_about_an_absent_path(tmp_path):
+    """The normal case a declaration exists for.
+
+    Stronger than the neighbouring test's assertion about one phrase: nothing
+    about the configured path may appear at all, because on a machine that has
+    only the code repository this is not a problem and saying so would make
+    every provisioned node noisy.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    _write_config(code, path="../nowhere/stores/corelib",
+                  repository={"url": "https://example.invalid/orchestrator.git"})
+
+    with pytest.raises(StoreNotProvisioned) as caught:
+        FsWorkStore.open(code)
+
+    assert "nowhere" not in str(caught.value)
 
 
 def test_without_a_declaration_a_broken_path_still_says_what_it_always_said(tmp_path):
