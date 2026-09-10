@@ -267,8 +267,10 @@ Every command group also has `--help`, and a `check` that validates its tree.
 
 ## Skills — the judgment layer
 
-The CLI is the _mechanism_. Seven skills in [`skills/`](skills/) supply the
-_judgment_ that drives it — the parts a deterministic tool cannot decide.
+The CLI is the _mechanism_. Fourteen skills in [`skills/`](skills/) supply the
+_judgment_ that drives it — the parts a deterministic tool cannot decide. Eight
+carry a distinct procedure; the other six all compose one lifecycle stage and
+are listed together at the end.
 
 | Skill                                                      | What it does                                                                                                                           |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -279,12 +281,27 @@ _judgment_ that drives it — the parts a deterministic tool cannot decide.
 | [`tcw-report`](skills/tcw-report/SKILL.md)                 | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                          |
 | [`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)   | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                 |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                     |
+| [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md)       | Finds which lifecycle stage could first have caught a problem, once one has surfaced                                                   |
 
 They name `tcw` commands and never reimplement tool logic: mechanism stays in the
 binary, judgment stays in the skills.
 
-Two read-only review agents ship alongside them — `tcw-verifier` and
-`tcw-post-mortem` — plus slash commands for each skill's main procedure
+### Reading a lifecycle stage
+
+Six more skills do one job between them: hand you a stage's own working document
+and the instructions your project resolves for it, as a single read rather than a
+file you open and a command you run separately. They only read — `tcw work stage
+gate` is still what refuses.
+
+[`tcw-work-stage`](skills/tcw-work-stage/SKILL.md) is the general one and takes
+the stage id, so it reaches all seven stages including `inbox` and `postmortem`.
+The other five bake their stage in and ask only for the work item, which is
+optional: `tcw-work-stage-request`, `tcw-work-stage-spec`,
+`tcw-work-stage-plan`, `tcw-work-stage-implement`, `tcw-work-stage-verify`.
+
+Three read-only review agents ship alongside them — `tcw-verifier`,
+`tcw-backlog-auditor`, and `tcw-post-mortem`, which accelerates the skill of the
+same name — plus slash commands for each skill's main procedure
 (`/tcw-plan-work`, `/tcw-drive-work-to-completion`, `/tcw-verify-work`,
 `/tcw-process-inbox`, `/tcw-triage-issues`, `/tcw-audit-work-backlog`,
 `/tcw-taxonomy-init`, `/tcw-capabilities-init`, `/tcw-docs-sync-setup`,

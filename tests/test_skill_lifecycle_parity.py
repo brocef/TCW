@@ -300,27 +300,108 @@ def test_the_router_routes_to_every_reference_file():
     assert not orphans, f"unreachable from SKILL.md: {orphans}"
 
 
-# ── the composing skill ──────────────────────────────────────────────────────
+# ── the composing skills ─────────────────────────────────────────────────────
+#
+# Six documents compose a stage out of `cat <router>` + `tcw work stage prompt`:
+# the generic `tcw-work-stage`, which takes the stage id as an argument, and one
+# `tcw-work-stage-<stage>` per stage a person actually drives, which bakes it in.
+#
+# Every property below held for one file before the five shipped. Each is now
+# parametrised over all six, because a guard that covers one of six near-identical
+# documents has stopped being a guard.
 
 STAGE_SKILL = REPO / "skills/tcw-work-stage/SKILL.md"
 
+# Derived from STAGE_IDS, never written out as a second list — a stage added to
+# the lifecycle shows up here rather than being silently skipped. Only the two
+# exclusions are hand-written, and each is excluded for a reason that would have
+# to stop being true before it gets a skill:
+#   inbox      — runs before an item exists and takes no work item reference on
+#                either verb, so a per-stage skill would wrap a zero-argument
+#                command and add nothing.
+#   postmortem — already has `tcw-post-mortem`, with a read-only agent behind it;
+#                a second skill for the stage would compete with it.
+NO_PER_STAGE_SKILL = {"inbox", "postmortem"}
+PER_STAGE_IDS = tuple(s for s in STAGE_IDS if s not in NO_PER_STAGE_SKILL)
+PER_STAGE_SKILLS = {s: REPO / f"skills/tcw-work-stage-{s}/SKILL.md"
+                    for s in PER_STAGE_IDS}
 
-def test_the_composing_skill_reads_a_router_that_exists_for_every_stage():
-    """`tcw-work-stage` interpolates the stage id into a path. Nothing at
-    runtime checks that path — a failed `cat` is swallowed by `|| true` so the
-    rest of the skill still renders, which is the right behaviour and also the
-    reason a rename would go unnoticed. Resolve the template here instead."""
-    body = STAGE_SKILL.read_text()
+# The generic skill keyed by None: it has no single stage, and every parametrised
+# test below has to say what it does differently for that case anyway.
+COMPOSING_SKILLS = {None: STAGE_SKILL, **PER_STAGE_SKILLS}
+
+
+def _composing(stage):
+    """The path for a stage id, or for the generic skill when `stage` is None."""
+    return COMPOSING_SKILLS[stage]
+
+
+composing = pytest.mark.parametrize(
+    "stage", sorted(COMPOSING_SKILLS, key=lambda s: s or ""),
+    ids=lambda s: s or "generic")
+
+
+def test_the_per_stage_skills_are_exactly_the_stages_that_get_one():
+    """Both directions. A stage in `PER_STAGE_IDS` with no file is a skill that
+    was planned and never written; a `skills/tcw-work-stage-*/` directory with no
+    matching stage is one that appeared without the exclusion list being
+    revisited — most likely `postmortem`, whose exclusion is a judgement call
+    someone will eventually want to reverse. Reversing it should mean editing
+    `NO_PER_STAGE_SKILL`, not just adding a folder.
+
+    The glob discriminates on its own: every per-stage skill carries the
+    `tcw-work-stage-` prefix and the generic skill does not match it.
+    """
+    missing = sorted(s for s, p in PER_STAGE_SKILLS.items() if not p.is_file())
+    assert not missing, f"stages with no skill file: {missing}"
+    on_disk = {p.parent.name.removeprefix("tcw-work-stage-")
+               for p in REPO.glob("skills/tcw-work-stage-*/SKILL.md")}
+    assert on_disk == set(PER_STAGE_IDS), (
+        f"skills on disk {sorted(on_disk)} disagree with the stages that get one "
+        f"{sorted(PER_STAGE_IDS)}; excluded deliberately: {sorted(NO_PER_STAGE_SKILL)}")
+
+
+@pytest.mark.parametrize("stage", PER_STAGE_IDS)
+def test_a_per_stage_skill_takes_the_item_alone(stage):
+    """The whole point of splitting the generic skill. `arguments: [stage, item]`
+    made the caller restate a stage they already knew, and forced the item to be
+    supplied positionally after it; `arguments: [item]` leaves one argument, and
+    an omitted one interpolates to the empty string, which the CLI accepts."""
+    front = _composing(stage).read_text().split("---")[1]
+    args = next(l for l in front.splitlines() if l.startswith("arguments:"))
+    assert args.strip() == "arguments: [item]", args
+    assert "$stage" not in _composing(stage).read_text(), (
+        f"tcw-work-stage-{stage} still interpolates a stage argument")
+
+
+@composing
+def test_the_composing_skill_reads_a_router_that_exists(stage):
+    """Each of these skills names a router path. Nothing at runtime checks it —
+    a failed `cat` is swallowed by `|| true` so the rest of the skill still
+    renders, which is the right behaviour and also the reason a rename would go
+    unnoticed. Resolve the path here instead.
+
+    The generic skill's path is a template holding `$stage`, so it is resolved
+    against every stage id; a per-stage skill's names one stage literally and is
+    checked once. Same property, two shapes.
+    """
+    body = _composing(stage).read_text()
     m = re.search(r'cat "\$\{CLAUDE_PLUGIN_ROOT\}/(\S+?)"', body)
     assert m, "the skill no longer cats a router out of the plugin root"
     template = m.group(1)
-    assert "$stage" in template, template
-    for stage_id in STAGE_IDS:
-        target = REPO / template.replace("$stage", stage_id)
+    if stage is None:
+        assert "$stage" in template, template
+        targets = {s: REPO / template.replace("$stage", s) for s in STAGE_IDS}
+    else:
+        assert f"stage-{stage}.md" in template, (
+            f"tcw-work-stage-{stage} cats {template}, not its own stage router")
+        targets = {stage: REPO / template}
+    for stage_id, target in targets.items():
         assert target.is_file(), f"{stage_id}: {target} does not exist"
 
 
-def test_the_composing_skill_names_the_gate_in_its_own_prose():
+@composing
+def test_the_composing_skill_names_the_gate_in_its_own_prose(stage):
     """The whole hazard of composing a stage out of `prompt`: it resolves the
     instructions without the gate. A skill that stopped naming `gate` would be
     a documented route around the legality check and the `pre` bindings.
@@ -333,15 +414,17 @@ def test_the_composing_skill_names_the_gate_in_its_own_prose():
     biting: the entire warning could be deleted with this test still green.
     Neither change was wrong on its own, which is why nothing caught it.
     """
-    body = STAGE_SKILL.read_text()
-    assert "tcw work stage prompt $stage $item" in body
+    slot = "$stage" if stage is None else stage
+    body = _composing(stage).read_text()
+    assert f"tcw work stage prompt {slot} $item" in body
     prose = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
-    assert "tcw work stage gate $stage $item" in prose, (
+    assert f"tcw work stage gate {slot} $item" in prose, (
         "the skill names the gate only inside its manual-fallback fence, so the "
         "prose warning against routing around the gate can be deleted freely")
 
 
-def test_every_injected_command_survives_its_own_failure():
+@composing
+def test_every_injected_command_survives_its_own_failure(stage):
     """The second of two ways this skill renders empty, and the one that shipped
     unguarded.
 
@@ -353,7 +436,7 @@ def test_every_injected_command_survives_its_own_failure():
 
     The sibling test covers the other cause, an undeclared command.
     """
-    body = STAGE_SKILL.read_text()
+    body = _composing(stage).read_text()
     injected = re.findall(r"^!`(.+)`$", body, flags=re.MULTILINE)
     assert injected, "the skill no longer injects any command"
     for cmd in injected:
@@ -362,11 +445,12 @@ def test_every_injected_command_survives_its_own_failure():
             f"non-zero: {cmd}")
 
 
-def test_the_composing_skill_declares_the_commands_it_injects():
+@composing
+def test_the_composing_skill_declares_the_commands_it_injects(stage):
     """An injected command that is not pre-approved aborts the whole skill
     invocation — the model is shown nothing at all, not an error. Both commands
     have to be in `allowed-tools` or the skill silently renders empty."""
-    body = STAGE_SKILL.read_text()
+    body = _composing(stage).read_text()
     front = body.split("---")[1]
     allowed = next(l for l in front.splitlines() if l.startswith("allowed-tools:"))
     assert "Bash(tcw *)" in allowed and "Bash(cat *)" in allowed, allowed

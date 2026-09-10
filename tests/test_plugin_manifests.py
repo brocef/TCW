@@ -5,8 +5,11 @@ drift is `/tcw-doctor`'s job, not this test's).
 """
 import json
 import os
+import re
 import subprocess
 import tomllib
+
+import yaml
 from pathlib import Path
 
 import pytest
@@ -65,7 +68,26 @@ def test_claude_agents_key_is_md_files_not_a_directory():
 NUMBER_WORDS = {
     1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
     7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+    13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
+    17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
 }
+
+
+def _names_missing_from(blob: str, names) -> list[str]:
+    """Which of `names` the description does not mention, matching each as a
+    **whole token** rather than as a bare substring.
+
+    The distinction is load-bearing and was not before the per-stage skills
+    shipped: `tcw-work-stage` is a substring of `tcw-work-stage-spec`, so a plain
+    `n in blob` finds the generic skill inside every specialised one and reports
+    it present when the description never names it. The whole enumeration guard
+    for that skill would be dead — its name could be deleted from the
+    description with the suite green.
+
+    The lookahead is the fix: a trailing `-` or word character means the match
+    landed inside a longer name, not on the one being checked.
+    """
+    return [n for n in names if not re.search(re.escape(n) + r"(?![-\w])", blob)]
 
 
 def test_the_codex_description_counts_the_skills_it_ships():
@@ -86,8 +108,23 @@ def test_the_codex_description_counts_the_skills_it_ships():
     assert f"{word} skills" in blob, (
         f"the Codex description does not say '{word} skills' for the "
         f"{len(names)} that ship: {', '.join(names)}")
-    missing = [n for n in names if n not in blob]
+    missing = _names_missing_from(blob, names)
     assert not missing, f"shipped but unnamed in the description: {missing}"
+
+
+def test_a_shared_name_prefix_cannot_stand_in_for_the_shorter_name():
+    """The guard above, guarded. `tcw-work-stage` is a prefix of all five
+    `tcw-work-stage-<stage>` skills, so under the substring match this test
+    replaces, dropping the generic skill from the description was invisible:
+    its name was still found, inside its own specialisations.
+
+    Asserting on the real description would not catch a revert — it names every
+    skill, so both matchers agree on it. This asserts the discrimination
+    directly, on a blob that names only the longer skill.
+    """
+    blob = "ships fourteen skills, among them tcw-work-stage-spec"
+    assert _names_missing_from(blob, ["tcw-work-stage-spec"]) == []
+    assert _names_missing_from(blob, ["tcw-work-stage"]) == ["tcw-work-stage"]
 
 
 @pytest.mark.parametrize("skill", sorted((REPO / "skills").glob("*/SKILL.md")), ids=lambda p: p.parent.name)
@@ -98,8 +135,17 @@ def test_every_skill_has_name_and_description_frontmatter(skill):
     lines = skill.read_text(encoding="utf-8").splitlines()
     assert lines and lines[0] == "---", f"{skill} is missing YAML frontmatter"
     end = lines.index("---", 1)
-    keys = {ln.split(":", 1)[0] for ln in lines[1:end] if not ln.startswith((" ", "\t"))}
-    assert {"name", "description"} <= keys, f"{skill} frontmatter lacks name/description"
+
+    # Parsed as YAML, not scanned line by line. A plain scalar containing ": "
+    # is a YAML error, and every one of the five per-stage skills shipped with
+    # one on first write — a `when_to_use` reading "runs no gate: `tcw work
+    # stage gate` is what refuses". The line-based scan below sees the keys and
+    # passes; Codex, which actually parses this, refuses to load the skill. The
+    # scan cannot tell those apart, so it is no longer the only check.
+    front = yaml.safe_load("\n".join(lines[1:end]))
+    assert isinstance(front, dict), f"{skill} frontmatter is not a YAML mapping"
+    assert {"name", "description"} <= set(front), (
+        f"{skill} frontmatter lacks name/description")
 
 
 def test_hooks_manifest_wires_one_executable_session_start_script():
