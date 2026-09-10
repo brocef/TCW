@@ -18,15 +18,15 @@ This is a cross-cutting process skill: it does not drive a `tcw` axis, it govern
 
 | Lifecycle point        | What this skill does                                                                                                                                                                                       | Reference                                           |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `tcw-work` → `references/stage-plan.md` step 4      |
-| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `tcw-work` → `references/stage-implement.md` step 6 |
-| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `tcw-work` → `references/stage-verify.md` step 9    |
+| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `tcw-work` → `references/lifecycle/stage-plan.md` step 4      |
+| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `tcw-work` → `references/lifecycle/stage-implement.md` step 6 |
+| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `tcw-work` → `references/lifecycle/stage-verify.md` step 9    |
 
 One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
 ## The Documentation Sync Section — the fallback form
 
-This is the **fallback**, not the recommended form. In a TCW node, declare the entries in `tcw-config.yaml` under `work.documentation` instead: `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage plan` / `implement` put them in front of the agent directly, so the gate does not depend on anyone remembering to open a file and parse prose. `references/setup.md` walks through both forms.
+This is the **fallback**, not the recommended form. In a TCW node, declare the entries in `tcw-config.yaml` under `work.documentation` instead: `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `implement` put them in front of the agent directly, so the gate does not depend on anyone remembering to open a file and parse prose. `references/setup.md` walks through both forms.
 
 Use the section below when the project is **not** a TCW node, or when the user prefers Markdown. Project owners add it to their `CLAUDE.md`:
 

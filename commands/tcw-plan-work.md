@@ -8,9 +8,9 @@ Use the `tcw-work` skill. This command covers the stage range **`request` →
 Read `skills/tcw-work/SKILL.md`, find the first missing artifact, and run the
 stages from there through `plan.md`, loading **only** each stage's own document:
 
-- `references/stage-request.md` → `initial-request.md`
-- `references/stage-spec.md` → `spec.md`
-- `references/stage-plan.md` → `plan.md`
+- `references/lifecycle/stage-request.md` → `initial-request.md`
+- `references/lifecycle/stage-spec.md` → `spec.md`
+- `references/lifecycle/stage-plan.md` → `plan.md`
 
 For a `type: epic` item, also read `references/epic-deltas.md` — the same three
 stages, with an overview spec and a coordination plan.

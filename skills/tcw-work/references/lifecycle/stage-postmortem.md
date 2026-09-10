@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Locating the earliest catchable miss. `tcw work stage postmortem <slug>` prints
-the methodology; this document carries only what the CLI cannot.
+Locating the earliest catchable miss.
+Check the stage with `tcw work stage gate postmortem <slug>`, then read what
+to produce with `tcw work stage prompt postmortem <slug>`.
 
 ## Inputs
 
@@ -20,4 +21,4 @@ when the `request` stage never ran.
 1. **Delegable to a read-only subagent**, and cheaply so: the stage reads the
    whole artifact spine and writes one file. Under Claude the `tcw-post-mortem`
    agent exists for it; under Codex, a `.codex/agents/` definition or an inline
-   run. See [`delegation.md`](delegation.md). — agent `[judgment]`
+   run. See [`delegation.md`](../procedures/delegation.md). — agent `[judgment]`

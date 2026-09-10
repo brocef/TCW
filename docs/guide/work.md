@@ -254,8 +254,12 @@ tcw work lifecycle --stage spec --directive
 tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
 tcw work show "$slug" --json           # the item as a versioned JSON document
 
-tcw work stage spec "$slug"            # what to do at this stage: checks, then instructions
-tcw work stage spec "$slug" --no-exec  # what *would* run, running none of it
+tcw work stage prompt spec             # what this stage asks for: instructions, no checks
+tcw work stage gate spec "$slug"       # may it run? legality + pre checks, prints nothing
+tcw work stage gate spec "$slug" --no-exec
+                                       # which checks *would* run, running none of them
+tcw work stage prompt spec "$slug" --no-exec
+                                       # which bindings *would* resolve, resolving none
 
 tcw work scaffold spec "$slug"         # write spec.draft.md from its template — a starting
                                        # point to type into, never the spec itself

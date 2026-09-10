@@ -117,9 +117,18 @@ def test_a_grandchild_does_not_survive_the_timeout(tmp_path):
 
     assert marker.is_file(), "the grandchild never started; the test proves nothing"
     pid = int(marker.read_text().strip())
-    time.sleep(0.5)
-    with pytest.raises(ProcessLookupError):
-        os.kill(pid, 0)               # raises only if the process is gone
+    # Poll rather than sleeping once: the kill is delivered synchronously but the
+    # process is only *gone* once it has been reaped, and on a loaded machine that
+    # took longer than a fixed wait allowed. A deadline fails just as hard on a
+    # grandchild that genuinely survives, and stops failing on a slow reaper.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)           # raises only once the process is gone
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    pytest.fail(f"grandchild {pid} outlived the timeout that killed its parent")
 
 
 def test_invalid_utf8_is_replaced_rather_than_fatal(tmp_path):

@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Getting the user's decision. `tcw work stage verify <slug>` prints the
-methodology; this document carries only what the CLI cannot.
+Getting the user's decision.
+Check the stage with `tcw work stage gate verify <slug>`, then read what
+to produce with `tcw work stage prompt verify <slug>`.
 
 ## Inputs
 
@@ -18,7 +19,7 @@ methodology; this document carries only what the CLI cannot.
 1. **The assess half is delegable; the decide half is not.** Reading the diff
    against the criteria and running the checks goes to a read-only subagent —
    the `tcw-verifier` agent exists for it under Claude, and
-   [`delegation.md`](delegation.md) has the rules. Codex has no `agents/`
+   [`delegation.md`](../procedures/delegation.md) has the rules. Codex has no `agents/`
    directory, so run it inline there; nothing about the stage depends on the
    agent. — agent `[judgment]`
 2. **Presenting the assessment and stopping for the decision** is the half no

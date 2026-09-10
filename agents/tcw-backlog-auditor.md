@@ -81,5 +81,5 @@ silence is not.
 - **Recommend; never conclude.** Every action you name is a proposal the
   dispatching session puts to the user.
 
-You are an accelerator. `references/audit-backlog.md` stands alone without you
+You are an accelerator. `references/procedures/audit-backlog.md` stands alone without you
 and is followable with no subagent at all.

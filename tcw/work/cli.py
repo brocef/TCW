@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_STATUSES, WORK_ARTIFACTS,
+    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TransitionCommitError, WorkItem,
@@ -30,7 +30,8 @@ from tcw.store.project import worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
 from tcw.work.resolve import (
-    ResolveError, load_builtins, resolve_artifact, resolve_prompts, select,
+    ResolveError, bookend, load_builtins, resolve_artifact, resolve_prompts,
+    select,
 )
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
@@ -970,85 +971,264 @@ def _binding_json(b) -> dict:
     return out
 
 
-def _stage(args: argparse.Namespace) -> int:
-    """`tcw work stage <id> [ref]` — what to do at a lifecycle stage.
+def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
+                status: str) -> int:
+    """Everything `tcw work stage prompt` does once it knows what to resolve.
 
-    Order matters and is the contract: id → item → legality → checks → resolve →
-    print. Legality is decided **before any hook runs** — not before any read,
-    which is impossible, since the item's status is the thing being judged.
+    Shared by the path that has a work item and the path that does not, so the
+    two cannot drift: the `--no-exec` plan, the failure messages, and the stdout
+    discipline have exactly one definition. The caller decides *what* is being
+    resolved — an item or nothing, this node or another — and decides it before
+    calling; this function decides none of it.
 
-    stdout carries the resolved prompt and nothing else, emitted once at the end
-    after everything that could fail has succeeded. An agent piping this gets
-    either the whole instruction or nothing, never a fragment.
+    It runs no checks. It used to take a `run_checks` flag, from when one verb
+    both gated and printed; `gate` resolves no prompt, so the two share no tail
+    any more and the flag is gone rather than left as a parameter a single
+    caller never passes.
+
+    `item` is `None` on the itemless path, which `resolve_prompts` and
+    `hook_env` both already accept. A `when:`-condition then never matches
+    (`Condition.matches` answers False for no item), so a project's conditioned
+    binding does not fire on nothing.
+
+    Stream discipline: stdout carries the resolved prompt and nothing else,
+    emitted once at the end after everything that could fail has succeeded, and
+    nothing at all under `--no-exec`.
     """
-    step = LIFECYCLE_STEPS_BY_ID.get(args.stage_id)
+    policy = st.lifecycle_policy()
+    try:
+        res = resolve_prompts(policy, step.id, item, st.node_root,
+                              load_builtins(),
+                              artifacts=st.artifacts(slug) if item is not None
+                              else (),
+                              env=dict(os.environ),
+                              execute=not args.no_exec,
+                              documentation=st.documentation())
+    except ResolveError as e:
+        print(f"tcw work stage prompt: {e}", file=sys.stderr)
+        return 1
+
+    if args.no_exec:
+        # A plan, never text: printing the partial resolution on stdout is the
+        # thing this flag was once refused for. stdout stays empty.
+        print(f"tcw work stage prompt {step.id}: --no-exec, nothing was "
+              f"resolved", file=sys.stderr)
+        for entry in res.plan:
+            state = "matched" if entry.matched else "skipped (condition)"
+            detail = f": {entry.ref}" if entry.kind != "builtin" else ""
+            print(f"  prompt {entry.kind} — {state}{detail}", file=sys.stderr)
+        return 0
+
+    # Bookended here rather than in the resolver: a stage that resolves to
+    # nothing prints nothing, and a header wrapped around an empty middle would
+    # make silence look like a stage that failed to resolve.
+    if res.text:
+        print(bookend(res.text, step.id, slug or "<slug>"))
+    return 0
+
+
+def _stage_gate(args: argparse.Namespace, step, st, item, slug: str,
+                status: str) -> int:
+    """`tcw work stage gate` once it knows what it is gating.
+
+    The whole verb: the stage's `pre` bindings, and nothing else. It resolves no
+    prompt — not even to discard it — so a `generate:` binding does not run a
+    script for output nobody reads.
+
+    **stdout stays empty on success.** The pointer to the verb that does print
+    goes to stderr with every other diagnostic, so a caller piping this verb gets
+    nothing rather than a line it would have to strip. Silence on stdout is the
+    contract; the exit code is the answer.
+    """
+    policy = st.lifecycle_policy()
+    checks = select(policy.stage_checks(step.id), item)
+    if args.no_exec:
+        # A plan, so stderr — and only this verb's own bindings. The prompt
+        # bindings are `tcw work stage prompt --no-exec`'s to report now, and
+        # `tcw work lifecycle --stage <id> --phase prompt` lists them without
+        # resolving at all.
+        print(f"tcw work stage gate {step.id}: --no-exec, nothing was executed",
+              file=sys.stderr)
+        for b in checks:
+            print(f"  pre check would run: {b.ref}", file=sys.stderr)
+        return 0
+
+    err = run_bindings(checks, st.node_root,
+                       hook_env(st.node_root, slug, status, step.id),
+                       policy.timeout, f"{step.id} pre")
+    if err:
+        print(f"tcw work stage gate: {err}", file=sys.stderr)
+        return 1
+
+    ref = "" if step.id == "inbox" else f" {slug}"
+    print(f"tcw work stage gate {step.id}: checks passed; run "
+          f"`tcw work stage prompt {step.id}{ref}` for the instructions",
+          file=sys.stderr)
+    return 0
+
+
+def _stage_step(verb: str, stage_id: str):
+    """The `LifecycleStep` for a stage id, or None after reporting why not."""
+    step = LIFECYCLE_STEPS_BY_ID.get(stage_id)
     if step is None or step.kind != "stage":
         legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
-        print(f"tcw work stage: unknown stage '{args.stage_id}'; expected one of "
-              f"{', '.join(legal)}", file=sys.stderr)
+        print(f"tcw work stage {verb}: unknown stage '{stage_id}'; expected one "
+              f"of {', '.join(legal)}", file=sys.stderr)
+        return None
+    return step
+
+
+def _stage_removed_form(args: argparse.Namespace) -> int:
+    """`tcw work stage <stage> <slug>` — removed in 2.0.0, reported not run.
+
+    A usage error rather than an operation that failed, so it exits 2 like every
+    other malformed command line. It deliberately does **not** run the stage:
+    accepting the old spelling here would be the alias this release decided
+    against, and a migration nobody is forced to make is one nobody makes.
+    """
+    ref = args.rest[0] if args.rest else "<slug>"
+    print(f"tcw work stage: '{args.removed_stage}' is not a subcommand; run "
+          f"`tcw work stage gate {args.removed_stage} {ref}` to check the "
+          f"stage and run its checks, or `tcw work stage prompt "
+          f"{args.removed_stage} {ref}` for its instructions", file=sys.stderr)
+    return 2
+
+
+def _stage_prompt(args: argparse.Namespace) -> int:
+    """`tcw work stage prompt <stage> [ref]` — the instructions, nothing else.
+
+    Runs no gate of its own: no status-legality check and no `pre` bindings. It
+    still resolves `file:` and `generate:` bindings, because those are how the
+    text is produced — so the promise is "no check TCW decides to run", not "no
+    process is started", which would be false.
+
+    The reference is optional and does two things, not one. Without it,
+    resolution runs against the local anchor node with `item=None`. With it, the
+    reference goes through `_resolve`, so a `<project-id>/<slug>` qualifier
+    selects **that node's** configuration — a different `tcw-config.yaml`, its
+    `prompt:` bindings, and its documentation entries.
+
+    An illegal stage still prints. The built-in prompts carry state-changing
+    instructions — `verify` opens with `tcw work submit` — so reading one out of
+    context is worth a warning, but the warning goes to stderr and the exit code
+    stays 0: a caller piping stdout asked for the text and gets exactly it.
+
+    `--no-exec` is accepted here, and was once refused. The refusal's reason was
+    that suppressing `file:` and `generate:` would leave *incomplete
+    instructions* on stdout — which is only true if it prints any. It prints
+    none: the plan goes to stderr and stdout stays empty. Refusing it now would
+    drop the conditioned matched/skipped diagnostic from the CLI entirely, since
+    `gate` reports only its own bindings.
+    """
+    step = _stage_step("prompt", args.stage_id)
+    if step is None:
         return 1
-    if not STAGE_STATUSES[step.id]:
-        # `inbox` — rejected with the reason rather than printing nothing, which
-        # would read as "no instructions configured".
-        print(f"tcw work stage: '{step.id}' runs before an item exists, so there "
-              f"is no item to resolve a stage against; use `tcw work inbox list` "
-              f"and `tcw work inbox accept`", file=sys.stderr)
+    if args.slug is None:
+        st = _store()
+        if st is None:
+            return 1
+        return _stage_tail(args, step, st, None, "", "")
+
+    if step.id == "inbox":
+        print(f"tcw work stage prompt: '{step.id}' runs before an item exists "
+              f"and takes no work item; run it with no argument",
+              file=sys.stderr)
         return 1
 
-    resolved = _resolve(args.slug, "stage")
+    resolved = _resolve(args.slug, "stage prompt")
     if resolved is None:
         return 1
     st, bare = resolved
     try:
         item = st.get(bare)
     except MultipleMatch as e:
-        print(f"tcw work stage: {e}", file=sys.stderr)
+        print(f"tcw work stage prompt: {e}", file=sys.stderr)
         return 1
     if item is None:
-        print(f"tcw work stage: no such work item: {args.slug}", file=sys.stderr)
+        print(f"tcw work stage prompt: no such work item: {args.slug}",
+              file=sys.stderr)
+        return 1
+
+    legal = STAGE_STATUSES[step.id]
+    if legal and item.status not in legal:
+        print(f"tcw work stage prompt: note — '{step.id}' is not legal for an "
+              f"item in '{item.status}'; it runs in {', '.join(legal)}. Printing "
+              f"its instructions anyway because you asked to read them, not to "
+              f"enter the stage.", file=sys.stderr)
+
+    return _stage_tail(args, step, st, item, bare, item.status)
+
+
+def _stage_without_item(args: argparse.Namespace, step) -> int:
+    """The `inbox` half of `tcw work stage gate`: same contract, no item.
+
+    Every step the item path takes that *reads* the item is skipped rather than
+    fed a placeholder — no `get`, no status-legality check. The empty slug and
+    status are what the hook environment carries when there is no item to name.
+    The stage's `pre` bindings still run: `inbox` skips the *legality* check,
+    which has no status to judge, not the checks the project bound.
+    """
+    st = _store()
+    if st is None:
+        return 1
+    return _stage_gate(args, step, st, None, "", "")
+
+
+def _stage(args: argparse.Namespace) -> int:
+    """`tcw work stage gate <id> [ref]` — may this stage run, and run its checks.
+
+    Order matters and is the contract: id → item → legality → checks. Legality is
+    decided **before any hook runs** — not before any read, which is impossible,
+    since the item's status is the thing being judged.
+
+    It prints no instructions. `tcw work stage prompt` is the only verb that
+    resolves them, so the text exists in one place and nothing has to explain why
+    two commands printed the same bytes. What this verb supplies that `prompt`
+    does not is the refusal.
+    """
+    step = _stage_step("gate", args.stage_id)
+    if step is None:
+        return 1
+
+    # `inbox` runs before an item exists, so it resolves against the node alone.
+    # Branching on the **stage id**, never on `STAGE_STATUSES[step.id]` being
+    # empty: that emptiness says "no work-item status applies", which is a true
+    # statement about this stage and not a licence to read it as "any status".
+    if step.id == "inbox":
+        if args.slug is not None:
+            print(f"tcw work stage gate: '{step.id}' runs before an item exists "
+                  f"and takes no work item; run it with no argument",
+                  file=sys.stderr)
+            return 1
+        return _stage_without_item(args, step)
+    if args.slug is None:
+        print(f"tcw work stage gate: '{step.id}' needs a work item; run "
+              f"`tcw work stage gate {step.id} <slug>`, or "
+              f"`tcw work stage prompt {step.id}` to read its instructions "
+              f"without gating them", file=sys.stderr)
+        return 1
+
+    resolved = _resolve(args.slug, "stage gate")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work stage gate: {e}", file=sys.stderr)
+        return 1
+    if item is None:
+        print(f"tcw work stage gate: no such work item: {args.slug}",
+              file=sys.stderr)
         return 1
 
     legal = STAGE_STATUSES[step.id]
     if item.status not in legal:
-        print(f"tcw work stage: '{step.id}' is not legal for an item in "
+        print(f"tcw work stage gate: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
         return 1
 
-    policy = st.lifecycle_policy()
-    if not args.no_exec:
-        checks = select(policy.stage_checks(step.id), item)
-        err = run_bindings(checks, st.node_root,
-                           hook_env(st.node_root, bare, item.status, step.id),
-                           policy.timeout, f"{step.id} pre")
-        if err:
-            print(f"tcw work stage: {err}; nothing resolved", file=sys.stderr)
-            return 1
-
-    try:
-        res = resolve_prompts(policy, step.id, item, st.node_root,
-                              load_builtins(),
-                              artifacts=st.artifacts(bare), env=dict(os.environ),
-                              execute=not args.no_exec,
-                              documentation=st.documentation())
-    except ResolveError as e:
-        print(f"tcw work stage: {e}", file=sys.stderr)
-        return 1
-
-    if args.no_exec:
-        # The plan is a diagnostic, so it goes to stderr: a caller piping stdout
-        # should get the (partial) prompt, never a plan they might act on.
-        print(f"tcw work stage {step.id}: --no-exec, nothing was executed",
-              file=sys.stderr)
-        for b in select(policy.stage_checks(step.id), item):
-            print(f"  pre check would run: {b.ref}", file=sys.stderr)
-        for entry in res.plan:
-            state = "matched" if entry.matched else "skipped (condition)"
-            detail = f": {entry.ref}" if entry.kind != "builtin" else ""
-            print(f"  prompt {entry.kind} — {state}{detail}", file=sys.stderr)
-
-    if res.text:
-        print(res.text)
-    return 0
+    return _stage_gate(args, step, st, item, bare, item.status)
 
 
 # Which stage writes each artifact, inverted from the one table that says so.
@@ -1136,9 +1316,9 @@ def _docs(args: argparse.Namespace) -> int:
 
     Exists because the documentation gate runs at **three** points and only two
     are stages: `plan`, the end of `implement`, and the version offer *after*
-    `complete`. The third has no stage to hang off — `tcw work stage implement`
-    on a completed item is refused by the status check, correctly — so it needs a
-    verb of its own.
+    `complete`. The third has no stage to hang off —
+    `tcw work stage gate implement` on a completed item is refused by the status
+    check, correctly — so it needs a verb of its own.
 
     `source` is what lets a caller branch without guessing: `agent-guide` means
     the node configured nothing and the old behavior applies unchanged.
@@ -1697,12 +1877,49 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pdoc.add_argument("--json", action="store_true", help="machine-readable output")
     pdoc.set_defaults(func=_docs)
     pstg = g.add_parser("stage",
-                        help="print a stage's instructions after its checks pass")
-    pstg.add_argument("stage_id", metavar="stage")
-    pstg.add_argument("slug")
-    pstg.add_argument("--no-exec", action="store_true",
-                      help="report what would run and run none of it")
-    pstg.set_defaults(func=_stage)
+                        help="read a stage's instructions, or enter the stage")
+    # The metavar is written out rather than left to argparse: the default would
+    # list the hidden migration parsers below as if they were verbs, and setting
+    # it to a bare "verb" would hide the real two from `--help` — which is also
+    # where `tests/test_documented_cli_surface.py` discovers the CLI surface.
+    stg = pstg.add_subparsers(dest="stage_verb", required=True,
+                              metavar="{prompt,gate}")
+
+    # Optional slug on both, required in the handlers: argparse cannot express
+    # "required for six values of another positional, refused for the seventh".
+    ppr = stg.add_parser("prompt",
+                         help="print a stage's instructions, running no checks")
+    ppr.add_argument("stage_id", metavar="stage")
+    ppr.add_argument("slug", nargs="?",
+                     help="optional; without one the instructions resolve "
+                          "generically, with one they resolve for that item")
+    ppr.add_argument("--no-exec", action="store_true",
+                     help="report what would resolve and resolve none of it; "
+                          "prints nothing on stdout")
+    ppr.set_defaults(func=_stage_prompt)
+
+    pbg = stg.add_parser("gate",
+                         help="check the stage is legal and run its checks; "
+                              "prints no instructions")
+    pbg.add_argument("stage_id", metavar="stage")
+    pbg.add_argument("slug", nargs="?",
+                     help="the work item; omitted for `inbox`, which runs "
+                          "before an item exists")
+    pbg.add_argument("--no-exec", action="store_true",
+                     help="report what would run and run none of it")
+    pbg.set_defaults(func=_stage)
+
+    # The removed form. Registered so it fails with the command to run instead
+    # of argparse's bare "invalid choice", and hidden so it is not offered as a
+    # third verb. It never resolves anything — a migration message, not an alias.
+    for _sid in STAGE_IDS:
+        # No `help=`: omitting it keeps the parser out of the choices list
+        # entirely, where `help=SUPPRESS` would print a literal "==SUPPRESS==".
+        pold = stg.add_parser(_sid)
+        pold.add_argument("rest", nargs="*")
+        pold.add_argument("--no-exec", action="store_true",
+                          help=argparse.SUPPRESS)
+        pold.set_defaults(func=_stage_removed_form, removed_stage=_sid)
 
     pscf = g.add_parser("scaffold",
                         help="write a draft of a lifecycle artifact from its template")

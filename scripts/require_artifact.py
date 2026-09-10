@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Stage `pre` check: refuse a stage until a named lifecycle artifact exists.
 
-Bound to the `plan` stage in `tcw-config.yaml`, so `tcw work stage plan <slug>`
-refuses on an item whose spec has not been written.
+Bound to the `plan` stage in `tcw-config.yaml`, so
+`tcw work stage gate plan <slug>` refuses on an item whose spec has not been
+written.
 
 It asks `tcw work show --json` rather than composing a store path. That is the
 litmus test applied to the check itself: the artifact map is the abstract answer

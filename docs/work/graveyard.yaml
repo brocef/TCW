@@ -4,12 +4,18 @@
 2026-08-26-publish-provisioned-store-writes-to-their-remote:
   resolution: done
   resolved: '2026-09-01'
+2026-09-01-separate-lifecycle-stage-information-from-stage-prompts-in-the-tcw-work-skill-references:
+  resolution: done
+  resolved: '2026-09-10'
 2026-09-02-answer-capabilities-drift-from-the-tombstone-so-it-reports-the-same-in-every-checkout:
   resolution: done
   resolved: '2026-09-02'
 2026-09-02-restore-the-ci-test-suite-to-green:
   resolution: done
   resolved: '2026-09-02'
+2026-09-02-split-tcw-work-stage-into-prompt-and-begin-subcommands:
+  resolution: done
+  resolved: '2026-09-10'
 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
   resolution: done
   resolved: '2026-09-02'
@@ -97,3 +103,9 @@
 2026-09-04-the-retention-operations-the-cli-calls-are-not-on-the-abstract-work-store:
   resolution: done
   resolved: '2026-09-04'
+2026-09-09-compose-a-lifecycle-stage-into-one-skill-document:
+  resolution: done
+  resolved: '2026-09-10'
+2026-09-09-make-stage-begin-the-gate-alone-and-bookend-the-prompt-with-its-lifecycle-position:
+  resolution: done
+  resolved: '2026-09-10'

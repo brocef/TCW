@@ -9,7 +9,20 @@ change.
 It passes trivially on the tree it was captured from. That is the point — it is a
 tripwire armed ahead of the change, not a description of it.
 
-The `spec`, `plan`, and `postmortem` entries were **re-baselined once**, by
+The recorded bytes normalize the item's slug to `<slug>`, and the replay
+normalizes the same way. Since 2.0.0 the prompt's gate header and next-step
+footer quote the reference back, and a slug carries the date it was created —
+without this the fixture would expire at midnight rather than when the text
+actually changed.
+
+The whole file was **re-captured** by 2.0.0, which wrapped every resolved prompt
+in those bookends. That moved the text deliberately, so the old bytes would have
+asserted something false. What it pins from here is the bookended output; it no
+longer says anything about the verb split that preceded it, which was
+text-preserving and hand-edited the `argv` arrays alone.
+
+Before that, the `spec`, `plan`, and `postmortem` entries were **re-baselined
+once**, by
 `2026-08-19-name-the-item-s-actual-body-artifact-in-the-builtin-spec-and-plan-stage-prompts`,
 which rewrote those prompts to name the item's own body artifact. Only those
 stdouts were replaced, and only after asserting the remaining stages were
@@ -55,17 +68,19 @@ def replayed(tmp_path_factory):
                            capture_output=True, check=True,
                            stdin=subprocess.DEVNULL)
             current = status
-        r = subprocess.run(["tcw", "work", "stage", stage, slug], cwd=root,
+        r = subprocess.run(["tcw", "work", "stage", "prompt", stage, slug],
+                           cwd=root,
                            capture_output=True, text=True,
                            stdin=subprocess.DEVNULL)
-        out[stage] = {"returncode": r.returncode, "stdout": r.stdout,
-                      "stderr": r.stderr}
+        out[stage] = {"returncode": r.returncode,
+                      "stdout": r.stdout.replace(slug, "<slug>"),
+                      "stderr": r.stderr.replace(slug, "<slug>")}
     return out
 
 
-@pytest.mark.parametrize("expected", BASELINE, ids=lambda e: e["argv"][2])
+@pytest.mark.parametrize("expected", BASELINE, ids=lambda e: e["argv"][-2])
 def test_an_unconfigured_node_sees_the_recorded_bytes(expected, replayed):
-    stage = expected["argv"][2]
+    stage = expected["argv"][-2]
     actual = replayed[stage]
     assert actual["returncode"] == expected["returncode"]
     assert actual["stdout"] == expected["stdout"], (
@@ -75,7 +90,7 @@ def test_an_unconfigured_node_sees_the_recorded_bytes(expected, replayed):
 def test_the_baseline_covers_the_two_prompts_that_will_change():
     """Guards the fixture itself: if the corpus ever stopped covering `plan` and
     `implement`, the tripwire would pass while protecting nothing."""
-    covered = {e["argv"][2] for e in BASELINE}
+    covered = {e["argv"][-2] for e in BASELINE}
     assert {"plan", "implement"} <= covered
 
 
@@ -83,5 +98,5 @@ def test_the_documentation_sentence_is_where_the_spec_says_it_is():
     """The fallback text this item preserves lives in exactly two prompts.
     Recorded so that 'byte-identical' has a named subject rather than being a
     claim about opaque bytes."""
-    carrying = {e["argv"][2] for e in BASELINE if "Documentation Sync" in e["stdout"]}
+    carrying = {e["argv"][-2] for e in BASELINE if "Documentation Sync" in e["stdout"]}
     assert carrying == {"plan", "implement"}

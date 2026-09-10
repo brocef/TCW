@@ -1,5 +1,17 @@
 # Migrating from 0.21.x to 1.0.0
 
+> **If you are on 2.0.0 or later, one command below is now two.** This guide
+> describes 1.0.0, and every `tcw work stage <id> <slug>` in it is written as
+> 1.0.0 shipped it. In 2.0.0 that form was removed and split:
+> `tcw work stage gate <id> <slug>` checks the stage is legal and runs its `pre`
+> checks, printing no instructions, and `tcw work stage prompt <id> [<slug>]`
+> prints the instructions, running no check of either kind, with the work item
+> optional. Wherever this guide shows the old form, you want `prompt` to read and
+> `gate` to be refused. Nothing else in this guide changed. The text is left as
+> written because it records what 1.0.0 did, and rewriting it would make it
+> describe a release that never existed; see
+> [the 2.0.0 guide](migration-guide-1.X-to-2.0.0.md) for that migration.
+
 Version 1.0.0 is a large release with a **very small migration**. There is
 exactly one thing that can fail on upgrade, and it only fails if you configured
 it. Everything else in this guide is either a behavior change you should know

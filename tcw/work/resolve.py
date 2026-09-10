@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from tcw.store.base import (
-    BODY_ORDER, DEFAULT_OUTPUT_CAP, STAGE_IDS, Binding, DocEntry,
-    LifecyclePolicy, WorkItem,
+    BODY_ORDER, DEFAULT_OUTPUT_CAP, STAGE_IDS, STAGE_NEXT_STEPS, Binding,
+    DocEntry, LifecyclePolicy, WorkItem,
 )
 from tcw.work.generate import GenerateError, run_generate
 from tcw.work.projection import work_item_json
@@ -54,15 +54,18 @@ def load_builtins() -> Builtins:
     is added to this return value — C6 populates `stage_prompts` from
     `tcw/work/prompts/*.md` right here, beside the artifact templates.
 
-    The stage set is the derivation `set(STAGE_IDS) - {"inbox"}`, never a
-    literal list, so adding a stage without its prompt file fails here rather
-    than shipping a stage that silently says nothing. `importlib.resources`
+    The stage set is the derivation `set(STAGE_IDS)`, never a literal list, so
+    adding a stage without its prompt file fails here rather than shipping a
+    stage that silently says nothing. `inbox` is in it: that stage runs before
+    an item exists, which shapes how it is *invoked* — with no work item
+    reference — but is no reason for TCW to have no instructions for it.
+    `importlib.resources`
     rather than a path off `__file__`: the latter assumes an unpacked directory
     and breaks under a zipimport-style install.
     """
     root = files("tcw.work")
     prompts = {}
-    for sid in sorted(set(STAGE_IDS) - {"inbox"}):
+    for sid in sorted(STAGE_IDS):
         rel = f"prompts/{sid}.md"
         try:
             text = (root / rel).read_text(encoding="utf-8")
@@ -378,6 +381,49 @@ def _join(parts: Sequence[str]) -> str:
     """
     kept = [p.rstrip() for p in parts if p and p.strip()]
     return "\n\n".join(kept)
+
+
+def bookend(text: str, stage_id: str, ref: str) -> str:
+    """Wrap resolved prompt text in its lifecycle position.
+
+    Two generated sections, not seven copies in the prompt files: those are
+    capped at 50 lines and one of them is at 49, and navigation text repeated
+    seven times drifts on the first edit that forgets one.
+
+    **The header is the gate.** `tcw work stage prompt` answers without checking
+    anything, which is the whole reason it can be read for a stage an item is not
+    ready for — and the reason nothing about wanting the instructions makes
+    anyone run `tcw work stage gate`. Putting the reminder in the resolved text
+    puts it in front of every reader, under every harness, rather than in a skill
+    only one of them has.
+
+    Applied to a project's own `prompt:` bindings as well as to the built-in
+    floor. Overriding what a stage *says* is not overriding where the lifecycle
+    goes next, and a reader of the overridden text needs the gate reminder just
+    as much.
+
+    `ref` is the work item reference to show in the commands, or `<slug>` when
+    resolving without one. `inbox` takes none, so its gate command shows none.
+
+    Applied by the CLI at print time rather than inside `resolve_prompts`, which
+    stays a pure resolution of bindings. Two reasons. `resolve_prompts` promises
+    that a stage whose only binding does not match resolves to **nothing**, and
+    wrapping would turn that nothing into a header and a footer around an empty
+    middle. And every one of its unit tests asserts composed binding text, which
+    is not what this adds.
+    """
+    target = "" if stage_id == "inbox" else f" {ref}"
+    header = (
+        f"> **This text ran no checks.** `tcw work stage prompt` resolves "
+        f"instructions and gates nothing. If you have not run "
+        f"`tcw work stage gate {stage_id}{target}` for this stage, do that "
+        f"first — it is what confirms the stage is legal here and runs whatever "
+        f"this project bound to it.")
+    nxt = STAGE_NEXT_STEPS[stage_id].replace("<slug>", ref)
+    body = (nxt[0].upper() + nxt[1:] + "." if nxt else
+            "Nothing follows. This stage runs out of band and moves no item.")
+    footer = "## When this stage's output is written\n\n" + body
+    return "\n\n".join(p for p in (header, text.strip(), footer) if p)
 
 
 def resolve_prompts(policy: LifecyclePolicy, stage_id: str,

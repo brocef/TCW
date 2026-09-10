@@ -3,7 +3,7 @@ description: Review TCW backlog items for stale, outdated, misplaced, duplicate,
 ---
 
 Use the `tcw-work` skill and follow
-[`references/audit-backlog.md`](../skills/tcw-work/references/audit-backlog.md),
+[`references/procedures/audit-backlog.md`](../skills/tcw-work/references/procedures/audit-backlog.md),
 which is the whole procedure: the per-item and inter-item checklists, how to
 delegate them, the report format, and the approval rule.
 

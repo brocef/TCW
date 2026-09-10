@@ -26,7 +26,9 @@
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
 | hand work down / up      | `tcw work delegate <child-project-id> "<title>"` · `tcw work escalate "<title>"` — the ID `tcw work nodes` lists, never a path              |
 | topology                 | `tcw work nodes`                                                                                                                                |
-| a stage's instructions   | `tcw work stage <id> <slug> [--no-exec]` — checks, then prompts, on stdout; writes nothing                                                     |
+| check a stage may run    | `tcw work stage gate <id> <slug> [--no-exec]` — status legality, then the stage's `pre` checks. Prints **no** instructions and writes nothing; success is exit 0 with empty stdout. `inbox` takes no slug: `tcw work stage gate inbox` |
+| read a stage's instructions | `tcw work stage prompt <id> [<slug>]` — the **only** verb that prints them; runs **no** legality check and **no** `pre` checks. The slug is optional: without one they resolve generically, with one they resolve for that item. What it prints is wrapped in a gate reminder and a next-step section |
+| read a stage as one document | `tcw-work-stage <id> <item>` — **Claude only.** The skill composes `lifecycle/stage-<id>.md` with the output of `tcw work stage prompt` so both arrive in one read. It reads: no legality check, no `pre` checks. `tcw work stage gate` is still what refuses |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 | obtain a declared store or project | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores **and connected projects** this node declares but does not have here; connected projects are followed transitively; every declared component by default; idempotent |
@@ -36,8 +38,8 @@ behind them — the CLI cannot run them, and asking it to is an argparse error:
 
 | Goal                   | How to reach it                                                                                   |
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
-| audit the backlog      | [`audit-backlog.md`](audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude        |
-| migrate external plans | [`consolidate-plans.md`](consolidate-plans.md) — any harness · `/tcw-consolidate-plans` in Claude |
+| audit the backlog      | [`audit-backlog.md`](procedures/audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude        |
+| migrate external plans | [`consolidate-plans.md`](procedures/consolidate-plans.md) — any harness · `/tcw-consolidate-plans` in Claude |
 
 ## The body surface
 
@@ -67,8 +69,8 @@ entries are authoritative and no Markdown needs reading; `agent-guide` means the
 node declared nothing and the `documentation-sync` skill falls back to a
 `## Documentation Sync` section in the agent guide, exactly as before.
 
-You rarely need the verb during a stage — `tcw work stage plan` and
-`tcw work stage implement` already include the entries inline. It exists for the
+You rarely need the verb during a stage — `tcw work stage prompt plan` and
+`tcw work stage prompt implement` already include the entries inline. It exists for the
 third invocation point, the version offer *after* `complete`, which has no stage
 to hang off.
 

@@ -29,7 +29,7 @@ focused nested pieces beats one item whose `plan.md` has fifteen tasks.
   but locality alone is not a reason to choose it.
 - Epic tasks worked independently over time → `--initiative`, even when every
   task is in the same repo. `reconcile` follows these initiative children; see
-  [`epic-deltas.md`](epic-deltas.md).
+  [`epic-deltas.md`](../epic-deltas.md).
 - Independently scheduled tasks in multiple sub-project repos → the same
   `--initiative` relation plus `delegate`/`reconcile`; see
-  [`cross-node-epic.md`](cross-node-epic.md).
+  [`cross-node-deltas.md`](../cross-node-deltas.md).

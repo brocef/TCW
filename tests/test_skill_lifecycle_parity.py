@@ -29,10 +29,10 @@ REFS = REPO / "skills/tcw-work/references"
 STAGE_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "stage")
 TRANSITION_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "transition")
 
-# `inbox` runs before an item exists, so no prompt ships for it and
-# `tcw work stage inbox` is refused. Its document keeps its own methodology; the
-# other six are routers over a prompt the CLI prints.
-ROUTER_IDS = tuple(s for s in STAGE_IDS if s != "inbox")
+# Every stage is a router over a prompt the CLI prints, `inbox` included: it
+# ships one too, reached by `tcw work stage prompt inbox` with no work item
+# reference.
+ROUTER_IDS = STAGE_IDS
 
 STAGE_SECTIONS = ("Purpose", "Inputs", "Produce", "Steps", "Exit")
 # Derived, never written out a second time: a router's `Exit` would restate the
@@ -69,7 +69,7 @@ def artifacts_in(text: str) -> set[str]:
 
 
 def stage_doc(stage_id: str) -> Path:
-    return REFS / f"stage-{stage_id}.md"
+    return REFS / "lifecycle" / f"stage-{stage_id}.md"
 
 
 # ── one document per id, and no orphans ──────────────────────────────────────
@@ -80,7 +80,8 @@ def test_every_stage_has_exactly_one_document(stage_id):
 
 
 def test_no_stage_document_exists_for_an_unknown_id():
-    found = {p.stem[len("stage-"):] for p in REFS.glob("stage-*.md")}
+    found = {p.stem[len("stage-"):]
+             for p in (REFS / "lifecycle").glob("stage-*.md")}
     assert found == set(STAGE_IDS), f"orphaned or missing: {found ^ set(STAGE_IDS)}"
 
 
@@ -137,10 +138,10 @@ def test_a_stage_producing_nothing_says_so_explicitly():
 
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
 def test_every_stage_document_has_the_sections_in_order(stage_id):
-    """Five for `inbox`, four for a router — the `Exit` section is the one shape
-    that cannot survive the split, since "how this stage ends badly" is exactly
-    the redirect material the prompt carries."""
-    wanted = STAGE_SECTIONS if stage_id == "inbox" else ROUTER_SECTIONS
+    """Four sections, for all seven — the `Exit` section is the one shape that
+    cannot survive the split, since "how this stage ends badly" is exactly the
+    redirect material the prompt carries."""
+    wanted = ROUTER_SECTIONS
     found = [h for h in sections(stage_doc(stage_id)) if h in STAGE_SECTIONS]
     assert found == list(wanted), \
         f"stage-{stage_id}.md sections are {found}"
@@ -170,15 +171,20 @@ def test_every_stage_document_names_the_harness_neutral_binding_command(stage_id
     """Codex receives no context injection, so every stage must carry the command
     both harnesses can run. `--directive` is sugar, never the path.
 
-    The command that answers "what do I do here" is now `tcw work stage`, which
-    resolves a binding *and* falls back to TCW's own instructions. `inbox` keeps
-    `tcw work lifecycle`: the verb refuses `inbox` by design, so pointing its
-    document at it would route a reader into an error.
+    Two commands now, and the document has to carry both. `tcw work stage gate`
+    is the only thing that refuses, and `tcw work stage prompt` is the only thing
+    that answers "what do I do here" — resolving a binding *and* falling back to
+    TCW's own instructions, for every stage, `inbox` included.
+
+    Naming only the second would leave a Codex reader with no route to the gate,
+    which is the failure this release's split makes possible: `prompt` never
+    refuses, so nothing about wanting the instructions makes anyone run the gate.
     """
     text = stage_doc(stage_id).read_text(encoding="utf-8")
-    wanted = "tcw work lifecycle" if stage_id == "inbox" else f"tcw work stage {stage_id}"
-    assert wanted in text, \
-        f"stage-{stage_id}.md never tells the agent how to find its instructions"
+    for wanted in (f"tcw work stage gate {stage_id}",
+                   f"tcw work stage prompt {stage_id}"):
+        assert wanted in text, \
+            f"stage-{stage_id}.md never names `{wanted}`"
 
 
 # ── the routers stay routers ─────────────────────────────────────────────────
@@ -217,7 +223,7 @@ def test_no_router_sentence_appears_in_its_prompt(stage_id):
 def test_each_router_stays_within_its_ceiling(stage_id):
     """The backstop behind the shared-sentence check: no test can catch a
     faithful paraphrase, but a router that paraphrased its whole prompt would
-    not fit. `inbox` is exempt — it carries its own methodology."""
+    not fit."""
     lines = len(stage_doc(stage_id).read_text(encoding="utf-8").splitlines())
     assert lines <= ROUTER_LINE_CEILING, \
         f"stage-{stage_id}.md is {lines} lines, ceiling is {ROUTER_LINE_CEILING}"
@@ -240,7 +246,7 @@ def test_each_router_keeps_its_judgment(stage_id):
 
 def test_no_reference_filename_carries_an_ordinal():
     """Ordinals recreate exactly the renumbering churn stable ids prevent."""
-    bad = [p.name for p in REFS.glob("*.md") if re.search(r"\d", p.stem)]
+    bad = [p.name for p in REFS.rglob("*.md") if re.search(r"\d", p.stem)]
     assert not bad, f"ordinal in filename(s): {bad}"
 
 
@@ -285,5 +291,49 @@ def test_the_router_routes_to_every_reference_file():
     """An unreachable reference file is dead weight that still costs a reader
     the time to wonder whether it matters."""
     text = SKILL.read_text(encoding="utf-8")
-    orphans = [p.name for p in sorted(REFS.glob("*.md")) if p.name not in text]
+    # Matched by path relative to `references/`, not bare name: a link written
+    # `references/lifecycle/stage-spec.md` has to count as reaching the file,
+    # and two files in different folders may legitimately share a name.
+    orphans = [rel for rel in sorted(p.relative_to(REFS).as_posix()
+                                     for p in REFS.rglob("*.md"))
+               if rel not in text]
     assert not orphans, f"unreachable from SKILL.md: {orphans}"
+
+
+# ── the composing skill ──────────────────────────────────────────────────────
+
+STAGE_SKILL = REPO / "skills/tcw-work-stage/SKILL.md"
+
+
+def test_the_composing_skill_reads_a_router_that_exists_for_every_stage():
+    """`tcw-work-stage` interpolates the stage id into a path. Nothing at
+    runtime checks that path — a failed `cat` is swallowed by `|| true` so the
+    rest of the skill still renders, which is the right behaviour and also the
+    reason a rename would go unnoticed. Resolve the template here instead."""
+    body = STAGE_SKILL.read_text()
+    m = re.search(r'cat "\$\{CLAUDE_PLUGIN_ROOT\}/(\S+?)"', body)
+    assert m, "the skill no longer cats a router out of the plugin root"
+    template = m.group(1)
+    assert "$stage" in template, template
+    for stage_id in STAGE_IDS:
+        target = REPO / template.replace("$stage", stage_id)
+        assert target.is_file(), f"{stage_id}: {target} does not exist"
+
+
+def test_the_composing_skill_reads_with_prompt_and_names_begin_for_entry():
+    """The whole hazard of composing a stage out of `prompt`: it resolves the
+    instructions without the gate. A skill that stopped naming `gate` would be
+    a documented route around the legality check and the `pre` bindings."""
+    body = STAGE_SKILL.read_text()
+    assert "tcw work stage prompt $stage $item" in body
+    assert "tcw work stage gate $stage $item" in body
+
+
+def test_the_composing_skill_declares_the_commands_it_injects():
+    """An injected command that is not pre-approved aborts the whole skill
+    invocation — the model is shown nothing at all, not an error. Both commands
+    have to be in `allowed-tools` or the skill silently renders empty."""
+    body = STAGE_SKILL.read_text()
+    front = body.split("---")[1]
+    allowed = next(l for l in front.splitlines() if l.startswith("allowed-tools:"))
+    assert "Bash(tcw *)" in allowed and "Bash(cat *)" in allowed, allowed

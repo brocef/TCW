@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Building it. `tcw work stage implement <slug>` prints the methodology; this
-document carries only what the CLI cannot.
+Building it.
+Check the stage with `tcw work stage gate implement <slug>`, then read what
+to produce with `tcw work stage prompt implement <slug>`.
 
 ## Inputs
 
@@ -26,4 +27,4 @@ pass.
    documentation-sync.** — agent `[judgment]`
 4. **Delegable, and this is where it pays**: the coordinating session ends up
    holding `outcome.md` rather than an entire diff. See
-   [`delegation.md`](delegation.md). — agent `[judgment]`
+   [`delegation.md`](../procedures/delegation.md). — agent `[judgment]`

@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Capturing the request. `tcw work stage request <slug>` prints the methodology;
-this document carries only what the CLI cannot.
+Capturing the request.
+Check the stage with `tcw work stage gate request <slug>`, then read what
+to produce with `tcw work stage prompt request <slug>`.
 
 ## Inputs
 
@@ -12,7 +13,7 @@ this document carries only what the CLI cannot.
 ## Produce
 
 `initial-request.md` — and, for an epic, the coordination goal it alone states:
-what the children are collectively for. See [`epic-deltas.md`](epic-deltas.md).
+what the children are collectively for. See [`epic-deltas.md`](../epic-deltas.md).
 
 ## Steps
 

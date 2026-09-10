@@ -87,24 +87,53 @@ by `tcw validate`, in both spellings — `prompt: []` and a bare
 falls back to TCW's own instructions it reads as an opt-out it is not. A stage
 that should genuinely say nothing binds `{blob: ""}`.
 
-**Reading a stage's instructions** is `tcw work stage <id> <ref>`. With nothing
-configured it prints TCW's own instructions for that stage, so the command is
-useful before you have written any lifecycle configuration at all; those shipped
-instructions include a short self-review pass at the stages where one earns its
-place — `spec`, `plan`, and `implement`. The `spec` and `plan` instructions name
+**Checking a stage may run** is `tcw work stage gate <id> <ref>`. It checks the
+status legality and runs the stage's `pre` bindings, and that is all it does: it
+prints no instructions, so success is exit 0 with nothing on stdout and a line on
+stderr naming the verb that does print. The one exception to the reference is
+`inbox`: it runs before an item exists, so it is `tcw work stage gate inbox` with
+nothing after it, and passing a work item is refused rather than interpreted.
+
+**Reading a stage's instructions** is `tcw work stage prompt <id> [<ref>]`. This
+is the only verb that prints them. It checks no status legality and runs no `pre`
+bindings — so you can find out what the `plan` stage asks for on an item whose
+spec is not written yet, which `gate` correctly refuses. With nothing configured
+it prints TCW's own instructions for that stage, so it is useful before you have
+written any lifecycle configuration at all. The reference is optional: without one
+the instructions resolve generically, with one they resolve for that item, and a
+`<project-id>/<slug>` qualifier reads that node's configuration. If the stage is
+not legal for the item's status it still prints, and says so on stderr, leaving
+stdout to carry the instructions alone.
+
+Because `prompt` gates nothing, what it prints says so: every resolved prompt is
+wrapped in a line naming the `gate` command for that stage and a closing section
+saying what to do once the stage's output is written. Your own `prompt:` bindings
+are wrapped too — overriding what a stage says is not overriding where the
+lifecycle goes next.
+
+```sh
+tcw work stage gate plan "$slug"       # may it run? checks only, prints nothing
+tcw work stage prompt plan             # what does the plan stage ask for?
+```
+
+The shipped instructions include a short self-review pass at the stages where one
+earns its place — `spec`, `plan`, and `implement`. The `spec` and `plan` instructions name
 the item's **own** body artifact rather than a fixed filename: `initial-request.md`
 once the `request` stage has written one, and the `intake.md` it arrived as
-otherwise, resolved exactly the way `tcw work show` resolves a body. It refuses a stage that makes no sense
-for the item's current status, runs the stage's `pre` checks, resolves its
-prompts, and prints the result — **on stdout, alone**, so you can pipe it. Every
-check's output goes to stderr, and any failure prints nothing on stdout at all,
-so a pipeline gets the whole instruction or none of it.
+otherwise, resolved exactly the way `tcw work show` resolves a body.
 
-It **writes nothing**: no document, no draft, no status change. Running it purely
-to find out what to do is safe, which is the point. The one thing it does run is
-your own `pre` checks and `generate` scripts — and `--no-exec` skips even those,
-printing what would have run instead. That is how you read an unfamiliar
-repository's lifecycle before triggering it.
+`prompt` puts the instructions on **stdout, alone**, so you can pipe them. Its
+own diagnostics — the note about an illegal stage, the `--no-exec` plan — go to
+stderr, and any failure prints nothing on stdout at all, so a pipeline gets the
+whole instruction or none of it. `gate` puts nothing on stdout ever, including
+whatever a `pre` check writes to its own.
+
+**Neither writes anything**: no document, no draft, no status change. Running
+either purely to find out where you stand is safe, which is the point. Between
+them they run two things you configured — `gate` your `pre` checks, `prompt` your
+`generate` scripts — and `--no-exec` on each skips even those, printing what
+would have run instead. That is how you read an unfamiliar repository's lifecycle
+before triggering any part of it.
 
 **Starting the document itself** is `tcw work scaffold <artifact> <ref>`. It
 resolves that artifact's template — yours if you configured one under
@@ -179,7 +208,8 @@ tcw work docs                          # path, trigger, and what to write
 tcw work docs --json                   # {"schema", "source", "entries"}
 ```
 
-`tcw work stage plan` and `tcw work stage implement` include the entries inline,
+`tcw work stage prompt plan` and `tcw work stage prompt implement` include the
+entries inline,
 so the documentation gate is part of the stage's instructions rather than a
 convention an agent has to remember. **A project that declares nothing is
 unaffected** — those stages print exactly what they printed before, and the
