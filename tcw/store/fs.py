@@ -1552,7 +1552,8 @@ class FsTreeStore:
 
     def _write_staged(self, pairs: list[tuple[Path, str]], *,
                       owned_dir: Path | None = None,
-                      also_stage: tuple[Path, ...] = ()) -> None:
+                      also_stage: tuple[Path, ...] = (),
+                      stage_root: Path | None = None) -> None:
         """Write every `(path, content)` and stage the lot, undoing what *this
         call* created if either half fails, then re-raising.
 
@@ -1575,6 +1576,12 @@ class FsTreeStore:
 
         Best-effort and silent: the undo must not mask the original error, and
         must not add a second line to a refusal whose one-line shape is pinned.
+
+        `stage_root` names the repository to stage in, for the one write that is
+        not a store file: the node's own `tcw-config.yaml`. The store root and
+        the node root vary independently — in the orchestrator layout they are
+        different repositories — and `git add` refuses a path outside the
+        repository it is given. Everything else defaults to the store's.
         """
         # `exists() or is_symlink()`: `exists()` follows the link, so a
         # pre-existing *dangling* symlink read as absent, was replaced by a real
@@ -1583,7 +1590,12 @@ class FsTreeStore:
         new = [p for p, _ in pairs if not (p.exists() or p.is_symlink())]
         try:
             _atomic_write_all(pairs)
-            self._stage(*(p for p, _ in pairs), *also_stage)
+            paths = (*(p for p, _ in pairs), *also_stage)
+            if stage_root is None:
+                self._stage(*paths)
+            else:
+                self._require_repository()
+                git_stage(stage_root, *paths)
         except BaseException:
             if owned_dir is not None:
                 shutil.rmtree(owned_dir, ignore_errors=True)
@@ -5223,7 +5235,18 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _write_tags(self, tags: set[str]) -> list[str]:
         """Read-modify-write `work.tags` (preserving other config keys), stage
         the file. `dump_yaml` rewrites the sentinel wholesale, dropping its stub
-        comments — accepted per plan."""
+        comments — accepted per plan.
+
+        **Staged in the node's repository, not the store's.** This is the only
+        write here that touches a file outside the store, and with an external
+        `work.path` the two are different repositories — the intended
+        orchestrator layout, not an edge case. Staging it against the store's
+        repository made `tcw work tags add` fail outright with *is outside
+        repository at …*, so the whole verb was unusable there.
+
+        A node outside git stages nothing rather than failing: the file is
+        written and that is the whole of what a non-git node can do.
+        """
         self._require_repository()
         config = self._config()
         work = config.get("work")
@@ -5232,9 +5255,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         result = sorted(tags)
         work["tags"] = result
         config["work"] = work
-        self._write_staged([(self._config_path(),
-                             yaml.safe_dump(config, sort_keys=False,
-                                            allow_unicode=True))])
+        config_path = self._config_path()
+        node_repository = git_root(config_path.parent)
+        payload = [(config_path, yaml.safe_dump(config, sort_keys=False,
+                                                allow_unicode=True))]
+        if node_repository is None:
+            _atomic_write_all(payload)
+        else:
+            self._write_staged(payload, stage_root=node_repository)
         return result
 
     def register_tags(self, tags: list[str]) -> list[str]:

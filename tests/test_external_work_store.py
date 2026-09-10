@@ -1186,3 +1186,32 @@ def test_get_detail_of_a_genuinely_unknown_slug_is_none(tmp_path):
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     assert FsWorkStore.open(code).get_detail("2026-01-01-nope") is None
+
+
+def test_registering_a_tag_stages_the_config_in_its_own_repository(tmp_path):
+    """`work.tags` lives in the node's `tcw-config.yaml`, which an external store
+    puts in a *different* repository from the store.
+
+    Staging it against the store's repository fails outright — `is outside
+    repository at …` — so registering a tag was impossible in the orchestrator
+    layout this project documents as the intended one. The store root and the
+    node root vary independently; a write has to go to whichever repository owns
+    the file it touches.
+    """
+    code, work_root = _external_node(tmp_path, "../orchestrator/stores/corelib")
+    store = FsWorkStore.open(code)
+    assert store.store_git_root != store.node_root, "the premise of this test"
+
+    assert store.register_tags(["chore"]) == ["chore"]
+
+    assert "chore" in yaml.safe_load(
+        (code / "tcw-config.yaml").read_text())["work"]["tags"]
+    staged = subprocess.run(
+        ["git", "-C", str(code), "diff", "--cached", "--name-only"],
+        capture_output=True, text=True, check=True).stdout.split()
+    assert "tcw-config.yaml" in staged, \
+        "the config must be staged in the repository that holds it"
+    store_staged = subprocess.run(
+        ["git", "-C", str(store.store_git_root), "diff", "--cached", "--name-only"],
+        capture_output=True, text=True, check=True).stdout
+    assert "tcw-config.yaml" not in store_staged
