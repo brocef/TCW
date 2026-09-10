@@ -91,6 +91,15 @@ creates `work/<slug>` in `st.node_root` (`tcw/store/fs.py:761-766`, called from
 `tcw/work/cli.py:833`). A detached HEAD, or a code node outside a repository,
 yields `""` and never raises; a start must not fail because of where HEAD is.
 
+An **unborn** branch — a repository with no commit yet — is a third case, and it
+is why *when* the branch is read matters. `git rev-parse --abbrev-ref HEAD`
+exits 128 there, so `git_current_branch` returns `None` and the branch would be
+recorded empty. `current_branch()` is therefore called **after** the transition,
+not before: the transition's own auto-commit is what gives the repository its
+first commit, so by the time the claim is written HEAD is born and names a real
+branch. Reading it earlier would make the first start in a fresh repository the
+one start that records nothing.
+
 The method is concrete with a `""` default rather than abstract, so an adapter
 written against the current interface keeps working. That is the degradation
 `registered_tags` already documents for an adapter with no configuration
@@ -176,7 +185,10 @@ surprise in a saved command.
     on `Feature-X`.
 11. `submit`, `rework` and `complete` leave `branch` unchanged, and a
     `--worktree` item still merges back on `complete`.
-12. `tcw work show --json` reports `"schema": 1` and validates against
+12. The first `tcw work start` in a repository that has no commit yet still
+    records a branch, because the transition's own commit lands before the
+    claim is written.
+13. `tcw work show --json` reports `"schema": 1` and validates against
     `WORK_ITEM_SCHEMA`; `tcw validate` reports no new problem on a node whose
     configuration did not change.
 
@@ -199,7 +211,8 @@ so.
 | 9 | n/a — fixture sets the fields directly | n/a — read-only | n/a — read-only | n/a — fixture, not a start | `test_board_row_shows_branch` | n/a — no `--branch` passed |
 | 10 | n/a — fixture sets the fields directly | n/a — read-only | n/a — read-only | n/a — fixture, not a start | n/a — asserts which rows appear, not their content | `test_list_filters_by_branch`, `test_list_branch_filter_is_exact_and_cased` |
 | 11 | n/a — no start involved | n/a — no claim written | `test_transitions_preserve_branch`, scenario 09 | `test_transitions_preserve_branch` | n/a — asserts `state.yaml` | n/a |
-| 12 | n/a — schema shape, not a branch value | n/a — no write | n/a — no write | n/a — no start | `test_show_json.py` (unchanged) | n/a |
+| 12 | `test_start_in_an_unborn_repo_records_the_branch` | `test_start_in_an_unborn_repo_records_the_branch` | `test_start_in_an_unborn_repo_records_the_branch` | n/a — plain start, `tcw/work/cli.py:783-787` | n/a — asserts `state.yaml` | n/a |
+| 13 | n/a — schema shape, not a branch value | n/a — no write | n/a — no write | n/a — no start | `test_show_json.py` (unchanged) | n/a |
 
 Two whole columns read `n/a` for the display and filter criteria (8-10) against
 D1-D4, and that is the finding the table is meant to surface: those criteria are
