@@ -383,3 +383,104 @@ def test_a_node_declaring_only_tags_is_not_claiming_a_board(tmp_path):
     config["work"] = {"tags": ["bug", "docs"]}
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     assert validate(root) == []
+
+
+# ── a broken configured path is its own problem ──────────────────────────────
+#
+# `tcw validate` exists to enumerate a node's configuration problems. A node
+# with both a `<component>.path` that holds no store and a declaration that has
+# not been provisioned has two, and used to be told one.
+
+
+def _node_with(tmp_path: Path, *, work: dict) -> Path:
+    """A node whose `work` section is written entirely by the caller.
+
+    No key the resolution ladder branches on is defaulted here: a helper that
+    supplied a path or a repository of its own would fix an axis these tests
+    exist to vary, which is how three unreachable cells shipped in this area
+    before.
+    """
+    import yaml as _yaml
+
+    root = tmp_path / "code"
+    root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    init(["work"], root, "corelib")
+    config_path = root / "tcw-config.yaml"
+    config = _yaml.safe_load(config_path.read_text()) or {}
+    config.setdefault("work", {}).update(work)
+    config_path.write_text(_yaml.safe_dump(config, sort_keys=False))
+    return root
+
+
+def _half_a_store(tmp_path: Path) -> Path:
+    half = tmp_path / "half-a-store"
+    (half / "backlog").mkdir(parents=True)
+    return half
+
+
+def test_a_broken_path_and_an_unprovisioned_declaration_are_two_problems(tmp_path):
+    half = _half_a_store(tmp_path)
+    root = _node_with(tmp_path, work={
+        "path": str(half),
+        "repository": {"url": "https://example.invalid/orchestrator.git"},
+    })
+
+    problems = validate(root)
+
+    assert len(problems) == 2, problems
+    joined = "\n".join(problems)
+    assert str(half) in joined, "the unusable configured path must be named"
+    assert "has not been provisioned here" in joined
+
+
+def test_an_absent_path_with_a_declaration_is_one_problem(tmp_path):
+    """The ordinary case a declaration exists for: this machine has only the
+    code repository. Nothing about the configured path may be said."""
+    root = _node_with(tmp_path, work={
+        "path": "../nowhere/stores/corelib",
+        "repository": {"url": "https://example.invalid/orchestrator.git"},
+    })
+
+    problems = validate(root)
+
+    assert len(problems) == 1, problems
+    assert "nowhere" not in problems[0]
+
+
+def test_a_broken_path_is_reported_even_when_the_declaration_answers(tmp_path):
+    """Independence is the load-bearing part.
+
+    Checking the configured path only when resolution fails would miss exactly
+    the user this helps: the one whose provisioned store works, so nothing ever
+    tells them the path they wrote is wrong and they are silently reading a
+    second copy.
+    """
+    import subprocess
+
+    remote = tmp_path / "orchestrator"
+    store = remote / "docs/work/corelib"
+    for name in ("inbox", "backlog", "active", "review", "completed", "discarded"):
+        (store / name).mkdir(parents=True)
+        (store / name / ".gitkeep").write_text("")
+    subprocess.run(["git", "init", "-q", "-b", "main", str(remote)], check=True)
+    for key, value in (("user.email", "t@example.invalid"), ("user.name", "T")):
+        subprocess.run(["git", "-C", str(remote), "config", key, value], check=True)
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "seed"], check=True)
+
+    half = _half_a_store(tmp_path)
+    root = _node_with(tmp_path, work={
+        "path": str(half),
+        "repository": {"url": str(remote), "path": "docs/work/corelib"},
+    })
+    from tcw.store.fs import FsStoreProvisioner
+    from tcw.store.base import RepositoryDeclaration
+    FsStoreProvisioner(root, "work", RepositoryDeclaration(
+        url=str(remote), path="docs/work/corelib")).ensure_available()
+
+    problems = validate(root)
+
+    assert any(str(half) in p for p in problems), problems

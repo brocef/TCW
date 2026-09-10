@@ -21,7 +21,10 @@ from typing import Literal
 import yaml
 
 from tcw.refs import resolve_tcw_ref
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, load_yaml
+from tcw.store.base import StoreLocationUnusable
+from tcw.store.fs import (
+    STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, load_yaml,
+)
 
 _COMPONENTS = ("taxonomy", "capabilities", "work")
 _LINK_RE = re.compile(r"\]\((tcw://[^)\s]+)\)")
@@ -124,6 +127,56 @@ def _components_to_check(node_root: Path, path) -> list[str]:
     except ValueError:
         pass
     return []
+
+
+def _configured_path_problem(node_root: Path, comp: str) -> str | None:
+    """A configured `<comp>.path` that is present and holds no store, or None.
+
+    **Asked independently of resolution, and that is the whole point.** The
+    resolution ladder treats an unusable configured path as a location that did
+    not work out and moves on to the declaration, which is right for reading and
+    wrong for a command whose entire job is enumerating configuration problems.
+    Two faults were reported as one, and `_run_check` collapses any opening
+    failure into a single string, so even a compound message still counts once.
+
+    Running this only when resolution fails would miss the user it helps most:
+    the one whose declared store provisions fine, so nothing ever tells them the
+    path they wrote is wrong and they quietly read a second copy of the board.
+
+    **Silent when the path is absent.** With a declaration present that is the
+    ordinary case the declaration exists for, and reporting it would make every
+    provisioned node noisy. Presence is tested here rather than inferred from
+    the message, because `_open_at` raises the same text for a path that is
+    missing and one that is a file.
+
+    Asks the component's own `_open_at` rather than re-listing what a store
+    looks like. A third spelling of the store layout is exactly the drift the
+    shared ladder exists to prevent.
+    """
+    config_path = node_root / "tcw-config.yaml"
+    try:
+        config = load_yaml(config_path, unique=True)
+    except Exception:
+        return None                      # reported by the YAML pass above
+    section = config.get(comp) if isinstance(config, dict) else None
+    configured = section.get("path") if isinstance(section, dict) else None
+    if not isinstance(configured, str) or not configured.strip():
+        return None
+    store_cls = STORE_CLASSES[comp]
+    raw_root = store_cls._local_root(node_root, configured)
+    if not raw_root.exists():
+        return None
+    try:
+        store_cls._open_at(raw_root, node_root, config_path,
+                           external=True, must_exist=True)
+    except StoreLocationUnusable as unusable:
+        return str(unusable)
+    except Exception:
+        # Anything else is either not this check's business or is already
+        # reported by the component check beside it. Never swallow it into a
+        # second, differently worded copy of the same fault.
+        return None
+    return None
 
 
 def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> list[str]:
@@ -237,6 +290,11 @@ def validate(node_root: Path, path: Path | None = None, *,
     else:
         components = [target.axis] if target is not None else _components_to_check(node_root, path)
         for comp in components:
+            # Before the component's own check, so a node reads "your path is
+            # broken" ahead of whatever the store it fell back to has to say.
+            configured = _configured_path_problem(node_root, comp)
+            if configured is not None:
+                problems.append(f"{comp} path: {configured}")
             problems += _run_check(node_root, comp, target.ref if target else None)
 
     return problems
