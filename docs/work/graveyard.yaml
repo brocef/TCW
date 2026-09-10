@@ -4,6 +4,9 @@
 2026-08-26-publish-provisioned-store-writes-to-their-remote:
   resolution: done
   resolved: '2026-09-01'
+2026-09-01-separate-lifecycle-stage-information-from-stage-prompts-in-the-tcw-work-skill-references:
+  resolution: done
+  resolved: '2026-09-10'
 2026-09-02-answer-capabilities-drift-from-the-tombstone-so-it-reports-the-same-in-every-checkout:
   resolution: done
   resolved: '2026-09-02'
