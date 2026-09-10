@@ -1,4 +1,4 @@
-# Give every lifecycle stage its own `tcw-work-<stage>` skill
+# Give every lifecycle stage its own `tcw-work-stage-<stage>` skill
 
 ## Capability changes
 
@@ -40,7 +40,7 @@ need at most one.
 
 ## Goals
 
-1. Invoking a stage names the stage: `/tcw:tcw-work-spec`, not
+1. Invoking a stage names the stage: `/tcw:tcw-work-stage-spec`, not
    `/tcw:tcw-work-stage spec <item>`.
 2. The work item reference is the only argument, and it is optional.
 3. `tcw-work-stage` survives unchanged, for a caller holding the stage id as
@@ -75,17 +75,23 @@ need at most one.
 One folder each, one file each:
 
 ```
-skills/tcw-work-request/SKILL.md
-skills/tcw-work-spec/SKILL.md
-skills/tcw-work-plan/SKILL.md
-skills/tcw-work-implement/SKILL.md
-skills/tcw-work-verify/SKILL.md
+skills/tcw-work-stage-request/SKILL.md
+skills/tcw-work-stage-spec/SKILL.md
+skills/tcw-work-stage-plan/SKILL.md
+skills/tcw-work-stage-implement/SKILL.md
+skills/tcw-work-stage-verify/SKILL.md
 ```
+
+The name extends the generic skill's rather than competing with it. An earlier
+draft used `tcw-work-<stage>`, which put `tcw-work-plan` beside the existing
+`/tcw-plan-work` command and `tcw-work-verify` beside `/tcw-verify-work` — two
+near-anagrams naming different jobs. Prefixing with the skill being specialized
+removes that reading entirely and sorts the six together in any listing.
 
 Each is `skills/tcw-work-stage/SKILL.md` with the stage written in literally
 instead of interpolated, and one argument instead of two:
 
-- `name: tcw-work-<stage>`.
+- `name: tcw-work-stage-<stage>`.
 - `arguments: [item]`, so `$item` is the only substitution.
 - `allowed-tools: Bash(tcw *), Bash(cat *)` — unchanged, and load-bearing: an
   injected command that is not pre-approved aborts the whole invocation and the
@@ -142,7 +148,7 @@ Claude harness is handed instructions the CLI already prints.
 
 | File | Why |
 | --- | --- |
-| `tests/test_plugin_manifests.py` | `NUMBER_WORDS` stops at 12. The skill count goes 9 → 14, so `test_the_codex_description_counts_the_skills_it_ships` raises `KeyError: 14` before it can assert anything. |
+| `tests/test_plugin_manifests.py` | Two separate breakages. `NUMBER_WORDS` stops at 12, so `test_the_codex_description_counts_the_skills_it_ships` raises `KeyError: 14` before it can assert anything. And that test matches each skill name as a **substring** of the description, which the new names silently defeat — see below. |
 | `.codex-plugin/plugin.json` | Its `longDescription` must say "fourteen skills" and name each of the five, or the same test fails on the count and the enumeration. |
 | `README.md:270` | Says "Seven skills" over a seven-row table that already omits `tcw-work-stage` and `tcw-post-mortem`. Nothing tests it. |
 | `skills/tcw-work/references/commands.md:31` | The one row describing the composed read names only `tcw-work-stage <id> <item>`. |
@@ -151,7 +157,7 @@ Claude harness is handed instructions the CLI already prints.
 
 ## Acceptance criteria
 
-1. `skills/tcw-work-<stage>/SKILL.md` exists for exactly
+1. `skills/tcw-work-stage-<stage>/SKILL.md` exists for exactly
    `request`, `spec`, `plan`, `implement`, `verify` — no more, no fewer — and a
    test derives that set from `STAGE_IDS` minus `{inbox, postmortem}` rather
    than from a second hand-written list.
@@ -173,14 +179,17 @@ Claude harness is handed instructions the CLI already prints.
    `test_the_codex_description_counts_the_skills_it_ships`, which requires
    `.codex-plugin/plugin.json` to say "fourteen skills" and to name all fourteen
    by directory name.
-8. `tcw capabilities check` and `tcw validate` exit zero, and
+8. That enumeration test matches each name as a **whole token**, not as a bare
+   substring: removing `tcw-work-stage` on its own from the description fails
+   the test even while all five `tcw-work-stage-<stage>` names remain in it.
+9. `tcw capabilities check` and `tcw validate` exit zero, and
    `docs/capabilities/work/run-a-lifecycle-stage/description.md` describes the
    per-stage skills alongside the generic one, still stating that the composed
    read runs no gate.
-9. `README.md`'s skills section states a count matching `skills/*/SKILL.md` and
-   its table accounts for the composing skills.
-10. Invoking `/tcw:tcw-work-spec` with no argument renders both blocks, with the
-    prompt half showing `<slug>` placeholders; invoking it with an item
+10. `README.md`'s skills section states a count matching `skills/*/SKILL.md` and
+    its table accounts for the composing skills.
+11. Invoking `/tcw:tcw-work-stage-spec` with no argument renders both blocks,
+    with the prompt half showing `<slug>` placeholders; invoking it with an item
     reference renders both blocks with that reference substituted throughout.
     Checked by hand, recorded in `outcome.md` — no test can drive a Claude skill
     invocation.
@@ -192,21 +201,33 @@ Claude harness is handed instructions the CLI already prints.
   cut from seven to five. Mitigation is wording, not count: each description
   leads with TCW and the work item so it does not match a generic prompt about
   specs or plans.
-- **Name collision with the slash commands.** `tcw-work-plan` sits beside the
-  existing `/tcw-plan-work`, and `tcw-work-verify` beside `/tcw-verify-work`.
-  They do different jobs — the command drives a range of stages, the skill
-  composes one stage's instructions — and the names are near-anagrams. Each
-  skill's `when_to_use` should say what it is *not*, the way `tcw-report` and
-  `tcw-triage-issues` already do for each other.
+- **The new names make the generic skill's enumeration guard vacuous.** This is
+  the cost of the `tcw-work-stage-` prefix and the one thing it introduces.
+  `test_the_codex_description_counts_the_skills_it_ships` asks `n not in blob`
+  for each shipped directory name, which is a substring test; `tcw-work-stage`
+  is a substring of `tcw-work-stage-spec`. Confirmed against a two-name blob:
+  with only `tcw-work-stage-spec` present, the test reports nothing missing for
+  `tcw-work-stage`. So the generic skill could be dropped from the Codex
+  description entirely and the suite would stay green — precisely the rot that
+  test was written to catch. Criterion 8 closes it: match each name as a whole
+  token, with a negative lookahead for a trailing `-` or word character.
+- **Six skills whose names share a prefix are harder to tell apart in a
+  listing** than six unrelated ones, and the model picks from the listing.
+  Mitigated the same way as before: each `when_to_use` says what the skill is
+  *not*, the way `tcw-report` and `tcw-triage-issues` already do for each other.
+  The prefix is still the better trade — the alternative it replaced put
+  `tcw-work-plan` beside the existing `/tcw-plan-work` command and
+  `tcw-work-verify` beside `/tcw-verify-work`, near-anagrams naming different
+  jobs, which is a worse confusion than a shared prefix.
 - **Six near-identical files drift.** Accepted, with the mitigation being that
   every property worth keeping is parametrized over all six rather than checked
   on one. A test that checks only `tcw-work-stage` after this item is a test
   that has stopped biting for five files.
 - **The Codex `longDescription` becomes a fourteen-item sentence.** It is
   already a long one. Grouping the five under one clause — "and five
-  stage-specific shortcuts, `tcw-work-request` through `tcw-work-verify`" — will
-  not satisfy the test, which looks for each directory name as a substring; all
-  five names have to appear literally.
+  stage-specific shortcuts, `tcw-work-stage-request` through
+  `tcw-work-stage-verify`" — will not satisfy the test, which looks for each
+  directory name individually; all five have to appear literally.
 
 ## Notes
 
