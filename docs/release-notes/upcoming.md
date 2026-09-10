@@ -36,4 +36,3 @@ repository has requests nobody has looked at.
 
 The board itself is unchanged: the counts are printed alongside it, not as rows,
 so anything you pipe the board into still sees one line per work item.
-

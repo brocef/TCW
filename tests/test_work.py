@@ -1780,20 +1780,87 @@ def test_list_stays_silent_about_an_empty_inbox(tmp_path, monkeypatch, capsys):
 
 
 def test_list_include_descendants_counts_each_node_s_inbox(tmp_path, monkeypatch, capsys):
+    """One line per node holding entries, in the order the board's headers ran."""
     from tcw.cli import main
     root = node(tmp_path)
     child = subnode(root, "project-a")
+    grandchild = subnode(child, "project-c")
     subnode(root, "project-b")                             # empty inbox → never named
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
     (root / "docs/work/inbox/here.md").write_text("mine\n")
     (child / "docs/work/inbox/theirs.md").write_text("theirs\n")
     (child / "docs/work/inbox/more.md").write_text("theirs too\n")
+    (grandchild / "docs/work/inbox/deep.md").write_text("deeper\n")
 
     monkeypatch.chdir(root)
     assert main(["work", "list", "--include-descendants"]) == 0
+    captured = capsys.readouterr()
+    assert [line for line in captured.err.splitlines() if line] == [
+        "→ inbox: 1 entry awaiting triage (`tcw work inbox list`)",
+        "→ inbox: 2 entries awaiting triage, in project-a",
+        "→ inbox: 1 entry awaiting triage, in project-c",
+    ]
+    assert "project-b" not in captured.err                 # an empty inbox is never named
+    assert "inbox" not in captured.out                     # stdout stays the item rows
+
+
+def test_list_counts_the_inbox_whatever_the_board_filters_hide(tmp_path, monkeypatch, capsys):
+    """The count answers "what is waiting", not "what the filters matched"."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+    (root / "docs/work/inbox/waiting.md").write_text("still here\n")
+
+    monkeypatch.chdir(root)
+    for flags in (["--all"], ["--status", "completed"], ["--tag", "bug"]):
+        FsWorkStore.open(root).register_tags(["bug"])
+        assert main(["work", "list", *flags]) == 0
+        assert "→ inbox: 1 entry awaiting triage" in capsys.readouterr().err
+
+
+def test_list_keeps_counting_past_a_node_whose_inbox_cannot_be_read(
+        tmp_path, monkeypatch, capsys):
+    """A hint must not decide a read's exit code, nor hide the nodes after it."""
+    from tcw.cli import main
+    from tcw.store.fs import FsWorkStore as Store
+    root = node(tmp_path)
+    child = subnode(root, "project-a")
+    later = subnode(root, "project-z")
+    (child / "docs/work/inbox/theirs.md").write_text("theirs\n")
+    (later / "docs/work/inbox/mine.md").write_text("mine\n")
+
+    real = Store.inbox_list
+
+    def refuse(self):
+        if self.node_root.resolve() == child.resolve():
+            raise PermissionError(13, "Permission denied")
+        return real(self)
+
+    monkeypatch.setattr(Store, "inbox_list", refuse)
+    monkeypatch.chdir(root)
+    assert main(["work", "list", "--include-descendants"]) == 0
     err = capsys.readouterr().err
-    assert "→ inbox: 1 entry awaiting triage (`tcw work inbox list`)" in err
-    assert "→ inbox: 2 entries awaiting triage, in project-a" in err
-    assert "project-b" not in err
+    assert "project-a" not in err                          # unreadable, so uncounted
+    assert "→ inbox: 1 entry awaiting triage, in project-z" in err
+
+
+def test_list_prints_the_inbox_counts_after_the_board_on_a_shared_stream(tmp_path):
+    """`capsys` keeps the streams apart; a terminal or `2>&1` does not."""
+    import sys as _sys
+    import tcw
+    root = node(tmp_path)
+    FsWorkStore.open(root).create("root thing", created="2026-01-01")
+    (root / "docs/work/inbox/waiting.md").write_text("still here\n")
+
+    proc = subprocess.run(                                 # one pipe, as `2>&1` gives
+        [_sys.executable, "-c",
+         "from tcw.cli import main; raise SystemExit(main(['work', 'list']))"],
+        cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        check=True,
+        env={**os.environ, "PYTHONPATH": str(Path(tcw.__file__).resolve().parents[1])})
+    lines = proc.stdout.splitlines()
+    assert lines.index("2026-01-01-root-thing | backlog | - | - | root thing") < \
+        lines.index("→ inbox: 1 entry awaiting triage (`tcw work inbox list`)")
 
 
 def test_list_without_flag_ignores_a_descendant_inbox(tmp_path, monkeypatch, capsys):

@@ -437,7 +437,7 @@ def _node_boards(anchor: FsWorkStore) -> list[tuple[str, Path, FsWorkStore]]:
             for root in [anchor_root, *descendant_nodes(anchor_root)]]
 
 
-def _render_inbox_counts(boards: list[tuple[str, FsWorkStore]]) -> None:
+def _render_inbox_counts(boards: list[tuple[str, Path, FsWorkStore]]) -> None:
     """Say how much untriaged intake each node holds, on stderr, after the board.
 
     An inbox entry is not a work item — it has no slug, status, or lifecycle —
@@ -446,8 +446,14 @@ def _render_inbox_counts(boards: list[tuple[str, FsWorkStore]]) -> None:
     `--include-descendants` sweep names only the nodes that need a look.
     """
     sys.stdout.flush()             # both streams may be the same file; keep the order
-    for label, st in boards:
-        count = len(st.inbox_list())
+    for label, _root, st in boards:
+        try:
+            count = len(st.inbox_list())
+        except (OSError, ValueError):
+            # A hint must not decide the exit code of a read. One unreadable
+            # inbox in a shared checkout would otherwise abort a listing that
+            # has already printed its rows, and lose every later node's count.
+            continue
         if not count:
             continue
         noun = "entry" if count == 1 else "entries"
@@ -531,11 +537,11 @@ def _list(args: argparse.Namespace) -> int:
         return 1
     if not args.include_descendants:
         _render_board(st, args.status, args.all, tags=args.tag)
-        _render_inbox_counts([(".", st)])
+        _render_inbox_counts([(".", st.node_root, st)])
         return 0
     boards = _node_boards(st)
     _render_descendant_boards(boards, args.status, args.all, args.tag)
-    _render_inbox_counts([(label, node_store) for label, _, node_store in boards])
+    _render_inbox_counts(boards)
     return 0
 
 

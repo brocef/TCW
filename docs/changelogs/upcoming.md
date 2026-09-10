@@ -23,7 +23,9 @@ category.
   rows, on stderr, `_render_inbox_counts` prints
   `→ inbox: <n> entr(y|ies) awaiting triage` for the current node and, under
   `--include-descendants`, one line per descendant node holding entries, each
-  named by its canonical project ID. Nodes with an empty inbox print nothing.
+  named by its canonical project ID. Nodes with an empty inbox print nothing,
+  and a node whose inbox cannot be read is skipped rather than aborting a
+  listing that has already printed its rows.
   The count comes from the store's existing `inbox_list()` operation, so no new
   abstraction surface was added; stdout is untouched, keeping the
   `|`-delimited one-row-per-item contract. `_render_descendant_boards` now takes

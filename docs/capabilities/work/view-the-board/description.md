@@ -16,8 +16,10 @@ active items without claim metadata are shown as unclaimed.
 
 The board also tells me how much raw intake is waiting behind it. After the rows,
 on stderr, it says how many inbox entries the node is holding, and with
-`--include-descendants` it does so for every node in the board, naming each one
-by its project ID. A node with an empty inbox is not mentioned, so a wide sweep
+`--include-descendants` it does so for every node in the board, naming each
+descendant by its project ID; my own node's line carries the `tcw work inbox
+list` hint instead, since that is the only inbox the command reads. A node with
+an empty inbox is not mentioned, so a wide sweep
 names only the nodes that need a look. The counts are never board rows — an
 inbox entry has no slug, status, or lifecycle — so what I pipe is still one line
 per work item.

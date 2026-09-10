@@ -399,7 +399,7 @@ items they block, since a priority preference can't jump a hard dependency —
 and annotates blocked items with their unresolved blockers.
 
 After the rows, **on stderr**, the board says how much raw intake is still
-waiting: `→ inbox: 2 entries awaiting triage (\`tcw work inbox list\`)`. An inbox
+waiting: ``→ inbox: 2 entries awaiting triage (`tcw work inbox list`)``. An inbox
 entry is not a work item — it has no slug, status, or lifecycle — so it never
 becomes a row, and stdout keeps its one-line-per-item contract for anything
 piping the board. A node whose inbox is empty says nothing at all. Under
