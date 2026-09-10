@@ -100,45 +100,51 @@ manual-fallback fence.
 Both were fixed rather than deferred, once it turned out neither needed the design
 decision this note assumed.
 
-**1 — the silencing advice.** The design question does not have to be answered to
-stop advising something that does not work. A stage whose every binding is
-conditioned out already resolves to nothing, verified end to end: that shape
-validates and prints zero bytes where an unconfigured stage prints the 2398-byte
-built-in floor. All six places now name it — the error message that originated the
-advice, both migration guides, the configuration guide, the capability
-description, and the release notes, which asserted the premise without naming the
-mechanism. Archived release notes are untouched; they record what was believed
-when written.
+**1 — the silencing advice.** Answered, and the design question with it. Rather
+than reword four documents to describe a workaround, `{blob: ""}` was made to
+mean what all four already said it meant. Four independent descriptions of the
+same behaviour is evidence about what the shape should mean.
 
-The new test checks the property rather than the wording: whatever the message
-names has to be a shape this parser accepts. That closes the class, not the
-instance.
+`prompt: [{blob: ""}]` now validates and silences the stage: it resolves to empty
+text, the resolver drops it like any other empty part, and the stage prints
+nothing with no bookend. Verified end to end — zero bytes, against an
+unconfigured control stage in the same node still printing the built-in floor, so
+the opt-out is a choice rather than resolution breaking.
 
-**What is still open** is the narrower question this note actually raised: there
-is no first-class way to say "this stage says nothing". Conditioning a binding on
-a tag no item carries works, but it reads as a trick rather than an intention.
-Whether to accept a blank `blob` as a deliberate silence, or add an explicit
-opt-out, is still a design decision nobody has made. Filed on its own below.
+The exception is confined to `blob`. `file`, `generate` and `skill` each name
+something to run or read, and a blank one of those keeps the non-blank rule.
+`prompt: []` also stays refused, and the distinction is the substance of the
+decision: a list with the opt-out written in it states a choice, while an empty
+list cannot be told apart after parsing from never writing the key.
+
+The test pins the property rather than the wording — whatever the empty-prompt
+error advises has to be a shape this parser accepts — so the class cannot come
+back through a rewording. That is the part worth keeping from this note.
 
 **2 — the untested fallbacks.** Six lines, so they were written rather than
 tracked. Every injected command in the composing skill is now checked to end with
 its `|| true`, closing the second of the two silent-empty-render causes the item
 measured.
 
-## Still open: a first-class way to silence a stage
+## Settled: a blank blob is the opt-out
 
-`prompt: [{ blob: "-", when: { tags: [never-applied] } }]` is the documented way
-to make a stage say nothing. It works, and it is a trick: the binding exists only
-so it can fail to match, and the placeholder text is never read by anyone. A
-reader has to be told why it is shaped that way, which is why it now costs three
-lines of comment in the migration guide.
+This note originally left the design question open, with three candidate answers
+and "doing nothing" among them. It was put to the user and answered: accept a
+blank `blob` as deliberate silence.
 
-Two candidate answers, and this is a decision rather than a defect:
+The reasoning that decided it, recorded because the alternatives were close:
 
-- **Accept a blank `blob` as deliberate silence**, distinguishing it from an
-  absent binding. This is what four documents already believed was true, which is
-  some evidence about what people expect.
-- **Add an explicit opt-out** — a `silent: true` on the stage, or similar — and
-  keep rejecting the blank blob.
+- **It is what people already expect.** Four documents written at different times
+  independently described this exact spelling as the way. That is not four copies
+  of one mistake; it is four authors reaching for the same shape.
+- **It does not reintroduce the ambiguity that got the empty list refused.** The
+  empty list is indistinguishable after parsing from an absent key. A list with
+  an entry in it is not.
+- **It costs one condition in the parser**, against a new schema key with its own
+  parse branch, validation rule, and interaction to define with `prompt:`.
 
-Doing nothing is also defensible. The trick works and is now documented honestly.
+Shipped in 2.0.0 rather than tracked as a follow-up, because the migration guide
+was already carrying a correction about the old advice and splitting the two
+would have told readers the fix existed while making them wait for it.
+
+Nothing further is open here.
