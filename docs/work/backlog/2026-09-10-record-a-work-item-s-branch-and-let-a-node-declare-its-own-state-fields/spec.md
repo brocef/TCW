@@ -18,7 +18,7 @@ it stands.
 ## Problem
 
 `WorkItem` already carries `worktree` and `branch` (`tcw/store/base.py:1879-1880`),
-`FsWorkStore._read_item` reads them back (`tcw/store/fs.py:3953-3954`), and
+`FsWorkStore._read_item` reads them back (`tcw/store/fs.py:4030-4031`), and
 `WORK_ITEM_SCHEMA` already emits both (`tcw/work/projection.py:126-127`). The
 model is not missing a field. Three things stop it from answering *where is this
 work being done*.
@@ -44,7 +44,7 @@ otherwise make it worse. `start` writes the claim as **two** separate
 transition landing between them writes `started` into a folder `owner` did not
 go to. That is exactly the tear `_set_fields_at` says it exists to prevent:
 *"Multi-key so a pair like `owner`/`started` cannot be torn across two locations
-by a move landing between them"* (`tcw/store/fs.py:5539-5540`). The multi-key
+by a move landing between them"* (`tcw/store/fs.py:5632-5633`). The multi-key
 write is reachable only through `_effect_transition`'s `fields` argument, and
 `start` cannot use it: `transition` clears `owner` and `started` **over** any
 caller-supplied fields on a move touching `active` (`tcw/store/base.py:2626-2629`),
@@ -109,7 +109,7 @@ surface.
 A new abstract `WorkStore.set_fields(slug, fields: dict)` carries a whole field
 map; `set_field` (`tcw/store/base.py:2242`) becomes a one-key call through it,
 and `FsWorkStore` implements it as the already-existing `_set_fields_at`
-(`tcw/store/fs.py:5530-5547`). `start` then builds one map — `branch` always,
+(`tcw/store/fs.py:5623-5640`). `start` then builds one map — `branch` always,
 `owner` and `started` only when an owner was supplied — and writes it once.
 Writing the map when it holds only `branch` is what makes an unclaimed start
 record one: `tcw serve` starts items with no owner
@@ -123,7 +123,7 @@ field means *the branch this claim is on*, and a claim that cannot name one must
 not inherit the last one. No other transition writes or clears it — `submit`,
 `rework` and `complete` must leave it alone, since `complete`'s worktree
 merge-back reads it and `_warn_off_trunk` compares against it
-(`tcw/store/fs.py:5673-5695`).
+(`tcw/store/fs.py:5766-5788`).
 
 **D4 — `--worktree` still wins.** `_start` overwrites `branch` with
 `work/<slug>` after `st.start(...)` returns (`tcw/work/cli.py:790-791`). That
@@ -236,7 +236,7 @@ in reverse.
   that silently absorbs an unrelated diff is the failure mode to watch.
 - **`set_fields` is a new abstract method.** Any adapter outside this repository
   implementing `WorkStore` breaks until it adds one. `FsWorkStore` is the only
-  implementation here (`tcw/store/fs.py:3304`), so the cost is external and
+  implementation here (`tcw/store/fs.py:3376`), so the cost is external and
   currently hypothetical — but it is a real interface change, unlike
   `current_branch`, which defaults.
 - **The board line grows.** `_render_board_item` already emits up to six

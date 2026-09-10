@@ -23,12 +23,12 @@ def set_fields(self, slug: str, fields: dict) -> None: ...
 
 with a docstring saying it applies the whole map in one write, so a pair like
 `owner`/`started` cannot be torn across two locations by a move landing between
-them — the reason `_set_fields_at` already gives at `tcw/store/fs.py:5539-5540`.
+them — the reason `_set_fields_at` already gives at `tcw/store/fs.py:5632-5633`.
 Make `set_field` a concrete method on `WorkStore` that calls
 `self.set_fields(slug, {key: value})`, and delete `set_field` from the abstract
 block.
 
-In `FsWorkStore` (`tcw/store/fs.py:5530-5531`), replace the `set_field`
+In `FsWorkStore` (`tcw/store/fs.py:5623-5624`), replace the `set_field`
 override with:
 
 ```python
