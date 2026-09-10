@@ -1,0 +1,10 @@
+slug: 2026-09-10-let-a-node-declare-its-own-work-item-state-fields
+title: Let a node declare its own work item state fields
+created: '2026-09-10'
+resolution: null
+priority: 30
+effort: high
+complexity: high
+tags:
+- cli
+- work
