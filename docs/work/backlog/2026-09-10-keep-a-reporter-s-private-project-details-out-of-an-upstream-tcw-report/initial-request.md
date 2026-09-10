@@ -31,22 +31,26 @@ nothing.
 
 ## Constraints
 
-Decisions taken during this stage, in answer to direct questions:
+**These are guidelines, not enforcement.** The skill's one standing requirement
+is that feedback about TCW is filed as a GitHub issue on the TCW repository
+rather than into the reporter's own `tcw work` store. What goes *into* that
+report is the reporter's call; the skill encourages, it does not gate. Nothing
+here should turn into an approval checkpoint, a refusal, or a rule the agent
+enforces against the person it is working for.
 
-- **Generic by default, with an approval escape hatch.** Generic is what the
-  agent produces on its own. It may include a real detail only if it asks the
-  user first and they explicitly approve that specific disclosure. It must not
-  decide on its own that a given detail is harmless.
-- **Verbatim output is preferred generic, but the reporter's choice.** State the
-  preference for output captured from a generic reproduction; a reporter who
-  chooses to paste output from their own system and environment may do so. This
-  half is a preference, not a prohibition.
+Within that, decisions taken during this stage in answer to direct questions:
+
+- **Generic is the encouraged default.** The agent should reach for a mirrored
+  example on its own rather than pasting the real thing, and it may include a
+  real detail when the user wants it there. Encouragement, not a gate.
+- **Verbatim output: state the preference, leave the choice.** Say that a
+  generic reproduction's output is preferred; a reporter who chooses to include
+  output from their own system and environment may do so.
 - **Suggest delegating the reproduction.** Point out that the agent can hand the
   reproduction to a subagent or an agent team member and have it done in a
   temporary directory, rather than in the reporter's own checkout.
 - **Fresh-environment steps are encouraged, not required.** A clean-room
-  reproduction is sometimes impractical; the report should still be fileable
-  without one.
+  reproduction is sometimes impractical; the report stays fileable without one.
 
 ## Out of scope
 
