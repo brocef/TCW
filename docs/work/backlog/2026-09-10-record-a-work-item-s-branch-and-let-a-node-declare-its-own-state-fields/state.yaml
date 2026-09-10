@@ -1,0 +1,10 @@
+slug: 2026-09-10-record-a-work-item-s-branch-and-let-a-node-declare-its-own-state-fields
+title: Record a work item's branch, and let a node declare its own state fields
+created: '2026-09-10'
+resolution: null
+priority: 35
+effort: medium
+complexity: medium
+tags:
+- cli
+- work
