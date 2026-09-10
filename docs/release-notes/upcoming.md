@@ -51,3 +51,12 @@ install by hand is gone by the next session. It is a short script in your own
 repository, wired to run when a session starts, with the three rules that decide
 whether such a script helps or wastes the session. If your board lives in
 another repository, it also covers the one command that fetches it.
+
+## `/tcw-doctor` is gone
+
+The command that diagnosed a broken `tcw` install has been removed. `tcw` comes
+from PyPI now, so if it goes missing, `pipx install tcw-cli` is the fix, and the
+assistant still knows the handful of cases where it is not — a version of `tcw`
+that is newer than your plugin, a machine without `pipx`, or a developer's own
+checkout that must not be installed over. Ask it about a broken `tcw` and you get
+the same help; there is just no command to remember.

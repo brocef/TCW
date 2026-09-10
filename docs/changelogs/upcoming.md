@@ -104,3 +104,28 @@ category.
   suite. The workflow must not become a _required_ status check while the filter
   is there: a run skipped by `paths-ignore` reports nothing rather than success.
 - **README slash-command roster.** `/tcw-consolidate-plans` was missing from it.
+
+## Removed
+
+- **`/tcw-doctor`, and the `tcw-plugin` skill's `references/` tree.** Deleted:
+  `commands/tcw-doctor.md`, `skills/tcw-plugin/references/doctor.md`,
+  `skills/tcw-plugin/references/setup.md`, and the
+  `plugin/diagnose-the-install` capability. `tcw` is installed from PyPI, so the
+  answer to a missing one is `pipx install tcw-cli`, and ~200 lines of routed
+  procedure across two files said that three times over.
+
+    What survives is the part PyPI does not make unnecessary, now inline in
+    `skills/tcw-plugin/SKILL.md` under _Getting `tcw` on PATH_: the install ladder
+    including the no-`pipx` fallback, that a floating installed version is not
+    breakage, and the one rule worth a paragraph — ask the owning interpreter (the
+    shebang's, never the PATH `python3`) before replacing a `tcw` already on PATH,
+    because `pipx install --force` over a developer's editable checkout destroys it
+    silently. `session_bootstrap.sh` enforces that rule and now cites `SKILL.md`
+    rather than the deleted file. Cloud installs route to the README instead.
+
+    Consequences: `scripts/session_bootstrap.sh`'s install-failure line names
+    `pipx install tcw-cli` instead of `/tcw-doctor`
+    (`tests/test_session_bootstrap.py` follows it); `docs/lifecycle/harness.md` and
+    `docs/lifecycle/implementation.md` cited `tcw-plugin` as the pattern for a
+    `commands/`-plus-skill pair and for `references/` progressive disclosure, and
+    now cite `tcw-work`, which still has both.

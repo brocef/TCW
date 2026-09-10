@@ -196,7 +196,7 @@ def test_failed_install_prints_one_line_and_retries_next_time(tmp_path):
     assert r.returncode == 0, "a failure must not surface as a hook error"
     assert r.stderr == "", "SessionStart shows the agent stdout, not stderr"
     lines = r.stdout.splitlines()
-    assert len(lines) == 1 and "/tcw-doctor" in lines[0], r.stdout
+    assert len(lines) == 1 and "pipx install tcw-cli" in lines[0], r.stdout
     assert sentinel.read_text() == '__version__ = "0.0.1"\n', "a stale sentinel is what forces the retry"
     assert log.read_text().strip().endswith("tcw-cli")
 

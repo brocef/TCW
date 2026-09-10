@@ -191,8 +191,9 @@ Or, in the Claude **web app** or **desktop app**, open the plugin directory, add
 by installing `tcw-cli` from PyPI with `pipx`, so one installed mid-session
 cannot run until the next one begins. That first session needs network access. It
 installs over an existing `pipx install tcw-cli` rather than beside it, and
-leaves a development checkout (`pip install -e .`) alone. Run `/tcw-doctor` any
-time `tcw` goes missing or looks wrong.
+leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
+anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-plugin`** skill
+carries the cases where it is not.
 
 In **Codex** (skills only, no slash commands):
 
@@ -360,7 +361,7 @@ are listed together at the end.
 | [`tcw-work`](skills/tcw-work/SKILL.md)                     | Plans a request through spec and plan, drives implementation and verification, triages the inbox, runs the lifecycle, decomposes epics, searches the board |
 | [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)     | The capability-delta planning check, contradiction detection, and the ledger flip at completion                                                            |
 | [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and federating shared vocabulary                                                                          |
-| [`tcw-plugin`](skills/tcw-plugin/SKILL.md)                 | Installs and repairs the CLI; the source of the `/tcw-doctor` procedure                                                                                    |
+| [`tcw-plugin`](skills/tcw-plugin/SKILL.md)                 | Installs the CLI from PyPI, and maps the other skills                                                                                                      |
 | [`tcw-report`](skills/tcw-report/SKILL.md)                 | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                                              |
 | [`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)   | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                                     |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                                         |
@@ -389,7 +390,7 @@ same name — plus slash commands for each skill's main procedure
 `/tcw-process-inbox`, `/tcw-work-search`, `/tcw-triage-issues`,
 `/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,
 `/tcw-capabilities-init`, `/tcw-docs-sync-setup`, `/tcw-cut-version`,
-`/tcw-post-mortem`, `/tcw-doctor`).
+`/tcw-post-mortem`).
 
 ---
 
