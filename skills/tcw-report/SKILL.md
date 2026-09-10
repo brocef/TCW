@@ -28,6 +28,27 @@ project; it is not a channel to the TCW maintainers.)
 3. **Grab the version.** For a bug, run `tcw --version` and include the output —
    most reports are unactionable without it.
 
+## What goes in the report
+
+These are guidelines, not rules — what the report contains is your call.
+
+The tracker at https://github.com/brocef/TCW/issues is **public**, and the
+project you are reporting from may not be. So write the report from a **generic
+example that mirrors your setup** rather than from the real thing, and keep in
+any real detail you want there.
+
+- **Swap** repository, branch and directory names; node ids; work-item slugs;
+  capability paths and wording; absolute paths; taxonomy terms and any other
+  domain vocabulary.
+- **Keep** the command's shape and its flags, the config's shape, the error type
+  and its message, and the sequence that triggered it — and the real values in
+  the Environment block (`tcw --version`, OS, install method), which describe the
+  install rather than the project.
+
+Output works the same way: the output of a generic reproduction is the more
+useful one to receive, and you may paste output from your own system and
+environment instead if you would rather.
+
 ## Bug skeleton
 
 ```markdown
