@@ -675,6 +675,37 @@ def test_a_qualified_reference_reads_the_owning_nodes_bindings(tmp_path):
     assert "CHILD TEXT" in r.stdout and "ANCHOR TEXT" not in r.stdout
 
 
+def test_the_removed_form_advises_inbox_without_a_reference(tmp_path):
+    """`inbox` runs before an item exists and both verbs refuse a reference for
+    it. The migration message handed every stage the same `<slug>` placeholder,
+    so someone on the old spelling was advised a command that is itself refused
+    — two wrong turns to reach the one that works.
+    """
+    root = _node(tmp_path)
+    r = _bare(root, "inbox")
+    assert r.returncode == 2
+    assert "gate inbox`" in r.stderr and "prompt inbox`" in r.stderr, r.stderr
+    assert "<slug>" not in r.stderr, r.stderr
+
+    # Every other stage still gets one, since they do take a reference.
+    other = _bare(root, "spec")
+    assert "gate spec <slug>`" in other.stderr, other.stderr
+
+
+def test_a_typo_is_not_offered_the_removed_spellings(tmp_path):
+    """The seven removed per-stage parsers are registered so the old spelling
+    gets a migration message rather than a bare "invalid choice". They are kept
+    out of `--help` by the metavar — but argparse builds its own "choose from"
+    list off the action's choices, so a typo was told all seven were valid verbs.
+    """
+    root = _node(tmp_path)
+    r = _bare(root, "bogus")
+    assert r.returncode == 2
+    assert "choose from 'prompt', 'gate'" in r.stderr, r.stderr
+    for stage_id in STAGE_IDS:
+        assert f"'{stage_id}'" not in r.stderr.split("choose from")[1], stage_id
+
+
 def test_a_qualified_reference_survives_into_the_advised_commands(tmp_path):
     """Both verbs quote a command back at the reader — the bookend header names
     the gate, the gate's success line names the prompt. `_resolve` returns a

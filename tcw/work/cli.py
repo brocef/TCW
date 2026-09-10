@@ -971,6 +971,31 @@ def _binding_json(b) -> dict:
     return out
 
 
+class _HidesRemovedSpellings(argparse.ArgumentParser):
+    """Keeps the removed per-stage parsers out of argparse's "choose from" list.
+
+    They are registered as subparsers so the old `tcw work stage <id> <ref>`
+    spelling gets a migration message instead of a bare "invalid choice", and
+    `help=` is omitted so they stay out of `--help`. But `_check_value` builds
+    its "choose from" list straight off the action's choices, so a plain typo was
+    told the seven removed spellings were valid verbs — the opposite of what
+    registering them is for.
+
+    The guard is narrow on purpose: it fires only for the action that actually
+    offers both real verbs, so every other subcommand group keeps argparse's own
+    message unchanged.
+    """
+
+    def _check_value(self, action, value):
+        choices = getattr(action, "choices", None) or ()
+        if value not in choices and {"prompt", "gate"} <= set(choices):
+            real = [c for c in choices if c not in STAGE_IDS]
+            raise argparse.ArgumentError(
+                action, f"invalid choice: {value!r} (choose from "
+                        f"{', '.join(repr(c) for c in real)})")
+        super()._check_value(action, value)
+
+
 def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
                 display: str) -> int:
     """Everything `tcw work stage prompt` does once it knows what to resolve.
@@ -1098,11 +1123,18 @@ def _stage_removed_form(args: argparse.Namespace) -> int:
     accepting the old spelling here would be the alias this release decided
     against, and a migration nobody is forced to make is one nobody makes.
     """
-    ref = args.rest[0] if args.rest else "<slug>"
+    # `inbox` runs before an item exists and both verbs refuse a reference for
+    # it, so the placeholder every other stage wants would advise a command that
+    # is itself refused — two wrong turns for someone migrating off the old
+    # spelling. The one stage that takes no reference is shown none.
+    if args.removed_stage == "inbox":
+        ref = ""
+    else:
+        ref = f" {args.rest[0]}" if args.rest else " <slug>"
     print(f"tcw work stage: '{args.removed_stage}' is not a subcommand; run "
-          f"`tcw work stage gate {args.removed_stage} {ref}` to check the "
+          f"`tcw work stage gate {args.removed_stage}{ref}` to check the "
           f"stage and run its checks, or `tcw work stage prompt "
-          f"{args.removed_stage} {ref}` for its instructions", file=sys.stderr)
+          f"{args.removed_stage}{ref}` for its instructions", file=sys.stderr)
     return 2
 
 
@@ -1761,7 +1793,8 @@ def _drop(args: argparse.Namespace) -> int:
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the changes — work items through a state machine")
-    g = p.add_subparsers(dest="cmd", required=True)
+    g = p.add_subparsers(dest="cmd", required=True,
+                         parser_class=_HidesRemovedSpellings)
 
     pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed/discarded work storage")
     pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
@@ -1923,7 +1956,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     # The removed form. Registered so it fails with the command to run instead
     # of argparse's bare "invalid choice", and hidden so it is not offered as a
-    # third verb. It never resolves anything — a migration message, not an alias.
+    # third verb — from `--help` by the metavar above, and from the
+    # invalid-choice error by `_HidesRemovedSpellings`, which is what makes that
+    # claim true. It never resolves anything: a migration message, not an alias.
     for _sid in STAGE_IDS:
         # No `help=`: omitting it keeps the parser out of the choices list
         # entirely, where `help=SUPPRESS` would print a literal "==SUPPRESS==".
