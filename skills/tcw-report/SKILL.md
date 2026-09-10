@@ -34,16 +34,16 @@ These are guidelines, not rules — what the report contains is your call.
 
 The tracker at https://github.com/brocef/TCW/issues is **public**, and the
 project you are reporting from may not be. So write the report from a **generic
-example that mirrors your setup** rather than from the real thing, and keep in
-any real detail you want there.
+example that mirrors your setup** rather than from the real thing, and keep
+whatever real detail you do want in it.
 
 - **Swap** repository, branch and directory names; node ids; work-item slugs;
   capability paths and wording; absolute paths; taxonomy terms and any other
   domain vocabulary.
 - **Keep** the command's shape and its flags, the config's shape, the error type
-  and its message, and the sequence that triggered it — and the real values in
-  the Environment block (`tcw --version`, OS, install method), which describe the
-  install rather than the project.
+  and the fixed part of its message, and the sequence that triggered it — and the
+  real values in the Environment block (`tcw --version`, OS, install method),
+  which describe the install rather than the project.
 
 Written down, the swap is small:
 

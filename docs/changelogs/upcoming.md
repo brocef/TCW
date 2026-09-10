@@ -20,7 +20,7 @@ category.
   taxonomy terms) against what to keep (the command's shape and flags, the
   config's shape, the error type and message, the triggering sequence, and the
   Environment block's real values, which describe the install rather than the
-  project). A six-line before/after example carries both lists.
+  project). A before/after example carries both lists.
     - The section also encourages reproduction steps from a clean install and a
       scratch project, says a report is welcome without them, and suggests handing
       that reproduction to a subagent or agent team member working in a temporary
