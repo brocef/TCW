@@ -19,6 +19,20 @@ All three apply to each of the three components. A store that cannot be opened
 is reported as one problem beside the others rather than ending the run, so one
 unprovisioned tree does not hide the rest of a node's faults.
 
+**Two faults are counted as two.** A node whose `<component>.path` names a
+directory holding no store, and which also declares a home repository it has
+not obtained, has two problems, and I am told both — the path is reported on its
+own line and counted separately, rather than disappearing behind the
+declaration's message. The configured path is examined whether or not the store
+went on to open, so I hear about a path I mistyped even when the declared store
+provisions perfectly well and I would otherwise never learn I am reading a
+second copy.
+
+A configured path that simply **does not exist** stays silent when a home
+repository is declared. That is the ordinary state of a checkout holding only
+the code, which is the case the declaration exists for, and reporting it would
+give every provisioned node a permanent problem.
+
 A reference to a work item this project once held and has since completed or
 discarded is **not** a problem. Finishing work is normal, and reporting every
 reference to finished work as a mistake buries the real ones. A reference to a

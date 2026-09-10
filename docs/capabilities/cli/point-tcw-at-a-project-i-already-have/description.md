@@ -33,3 +33,19 @@ therefore does not fetch a project an override resolves, and `tcw validate`
 prints one line naming each variable in effect and where it points — so a graph
 that resolves only because of an override is never a mystery to the next person
 reading it.
+
+**My statement reaches a component store too, not only a project.** When a
+store's declared home repository is one the graph has already located here,
+TCW resolves the store inside that copy rather than fetching a second one. So a
+workspace whose repositories are normally nested, and which I have cloned side
+by side instead, reads the right board from these variables alone — without a
+symlink, without editing a file another machine reads, and without a
+machine-specific absolute path in
+[`work.path`](tcw://C/work/configure-the-work-store-location).
+
+A store found that way is mine, so it does not
+[publish](tcw://C/work/publish-store-writes-to-the-remote): it is on my own
+disk, on whatever branch I have it on, and I push it myself. That last part is
+what makes this worth having rather than merely tidier. A fetched copy sits at
+the declared ref and pushes to it, so before this the remedy for a store TCW
+could not find would quietly move my work onto a branch I was not on.

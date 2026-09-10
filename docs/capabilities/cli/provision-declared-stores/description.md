@@ -22,7 +22,11 @@ I ask for a store, and the way I bring one up to date without transitioning
 anything.
 
 Running it again does nothing: a store that already resolves is reported as
-already available and no network call is made. The same holds for a connected
+already available and no network call is made. **That covers whatever resolution
+can reach**, which now includes a store sitting inside a project I already have
+here — so a workspace laid out differently from the way its configuration
+describes it stops cloning a second copy of a repository it is standing next to.
+The same holds for a connected
 project — one I can already reach is never fetched, whoever declared where it
 comes from, so declaring an edge from both sides costs me nothing. `--dry-run`
 shows me the plan without contacting anything, and `--refresh` brings a working
