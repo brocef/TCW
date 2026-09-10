@@ -8,6 +8,8 @@ import os
 import re
 import subprocess
 import tomllib
+
+import yaml
 from pathlib import Path
 
 import pytest
@@ -133,8 +135,17 @@ def test_every_skill_has_name_and_description_frontmatter(skill):
     lines = skill.read_text(encoding="utf-8").splitlines()
     assert lines and lines[0] == "---", f"{skill} is missing YAML frontmatter"
     end = lines.index("---", 1)
-    keys = {ln.split(":", 1)[0] for ln in lines[1:end] if not ln.startswith((" ", "\t"))}
-    assert {"name", "description"} <= keys, f"{skill} frontmatter lacks name/description"
+
+    # Parsed as YAML, not scanned line by line. A plain scalar containing ": "
+    # is a YAML error, and every one of the five per-stage skills shipped with
+    # one on first write — a `when_to_use` reading "runs no gate: `tcw work
+    # stage gate` is what refuses". The line-based scan below sees the keys and
+    # passes; Codex, which actually parses this, refuses to load the skill. The
+    # scan cannot tell those apart, so it is no longer the only check.
+    front = yaml.safe_load("\n".join(lines[1:end]))
+    assert isinstance(front, dict), f"{skill} frontmatter is not a YAML mapping"
+    assert {"name", "description"} <= set(front), (
+        f"{skill} frontmatter lacks name/description")
 
 
 def test_hooks_manifest_wires_one_executable_session_start_script():
