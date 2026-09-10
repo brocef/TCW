@@ -220,7 +220,18 @@ see [Connected projects](#connected-projects).
 
 **A store that is already here always wins.** The declaration is consulted only
 when the local store is absent, so the same config keeps working untouched on a
-machine that has the folder, and answers for one that doesn't. Where the store is
+machine that has the folder, and answers for one that doesn't.
+
+"Already here" is not limited to the configured path. Before falling back to a
+fetched copy, TCW asks whether some project it has located is a checkout of the
+declared repository, and if one is, reads the store inside it. That is what lets
+a workspace cloned flat — every repository side by side, where the config
+describes them nested — work from `TCW_PROJECT_<ID>` alone, with no symlink and
+no absolute path baked into a file other machines read. A store found this way
+is yours: it is read on whatever branch you have it on, and TCW never pushes to
+it. Only a copy TCW fetched publishes.
+
+Where the store is
 absent, every command that needs it says so in those words and names the remote —
 instead of reporting that the project has no such component. That last part
 matters most for the trees: a checkout that cloned only the code has no

@@ -122,6 +122,15 @@ gets it. Resolution prefers a store that is **already here** — the declaration
 answers only when the local one is absent, so one config serves a laptop that has
 the folder and a fresh clone that does not.
 
+**"Already here" includes another repository on this disk.** Before fetching,
+resolution asks the project registry whether some project it has located is a
+checkout of the declared repository, and if so reads the store inside that copy.
+So a workspace cloned flat where the config describes it nested needs no symlink
+and no machine-specific path — `TCW_PROJECT_<ID>` below is enough. A store
+reached that way does **not** publish: it is the user's own checkout, on
+whatever branch they have it on, and they push it themselves. Only a copy TCW
+fetched publishes.
+
 **A connected project declares the same way.** An entry under
 `connected-projects` may be `{path, repository}` instead of a bare locator, with
 the same ladder — the project at `path` wins when it is here — so a checkout that
@@ -134,7 +143,8 @@ and the declaration, because the case it exists for is a path that resolves to
 the *wrong* node — a workspace laid out flat where the config describes it
 nested, which is what makes `tcw provision` fetch a second copy of a project the
 machine already has. Reach for it before editing a shared config to match one
-machine. A variable naming a path that is not here is not an error and falls
+machine. It reaches component stores too, through the rung above: a store whose
+declared repository is a project this variable located is read there. A variable naming a path that is not here is not an error and falls
 through to `repository`, so one set can serve a whole environment; one naming a
 directory that is present and wrong is refused — by `tcw provision` too, which
 stops before contacting anything rather than falling back to a fetch.
