@@ -20,13 +20,40 @@ comparison string, and make `_cache_key` call it.
 
 Nothing else changes in this task. No caller outside the module yet.
 
+**The one line that must not move.** `_cache_key` uses the normalization for its
+*readable* half only. Its digest hashes `declaration.url` **raw**
+(`tcw/store/checkouts.py:52-53`), which is why two spellings of one repository
+get two cache directories today. Route the digest through `normalized_url` and
+every cache directory on every machine is renamed at once. The digest's input
+stays exactly `f"{declaration.url}\n{declaration.ref or ''}"`.
+
+**And a contract change worth naming.** Today that normalization exists to make
+a label a human can read, and its own docstring calls the readable half "lossy
+by design". `normalized_url` is being promoted to decide *identity* — whether two
+declarations name the same repository. That is a stronger job than the code it
+comes from was written for. The extraction is still right, because one answer to
+"same repository?" beats two, but the new function's docstring must state the
+identity contract rather than inheriting the labelling one.
+
 **Proves:**
 
 - New test `test_the_cache_key_is_unchanged_by_the_extraction` asserting literal
   expected key strings for a fixed set of declarations. This is spec criterion
   11, and it is what stops the extraction orphaning provisioned stores already
   on users' machines. Write it **against the current code first**, confirm it
-  passes, then refactor.
+  passes, then refactor. Include at least the four cases that differ only in
+  spelling and ref, so a digest routed through the normalizer fails loudly:
+
+  ```
+  github.com-proposit-app-proposit-orchestration-73cbcd814e44   https://github.com/Proposit-App/proposit-orchestration.git  @main
+  github.com-proposit-app-proposit-orchestration-bc251d728153   https://github.com/Proposit-App/proposit-orchestration      @main
+  github.com-proposit-app-proposit-orchestration-d5bbabd1bdc8   git@github.com:Proposit-App/proposit-orchestration.git      @main
+  github.com-proposit-app-proposit-orchestration-447264907fc6   https://github.com/Proposit-App/proposit-orchestration.git  @dev
+  ```
+
+  Generated from the current code during planning. The readable half is
+  identical in all four and only the digest separates them, which is exactly the
+  property at risk.
 - New test `test_two_spellings_of_one_repository_normalize_alike` covering
   `https://host/owner/repo`, `https://host/owner/repo.git`,
   `https://host/owner/repo/`, and `git@host:owner/repo.git`.
