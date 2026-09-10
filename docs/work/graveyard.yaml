@@ -4,6 +4,9 @@
 2026-08-26-publish-provisioned-store-writes-to-their-remote:
   resolution: done
   resolved: '2026-09-01'
+2026-09-01-a-broken-work-path-is-hidden-when-a-repository-is-also-declared:
+  resolution: superseded
+  resolved: '2026-09-10'
 2026-09-01-separate-lifecycle-stage-information-from-stage-prompts-in-the-tcw-work-skill-references:
   resolution: done
   resolved: '2026-09-10'
