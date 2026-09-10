@@ -1,11 +1,19 @@
 # Evaluate and refine the plugin skills with an eval harness
 
-> **Count note (refreshed 2026-07-28):** every "five skills" and "eight commands"
-> below is stale. The plugin now ships **7 skills** — the five named plus
-> `tcw-post-mortem` and `documentation-sync` — and **13 commands**. The "Known
-> drift to fold in" section is also resolved: `README.md` now lists all 13
-> commands and all 7 skills. `spec.md` carries the corrected counts and the
-> resulting coverage decision.
+> **Superseded 2026-09-10 — read `spec.md` first.** Everything below records
+> what was asked in July 2026, when the plugin shipped 5 skills and 8 commands.
+> It now ships **9 skills**, **13 commands** and **7 stage prompts**, and the
+> lifecycle instruction layer was restructured under this item: one `tcw work
+> stage` verb became `gate` and `prompt`, resolved prompts are bookended, a
+> ninth skill (`tcw-work-stage`) composes both into a reader's context, and a
+> project binds one of five instruction kinds to a stage.
+>
+> The request below is left as written, because it is the record of what was
+> asked. The scope it asks for has since **grown a primary axis it does not
+> mention**: whether that injection reaches the agent at all, and whether a
+> project's customized prompts change what the agent produces. `spec.md` and
+> `plan.md` were rewritten on 2026-09-10 and are the current statement of the
+> work; the "Known drift to fold in" section below is long resolved.
 
 ## Product changes
 

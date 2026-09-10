@@ -1,9 +1,11 @@
 slug: 2026-07-22-evaluate-and-refine-the-plugin-skills-with-an-eval-harness
-title: Evaluate and refine the plugin skills with an eval harness
-phase: ""
-created: "2026-07-22"
+title: Measure lifecycle prompt injection, and evaluate the plugin skills with an
+  eval harness
+phase: ''
+created: '2026-07-22'
 resolution: null
 tags:
-    - skills
-    - docs
+- skills
+- docs
+- work
 priority: 50
