@@ -45,6 +45,16 @@ any real detail you want there.
   the Environment block (`tcw --version`, OS, install method), which describe the
   install rather than the project.
 
+Written down, the swap is small:
+
+```text
+# yours:    tcw work new --initiative q3-pci-audit "Rotate the payment keys"
+# mirrored: tcw work new --initiative example-epic "Rotate the service keys"
+#
+# yours:    work store root does not exist: ~/acme/payments-api/docs/work
+# mirrored: work store root does not exist: ~/example-project/docs/work
+```
+
 Output works the same way: the output of a generic reproduction is the more
 useful one to receive, and you may paste output from your own system and
 environment instead if you would rather.
@@ -102,6 +112,7 @@ untouched.
 <who it helps and how; what it unlocks or simplifies>
 ```
 
-Keep it concrete: a real command, a real error, a real scenario beats an
-abstract description. When it touches TCW's design, note which axis it concerns
+Keep it concrete in the shape: a real command with its real flags, a real error
+with its real type, the real sequence that produced it — under names that are not
+your project's. When it touches TCW's design, note which axis it concerns
 (taxonomy / capabilities / work) so it lands with the right maintainer context.
