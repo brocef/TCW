@@ -31,8 +31,8 @@ not ready for — which is the whole reason it can be composed into a skill.
 
 It carries its own reminder of that, at the top and bottom of the block: what to
 run to gate the stage, and what to do when its output is written. Follow those.
-This skill does not repeat them, because two copies drift and the copy in the
-CLI's output is the one a Codex reader gets too.
+This skill adds nothing to them beyond the one line below, because two copies
+drift and the copy in the CLI's output is the one a Codex reader gets too.
 
 **`tcw work stage gate $stage $item` is what refuses.** If it refuses, the
 refusal is the answer; do not proceed on the strength of having read the

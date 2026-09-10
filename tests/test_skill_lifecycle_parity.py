@@ -320,13 +320,46 @@ def test_the_composing_skill_reads_a_router_that_exists_for_every_stage():
         assert target.is_file(), f"{stage_id}: {target} does not exist"
 
 
-def test_the_composing_skill_reads_with_prompt_and_names_begin_for_entry():
+def test_the_composing_skill_names_the_gate_in_its_own_prose():
     """The whole hazard of composing a stage out of `prompt`: it resolves the
     instructions without the gate. A skill that stopped naming `gate` would be
-    a documented route around the legality check and the `pre` bindings."""
+    a documented route around the legality check and the `pre` bindings.
+
+    **Fenced blocks are stripped before the assertion**, and that is the point of
+    this test rather than an implementation detail. It once searched the whole
+    body, which worked while the literal appeared exactly once, in the prose
+    warning. A later change added the same line to the manual-fallback fence —
+    an example of what to run by hand, not a warning — and the guard stopped
+    biting: the entire warning could be deleted with this test still green.
+    Neither change was wrong on its own, which is why nothing caught it.
+    """
     body = STAGE_SKILL.read_text()
     assert "tcw work stage prompt $stage $item" in body
-    assert "tcw work stage gate $stage $item" in body
+    prose = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
+    assert "tcw work stage gate $stage $item" in prose, (
+        "the skill names the gate only inside its manual-fallback fence, so the "
+        "prose warning against routing around the gate can be deleted freely")
+
+
+def test_every_injected_command_survives_its_own_failure():
+    """The second of two ways this skill renders empty, and the one that shipped
+    unguarded.
+
+    A non-zero exit from an injected command aborts the whole invocation: the
+    model is shown nothing at all, not an error, and not the static body either.
+    That is indistinguishable from the skill not existing, which is exactly why
+    it needs a test rather than a reader noticing. `|| true` is what keeps a
+    missing router or any CLI error from blanking the page.
+
+    The sibling test covers the other cause, an undeclared command.
+    """
+    body = STAGE_SKILL.read_text()
+    injected = re.findall(r"^!`(.+)`$", body, flags=re.MULTILINE)
+    assert injected, "the skill no longer injects any command"
+    for cmd in injected:
+        assert cmd.rstrip().endswith("|| true"), (
+            f"injected command renders the whole skill empty if it exits "
+            f"non-zero: {cmd}")
 
 
 def test_the_composing_skill_declares_the_commands_it_injects():
