@@ -31,6 +31,14 @@ category.
   which path it referred to, which matters most when the value is relative and
   resolves somewhere unexpected.
 
+- **`tcw work tags add` works on a node with an external `work.path`.**
+  `_write_tags` staged the node's `tcw-config.yaml` against the *store's* git
+  repository; with the store in another repository `git add` refuses the path
+  outright, so the verb failed on every node using the orchestrator layout. It
+  now stages in the repository that holds the file, and writes without staging
+  when the node is outside git. A fifth instance of the store-root/node-root
+  hazard behind issues #15-#18, and the mirror image of #16.
+
 ## Internal
 
 - `checkouts.normalized_url` compares two repository URLs for identity across a
@@ -48,3 +56,7 @@ category.
 - `tcw provision` needed no change. Its component loop already asks the
   resolution ladder before provisioning, so it reports a registry-resolved store
   as already available and contacts nothing.
+- The `XDG_CACHE_HOME` guard moved from `tests/test_store_provisioning.py` to
+  `tests/conftest.py` as suite-wide and autouse. It covered one file, and a test
+  added elsewhere left four working copies in the developer's real
+  `~/.cache/tcw/stores`.

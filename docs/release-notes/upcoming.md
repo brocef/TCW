@@ -40,3 +40,10 @@ otherwise never learn you were reading the wrong copy.
 
 A folder that simply is not there stays unmentioned. On a machine holding only
 the code that is the normal situation, and saying so every time would be noise.
+
+## Registering a tag works when your board lives elsewhere
+
+If your project keeps its board in another repository, registering a new tag
+failed outright. TCW tried to record it in the wrong place and gave up. It now
+saves the tag where your project's settings actually live, so the command works
+in the layout the guides describe.
