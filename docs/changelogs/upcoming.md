@@ -3,6 +3,44 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category.
 
+## Added
+
+- **A capability record for reporting upstream** — `plugin/report-an-issue-upstream`,
+  which the `tcw-report` skill has answered since it shipped without the ledger
+  ever saying so. Its two siblings in the same namespace (`triage-github-issues`,
+  `run-a-post-mortem`) already carried one.
+
+## Changed
+
+- **`tcw-report` writes the report from a mirrored example instead of the real
+  thing.** A new `## What goes in the report` section states the asymmetry the
+  skill never mentioned — the tracker is public, the project being reported from
+  may not be — and names what to swap (repository, branch and directory names,
+  node ids, work-item slugs, capability paths and wording, absolute paths,
+  taxonomy terms) against what to keep (the command's shape and flags, the
+  config's shape, the error type and message, the triggering sequence, and the
+  Environment block's real values, which describe the install rather than the
+  project). A six-line before/after example carries both lists.
+    - The section also encourages reproduction steps from a clean install and a
+      scratch project, says a report is welcome without them, and suggests handing
+      that reproduction to a subagent or agent team member working in a temporary
+      directory. Harness-neutral by construction: no slash command and no
+      Claude-only tool is named.
+    - The closing paragraph no longer opposes "a real command, a real error, a real
+      scenario" to "an abstract description" — the sentence that invited the leak.
+      Concreteness is now located in the shape: real flags, a real error type, the
+      real sequence, under names that are not the reporter's. The taxonomy /
+      capabilities / work axis hint is unchanged.
+    - The bug skeleton's `Steps to reproduce` and `Actual` placeholders point at the
+      mirrored run, so the skeleton stops contradicting the section above it.
+    - All of it is guidance. The skill's one standing requirement is still that TCW
+      feedback goes to the GitHub tracker rather than the reporter's own `tcw work`
+      store; no sentence refuses a report, gates it on approval, or redacts against
+      the reporter's wish, and `allowed-tools` is unchanged.
+- **`tcw-plugin`'s router bullet for `tcw-report`** gains one clause naming the
+  mirrored default, so an agent deciding where to route a "can I paste this?"
+  question lands on the skill that answers it.
+
 ## Internal
 
 - **The two atomic-write failure tests induce their failure at a seam instead of
