@@ -14,15 +14,17 @@ branched from `main` at `2acacac`. Every plan task shipped; nothing was deferred
 | 5 | `70b2d93` | `_configured_path_problem` in `tcw/validate.py`, run per component independently of resolution. |
 | 6 | `58b6c24` | `capabilities.yaml` sidecar and the three amended capability bodies. |
 | 7 | `222abe3` | Release notes, changelog, the work skill's command reference, and the multi-repo guide. |
+| — | `a6f9074` | Not a plan task. The cache-directory guard moved from one test file to `conftest.py`, after verification caught my own test writing to the real cache. |
 
 ## Test result
 
 ```
-2525 passed in 656.51s (0:10:56)
+2525 passed in 587.55s (0:09:47)
 ```
 
-Full suite, run after Task 7 and before this document. Twenty tests were added
-by this change. At each task boundary the targeted set — store provisioning,
+Full suite, run after the conftest fix below and confirmed to leave the real
+cache directory empty. An earlier full run on the same tree, before that fix,
+was also green at 2525 passed. Twenty tests were added by this change. At each task boundary the targeted set — store provisioning,
 store publication, project registry, project overrides, validate, validate
 target, multiproject, external work store, store bounds — ran green; the last
 such run was 422 passed.
@@ -82,6 +84,21 @@ in the build: `tcw provision` needed no production change.
 edit to `tcw/cli.py`, confirming the component loop's existing call to the
 resolution ladder carries the new rung.
 
+**4. My own test wrote to the developer's real cache directory.** Found during
+manual verification, not by the suite.
+`test_a_broken_path_is_reported_even_when_the_declaration_answers` calls
+`ensure_available()`, and `tests/test_validate.py` had no cache guard — the
+`XDG_CACHE_HOME` fixture lived locally in `tests/test_store_provisioning.py` and
+covered only that file. Four working copies were left in `~/.cache/tcw/stores`.
+
+Fixed at the root rather than in my test: the fixture moved to
+`tests/conftest.py` as suite-wide and autouse (`a6f9074`), which is the argument
+the guards already beside it make in their own docstrings — the dependency is
+invisible until a test happens to provision something, so no individual file can
+be trusted to remember it. The local copy was removed rather than left as a
+second spelling. The stray directories were deleted and the real cache confirmed
+clean after a full run.
+
 ## A redundancy accepted rather than engineered away
 
 When both faults are present, `tcw validate` prints two lines and the configured
@@ -107,7 +124,16 @@ which costs more than the noise is worth.
   because the helper skipped the git initialization its neighbour does. Verified
   as a fixture fault before being treated as a finding, per this project's
   implementation rules.
+- An unrelated pre-existing defect surfaced during manual verification and is
+  **not** fixed here. `tcw work tags add` stages the node's `tcw-config.yaml`
+  using the *store's* git repository, which fails whenever `work.path` points
+  into a different repository:
+  `git -C <store repo> add -- <node repo>/tcw-config.yaml` → *is outside
+  repository at*. Reproduced with a bare `work.path` and **no declaration at
+  all**, so no part of this change is involved. It is a fifth instance of the
+  "store root and node root vary independently" hazard this project's
+  implementation rules describe. Worth its own item.
 - Suite duration varied widely between runs of the same tree, from about 45
-  minutes to 11. Not investigated — the user stopped that line of inquiry — and
+  minutes to 10. Not investigated — the user stopped that line of inquiry — and
   noted only so the two figures in this item's history are not read as a
   regression caused by this change.
