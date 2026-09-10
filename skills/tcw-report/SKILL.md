@@ -49,6 +49,14 @@ Output works the same way: the output of a generic reproduction is the more
 useful one to receive, and you may paste output from your own system and
 environment instead if you would rather.
 
+Where you can, sketch the steps that reproduce the problem on a **fresh
+environment** — a clean install and a scratch project, starting from nothing.
+Those steps are generic already, and they tell the maintainer the problem is not
+something local to you. A clean-room reproduction is often impractical, and a
+report is welcome without one. It is also worth delegating: a subagent or an
+agent team member can run it in a temporary directory, leaving your own checkout
+untouched.
+
 ## Bug skeleton
 
 ```markdown
