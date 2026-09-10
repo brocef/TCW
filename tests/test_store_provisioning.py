@@ -189,12 +189,6 @@ def _provisioner(tmp_path, node_root: Path, remote: Path, **overrides):
     return FsStoreProvisioner(node_root, "work", declaration)
 
 
-@pytest.fixture(autouse=True)
-def _cache_in_tmp(tmp_path, monkeypatch):
-    """No test may write to the developer's real cache directory."""
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-
-
 def _count_git(monkeypatch):
     """Count git invocations made by the provisioner, letting them run."""
     calls: list[list[str]] = []
