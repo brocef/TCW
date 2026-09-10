@@ -9,8 +9,8 @@ import pytest
 import yaml
 
 from tcw.store.base import (
-    STAGE_IDS, STAGE_NEXT_STEPS, STAGE_STATUSES, WORK_STATUSES, Artifact,
-    WorkStore,
+    LIFECYCLE_STEPS, STAGE_IDS, STAGE_NEXT_STEPS, STAGE_STATUSES, WORK_STATUSES,
+    Artifact, WorkStore,
 )
 from tcw.store.fs import FsWorkStore, init
 from tcw.work.resolve import (
@@ -131,6 +131,30 @@ def test_every_next_step_names_a_command_that_exists():
             assert all(w in STAGE_IDS for w in rest), (
                 f"{stage_id}'s next step names `tcw {cited}`, and {rest} is not "
                 f"a stage id")
+
+
+def test_a_stage_producing_two_artifacts_names_a_branch_for_each():
+    """Derived from `LifecycleStep.produces`, not from a list naming `verify`.
+
+    A stage that can end two ways has a footer that is the last line its reader
+    sees. If it names only one branch, the reader who took the other is told to
+    run a command for a verdict they did not reach. `verify` shipped that way:
+    the footer named `tcw work complete` alone, contradicting the stage's own
+    step 6, and `tcw work complete` does not refuse an item carrying `rework.md`.
+
+    One command per outcome is the floor. It does not check that the commands
+    are the *right* ones — nothing derives that — but a footer that lost a
+    branch fails here.
+    """
+    for step in LIFECYCLE_STEPS:
+        if step.kind != "stage" or len(step.produces) < 2:
+            continue
+        text = STAGE_NEXT_STEPS[step.id]
+        commands = set(re.findall(r"`(tcw work [a-z-]+)", text))
+        assert len(commands) >= len(step.produces), (
+            f"{step.id} produces {len(step.produces)} artifacts "
+            f"({', '.join(step.produces)}) but its next step names "
+            f"{len(commands)} command(s): {sorted(commands) or 'none'}")
 
 
 def test_a_next_step_names_a_transition_only_where_one_is_needed():

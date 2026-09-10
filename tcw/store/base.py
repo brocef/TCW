@@ -1175,7 +1175,13 @@ STAGE_NEXT_STEPS: dict[str, str] = {
     # `review`, and the `verify` instructions own that decision — naming it here
     # would assert a transition this stage does not require.
     "implement": "run `tcw work stage gate verify <slug>`",
-    "verify": "run `tcw work complete <slug> --resolution done --confirm`",
+    # Two branches, because `verify` produces one of two artifacts and the
+    # footer is the last line the reader sees. Naming only acceptance
+    # contradicts the stage's own step 6 and sends a reader who rejected the
+    # work to `tcw work complete`, which does not refuse an item carrying
+    # `rework.md`.
+    "verify": ("on acceptance run `tcw work complete <slug> --resolution "
+               "done --confirm`; on rejection run `tcw work rework <slug>`"),
     "postmortem": "",
 }
 
