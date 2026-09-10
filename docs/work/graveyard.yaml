@@ -109,3 +109,6 @@
 2026-09-09-make-stage-begin-the-gate-alone-and-bookend-the-prompt-with-its-lifecycle-position:
   resolution: done
   resolved: '2026-09-10'
+2026-09-10-give-every-lifecycle-stage-its-own-tcw-work-stage-skill:
+  resolution: done
+  resolved: '2026-09-10'
