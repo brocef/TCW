@@ -13,6 +13,9 @@
 2026-09-02-restore-the-ci-test-suite-to-green:
   resolution: done
   resolved: '2026-09-02'
+2026-09-02-split-tcw-work-stage-into-prompt-and-begin-subcommands:
+  resolution: done
+  resolved: '2026-09-10'
 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
   resolution: done
   resolved: '2026-09-02'
