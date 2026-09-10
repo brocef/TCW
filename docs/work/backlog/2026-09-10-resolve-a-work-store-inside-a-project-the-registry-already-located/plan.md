@@ -8,41 +8,41 @@ The riskiest change is Task 3, the new rung. It is placed after its two
 dependencies exist and are tested on their own, so a failure there is a failure
 in the rung and not in the machinery underneath it.
 
-## Task 1 — extract URL normalization from `_cache_key`
+## Task 1 — add a URL identity function, leaving `_cache_key` alone
 
 **Modifies:** `tcw/store/checkouts.py`, `tests/test_store_provisioning.py`
 
-`_cache_key` (`tcw/store/checkouts.py:32`) already normalizes a repository URL
-for its readable slug: strip a trailing `/`, strip a `.git` suffix, split on `/`
-and `:`, drop any `git@` user part. Lift that into a module-level
-`normalized_url(url: str) -> str` in the same module, returning a canonical
-comparison string, and make `_cache_key` call it.
+Add a module-level `normalized_url(url: str) -> str` to
+`tcw/store/checkouts.py`, returning a canonical string for comparing whether two
+declarations name the same repository: strip surrounding whitespace and a
+trailing `/`, strip a `.git` suffix, drop any `git@` user part, lowercase the
+host. Its docstring states the identity contract, so nobody later mistakes it
+for a display helper.
 
-Nothing else changes in this task. No caller outside the module yet.
+**`_cache_key` is not modified.** Not one line. It contains similar-looking text
+handling, and reusing it was this plan's first draft, but the two hold opposite
+policies: `_cache_key` hashes the **raw** url
+(`tcw/store/checkouts.py:52-53`), so it deliberately gives
+`host/owner/repo` and `host/owner/repo.git` two different cache directories,
+while this item's lookup must treat them as one. Spec Design §3 carries the
+reasoning.
 
-**The one line that must not move.** `_cache_key` uses the normalization for its
-*readable* half only. Its digest hashes `declaration.url` **raw**
-(`tcw/store/checkouts.py:52-53`), which is why two spellings of one repository
-get two cache directories today. Route the digest through `normalized_url` and
-every cache directory on every machine is renamed at once. The digest's input
-stays exactly `f"{declaration.url}\n{declaration.ref or ''}"`.
-
-**And a contract change worth naming.** Today that normalization exists to make
-a label a human can read, and its own docstring calls the readable half "lossy
-by design". `normalized_url` is being promoted to decide *identity* — whether two
-declarations name the same repository. That is a stronger job than the code it
-comes from was written for. The extraction is still right, because one answer to
-"same repository?" beats two, but the new function's docstring must state the
-identity contract rather than inheriting the labelling one.
+The point of leaving it alone is that the worst outcome this change could
+produce becomes unreachable. Routing that digest through a shared normalizer
+would rename every provisioned directory on every machine at once, silently, and
+no test of the new code would notice.
 
 **Proves:**
 
-- New test `test_the_cache_key_is_unchanged_by_the_extraction` asserting literal
-  expected key strings for a fixed set of declarations. This is spec criterion
-  11, and it is what stops the extraction orphaning provisioned stores already
-  on users' machines. Write it **against the current code first**, confirm it
-  passes, then refactor. Include at least the four cases that differ only in
-  spelling and ref, so a digest routed through the normalizer fails loudly:
+- `test_two_spellings_of_one_repository_normalize_alike` covering
+  `https://host/owner/repo`, `https://host/owner/repo.git`,
+  `https://host/owner/repo/`, and `git@host:owner/repo.git`.
+- `test_two_different_repositories_do_not_normalize_alike` for
+  `host/owner/repo` against `host/other/repo`.
+- `test_the_cache_key_is_unchanged` asserting literal expected key strings.
+  Spec criterion 11. Kept even though the function is untouched, because it is
+  the only thing that would catch a later change reopening the route. Generated
+  from the current code during planning:
 
   ```
   github.com-proposit-app-proposit-orchestration-73cbcd814e44   https://github.com/Proposit-App/proposit-orchestration.git  @main
@@ -51,16 +51,10 @@ identity contract rather than inheriting the labelling one.
   github.com-proposit-app-proposit-orchestration-447264907fc6   https://github.com/Proposit-App/proposit-orchestration.git  @dev
   ```
 
-  Generated from the current code during planning. The readable half is
-  identical in all four and only the digest separates them, which is exactly the
-  property at risk.
-- New test `test_two_spellings_of_one_repository_normalize_alike` covering
-  `https://host/owner/repo`, `https://host/owner/repo.git`,
-  `https://host/owner/repo/`, and `git@host:owner/repo.git`.
-- New test `test_two_different_repositories_do_not_normalize_alike` for
-  `host/owner/repo` against `host/other/repo`.
+  The readable half is identical in all four and only the digest separates them,
+  which is the property the test exists to hold.
 
-**Green at this boundary:** yes. Pure refactor plus new tests.
+**Green at this boundary:** yes. One new function nothing calls yet, plus tests.
 
 ## Task 2 — teach the registry to answer "which project is this repository?"
 
@@ -269,7 +263,7 @@ Evaluated against `tcw work docs`, all four entries:
 | --- | --- | --- | --- |
 | `README.md` | **[Public-API]** | **No** | No CLI verb, flag, or configuration key is added or changed. A store that used to fail to resolve now resolves; there is nothing new for a user to type, and the README documents surface rather than resolution order. |
 | `docs/release-notes/upcoming.md` | **[Public-API]** | **Yes** | User-visible behaviour changes. Add a plain-language entry: a workspace checked out in a different layout finds its store in the copy already on disk instead of cloning a second one, and a mistyped store path is now reported even when the project also declares where the store comes from. No module names. |
-| `docs/changelogs/upcoming.md` | **[Any-Code-Change]** | **Yes** | Add under **Fixed**: the resolution ladder consults the project registry before the provisioned checkout, so a repository already on disk is not re-cloned and the resolved store does not publish. Add under **Fixed**: a configured `<component>.path` that exists but holds no store is reported alongside an unprovisioned declaration, and counted separately by `tcw validate`. Add under **Internal**: repository-URL normalization extracted from `_cache_key` and shared. |
+| `docs/changelogs/upcoming.md` | **[Any-Code-Change]** | **Yes** | Add under **Fixed**: the resolution ladder consults the project registry before the provisioned checkout, so a repository already on disk is not re-cloned and the resolved store does not publish. Add under **Fixed**: a configured `<component>.path` that exists but holds no store is reported alongside an unprovisioned declaration, and counted separately by `tcw validate`. Add under **Internal**: a repository-URL identity helper for comparing declarations, deliberately separate from the cache-directory naming. |
 | `skills/<component>/SKILL.md` | **[Skill-Driven-Component]** | **No** | No component's CLI surface, model, fields, lifecycle, or guardrails change. The skills teach agents to drive `tcw work`, `tcw taxonomy`, and `tcw capabilities`; none of those verbs behave differently, and no skill states the resolution ladder. Verify by grepping `skills/` for `resolve_store`, `provision`, and `work.path` before concluding this. |
 
 Write both files in one pass over the finished diff, as the stage instructions
@@ -305,13 +299,17 @@ What the suite cannot check, to be run by hand and reported at `implement`:
   that did,
   `2026-09-01-a-broken-work-path-is-hidden-when-a-repository-is-also-declared`,
   was absorbed into this item and discarded as `superseded`.
-- Task ordering is dependency-driven: Task 2 needs Task 1's normalizer, Task 3
+- Task ordering is dependency-driven: Task 2 needs Task 1's `normalized_url`, Task 3
   needs Task 2's lookup, Task 4 edits the same function Task 3 does and is kept
   separate so the rung and the diagnostic can fail independently, and Task 5
   needs Task 4's distinction between an absent and a broken configured path.
 - Every spec criterion is covered: 1-6 by Task 3, 7 by Task 3's last test, 8 and
   10 by Task 5, 9 by Task 4, 11 by Task 1, 12 by the suite at every boundary and
   by Verification item 5.
+- Task 1 was rewritten after this plan was first committed. It had proposed
+  extracting the normalization out of `_cache_key` and sharing it; the two
+  callers hold opposite policies about whether two spellings are one
+  repository, so the shared version was dropped along with the risk it carried.
 - The spec's Design §4 was corrected during this stage. `tcw provision` needs no
   production change, so no task creates one; criterion 7 is a test that proves
   the propagation rather than a task that builds it.

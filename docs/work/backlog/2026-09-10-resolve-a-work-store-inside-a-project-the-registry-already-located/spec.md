@@ -202,18 +202,35 @@ A reachable project's own declaration is reachable today only through the
 method walks those, which is why it is a registry method rather than something
 `resolve_store` assembles from the public API.
 
-### 3. URL comparison reuses what exists
+### 3. URL comparison is its own function, and `_cache_key` is not touched
 
-`_cache_key` (`tcw/store/checkouts.py:32`) already normalizes a repository URL
-for comparison purposes: it strips a trailing slash, strips a `.git` suffix, and
-drops a `git@` user part while splitting on `/` and `:`. That is precisely the
-normalization the report asks for.
+`_cache_key` (`tcw/store/checkouts.py:32`) contains text handling that looks like
+the normalization this item needs: it strips a trailing slash, strips a `.git`
+suffix, and drops a `git@` user part while splitting on `/` and `:`.
 
-The normalization is therefore **extracted from `_cache_key` into a named
-function in the same module and called from both places**, not reimplemented.
-Two spellings of "same repository" in one codebase is the drift this avoids.
-`_cache_key`'s output must not change — it names existing cache directories on
-users' machines, and a changed key orphans them.
+**It is not reused, and `_cache_key` is not modified.** An earlier draft of this
+spec proposed extracting it and calling it from both places, on the reasoning
+that one answer to "same repository?" beats two. That reasoning does not survive
+reading what `_cache_key` does with the result. Its normalized text feeds only
+the readable half of the directory name. The half that decides identity is a
+digest of the **raw** url (`tcw/store/checkouts.py:52-53`), so today
+`host/owner/repo` and `host/owner/repo.git` get two different cache directories.
+
+The two callers therefore hold opposite policies. Cache naming keeps two
+spellings apart; this item's lookup must treat them as one. A helper shared
+between them would be a helper whose meaning depends on who calls it, and the
+place that would surface is an implementer routing the digest through it and
+silently renaming every provisioned directory on every machine.
+
+So: a new `normalized_url(url: str) -> str` in `tcw/store/checkouts.py`, whose
+docstring states the identity contract, used by the new rung alone.
+
+**What is given up.** Two normalizations can drift. That drift is not itself a
+defect, because differing cache directory names for one repository are already
+the shipped behaviour. It becomes one only if some later code assumes a single
+cache directory per identity and deletes what it takes for a duplicate. Nothing
+does that today, and the cost of the alternative is a change that can corrupt
+existing installs in a way no test on the new code would catch.
 
 ### 4. `tcw provision` needs no change
 
@@ -327,9 +344,11 @@ Each is checkable by someone else without asking what was meant.
     directory that does not exist, plus a declaration, `tcw validate` reports
     only the not-provisioned problem and counts one. No line mentions the
     configured path.
-11. **Cache keys are unchanged.** For a fixed set of declarations, `_cache_key`
-    returns the same strings before and after the normalization is extracted.
-    Checked by a test asserting literal expected keys.
+11. **Cache keys are unchanged.** `tcw/store/checkouts.py` shows no modification
+    to `_cache_key` in the diff, and a test asserting literal expected key
+    strings for a fixed set of declarations passes. The test is kept even though
+    the function is untouched, because it is the only thing that would catch a
+    later change routing the digest through `normalized_url`.
 12. **Nothing regresses.** The full `pytest` suite passes.
 
 ## Risks
@@ -344,17 +363,21 @@ Each is checkable by someone else without asking what was meant.
   store, and `fs.py` already imports `FsProjectRegistry` at line 59. Verified by
   reading the imports of both modules.
 - **A false URL match.** Two declarations normalizing to one URL would resolve a
-  store inside the wrong project. The same normalization already decides cache
-  directory sharing (`tcw/store/checkouts.py:32`), so the blast is no wider than
-  a mechanism already shipped, and reusing one function keeps the two from
-  disagreeing.
+  store inside the wrong project. Bounded by what the rung does on a match: it
+  opens a store at that location and falls through when none is there, so a
+  wrong match usually resolves to nothing rather than to the wrong store. The
+  case that would bite is two genuinely different repositories whose URLs
+  normalize alike, which needs a normalization more aggressive than stripping a
+  suffix and a user part.
 - **A registry that raises.** A malformed graph must not turn a working
   fallback into an error. Handled by not calling `require_valid()` and by
   falling through on failure, which is the shape `run_provision` already uses at
   `tcw/cli.py:120-124`.
-- **Extracting from `_cache_key` changes existing cache directory names.** That
-  would orphan every provisioned store on every user's machine. Criterion 11
-  exists solely to catch it.
+- **Renaming existing cache directories.** Orphaning every provisioned store on
+  every user's machine is the worst thing this change could do, and the only
+  route to it was extracting from `_cache_key`. Design §3 closes that route by
+  not touching the function. Criterion 11 stays as a guard against a later
+  change reopening it.
 - **Criterion 8 changes `tcw validate`'s problem count**, which is a number
   other tooling may gate on. It is the point of the change, and the count moves
   only for a node that genuinely has two problems.
@@ -368,7 +391,9 @@ Each is checkable by someone else without asking what was meant.
   commit `db80623`. Section 4 and the `run_provision` row of the sweep were
   corrected at the `plan` stage: the first draft called the component loop a
   sibling defect, and reading `tcw/cli.py:161-172` showed it already consults
-  the ladder. The absorbed item's own quotation of `except ValueError` is
+  the ladder. Design §3 was corrected after planning too: the first draft reused
+  `_cache_key`'s normalization, and the two callers turn out to hold opposite
+  policies about whether two spellings are one repository. The absorbed item's own quotation of `except ValueError` is
   stale — the ladder now catches `StoreLocationUnusable`
   (`tcw/store/base.py:54`) — and the Problem section quotes the current code
   rather than the item's.
