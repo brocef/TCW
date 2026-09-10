@@ -22,7 +22,7 @@ from tcw.store.base import (
     parse_repository_declaration,
 )
 from tcw.cli import main
-from tcw.store import fs
+from tcw.store import checkouts, fs
 from tcw.store.fs import (
     STORE_CLASSES, FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore,
     FsWorkStore, init,
@@ -340,6 +340,61 @@ def test_the_cache_key_separates_refs_and_shares_a_repository(tmp_path):
     roots = {p: fs.checkout_root(code, p.declaration) for p in (one, two, same)}
     assert roots[one] != roots[two], "two refs must not fight over one checkout"
     assert roots[one] == roots[same], "one (url, ref) pair is one working copy"
+
+
+# ── repository identity, kept apart from cache naming ────────────────────────
+
+def test_the_cache_key_is_unchanged():
+    """`_cache_key` names directories that already exist on users' machines.
+
+    Pinned to literal strings rather than to a property, because the failure
+    this guards is a *silent* rename: every provisioned store becomes
+    unreachable and a fresh clone appears beside it, with nothing raised. The
+    four cases differ only in URL spelling and ref, and their readable halves
+    are identical — so only the digest tells them apart, and the digest is
+    exactly what a shared normalizer would change.
+    """
+    expected = {
+        ("https://github.com/Proposit-App/proposit-orchestration.git", "main"):
+            "github.com-proposit-app-proposit-orchestration-73cbcd814e44",
+        ("https://github.com/Proposit-App/proposit-orchestration", "main"):
+            "github.com-proposit-app-proposit-orchestration-bc251d728153",
+        ("git@github.com:Proposit-App/proposit-orchestration.git", "main"):
+            "github.com-proposit-app-proposit-orchestration-d5bbabd1bdc8",
+        ("https://github.com/Proposit-App/proposit-orchestration.git", "dev"):
+            "github.com-proposit-app-proposit-orchestration-447264907fc6",
+    }
+    for (url, ref), key in expected.items():
+        assert checkouts._cache_key(RepositoryDeclaration(url=url, ref=ref)) == key
+
+
+@pytest.mark.parametrize("spelling", [
+    "https://github.com/Proposit-App/proposit-orchestration",
+    "https://github.com/Proposit-App/proposit-orchestration.git",
+    "https://github.com/Proposit-App/proposit-orchestration/",
+    "  https://github.com/Proposit-App/proposit-orchestration.git  ",
+    "git@github.com:Proposit-App/proposit-orchestration.git",
+])
+def test_two_spellings_of_one_repository_normalize_alike(spelling):
+    """The question `_cache_key` deliberately answers the other way.
+
+    A declaration and a connected project routinely spell one repository
+    differently — one config was written for HTTPS, the other for SSH — and the
+    new resolution rung has to see through that.
+    """
+    canonical = checkouts.normalized_url(
+        "https://github.com/Proposit-App/proposit-orchestration")
+    assert checkouts.normalized_url(spelling) == canonical
+
+
+@pytest.mark.parametrize("other", [
+    "https://github.com/Proposit-App/proposit-core",
+    "https://github.com/Someone-Else/proposit-orchestration",
+    "https://gitlab.invalid/Proposit-App/proposit-orchestration",
+])
+def test_two_different_repositories_do_not_normalize_alike(other):
+    assert checkouts.normalized_url(other) != checkouts.normalized_url(
+        "https://github.com/Proposit-App/proposit-orchestration")
 
 
 def test_an_undeclared_component_is_a_no_op(tmp_path):
