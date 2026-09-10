@@ -81,7 +81,24 @@ if ! already_installed; then
     fi
 fi
 
-# 5. An install that landed in a user base outside PATH is installed and
+# 5. The build toolchain. tests/test_shipped_prompts.py builds a wheel with
+#    --no-build-isolation, so whatever setuptools this interpreter has is what
+#    builds it — pyproject.toml's own `requires` is never consulted. `bdist_wheel`
+#    moved into setuptools at 70.1; below that the build fails and the test
+#    reports a packaging defect that is not there. Checked before upgrading, so
+#    an interpreter already at the floor is never written to, which is what makes
+#    a --force run on a developer's own machine safe. A version string that will
+#    not parse raises, which reads as "below the floor" — a redundant upgrade,
+#    never a skipped one.
+floor='import setuptools, sys; sys.exit(0 if tuple(int(p) for p in setuptools.__version__.split(".")[:2]) >= (70, 1) else 1)'
+if ! python3 -c "$floor" >/dev/null 2>&1; then
+    if ! python3 -m pip install --upgrade "setuptools>=70.1" >/dev/null 2>&1 &&
+        ! python3 -m pip install --upgrade "setuptools>=70.1" --break-system-packages >/dev/null 2>&1; then
+        echo "tcw: could not raise setuptools to >=70.1 — tests/test_shipped_prompts.py cannot build its wheel in this session."
+    fi
+fi
+
+# 6. An install that landed in a user base outside PATH is installed and
 #    unusable. $CLAUDE_ENV_FILE is the harness's own channel for fixing that.
 if ! command -v tcw >/dev/null 2>&1 && [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     userbin="$(python3 -m site --user-base 2>/dev/null)/bin"
@@ -90,7 +107,7 @@ if ! command -v tcw >/dev/null 2>&1 && [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     fi
 fi
 
-# 6. The plugin, sourced from this checkout rather than from brocef/TCW, for the
+# 7. The plugin, sourced from this checkout rather than from brocef/TCW, for the
 #    same reason the Python install is editable: a session editing skills/ should
 #    be running those skills. Both commands are idempotent and report the
 #    already-done case as success.

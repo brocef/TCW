@@ -943,41 +943,49 @@ def test_taxonomy_update_validation_no_partial_write(tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_atomic_write_preserves_prior_on_failure(tmp_path):
-    """If the replace step fails, the original file must remain readable."""
+def test_atomic_write_preserves_prior_on_failure(tmp_path, monkeypatch):
+    """If the replace step fails, the original file must remain readable.
+
+    The single-pair shape is the point: the two-pair version below fails on the
+    *second* promote, so a first-promote failure is covered nowhere else. The
+    failure is induced at `Path.replace` rather than by making the parent
+    read-only, which root ignores.
+    """
     d = tmp_path / "subdir"
     d.mkdir()
     p = d / "data.yaml"
     original = "key: value\n"
     p.write_text(original)
 
-    # Simulate failure: make the directory read-only so replace can't happen
-    # On POSIX, we chmod the parent dir.
-    os.chmod(d, stat.S_IRUSR | stat.S_IXUSR)  # remove write
+    def refuse(self, target):
+        raise PermissionError(13, "Permission denied")
 
-    try:
-        with pytest.raises(PermissionError):
-            _atomic_write_all([(p, "key: new_value\n")])
-        # Original content survives
-        assert p.read_text() == original
-    finally:
-        os.chmod(d, stat.S_IRWXU)  # restore for cleanup
+    monkeypatch.setattr(Path, "replace", refuse)
+
+    with pytest.raises(PermissionError):
+        _atomic_write_all([(p, "key: new_value\n")])
+
+    # Original content survives, and the temp it staged is gone.
+    assert p.read_text() == original
+    assert list(d.glob("*.tmp")) == []
 
 
-def test_atomic_write_temp_cleanup_on_failure(tmp_path):
-    """If the write step fails, no temp file is left behind."""
+def test_atomic_write_temp_cleanup_on_failure(tmp_path, monkeypatch):
+    """If the write step fails, no temp file is left behind.
+
+    The failure lands at `Path.write_text`, one statement after `mkstemp`, so a
+    temp exists for the handler to remove. Inducing it earlier — by making the
+    parent unwritable — kills `mkstemp` itself, and the assertion below then
+    holds whether or not the handler unlinks anything: with the unlink deleted,
+    that version of this test still passed.
+    """
     d = tmp_path / "subdir"
     d.mkdir()
     p = d / "data.yaml"
+    _fail_writing(monkeypatch, "data.yaml")
 
-    # Make directory read-only — mkstemp-style write will fail
-    os.chmod(d, stat.S_IRUSR | stat.S_IXUSR)
-
-    try:
-        with pytest.raises(PermissionError):
-            _atomic_write_all([(p, "content\n")])
-    finally:
-        os.chmod(d, stat.S_IRWXU)
+    with pytest.raises(OSError):
+        _atomic_write_all([(p, "content\n")])
 
     # No .tmp file should remain
     tmp_files = list(d.glob("*.tmp"))
