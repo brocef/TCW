@@ -270,11 +270,19 @@ One block, after the code tasks, evaluated over the finished diff.
   separate store calls, which a concurrent transition could tear across two
   locations; they are now one write.
 - **`skills/<component>/SKILL.md` — [Skill-Driven-Component], fires.**
-  `skills/tcw-work/references/commands.md` line 8 gains `[--branch <b>]` in the
-  board row and line 12 gains a note that `start` records the branch. The
-  component's model and CLI surface both changed, which is exactly this
-  trigger's condition. `skills/tcw-work/SKILL.md` itself needs no change: it
-  routes to `commands.md` for the command table and states no field list.
+  Two files under `skills/tcw-work/`:
+    - `references/commands.md` line 8 gains `[--branch <b>]` in the board row,
+      and line 12 gains a note that `start` records the branch.
+    - `references/transitions.md` gains one bullet under its `start` section
+      (line 36 onward, beside the `--worktree` bullet): a plain start records
+      the branch it is run from, and `--worktree` records `work/<slug>`
+      instead. The flag list at line 39 does not change — no flag was added to
+      `start` — so the behaviour is what needs writing down.
+
+  `skills/tcw-work/SKILL.md` needs no change: it routes to `commands.md` for
+  the command table and states no field list. Neither do the five
+  `skills/tcw-work-stage-*/` skills, which compose stage instructions and name
+  no flags.
 
 ---
 
