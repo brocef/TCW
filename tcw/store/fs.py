@@ -3048,13 +3048,27 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
             raw_root, node_root, config_path,
             external=configured is not None, must_exist=must_exist,
             _walk=_walk)
-    except StoreLocationUnusable:
+    except StoreLocationUnusable as unusable:
         # Only this. A store that is *there* and fails to open — a federation
         # error, a malformed `extends` — is a real error, and swallowing it here
         # reported "not provisioned; run `tcw provision`", which then succeeded
         # and left the store exactly as unopenable. `_extended_component_stores`
         # raises for many more reasons than it used to, so the hole widened.
-        pass
+        #
+        # The reason is carried rather than discarded, but **only when the
+        # configured path is actually there**. A path that does not exist,
+        # beside a declaration, is the ordinary case the declaration exists for
+        # — reporting it would make every provisioned node noisy. A path that
+        # exists and holds no store is a second configuration problem, and it
+        # used to vanish behind rule 3's message entirely.
+        #
+        # Presence is tested here rather than read out of the message: `_open_at`
+        # raises the same "is not a directory" for an absent path and for one
+        # that is a file, so the message cannot tell them apart.
+        local_failure = str(unusable) if raw_root.exists() else None
+        prefix = f"{config_path}: "
+        if local_failure and local_failure.startswith(prefix):
+            local_failure = local_failure[len(prefix):]
     local = _registry_checkout_root(node_root, declaration)
     if local is not None:
         try:                                                    # rule 1.5
@@ -3083,7 +3097,8 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
     raise StoreNotProvisioned(                                  # rule 3
         f"{config_path}: the {component} store is declared in "
         f"{declaration.url} but has not been provisioned here; "
-        f"run `tcw provision` to obtain it")
+        f"run `tcw provision` to obtain it"
+        + (f" — and the configured {local_failure}" if local_failure else ""))
 
 
 def declared_repository(
@@ -3428,8 +3443,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         root = raw_root.resolve()
         missing = [name for name in ("inbox", *WORK_STATUSES) if not (root / name).is_dir()]
         if missing:
+            # Names the directory, as the two branches above already do. Without
+            # it the user is told `work.path` is not a work store and never told
+            # which path that is — which matters most exactly when the value is
+            # relative and resolved somewhere they did not expect.
             raise StoreLocationUnusable(
-                f"{config_path}: work.path is not a work store; missing: {', '.join(missing)}")
+                f"{config_path}: work.path is not a work store: {root}; "
+                f"missing: {', '.join(missing)}")
         repository = git_root(root) if external else node_root
         if repository is None and external:
             # `StoreDeclarationError`, and both halves of that choice matter.

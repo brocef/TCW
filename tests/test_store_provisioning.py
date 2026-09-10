@@ -628,6 +628,51 @@ def test_not_provisioned_names_the_remote_and_the_command(tmp_path):
         "a declared store that simply is not here yet is not a misconfiguration"
 
 
+def test_the_not_provisioned_error_names_a_broken_configured_path(tmp_path):
+    """Two configuration problems, and only one used to be reported.
+
+    A `work.path` that exists but holds no store, beside a declaration that has
+    not been provisioned. The declaration is genuinely unprovisioned, so that
+    half of the message is right — what was missing is any word about the path
+    the user actually wrote, which they will keep believing is fine.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    half = tmp_path / "half-a-store"
+    (half / "backlog").mkdir(parents=True)
+    _write_config(code, path=str(half),
+                  repository={"url": "https://example.invalid/orchestrator.git"})
+
+    with pytest.raises(StoreNotProvisioned) as caught:
+        FsWorkStore.open(code)
+
+    message = str(caught.value)
+    assert "https://example.invalid/orchestrator.git" in message
+    assert "tcw provision" in message
+    assert str(half) in message, \
+        "the configured path is the second problem and must be named"
+    assert "inbox" in message, "and why it is unusable, not merely that it is"
+
+
+def test_the_not_provisioned_error_stays_quiet_about_an_absent_path(tmp_path):
+    """The normal case a declaration exists for.
+
+    Stronger than the neighbouring test's assertion about one phrase: nothing
+    about the configured path may appear at all, because on a machine that has
+    only the code repository this is not a problem and saying so would make
+    every provisioned node noisy.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    _write_config(code, path="../nowhere/stores/corelib",
+                  repository={"url": "https://example.invalid/orchestrator.git"})
+
+    with pytest.raises(StoreNotProvisioned) as caught:
+        FsWorkStore.open(code)
+
+    assert "nowhere" not in str(caught.value)
+
+
 def test_without_a_declaration_a_broken_path_still_says_what_it_always_said(tmp_path):
     """The compatibility guarantee: with nothing declared, not one byte moves."""
     code = _repo(tmp_path / "code")
