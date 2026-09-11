@@ -3625,6 +3625,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if blockers:
                 raise ValueError("blocked by: " + ", ".join(blockers) + " (use --force to override)")
         src = self._find(slug)
+        # `.claiming/` is staging: the contents are the state, and its own
+        # existence means nothing. It is created on demand and **never removed**,
+        # so a store an item was ever started in keeps it forever, empty.
+        #
+        # Do not add a cleanup here. Removing it after a successful claim races
+        # the next one: `os.replace` into a destination whose parent has just
+        # been deleted raises `FileNotFoundError`, which the handler below reads
+        # as a lost race and reports as an interrupted claim on an item nobody
+        # touched. The two processes need not even want the same slug, so two
+        # agents starting different items is enough. A claim also leaves by three
+        # different renames, so a cleanup at one of them would not even hold.
+        #
+        # Nothing else minds: readers reach it through `Path.glob`, which yields
+        # nothing for a missing directory rather than raising, so absent and
+        # empty are one state. `init`'s pristine-store check was the one place
+        # that read existence as meaningful, and it now discards the name.
         claiming = self.root / ".claiming"
         claiming.mkdir(exist_ok=True)
         private = claiming / f"{slug}-{uuid.uuid4().hex}"
@@ -3664,23 +3680,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _claiming_dirs(self, slug: str) -> list[Path]:
         """The adapter-private folders of claims for `slug` still mid-flight.
 
-        **`.claiming/` is a staging area whose contents are the state. Its own
-        existence means nothing.** `start` creates it on demand and nothing
-        removes it, so a store an item was ever started in keeps it forever,
-        empty. Every reader here is already blind to the difference, because
-        `Path.glob` on a missing directory yields nothing rather than raising —
-        so "absent" and "empty" are one state, and only the contents are ever
-        consulted.
-
-        Nothing removes it deliberately. Cleaning up after a successful claim
-        would race the next one: `os.replace` into a destination whose parent has
-        just been removed raises `FileNotFoundError`, which `start` reads as a
-        lost race and reports as an interrupted claim on an item nobody touched.
-        The two processes need not even want the same slug.
-
-        The one place that read existence as meaningful was `init`'s
-        pristine-store check, which refused to relocate a default store over an
-        empty staging directory; it now discards the name.
+        The directory's *contents* are the state; its existence means nothing,
+        and it is never removed — see where `start` creates it.
 
         Matched against the uuid suffix, not `-*`: `*` spans `-`, so a claim on
         a longer slug would answer for a shorter one — and slugs are prefixes of
