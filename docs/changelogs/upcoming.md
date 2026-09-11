@@ -49,10 +49,10 @@ category.
 
 - **An empty `.claiming/` made a default work store non-pristine.** `init`
   compares the work root's entries against `{"inbox", *WORK_STATUSES}`, and
-  `start` creates `.claiming/` without ever removing it, so `tcw init
-  --work-path` refused to relocate any store an item had ever been started in.
-  The name is now discarded from that comparison; the per-child check below it
-  is unchanged, so a claim in flight still reads as work and still refuses.
+  `start` creates `.claiming/` without ever removing it. Relocating a store with
+  `--work-path` was therefore refused on any node an item had ever been started
+  in. The name is now discarded from that comparison; the per-child check below
+  it is unchanged, so a claim in flight still reads as work and still refuses.
   `FsWorkStore.start` is untouched — removing the directory after a claim would
   race the next one and report an interrupted claim on an item nobody touched.
 
