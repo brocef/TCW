@@ -383,6 +383,8 @@ The other five bake their stage in and ask only for the work item, which is
 optional: `tcw-work-stage-request`, `tcw-work-stage-spec`,
 `tcw-work-stage-plan`, `tcw-work-stage-implement`, `tcw-work-stage-verify`.
 
+### Review agents and slash commands
+
 Three read-only review agents ship alongside them — `tcw-verifier`,
 `tcw-backlog-auditor`, and `tcw-post-mortem`, which accelerates the skill of the
 same name — plus slash commands for each skill's main procedure
