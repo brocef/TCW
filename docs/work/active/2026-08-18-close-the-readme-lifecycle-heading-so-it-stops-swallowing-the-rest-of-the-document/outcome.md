@@ -1,11 +1,12 @@
 # Outcome — Close the headings that swallow the rest of the document
 
-Twenty-three headings inserted across five documents. No prose edited, moved, or
+Twenty-four headings inserted across five documents. No prose edited, moved, or
 removed anywhere.
 
-The count grew from thirteen during implementation and review. Ten of the
-twenty-three were found after the spec was first committed, and the story of how
-is the most useful thing in this document — see *What the plan and spec got
+The count grew from thirteen during implementation and three rounds of review,
+and one heading added in review was reverted in the same review. Eleven of the
+twenty-four were found after the spec was first committed. How that happened is
+the most useful thing in this document — see *What the plan and spec got
 wrong*.
 
 ## What shipped, task by task
@@ -24,6 +25,11 @@ wrong*.
 | — | `48594cf5` | Two heading names corrected after verification |
 | — | `c481410a` | Three more headings; counts brought to twenty-two |
 | — | `0127de94` | One more heading; counts brought to twenty-three |
+| — | `3e32ab20` | `outcome.md` brought to twenty-three after the verifier found it stale |
+| — | `62a4e39f` | The README's longest section recorded as inspected and left alone |
+| — | `90cabfd0` | Round three: one heading reverted, two added, the rule's escape hatch named |
+| — | `2955e052` | The length floor replaced with the test that actually decided |
+| — | `46a83c36` | The borderline back-reference recorded rather than dropped |
 
 Every insertion went in bottom-up within its file, through one script that
 refuses unless the target line starts with an expected prefix, so a shifted line
@@ -33,11 +39,12 @@ number fails loudly rather than putting a heading in the wrong place.
 
 All eight pass. Output is from runs made against `4029d417`.
 
-1. **Twenty-three headings present, each before the span named.**
+1. **Twenty-four headings present, each before the span named.**
    `git diff -U0 3a063f6f -- README.md docs/guide/ | grep -cE '^\+#{2,3} '`
-   returns 23, and each matches a Design-table row. By file: `README.md` 1,
-   `configuration.md` 2, `taxonomy-and-capabilities.md` 1, `work.md` 11,
-   `multi-repo.md` 8.
+   returns 24, and a script reconciling the Design table against the tree
+   reports no row without a heading and no heading without a row. By file:
+   `README.md` 1, `configuration.md` 2, `taxonomy-and-capabilities.md` 2,
+   `work.md` 11, `multi-repo.md` 8.
 2. **No prose removed.**
    `git diff -U0 3a063f6f -- README.md docs/guide/ | grep '^-[^-]' | grep -v '^-$'`
    prints nothing.
@@ -47,8 +54,12 @@ All eight pass. Output is from runs made against `4029d417`.
 4. **`configuration.md:1-93` byte-identical** to `3a063f6f`. `diff` is empty.
 5. **`pnpm prettier --check README.md 'docs/guide/**/*.md'`** — "All matched
    files use Prettier code style!"
-6. **`python -m pytest -q`** — `2594 passed in 814.11s`. The `3a063f6f` baseline
-   was `2594 passed in 957.16s`, run before the spec was committed. Same count.
+6. **`python -m pytest -q`** — `2594 passed in 944.25s`, run at `90cabfd0`. The
+   `3a063f6f` baseline was `2594 passed in 957.16s`, run before the spec was
+   committed. Same count. The two commits after `90cabfd0` touch only
+   `docs/work/`, and the five suites that read any file under `README.md`,
+   `docs/guide/` or `docs/work/` were re-run at `46a83c36`: `295 passed in
+   6.10s`.
 7. **Nothing modified outside the allowed paths.** `git status --short` is empty
    and every commit touches only `README.md`, `docs/guide/`, `docs/work/`, or
    `docs/changelogs/`.
@@ -141,5 +152,15 @@ Four things.
   this item.
 - **The headings' names are the residual risk.** Criteria 2 and 3 prove
   mechanically that no prose moved. Nothing proves
-  `## What the commands print` is a good name for `work.md:325-338`. That needs
-  a person reading the outline against the prose.
+  `## What the commands print` is a good name for its span. That needs a person
+  reading the outline against the prose, which is what three review rounds
+  supplied and what a fourth would have supplied again.
+- **The sweep is deliberately unfinished, and the user set the line.** Rounds
+  two and three each found holes in the previous round's fixes rather than in
+  the original work, so the item stopped at the reviewer's own
+  belongs-to-this-change list rather than run a round four. Thirteen findings
+  went to `docs/work/inbox/2026-09-11-prose-defects-the-heading-sweep-found.md`,
+  including six conjunctive headings this change created, two sections over
+  seventy lines the sweep never examined, and five references whose antecedent a
+  new heading moved into another section. Anyone picking that up should agree a
+  stopping point before starting.
