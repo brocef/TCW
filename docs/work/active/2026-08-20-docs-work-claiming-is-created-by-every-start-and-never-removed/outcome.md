@@ -81,6 +81,17 @@ whose only change is that one directory.
   helper. The directory-lifetime note and the warning against adding a cleanup
   now sit beside the `mkdir` in `start`, which is where someone would try to add
   one. That relocation is the combined review's finding, not either item's.
+- **A race window became newly reachable, on exactly the nodes where it
+  matters.** `init` checks pristineness and then deletes; between the two, a
+  concurrent `start` could put a claim into `.claiming`. Before this change such
+  a node was refused unconditionally, because it already had the directory — so
+  the window opens precisely on nodes where someone starts items, which is every
+  node it could ever matter on. Found by verification, not by me. Accepted:
+  relocating a store is a deliberate single-operator act, and `init --work-path`
+  running concurrently with `work start` on the same node is not a workflow this
+  tool supports. Recorded because the reasoning is what makes it acceptable, and
+  a future reader should be able to disagree with it.
+
 - **One new case became deletable, and its size is known.** A *symlink* named
   `.claiming` pointing at an empty directory previously made a store
   non-pristine and now does not, so the store is replaced. The adversarial

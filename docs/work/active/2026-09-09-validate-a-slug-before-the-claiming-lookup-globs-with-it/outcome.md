@@ -91,10 +91,17 @@ Both of its substantive claims.
   criterion quietly stops testing the thing it was written for, and nothing
   mechanical catches it — the wording still matches something that passes.
 
-- **The plan called Task 3 redundant.** It is, behind the escape. It is kept
-  because the invariant should be local: the path published is now derived from
-  the path found, so a later change to the lookup cannot silently reintroduce a
-  mismatch.
+- **The plan called Task 3 redundant, and the outcome repeated it. Both were
+  wrong.** Verification found the case that makes it load-bearing: a slug
+  containing `/`. A slash is not a glob metacharacter, so `glob.escape` leaves it
+  untouched, and the lookup happily matches a claim nested one level down. The
+  caller-composed destination would then have been `active/a/b`; the derived one
+  is `active/b`. **For a slash-bearing slug the derivation is the only thing
+  bounding where the item is published**, which is precisely the second half of
+  the original request — "a path-shaped value reaching the store API is not
+  bounded the way a `_find` result would be". I implemented that half while
+  describing it as defence in depth, and only the verifier noticed it was doing
+  real work.
 
 ## Notes
 

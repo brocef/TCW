@@ -1300,9 +1300,18 @@ def test_take_over_recovers_a_slug_that_contains_a_star(tmp_path):
 
     st2 = FsWorkStore.open(code)
     assert (st2.root / "active" / weird).is_dir()
-    assert (st2.root / "backlog" / sibling).is_dir(), "the sibling was swept in"
+    assert (st2.root / "backlog" / sibling).is_dir(), "the sibling was moved"
     assert not (st2.root / ".claiming").exists() or \
         list((st2.root / ".claiming").iterdir()) == []
+
+    # The sibling still existing does not prove it was left alone: the publish
+    # commits with a pathspec built from the same paths, and git treats a
+    # pathspec as a glob, so a star slug could sweep a sibling's working-tree
+    # state into the status commit without moving anything.
+    committed = subprocess.run(
+        ["git", "-C", str(code), "show", "--name-only", "--format=", "HEAD"],
+        capture_output=True, text=True, check=True).stdout
+    assert sibling not in committed, "the sibling was swept into the commit"
 
 
 def test_claiming_dirs_answers_empty_without_a_claiming_directory(tmp_path):
