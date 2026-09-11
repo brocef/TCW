@@ -1026,3 +1026,63 @@ def test_a_refused_stage_does_not_roll_back_a_move(tmp_path, monkeypatch, capsys
         assert main(["work", "start", slug]) == 1
     assert "Traceback" not in capsys.readouterr().err
     assert (root / "docs" / "work" / "active" / slug).is_dir()
+
+
+# ── the leftover `.claiming/` and the pristine check ──────────────────────────
+# (spec: 2026-08-20-docs-work-claiming-is-created-by-every-start-and-never-removed)
+
+def _default_store(tmp_path: Path) -> tuple[Path, Path]:
+    """A code repo with a scaffolded default store, and a separate store repo."""
+    code = git_init(tmp_path / "code")
+    init(["work"], code, "demo")
+    return code, git_init(tmp_path / "store")
+
+
+def test_init_relocates_a_store_whose_only_extra_entry_is_claiming(tmp_path):
+    """`start` creates `docs/work/.claiming/` and nothing removes it, so any node
+    that has ever started an item has it forever, empty. It says nothing about
+    whether the store holds work, and it must not block relocating one."""
+    code, store = _default_store(tmp_path)
+    (code / "docs" / "work" / ".claiming").mkdir()
+    init(["work"], code, "demo", work_path=store / "work")
+    assert (store / "work" / "backlog").is_dir()
+
+
+def test_init_still_relocates_a_store_without_claiming(tmp_path):
+    """The no-regression half, kept beside the case above so a reader sees both."""
+    code, store = _default_store(tmp_path)
+    init(["work"], code, "demo", work_path=store / "work")
+    assert (store / "work" / "backlog").is_dir()
+
+
+def test_init_still_refuses_a_store_holding_a_real_item(tmp_path):
+    """Forgiving `.claiming` must not widen the check that protects real work."""
+    code, store = _default_store(tmp_path)
+    item = code / "docs" / "work" / "backlog" / "existing"
+    item.mkdir(parents=True)
+    (item / "state.yaml").write_text("status: backlog\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="non-pristine"):
+        init(["work"], code, "demo", work_path=store / "work")
+
+
+def test_init_refuses_a_real_item_even_beside_claiming(tmp_path):
+    """The case that separates "forgive a name" from "ignore the directory"."""
+    code, store = _default_store(tmp_path)
+    (code / "docs" / "work" / ".claiming").mkdir()
+    item = code / "docs" / "work" / "backlog" / "existing"
+    item.mkdir(parents=True)
+    (item / "state.yaml").write_text("status: backlog\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="non-pristine"):
+        init(["work"], code, "demo", work_path=store / "work")
+
+
+def test_init_refuses_a_claim_in_flight(tmp_path):
+    """A real item *inside* `.claiming/` is a claim mid-move, which is work.
+    Forgiving the name must not forgive the contents."""
+    code, store = _default_store(tmp_path)
+    claiming = code / "docs" / "work" / ".claiming"
+    private = claiming / f"existing-{'ab' * 16}"
+    private.mkdir(parents=True)
+    (private / "state.yaml").write_text("status: backlog\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="non-pristine"):
+        init(["work"], code, "demo", work_path=store / "work")
