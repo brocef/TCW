@@ -78,7 +78,10 @@ def _tag_list(value: str) -> list[str]:
     """
     tags = [normalize_tag(t) for t in _split(value)]
     if not tags:
-        raise ValueError(f"invalid tag {value!r}: empty after normalization")
+        # Distinct wording from ``normalize_tag``'s own empty-tag message, which
+        # this can otherwise be confused with: that one fires when a *token*
+        # normalizes away, this one when the value holds no token at all.
+        raise ValueError(f"invalid tag {value!r}: names no tag")
     return tags
 
 

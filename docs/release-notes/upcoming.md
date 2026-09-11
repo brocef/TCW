@@ -26,8 +26,15 @@ nobody meant. Registering had no check at all, and `tcw validate` reported the
 result as sound.
 
 If a project already has a tag like `cli-docs` that was created this way, this
-release does not remove it. Check your registered tags with `tcw work tags list`
-and remove any that are two tags joined by a hyphen.
+release does not remove it. Run `tcw work tags list` and look for a tag that is
+**two of your other registered tags joined by a hyphen** — `cli-docs` where `cli`
+and `docs` are both registered. That combination is the signature of the old
+behaviour.
+
+A hyphen on its own means nothing is wrong. `tech-debt` is how this system
+spells a two-word tag, and removing it would leave every item carrying it
+failing `tcw validate`. Only remove a tag whose two halves are themselves tags
+you registered.
 
 Two smaller changes worth knowing about. A command that names no tag at all,
 such as `--tags ""`, is now refused rather than treated as "no tags", so a script

@@ -216,8 +216,10 @@ def test_cli_tag_spellings_compose_in_either_order(tmp_path, monkeypatch, capsys
     a = _new(capsys, "A", "--tag", "cli", "--tags", "docs")
     b = _new(capsys, "B", "--tags", "docs", "--tag", "cli")
     st = FsWorkStore.open(root)
+    # Order is insertion order all the way down, so the spellings do not
+    # reorder anything — b really is docs-then-cli, not sorted.
     assert st.get(a).tags == ["cli", "docs"]
-    assert sorted(st.get(b).tags) == ["cli", "docs"]
+    assert st.get(b).tags == ["docs", "cli"]
 
 
 def test_cli_duplicate_tags_collapse(tmp_path, monkeypatch, capsys):

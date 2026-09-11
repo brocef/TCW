@@ -162,7 +162,12 @@ criterion says otherwise.
 1. `tcw work new "X" --tags cli,docs` succeeds; `tcw work show` lists `cli, docs`.
 2. `tcw work new "X" --tag cli,docs` succeeds with the same two tags. The
    pre-change `unregistered tag 'cli-docs'` no longer occurs.
-3. `--tag cli --tags docs` and `--tags docs --tag cli` both yield `cli, docs`.
+3. `--tag cli --tags docs` yields `cli, docs` and `--tags docs --tag cli` yields
+   `docs, cli`. **Corrected during review**: this criterion first said both yield
+   `cli, docs`. Tag order is insertion order all the way down, so the second
+   ordering stores and prints `docs, cli`. The code was right and the criterion
+   was loose; the test for the second case had quietly used `sorted()` while the
+   first asserted exact order.
 4. `--tags cli,cli` and `--tag cli --tags cli` each yield `cli` once.
 5. `--tags "cli, docs"` (space after the comma) yields `cli, docs`.
 6. `--tags ""` and `--tags ",,"` each exit non-zero, create no item, and echo the
