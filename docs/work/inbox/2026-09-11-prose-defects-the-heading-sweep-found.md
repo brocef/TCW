@@ -68,8 +68,12 @@ since shifted by the heading insertions.
    - `docs/guide/work.md:488` — "Only the legal transitions **above** are
      permitted". "Above" is the state machine at `:10`. This one predates the
      change. The right repair is moving the paragraph to the state machine
-     section; a heading over it was tried during review and reverted as
-     over-cutting, three lines of prose being below the floor.
+     section; a heading over it was tried during review and reverted, because a
+     heading standing in for a move is not a repair.
+   - Borderline, recorded rather than dropped: `docs/guide/multi-repo.md:332`
+     opens "What is checked differs by component", referring to provisioning
+     checks two sections up. The heading supplies the referent, so this reads
+     correctly today and may need nothing.
 
 6. **The deferred half of the sweep.** The heading item stopped deliberately
    rather than run a fourth review round. What it left:
