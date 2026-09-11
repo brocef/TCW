@@ -156,12 +156,19 @@ sweep on the unexamined instinct that its five parts shared a subject.
 **The reverse failure is real, and this rule does not catch it.** A section cut
 so fine that the outline becomes a list of sentences is no more navigable than
 one cut too coarse. Measured across both trees, the shortest sections this
-change leaves are six lines of prose (`multi-repo.md:88` and `work.md:377`) and
-three (`taxonomy-and-capabilities.md:56`). Three lines is below the floor: a
-heading over one sentence costs an outline entry and buys nothing, which is why
-`## Stable slugs, and which transitions are legal` — three lines of prose, added
-during review and reverted in the same review — is not in the table above. Six
-lines is the floor that stands.
+change leaves are three lines of prose
+(`taxonomy-and-capabilities.md:56`) and five (`work.md:538`).
+
+**Length is not the floor either.** Two three-line passages were judged
+differently and the difference is not their size. `## Bootstrapping a taxonomy
+or a capabilities ledger` stays, because it describes both axes and every other
+section in that file describes one — no existing heading could contain it
+correctly, so the outline entry is the only place it can go.
+`## Stable slugs, and which transitions are legal` was added during review and
+reverted in the same review, because its two sentences belong in
+`## The state machine`, which is a home that exists. A short passage earns a
+heading when nothing else could hold it, and does not when the right answer is a
+move this item has ruled out. That is the test; the line count was a symptom.
 
 **A conjunctive heading is not a repair.** The rule above can be satisfied two
 ways: split the span, or widen the heading until it names everything in it. The
