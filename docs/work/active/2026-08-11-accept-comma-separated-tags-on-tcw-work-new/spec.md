@@ -173,8 +173,15 @@ criterion says otherwise.
 9. `tcw work edit <slug> --tags web` adds without disturbing existing tags;
    `--untags cli,docs` removes both; `--tag cli --untag cli` preserves today's
    add-wins outcome.
-10. `tcw work edit <slug> --untags cli,nope` exits non-zero and leaves the item's
-    tags unchanged.
+10. `tcw work edit <slug> --untags cli,nope` removes `cli`, ignores `nope`, and
+    exits zero. **Corrected during implementation**: this criterion first said
+    the command should refuse. It described a behaviour that has never existed —
+    `--untag nope` succeeds as a no-op today, verified — and removal checks no
+    registry at any call site. The asymmetry with `--tag`, which refuses the
+    whole command on an unregistered token, is deliberate rather than an
+    oversight: applying an unregistered tag writes data nobody can act on,
+    removing one cannot. A comma list inherits that rule; tightening it would be
+    a behaviour change nobody asked for.
 11. On a node with four items — one `cli`, one `docs`, one both, one neither —
     `tcw work list --tags cli,docs` lists the first three and not the fourth,
     identically to `--tag cli --tag docs`. Four fixtures, so an AND filter cannot

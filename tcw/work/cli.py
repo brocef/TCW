@@ -65,12 +65,24 @@ def _nonempty(value: str) -> str:
     return value
 
 
-def _tag(value: str) -> str:
-    """argparse ``type=`` for --tag/--untag: normalize to a canonical slug."""
+def _tags(value: str) -> list[str]:
+    """argparse ``type=`` for every option and positional that takes a tag: one
+    value is a comma-separated *list*, normalized to canonical slugs.
+
+    A comma can never occur inside a tag — ``normalize_tag`` admits only
+    ``[a-z0-9-]`` — so reading it as a separator costs nothing and closes the
+    hole where ``--tag cli,docs`` silently became the single tag ``cli-docs``.
+    Blank segments are ignored, matching ``_split``; a value that yields no tag
+    at all is refused, so a typo cannot quietly apply nothing.
+    """
     try:
-        return normalize_tag(value)
+        tags = [normalize_tag(t) for t in _split(value)]
     except ValueError as e:
         raise argparse.ArgumentTypeError(str(e))
+    if not tags:
+        raise argparse.ArgumentTypeError(
+            f"invalid tag {value!r}: empty after normalization")
+    return tags
 
 
 def _require_node() -> Path | None:
@@ -1880,8 +1892,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pn.add_argument("--blocked-by", action="append",
                     help="a slug or external text that blocks it (repeatable)")
-    pn.add_argument("--tag", action="append", type=_tag,
-                    help="apply a registered tag (repeatable)")
+    pn.add_argument("--tag", "--tags", action="extend", type=_tags,
+                    help="apply a registered tag (repeatable; a value may be a,b,c)")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
     pn.add_argument("--parent", help="create as a child nested under this item's slug")
     pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
@@ -1889,8 +1901,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pl = g.add_parser("list", help="the board (hides completed + discarded unless --status/--all)")
     pl.add_argument("--status", choices=WORK_STATUSES)
-    pl.add_argument("--tag", action="append", type=_tag,
-                    help="only items carrying this tag (repeatable = match any)")
+    pl.add_argument("--tag", "--tags", action="extend", type=_tags,
+                    help="only items carrying this tag (repeatable = match any; a value may be a,b,c)")
     pl.add_argument("--all", action="store_true", help="include completed and discarded items")
     pl.add_argument("-i", "--incl-desc", "--include-descendants",
                     dest="include_descendants", action="store_true",
@@ -2013,8 +2025,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--complexity", type=_work_level,
                     help="set estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
-    pe.add_argument("--tag", action="append", type=_tag, help="apply a registered tag (repeatable)")
-    pe.add_argument("--untag", action="append", type=_tag, help="remove a tag (repeatable)")
+    pe.add_argument("--tag", "--tags", action="extend", type=_tags,
+                    help="apply a registered tag (repeatable; a value may be a,b,c)")
+    pe.add_argument("--untag", "--untags", action="extend", type=_tags,
+                    help="remove a tag (repeatable; a value may be a,b,c)")
     pe.set_defaults(func=_edit)
 
     pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")

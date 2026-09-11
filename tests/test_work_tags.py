@@ -282,11 +282,15 @@ def test_cli_edit_add_still_wins_over_remove(tmp_path, monkeypatch, capsys):
     assert FsWorkStore.open(root).get(slug).tags == ["cli"]
 
 
-def test_cli_edit_untags_refuses_unregistered_and_changes_nothing(tmp_path, monkeypatch, capsys):
+def test_cli_untags_ignores_a_tag_the_item_does_not_carry(tmp_path, monkeypatch, capsys):
+    """Removal does not check the registry, and never has: `--untag nope`
+    succeeds as a no-op today. The asymmetry with `--tag` is deliberate —
+    applying an unregistered tag writes bad data, removing one cannot — so a
+    comma list inherits it rather than tightening it."""
     root = _tagged_node(tmp_path, monkeypatch, "cli", "docs")
     slug = _new(capsys, "E", "--tags", "cli,docs")
-    assert main(["work", "edit", slug, "--untags", "cli,nope"]) != 0
-    assert FsWorkStore.open(root).get(slug).tags == ["cli", "docs"]
+    assert main(["work", "edit", slug, "--untags", "cli,nope"]) == 0
+    assert FsWorkStore.open(root).get(slug).tags == ["docs"]
 
 
 def test_cli_list_filter_splits_on_commas(tmp_path, monkeypatch, capsys):
