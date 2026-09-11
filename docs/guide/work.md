@@ -482,8 +482,6 @@ carries its children along, while transitioning a child on its own promotes it
 to a top-level item. (That keeps any one item small; for work spanning _separate
 repos_, use a cross-node epic instead — see below.)
 
-## Stable slugs, and which transitions are legal
-
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted
 — anything else is refused, not silently allowed.
@@ -557,6 +555,8 @@ target's _configured_ inbox, and they fail loudly rather than inventing a
 target by canonical project ID, the form `tcw work nodes` lists — never by
 filesystem path. A delegated request's `--initiative` survives acceptance, so a
 slice accepted in the child stays linked to the epic that asked for it.
+
+## When an epic and its tasks may change status
 
 Initiative transitions are relation-gated: a task with `initiative: <epic>` is
 refused at `start` until the epic is active, and an epic is refused at

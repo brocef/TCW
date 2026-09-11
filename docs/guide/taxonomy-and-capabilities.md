@@ -100,6 +100,8 @@ refused write changes nothing. So **register a taxonomy Feature before the
 capability that names it**, and a `roles/…` capability before the one that
 lists it.
 
+## Federating and overriding a capability
+
 **Federation.** Capabilities can `extends` another project's — so a web frontend
 and a mobile app that drive the same server declare their shared user stories
 once:

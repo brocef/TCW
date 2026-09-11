@@ -95,7 +95,7 @@ that does not name it, which is the complaint as filed.
 
 ## Design
 
-Insert twenty-three heading lines. Nothing else changes.
+Insert twenty-four heading lines. Nothing else changes.
 
 | File | Insert before | Level and text |
 | --- | --- | --- |
@@ -108,9 +108,9 @@ Insert twenty-three heading lines. Nothing else changes.
 | `docs/guide/work.md` | `:379` | `## Splitting a plan into stage documents` |
 | `docs/guide/work.md` | `:388` | `## The board and the JSON projection` |
 | `docs/guide/work.md` | `:411` | `## Descendants and addressing work across projects` |
-| `docs/guide/work.md` | `:472` | `## Stable slugs, and which transitions are legal` |
 | `docs/guide/work.md` | `:523` | `## Claiming an item, and recovering an interrupted claim` |
 | `docs/guide/work.md` | `:529` | `## Rolling up an epic, and delegating across nodes` |
+| `docs/guide/work.md` | `:543` | `## When an epic and its tasks may change status` |
 | `docs/guide/work.md` | `:552` | `## Running an item in an isolated checkout` |
 | `docs/guide/multi-repo.md` | `:55` | `## Overriding a project's path on this machine` |
 | `docs/guide/multi-repo.md` | `:86` | `## How a locator and the parent/child lists are read` |
@@ -122,6 +122,7 @@ Insert twenty-three heading lines. Nothing else changes.
 | `docs/guide/multi-repo.md` | `:316` | `## What is checked when a declared store is obtained` |
 | `docs/guide/multi-repo.md` | `:325` | `## Which repository owns what` |
 | `docs/guide/taxonomy-and-capabilities.md` | `:56` | `## Bootstrapping a taxonomy or a capabilities ledger` |
+| `docs/guide/taxonomy-and-capabilities.md` | `:101` | `## Federating and overriding a capability` |
 
 Line numbers are against `3a063f6f` and shift as earlier insertions land, so
 implementation works from the bottom of each file upwards.
@@ -152,11 +153,24 @@ sweep on the unexamined instinct that its five parts shared a subject.
 > subject does not exempt it: examples, qualifications, and procedural detail may
 > stay together when they develop the same question.
 
-The reverse failure is real and this rule does not catch it: a section cut so
-fine that the outline becomes a list of sentences is no more navigable than one
-cut too coarse. The shortest sections here are nine lines
-(`multi-repo.md:88`) and nine lines (`work.md:377`), each answering one
-question a neighbouring heading does not pose. That is the floor, not a target.
+**The reverse failure is real, and this rule does not catch it.** A section cut
+so fine that the outline becomes a list of sentences is no more navigable than
+one cut too coarse. Measured across both trees, the shortest sections this
+change leaves are six lines of prose (`multi-repo.md:88` and `work.md:377`) and
+three (`taxonomy-and-capabilities.md:56`). Three lines is below the floor: a
+heading over one sentence costs an outline entry and buys nothing, which is why
+`## Stable slugs, and which transitions are legal` — three lines of prose, added
+during review and reverted in the same review — is not in the table above. Six
+lines is the floor that stands.
+
+**A conjunctive heading is not a repair.** The rule above can be satisfied two
+ways: split the span, or widen the heading until it names everything in it. The
+second is an escape hatch, and this change used it — six headings name two or
+three questions joined by a comma or "and". It is legitimate only when one
+question is a sub-case of another, as recovering an interrupted claim is a
+sub-case of claiming. Otherwise a heading posing two questions is evidence the
+span is two sections. The six are not re-examined here; they go to the
+follow-up item, which is where the deferred sweep work is collected.
 
 Length is not the test and never was. `## Command reference`
 (`work.md:216-316`, 101 lines) stays one section because it answers one
@@ -176,9 +190,10 @@ follow-up item rather than done.
 
 ### Found but not fixed here
 
-Five defects the sweep turned up that no heading can repair. Four are
-duplicated or misplaced sentences; the fifth is the formatting check itself.
-They go to one follow-up item rather than five:
+Defects the sweep turned up that no heading can repair — duplicated or
+misplaced sentences, a broken anchor, references whose antecedent a new heading
+put in another section, and one red contributor command. They go to one
+follow-up item:
 
 - `docs/guide/configuration.md:223-226`, a four-line tail under
   `## Declaring which documents track which changes`. Its first sentence repeats
@@ -221,6 +236,12 @@ They go to one follow-up item rather than five:
   a rewritten history costs. The archive procedure at `:141-171` is the closest
   call, at thirty lines; it stays because it is procedural detail developing the
   heading's own question rather than a different question.
+- `docs/guide/configuration.md:11-93`, `## Binding your own skills and commands
+  to the lifecycle`, 82 lines. **Exempt because the request protects it**, not
+  because it passes the rule — an earlier item rewrote that span and the request
+  says not to re-touch it. Stated because the section is otherwise
+  indistinguishable from ones that were split, and silence would read as an
+  oversight.
 - `docs/guide/linking-and-validation.md` — swept end to end, nothing found.
 - `README.md:227-309`, `### In a cloud environment`, 83 lines and the longest
   section in the README. Left alone on the same reasoning as
@@ -233,7 +254,7 @@ They go to one follow-up item rather than five:
 
 ## Acceptance criteria
 
-1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all twenty-three headings
+1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all twenty-four headings
    from the Design table, each immediately before the span named there.
 2. No prose is removed. `git diff -U0 3a063f6f -- README.md docs/guide/ | grep '^-[^-]' | grep -v '^-$'`
    prints nothing. This is what pins "without reflowing the content itself".
@@ -265,7 +286,7 @@ They go to one follow-up item rather than five:
   prove no prose moved; they prove nothing about whether
   `## What the commands print` is a good name. That needs a human read, which is
   what the verify stage is for.
-- **Twenty-three insertions into five files, all cited against one commit.** Line
+- **Twenty-four insertions into five files, all cited against one commit.** Line
   numbers shift as they land. Working bottom-up per file avoids it, and criterion
   1 catches it if the ordering slips anyway.
 - **The request's premise is stale and this spec reinterprets it.** The spec

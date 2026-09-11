@@ -5,7 +5,7 @@ category.
 
 ## Changed
 
-- **Documentation headings.** Twenty-three headings inserted across `README.md`,
+- **Documentation headings.** Twenty-four headings inserted across `README.md`,
   `docs/guide/work.md`, `docs/guide/configuration.md`,
   `docs/guide/multi-repo.md`, and `docs/guide/taxonomy-and-capabilities.md`, so
   that every span of prose sits under a heading that names it. No prose was
@@ -16,11 +16,12 @@ category.
   `## Cross-node recursion` in `work.md`, which between them covered command
   output conventions, inbox entry rules, intake promotion, plan stage
   documents, the board, the JSON projection, descendants, graph-wide
-  addressing, claim recovery, slug stability and `--worktree`;
+  addressing, claim recovery, initiative gating and `--worktree`;
   `## Binding your own skills and commands to the lifecycle` in
   `configuration.md`, which covered `tcw work stage gate`, `stage prompt` and
   `scaffold`; `## Connected projects` and
   `## Keeping a provisioned store in step` in `multi-repo.md`, the first of
   which answered six separate questions in 159 lines;
-  `## tcw taxonomy — the nouns` in `taxonomy-and-capabilities.md`; and
+  `## tcw taxonomy — the nouns` and `## tcw capabilities — the user stories` in
+  `taxonomy-and-capabilities.md`; and
   `### Reading a lifecycle stage` in `README.md`.
