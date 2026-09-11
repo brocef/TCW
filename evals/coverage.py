@@ -36,6 +36,11 @@ EXCLUSIONS = {
         "`request` is the one stage whose job is asking the user questions, "
         "which a non-interactive harness cannot do — the skill's own file says "
         "so. There is no axis A request case to cover it.",
+    "autonomous-work":
+        "It drives whole work items unattended through other skills, spawning "
+        "advisor subagents and a `codex exec` call per checkpoint. A case would "
+        "cost a full multi-item run to grade, and would mostly re-measure the "
+        "skills it delegates to.",
 }
 
 # Not exclusions. `tcw-plugin` is covered by B5, so it does not belong in

@@ -351,8 +351,8 @@ Every command group also has `--help`, and a `check` that validates its tree.
 
 ## Skills — the judgment layer
 
-The CLI is the _mechanism_. Fourteen skills in [`skills/`](skills/) supply the
-_judgment_ that drives it — the parts a deterministic tool cannot decide. Eight
+The CLI is the _mechanism_. Fifteen skills in [`skills/`](skills/) supply the
+_judgment_ that drives it — the parts a deterministic tool cannot decide. Nine
 carry a distinct procedure; the other six all compose one lifecycle stage and
 are listed together at the end.
 
@@ -366,6 +366,7 @@ are listed together at the end.
 | [`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)   | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                                     |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                                         |
 | [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md)       | Finds which lifecycle stage could first have caught a problem, once one has surfaced                                                                       |
+| [`autonomous-work`](skills/autonomous-work/SKILL.md)       | Drives work items to completion unattended, consulting two read-only advisors wherever the lifecycle would ask you                                         |
 
 They name `tcw` commands and never reimplement tool logic: mechanism stays in the
 binary, judgment stays in the skills.
