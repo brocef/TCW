@@ -52,6 +52,8 @@ connected-projects:
 A bare locator string stays a locator, so nothing already written changes. The
 ladder is the store's, and `tcw provision` is what walks it.
 
+## Saying where a project is on this machine
+
 **Telling TCW where a project actually is on this machine.** A locator is a fact
 about one machine, written in a file every machine reads — so it cannot describe
 a machine that lays the graph out differently. Set `TCW_PROJECT_<ID>` to say
@@ -83,12 +85,16 @@ names something that is present and wrong. `tcw validate` prints a line naming
 each variable in effect and where it points, so a graph that resolves only
 because of one is never a mystery to the next reader.
 
+## How a locator and the parent/child lists are read
+
 Relative locators resolve from the declaring config; absolute locators are also
 allowed. `children` contains direct children only and `parent` has at most one
 entry. TCW derives deeper descendants and ancestors transitively, never by
 scanning directories to discover a project. `tcw work list --include-descendants`
 groups registered boards by project ID, and any work command accepts
 `<descendant-project-id>/<slug>`.
+
+## When a declared project is not on this machine
 
 **A locator is a fact about one machine, and a project that is not on it drops
 out of the graph rather than failing your commands.** A checkout holding only
@@ -119,6 +125,8 @@ another machine, and in a workspace whose repositories sit differently on
 different disks the second is routine, so it states both facts and draws no
 conclusion.
 
+## A node that keeps no work store
+
 **A node need not keep a work store.** A repository root that only groups the
 packages owning the boards is a registered project like any other, and relations
 pass straight through it: an epic two levels up resolves, its slices below one
@@ -134,6 +142,8 @@ disagrees with the target it names. The one thing that relaxes with it is
 reciprocity — two nodes that name each other at paths belonging to different
 machines are correctly configured, and only a counterpart that is _present_ and
 points somewhere else is a non-reciprocal declaration.
+
+## Relative paths inside a linked git worktree
 
 Inside a **linked git worktree** a relative locator would otherwise be off by the
 worktree's nesting depth, because it was written against the project's position
@@ -151,6 +161,8 @@ inside belongs to the worktree exactly as the default `docs/<component>` does.
 Both re-anchor at the project's own counterpart, so a project nested inside its
 repository keeps its sub-path instead of having it dropped at the repository
 root.
+
+## Component inheritance is opt-in per axis
 
 Connections do not imply component inheritance. Each axis opts in explicitly:
 

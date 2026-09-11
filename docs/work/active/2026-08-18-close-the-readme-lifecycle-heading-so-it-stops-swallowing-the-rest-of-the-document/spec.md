@@ -95,7 +95,7 @@ that does not name it, which is the complaint as filed.
 
 ## Design
 
-Insert thirteen heading lines. Nothing else changes.
+Insert nineteen heading lines. Nothing else changes.
 
 | File | Insert before | Level and text |
 | --- | --- | --- |
@@ -109,6 +109,12 @@ Insert thirteen heading lines. Nothing else changes.
 | `docs/guide/work.md` | `:388` | `## The board and the JSON projection` |
 | `docs/guide/work.md` | `:411` | `## Descendants and addressing work across projects` |
 | `docs/guide/work.md` | `:552` | `## Running an item in an isolated checkout` |
+| `docs/guide/multi-repo.md` | `:55` | `## Saying where a project is on this machine` |
+| `docs/guide/multi-repo.md` | `:86` | `## How a locator and the parent/child lists are read` |
+| `docs/guide/multi-repo.md` | `:93` | `## When a declared project is not on this machine` |
+| `docs/guide/multi-repo.md` | `:122` | `## A node that keeps no work store` |
+| `docs/guide/multi-repo.md` | `:138` | `## Relative paths inside a linked git worktree` |
+| `docs/guide/multi-repo.md` | `:155` | `## Component inheritance is opt-in per axis` |
 | `docs/guide/multi-repo.md` | `:316` | `## What is checked when a store is declared` |
 | `docs/guide/multi-repo.md` | `:325` | `## Which repository owns what` |
 | `docs/guide/taxonomy-and-capabilities.md` | `:56` | `## Bootstrapping a taxonomy or a capabilities ledger` |
@@ -129,6 +135,34 @@ incomplete.
 line** — `work.md:331/332`, `work.md:336/337`, and `configuration.md:161/162`. A
 heading needs a blank line on each side, so those insertions add whitespace.
 That is a whitespace change, not a prose change, and Goal 2 permits it.
+
+### When a long section is a defect and when it is not
+
+Added after implementation began, because the first pass had no stated rule and
+`## Connected projects` (`multi-repo.md:10-168`, 159 lines) was missed by the
+sweep on the unexamined instinct that its five parts shared a subject.
+
+> A heading must accurately describe its entire span. Within that span, a
+> contiguous passage also needs its own outline entry when it answers a distinct
+> reader question the existing heading does not make discoverable. Sharing a
+> subject does not exempt it: examples, qualifications, and procedural detail may
+> stay together when they develop the same question.
+
+Length is not the test and never was. `## Command reference`
+(`work.md:216-316`, 101 lines) stays one section because it answers one
+question. `## Connected projects` answered five — how a connection is declared,
+how to say where the project sits on this machine, what a node with no work
+store does, how relative paths behave inside a linked worktree, and whether
+components inherit — so it is split six ways: the environment override, how a locator and the
+parent/child lists are read, what happens when a declared project is absent, a
+node with no work store, relative paths inside a linked worktree, and
+inheritance. The nine-line section at `:88` is the smallest in either tree and
+is deliberate — it answers "how does a relative locator resolve?", a question
+neither of its neighbours predicts, and it sits where it does because the
+environment-override block separated it from the declaration material it
+belongs with. Moving those nine lines would give a cleaner result and is the
+one place the no-prose-moves rule costs something; it is recorded in the
+follow-up item rather than done.
 
 ### Found but not fixed here
 
@@ -169,7 +203,7 @@ They go to one follow-up item rather than five:
 
 ## Acceptance criteria
 
-1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all thirteen headings
+1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all nineteen headings
    from the Design table, each immediately before the span named there.
 2. No prose is removed. `git diff -U0 3a063f6f -- README.md docs/guide/ | grep '^-[^-]' | grep -v '^-$'`
    prints nothing. This is what pins "without reflowing the content itself".
@@ -201,7 +235,7 @@ They go to one follow-up item rather than five:
   prove no prose moved; they prove nothing about whether
   `## What the commands print` is a good name. That needs a human read, which is
   what the verify stage is for.
-- **Thirteen insertions into five files, all cited against one commit.** Line
+- **Nineteen insertions into five files, all cited against one commit.** Line
   numbers shift as they land. Working bottom-up per file avoids it, and criterion
   1 catches it if the ordering slips anyway.
 - **The request's premise is stale and this spec reinterprets it.** The spec
