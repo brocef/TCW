@@ -322,6 +322,8 @@ zero or more of those tags via `--tag` on `new`/`edit` (and `--untag` to remove)
 Applying an unregistered tag is refused, and `tcw validate` flags any item still
 carrying a tag that was later unregistered. Tags don't affect board ordering.
 
+## What the commands print
+
 After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
 run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
 lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
@@ -334,6 +336,9 @@ relative to the project root — `tcw work start` and `tcw work complete` on
 stdout ("started my-item → docs/work/active/my-item"), `tcw work new` and
 `tcw work inbox accept` on stderr beside their other hints, leaving their stdout
 the bare slug.
+
+## Inbox entries and an item's body
+
 Inbox entries are deliberately permissive. A direct child of `docs/work/inbox/`
 may be any standalone file, or a folder with exactly one `INDEX.md` or
 `INDEX.txt`; other folder files become bounded `attachments/` on acceptance.
@@ -369,12 +374,16 @@ to write. Set `TCW_STDIN_TIMEOUT` (seconds; `0` never waits) when a producer is
 genuinely slow. The same applies to `tcw work delegate`, `tcw work escalate`,
 `tcw taxonomy add`, and `tcw capabilities add`.
 
+## Promoting an intake into a request
+
 Editing an item's body always writes `initial-request.md`, never the intake. On
 an item that has only intake, that edit **promotes** it — the request is created,
 the intake is left byte-for-byte as it arrived, and the tool says a promotion
 happened rather than letting it look like an ordinary save. Raw input that
 quietly changes is not raw input, so `intake.md` is editable only as a named
 artifact.
+
+## Splitting a plan into stage documents
 
 For large implementations, `plan.md` may optionally declare a bounded DAG of
 stage documents in YAML frontmatter. Each declaration has a lowercase kebab-case
@@ -384,6 +393,8 @@ stored as `plan/<id>.md`. This keeps `plan.md` concise so agents can read it
 first, then load only the relevant stage. Dependencies communicate ordering and
 parallelism but do not create stage statuses or block lifecycle transitions.
 Legacy single-file plans remain valid.
+
+## The board and the JSON projection
 
 The **board** (`tcw work list`) prints a `|`-delimited row per item —
 `slug | status | stages | priority | title` (priority is the integer, or `-`
@@ -407,6 +418,8 @@ at a documented JSON type, and an `artifacts` map saying which lifecycle
 documents exist. It is the same document `tcw serve`'s API returns, so a script
 and the web app cannot disagree about what an item is. Errors go to stderr and
 leave stdout empty, so piping into `jq` fails cleanly rather than on a fragment.
+
+## Descendants and addressing work across projects
 
 Pass `-i`, `--incl-desc`, or `--include-descendants` to list every **registered
 descendant work node**. The output is grouped by project ID (`# .` for the
@@ -548,6 +561,8 @@ in `tcw work list` and in its rollup, and it may be completed **directly from
 `backlog`** — a coordinator epic that never had its own spec/plan doesn't need a
 throwaway `start` just to close it (the Definition-of-Done and capability gates
 still apply).
+
+## Running an item in an isolated checkout
 
 Run an item in an isolated checkout with `--worktree`:
 
