@@ -1066,12 +1066,36 @@ _UniqueKeyLoader.add_constructor(
 
 
 def load_yaml(path: Path, unique: bool = False) -> dict:
-    """Load a YAML mapping (empty dict if the file is absent/empty)."""
+    """Load a YAML **mapping**. `{}` when the file is absent or has no content;
+    `yaml.YAMLError` when it holds anything that is not a mapping.
+
+    This used to end in ``return data or {}``, which kept neither half of that
+    promise. A falsy document — ``[]``, ``false``, ``0`` — became a mapping, so a
+    malformed ``tcw-config.yaml`` read as "no configuration" and `init`
+    overwrote it, while the same file holding ``- a`` was refused and left alone.
+    A truthy non-mapping came back unchanged and reached ``.get``, so one corrupt
+    ``state.yaml`` crashed `tcw work list` and took the whole board down.
+
+    **The raised type is `yaml.YAMLError` deliberately, not `ValueError`.** Ten
+    sites already catch it around a load — `_safe_yaml` above all, whose whole
+    job is that "a malformed state file degrades to empty rather than crashing
+    the board". A well-formed non-mapping never raised one, so that promise had
+    never applied to this case; raising the type they already expect keeps it at
+    every one of them without touching any.
+
+    Degrading is not reporting. `tcw validate` is what names a TCW-owned file
+    that is not a mapping — see `tcw/validate.py`.
+    """
     if not path.exists():
         return {}
     text = path.read_text(encoding="utf-8")
     data = yaml.load(text, Loader=_UniqueKeyLoader if unique else yaml.SafeLoader)
-    return data or {}
+    if data is None:                       # absent content: empty file, or `null`
+        return {}
+    if not isinstance(data, dict):
+        raise yaml.YAMLError(
+            f"{path}: expected a mapping, found {type(data).__name__}")
+    return data
 
 
 def dump_yaml(path: Path, data: dict) -> None:
