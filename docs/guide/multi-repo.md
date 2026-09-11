@@ -313,6 +313,8 @@ work:
     publish-transitions: false # default: true, for a provisioned store
 ```
 
+## What is checked when a store is declared
+
 **What is checked differs by component, and it is worth knowing which.** A work
 store is recognizable — it names six status folders — so a repository that has
 no work store at the declared `path` is refused. A taxonomy or capabilities tree
@@ -321,6 +323,8 @@ that a directory is there, and a declared path holding an empty or unrelated
 directory is accepted rather than refused. What holds for all three is that a
 failure publishes nothing: a repository with no directory at the declared path
 is refused before any working copy is put in place.
+
+## Which repository owns what
 
 Everything that reads or writes work follows `work.path`: `delegate` and
 `escalate` land in the target project's configured inbox, `reconcile` writes and
