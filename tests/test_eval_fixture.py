@@ -13,10 +13,12 @@ CLI — so both variants are seeded once per module.
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from evals.seed_fixture import seed
+from tcw.store.base import LIFECYCLE_STEPS
 
 
 def _tcw(root, *args) -> subprocess.CompletedProcess:
@@ -181,6 +183,45 @@ def test_the_silence_opt_out_is_silent_against_a_speaking_control(
     # resolved text is. Asserted by shape rather than by byte count, which moves
     # whenever a builtin prompt is edited.
     assert "tcw work stage gate postmortem" in floor.stdout
+
+
+def test_a_commit_pattern_an_assertion_matches_on_really_appears(control):
+    """`git_order` takes commit-subject patterns, and a pattern that matches
+    nothing fails every run regardless of what the agent did.
+
+    B1 originally looked for the literal word `start`. The transition commit's
+    subject is `tcw work: <slug> → active` and never contains it, so that
+    assertion would have reported a false negative on every run and looked like
+    a skill defect. Pinned here against the shape the CLI actually writes, so a
+    change to the transition commit message fails this rather than silently
+    rotting the assertion.
+    """
+    root, _ = control
+    log = subprocess.run(["git", "-C", str(root), "log", "--oneline"],
+                         capture_output=True, text=True).stdout
+
+    cases = json.loads(
+        (Path(__file__).resolve().parent.parent / "evals/evals.json").read_text())
+    patterns = {a["args"][end]
+                for c in cases["cases"] for a in c["assertions"]
+                if a.get("predicate") == "git_order" for end in ("before", "after")}
+
+    # Two shapes are checkable against a seeded log, and between them they cover
+    # the trap. A pattern that *looks like* a transition commit must match one.
+    # And a pattern that is a bare transition verb must ALSO match one — which it
+    # cannot, because TCW writes `tcw work: <slug> → <status>` and never the verb.
+    # The second half is the whole point: filtering bare verbs out as
+    # "unmatchable" would exclude precisely the mistake this guards against.
+    transitions = {s.id for s in LIFECYCLE_STEPS if s.kind == "transition"}
+    for pattern in patterns:
+        looks_like_a_transition = "→" in pattern or "tcw work:" in pattern
+        is_a_bare_verb = pattern.strip().lower() in transitions
+        if looks_like_a_transition or is_a_bare_verb:
+            assert pattern in log, (
+                f"no commit in a seeded fixture matches {pattern!r}, so the "
+                f"assertion using it fails every run regardless of what the "
+                f"agent did. TCW writes `tcw work: <slug> → <status>`, never "
+                f"the bare verb. Log:\n{log[:400]}")
 
 
 def test_the_manifest_records_what_grading_cannot_guess(customized):

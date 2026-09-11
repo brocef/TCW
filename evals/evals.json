@@ -448,10 +448,10 @@
     {
      "predicate": "git_order",
      "args": {
-      "before": "start",
+      "before": "→ active",
       "after": "src/reports.py"
      },
-     "text": "`tcw work start` preceded the first code commit"
+     "text": "`tcw work start` preceded the first code commit The `before` pattern is the transition commit's actual subject shape, `tcw work: <slug> → active`. The literal word `start` never appears in it, so matching on that would fail every run regardless of what the agent did."
     },
     {
      "predicate": "git_commit_per_artifact",
@@ -673,7 +673,7 @@
      "why": "this needs a per-issue reading of the transcript's prose — whether a proposed reply exists, and is addressed to that issue. The transcript family does substring and command-ordering reads, not per-entity prose attribution."
     }
    ],
-   "note": "The issue set is supplied inline in the prompt rather than seeded, because the fixture node has no GitHub remote and the harness has no network. This measures the triage judgement, not the `gh` plumbing the skill would normally drive — recorded as a narrowing of the spec's scenario."
+   "note": "The issue set is supplied inline in the prompt rather than seeded, because the fixture node has no GitHub remote and the harness has no network. This measures the triage judgement, not the `gh` plumbing the skill would normally drive — recorded as a narrowing of the spec's scenario. Narrowed deliberately: the fixture node has no GitHub remote and the harness has no network, so the skill's `gh` plumbing is unreachable. The four issues are supplied inline in the prompt, two actionable and two not. This measures triage judgement, not the plumbing."
   },
   {
    "id": "B8",
@@ -774,7 +774,7 @@
      "why": "the path list says which files changed, not whether the edit was any good. The 'no others' half of the spec's assertion is mechanical; the 'the right entries' half is only mechanical as far as the filenames."
     }
    ],
-   "note": "Depends on the fixture declaring `work.documentation` entries — README.md and docs/changelogs/upcoming.md — which task 1's seed list does not currently include. The path list above must be reconciled with whatever the seeder actually declares."
+   "note": "The seeder declares exactly README.md and docs/changelogs/upcoming.md, so the path list reconciles. src/reports.py is the source file the case's prompt says was changed."
   }
  ]
 }
