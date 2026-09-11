@@ -28,6 +28,16 @@ category.
 
 ## Added
 
+- **`autonomous-work` skill.** Ships the unattended-run procedure that was
+  previously a personal skill: it drives named work items through
+  `/tcw-drive-work-to-completion` back to back, and at every point the lifecycle
+  would ask the user it consults two read-only advisors instead — a `codex exec`
+  run and an Opus subagent — then decides, recording each consult in the item's
+  `outcome.md`. Hard blockers (credentials, unrecoverable actions, product
+  direction, spend) still stop the run. `evals/coverage.py` excludes it with a
+  reason rather than covering it: grading a case would cost a full multi-item
+  run and would mostly re-measure the skills it delegates to.
+
 - **`--tags` / `--untags`, and comma-separated tag values.** Accepted wherever
   `--tag` / `--untag` are — `work new`, `work list`, `work edit` — and on the
   `work tags add` / `work tags rm` positionals. One converter, `_tag_list`, with

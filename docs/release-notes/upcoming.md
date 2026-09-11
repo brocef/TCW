@@ -34,3 +34,18 @@ such as `--tags ""`, is now refused rather than treated as "no tags", so a scrip
 passing an empty variable needs to leave the option off instead. And the
 abbreviation `--ta` no longer works, because it can no longer tell `--tag` and
 `--tags` apart; write `--tag` in full.
+
+## Running work items unattended
+
+A new skill, `autonomous-work`, takes a list of work items and drives them to
+completion without stopping to ask you anything. It confirms the item list and
+the order once at the start, then runs.
+
+Wherever the normal lifecycle would put a question to you — an open question in
+a spec, a code review, the verification decision — it asks two independent
+advisors instead, weighs their answers, decides, and writes down what it chose
+and why in the item's outcome. It still stops and waits for you on anything it
+should not decide alone: anything needing your credentials, anything it cannot
+undo, a question about what a feature should be, and anything that spends your
+money.
+
