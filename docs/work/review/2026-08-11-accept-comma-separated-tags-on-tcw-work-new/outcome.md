@@ -94,3 +94,61 @@ the exact `--tag` spelling still working, and a node poisoned before the fix.
   `2026-09-10-let-a-node-declare-its-own-work-item-state-fields` says a declared
   field should behave the way a tag does. Whoever picks it up should read this
   spec's non-goals rather than re-deriving the comma rule.
+
+## Autonomous decisions
+
+One line per consult: the question, what each advisor said, the choice, why.
+
+1. **Is the second defect — a comma silently becoming one tag — in this item's
+   scope, or its own?** It changes existing behaviour rather than adding a
+   spelling. Codex: keep it here, it is the same comma-list contract and
+   splitting it would fragment the contract; but stop calling the item additive.
+   Opus: keep it, and it is the reason the item is worth doing at all. Kept it.
+   Both agreed, and the reported papercut is the smaller half.
+
+2. **Should the change generalize to every repeatable option?** The request asks.
+   Codex: no, but the stated reason was wrong — argparse `choices=` is an
+   implementation detail, not a reason a comma is unsafe. Opus: no, and
+   `--blocked-by` taking free prose is the real line. Kept the non-goal, fixed
+   the reason. The test is whether a comma can legitimately sit inside a value,
+   and `--blocked-by "external: waiting on Acme, Inc."` proves it can.
+
+3. **Is dropping `a,,b` to two tags while refusing `""` inconsistent?** I put
+   this up for challenge rather than defend it. Codex: the rule is defensible,
+   the explanation was not — it justified each half with a different precedent.
+   Opus: same, and the cost to scripts passing an empty variable was unstated.
+   Adopted one rule: blank segments are ignored, and every occurrence must yield
+   at least one tag. Cost stated in the release notes.
+
+4. **A custom argparse `Action`, or something simpler?** Codex: `action="extend"`
+   with a list-returning `type=` does everything, and the only reason for the
+   custom action was deduplication that already happens downstream. Opus:
+   independently found the same deduplication point. Verified `extend` myself,
+   then deleted the whole class. One review question removed two pieces of work.
+
+5. **Does `--untags` refuse an unregistered token?** No advisor split; my own
+   acceptance criterion described a behaviour that has never existed. Corrected
+   the criterion rather than the code. Applying an unregistered tag writes data
+   nobody can act on; removing one cannot.
+
+6. **Is the lifecycle condition matcher this item's problem?** Both reviewers
+   found it. Neither said fix it here. Filed it, and asked the reviewer to
+   specify the item's content rather than guessing — which produced the fact
+   that normalizing the include list cannot break a binding that works today,
+   because `normalize_tag` is a fixed point on its own output.
+
+7. **Where does the review stop?** No fourth round was needed: the code
+   reviewer's findings were all either fixed or filed in one pass, and the
+   verifier's remaining two were corrections to my own documents. Unlike the
+   heading item, this did not need the user's decision on a stopping point.
+
+### What I would have asked about if I could
+
+- Whether `tcw work tags rm` should report an absent tag rather than being a
+  silent no-op. The verifier argued it is deliberate and the capability
+  documents it. I agree, but it is a product call about how loud a no-op should
+  be, not a defect.
+- Whether the `--ta` abbreviation was worth preserving. Nothing in the
+  repository uses it and argparse prefix matching is undocumented convenience,
+  so I accepted the loss and stated it. A project that scripts against
+  abbreviations would disagree.
