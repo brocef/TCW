@@ -129,3 +129,47 @@ Both of its substantive claims.
   neither would have.** Both appended to the same docstring without reading the
   other's, leaving 38 lines on a two-line helper. The notes now sit where the
   mistakes would be made.
+
+## Autonomous decisions
+
+1. **Is `_safe_store_id` the fix, as the request says?** Both advisors: no, it
+   rejects traversal and not pattern syntax. I had already run it against `a*b`,
+   `a?b` and `a[0-9]b` and watched all three pass. Rejected the request's own
+   proposed mechanism, and said so in the spec rather than quietly not using it.
+
+2. **Escape, or replace the glob with a scan?** Codex and the Opus advisor both
+   said escape. A scan would have broken the invariant the companion item had
+   just documented, because `iterdir` raises where `glob` returns nothing. Two
+   adjacent items in one run, and the second's obvious design would have undone
+   the first's.
+
+3. **Do the recovery semantics need deciding first, as the request insists?** No.
+   Both advisors traced it to the same place: a claim directory is created once,
+   named for a literal slug, so nothing that matches today stops matching. A
+   stated constraint that dissolved on inspection.
+
+4. **Is the item worth doing, at priority 20?** Both said raise it. I raised it to
+   55 on a severity claim that was wrong, then lowered it to 35 when verification
+   proved the destructive path needs a direct store-API caller. **The advisors
+   were right that 20 was too low and I was wrong about how much too low.**
+
+5. **Fix the absolute-slug crash the sweep found?** No advisor asked. Decided
+   myself to file it: the spec had made that validator an explicit non-goal with
+   a stated reason, and reversing that mid-implementation without re-speccing is
+   how scope drifts.
+
+6. **Where does the review stop?** Three rounds of verification, each finding
+   something real, and I did not need to put a stopping point to the user as the
+   heading item required — every finding was either fixed or filed in one pass,
+   and the last round found only things I had written rather than things I had
+   built.
+
+### What I would have asked about if I could
+
+- Whether the store API is a supported surface. The whole severity question turns
+  on it. If scripts against `FsWorkStore` are expected, 35 is too low; if it is
+  internal, 35 is generous.
+- Whether `--take-over` being unreachable from the CLI should have blocked this
+  item rather than being filed beside it. I filed it because it is pre-existing
+  and orthogonal, but it does mean a user cannot exercise the branch this item
+  spent its time making safe.
