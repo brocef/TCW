@@ -1,0 +1,22 @@
+{
+ "case": "A1",
+ "axis": "A",
+ "arm": "customized",
+ "exit_status": 0,
+ "num_turns": 4,
+ "capped": false,
+ "isolation_problems": [],
+ "fixture": "/Users/brian/Projects/TCW/tests/fixtures/eval_grading/injected/fixture",
+ "nonces": {
+  "file": "a1b2c3d4e5f60718",
+  "blob": "0000111122223333",
+  "generate": "4444555566667777"
+ },
+ "stage_items": {
+  "spec": "item-one",
+  "plan": "item-one"
+ },
+ "items": {
+  "backlog": "item-one"
+ }
+}

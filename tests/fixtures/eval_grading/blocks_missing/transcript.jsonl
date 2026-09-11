@@ -1,0 +1,4 @@
+{"type": "system", "subtype": "init", "plugins": []}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "I'll write the spec."}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Writing spec.md"}]}}
+{"type": "result", "subtype": "success", "num_turns": 4, "duration_ms": 1000, "total_cost_usd": 0.1}
