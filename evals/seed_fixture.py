@@ -36,14 +36,36 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import secrets
 import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 from tcw.store.fs import init
 
 PROJECT_ID = "demo-app"
+
+# Where the customized variant's nonce-bearing assets live inside the node. The
+# `file` binding resolves relative to the node root, and `generate` runs with the
+# node root as its working directory, so both must be in the tree rather than in
+# this repository.
+ASSET_DIR = ".tcw-eval"
+REPO_ASSETS = Path(__file__).parent / "assets"
+
+PLAN_BLOB = """# What this project asks for at `plan`
+
+Write the plan as you normally would. The last line of the task list must read
+exactly:
+
+Plan revision marker: {nonce}
+
+Reproduce that token exactly. A plan without it as its final task-list line is
+not accepted here.
+"""
 
 # Seeded product source. Small on purpose: the fixture exists so a skill has a
 # real file to name, not so anything runs.
@@ -205,6 +227,102 @@ def _item_dir(root: Path, status: str, slug: str) -> Path:
     return root / "docs/work" / status / slug
 
 
+def _customize(dest: Path, stage_items: dict[str, str]) -> dict[str, str]:
+    """Add the axis A lifecycle bindings and their nonces. Returns the nonces.
+
+    Three kinds carry a fingerprint, not four. A `skill` binding resolves to the
+    literal `Invoke the <name> skill.` and never reads the named skill's body
+    (`tcw/work/resolve.py:193`), so a nonce cannot ride it — and a SKILL.md in a
+    throwaway node is not a registered skill under any harness, so the agent
+    could not reach one anyway. The binding is still declared, and its case
+    reads the pointer rather than a nonce.
+    """
+    nonces = {
+        "file": secrets.token_hex(8),
+        "blob": secrets.token_hex(8),
+    }
+    # The `generate` marker is derived at run time from the item the stage is
+    # asked about, so it exists in no committed file. Recomputed here for the
+    # manifest, using the same formula the script uses.
+    run_seed = secrets.token_hex(8)
+    nonces["generate"] = hashlib.sha256(
+        f"{run_seed}:{stage_items['implement']}".encode()).hexdigest()[:16]
+
+    assets = dest / ASSET_DIR
+    assets.mkdir(parents=True, exist_ok=True)
+    (assets / "blast-radius.md").write_text(
+        (REPO_ASSETS / "blast-radius.md").read_text()
+        .replace("__NONCE__", nonces["file"]))
+    (assets / "gen_requirement.py").write_text(
+        (REPO_ASSETS / "gen_requirement.py").read_text()
+        .replace("__SEED__", run_seed))
+
+    # `builtin: true` first in every stage that gets a floor, so the project's
+    # own text composes after TCW's rather than replacing it. `postmortem` is the
+    # exception: a lone `blob: ""` is the silence opt-out, and adding the builtin
+    # back would defeat it.
+    #
+    # Merged into the parsed document rather than appended as text: `tcw work
+    # tags add` has already written a `work:` key, and a second one makes the
+    # whole file fail to parse with `duplicate key: 'work'`.
+    config = dest / "tcw-config.yaml"
+    doc = yaml.safe_load(config.read_text()) or {}
+    doc.setdefault("work", {})["lifecycle"] = {"stages": {
+        "spec": {"prompt": [
+            {"builtin": True},
+            {"file": f"{ASSET_DIR}/blast-radius.md"},
+        ]},
+        "plan": {"prompt": [
+            {"builtin": True},
+            {"blob": PLAN_BLOB.format(nonce=nonces["blob"])},
+        ]},
+        "implement": {"prompt": [
+            {"builtin": True},
+            {"generate": f"{sys.executable} {ASSET_DIR}/gen_requirement.py"},
+        ]},
+        "verify": {"prompt": [
+            {"builtin": True},
+            {"skill": "eval-verify-marker"},
+        ]},
+        "postmortem": {"prompt": [{"blob": ""}]},
+    }}
+    config.write_text(yaml.safe_dump(doc, sort_keys=False, width=100))
+    return nonces
+
+
+def _assert_customized(dest: Path, stage_items: dict[str, str],
+                       nonces: dict[str, str]) -> None:
+    """Post-condition, run before the seeder returns.
+
+    A fixture whose bindings do not resolve measures nothing, and discovering
+    that during grading wastes a whole run.
+    """
+    for kind, stage in (("file", "spec"), ("blob", "plan"),
+                        ("generate", "implement")):
+        text = _run(dest, "work", "stage", "prompt", stage, stage_items[stage])
+        if nonces[kind] not in text:
+            raise AssertionError(
+                f"the {kind!r} nonce did not reach `tcw work stage prompt "
+                f"{stage}`; the binding resolved to:\n{text[:400]}")
+
+    # Not a nonce: the resolver emits a pointer and never reads the skill body.
+    verify = _run(dest, "work", "stage", "prompt", "verify",
+                  stage_items["verify"])
+    if "Invoke the eval-verify-marker skill." not in verify:
+        raise AssertionError(
+            "the 'skill' binding did not resolve to its pointer line")
+
+    # The silence opt-out: zero bytes, no bookend. The control node emits the
+    # bookended builtin floor for the same stage, which is the only form of this
+    # contrast that is not vacuous.
+    silent = _run(dest, "work", "stage", "prompt", "postmortem",
+                  stage_items["postmortem"])
+    if silent != "":
+        raise AssertionError(
+            f"`postmortem` was expected to resolve to nothing, got "
+            f"{len(silent)} bytes")
+
+
 def seed(dest: Path, customized: bool = False) -> dict:
     """Seed the fixture at `dest` and return its manifest.
 
@@ -325,6 +443,13 @@ def render_invoice(account_id: str, line_items: list[dict]) -> str:
         },
         "nonces": {},
     }
+
+    if customized:
+        manifest["nonces"] = _customize(dest, manifest["stage_items"])
+        _git(dest, "add", "-A")
+        _git(dest, "commit", "-q", "-m", "demo-app: bind lifecycle instructions")
+        _assert_customized(dest, manifest["stage_items"], manifest["nonces"])
+
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return manifest
 
