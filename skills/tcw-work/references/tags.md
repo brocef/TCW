@@ -20,6 +20,22 @@ tcw work edit <slug> --tag cli --untag stale
 tcw work list --tag bug --tag cli            # repeatable = match any
 ```
 
+**A comma separates tags, everywhere one is named.** `--tags` and `--untags` are
+accepted wherever `--tag` and `--untag` are, and any value of either spelling may
+be a list — including the positionals of `tags add` and `tags rm`. The spellings
+compose, blank segments are ignored, and a value naming no tag at all is refused.
+
+```sh
+tcw work tags add cli,docs                   # registers two tags, not "cli-docs"
+tcw work new "Login crash" --tags bug,cli
+tcw work edit <slug> --tags web --untags cli,docs
+tcw work list --tags bug,cli                 # match any
+```
+
+A comma is never part of a tag: a tag may contain only letters, digits and
+hyphens, so there is nothing for it to mean inside one. That is why this is safe
+here and **not** on `--blocked-by`, whose value may be free text.
+
 During request intake, inspect the registry and choose every materially
 applicable tag. Register a new one only when it will be useful beyond the item in
 front of you.

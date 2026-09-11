@@ -236,12 +236,12 @@ tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the pare
 tcw work tags add bug tech-debt        # register a project's valid tags (in tcw-config.yaml)
 tcw work tags list                     # print the registered tags
 tcw work tags rm tech-debt             # unregister (warns about items still carrying it)
-tcw work new "Login crash" --tag bug   # apply a registered tag (repeatable; unregistered → error)
+tcw work new "Login crash" --tags bug,cli  # apply registered tags (repeatable or comma-separated)
 
 tcw work list                          # the board: priority first, then topologically ordered
                                        # (hides completed and discarded)
 tcw work list --status active          # filter to one column (backlog|active|review|completed|discarded)
-tcw work list --tag bug                # only items carrying a tag (repeatable = match any)
+tcw work list --tags bug,cli          # only items carrying a tag (repeatable = match any)
 tcw work list --all                    # include completed and discarded items too
 tcw work list --status discarded       # only the items closed without shipping
 tcw work list -i                       # descendant boards; --incl-desc and --include-descendants are aliases
@@ -283,7 +283,7 @@ tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (rep
 tcw work edit "$slug" --title "A better title"   # rename the item (the slug never changes)
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
-tcw work edit "$slug" --tag bug --untag stale    # apply/remove tags (repeatable)
+tcw work edit "$slug" --tag bug --untags stale,old  # apply/remove tags (repeatable or comma-separated)
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
@@ -319,6 +319,9 @@ the epic would strand them.
 **Tags** classify items for filtering. Each project registers its valid tag set
 centrally in `tcw-config.yaml` (`tcw work tags add|rm|list`); an item then carries
 zero or more of those tags via `--tag` on `new`/`edit` (and `--untag` to remove).
+Every place a tag is named accepts a comma-separated list, and `--tags` / `--untags`
+are accepted wherever the singular spellings are — `tcw work tags add cli,docs`
+registers two tags. A comma is always a separator, never part of a tag.
 Applying an unregistered tag is refused, and `tcw validate` flags any item still
 carrying a tag that was later unregistered. Tags don't affect board ordering.
 

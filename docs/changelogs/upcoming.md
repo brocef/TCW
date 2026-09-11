@@ -12,16 +12,47 @@ category.
   edited, moved, or removed — the change is heading lines and the blank lines
   around them, pinned by a diff check that must show no removed line.
 
-  The sections repaired: `## Tags`, `## Automation and piping` and
-  `## Cross-node recursion` in `work.md`, which between them covered command
-  output conventions, inbox entry rules, intake promotion, plan stage
-  documents, the board, the JSON projection, descendants, graph-wide
-  addressing, claim recovery, initiative gating and `--worktree`;
-  `## Binding your own skills and commands to the lifecycle` in
-  `configuration.md`, which covered `tcw work stage gate`, `stage prompt` and
-  `scaffold`; `## Connected projects` and
-  `## Keeping a provisioned store in step` in `multi-repo.md`, the first of
-  which answered six separate questions in 159 lines;
-  `## tcw taxonomy — the nouns` and `## tcw capabilities — the user stories` in
-  `taxonomy-and-capabilities.md`; and
-  `### Reading a lifecycle stage` in `README.md`.
+    The sections repaired: `## Tags`, `## Automation and piping` and
+    `## Cross-node recursion` in `work.md`, which between them covered command
+    output conventions, inbox entry rules, intake promotion, plan stage
+    documents, the board, the JSON projection, descendants, graph-wide
+    addressing, claim recovery, initiative gating and `--worktree`;
+    `## Binding your own skills and commands to the lifecycle` in
+    `configuration.md`, which covered `tcw work stage gate`, `stage prompt` and
+    `scaffold`; `## Connected projects` and
+    `## Keeping a provisioned store in step` in `multi-repo.md`, the first of
+    which answered six separate questions in 159 lines;
+    `## tcw taxonomy — the nouns` and `## tcw capabilities — the user stories` in
+    `taxonomy-and-capabilities.md`; and
+    `### Reading a lifecycle stage` in `README.md`.
+
+## Added
+
+- **`--tags` / `--untags`, and comma-separated tag values.** Accepted wherever
+  `--tag` / `--untag` are — `work new`, `work list`, `work edit` — and on the
+  `work tags add` / `work tags rm` positionals. One converter, `_tag_list`, with
+  a thin argparse wrapper; the options use `action="extend"` so `dest` and every
+  command handler are unchanged. Spellings compose, blank segments are ignored,
+  and a value yielding no tag is refused.
+
+## Fixed
+
+- **A comma in a tag value silently produced a joined tag.** `normalize_tag`
+  collapses every run of `[^a-z0-9]+` to a hyphen, so `cli,docs` became the
+  single tag `cli-docs` everywhere a tag was read. Applying was caught only by
+  the registration check, whose message told the user to register the joined
+  tag; **registering was not caught at all**, and `tcw validate` reported the
+  resulting config sound. A node poisoned this way is not repaired by this
+  change — see the release note.
+
+## Changed
+
+- **`tcw work tags add|rm "a,b"` now means two tags**, where it previously meant
+  the single tag `a-b`. Non-additive, as is `--tag a,b` going from failure to
+  success.
+- **`--ta` and `--unta` no longer resolve.** Python's parser accepts unambiguous
+  long-option prefixes, and adding `--tags` / `--untags` makes those two
+  ambiguous. `--tag` and `--untag` still match exactly; `--t` was already
+  ambiguous with `--title`.
+- **`--tags ""` is an error rather than "no tags".** A script passing a
+  possibly-empty variable must omit the option instead.
