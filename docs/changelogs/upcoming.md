@@ -26,6 +26,16 @@ category.
     `taxonomy-and-capabilities.md`; and
     `### Reading a lifecycle stage` in `README.md`.
 
+- **`tcw work tags add|rm "a,b"` now means two tags**, where it previously meant
+  the single tag `a-b`. Non-additive, as is `--tag a,b` going from failure to
+  success.
+- **`--ta` and `--unta` no longer resolve.** Python's parser accepts unambiguous
+  long-option prefixes, and adding `--tags` / `--untags` makes those two
+  ambiguous. `--tag` and `--untag` still match exactly; `--t` was already
+  ambiguous with `--title`.
+- **`--tags ""` is an error rather than "no tags".** A script passing a
+  possibly-empty variable must omit the option instead.
+
 ## Added
 
 - **`--tags` / `--untags`, and comma-separated tag values.** Accepted wherever
@@ -44,15 +54,3 @@ category.
   tag; **registering was not caught at all**, and `tcw validate` reported the
   resulting config sound. A node poisoned this way is not repaired by this
   change — see the release note.
-
-## Changed
-
-- **`tcw work tags add|rm "a,b"` now means two tags**, where it previously meant
-  the single tag `a-b`. Non-additive, as is `--tag a,b` going from failure to
-  success.
-- **`--ta` and `--unta` no longer resolve.** Python's parser accepts unambiguous
-  long-option prefixes, and adding `--tags` / `--untags` makes those two
-  ambiguous. `--tag` and `--untag` still match exactly; `--t` was already
-  ambiguous with `--title`.
-- **`--tags ""` is an error rather than "no tags".** A script passing a
-  possibly-empty variable must omit the option instead.

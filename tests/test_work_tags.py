@@ -308,6 +308,10 @@ def test_cli_list_filter_splits_on_commas(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert only_cli in out and only_docs in out and both in out
     assert neither not in out
+    # Parity is the criterion's actual words: the comma spelling must mean the
+    # same thing as the repeated flag, not merely filter with OR.
+    assert main(["work", "list", "--tag", "cli", "--tag", "docs"]) == 0
+    assert capsys.readouterr().out == out
 
 
 def test_cli_tags_add_splits_on_commas(tmp_path, monkeypatch, capsys):

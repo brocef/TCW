@@ -19,8 +19,9 @@ All eighteen met, at `402b8782`.
 
 Criteria 1 through 13 are covered by twenty tests in `tests/test_work_tags.py`,
 all green. Criterion 14 is the `--blocked-by` guard. Criterion 15 was read by
-hand: `--tag, --tags TAG` and `--untag, --untags UNTAG` appear in `new`, `list`
-and `edit`, and both `tags` positionals say `a value may be a,b,c`. Criterion 16
+hand: `--tag, --tags TAG` appears in `new`, `list` and `edit`;
+`--untag, --untags UNTAG` appears in `edit`, the only command that has it; and
+both `tags` positionals say `a value may be a,b,c`. Criterion 16
 is `2614 passed in 792.52s`. Criterion 17 is `capabilities OK` plus the revised
 description. Criterion 18 is Task 6, with the README evaluation recorded.
 

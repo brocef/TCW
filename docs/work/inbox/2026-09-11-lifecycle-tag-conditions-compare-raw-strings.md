@@ -53,6 +53,18 @@ This repository has a live binding of this kind at `tcw-config.yaml:60` —
   the config over it would make an unregister-then-fix sequence impossible. A
   warning from `tcw validate` may be the right shape rather than a hard failure.
 
+## A sibling with the same shape
+
+`tcw work list --tags <typo>` exits 0 and prints nothing, which is
+indistinguishable from a correct filter over an empty result. A user cannot tell
+"no items carry this tag" from "that is not a tag". Same silent-failure shape as
+the condition defect above, and the two may want to be one item: both are places
+where naming a tag that does not exist produces silence rather than an answer.
+
+Deliberately **not** filed: `tcw work tags rm <absent>` is also a silent no-op,
+and that one is right. Removing something absent cannot write bad data, and the
+capability documents it as intended.
+
 ## Supporting resources
 
 - `tcw://work/2026-08-11-accept-comma-separated-tags-on-tcw-work-new` — the item
