@@ -3,6 +3,45 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## A broken work item is no longer reported as a healthy one
+
+If a work item's `state.yaml` was damaged — emptied to `[]` by a bad merge, say,
+or half-written by an interrupted script — TCW read it as an item with no
+details rather than as a broken file. `tcw work show` printed a title made up
+from the folder name, and `tcw validate` said the project was fine. Nothing you
+could run would tell you the file was not a state file at all.
+
+`tcw validate` now names it:
+
+```
+docs/work/backlog/2026-09-11-login-crash/state.yaml: expected a mapping, found list
+```
+
+A damaged item of the other kind — one holding a YAML list, like `- a` — used to
+be worse still: it stopped `tcw work list` outright with a Python error, so a
+single bad file made your whole board unreadable. The board now lists the item
+and keeps going, and `tcw validate` is where you find out.
+
+**This means `tcw validate` can now fail on a project that was passing.** That is
+the point rather than a fault: a project carrying a broken file was never really
+passing, you just had no way to see it. If it fails after you upgrade, the file
+it names is the one to repair.
+
+## A damaged `tcw-config.yaml` is no longer overwritten
+
+`tcw init` read a configuration file containing `[]`, `false` or `0` as "no
+configuration yet" and wrote straight over it. If that file held your project's
+real settings and something had truncated it, they were gone without a message.
+It now refuses, leaves the file exactly as it was, and tells you which file it
+could not read.
+
+```
+tcw init: malformed /your/project/tcw-config.yaml: config must be a mapping
+```
+
+More generally, a YAML file TCW cannot make sense of now produces a plain
+message naming the file rather than a page of Python.
+
 ## A comma now separates tags
 
 You can write a list of tags anywhere you could write one:

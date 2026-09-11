@@ -43,9 +43,30 @@ tcw validate docs/capabilities  # one active-project tree only
 ```
 
 For each selected project it reports malformed YAML (including duplicate keys),
-a `tcw://` link that doesn't resolve, and problems surfaced by each component's
-own `check` (taxonomy + capabilities + work). Recursive diagnostics include the
+a file TCW writes as a record that is not a mapping, a `tcw://` link that doesn't
+resolve, and problems surfaced by each component's own `check` (taxonomy +
+capabilities + work). Recursive diagnostics include the
 project ID so matching relative paths remain distinguishable. It exits `0` with
 `validate OK` only when every selected project is clean; otherwise it prints the
 problems and exits `1`. `tcw://` examples inside Markdown code spans are ignored,
 so docs that teach the scheme don't fail themselves.
+
+### A record of the wrong shape
+
+A YAML file TCW writes as a record — `state.yaml`, `meta.yaml`,
+`graveyard.yaml`, and a store's `config.yaml` — has to be a mapping. One that is
+not is reported by name:
+
+```
+docs/work/backlog/2026-09-11-login-crash/state.yaml: expected a mapping, found list
+```
+
+This is the only place such a file is reported. Reading one deliberately
+degrades to empty instead of failing, so that a single damaged item cannot make
+the whole board unlistable — which means the item goes on looking healthy
+everywhere else until `tcw validate` says otherwise.
+
+Any *other* YAML under the scanned trees may be any shape at all. `dod.yaml` is
+a top-level list on purpose, a work item's `capabilities.yaml` is a mapping or a
+list depending on which form wrote it, and an attachment parked beside an item is
+whatever its author wanted. None of them is held to the mapping rule.

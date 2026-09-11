@@ -26,6 +26,45 @@ category.
     `taxonomy-and-capabilities.md`; and
     `### Reading a lifecycle stage` in `README.md`.
 
+- **`load_yaml` returns a mapping or raises.** It ended in `return data or {}`,
+  which kept neither half of its documented contract: a falsy document (`[]`,
+  `false`, `0`) became `{}` and a truthy non-mapping came back unchanged. It now
+  returns `{}` only for an absent, empty or `null` file and raises
+  `yaml.YAMLError` naming the path and the type found for anything else.
+  `yaml.YAMLError` deliberately, not `ValueError` — ten call sites already catch
+  it around a load, `_safe_yaml` above all, so the board's promised tolerance
+  now applies to this case without touching any of them.
+
+- **`tcw validate`'s YAML pass parses directly rather than through
+  `load_yaml`.** It must keep accepting any shape: `docs/work/dod.yaml` is a
+  top-level list on purpose and an attachment may hold anything. Alongside it,
+  a file whose name is one TCW writes as a record — `state.yaml`, `meta.yaml`,
+  `graveyard.yaml`, `config.yaml`, `.config.yaml`, listed as
+  `OWNED_YAML_NAMES` — is reported when it is not a mapping, and skips the
+  component checks the way a syntax error does, since they re-read the same
+  file. A test asserts the set covers every YAML filename the source writes bar
+  three deliberate absences: `dod.yaml`, the node sentinel, and a work item's
+  `capabilities.yaml`, which is a mapping for the Definition-of-Done gate or a
+  list when `reconcile` wrote it.
+
+- **One reader for the node sentinel, `load_config`.** A config a user has
+  broken is a `ValueError` naming the path, which is the channel `tcw`'s top
+  level already renders and the contract two existing tests assert. Six sites go
+  through it: `write_sentinel`, `init` (twice), `resolve_store`, and
+  `FsWorkStore._config`, which did the conversion by hand and now does not.
+  `declared_repository` and `declared_connected_projects` deliberately do not —
+  they exist to answer for a graph that cannot be fully loaded, so an unreadable
+  config declares nothing.
+
+- **`load_yaml` raises `NotAMapping`, a subclass of `yaml.YAMLError`.** Every
+  site that catches the parent still catches it; the subclass only lets
+  `load_config` distinguish "not a mapping" from "not YAML".
+
+- **`tcw` prints a message for a malformed YAML file instead of a traceback.**
+  `main()` catches `yaml.YAMLError`, covering the thirteen sites that read
+  records rather than config — a corrupt `meta.yaml` reached the terminal as a
+  traceback through the component check.
+
 - **`tcw work tags add|rm "a,b"` now means two tags**, where it previously meant
   the single tag `a-b`. Non-additive, as is `--tag a,b` going from failure to
   success.
@@ -56,6 +95,34 @@ category.
   and a value yielding no tag is refused.
 
 ## Fixed
+
+- **A work item's list-form `capabilities.yaml` failed its own completion
+  gate.** `_read_item` read the sidecar through `load_yaml`, so the list form
+  `reconcile` writes raised, was caught, and became the `_tcw_parse_error`
+  sentinel — which `declared_capabilities` turns into a `SidecarError` so the
+  Definition-of-Done gate fails closed. A sound sidecar would have blocked
+  completing its own item. The sidecar is now parsed directly, and both
+  documented shapes survive the read. Introduced in this release and fixed in
+  it; never shipped.
+
+- **A corrupt work item read as healthy, and `tcw validate` agreed.** A
+  `state.yaml` containing `[]` was coerced to `{}`, so `tcw work show` printed a
+  title fabricated from the directory name and `tcw validate` reported the node
+  clean. Nothing anywhere said the file was not a state file. `validate` now
+  names it.
+
+- **One corrupt work item took the whole board down.** A `state.yaml` containing
+  `- a` was returned as a list and reached `.get`, so `tcw work list`,
+  `tcw work show` and `tcw validate` all died with an `AttributeError` —
+  precisely what `_safe_yaml` exists to prevent. It catches `yaml.YAMLError`,
+  and a well-formed non-mapping never raised one, so its promised tolerance had
+  never applied to this case. The board now lists the item.
+
+- **`tcw init` silently overwrote a malformed `tcw-config.yaml`.** A config
+  holding `[]`, `false` or `0` read as "no configuration" and was written over
+  without a word, while the same file holding `- a` was refused and left alone.
+  Every shape is now refused, the file is left byte-identical, and the message
+  names it.
 
 - **`_claiming_dirs` globbed with the caller's slug unescaped.** A slug holding
   `*`, `?` or `[` matched another item's interrupted claim. **Through the store
