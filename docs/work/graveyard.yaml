@@ -1,6 +1,9 @@
 2026-07-22-evaluate-and-refine-the-plugin-skills-with-an-eval-harness:
   resolution: done
   resolved: '2026-09-11'
+2026-08-18-close-the-readme-lifecycle-heading-so-it-stops-swallowing-the-rest-of-the-document:
+  resolution: done
+  resolved: '2026-09-11'
 2026-08-26-declare-a-component-store-s-home-repository-so-a-fresh-checkout-can-provision-it:
   resolution: done
   resolved: '2026-09-01'
