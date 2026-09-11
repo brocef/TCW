@@ -1,7 +1,12 @@
 # Outcome — Close the headings that swallow the rest of the document
 
-Thirteen headings inserted across five documents. No prose edited, moved, or
+Twenty-three headings inserted across five documents. No prose edited, moved, or
 removed anywhere.
+
+The count grew from thirteen during implementation and review. Ten of the
+twenty-three were found after the spec was first committed, and the story of how
+is the most useful thing in this document — see *What the plan and spec got
+wrong*.
 
 ## What shipped, task by task
 
@@ -15,6 +20,10 @@ removed anywhere.
 | 6 | — | Whole-change checks; commits nothing |
 | 7 | `61ad5832` | `docs/work/inbox/2026-09-11-prose-defects-the-heading-sweep-found.md` |
 | 8 | `4029d417` | Changelog entry |
+| — | `9738d6fa` | Six more headings: `multi-repo.md`'s `## Connected projects` split |
+| — | `48594cf5` | Two heading names corrected after verification |
+| — | `c481410a` | Three more headings; counts brought to twenty-two |
+| — | `0127de94` | One more heading; counts brought to twenty-three |
 
 Every insertion went in bottom-up within its file, through one script that
 refuses unless the target line starts with an expected prefix, so a shifted line
@@ -24,11 +33,11 @@ number fails loudly rather than putting a heading in the wrong place.
 
 All eight pass. Output is from runs made against `4029d417`.
 
-1. **Thirteen headings present, each before the span named.** `grep` over
-   `README.md` and `docs/guide/*.md` returns exactly thirteen matches:
-   `configuration.md:94, :165`; `multi-repo.md:316, :327`; `README.md:386`;
-   `taxonomy-and-capabilities.md:56`; `work.md:325, :340, :377, :386, :397,
-   :422, :565`.
+1. **Twenty-three headings present, each before the span named.**
+   `git diff -U0 3a063f6f -- README.md docs/guide/ | grep -cE '^\+#{2,3} '`
+   returns 23, and each matches a Design-table row. By file: `README.md` 1,
+   `configuration.md` 2, `taxonomy-and-capabilities.md` 1, `work.md` 11,
+   `multi-repo.md` 8.
 2. **No prose removed.**
    `git diff -U0 3a063f6f -- README.md docs/guide/ | grep '^-[^-]' | grep -v '^-$'`
    prints nothing.
@@ -58,6 +67,30 @@ Four things.
   already blank, so only insertion 6 added one. The observation about `:331/:332`
   was correct and irrelevant: no heading was inserted there.
 
+- **The sweep was wrong, and stayed wrong through three passes.** The spec
+  shipped with thirteen headings and a claim that the sweep covered `README.md`
+  and all of `docs/guide/`. It did not. `multi-repo.md`'s `## Connected
+  projects` — 159 lines, the largest section in either tree, answering six
+  separate reader questions — was missed by me and by both advisors, all three
+  of us on the same unexamined instinct that its parts shared a subject and were
+  therefore fine. I found it only by printing every section with its line count
+  and reading the outline as a reader would, which is the check that should have
+  come first rather than last.
+
+  **The root cause was that the spec had no stated rule.** Without one, "does
+  this heading swallow something?" is taste, and taste agreed with itself three
+  times. The rule now in the spec — a heading must describe its entire span, and
+  within it a passage needs its own entry when it answers a question the heading
+  does not pose, with length explicitly not the test — was written after the
+  fact, and immediately paid for itself: the verifier used it to find that the
+  spec was breaking its own rule by excluding a five-line claim-recovery
+  paragraph on length grounds. Three further headings followed from the same
+  reading, and a fourth from an advisor finding I had left unactioned twice.
+
+  Ten of the twenty-three headings exist because of work done after the spec was
+  committed. A spec that states its criterion up front would have found most of
+  them in the first pass.
+
 - **The plan's proof for Task 1 named the wrong baseline count.** It said
   `work.md` would show "nineteen `##` headings where there were twelve" only
   after a correction; the first draft said thirteen, having counted the `#`
@@ -77,6 +110,11 @@ Four things.
   where the spec stage's instruction to run every executable criterion before
   committing caught a criterion that would have been unfalsifiable in the wrong
   direction.
+
+- **`outcome.md` itself carried stale counts through two revisions** and was
+  corrected only when the verifier listed them. It said thirteen headings after
+  the count had reached twenty-two. A document that records what shipped is the
+  one document where a stale number is not a cosmetic problem.
 
 - **The spec's claim that the sweep was repo-wide is narrower than it sounds.**
   It covered `README.md` and `docs/guide/`, which is where the request pointed.
