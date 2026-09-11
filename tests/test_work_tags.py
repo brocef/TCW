@@ -263,7 +263,9 @@ def test_cli_tags_refuses_a_nonblank_invalid_token(tmp_path, monkeypatch, capsys
     root = _tagged_node(tmp_path, monkeypatch, "cli")
     with pytest.raises(SystemExit):
         main(["work", "new", "X", "--tags", "cli,!!!"])
-    assert "invalid tag" in capsys.readouterr().err
+    # Name the token, not just the words: this must be distinguishable from
+    # rejecting the whole value.
+    assert "'!!!'" in capsys.readouterr().err
     assert FsWorkStore.open(root).query() == []
 
 
@@ -348,6 +350,9 @@ def test_cli_tags_add_refuses_a_value_that_yields_nothing(tmp_path, monkeypatch,
     root = node(tmp_path)
     monkeypatch.chdir(root)
     assert main(["work", "tags", "add", value]) != 0
+    # Echo the value as typed, so ',,' is not reported as ''. Without this the
+    # test passes unchanged against the pre-fix code.
+    assert f"invalid tag {value!r}" in capsys.readouterr().err
     assert FsWorkStore.open(root).registered_tags() == []
 
 
@@ -360,3 +365,30 @@ def test_cli_new_blocked_by_keeps_a_comma_in_free_text(tmp_path, monkeypatch, ca
     blockers = FsWorkStore.open(root).get(slug).blocked_by
     assert len(blockers) == 1, "the comma must not have split this into two"
     assert "Acme, Inc." in str(blockers[0])
+
+
+def test_cli_tags_add_is_all_or_nothing_across_positionals(tmp_path, monkeypatch, capsys):
+    """`_tag_args` is a comprehension, so a bad value raises before
+    `register_tags` is reached. Nothing else makes this true."""
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "add", "cli", ""]) != 0
+    assert FsWorkStore.open(root).registered_tags() == []
+
+
+def test_cli_list_include_descendants_splits_the_tag_filter(tmp_path, monkeypatch, capsys):
+    """`-i` passes the tag list positionally, on a different code path from the
+    plain board."""
+    _tagged_node(tmp_path, monkeypatch, "cli", "docs")
+    tagged = _new(capsys, "Tagged", "--tags", "cli")
+    untagged = _new(capsys, "Untagged")
+    assert main(["work", "list", "-i", "--tags", "cli,docs"]) == 0
+    out = capsys.readouterr().out
+    assert tagged in out and untagged not in out
+
+
+def test_cli_edit_tags_unregistered_token_leaves_the_item_untouched(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli", "docs", "web")
+    slug = _new(capsys, "E", "--tags", "cli")
+    assert main(["work", "edit", slug, "--tags", "web,nope"]) != 0
+    assert FsWorkStore.open(root).get(slug).tags == ["cli"]
