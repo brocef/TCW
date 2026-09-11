@@ -3561,18 +3561,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 raise ValueError(f"no recoverable interrupted claim for {slug}")
             if not owner:
                 raise ValueError("takeover requires an owner")
+            # Publish the claim that was *found*, never the string that was
+            # asked for. `_claiming_dirs` escapes the slug so the two cannot
+            # differ today; deriving it here keeps that local, so a later change
+            # to the lookup cannot quietly reintroduce a mismatch between the
+            # path searched and the path written. The suffix is one hyphen plus
+            # `uuid4().hex`, 32 characters — see where the claim is created.
+            claimed = interrupted[0].name[:-33]
             state_path = interrupted[0] / "state.yaml"
             state = load_yaml(state_path)
             state["owner"], state["started"] = owner, started
             dump_yaml(state_path, state)
-            dst = self.root / "active" / slug
+            dst = self.root / "active" / claimed
             os.replace(interrupted[0], dst)
-            src = self.root / "backlog" / slug
+            src = self.root / "backlog" / claimed
             git_stage(self.store_git_root, src, dst)
             if self.auto_commit_transitions():
-                self._commit_transition(slug, src, dst, "active", None)
-                self._publish_after_transition(slug, "active")
-            return self._require(slug)
+                self._commit_transition(claimed, src, dst, "active", None)
+                self._publish_after_transition(claimed, "active")
+            return self._require(claimed)
         if item is None:
             # Empty has two meanings: no such slug, or a competitor moved the
             # folder mid-read. Answering "no such work item" for the second is a
