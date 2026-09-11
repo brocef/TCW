@@ -53,6 +53,8 @@ distinct. Capabilities federate separately and additionally let a
 consumer **override** an inherited entry per-project (see `tcw capabilities`
 above).
 
+## Bootstrapping a taxonomy or a capabilities ledger
+
 To **bootstrap** a taxonomy or capabilities ledger on a project newly adopting
 TCW, run `/tcw-taxonomy-init` or `/tcw-capabilities-init`: the assistant studies
 your code, proposes a first draft, refines it with you, and writes it.
