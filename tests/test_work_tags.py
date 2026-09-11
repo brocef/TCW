@@ -304,3 +304,57 @@ def test_cli_list_filter_splits_on_commas(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert only_cli in out and only_docs in out and both in out
     assert neither not in out
+
+
+def test_cli_tags_add_splits_on_commas(tmp_path, monkeypatch, capsys):
+    """The corruption path. Before the fix this registered the single tag
+    `cli-docs`, `tcw validate` reported OK, and every later `--tag cli,docs`
+    silently applied it."""
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "add", "cli,docs"]) == 0
+    assert FsWorkStore.open(root).registered_tags() == ["cli", "docs"]
+
+
+def test_cli_tags_add_splits_across_several_positionals(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "add", "cli,docs", "web"]) == 0
+    assert FsWorkStore.open(root).registered_tags() == ["cli", "docs", "web"]
+
+
+def test_cli_tags_rm_splits_on_commas(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    FsWorkStore.open(root).register_tags(["cli", "docs", "web"])
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "rm", "cli,docs"]) == 0
+    assert FsWorkStore.open(root).registered_tags() == ["web"]
+
+
+def test_cli_tags_rm_no_longer_targets_a_joined_tag(tmp_path, monkeypatch, capsys):
+    """A node poisoned before the fix keeps its joined tag. `tags rm cli,docs`
+    now means the two tags, so it does not remove `cli-docs` by accident."""
+    root = node(tmp_path)
+    FsWorkStore.open(root).register_tags(["cli-docs"])
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "rm", "cli,docs"]) == 0
+    assert FsWorkStore.open(root).registered_tags() == ["cli-docs"]
+
+
+@pytest.mark.parametrize("value", ["", ",,"])
+def test_cli_tags_add_refuses_a_value_that_yields_nothing(tmp_path, monkeypatch, capsys, value):
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    assert main(["work", "tags", "add", value]) != 0
+    assert FsWorkStore.open(root).registered_tags() == []
+
+
+def test_cli_new_blocked_by_keeps_a_comma_in_free_text(tmp_path, monkeypatch, capsys):
+    """The non-goal, pinned. `--blocked-by` takes a slug or free prose, so a
+    comma there is a character and not a separator."""
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    slug = _new(capsys, "B", "--blocked-by", "external: waiting on Acme, Inc.")
+    blockers = FsWorkStore.open(root).get(slug).blocked_by
+    assert len(blockers) == 1, "the comma must not have split this into two"
+    assert "Acme, Inc." in str(blockers[0])

@@ -65,24 +65,31 @@ def _nonempty(value: str) -> str:
     return value
 
 
-def _tags(value: str) -> list[str]:
-    """argparse ``type=`` for every option and positional that takes a tag: one
-    value is a comma-separated *list*, normalized to canonical slugs.
+def _tag_list(value: str) -> list[str]:
+    """One tag value is a comma-separated *list*, normalized to canonical slugs.
 
     A comma can never occur inside a tag — ``normalize_tag`` admits only
     ``[a-z0-9-]`` — so reading it as a separator costs nothing and closes the
     hole where ``--tag cli,docs`` silently became the single tag ``cli-docs``.
     Blank segments are ignored, matching ``_split``; a value that yields no tag
     at all is refused, so a typo cannot quietly apply nothing.
+
+    Raises ``ValueError``, which is what the command handlers already catch.
     """
+    tags = [normalize_tag(t) for t in _split(value)]
+    if not tags:
+        raise ValueError(f"invalid tag {value!r}: empty after normalization")
+    return tags
+
+
+def _tags(value: str) -> list[str]:
+    """argparse ``type=`` for every option that takes a tag. Only the exception
+    type differs from ``_tag_list``: argparse reports its own, and a handler
+    catching ``ValueError`` would not see it."""
     try:
-        tags = [normalize_tag(t) for t in _split(value)]
+        return _tag_list(value)
     except ValueError as e:
         raise argparse.ArgumentTypeError(str(e))
-    if not tags:
-        raise argparse.ArgumentTypeError(
-            f"invalid tag {value!r}: empty after normalization")
-    return tags
 
 
 def _require_node() -> Path | None:
@@ -1587,6 +1594,12 @@ def _edit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _tag_args(values: list[str]) -> list[str]:
+    """Flatten ``tags add|rm`` positionals: argparse does not apply a
+    list-returning ``type=`` under ``nargs``, so the split happens here."""
+    return [tag for value in values for tag in _tag_list(value)]
+
+
 def _tags_list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -1601,7 +1614,7 @@ def _tags_add(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     try:
-        result = st.register_tags(args.tag)
+        result = st.register_tags(_tag_args(args.tag))
     except _ERRORS as e:
         print(f"tcw work tags add: {e}", file=sys.stderr)
         return 1
@@ -1631,7 +1644,7 @@ def _tags_rm(args: argparse.Namespace) -> int:
     if st is None:
         return 1
     try:
-        result = st.unregister_tags(args.tag)
+        result = st.unregister_tags(_tag_args(args.tag))
     except _ERRORS as e:
         print(f"tcw work tags rm: {e}", file=sys.stderr)
         return 1
@@ -1864,10 +1877,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptgs = ptg.add_subparsers(dest="tags_cmd", required=True)
     ptgs.add_parser("list", help="print the registered tags").set_defaults(func=_tags_list)
     ptga = ptgs.add_parser("add", help="register one or more tags")
-    ptga.add_argument("tag", nargs="+", help="tag(s) to register")
+    ptga.add_argument("tag", nargs="+",
+                         help="tag(s) to register (a value may be a,b,c)")
     ptga.set_defaults(func=_tags_add)
     ptgr = ptgs.add_parser("rm", help="unregister one or more tags")
-    ptgr.add_argument("tag", nargs="+", help="tag(s) to unregister")
+    ptgr.add_argument("tag", nargs="+",
+                         help="tag(s) to unregister (a value may be a,b,c)")
     ptgr.set_defaults(func=_tags_rm)
 
     pts = g.add_parser(
