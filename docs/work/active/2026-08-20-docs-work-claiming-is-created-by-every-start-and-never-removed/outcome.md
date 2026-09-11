@@ -81,6 +81,15 @@ whose only change is that one directory.
   helper. The directory-lifetime note and the warning against adding a cleanup
   now sit beside the `mkdir` in `start`, which is where someone would try to add
   one. That relocation is the combined review's finding, not either item's.
+- **One new case became deletable, and its size is known.** A *symlink* named
+  `.claiming` pointing at an empty directory previously made a store
+  non-pristine and now does not, so the store is replaced. The adversarial
+  review found it and measured the loss: `shutil.rmtree` unlinks a symlink
+  without following it, so the symlink goes and its target survives. Accepted —
+  the loss is an empty symlink, and symlink containment is out of scope for this
+  item by the request's own words. Recorded so it is a decision rather than a
+  surprise.
+
 - **`.claiming` is forgiven by name, not by contents.** That is a hole in a
   safety check, deliberately sized: the check exists to refuse deleting someone's
   work, and a claim in flight is work. Criteria 3 and 4 and the mutation check
