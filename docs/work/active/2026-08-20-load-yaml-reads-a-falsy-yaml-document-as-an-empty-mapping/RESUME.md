@@ -20,6 +20,25 @@ tasks done**.
 Then: `outcome.md`, review, `refined-outcome.md`, an `## Autonomous decisions`
 section, `tcw work complete`.
 
+## The tree is mid-change and `tcw validate` fails right now
+
+This is expected, predicted by the spec, and is exactly what task 4 fixes:
+
+```
+$ tcw validate
+docs/work/dod.yaml: …/docs/work/dod.yaml: expected a mapping, found list
+1 problem(s).
+```
+
+`tcw/validate.py:271` scans every `*.yaml` through `load_yaml` for syntax alone
+and discards the value. Now that `load_yaml` refuses a non-mapping, the one
+legitimate top-level list in the tree fails it. **Nothing is wrong with
+`dod.yaml`** — task 4 makes that loop parse directly.
+
+Until task 4 lands, `tcw work complete` will refuse anywhere `tcw validate` is a
+`pre` hook, which it is in this repository. That blocks completing *any* item,
+not only this one.
+
 ## The one thing to do first
 
 **Run the full suite.** `tcw/store/fs.py:load_yaml` now raises where it used to
