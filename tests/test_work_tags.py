@@ -180,3 +180,123 @@ def test_cli_tags_rm_warns_about_stale_items(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(root)
     assert main(["work", "tags", "rm", "bug"]) == 0
     assert slug in capsys.readouterr().err
+
+
+# ── comma-separated tags (spec: 2026-08-11-accept-comma-separated-tags-on-tcw-work-new)
+
+def _tagged_node(tmp_path, monkeypatch, *tags):
+    root = node(tmp_path)
+    FsWorkStore.open(root).register_tags(list(tags))
+    monkeypatch.chdir(root)
+    return root
+
+
+def _new(capsys, *argv):
+    """Run `tcw work new` and return the created slug."""
+    assert main(["work", "new", *argv]) == 0
+    return capsys.readouterr().out.strip().splitlines()[0]
+
+
+def test_cli_tags_option_splits_on_commas(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli", "docs")
+    slug = _new(capsys, "X", "--tags", "cli,docs")
+    assert FsWorkStore.open(root).get(slug).tags == ["cli", "docs"]
+
+
+def test_cli_singular_tag_also_splits_on_commas(tmp_path, monkeypatch, capsys):
+    """The reported papercut is --tags; this is the defect underneath it. Before
+    the fix `cli,docs` normalized to the single tag `cli-docs`."""
+    root = _tagged_node(tmp_path, monkeypatch, "cli", "docs")
+    slug = _new(capsys, "X", "--tag", "cli,docs")
+    assert FsWorkStore.open(root).get(slug).tags == ["cli", "docs"]
+
+
+def test_cli_tag_spellings_compose_in_either_order(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli", "docs")
+    a = _new(capsys, "A", "--tag", "cli", "--tags", "docs")
+    b = _new(capsys, "B", "--tags", "docs", "--tag", "cli")
+    st = FsWorkStore.open(root)
+    assert st.get(a).tags == ["cli", "docs"]
+    assert sorted(st.get(b).tags) == ["cli", "docs"]
+
+
+def test_cli_duplicate_tags_collapse(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli")
+    a = _new(capsys, "A", "--tags", "cli,cli")
+    b = _new(capsys, "B", "--tag", "cli", "--tags", "cli")
+    st = FsWorkStore.open(root)
+    assert st.get(a).tags == ["cli"]
+    assert st.get(b).tags == ["cli"]
+
+
+def test_cli_tags_tolerates_blank_segments_and_spacing(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli", "docs")
+    a = _new(capsys, "A", "--tags", "cli,,docs")
+    b = _new(capsys, "B", "--tags", "cli, docs")
+    st = FsWorkStore.open(root)
+    assert st.get(a).tags == ["cli", "docs"]
+    assert st.get(b).tags == ["cli", "docs"]
+
+
+@pytest.mark.parametrize("value", ["", ",,"])
+def test_cli_tags_refuses_a_value_that_yields_nothing(tmp_path, monkeypatch, capsys, value):
+    """Blank segments are ignored, but an occurrence must yield at least one tag.
+    The message echoes the value as typed, so ',,' is not reported as ''."""
+    root = _tagged_node(tmp_path, monkeypatch, "cli")
+    with pytest.raises(SystemExit):
+        main(["work", "new", "X", "--tags", value])
+    assert f"invalid tag {value!r}" in capsys.readouterr().err
+    assert FsWorkStore.open(root).query() == []
+
+
+def test_cli_tags_refuses_an_unregistered_token_and_creates_nothing(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli")
+    assert main(["work", "new", "X", "--tags", "cli,nope"]) == 1
+    assert "unregistered tag 'nope'" in capsys.readouterr().err
+    assert FsWorkStore.open(root).query() == []
+
+
+def test_cli_tags_refuses_a_nonblank_invalid_token(tmp_path, monkeypatch, capsys):
+    """`!!!` normalizes to nothing. It is refused, not silently discarded."""
+    root = _tagged_node(tmp_path, monkeypatch, "cli")
+    with pytest.raises(SystemExit):
+        main(["work", "new", "X", "--tags", "cli,!!!"])
+    assert "invalid tag" in capsys.readouterr().err
+    assert FsWorkStore.open(root).query() == []
+
+
+def test_cli_edit_tags_and_untags(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli", "docs", "web")
+    slug = _new(capsys, "E", "--tags", "cli,docs")
+    assert main(["work", "edit", slug, "--tags", "web"]) == 0
+    assert FsWorkStore.open(root).get(slug).tags == ["cli", "docs", "web"]
+    assert main(["work", "edit", slug, "--untags", "cli,docs"]) == 0
+    assert FsWorkStore.open(root).get(slug).tags == ["web"]
+
+
+def test_cli_edit_add_still_wins_over_remove(tmp_path, monkeypatch, capsys):
+    """Pre-existing behaviour: the same tag added and removed stays applied."""
+    root = _tagged_node(tmp_path, monkeypatch, "cli")
+    slug = _new(capsys, "E", "--tags", "cli")
+    assert main(["work", "edit", slug, "--tag", "cli", "--untag", "cli"]) == 0
+    assert FsWorkStore.open(root).get(slug).tags == ["cli"]
+
+
+def test_cli_edit_untags_refuses_unregistered_and_changes_nothing(tmp_path, monkeypatch, capsys):
+    root = _tagged_node(tmp_path, monkeypatch, "cli", "docs")
+    slug = _new(capsys, "E", "--tags", "cli,docs")
+    assert main(["work", "edit", slug, "--untags", "cli,nope"]) != 0
+    assert FsWorkStore.open(root).get(slug).tags == ["cli", "docs"]
+
+
+def test_cli_list_filter_splits_on_commas(tmp_path, monkeypatch, capsys):
+    """Four fixtures, so an AND filter cannot pass this."""
+    _tagged_node(tmp_path, monkeypatch, "cli", "docs")
+    only_cli = _new(capsys, "OnlyCli", "--tags", "cli")
+    only_docs = _new(capsys, "OnlyDocs", "--tags", "docs")
+    both = _new(capsys, "Both", "--tags", "cli,docs")
+    neither = _new(capsys, "Neither")
+    assert main(["work", "list", "--tags", "cli,docs"]) == 0
+    out = capsys.readouterr().out
+    assert only_cli in out and only_docs in out and both in out
+    assert neither not in out
