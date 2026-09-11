@@ -60,10 +60,17 @@ This repository has a live binding of this kind at `tcw-config.yaml:60` —
   may be a separator, and its outcome records why scoping a change by grepping
   for one argparse mechanism missed the call sites that used another. Both apply
   directly here: the tag readers listed in that review are where to look.
-- Other readers found by the same review, all pre-existing and none able to
-  corrupt the registry, but the same class: `registered_tags` returns config
-  values verbatim (`tcw/store/fs.py:4918`), so a hand-edited entry can hold a tag
-  no command can name; plan-stage declarations check `tags:` against the registry
-  without normalizing (`:3866`), so a stage declaring `Cli` is refused where
-  `--tag Cli` is accepted. Worth deciding whether they belong in this item or
-  their own.
+- Three other readers found by the same review, all pre-existing, none able to
+  corrupt the registry, and all the same class. Worth deciding whether they
+  belong in this item or their own.
+    - `registered_tags` returns config values verbatim (`tcw/store/fs.py:4918`),
+      so a hand-edited entry can hold a tag no command can name.
+    - Plan-stage declarations check `tags:` against the registry **without**
+      normalizing (`:3866-3871`), so a stage declaring `Cli` is refused where
+      `--tag Cli` is accepted. Two rules for the same word, in one repository.
+    - The web API passes `tags` from JSON through untyped
+      (`tcw/serve/__init__.py:826`, `:1080`). A JSON string rather than an array
+      makes the validator iterate it character by character and report a single
+      letter as unregistered — verified, `"cli"` iterates as `c`, `l`, `i`. It
+      fails closed and the browser client uses checkboxes over the registered
+      set, so no user path reaches it; the message is still nonsense.
