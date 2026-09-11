@@ -43,14 +43,16 @@
    "args": [
     "text"
    ],
-   "reads": "the literal text appears in the transcript"
+   "reads": "the literal text appears in the transcript",
+   "confirmed": "Not among the three transcript reads task 6 enumerates. Confirmed as an expansion rather than inherited silently: it is the same machinery as the listed reads, and A4 cannot be stated without it now that the skill binding carries no nonce. A general ordering read would be the same kind of step and is deliberately still not taken, so B8 stays unmechanized."
   },
   "transcript_absent": {
    "family": "transcript",
    "args": [
     "text"
    ],
-   "reads": "the literal text appears nowhere in the transcript"
+   "reads": "the literal text appears nowhere in the transcript",
+   "confirmed": "Not among the three transcript reads task 6 enumerates. Confirmed as an expansion rather than inherited silently: it is the same machinery as the listed reads, and A4 cannot be stated without it now that the skill binding carries no nonce. A general ordering read would be the same kind of step and is deliberately still not taken, so B8 stays unmechanized."
   },
   "nonce_in_artifact": {
    "family": "fixture",
@@ -353,7 +355,7 @@
      "text": "silence invents nothing: none of the other stages' nonces appear in the post-mortem (I5)"
     }
    ],
-   "note": "Invokes the generic composer, not `tcw-post-mortem`. I5 asks what an agent does with a stage that asks nothing: proceed on the router alone, or invent instructions to fill the gap. The router is the composing skill's first block, so the composer is what has to be in play. `tcw-post-mortem` stays covered by B9."
+   "note": "Invokes the generic composer, not `tcw-post-mortem`. I5 asks what an agent does with a stage that asks nothing: proceed on the router alone, or invent instructions to fill the gap. The router is the composing skill's first block, so the composer is what has to be in play. `tcw-post-mortem` stays covered by B9. The two stage-prompt checks look like duplicates of the fixture guard and are not. The guard reads a freshly seeded node; these read the node after the agent has worked it, under acceptEdits, where the agent could have edited tcw-config.yaml. They confirm the stage was still silent for this run, which is the only form of the claim that grading can make. Both predicates therefore keep their only user."
   },
   {
    "id": "A6",

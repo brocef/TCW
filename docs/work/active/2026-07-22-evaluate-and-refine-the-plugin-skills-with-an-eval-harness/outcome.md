@@ -161,6 +161,46 @@ item's primary question.
   mutation-checked. The assertions in `evals.json` that only a live run can
   exercise are not, and cannot be until task 7.
 
+## Late findings, after the tasks were committed
+
+The subagent that built task 4 reported ten findings on the plan, arriving after
+its code had landed. Six were already handled. Four were not, and one was a real
+defect:
+
+1. **A `git_order` pattern that could never match.** B1 asserted a commit
+   matching `start` precedes the first code commit. TCW writes
+   `tcw work: <slug> → active`, and the bare verb appears nowhere in it, so the
+   assertion would have failed every run regardless of what the agent did — and
+   read as a skill defect. Fixed in `1c64d0ad`, with a guard.
+
+   **The guard took two attempts, and the first was worse than useless.** It
+   checked only patterns that already looked like a transition commit, which
+   filtered out exactly the broken shape it existed to catch: reverting B1 to
+   `start` left it green. It now also requires a bare lifecycle verb to match the
+   log, which it cannot, so the mistake fails loudly. This is the second time
+   this pass that a guard passed on the thing it was written for, and both times
+   the mutation check is what found it.
+
+2. **B7 is narrowed, deliberately.** The fixture has no GitHub remote and the
+   harness has no network, so the skill's `gh` plumbing is unreachable. Its four
+   issues are supplied inline, two actionable and two not. It measures triage
+   judgement, not the plumbing. Recorded on the case.
+
+3. **A5's two stage-prompt checks are not duplicates of the fixture guard**,
+   though they look like it. The guard reads a freshly seeded node; A5 reads the
+   node *after the agent has worked it*, under `acceptEdits`, where the agent
+   could have edited `tcw-config.yaml`. They confirm the stage was still silent
+   for that run, which is the only form of the claim grading can make. Both
+   predicates keep their only user rather than being dropped.
+
+4. **Two predicates expand task 6's stated families, and that is now explicit.**
+   `transcript_contains` and `transcript_absent` are not among the three
+   transcript reads the plan enumerates. Confirmed rather than inherited
+   silently: the machinery is identical, and A4 cannot be stated without them now
+   that the skill binding carries no nonce. A general *ordering* read would be
+   the same kind of step and is deliberately still not taken, which is why B8
+   stays unmechanized even though it is close to reachable.
+
 ## Notes
 
 ### Criteria status
