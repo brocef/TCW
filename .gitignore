@@ -33,3 +33,7 @@ docs/work/discarded/*
 
 # Working directory the fixture capture scripts build their throwaway nodes in.
 tests/fixtures/*/_scratch/
+
+# Eval harness: run outputs are disposable, the instrument is not.
+eval-runs/
+tests/fixtures/eval_grading/*/grading.json
