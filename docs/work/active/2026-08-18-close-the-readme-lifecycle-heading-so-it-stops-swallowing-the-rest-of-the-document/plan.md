@@ -1,7 +1,7 @@
 # Plan — Close the headings that swallow the rest of the document
 
-Twenty-two heading insertions across five documents, no prose change. The
-spec's Design table grew from thirteen rows to twenty-two during
+Twenty-three heading insertions across five documents, no prose change. The
+spec's Design table grew from thirteen rows to twenty-three during
 implementation and review; see its *When a long section is a defect and when it
 is not* section for the rule that drove the additions. The spec's
 Design table is the authority on what goes where; this plan is the order and the

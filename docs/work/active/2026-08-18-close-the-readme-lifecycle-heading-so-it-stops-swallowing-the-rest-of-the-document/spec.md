@@ -95,7 +95,7 @@ that does not name it, which is the complaint as filed.
 
 ## Design
 
-Insert twenty-two heading lines. Nothing else changes.
+Insert twenty-three heading lines. Nothing else changes.
 
 | File | Insert before | Level and text |
 | --- | --- | --- |
@@ -108,6 +108,7 @@ Insert twenty-two heading lines. Nothing else changes.
 | `docs/guide/work.md` | `:379` | `## Splitting a plan into stage documents` |
 | `docs/guide/work.md` | `:388` | `## The board and the JSON projection` |
 | `docs/guide/work.md` | `:411` | `## Descendants and addressing work across projects` |
+| `docs/guide/work.md` | `:472` | `## Stable slugs, and which transitions are legal` |
 | `docs/guide/work.md` | `:523` | `## Claiming an item, and recovering an interrupted claim` |
 | `docs/guide/work.md` | `:529` | `## Rolling up an epic, and delegating across nodes` |
 | `docs/guide/work.md` | `:552` | `## Running an item in an isolated checkout` |
@@ -210,12 +211,22 @@ They go to one follow-up item rather than five:
   length is not the test. "What happens when two commands touch an item at
   once, and what if a process dies holding a claim?" is a distinct question the
   cross-node heading does not pose. Two headings, at `:523` and `:529`.
+- `docs/guide/work.md:103-181`, `## What happens to resolved work`, 79 lines
+  and the longest section left in either tree after the sweep. Left alone
+  deliberately, and it is the clearest test of the rule above. Every paragraph
+  answers a facet of one question — what becomes of an item you complete: the
+  three arrangements a project chooses between, the two commits the resolving
+  transition writes, why auto-delete and the ignore rules cannot coexist, how to
+  hand the item to your own archive first, what that does not promise, and what
+  a rewritten history costs. The archive procedure at `:141-171` is the closest
+  call, at thirty lines; it stays because it is procedural detail developing the
+  heading's own question rather than a different question.
 - `docs/guide/linking-and-validation.md` — swept end to end, nothing found.
 - `README.md` outside `:373-396` — swept, nothing else found.
 
 ## Acceptance criteria
 
-1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all twenty-two headings
+1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all twenty-three headings
    from the Design table, each immediately before the span named there.
 2. No prose is removed. `git diff -U0 3a063f6f -- README.md docs/guide/ | grep '^-[^-]' | grep -v '^-$'`
    prints nothing. This is what pins "without reflowing the content itself".
@@ -247,7 +258,7 @@ They go to one follow-up item rather than five:
   prove no prose moved; they prove nothing about whether
   `## What the commands print` is a good name. That needs a human read, which is
   what the verify stage is for.
-- **Twenty-two insertions into five files, all cited against one commit.** Line
+- **Twenty-three insertions into five files, all cited against one commit.** Line
   numbers shift as they land. Working bottom-up per file avoids it, and criterion
   1 catches it if the ordering slips anyway.
 - **The request's premise is stale and this spec reinterprets it.** The spec

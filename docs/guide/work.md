@@ -482,6 +482,8 @@ carries its children along, while transitioning a child on its own promotes it
 to a top-level item. (That keeps any one item small; for work spanning _separate
 repos_, use a cross-node epic instead — see below.)
 
+## Stable slugs, and which transitions are legal
+
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted
 — anything else is refused, not silently allowed.
