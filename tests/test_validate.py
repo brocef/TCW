@@ -484,3 +484,102 @@ def test_a_broken_path_is_reported_even_when_the_declaration_answers(tmp_path):
     problems = validate(root)
 
     assert any(str(half) in p for p in problems), problems
+
+
+# ── the shape of a TCW-owned YAML file ───────────────────────────────────────
+#
+# Pass (a) scans every `*.yaml` for syntax alone and must keep accepting any
+# shape: `docs/work/dod.yaml` is a legitimate top-level list and an attachment
+# may be anything a user likes. Alongside it, a file whose *name* is one TCW
+# writes is reported when it is not a mapping — the case where an item reads as
+# healthy on the board while its state file is not a state file at all.
+
+
+def _item(root: Path, slug: str = "2026-09-11-real-item") -> Path:
+    d = root / "docs" / "work" / "backlog" / slug
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "state.yaml").write_text(f"slug: {slug}\ntitle: real item\n")
+    return d
+
+
+def test_an_owned_yaml_holding_a_falsy_non_mapping_is_reported(tmp_path):
+    root = node(tmp_path)
+    (_item(root) / "state.yaml").write_text("[]\n")
+
+    problems = validate(root)
+
+    assert any("state.yaml" in p and "expected a mapping" in p for p in problems), problems
+
+
+def test_an_owned_yaml_holding_a_truthy_non_mapping_is_reported(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    (_item(root) / "state.yaml").write_text("- a\n")
+    monkeypatch.chdir(root)
+
+    assert main(["validate"]) == 1
+    err = capsys.readouterr().err
+    assert "docs/work/backlog/2026-09-11-real-item/state.yaml" in err, err
+    assert "expected a mapping, found list" in err, err
+
+
+def test_the_reported_path_is_named_once(tmp_path):
+    """The problem string carries the node-relative path and not also the
+    absolute one. Going through `load_yaml` would double it, since its message
+    names the path too — which is the tell that the loop is parsing directly."""
+    root = node(tmp_path)
+    (_item(root) / "state.yaml").write_text("[]\n")
+
+    problem = next(p for p in validate(root) if "state.yaml" in p)
+
+    assert problem.count("state.yaml") == 1, problem
+
+
+def test_a_top_level_list_in_a_file_tcw_does_not_own_is_fine(tmp_path):
+    """`dod.yaml` is TCW's own and is deliberately a list. So is an attachment
+    a user parked next to an item. Neither is held to the mapping contract."""
+    root = node(tmp_path)
+    _item(root)
+    (root / "docs" / "work" / "dod.yaml").write_text("- ships\n- is reviewed\n")
+    (root / "docs" / "work" / "backlog" / "2026-09-11-real-item"
+     / "attachment.yaml").write_text("- anything\n")
+
+    assert validate(root) == []
+
+
+def test_a_syntax_error_is_still_reported(tmp_path):
+    """Parsing directly must not lose what the loop was already for."""
+    root = node(tmp_path)
+    (_item(root) / "state.yaml").write_text("slug: [unclosed\n")
+
+    assert any("state.yaml" in p for p in validate(root))
+
+
+def test_a_duplicate_key_is_still_reported(tmp_path):
+    """The unique-key loader is the other half of pass (a)."""
+    root = node(tmp_path)
+    (_item(root) / "state.yaml").write_text("slug: a\nslug: b\n")
+
+    assert any("duplicate key" in p for p in validate(root))
+
+
+def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
+    """The set is a judgment that drifts as record files are added, so it is
+    checked against the names the source actually writes. Three absences are
+    deliberate, and each one is a file that is legitimately not a mapping, or
+    is never reached by this pass — see `OWNED_YAML_NAMES` for why."""
+    import re
+
+    from tcw.store.fs import OWNED_YAML_NAMES
+
+    source = Path(__file__).resolve().parents[1] / "tcw"
+    written = {
+        name
+        for f in source.rglob("*.py")
+        for name in re.findall(r'"([A-Za-z0-9_.-]+\.yaml)"', f.read_text(encoding="utf-8"))
+    }
+
+    assert written - OWNED_YAML_NAMES == {
+        "dod.yaml",            # a top-level list by design
+        "tcw-config.yaml",     # outside the scanned trees; `load_config` refuses it
+        "capabilities.yaml",   # two valid shapes — a mapping and reconcile's list
+    }, written

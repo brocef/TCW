@@ -154,9 +154,7 @@ SENTINEL = "tcw-config.yaml"
 def write_sentinel(root: Path, project_id: str | None = None) -> bool:
     """Create or backfill the node sentinel without discarding configuration."""
     p = root / SENTINEL
-    existing = load_yaml(p, unique=True) if p.exists() else {}
-    if not isinstance(existing, dict):
-        raise ValueError(f"{p}: config must be a mapping")
+    existing = load_config(p) if p.exists() else {}
     configured = existing.get("id")
     if configured is not None:
         if not isinstance(configured, str):
@@ -865,9 +863,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # Read ahead of `write_sentinel`, so its own mapping check no longer runs
     # first — a malformed config used to come back from it as a `ValueError` and
     # would otherwise surface here as an `AttributeError` from `.get`.
-    existing_config = load_yaml(root / SENTINEL, unique=True)
-    if not isinstance(existing_config, dict):
-        raise ValueError(f"{root / SENTINEL}: config must be a mapping")
+    existing_config = load_config(root / SENTINEL)
     # `work_path` kept as its own parameter rather than folded into `paths`:
     # it is the fourth positional argument every existing caller passes, and
     # this component's location has a name in the CLI (`--work-path`,
@@ -1010,7 +1006,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         if work_path is not None and "work" in components and replacing_default_store:
             shutil.rmtree(default_root)
         config_path = root / SENTINEL
-        config = load_yaml(config_path, unique=True)
+        config = load_config(config_path)
         for component, location in configured.items():
             section = (config.get(component)
                        if isinstance(config.get(component), dict) else {})
@@ -1065,6 +1061,37 @@ _UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_dup_keys)
 
 
+#: The YAML filenames TCW writes as records, held to `load_yaml`'s mapping
+#: contract by `tcw validate`. Named rather than inferred and kept in one place,
+#: because naming what TCW owns is narrower than exempting what it does not, and
+#: an attachment that happens to be called `state.yaml` is a case nobody has.
+#: Both spellings of a store config are here: taxonomy and work write
+#: `config.yaml`, capabilities writes `.config.yaml`.
+#:
+#: Three names are absent on purpose, and each is legitimately not a mapping or
+#: is never reached by that pass. `dod.yaml` is a top-level list. The node
+#: sentinel `tcw-config.yaml` sits outside the scanned trees and is refused by
+#: `load_config` the moment anything reads it. And a work item's
+#: `capabilities.yaml` has **two** valid shapes — the `new:`/`changed:` mapping
+#: the Definition-of-Done gate reads, and the list form `reconcile` writes — so
+#: holding it to one of them would report a sound file, and worse, make that
+#: gate fail closed on it. See `declared_capabilities` in `tcw/store/base.py`.
+OWNED_YAML_NAMES = frozenset({
+    "state.yaml", "meta.yaml", "graveyard.yaml", "config.yaml", ".config.yaml",
+})
+
+
+class NotAMapping(yaml.YAMLError):
+    """A YAML document that parsed perfectly well and is not a mapping.
+
+    A **subclass** of `yaml.YAMLError` on purpose. The eleven sites that already
+    catch one keep catching this without being touched, which is what makes a
+    corrupt record degrade to empty instead of crashing the board. The subclass
+    exists only so a caller that can say something better — `load_config` — can
+    tell "your file is not a mapping" apart from "your file is not YAML".
+    """
+
+
 def load_yaml(path: Path, unique: bool = False) -> dict:
     """Load a YAML **mapping**. `{}` when the file is absent or has no content;
     `yaml.YAMLError` when it holds anything that is not a mapping.
@@ -1093,9 +1120,30 @@ def load_yaml(path: Path, unique: bool = False) -> dict:
     if data is None:                       # absent content: empty file, or `null`
         return {}
     if not isinstance(data, dict):
-        raise yaml.YAMLError(
+        raise NotAMapping(
             f"{path}: expected a mapping, found {type(data).__name__}")
     return data
+
+
+def load_config(path: Path) -> dict:
+    """The node sentinel, read as a mapping, refusing as a `ValueError`.
+
+    A config the user has broken is their mistake, not a failure of the YAML
+    layer, and `ValueError` is the channel `tcw`'s top level already renders as
+    a plain message. Every reader of the sentinel that must refuse goes through
+    here, so `init`, a store resolving and the tag registry all say one thing
+    about one file.
+
+    The two readers that must *not* refuse — `declared_repository` and
+    `declared_connected_projects`, which exist to answer for a graph that cannot
+    be fully loaded — deliberately do not use this.
+    """
+    try:
+        return load_yaml(path, unique=True)
+    except NotAMapping as error:
+        raise ValueError(f"malformed {path}: config must be a mapping") from error
+    except yaml.YAMLError as error:
+        raise ValueError(f"malformed {path}: {error}") from error
 
 
 def dump_yaml(path: Path, data: dict) -> None:
@@ -3041,7 +3089,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
     """
     node_root = node_root.resolve()
     config_path = node_root / SENTINEL
-    config = load_yaml(config_path, unique=True)
+    config = load_config(config_path)
     component = store_cls.COMPONENT
     section = config.get(component) or {} if isinstance(config, dict) else {}
     if not isinstance(section, dict):
@@ -3156,7 +3204,10 @@ def declared_repository(
     for any component, so extending provisioning past `work` adds a caller, not a
     reader.
     """
-    config = load_yaml(node_root / SENTINEL, unique=True)
+    try:
+        config = load_config(node_root / SENTINEL)
+    except ValueError:
+        return None, []          # a config too broken to read declares nothing
     section = config.get(component) if isinstance(config, dict) else None
     if not isinstance(section, dict):
         return None, []
@@ -3177,7 +3228,10 @@ def declared_connected_projects(
     do about one that is already here, because "already available" is a result
     worth printing rather than a silence.
     """
-    config = load_yaml(node_root / SENTINEL, unique=True)
+    try:
+        config = load_config(node_root / SENTINEL)
+    except ValueError:
+        return [], []            # likewise: it declares no connected project
     connected = config.get("connected-projects") if isinstance(config, dict) else None
     if not isinstance(connected, dict):
         return [], []
@@ -4078,8 +4132,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         caps = d / "capabilities.yaml"
         capabilities = None
         if caps.exists():
+            # Parsed directly, not through `load_yaml`: a sidecar is a mapping
+            # *or* the list form `reconcile` writes, and both have to survive
+            # the read. `declared_capabilities` is what decides which shape it
+            # is looking at; turning one of them into a parse error here would
+            # fail the Definition-of-Done gate closed on a sound file.
             try:
-                capabilities = load_yaml(caps)
+                parsed = yaml.safe_load(caps.read_text(encoding="utf-8"))
+                capabilities = {} if parsed is None else parsed
             except yaml.YAMLError as e:
                 capabilities = {"_tcw_parse_error": str(e)}
         return WorkItem(
@@ -4978,13 +5038,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         malformed file raises a clear error naming the path rather than a raw
         YAML traceback. Plain board listing never calls this, so a broken config
         only fails operations that actually need the tag registry."""
-        try:
-            data = load_yaml(self._config_path())
-        except yaml.YAMLError as e:
-            raise ValueError(f"malformed {self._config_path()}: {e}") from e
-        if not isinstance(data, dict):                 # valid YAML, wrong shape
-            raise ValueError(f"malformed {self._config_path()}: expected a mapping")
-        return data
+        return load_config(self._config_path())
 
     def registered_tags(self) -> list[str]:
         work = self._config().get("work")

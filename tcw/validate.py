@@ -4,11 +4,13 @@ Three passes over the scan roots (the whole node's `docs/{taxonomy,capabilities,
 work}` trees, or a single `[path]`):
 
   (a) YAML well-formedness — every ``*.yaml`` loads via the unique-key loader
-      (duplicate keys included); a parse error is a problem.
+      (duplicate keys included); a parse error is a problem. Any shape is
+      accepted, *except* that a file TCW writes as a record (``state.yaml`` and
+      friends, ``OWNED_YAML_NAMES``) must be a mapping.
   (b) ``tcw://`` links — every ``*.md`` link-target ``](tcw://…)`` resolves
       (code spans stripped first, so examples that teach the scheme don't fail).
-  (c) component ``check()`` — taxonomy + capabilities, unless (a) hit a YAML
-      *syntax* error (they re-load the same files and would raise).
+  (c) component ``check()`` — taxonomy + capabilities, unless (a) hit a syntax
+      error or a record of the wrong shape (they re-load the file and raise).
 """
 
 from __future__ import annotations
@@ -23,7 +25,8 @@ import yaml
 from tcw.refs import resolve_tcw_ref
 from tcw.store.base import StoreLocationUnusable
 from tcw.store.fs import (
-    STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, load_yaml,
+    OWNED_YAML_NAMES, STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore,
+    FsWorkStore, _UniqueKeyLoader, load_yaml,
 )
 
 _COMPONENTS = ("taxonomy", "capabilities", "work")
@@ -264,15 +267,33 @@ def validate(node_root: Path, path: Path | None = None, *,
         problems += [f"work: {p}" for p in work_store.retention_problems()]
         problems += work_store.retention_conflicts()
 
-    # (a) YAML well-formedness
+    # (a) YAML well-formedness, and the shape of the files TCW writes
+    #
+    # Parsed here rather than through `load_yaml`, because this loop must keep
+    # accepting *any* shape: `docs/work/dod.yaml` is a top-level list on purpose
+    # and an attachment may hold whatever its author wanted. `load_yaml`'s
+    # mapping contract belongs to the records TCW owns, and this is where those
+    # are held to it — by name, from `OWNED_YAML_NAMES`.
+    #
+    # This is the half that makes a corrupt record visible at all. The store
+    # deliberately degrades one to empty rather than crashing the board, so
+    # without a report here an item whose state file is not a state file reads
+    # as healthy everywhere.
     for root in roots:
         for f in _iter(root, "*.yaml"):
             try:
-                load_yaml(f, unique=True)
+                data = yaml.load(f.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
             except yaml.YAMLError as e:
                 problems.append(f"{_rel(f, node_root)}: {e}")
                 if isinstance(e, yaml.MarkedYAMLError):   # real syntax error, not dup-key
                     yaml_syntax_error = True
+                continue
+            if f.name in OWNED_YAML_NAMES and data is not None and not isinstance(data, dict):
+                problems.append(f"{_rel(f, node_root)}: expected a mapping, "
+                                f"found {type(data).__name__}")
+                # Same reason a syntax error skips (c): the component check
+                # re-reads this file through `load_yaml`, which now raises on it.
+                yaml_syntax_error = True
 
     # (b) tcw:// link resolution
     for root in roots:
@@ -284,9 +305,9 @@ def validate(node_root: Path, path: Path | None = None, *,
                 if not r.ok:
                     problems.append(f"{_rel(f, node_root)}: tcw:// {uri} → {r.reason}")
 
-    # (c) component checks — skipped on a YAML syntax error (they'd re-raise)
+    # (c) component checks — skipped when (a) found a file they'd re-raise on
     if yaml_syntax_error:
-        problems.append("(component checks skipped: YAML syntax error above)")
+        problems.append("(component checks skipped: YAML problem above)")
     else:
         components = [target.axis] if target is not None else _components_to_check(node_root, path)
         for comp in components:

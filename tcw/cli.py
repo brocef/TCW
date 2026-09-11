@@ -535,6 +535,15 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as error:
         print(f"tcw: {error}", file=sys.stderr)
         return 1
+    except yaml.YAMLError as error:
+        # A malformed YAML file is the user's, not a bug in TCW, so it reads as
+        # a message rather than a traceback. Here rather than at each of the
+        # twenty-odd `load_yaml` calls that do not catch it: refusing is already
+        # the right answer at every one of them — `init` must not overwrite a
+        # config it cannot read — and only the presentation was wrong. The
+        # loader's message names the file.
+        print(f"tcw: {error}", file=sys.stderr)
+        return 1
     except subprocess.CalledProcessError as error:
         # Deliberately generic: the only policy here is "a git subprocess
         # failed", which is true of every component. git's own diagnostic has

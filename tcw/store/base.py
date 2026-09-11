@@ -2297,7 +2297,16 @@ class WorkStore(ABC):
     @abstractmethod
     def check(self, identifier: str | None = None) -> list[str]:
         """Validate the work node, optionally limited to one object. Reports items
-        carrying a tag no longer in the registered set."""
+        carrying a tag no longer in the registered set.
+
+        **A record the store cannot read reads as empty, and is reported here.**
+        Both halves are the contract, and neither substitutes for the other. A
+        store must not let one unreadable record make the whole board
+        unlistable, so reading degrades; but a record that degrades silently
+        looks healthy from every other command, so this is where it is named.
+        A filesystem store reads a `state.yaml` that is not a mapping; another
+        backend reads a row failing its schema check. The rule is the same one.
+        """
 
     @abstractmethod
     def inbox_list(self) -> list[InboxEntry]:

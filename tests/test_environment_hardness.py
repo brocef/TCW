@@ -1055,3 +1055,88 @@ def test_load_yaml_returns_a_mapping_unchanged(tmp_path, text, expected):
     p = tmp_path / "doc.yaml"
     p.write_text(text, encoding="utf-8")
     assert load_yaml(p) == expected
+
+
+# ── and what the contract looks like from the command line ───────────────────
+
+@pytest.mark.parametrize("text", ["[]\n", "false\n", "0\n", "- a\n"])
+def test_init_refuses_a_malformed_config_and_leaves_it_alone(
+        tmp_path, monkeypatch, capsys, text):
+    """The defect that was reported: a *falsy* config read as "no configuration"
+    and `init` wrote over it without a word, while the same file holding `- a`
+    was refused. Now every shape is refused, the file is untouched, and the user
+    gets a message instead of a traceback."""
+    import hashlib
+    import subprocess
+
+    from tcw.cli import main
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    config = root / "tcw-config.yaml"
+    config.write_text(text, encoding="utf-8")
+    before = hashlib.sha256(config.read_bytes()).hexdigest()
+    monkeypatch.chdir(root)
+
+    assert main(["init", "--id", "demo"]) == 1
+    assert hashlib.sha256(config.read_bytes()).hexdigest() == before
+    err = capsys.readouterr().err
+    assert "tcw-config.yaml" in err, err
+    assert "Traceback" not in err, err
+
+
+@pytest.mark.parametrize("text", ["[]\n", "- a\n"])
+def test_a_corrupt_state_file_does_not_take_the_board_down(
+        tmp_path, monkeypatch, capsys, text):
+    """`_safe_yaml` promises that "a malformed state file degrades to empty
+    rather than crashing the board". It catches `yaml.YAMLError`, and a
+    well-formed non-mapping never raised one — so a `- a` state file reached
+    `.get` and one corrupt item made the whole board unreadable."""
+    import subprocess
+
+    from tcw.cli import main
+    from tcw.store.fs import init
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    for key, value in (("user.email", "t@t"), ("user.name", "t")):
+        subprocess.run(["git", "-C", str(root), "config", key, value], check=True)
+    init(["taxonomy", "capabilities", "work"], root, "demo")
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "real item"]) == 0
+    slug = next(p.name for p in (root / "docs/work/backlog").iterdir() if p.is_dir())
+    (root / "docs/work/backlog" / slug / "state.yaml").write_text(text, encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["work", "list"]) == 0
+    assert slug in capsys.readouterr().out
+    assert main(["work", "show", slug]) == 0
+
+
+def test_validate_names_a_corrupt_state_file_the_board_tolerated(
+        tmp_path, monkeypatch, capsys):
+    """Degrading is not reporting. The board is deliberately tolerant, so
+    `validate` is the one command that has to say the file is not a state file —
+    otherwise a corrupt item reads as healthy everywhere and nothing contradicts
+    it."""
+    import subprocess
+
+    from tcw.cli import main
+    from tcw.store.fs import init
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    for key, value in (("user.email", "t@t"), ("user.name", "t")):
+        subprocess.run(["git", "-C", str(root), "config", key, value], check=True)
+    init(["taxonomy", "capabilities", "work"], root, "demo")
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "real item"]) == 0
+    slug = next(p.name for p in (root / "docs/work/backlog").iterdir() if p.is_dir())
+    (root / "docs/work/backlog" / slug / "state.yaml").write_text("[]\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["validate"]) == 1
+    assert "state.yaml" in capsys.readouterr().err
