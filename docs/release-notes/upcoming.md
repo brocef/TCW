@@ -57,3 +57,23 @@ manually, update work.path, then re-run init
 There was nothing to move, and nothing you could see. That message now only
 appears when your store really does hold work, including an item being started
 at that very moment.
+
+## A mistyped work item slug could destroy a different item
+
+`tcw work start --take-over` recovers an item whose claim was interrupted, for
+example when a process died partway through starting it. It looked up the claim
+by pattern rather than by name, so a slug containing `*`, `?` or `[` could match
+a **different** item's claim.
+
+You did not need to do anything unusual to hit this. A shell passes an unquoted
+`*` through unchanged when it matches no file, so a typo was enough. The command
+then rewrote the other item's owner, moved it into a folder named with your
+typo, and failed with a `git` error. The item was gone from the board, under a
+name nothing could address.
+
+A slug is now matched as a name. A mistyped one is refused and nothing moves.
+
+**If you think this happened to you**, look in `docs/work/active/` for a folder
+whose name contains `*`, `?` or `[`. That is the missing item. Rename the folder
+back to the item's real slug and correct the `owner` and `started` fields in its
+`state.yaml`.

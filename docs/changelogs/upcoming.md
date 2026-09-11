@@ -47,6 +47,19 @@ category.
 
 ## Fixed
 
+- **`_claiming_dirs` globbed with the caller's slug unescaped.** A slug holding
+  `*`, `?` or `[` matched another item's interrupted claim, and the take-over
+  branch then rewrote that item's owner, moved it into `active/` under the
+  pattern as its name, and only afterwards failed in `git add`, so the move was
+  already done. The same cross-match made an ordinary `start` on an absent slug stall
+  about 0.6 s and report an interrupted claim belonging to a different item.
+  Now `glob.escape(slug)`, with the `[0-9a-f]` suffix concatenated after it.
+  Nothing recoverable stops matching: a claim directory is only ever created as
+  `f"{slug}-{uuid4().hex}"` after `_find` matched that exact name.
+- **The take-over branch composed its destination from the caller's slug.** It
+  now derives it from the claim directory that was found. Redundant behind the
+  escape, and deliberately so.
+
 - **An empty `.claiming/` made a default work store non-pristine.** `init`
   compares the work root's entries against `{"inbox", *WORK_STATUSES}`, and
   `start` creates `.claiming/` without ever removing it. Relocating a store with
