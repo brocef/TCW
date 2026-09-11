@@ -1215,3 +1215,74 @@ def test_registering_a_tag_stages_the_config_in_its_own_repository(tmp_path):
         ["git", "-C", str(store.store_git_root), "diff", "--cached", "--name-only"],
         capture_output=True, text=True, check=True).stdout
     assert "tcw-config.yaml" not in store_staged
+
+
+# ── a slug is a literal, not a glob pattern ──────────────────────────────────
+# (spec: 2026-09-09-validate-a-slug-before-the-claiming-lookup-globs-with-it)
+
+def _one_interrupted_claim(tmp_path: Path) -> tuple[FsWorkStore, str, Path]:
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    slug = st.create("Axxxb thing", created="2026-01-01").slug
+    return st, slug, _privately_claim(st, slug)
+
+
+def test_take_over_with_a_wildcard_slug_leaves_the_victim_alone(tmp_path):
+    """The destructive case. `_claiming_dirs` globbed with the caller's slug
+    unescaped, so a wildcard matched *another* item's claim: `start` rewrote that
+    item's owner, moved it to `active/<the wildcard>`, and only then died in
+    `git add` — after the move. The item was gone, under a name nothing can
+    address, and the user saw a git error.
+
+    Asserting the exception alone would pass against exactly that, so what this
+    test is really about is the aftermath.
+    """
+    st, slug, private = _one_interrupted_claim(tmp_path)
+    wildcard = slug[:-3] + "*g"                      # matches `slug` if unescaped
+    assert wildcard != slug
+
+    with pytest.raises(ValueError, match="no recoverable interrupted claim"):
+        FsWorkStore.open(st.root.parent.parent).start(
+            wildcard, owner="attacker@example.com", take_over=True)
+
+    assert private.is_dir(), "the victim's claim was consumed"
+    assert [p.name for p in (st.root / "active").iterdir() if p.name != ".gitkeep"] == []
+    state = yaml.safe_load((private / "state.yaml").read_text(encoding="utf-8"))
+    assert state.get("owner") in (None, ""), "the victim's owner was overwritten"
+
+
+def test_a_wildcard_slug_is_not_reported_as_an_interrupted_claim(tmp_path):
+    """Without `--take-over`, the same cross-match made `start` treat a slug that
+    does not exist as a lost race: a half-second stall, then advice to recover a
+    claim belonging to a different item."""
+    st, _slug, _private = _one_interrupted_claim(tmp_path)
+    with pytest.raises(ValueError) as caught:
+        FsWorkStore.open(st.root.parent.parent).start("2026-01-01-axxxb-th*g", owner="x")
+    assert "interrupted claim" not in str(caught.value)
+
+
+def test_a_slug_containing_a_star_still_finds_its_own_claim(tmp_path):
+    """Recovery must not narrow. Escaping makes the pattern literal, and a claim
+    directory is always named for a literal slug, so an item whose slug really
+    contains `*` still matches itself."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    claiming = st.root / ".claiming"
+    claiming.mkdir(exist_ok=True)
+    weird = "item-a*b"
+    (claiming / f"{weird}-{'0' * 32}").mkdir()
+    assert [p.name for p in st._claiming_dirs(weird)] == [f"{weird}-{'0' * 32}"]
+
+
+def test_claiming_dirs_answers_empty_without_a_claiming_directory(tmp_path):
+    """`Path.glob` yields nothing for a missing directory where `iterdir` raises.
+    `.claiming` being absent or empty is one state, which is why this returns
+    `[]` rather than blowing up — guarded here against a rewrite to a scan.
+    """
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    assert not (st.root / ".claiming").exists()
+    assert st._claiming_dirs("anything") == []
