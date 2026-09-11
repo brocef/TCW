@@ -915,7 +915,14 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         ignore_root = target_git                      # the store's, not the node's
         if default_root.exists() and default_root.resolve() != target.resolve():
             expected = {"inbox", *WORK_STATUSES}
-            actual = {entry.name for entry in default_root.iterdir()}
+            # `.claiming/` is adapter-private staging that `start` creates and
+            # nothing removes, so any store an item was ever started in has it
+            # forever, empty. Its presence says nothing about whether the store
+            # holds work, which is the only question here — and leaving it in
+            # made this refuse to relocate an otherwise-empty store. The name is
+            # forgiven, not the directory: the `all(...)` below still walks its
+            # contents, so a claim in flight is still work and still refuses.
+            actual = {entry.name for entry in default_root.iterdir()} - {".claiming"}
             # `is_symlink` first: a symlinked `docs/work` reads as pristine
             # through the link and then meets `shutil.rmtree`, which refuses a
             # symlink. Replacing a default store means deleting it, and a symlink
@@ -3648,6 +3655,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def _claiming_dirs(self, slug: str) -> list[Path]:
         """The adapter-private folders of claims for `slug` still mid-flight.
+
+        **`.claiming/` is a staging area whose contents are the state. Its own
+        existence means nothing.** `start` creates it on demand and nothing
+        removes it, so a store an item was ever started in keeps it forever,
+        empty. Every reader here is already blind to the difference, because
+        `Path.glob` on a missing directory yields nothing rather than raising —
+        so "absent" and "empty" are one state, and only the contents are ever
+        consulted.
+
+        Nothing removes it deliberately. Cleaning up after a successful claim
+        would race the next one: `os.replace` into a destination whose parent has
+        just been removed raises `FileNotFoundError`, which `start` reads as a
+        lost race and reports as an interrupted claim on an item nobody touched.
+        The two processes need not even want the same slug.
+
+        The one place that read existence as meaningful was `init`'s
+        pristine-store check, which refused to relocate a default store over an
+        empty staging directory; it now discards the name.
 
         Matched against the uuid suffix, not `-*`: `*` spans `-`, so a claim on
         a longer slug would answer for a shorter one — and slugs are prefixes of

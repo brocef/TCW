@@ -192,9 +192,12 @@ def test_start_is_refused_before_it_makes_the_claiming_folder(tmp_path):
     branches, and both rename before they stage — so the guard has to be its
     literal first statement, ahead of the `.claiming/` directory it creates.
 
-    A fresh node rather than the shared fixture: `.claiming/` survives a
-    *successful* `start` (nothing removes it), so a node that has ever started
-    an item cannot tell "not created" from "already there".
+    A fresh node rather than the shared fixture, and this is not a workaround:
+    `.claiming/` survives a *successful* `start` by design, so on a node that has
+    started anything the assertion below would fail for a reason that has nothing
+    to do with the guard being tested. Absence is the right assertion here —
+    a refused command must create nothing — and a fresh node is what makes it
+    mean that.
     """
     root = repo(tmp_path)
     st = FsWorkStore.open(root)
