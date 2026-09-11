@@ -255,7 +255,11 @@ def test_no_reference_to_a_deleted_document_survives(name):
     hits = []
     for path in REPO.rglob("*.md"):
         parts = set(path.parts)
-        if parts & {".git", "node_modules", "build", ".venv", ".worktrees"}:
+        # `.claude/worktrees` alongside `.worktrees`: an agent harness puts a
+        # linked worktree there, and a second checkout of this repo is the same
+        # repo — its archived changelogs are not a live route.
+        if parts & {".git", "node_modules", "build", ".venv", ".worktrees",
+                    ".claude"}:
             continue
         rel = str(path.relative_to(REPO))
         # Archives, not routes. A work item or a shipped changelog naming a file
