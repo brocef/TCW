@@ -164,3 +164,60 @@ Four things.
   seventy lines the sweep never examined, and five references whose antecedent a
   new heading moved into another section. Anyone picking that up should agree a
   stopping point before starting.
+
+
+## Autonomous decisions
+
+One line per consult. Each names the question, what each advisor said, the
+choice, and why.
+
+1. **The request names `README.md:605`, which no longer exists. Close as already
+   fixed, carry it forward, or return to the `request` stage?** Codex: carry it
+   forward, the split removed the reported instance but the sweep clause
+   survives. Opus: carry it forward, closing would record a false claim. Chose
+   carry forward. Both agreed, and the evidence was independent of either: three
+   of the six topics the request named as swallowed were still swallowed at the
+   base commit.
+
+2. **Should the board and the JSON projection get a heading out of
+   `## Automation and piping`?** Codex: yes. Opus: no, machine-readable output
+   for scripts is what "automation and piping" means. Split, taking Codex. Opus's
+   argument covers `--json` but not `tcw work list`, which is the human view, not
+   machine output — and the original request named the board explicitly.
+
+3. **Should the prose defects found alongside be fixed here?** Codex: no,
+   heading-only. Opus: yes, two sentences of work. Deferred them, taking Codex.
+   The zero-deletion diff check is the only mechanical proof the request's
+   "without reflowing the content itself" was honoured; folding prose edits in
+   destroys it.
+
+4. **`## Connected projects` is 159 lines and neither advisor flagged it. Split
+   or leave?** Codex: split at four points, deciding reason discoverability not
+   length. Opus: split at five points, adding one for orphaned locator
+   mechanics. Split at six, taking Opus's extra boundary and adding one more, so
+   each span answers one question rather than relying on a compound heading.
+   Codex also supplied the rule that went into the spec.
+
+5. **Where does the review loop stop?** Round three found holes in round two's
+   fixes. The reviewer sorted its findings into belongs-to-this-change and
+   needs-a-separate-change, per this repository's standing rule, and ended
+   NOT DONE. Put the split to the user rather than deciding alone, because that
+   rule says to. The user chose: apply the confirmed defects, file the rest.
+   Done exactly that.
+
+6. **The verifier said one left-alone call contradicted the spec's own rule.**
+   No advisor split. Accepted and reversed: the exclusion rested on a five-line
+   length argument, and the rule I had just written says length is not the test.
+
+7. **Reviewer said to revert a heading I had added one round earlier.** No
+   advisor split. Accepted. Three lines of prose promoted to a section is a
+   heading standing in for a prose move, which this item ruled out.
+
+### What I would have asked about if I could
+
+- Whether `## Command reference` at 84 lines of prose should stay one section.
+  It is exempted in the spec on the grounds that it answers one question, which
+  is true, but it is also the section a reader is most likely to want an outline
+  into. That is a preference about how the guide is read, not a defect.
+- Whether the deferred prose repairs are worth an item at all, or whether the
+  guide should absorb them the next time someone edits those files.
