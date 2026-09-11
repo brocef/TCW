@@ -105,3 +105,46 @@ whose only change is that one directory.
   safety check, deliberately sized: the check exists to refuse deleting someone's
   work, and a claim in flight is work. Criteria 3 and 4 and the mutation check
   are what keep it that size.
+
+## Autonomous decisions
+
+1. **Remove the directory, or leave it?** My instinct and the plan's starting
+   point was to remove it. Codex: leave it, the removal races the next claim.
+   Opus advisor: leave it, and the cleanup would need to sit at three exit sites
+   so it would not even deliver the invariant. Left it. Both agreed and both
+   supplied reasons I did not have.
+
+2. **Would a single retry close the race?** My fallback design. Codex: no —
+   another completing claimant can remove the recreated directory before the
+   retry. Opus advisor did not address it. Took Codex. **This is the consult that
+   paid for itself**: I would have shipped a fix that looked airtight.
+
+3. **Is "absent or empty" a legitimate invariant or a rationalisation?** Both
+   said legitimate, and both reached it the same way: every reader already goes
+   through `Path.glob`, which is blind to the difference. Documented it.
+
+4. **Is the item worth doing at all, given the intake calls it harmless?** The
+   Opus advisor found the pristine check, which is what makes it worth doing.
+   Without that consult I would have closed the item as a test annoyance, which
+   is how the intake reads.
+
+5. **Should the release note's cleanup advice ship as written?** No advisor was
+   asked; the code reviewer caught it unprompted. It told users to delete any
+   tag-like joined name, which would have removed a legitimate two-word tag in
+   the companion item, and here claimed the refusal "only appears when your store
+   really does hold work" while `graveyard.yaml` still refuses. Both corrected.
+
+6. **Where does the combined review with the next item happen?** Decided myself:
+   after both were implemented and before either was submitted. It produced a
+   finding neither item would have — two docstring blocks written without reading
+   each other.
+
+### What I would have asked about if I could
+
+- Whether `graveyard.yaml` should also be forgiven. It is real history, so
+  refusing is defensible, but the message tells a user to "move existing work
+  manually" and a graveyard file is not what anyone pictures. That is a product
+  call about a message, not a defect.
+- Whether the race window between check and delete is worth closing. I accepted
+  it on the grounds that relocating a store is a deliberate single-operator act.
+  Someone running TCW from CI might see that differently.
