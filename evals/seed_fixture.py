@@ -227,6 +227,31 @@ def _item_dir(root: Path, status: str, slug: str) -> Path:
     return root / "docs/work" / status / slug
 
 
+def _merge_config(dest: Path, key: str, value) -> None:
+    """Set `work.<key>` in the node's config, preserving what is already there.
+
+    Merged into the parsed document rather than appended as text: `tcw work tags
+    add` has already written a `work:` key, and a second one makes the whole file
+    fail to parse with `duplicate key: 'work'`.
+    """
+    config = dest / "tcw-config.yaml"
+    doc = yaml.safe_load(config.read_text()) or {}
+    doc.setdefault("work", {})[key] = value
+    config.write_text(yaml.safe_dump(doc, sort_keys=False, width=100))
+
+
+def _declare_documentation(dest: Path) -> None:
+    """The `work.documentation` entries case B10 needs something to fire on."""
+    _merge_config(dest, "documentation", [
+        {"path": "README.md", "trigger": "Public-API",
+         "description": "What demo-app does and how an account uses it. Update "
+                        "when user-facing behaviour changes."},
+        {"path": "docs/changelogs/upcoming.md", "trigger": "Any-Code-Change",
+         "description": "Developer changelog for the next version; grouped "
+                        "Added/Changed/Fixed."},
+    ])
+
+
 def _customize(dest: Path, stage_items: dict[str, str]) -> dict[str, str]:
     """Add the axis A lifecycle bindings and their nonces. Returns the nonces.
 
@@ -265,9 +290,7 @@ def _customize(dest: Path, stage_items: dict[str, str]) -> dict[str, str]:
     # Merged into the parsed document rather than appended as text: `tcw work
     # tags add` has already written a `work:` key, and a second one makes the
     # whole file fail to parse with `duplicate key: 'work'`.
-    config = dest / "tcw-config.yaml"
-    doc = yaml.safe_load(config.read_text()) or {}
-    doc.setdefault("work", {})["lifecycle"] = {"stages": {
+    _merge_config(dest, "lifecycle", {"stages": {
         "spec": {"prompt": [
             {"builtin": True},
             {"file": f"{ASSET_DIR}/blast-radius.md"},
@@ -285,8 +308,7 @@ def _customize(dest: Path, stage_items: dict[str, str]) -> dict[str, str]:
             {"skill": "eval-verify-marker"},
         ]},
         "postmortem": {"prompt": [{"blob": ""}]},
-    }}
-    config.write_text(yaml.safe_dump(doc, sort_keys=False, width=100))
+    }})
     return nonces
 
 
@@ -363,12 +385,21 @@ def seed(dest: Path, customized: bool = False) -> dict:
     # 5. Tags, before any item wants one.
     _run(dest, "work", "tags", "add", "bug", "perf", "docs", "cli")
 
-    # 6. A plain backlog item. Cases A1 and A2 use it: `spec` and `plan` are
+    # 6. Documentation entries, and the files they name. Case B10 asks an agent
+    #    to close out a code change against a node that declares them, so a node
+    #    declaring none gives it nothing to act on — `tcw work docs` says exactly
+    #    that. The trigger vocabulary is open and shape-validated only, so these
+    #    follow the convention TCW's own node uses.
+    _write(dest, "docs/changelogs/upcoming.md",
+           "# Unreleased\n\n## Added\n\n## Changed\n\n## Fixed\n")
+    _declare_documentation(dest)
+
+    # 7. A plain backlog item. Cases A1 and A2 use it: `spec` and `plan` are
     #    legal only in `backlog`.
     backlog_slug = _run(dest, "work", "new", "Let an account export its report",
                         "--tag", "cli", "--priority", "40")
 
-    # 7. The mid-flight active item. Cases A3 and A4 use it: `implement` needs
+    # 8. The mid-flight active item. Cases A3 and A4 use it: `implement` needs
     #    `active`, and `verify` needs `active` or `review` *and* an outcome to
     #    read.
     active_slug = _run(dest, "work", "new", "Let an account download its invoice",
@@ -403,12 +434,12 @@ def render_invoice(account_id: str, line_items: list[dict]) -> str:
     _git(dest, "add", "-A")
     _git(dest, "commit", "-q", "-m", f"tcw work: {active_slug} outcome")
 
-    # 8. An untriaged inbox request, for case B2.
+    # 9. An untriaged inbox request, for case B2.
     _write(dest, "docs/work/inbox/slow-login.md", INBOX_REQUEST)
     _git(dest, "add", "-A")
     _git(dest, "commit", "-q", "-m", "demo-app: an untriaged inbox request")
 
-    # 9. A completed item carrying a defect found after the fact, for case B9.
+    # 10. A completed item carrying a defect found after the fact, for case B9.
     #    Case A5 uses it too: `postmortem` needs `review` or `completed`.
     done_slug = _run(dest, "work", "new", "Show an account's report",
                      "--tag", "cli", "--priority", "30")

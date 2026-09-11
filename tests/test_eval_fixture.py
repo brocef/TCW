@@ -78,6 +78,22 @@ def test_the_inbox_request_is_untriaged(variant, request):
 
 
 @pytest.mark.parametrize("variant", ["control", "customized"])
+def test_the_node_declares_documentation_entries(variant, request):
+    """Case B10 asks an agent to close out a code change against a node that
+    declares documentation entries. A node declaring none gives it nothing to
+    act on, and `tcw work docs` says exactly that rather than failing, so the
+    case would have graded against an empty trigger set."""
+    root, _ = request.getfixturevalue(variant)
+    result = _tcw(root, "work", "docs")
+    assert result.returncode == 0, result.stderr
+    assert "README.md" in result.stdout
+    assert "docs/changelogs/upcoming.md" in result.stdout
+    # The entries have to name files that exist, or the agent has nothing to edit.
+    assert (root / "README.md").is_file()
+    assert (root / "docs/changelogs/upcoming.md").is_file()
+
+
+@pytest.mark.parametrize("variant", ["control", "customized"])
 def test_the_completed_item_carries_a_defect_found_after_acceptance(
         variant, request):
     """Case B9 asks for a post-mortem, which needs something to find."""
