@@ -1,0 +1,11 @@
+slug: 2026-09-11-refine-the-plugin-skills-and-lifecycle-prompts-against-the-eval-findings
+title: Refine the plugin skills and lifecycle prompts against the eval findings
+created: '2026-09-11'
+resolution: null
+priority: 45
+tags:
+- skills
+- work
+- docs
+blocked_by:
+- slug: 2026-09-11-run-the-eval-harness-and-act-on-what-it-finds

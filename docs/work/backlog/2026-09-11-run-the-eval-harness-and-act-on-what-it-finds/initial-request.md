@@ -64,13 +64,27 @@ than as injection working.
 
 ## Scope
 
-In: tasks 7 through 12 of the parent plan — the mutation checks that only a live
+In: tasks 7 through 11 of the parent plan — the mutation checks that only a live
 run can exercise, the axis A run, the Codex adapter, the axis B assertion
-revision, the axis B run, the findings report, and refinements the evidence
-justifies.
+revision, the axis B run, and the findings report. This item ends with the
+findings presented for review.
 
-Out: changing the instrument's design. If a case turns out to measure the wrong
-thing, fix that case and say so, but a rebuild is a different item.
+Out: **applying the refinements**, which is task 12 and now
+`2026-09-11-refine-the-plugin-skills-and-lifecycle-prompts-against-the-eval-findings`,
+blocked by this one. Splitting them keeps the measurement honest: an item that
+both measures and fixes has an interest in what it measures.
+
+Also out: changing the instrument's design. If a case turns out to measure the
+wrong thing, fix that case and say so, but a rebuild is a different item.
+
+## One harness improvement worth making here
+
+`grade.py` implements one transcript ordering read, for whether the gate ran
+before the artifact. A **general** ordering predicate is the same machinery, and
+it would make B8's cross-axis ordering mechanical instead of unmechanized. It was
+deliberately not added when the test set was written, because declaring a
+predicate the grader had not committed to implement is the failure the assertion
+vocabulary exists to prevent. If it lands, replace B8's `unmechanized` marker.
 
 ## Cost
 

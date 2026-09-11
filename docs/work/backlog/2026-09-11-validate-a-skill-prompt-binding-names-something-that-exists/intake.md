@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `skill-binding-names-are-never-validated.md`
+
+## Inbox body
+
 # A `skill:` prompt binding is never validated, and a typo resolves silently
 
 Found while building the eval harness
