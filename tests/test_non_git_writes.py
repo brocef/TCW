@@ -1069,7 +1069,14 @@ def test_init_still_refuses_a_store_holding_a_real_item(tmp_path):
 
 
 def test_init_refuses_a_real_item_even_beside_claiming(tmp_path):
-    """The case that separates "forgive a name" from "ignore the directory"."""
+    """A real item still refuses with the directory present.
+
+    This passes against the pre-fix code too — it is a guard that forgiving the
+    name did not disturb the ordinary case, not the case that separates
+    forgiving a name from ignoring a directory. That one is
+    `test_init_refuses_a_claim_in_flight`, which puts the item *inside*
+    `.claiming/`.
+    """
     code, store = _default_store(tmp_path)
     (code / "docs" / "work" / ".claiming").mkdir()
     item = code / "docs" / "work" / "backlog" / "existing"

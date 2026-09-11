@@ -68,6 +68,14 @@ Both of its substantive claims.
 
 ## What the plan got wrong
 
+- **One defect found by the sweep is filed rather than fixed.** A slug beginning
+  with `/` reaches `Path.glob` as a non-relative pattern and raises
+  `NotImplementedError` — a crash rather than a refusal. It predates this change
+  (an unescaped absolute pattern fails the same way) and the CLI resolves the
+  slug before it gets there, so it needs the store API. Not fixed here because
+  this spec made routing the slug through `_safe_store_id` an explicit non-goal,
+  and quietly reversing that mid-implementation is how scope drifts. Filed.
+
 - **The plan predicted the red test would fail on its aftermath assertions.** It
   does not reach them: the command dies in `git add` on a pathspec containing the
   wildcard, so the test fails on an unexpected `CalledProcessError`. That is a
@@ -91,9 +99,11 @@ Both of its substantive claims.
 ## Notes
 
 - **The glob sweep the plan asked for is clean.** `_claiming_dirs` was the only
-  glob in `tcw/` built from caller-supplied input; the two others
-  (`tcw/validate.py:62` and `tcw/store/fs.py:3531`) take literal patterns from
-  their call sites. Reported because "nothing found" is a result.
+  glob in `tcw/` built from caller-supplied input. **The first write-up of this
+  said "the two others"; there are nine call sites in total**, and the other
+  eight take literal patterns. The conclusion holds and the count did not —
+  corrected after review, because a sweep is only worth anything if its scope is
+  stated accurately.
 - **Priority raised from 20 to 55 at the spec stage.** The low priority came
   directly from the misdescribed severity — the same failure mode as the item
   before this one, whose intake also understated what was wrong.

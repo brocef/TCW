@@ -20,8 +20,12 @@ All eight met.
 2. The same store without it still relocates.
 3. A store holding a real item is still refused as non-pristine.
 4. A store holding both is still refused.
-5. `FsWorkStore.start` unchanged by this item: `git diff` showed one hunk in
-   `init` and one docstring.
+5. `FsWorkStore.start` unchanged **by the fix**: the diff at `9cd69e83` showed
+   one hunk in `init` and one docstring. **No longer literally true of the
+   branch**: the later combined review (`7965069b`) moved sixteen lines of
+   comment into `start`, beside the `mkdir`. Comments only, no statement
+   changed — but the criterion as written said the function is untouched, and it
+   is not, so it is restated here rather than quietly reinterpreted.
 6. `tests/test_non_git_writes.py:190` keeps its fresh-node fixture and its
    absence assertion; only the docstring explaining *why* changed.
 7. The invariant is recorded — relocated during the combined review, see below.
