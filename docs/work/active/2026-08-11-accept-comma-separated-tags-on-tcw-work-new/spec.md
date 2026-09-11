@@ -194,8 +194,11 @@ criterion says otherwise.
 12. **`tcw work tags add "cli,docs"` registers `cli` and `docs` and never
     `cli-docs`**, on a node where neither is registered yet.
 13. **`tcw work tags rm "cli,docs"` unregisters both.** On a node still carrying
-    `cli-docs` from before, it unregisters nothing and says so rather than
-    removing `cli-docs`.
+    `cli-docs` from before, it removes nothing rather than removing `cli-docs`.
+    **Corrected during verification**: this first said the command "says so".
+    It does not, and never has — `tcw work tags rm <absent>` has always been a
+    silent no-op at exit 0. Reporting an absent tag would be a behaviour change
+    beyond this item.
 14. `tcw work new "X" --blocked-by "external: waiting on Acme, Inc."` still
     records **one** blocker containing the comma. Verified to hold today, so this
     detects a regression rather than describing an aspiration.
