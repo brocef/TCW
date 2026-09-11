@@ -47,6 +47,15 @@ category.
 
 ## Fixed
 
+- **An empty `.claiming/` made a default work store non-pristine.** `init`
+  compares the work root's entries against `{"inbox", *WORK_STATUSES}`, and
+  `start` creates `.claiming/` without ever removing it, so `tcw init
+  --work-path` refused to relocate any store an item had ever been started in.
+  The name is now discarded from that comparison; the per-child check below it
+  is unchanged, so a claim in flight still reads as work and still refuses.
+  `FsWorkStore.start` is untouched — removing the directory after a claim would
+  race the next one and report an interrupted claim on an item nobody touched.
+
 - **A comma in a tag value silently produced a joined tag.** `normalize_tag`
   collapses every run of `[^a-z0-9]+` to a hyphen, so `cli,docs` became the
   single tag `cli-docs` everywhere a tag was read. Applying was caught only by

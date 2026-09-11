@@ -41,3 +41,19 @@ such as `--tags ""`, is now refused rather than treated as "no tags", so a scrip
 passing an empty variable needs to leave the option off instead. And the
 abbreviation `--ta` no longer works, because it can no longer tell `--tag` and
 `--tags` apart; write `--tag` in full.
+
+## Moving your work store no longer refuses over an empty folder
+
+If you have ever run `tcw work start`, your project has an empty
+`docs/work/.claiming/` folder. TCW makes it while it moves an item and never
+tidies it away, which is harmless — except that `tcw init --work-path` counted it
+as work, and refused to move your store somewhere else:
+
+```
+tcw init: refusing to replace non-pristine …/docs/work; move existing work
+manually, update work.path, then re-run init
+```
+
+There was nothing to move, and nothing you could see. That message now only
+appears when your store really does hold work, including an item being started
+at that very moment.
