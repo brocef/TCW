@@ -42,7 +42,7 @@ tcw_interpreter() {
 }
 
 # A developer's `pip install -e` checkout — report-and-don't-touch, per
-# skills/tcw-plugin/references/doctor.md. The sys.path filter is load-bearing: a
+# skills/tcw-plugin/SKILL.md. The sys.path filter is load-bearing: a
 # session's cwd is usually the project, and a `tcw.egg-info` sitting in a TCW
 # checkout would otherwise answer this question instead of the real dist-info,
 # turning the guard into a force-install over the dev setup.
@@ -97,13 +97,14 @@ command -v pipx >/dev/null 2>&1 || exit 0
 # 5. Install the published CLI, then record which plugin version asked for it. A
 #    failure leaves the sentinel stale, so the next session retries with no state
 #    to clean up. One line on failure, and it does not try to tell a network
-#    outage from a missing release — that is what the doctor is for.
+#    outage from a missing release apart: the remedy is the same either way,
+#    and naming it beats naming a cause that would be a guess.
 if pipx install --force tcw-cli >/dev/null 2>&1; then
     if [ -n "$sentinel" ]; then
         mkdir -p "$(dirname "$sentinel")" 2>/dev/null &&
             cp "$root/tcw/__init__.py" "$sentinel"
     fi
 else
-    echo "tcw: automatic install of tcw-cli from PyPI failed (offline?) — run /tcw-doctor (Codex: the tcw-plugin skill) to diagnose."
+    echo "tcw: automatic install of tcw-cli from PyPI failed (offline?) — install it by hand with 'pipx install tcw-cli'."
 fi
 exit 0

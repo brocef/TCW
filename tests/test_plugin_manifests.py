@@ -1,7 +1,7 @@
 """Plugin manifests parse, and the version is in lockstep across all 5 files.
 
 The single automated guard against *authoring* drift (runtime cache-vs-installed
-drift is `/tcw-doctor`'s job, not this test's).
+drift is the tcw-plugin skill's job, not this test's).
 """
 import json
 import os

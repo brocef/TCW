@@ -191,8 +191,9 @@ Or, in the Claude **web app** or **desktop app**, open the plugin directory, add
 by installing `tcw-cli` from PyPI with `pipx`, so one installed mid-session
 cannot run until the next one begins. That first session needs network access. It
 installs over an existing `pipx install tcw-cli` rather than beside it, and
-leaves a development checkout (`pip install -e .`) alone. Run `/tcw-doctor` any
-time `tcw` goes missing or looks wrong.
+leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
+anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-plugin`** skill
+carries the cases where it is not.
 
 In **Codex** (skills only, no slash commands):
 
@@ -222,6 +223,89 @@ Requires **Python ≥ 3.11** (its only runtime dependency is PyYAML). `tcw serve
 additionally requires **Node.js ≥ 22.12**; every other command is Python-only.
 Released wheels carry the prebuilt web assets, so there is no frontend build step
 and no network needed after install.
+
+### In a cloud environment
+
+A cloud agent session — Claude Code on the web, a Codex container, a CI job —
+starts from a clean image and is thrown away when it ends, so a `tcw` you install
+by hand is gone by the next one. Install it **from your repository**, with a
+session-start hook, and every session gets it without anyone remembering to.
+
+Add a script to your repository:
+
+```sh
+#!/usr/bin/env bash
+# Make `tcw` available in a disposable agent container.
+# Exit 0 on every path — a session must start even when this cannot finish.
+set -u
+
+command -v tcw >/dev/null 2>&1 && exit 0
+
+# pipx where it exists; otherwise install into the container's own interpreter.
+# That is the right answer *here* and nowhere else: the container is disposable
+# and single-purpose, so there is no user environment to damage.
+if command -v pipx >/dev/null 2>&1; then
+    pipx install tcw-cli >/dev/null 2>&1 || echo "tcw: pipx install tcw-cli failed"
+elif ! python3 -m pip install tcw-cli >/dev/null 2>&1 &&
+    ! python3 -m pip install tcw-cli --break-system-packages >/dev/null 2>&1; then
+    echo "tcw: pip install tcw-cli failed — the tcw CLI is not available."
+fi
+
+# An install that landed outside PATH is installed and unusable. $CLAUDE_ENV_FILE
+# is the harness's own channel for repairing that.
+if ! command -v tcw >/dev/null 2>&1 && [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    userbin="$(python3 -m site --user-base 2>/dev/null)/bin"
+    [ -x "$userbin/tcw" ] && echo "export PATH=\"$userbin:\$PATH\"" >>"$CLAUDE_ENV_FILE"
+fi
+
+exit 0
+```
+
+Then wire it to `SessionStart` in your repository's `.claude/settings.json`:
+
+```json
+{
+    "hooks": {
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "\"${CLAUDE_PROJECT_DIR}\"/scripts/tcw_session_setup.sh"
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+Three things make the difference between a hook that helps and one that wastes a
+session:
+
+- **Exit 0 on every path, and print only on failure.** A hook that fails the
+  session start over a missing CLI has cost more than the CLI was worth.
+- **Print to stdout.** Claude Code adds a `SessionStart` hook's stdout to the
+  agent's context, where it will be read; stderr becomes a transcript notice
+  nobody sees.
+- **Check for `tcw` first.** The hook runs every session, including the ones
+  where a previous install is still there.
+
+**If your work store lives in another repository**, the container holds only the
+repository it cloned, so the board is declared but absent. Run `tcw provision`
+after the install — it obtains what the checkout does not have, and does nothing
+on a machine that already holds it. See
+[Working across repositories](docs/guide/multi-repo.md).
+
+Installing the **plugin** in such a session is a separate step from installing the
+CLI, and only needed where the harness does not carry your plugins in: append
+`claude plugin marketplace add brocef/TCW` and `claude plugin install tcw@tcw` to
+the same script, guarded on `command -v claude`.
+
+This repository's own [`scripts/remote_session_setup.sh`](scripts/remote_session_setup.sh)
+is the same pattern written for a _contributor_ rather than a user — it installs
+the checkout with `pip install -e` instead of the release from PyPI, and installs
+the plugin from the checkout too. Read it as the worked example.
 
 ## Quickstart
 
@@ -272,16 +356,16 @@ _judgment_ that drives it — the parts a deterministic tool cannot decide. Eigh
 carry a distinct procedure; the other six all compose one lifecycle stage and
 are listed together at the end.
 
-| Skill                                                      | What it does                                                                                                                           |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-work`](skills/tcw-work/SKILL.md)                     | Plans a request through spec and plan, drives implementation and verification, triages the inbox, runs the lifecycle, decomposes epics |
-| [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)     | The capability-delta planning check, contradiction detection, and the ledger flip at completion                                        |
-| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and federating shared vocabulary                                                      |
-| [`tcw-plugin`](skills/tcw-plugin/SKILL.md)                 | Installs and repairs the CLI; the source of the `/tcw-doctor` procedure                                                                |
-| [`tcw-report`](skills/tcw-report/SKILL.md)                 | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                          |
-| [`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)   | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                 |
-| [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                     |
-| [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md)       | Finds which lifecycle stage could first have caught a problem, once one has surfaced                                                   |
+| Skill                                                      | What it does                                                                                                                                               |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`tcw-work`](skills/tcw-work/SKILL.md)                     | Plans a request through spec and plan, drives implementation and verification, triages the inbox, runs the lifecycle, decomposes epics, searches the board |
+| [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)     | The capability-delta planning check, contradiction detection, and the ledger flip at completion                                                            |
+| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and federating shared vocabulary                                                                          |
+| [`tcw-plugin`](skills/tcw-plugin/SKILL.md)                 | Installs the CLI from PyPI, and maps the other skills                                                                                                      |
+| [`tcw-report`](skills/tcw-report/SKILL.md)                 | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                                              |
+| [`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)   | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                                     |
+| [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                                         |
+| [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md)       | Finds which lifecycle stage could first have caught a problem, once one has surfaced                                                                       |
 
 They name `tcw` commands and never reimplement tool logic: mechanism stays in the
 binary, judgment stays in the skills.
@@ -303,9 +387,10 @@ Three read-only review agents ship alongside them — `tcw-verifier`,
 `tcw-backlog-auditor`, and `tcw-post-mortem`, which accelerates the skill of the
 same name — plus slash commands for each skill's main procedure
 (`/tcw-plan-work`, `/tcw-drive-work-to-completion`, `/tcw-verify-work`,
-`/tcw-process-inbox`, `/tcw-triage-issues`, `/tcw-audit-work-backlog`,
-`/tcw-taxonomy-init`, `/tcw-capabilities-init`, `/tcw-docs-sync-setup`,
-`/tcw-cut-version`, `/tcw-post-mortem`, `/tcw-doctor`).
+`/tcw-process-inbox`, `/tcw-work-search`, `/tcw-triage-issues`,
+`/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,
+`/tcw-capabilities-init`, `/tcw-docs-sync-setup`, `/tcw-cut-version`,
+`/tcw-post-mortem`).
 
 ---
 
