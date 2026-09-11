@@ -11,6 +11,7 @@ into a tree-store core in Phase 4 (don't pre-abstract —
 # don't raise at class-definition time on Python 3.11–3.13. See tcw/store/base.py.
 from __future__ import annotations
 
+import glob
 import hashlib
 import mimetypes
 import os
@@ -3679,8 +3680,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
         each other by construction, since `_unique_slug` mints `{base}-2` for a
         duplicate title. A loose glob makes `start()` on an absent slug stall and
         then claim there is an interrupted claim to recover.
+
+        **The slug is escaped: it is a name, not a pattern.** The same hole the
+        paragraph above closes for `-*` was open through `*`, `?` and `[` in the
+        caller's own slug, and far worse — an unquoted wildcard a shell passed
+        through matched *another* item's claim, and `--take-over` then moved that
+        item to a directory named with the wildcard. The `[0-9a-f]` suffix is
+        concatenated after the escape because that pattern is ours.
+
+        Nothing recoverable stops matching. A claim directory is created in one
+        place, as `f"{slug}-{uuid4().hex}"` after `_find` matched that exact
+        name, so every one on disk is named for a literal slug and an escaped
+        pattern built from the same string still finds it.
         """
-        return sorted((self.root / ".claiming").glob(f"{slug}-" + "[0-9a-f]" * 32))
+        return sorted((self.root / ".claiming").glob(
+            glob.escape(slug) + "-" + "[0-9a-f]" * 32))
 
     def _lost_the_claim(self, slug: str) -> NoReturn:
         """Report a lost race once the winner publishes, or an abandoned claim.
