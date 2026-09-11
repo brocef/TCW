@@ -3,20 +3,19 @@
 ## Capability changes
 
 **Revise `work/tag-a-work-item` (`cap-609d75`).** Its description enumerates the
-CLI surface for applying and filtering tags — `tcw work new --tag`,
-`tcw work edit --tag/--untag`, `tcw work list --tag` — so a new accepted spelling
-belongs in it. Status stays `Supported`; this widens an existing capability
-rather than adding one.
+CLI surface for registering, applying and filtering tags, so a new accepted
+spelling and a changed reading of a comma both belong in it. Status stays
+`Supported`; this widens an existing capability rather than adding one.
 
-No other ledger entry is touched. `work/manage-blocking-relations` is deliberately
-left alone; see **Non-goals**.
+No other ledger entry is touched.
 
 ## Problem
 
-Two defects, one reported and one found while grounding it. Both verified at
-`7e2c5961` against a scratch node with `cli` and `docs` registered.
+Two defects. One is the reported papercut; the other was found by running the
+commands and is the reason this item is worth doing. Both verified at `ceedd07a`
+on a scratch node with `cli` and `docs` registered.
 
-**1. `--tags` is not an option.** The reported papercut.
+**1. `--tags` is not an option.**
 
 ```
 $ tcw work new "A" --tags cli,docs
@@ -25,75 +24,99 @@ tcw: error: unrecognized arguments: --tags cli,docs
 
 A hard argparse error with no hint that `--tag` is the spelling.
 
-**2. `--tag cli,docs` silently becomes one tag, and the error invites the user to
-make it permanent.** This is the worse of the two and is not in the request.
+**2. A comma in a tag is silently swallowed, and the node can be corrupted
+permanently.** `normalize_tag` (`tcw/store/base.py:702-709`) replaces every run
+of `[^a-z0-9]+` with a hyphen, so `cli,docs` becomes the single tag `cli-docs`
+everywhere a tag is accepted. That has three faces, in worsening order:
 
 ```
 $ tcw work new "B" --tag cli,docs
 tcw work new: unregistered tag 'cli-docs'; register it with `tcw work tags add cli-docs`
 ```
 
-`normalize_tag` (`tcw/store/base.py:702-709`) replaces every run of
-`[^a-z0-9]+` with a hyphen, so a comma is silently swallowed and `cli,docs`
-becomes the single tag `cli-docs`. Registration is the only thing that catches
-it, and the message it produces tells the user to register `cli-docs` — advice
-that would write a nonsense tag into `tcw-config.yaml` and make the mistake
-permanent and invisible. On a node where someone had followed that advice once,
-the command would succeed silently.
+Applying is caught, but only by the registration check, and the message tells the
+user to register the nonsense tag.
 
-**The repository already has the convention this is missing.**
+```
+$ tcw work tags add "cli,docs"
+cli
+cli-docs
+docs
+$ tcw validate
+validate OK
+$ tcw work new "C" --tag cli,docs && tcw work show 2026-09-11-c | grep tags
+tags: cli-docs
+```
+
+**Registering is not caught at all.** `tcw work tags add` takes `nargs="+"`
+positionals with no converter (`tcw/work/cli.py:1855`, `:1858`) and
+`register_tags` normalizes each value (`tcw/store/fs.py:5268-5274`). So the
+advice the first message gives works, writes `cli-docs` into `tcw-config.yaml`,
+and `tcw validate` reports the result sound. From then on `--tag cli,docs`
+succeeds silently and every item tagged that way carries a tag nobody meant.
+
+Removing inherits the same reading: `tcw work tags rm "cli,docs"` unregisters
+`cli-docs` when that tag exists, and reports a stale-tag warning for every item
+still carrying it.
+
+**The repository already has the convention that is missing here.**
 `tcw work edit --blocks` takes a comma-separated string (`tcw/work/cli.py:2006`)
-and splits it with `_split` (`:123-125`), whose docstring calls comma-splitting
-"repo idiom". `tcw capabilities set --field` advertises `Subject accepts a,b,c`
-(`tcw/capabilities/cli.py:290`). So a user who has met either of those reaches
-for `--tags cli,docs` reasonably, and tags are the one place the idiom is absent.
+split by `_split` (`:123-125`), whose docstring calls comma-splitting "repo
+idiom"; `tcw capabilities set --field` advertises `Subject accepts a,b,c`
+(`tcw/capabilities/cli.py:290`). A user who has met either reaches for
+`--tags cli,docs` reasonably, and tags are where the idiom is absent.
 
 ## Goals
 
 1. `tcw work new --tags cli,docs` applies two tags.
-2. `--tag cli,docs` applies two tags rather than silently making one, closing
-   defect 2. A comma in a tag value is a list separator, never a character.
-3. The two spellings and the repeatable form compose in any combination.
-4. The same treatment reaches every place a tag is accepted, so there is no
-   command where a comma means something different.
+2. **A comma is a list separator wherever a tag is accepted, never a character
+   inside one.** That covers applying, filtering, registering and unregistering
+   — the last two being where the damage is done.
+3. The spellings and the repeatable form compose in any combination.
 
 ## Non-goals
 
-- **Doing this generically to every repeatable option.** The request asks
-  whether to, and the answer is no, for a reason rather than for scope. Comma
-  splitting is only safe where a comma cannot occur inside a legitimate value:
-    - `--blocked-by` / `--unblocked-by` (`tcw/work/cli.py:1881`, `:2004`,
-      `:2007`) take "a slug or external text". External text is free prose —
-      `--blocked-by "external: waiting on Acme, Inc."` is a legal value today,
-      and splitting it would silently become two blockers.
-    - `tcw provision --component` (`tcw/cli.py:486`) carries argparse `choices=`,
-      which validates the whole value; splitting would have to bypass it.
-    - `tcw taxonomy add --vocab` (`tcw/taxonomy/cli.py:198`) takes refs. Safe in
-      principle, out of scope in practice: nobody has reported wanting it and
-      this item is not a CLI-wide convention change.
+- **Generalizing to every repeatable option.** The request asks whether to; the
+  answer is no, and the line is *whether a comma can occur inside a value that is
+  legitimate today*:
+    - `--blocked-by` / `--unblocked-by` (`:1881`, `:2004`, `:2007`) take "a slug
+      or external text". Free prose contains commas:
+      `--blocked-by "external: waiting on Acme, Inc."` records **one** blocker
+      today, verified, and splitting it would silently make two.
+    - `tcw capabilities set --field` (`capabilities/cli.py:289`) takes `K=V`
+      with its own grammar per key; some keys already split on commas and
+      others must not.
+    - `tcw taxonomy add --vocab` (`taxonomy/cli.py:198`) takes refs and would be
+      safe. Excluded as scope, not as principle: nobody has asked, and this item
+      is not a CLI-wide convention change.
+    - `tcw provision --component` (`cli.py:486`) would be safe too, splitting
+      before its `choices=` check. Also excluded as scope. **The earlier draft of
+      this spec claimed `choices=` made it unsafe; that was wrong** — `choices=`
+      is an implementation detail, not a reason a comma cannot be a separator.
   - A **tag** is the one value that cannot contain a comma by construction:
-    `normalize_tag` admits only `[a-z0-9-]`. That is the line, and it is stated
-    so a future reader knows why the change stopped where it did.
+    `normalize_tag` admits only `[a-z0-9-]`.
 - **Changing `normalize_tag`.** It keeps collapsing punctuation to hyphens, which
-  is what makes `My Tag` and `my-tag` the same tag. The fix is splitting before
-  it, not loosening it.
-- **A deprecation of `--tag`.** Additive only, as the request says.
+  is what makes `My Tag` and `my-tag` the same tag. The fix splits before it.
+- **Cleaning up an already-poisoned node.** A node where someone followed the
+  misleading advice keeps its joined tag, and `tcw validate` keeps reporting OK.
+  See **Risks**.
 - **The web UI.** `tcw serve` edits tags against the registered set through its
-  own control; there is no comma-separated text field to change.
+  own control; there is no comma-separated text field.
 
 ## Design
 
-One argparse `Action`, used at every site that takes a tag.
+One converter, used two ways.
 
 ```python
-class _TagList(argparse.Action):
-    """--tag/--tags: repeatable, and each value may itself be a comma list."""
+def _tags(value: str) -> list[str]:
+    """--tag/--tags and `tags add|rm`: a value is a comma-separated list."""
 ```
 
-It splits the value with the existing `_split`, normalizes each token with
-`normalize_tag`, and appends to `dest`, skipping a tag already present.
+It splits with the existing `_split`, normalizes each token with
+`normalize_tag`, and refuses a value that yields nothing — echoing the value as
+typed, so `--tags ",,"` names the commas rather than an empty string.
 
-Registered at four sites, each gaining a second spelling:
+**Four options** take `type=_tags, action="extend"` and a second spelling:
 
 | Site | `tcw/work/cli.py` | Spellings |
 | --- | --- | --- |
@@ -102,78 +125,118 @@ Registered at four sites, each gaining a second spelling:
 | `work edit` | `:2016` | `--tag`, `--tags` |
 | `work edit` | `:2017` | `--untag`, `--untags` |
 
-argparse takes `dest` from the first long option, so `dest` stays `tag` and
-`untag` and **no command handler changes**. The `type=_tag` converter those four
-sites use becomes unreferenced and is deleted; the `Action` does its job and
-raising `argparse.ArgumentError` from an `Action` produces the same
-`argument --tag: <message>` output a `type=` converter does.
+`extend` flattens each returned list into `dest`, and `dest` comes from the first
+long option, so `dest` stays `tag` and `untag` and **no command handler changes**.
+Verified: `--tag a --tags b,c` gives `[a, b, c]`; `--tags a,,b` gives `[a, b]`;
+`--tags ""` exits 2 with `argument --tag/--tags: invalid tag '': …`.
 
-**Decisions the request asked for, and the answers:**
+**Two positionals** — `tags add` and `tags rm` (`:1855`, `:1858`) — keep
+`nargs="+"` and flatten in their handlers, because argparse does not flatten a
+list-returning `type=` under `nargs`. Verified: both `store` and `extend` yield
+`[['cli','docs'], ['web']]`. One line each, using the same `_tags`.
 
-- **Composition.** `--tag a --tags b,c` yields `[a, b, c]`. The form is a
-  spelling, not a mode; nothing distinguishes the two once parsed.
-- **Duplicates.** `--tags a,a` and `--tag a --tags a` both yield `[a]`.
-  First-seen order is kept. Deduplicating at the boundary means a handler never
-  sees a repeated tag, which is what the store already assumes.
-- **Empty segments.** `--tags a,,b` yields `[a, b]`. `_split` drops empty tokens
-  and that is the established behaviour of `--blocks`; a value that is only
-  separators is not a different kind of input from one with a stray comma.
-- **A wholly empty value.** `--tags ""` and `--tags ",,"` are refused, with the
-  same message shape `--tag ""` gives today:
-  `argument --tags: invalid tag '': empty after normalization`. Today's
-  behaviour for an empty tag is an error, and yielding nothing instead would
-  make a typo silent.
+The existing `_tag` converter (`:68-74`) becomes unreferenced and is deleted.
+
+**Decisions the request asked for:**
+
+- **Composition.** `--tag a --tags b,c` yields `[a, b, c]`. A spelling, not a
+  mode.
+- **Duplicates.** Not handled here, because they are already handled everywhere
+  downstream: `_validate_tags` dedupes preserving first-seen order and its
+  docstring says so (`store/fs.py:5276-5289`); `_edit` checks membership before
+  appending (`cli.py:1539-1545`); the board filter builds a set (`:371`).
+  `--tag cli --tag cli` yields one tag today. **An earlier draft added
+  parser-level deduplication and justified it as something "the store already
+  assumes"; the store does not assume it, it performs it**, so that code would
+  have been new behaviour duplicating existing behaviour.
+- **Empty segments and empty values, one rule:** *blank segments are ignored, and
+  every occurrence of the option must yield at least one tag.* So `a,,b` is two
+  tags and `""` and `",,"` are errors. The earlier draft defended these two
+  halves with two different precedents, picking whichever supported each answer.
 
 ## Acceptance criteria
 
-Each is a command run against a scratch node with `cli` and `docs` registered.
+Run against a scratch node with `cli`, `docs` and `web` registered, unless a
+criterion says otherwise.
 
-1. `tcw work new "X" --tags cli,docs` succeeds, and `tcw work show` lists exactly
-   `cli, docs`.
+1. `tcw work new "X" --tags cli,docs` succeeds; `tcw work show` lists `cli, docs`.
 2. `tcw work new "X" --tag cli,docs` succeeds with the same two tags. The
-   pre-change behaviour — `unregistered tag 'cli-docs'` — no longer occurs.
-3. `tcw work new "X" --tag cli --tags docs` yields `cli, docs`.
-4. `tcw work new "X" --tags cli,cli` yields `cli` once, as does
-   `--tag cli --tags cli`.
-5. `tcw work new "X" --tags "cli,,docs"` yields `cli, docs`.
-6. `tcw work new "X" --tags ""` exits non-zero with
-   `invalid tag '': empty after normalization`, and creates no item.
-7. `tcw work new "X" --tags cli,nope` exits non-zero naming `nope` as
-   unregistered, and creates no item — a bad tag anywhere in a list refuses the
-   whole command, as a bad repeated `--tag` does today.
-8. `tcw work edit <slug> --untags cli,docs` removes both.
-9. `tcw work list --tags cli,docs` lists items carrying either, matching
-   `--tag cli --tag docs`.
-10. `--help` for `new`, `list` and `edit` shows both spellings of each option.
-11. `tcw work new "X" --blocked-by "external: waiting on Acme, Inc."` still
-    records **one** blocker whose text contains the comma. Pins the non-goal.
-    Verified to hold today at `7e2c5961`, so this criterion detects a
-    regression rather than describing an aspiration.
-12. `pytest` passes, and `tests/test_work_tags.py` gains cases for criteria 1
-    through 9.
-13. `tcw capabilities show work/tag-a-work-item` describes the `--tags` spelling,
-    and `tcw capabilities check` passes.
+   pre-change `unregistered tag 'cli-docs'` no longer occurs.
+3. `--tag cli --tags docs` and `--tags docs --tag cli` both yield `cli, docs`.
+4. `--tags cli,cli` and `--tag cli --tags cli` each yield `cli` once.
+5. `--tags "cli, docs"` (space after the comma) yields `cli, docs`.
+6. `--tags ""` and `--tags ",,"` each exit non-zero, create no item, and echo the
+   value as typed — the second naming `',,'`, not `''`.
+7. `--tags cli,nope` exits non-zero naming `nope`, and creates no item.
+8. `--tags "cli,!!!"` exits non-zero. A non-blank invalid token is refused, not
+   discarded.
+9. `tcw work edit <slug> --tags web` adds without disturbing existing tags;
+   `--untags cli,docs` removes both; `--tag cli --untag cli` preserves today's
+   add-wins outcome.
+10. `tcw work edit <slug> --untags cli,nope` exits non-zero and leaves the item's
+    tags unchanged.
+11. On a node with four items — one `cli`, one `docs`, one both, one neither —
+    `tcw work list --tags cli,docs` lists the first three and not the fourth,
+    identically to `--tag cli --tag docs`. Four fixtures, so an AND filter cannot
+    pass.
+12. **`tcw work tags add "cli,docs"` registers `cli` and `docs` and never
+    `cli-docs`**, on a node where neither is registered yet.
+13. **`tcw work tags rm "cli,docs"` unregisters both.** On a node still carrying
+    `cli-docs` from before, it unregisters nothing and says so rather than
+    removing `cli-docs`.
+14. `tcw work new "X" --blocked-by "external: waiting on Acme, Inc."` still
+    records **one** blocker containing the comma. Verified to hold today, so this
+    detects a regression rather than describing an aspiration.
+15. `--help` for `new`, `list`, `edit`, `tags add` and `tags rm` shows both
+    spellings and says a value may be a comma-separated list.
+16. `pytest` passes, and `tests/test_work_tags.py` gains cases for 1 through 13.
+17. `tcw capabilities show work/tag-a-work-item` describes the comma form, and
+    `tcw capabilities check` passes.
+18. Every documentation entry `tcw work docs` reports has been evaluated, and the
+    three files naming `--tag` that would otherwise drift —
+    `skills/tcw-work/references/tags.md`,
+    `skills/tcw-work/references/commands.md`, `docs/guide/work.md` — either
+    describe the comma form or are recorded as not needing to.
 
 ## Risks
 
-- **Defect 2 is a behaviour change, not only an addition.** A node where someone
-  followed the misleading error and registered `cli-docs` would today accept
-  `--tag cli,docs` and apply that tag; afterwards it applies `cli` and `docs`.
-  That is the fix working, but it is not purely additive and the changelog must
-  say so. The check is whether any registered tag is the hyphen-join of two
-  others. This node registers `bug capabilities cli docs remote skills taxonomy
-  tech-debt web work`; none is such a join (`tech-debt` is one concept, and
-  neither `tech` nor `debt` is registered), so nothing here changes meaning.
-- **A tag containing a comma becomes unreachable from the CLI.** It was already
-  unreachable: `normalize_tag` would have turned it into a hyphen. No registered
-  tag can contain one, so there is nothing to lose.
-- **Four call sites, one `Action`.** Getting `dest` wrong at any site would
-  silently break a handler. Criterion 10 and the existing tag tests cover it.
+- **This is not additive, and three behaviours change.** `--tag cli,docs` goes
+  from failing to succeeding; `tags add "cli,docs"` goes from registering
+  `cli-docs` to registering two tags; `tags rm "cli,docs"` goes from removing
+  `cli-docs` to removing two. The changelog must say so rather than calling the
+  item sugar. The earlier draft said "additive only" — wrong.
+- **An already-poisoned node is not repaired and stays silent.** A node where
+  `cli-docs` is registered keeps it, keeps every item tagged with it, and
+  `tcw validate` keeps reporting OK — confirmed. Cleanup is manual. A `validate`
+  warning for a registered tag that is the hyphen-join of two other registered
+  tags would close this, and is a separate item rather than this one.
+  This repository registers `bug capabilities cli docs remote skills taxonomy
+  tech-debt web work`; none is such a join, so nothing here changes meaning.
+- **An abbreviation that works today stops working.** Python's parser accepts
+  unambiguous prefixes, so `tcw work new "X" --ta cli` creates an item now and
+  will fail with `ambiguous option: --ta could match --tag, --tags`. Verified.
+  `--tag` itself still matches exactly, and `--t` is already ambiguous with
+  `--title`, so the loss is exactly `--ta` and `--unta`. Accepted as a cost of
+  the spelling the request asks for, and stated so it is not a surprise.
+- **`--tags "$VAR"` with an empty variable now fails.** That is the ordinary way
+  a script says "no tags", and it must become a branch. Accepted: the
+  alternative is that a typo silently applies nothing, which is how defect 2
+  stayed hidden.
+- **A neighbouring backlog item will inherit this decision unread.**
+  `2026-09-10-let-a-node-declare-its-own-work-item-state-fields` says a declared
+  field should behave the way a tag does, registered in config and filterable
+  from `list`. It sits above this one in priority. Whoever picks it up should
+  read this spec's non-goals rather than re-deriving the comma rule.
 
 ## Notes
 
-- Line citations are against `7e2c5961`.
-- Defect 2 was found by running the command rather than by reading the code, and
-  it is the more damaging of the two. The request records the argparse error
-  because that is what its author hit; the silent normalization is what a user
-  hits next, after guessing that `--tag` might take a list.
+- Line citations are against `ceedd07a`.
+- **`--blocks` accepting commas while `--blocked-by` does not is not an
+  inconsistency**, and an earlier draft wrongly called it one. `--blocks` accepts
+  only slugs of existing items — the handler refuses an unknown ref with
+  `st.get(ref) is None` (`cli.py:1547-1551`) — and a slug cannot contain a comma.
+  `--blocked-by` accepts free prose, which can. The asymmetry follows from the
+  value grammar, exactly as the tag rule does.
+- **Priority.** Filed at 20 as "additive sugar". Once defect 2 is in view the
+  alias carries no meaning `--tag` does not, and the value of the item is
+  entirely the silent corruption of a project's registered tag set. Raised to 35.
