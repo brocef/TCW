@@ -96,6 +96,34 @@ remove, so run it from the primary checkout). Re-point the install first —
 `pip install -e /Users/brian/Projects/TCW` — or it is left pointing at a deleted
 path.
 
+## Measuring the skill layer
+
+`evals/` holds the harness that measures whether this project's lifecycle
+instructions actually reach an agent, and what the plugin's skills add. pytest
+cannot answer either question: it can prove a skill file still says the right
+words, never that an agent read them.
+
+```sh
+python evals/seed_fixture.py --customized /tmp/probe   # build one fixture node
+python -m evals.run_evals --axis a --dry-run           # see the arms, spawn nothing
+python -m evals.run_evals --axis a                     # spend money
+python -m evals.grade eval-runs/iteration-1            # read the result
+```
+
+**`--plugin-dir` is not optional, and the runner passes it for you.** Enabling
+`tcw@tcw` instead loads `~/.claude/plugins/marketplaces/tcw`, which is a
+different commit from your working tree and auto-updates, so a run would measure
+the published plugin rather than your changes. The runner asserts this from the
+spawned session's own `init` event and fails the run if anything else loaded.
+
+Two rules for anyone changing the harness. Every assertion is mutation-checked
+before it is trusted — break what it claims to observe, confirm it goes red, and
+read _why_ it went red. And a nonce alone never proves injection worked: each
+composing skill carries a manual fallback, so `grade.py` reports every nonce as
+`injected`, `fallback` or `unknown`.
+
+Run outputs are disposable and gitignored. The instrument is not.
+
 ## Documentation Sync
 
 Before reporting any code change complete, invoke the `documentation-sync` skill

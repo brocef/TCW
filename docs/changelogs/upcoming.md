@@ -59,6 +59,49 @@ category.
 
 ## Internal
 
+- **An eval harness under `evals/`, measuring whether lifecycle prompt injection
+  reaches an agent.** Three pieces plus their guards, none of it shipped in the
+  wheel. `seed_fixture.py` builds one throwaway TCW node in two variants from a
+  single seeder, so the configured and unconfigured arms cannot drift apart;
+  under `--customized` it mints a nonce per fingerprinted binding kind and binds
+  each to a different stage. `run_evals.py` spawns each case in each arm and
+  captures the transcript. `grade.py` reads the result. `evals/evals.json`
+  declares eighteen cases and a twenty-predicate assertion vocabulary, and
+  `evals/coverage.py` fails when a shipped skill is covered by neither a case nor
+  a declared exclusion.
+
+    Four things the harness had to get right, each of which was wrong in the
+    first draft of the plan and is recorded in the work item:
+
+    - **A `skill` binding cannot carry a fingerprint.** `_resolve_one` resolves it
+      to the literal `Invoke the <name> skill.` and never reads the named skill's
+      body — which need not exist. Three kinds are fingerprinted, not four.
+    - **A `generate` hook receives an envelope**, `{"item": …, "hook": …}`, not the
+      projection; and `item` is `null` whenever the verb runs without a work item
+      reference. The fixture's generator reads the right path, guards the null
+      case, and never raises: a `GenerateError` becomes a `ResolveError` and the
+      CLI then exits 1 with no stdout at all, which a naive reading would score as
+      "the stage rendered nothing" rather than "the fixture is broken".
+    - **The silence opt-out needs a contrast, not an absence.** Asserting that no
+      project instruction appears passes in the control too. What differs is that
+      a `prompt: [{blob: ""}]` stage resolves to zero bytes while an unconfigured
+      one falls back to the bookended builtin floor.
+    - **A nonce alone cannot say how it arrived.** Every composing skill carries a
+      fenced fallback naming `tcw work stage prompt`, so an agent that runs it by
+      hand produces the nonce with the injection layer having done nothing. Each
+      nonce verdict carries `injected`, `fallback` or `unknown`, and `unknown` is
+      never a pass.
+
+- **`tests/test_eval_fixture.py`, `test_eval_coverage.py`, `test_eval_runner.py`
+  and `test_eval_grading.py`** — 66 assertions guarding the harness against CLI
+  drift, together with four committed example run directories under
+  `tests/fixtures/eval_grading/`. Two of those four carry byte-identical
+  artifacts and differ only in their transcripts, which is the pair that proves
+  the provenance read does something.
+
+- **`.gitignore` covers the harness's run outputs.** Measurements are disposable;
+  the instrument is not.
+
 - **The two atomic-write failure tests induce their failure at a seam instead of
   through directory permissions.** Both made a parent read-only and asserted the
   write was refused; root holds `CAP_DAC_OVERRIDE`, so the write succeeded and
