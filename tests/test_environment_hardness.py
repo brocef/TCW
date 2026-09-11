@@ -1010,3 +1010,48 @@ class TestWorktreeTreeStorePathReAnchoring:
         repo, node, wt = nested_node_worktree(tmp_path)
         wt_node = (wt / "apps" / "server").resolve()
         assert store_cls._local_root(wt_node, cfg).resolve() == (wt_node / cfg).resolve()
+
+
+# ── load_yaml's mapping contract ─────────────────────────────────────────────
+# (spec: 2026-08-20-load-yaml-reads-a-falsy-yaml-document-as-an-empty-mapping)
+
+@pytest.mark.parametrize("text,found", [
+    ("[]\n", "list"),
+    ("false\n", "bool"),
+    ("0\n", "int"),
+    ("- a\n- b\n", "list"),
+    ("hello\n", "str"),
+])
+def test_load_yaml_refuses_a_document_that_is_not_a_mapping(tmp_path, text, found):
+    """`return data or {}` turned the falsy shapes into a mapping and let the
+    truthy ones through unchanged, so the annotation and the docstring were both
+    untrue. A falsy config was silently overwritten where a truthy one was
+    refused, and a truthy state file crashed the board."""
+    p = tmp_path / "doc.yaml"
+    p.write_text(text, encoding="utf-8")
+    with pytest.raises(yaml.YAMLError) as caught:
+        load_yaml(p)
+    assert str(p) in str(caught.value)
+    assert found in str(caught.value)
+
+
+@pytest.mark.parametrize("text", [None, "", "\n", "null\n", "# just a comment\n"])
+def test_load_yaml_reads_a_contentless_document_as_empty(tmp_path, text):
+    """Absent, empty and explicitly null all mean "no content" and stay `{}`.
+    Separating them would need the raw text and no caller wants the difference."""
+    p = tmp_path / "doc.yaml"
+    if text is not None:
+        p.write_text(text, encoding="utf-8")
+    assert load_yaml(p) == {}
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("{}\n", {}),
+    ("id: demo\n", {"id": "demo"}),
+    ("a:\n  b: 1\n", {"a": {"b": 1}}),
+])
+def test_load_yaml_returns_a_mapping_unchanged(tmp_path, text, expected):
+    """A literal `{}` is a mapping someone wrote, not an absent document."""
+    p = tmp_path / "doc.yaml"
+    p.write_text(text, encoding="utf-8")
+    assert load_yaml(p) == expected
