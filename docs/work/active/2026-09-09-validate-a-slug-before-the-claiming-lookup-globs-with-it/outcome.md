@@ -24,7 +24,11 @@ All seven met.
 2. The same slug without `--take-over` raises promptly and no longer says
    "interrupted claim". Before: about 0.6 s, then that message.
 3. A claim for an item whose slug literally contains `*` is still found with
-   that exact slug — recovery did not narrow.
+   that exact slug, **and `--take-over` still publishes it**. The second half was
+   dropped between spec and plan and reported met on the narrowed wording; the
+   adversarial review caught that. Now tested end to end, with a sibling item
+   beside it so a git pathspec that swept siblings in would be caught. It does
+   not: the sibling is untouched and the claim directory is emptied.
 4. `--take-over` on a genuine interrupted claim still works.
 5. `_claiming_dirs` still returns `[]` with no `.claiming` directory.
 6. The longer-slug/shorter-slug test at `tests/test_external_work_store.py:377`
@@ -71,6 +75,14 @@ Both of its substantive claims.
   wrong and the reason is worth keeping: the destructive move happens *before*
   anything complains.
 
+- **An acceptance criterion was narrowed between spec and plan, and I did not
+  notice.** The spec required that a slug literally containing `*` is still found
+  *and still recovered*; the plan's task 1 case 3 kept only the first half, and
+  the test called `_claiming_dirs` directly. The outcome then reported the
+  criterion met against the plan's wording rather than the spec's. That is how a
+  criterion quietly stops testing the thing it was written for, and nothing
+  mechanical catches it — the wording still matches something that passes.
+
 - **The plan called Task 3 redundant.** It is, behind the escape. It is kept
   because the invariant should be local: the path published is now derived from
   the path found, so a later change to the lookup cannot silently reintroduce a
@@ -85,6 +97,14 @@ Both of its substantive claims.
 - **Priority raised from 20 to 55 at the spec stage.** The low priority came
   directly from the misdescribed severity — the same failure mode as the item
   before this one, whose intake also understated what was wrong.
+- **The companion item's release note overstated its own reach**, and the
+  adversarial review caught that too. It said the refusal "now only appears when
+  your store really does hold work". `graveyard.yaml` sits in the work root the
+  moment anything is completed or discarded, so a store carrying it is still
+  refused with the same message. The note now says so and names the file. The
+  contradiction was with a finding recorded in that item's own outcome, which is
+  the worse kind: the fact was known and the user-facing text disagreed with it.
+
 - **This fix does not repair a node it already happened on.** The release note
   says how to recognize one and put it back: a folder in `docs/work/active/`
   whose name contains a metacharacter is the missing item.

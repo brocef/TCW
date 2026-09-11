@@ -1276,6 +1276,35 @@ def test_a_slug_containing_a_star_still_finds_its_own_claim(tmp_path):
     assert [p.name for p in st._claiming_dirs(weird)] == [f"{weird}-{'0' * 32}"]
 
 
+def test_take_over_recovers_a_slug_that_contains_a_star(tmp_path):
+    """The other half of "recovery did not narrow": finding the claim is not the
+    same as publishing it, and the publish path runs the slug through a git
+    pathspec. A separate item sits beside it so a pathspec that swept siblings
+    in would be caught."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    st = FsWorkStore.open(code)
+    weird, sibling = "item-a*b", "item-axyzb"
+    for slug in (weird, sibling):
+        d = st.root / "backlog" / slug
+        d.mkdir(parents=True)
+        (d / "state.yaml").write_text(
+            f"status: backlog\ntitle: {slug}\ncreated: 2026-01-01\n", encoding="utf-8")
+    # Git has to know them: the publish path stages the item's old backlog path,
+    # and `git add` refuses a pathspec that never matched anything.
+    subprocess.run(["git", "-C", str(code), "add", "-A"], check=True)
+    private = _privately_claim(st, weird)
+    assert private.is_dir()
+
+    FsWorkStore.open(code).start(weird, owner="owner@example.com", take_over=True)
+
+    st2 = FsWorkStore.open(code)
+    assert (st2.root / "active" / weird).is_dir()
+    assert (st2.root / "backlog" / sibling).is_dir(), "the sibling was swept in"
+    assert not (st2.root / ".claiming").exists() or \
+        list((st2.root / ".claiming").iterdir()) == []
+
+
 def test_claiming_dirs_answers_empty_without_a_claiming_directory(tmp_path):
     """`Path.glob` yields nothing for a missing directory where `iterdir` raises.
     `.claiming` being absent or empty is one state, which is why this returns

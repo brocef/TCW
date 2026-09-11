@@ -54,9 +54,15 @@ tcw init: refusing to replace non-pristine …/docs/work; move existing work
 manually, update work.path, then re-run init
 ```
 
-There was nothing to move, and nothing you could see. That message now only
-appears when your store really does hold work, including an item being started
-at that very moment.
+There was nothing to move, and nothing you could see. An empty staging folder no
+longer counts as work.
+
+Other things in the work store still do, and rightly. A store holding items in
+any status is still refused, as is one where an item is being started at that
+very moment. So is one carrying `graveyard.yaml`, the record of items that were
+completed or discarded — which appears the first time you resolve anything, and
+is real history rather than a stray folder. If relocation is still refused and
+your status folders look empty, that file is what to look for.
 
 ## A mistyped work item slug could destroy a different item
 
