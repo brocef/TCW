@@ -52,7 +52,7 @@ connected-projects:
 A bare locator string stays a locator, so nothing already written changes. The
 ladder is the store's, and `tcw provision` is what walks it.
 
-## Saying where a project is on this machine
+## Overriding a project's path on this machine
 
 **Telling TCW where a project actually is on this machine.** A locator is a fact
 about one machine, written in a file every machine reads — so it cannot describe
@@ -135,6 +135,8 @@ board. `tcw work nodes` says `parent: <id>  (no work store)` for such a parent
 rather than calling this node the root, and `(work store not provisioned here)`
 for one whose declared board this machine has not obtained — the same two markers
 it puts on the children lines.
+
+## What still fails closed when a project is absent
 
 Configuration that is genuinely wrong still fails closed, unchanged: an invalid
 or duplicated project ID, a cycle, unparseable YAML, a registered key that

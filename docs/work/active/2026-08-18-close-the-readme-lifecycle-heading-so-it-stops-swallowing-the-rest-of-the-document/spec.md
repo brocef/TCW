@@ -95,7 +95,7 @@ that does not name it, which is the complaint as filed.
 
 ## Design
 
-Insert nineteen heading lines. Nothing else changes.
+Insert twenty-two heading lines. Nothing else changes.
 
 | File | Insert before | Level and text |
 | --- | --- | --- |
@@ -108,11 +108,14 @@ Insert nineteen heading lines. Nothing else changes.
 | `docs/guide/work.md` | `:379` | `## Splitting a plan into stage documents` |
 | `docs/guide/work.md` | `:388` | `## The board and the JSON projection` |
 | `docs/guide/work.md` | `:411` | `## Descendants and addressing work across projects` |
+| `docs/guide/work.md` | `:523` | `## Claiming an item, and recovering an interrupted claim` |
+| `docs/guide/work.md` | `:529` | `## Rolling up an epic, and delegating across nodes` |
 | `docs/guide/work.md` | `:552` | `## Running an item in an isolated checkout` |
-| `docs/guide/multi-repo.md` | `:55` | `## Saying where a project is on this machine` |
+| `docs/guide/multi-repo.md` | `:55` | `## Overriding a project's path on this machine` |
 | `docs/guide/multi-repo.md` | `:86` | `## How a locator and the parent/child lists are read` |
 | `docs/guide/multi-repo.md` | `:93` | `## When a declared project is not on this machine` |
 | `docs/guide/multi-repo.md` | `:122` | `## A node that keeps no work store` |
+| `docs/guide/multi-repo.md` | `:131` | `## What still fails closed when a project is absent` |
 | `docs/guide/multi-repo.md` | `:138` | `## Relative paths inside a linked git worktree` |
 | `docs/guide/multi-repo.md` | `:155` | `## Component inheritance is opt-in per axis` |
 | `docs/guide/multi-repo.md` | `:316` | `## What is checked when a declared store is obtained` |
@@ -200,16 +203,19 @@ They go to one follow-up item rather than five:
 ### Inspected and deliberately left alone
 
 - `docs/guide/work.md:523-527` — claim concurrency and take-over, under
-  `## Cross-node recursion`. Five lines, sitting directly after the
-  `delegate`/`escalate` block, and giving them a heading would strand the epic
-  material that resumes at `:529` behind a second heading. Two headings for a
-  five-line topic is not an improvement.
+  `## Cross-node recursion`. **This call was reversed.** It was first left alone
+  because five lines seemed too short to be worth a heading, and because fixing
+  it strands the epic material that resumes at `:529` behind a second heading.
+  Both reasons are length arguments, and the rule this spec now states says
+  length is not the test. "What happens when two commands touch an item at
+  once, and what if a process dies holding a claim?" is a distinct question the
+  cross-node heading does not pose. Two headings, at `:523` and `:529`.
 - `docs/guide/linking-and-validation.md` — swept end to end, nothing found.
 - `README.md` outside `:373-396` — swept, nothing else found.
 
 ## Acceptance criteria
 
-1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all nineteen headings
+1. `grep -n '^#\{2,3\} ' README.md docs/guide/*.md` lists all twenty-two headings
    from the Design table, each immediately before the span named there.
 2. No prose is removed. `git diff -U0 3a063f6f -- README.md docs/guide/ | grep '^-[^-]' | grep -v '^-$'`
    prints nothing. This is what pins "without reflowing the content itself".
@@ -229,7 +235,7 @@ They go to one follow-up item rather than five:
 7. No file outside `README.md`, `docs/guide/`, `docs/work/`, `docs/changelogs/`
    and `docs/release-notes/` is modified.
 8. `docs/guide/web-viewer.md` is unmodified, and a follow-up item exists under
-   `docs/work/` naming all four defects from *Found but not fixed here*.
+   `docs/work/` naming all five defects from *Found but not fixed here*.
 
 ## Risks
 
@@ -241,7 +247,7 @@ They go to one follow-up item rather than five:
   prove no prose moved; they prove nothing about whether
   `## What the commands print` is a good name. That needs a human read, which is
   what the verify stage is for.
-- **Nineteen insertions into five files, all cited against one commit.** Line
+- **Twenty-two insertions into five files, all cited against one commit.** Line
   numbers shift as they land. Working bottom-up per file avoids it, and criterion
   1 catches it if the ordering slips anyway.
 - **The request's premise is stale and this spec reinterprets it.** The spec

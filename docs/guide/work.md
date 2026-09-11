@@ -533,11 +533,15 @@ echo "needs an API change" | tcw work delegate child-repo "Expose X"  # request 
 echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # request UP to the parent inbox/
 ```
 
+## Claiming an item, and recovering an interrupted claim
+
 Claiming an item is atomic, and concurrent commands read across it safely: an
 item mid-claim is never mistaken for a missing one, so a blocker being started
 elsewhere still blocks. If a process dies holding a claim, reads report an
 interrupted claim and point at `tcw work start <slug> --take-over --owner <id>`
 rather than pretending the item is gone.
+
+## Rolling up an epic, and delegating across nodes
 
 `reconcile` consolidates every child task for an initiative into the epic's
 `rollup.md` — a slice table, surfaced capability deltas, and the next ready
