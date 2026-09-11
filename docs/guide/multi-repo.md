@@ -325,7 +325,7 @@ work:
     publish-transitions: false # default: true, for a provisioned store
 ```
 
-## What is checked when a store is declared
+## What is checked when a declared store is obtained
 
 **What is checked differs by component, and it is worth knowing which.** A work
 store is recognizable — it names six status folders — so a repository that has

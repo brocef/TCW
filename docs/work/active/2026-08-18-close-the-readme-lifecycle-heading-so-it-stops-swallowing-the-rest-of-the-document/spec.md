@@ -104,7 +104,7 @@ Insert nineteen heading lines. Nothing else changes.
 | `docs/guide/configuration.md` | `:163` | `## How bindings run` |
 | `docs/guide/work.md` | `:325` | `## What the commands print` |
 | `docs/guide/work.md` | `:337` | `## Inbox entries and an item's body` |
-| `docs/guide/work.md` | `:372` | `## Promoting an intake into a request` |
+| `docs/guide/work.md` | `:372` | `## Editing a body, and how it promotes an intake` |
 | `docs/guide/work.md` | `:379` | `## Splitting a plan into stage documents` |
 | `docs/guide/work.md` | `:388` | `## The board and the JSON projection` |
 | `docs/guide/work.md` | `:411` | `## Descendants and addressing work across projects` |
@@ -115,7 +115,7 @@ Insert nineteen heading lines. Nothing else changes.
 | `docs/guide/multi-repo.md` | `:122` | `## A node that keeps no work store` |
 | `docs/guide/multi-repo.md` | `:138` | `## Relative paths inside a linked git worktree` |
 | `docs/guide/multi-repo.md` | `:155` | `## Component inheritance is opt-in per axis` |
-| `docs/guide/multi-repo.md` | `:316` | `## What is checked when a store is declared` |
+| `docs/guide/multi-repo.md` | `:316` | `## What is checked when a declared store is obtained` |
 | `docs/guide/multi-repo.md` | `:325` | `## Which repository owns what` |
 | `docs/guide/taxonomy-and-capabilities.md` | `:56` | `## Bootstrapping a taxonomy or a capabilities ledger` |
 
@@ -147,6 +147,12 @@ sweep on the unexamined instinct that its five parts shared a subject.
 > reader question the existing heading does not make discoverable. Sharing a
 > subject does not exempt it: examples, qualifications, and procedural detail may
 > stay together when they develop the same question.
+
+The reverse failure is real and this rule does not catch it: a section cut so
+fine that the outline becomes a list of sentences is no more navigable than one
+cut too coarse. The shortest sections here are nine lines
+(`multi-repo.md:88`) and nine lines (`work.md:377`), each answering one
+question a neighbouring heading does not pose. That is the floor, not a target.
 
 Length is not the test and never was. `## Command reference`
 (`work.md:216-316`, 101 lines) stays one section because it answers one

@@ -374,7 +374,7 @@ to write. Set `TCW_STDIN_TIMEOUT` (seconds; `0` never waits) when a producer is
 genuinely slow. The same applies to `tcw work delegate`, `tcw work escalate`,
 `tcw taxonomy add`, and `tcw capabilities add`.
 
-## Promoting an intake into a request
+## Editing a body, and how it promotes an intake
 
 Editing an item's body always writes `initial-request.md`, never the intake. On
 an item that has only intake, that edit **promotes** it — the request is created,
