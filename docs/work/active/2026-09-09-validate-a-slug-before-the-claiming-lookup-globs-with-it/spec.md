@@ -15,11 +15,26 @@ single-user so no untrusted caller reaches the store API.
 **That assessment is wrong, and the request's proposed fix does not work.**
 Everything below was reproduced at `f2ba258b`.
 
-### 1. It is reachable from the CLI, and it destroys the item
+### 1. It destroys the item — through the store API
 
-No hostile caller is required. A shell glob that matches no file is passed
-through literally, so an operator typing an unquoted `*` reaches this. With one
-interrupted claim for `2026-01-01-axxxb-thing`:
+> **Corrected after verification.** This section first claimed the destructive
+> case is reachable from the command line by an operator typing an unquoted `*`,
+> and the item's priority was raised from 20 to 55 on that basis. **It is not.**
+> `_start` in `tcw/work/cli.py:782` evaluates `st.get(bare)` as an argument to
+> `run_pre`, before `st.start` is ever called; that read consults the same claim
+> directories and raises `has an interrupted claim`, so `start` is never entered
+> and the victim survives. Verified by driving the CLI against the pre-change
+> source in a detached worktree.
+>
+> The original reproduction below is through the **store API**, which is what it
+> always was. My "end to end through the CLI" check was run against the *fixed*
+> code, where it correctly refuses, and I read that as confirming reachability
+> when it confirmed nothing about it. The requester's own assessment — "no
+> untrusted caller reaches the store API today" — was closer to right than my
+> correction of it.
+
+With one interrupted claim for `2026-01-01-axxxb-thing`, called directly on the
+store:
 
 ```
 start("2026-01-01-axxxb-th*g", owner="attacker@example.com", take_over=True)
@@ -41,7 +56,11 @@ Only afterwards does `git_stage` fail on the pathspec, and the exception escapes
 The real item is gone, under a name nobody can address, and the command that did
 it reported a `git` error rather than success.
 
-### 2. The same glob breaks the ordinary path
+`tcw serve` cannot reach this branch either: its start action
+(`tcw/serve/__init__.py:870`) never passes `take_over`, and it resolves the slug
+before calling the store at all.
+
+### 2. The same glob breaks the ordinary path — and this half *is* CLI-reachable
 
 Without `--take-over`, a wildcard slug cross-matches another item's claim, so
 `start` treats a non-existent slug as a lost race. Measured: it stalls 0.63 s and
@@ -183,5 +202,15 @@ Each is executable against a scratch store.
   have made.** It was the requester's answer at the `request` stage and is
   labelled as such. It rests on who can reach the store API; the reproduction
   above needed only the CLI and an unquoted wildcard.
-- **Priority should rise from 20.** The item was recorded low because it read as
-  hardening with no live exposure. It is data loss reachable by a typo.
+- **Priority.** Raised from 20 to 55 at the spec stage on the belief that this
+  was data loss reachable by a typo. That belief was wrong; see the correction
+  above. What remains is data loss reachable only by a direct store-API caller,
+  plus a CLI-reachable defect that misreports a missing item as an interrupted
+  claim after a stall. **Lowered to 35** — above the original 20, because a
+  destructive path in the store API is worth closing and the CLI half is a real
+  if minor misreport, and well below 55, because nothing a user types can reach
+  the destructive branch.
+- **The severity claim was asserted before it was tested.** The lesson is narrow
+  and worth stating: a reproduction through one entry point says nothing about
+  another, and "I ran the CLI" means nothing if the run was against the fixed
+  code.

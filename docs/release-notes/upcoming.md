@@ -64,22 +64,23 @@ completed or discarded — which appears the first time you resolve anything, an
 is real history rather than a stray folder. If relocation is still refused and
 your status folders look empty, that file is what to look for.
 
-## A mistyped work item slug could destroy a different item
+## A work item slug is matched as a name, not as a pattern
 
-`tcw work start --take-over` recovers an item whose claim was interrupted, for
-example when a process died partway through starting it. It looked up the claim
-by pattern rather than by name, so a slug containing `*`, `?` or `[` could match
-a **different** item's claim.
+When a process dies partway through starting an item, the claim it was holding
+is left behind and has to be recovered. TCW looked that claim up by pattern, so a
+slug containing `*`, `?` or `[` could match a **different** item's claim.
 
-You did not need to do anything unusual to hit this. A shell passes an unquoted
-`*` through unchanged when it matches no file, so a typo was enough. The command
-then rewrote the other item's owner, moved it into a folder named with your
-typo, and failed with a `git` error. The item was gone from the board, under a
-name nothing could address.
+**Through `tcw` itself this showed up as a confusing error.** Asking to start an
+item whose name you mistyped with one of those characters paused for about a
+second and then told you the item had an interrupted claim to recover — when the
+item did not exist, and the claim belonged to something else. It now says there
+is no such work item, straight away.
 
-A slug is now matched as a name. A mistyped one is refused and nothing moves.
-
-**If you think this happened to you**, look in `docs/work/active/` for a folder
-whose name contains `*`, `?` or `[`. That is the missing item. Rename the folder
-back to the item's real slug and correct the `owner` and `started` fields in its
+**Programs that drive TCW's Python store directly could do real damage.** There
+the pattern could match another item's claim and move that item into a folder
+named with the pattern, under the wrong owner, before failing. Nothing typed at
+the command line could reach this, and neither could the local web app, but if
+you have written scripts against `FsWorkStore` they could. If you have, look in
+`docs/work/active/` for a folder whose name contains `*`, `?` or `[`: that is a
+lost item. Rename it back and correct the `owner` and `started` fields in its
 `state.yaml`.
