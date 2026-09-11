@@ -91,6 +91,8 @@ the opt-out written in it, which is what makes it different from the empty list:
 one states a choice, the other is indistinguishable from silence in the config
 file. A silenced stage resolves to nothing, prints nothing, and gets no bookend.
 
+## Checking a stage, reading its instructions, and starting its document
+
 **Checking a stage may run** is `tcw work stage gate <id> <ref>`. It checks the
 status legality and runs the stage's `pre` bindings, and that is all it does: it
 prints no instructions, so success is exit 0 with nothing on stdout and a line on
@@ -159,6 +161,8 @@ everything else.
 
 Nothing is written until the whole template has resolved, so a failed `generate:`
 script leaves no file behind and fixing it and running again is clean.
+
+## How bindings run
 
 `pre` hooks run **before** anything is written: a non-zero exit aborts the
 transition and the item does not move. `post` hooks run after, and a failure
