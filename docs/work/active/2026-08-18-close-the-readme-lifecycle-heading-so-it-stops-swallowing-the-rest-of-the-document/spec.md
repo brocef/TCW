@@ -222,7 +222,14 @@ They go to one follow-up item rather than five:
   call, at thirty lines; it stays because it is procedural detail developing the
   heading's own question rather than a different question.
 - `docs/guide/linking-and-validation.md` — swept end to end, nothing found.
-- `README.md` outside `:373-396` — swept, nothing else found.
+- `README.md:227-309`, `### In a cloud environment`, 83 lines and the longest
+  section in the README. Left alone on the same reasoning as
+  `## What happens to resolved work`: it is an install recipe read top to
+  bottom, not a reference looked up through the outline, and every paragraph
+  develops its one question — why a disposable container needs this, the script,
+  the hook configuration, what separates a hook that helps from one that wastes
+  a session, and the two "if your setup is like this, also do that" cases.
+- `README.md` otherwise — swept, nothing else found.
 
 ## Acceptance criteria
 
