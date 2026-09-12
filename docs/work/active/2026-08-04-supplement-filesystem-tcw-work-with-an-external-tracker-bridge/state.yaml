@@ -1,10 +1,12 @@
 slug: 2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge
 title: Supplement filesystem TCW work with an external tracker bridge
-created: "2026-08-04"
+created: '2026-08-04'
 type: epic
 resolution: null
 priority: 70
 tags:
-    - remote
-    - work
-    - cli
+- remote
+- work
+- cli
+owner: brocef@users.noreply.github.com
+started: '2026-09-12T17:36:47.376288Z'
