@@ -202,13 +202,15 @@ without leaving the terminal.
   `tcw/work/cli.py:1879`, `tcw/work/cli.py:1968`).
 - Malformed tracker configuration fails closed through `tcw validate`
   (`tcw/validate.py:93`) without breaking ordinary board reads.
-- **Verifies the claim workflow is capable of exclusion.** Read the transitions
-  available from the state the configured claim transition lands in; if the claim
-  transition is itself among them, the workflow cannot exclude a second claimant
-  and strict mode is refused with that reason. This is a static check against the
-  project's workflow, not a runtime race, and it is here because C1 already owns
-  configuration validation. The experiment proved it is needed: Jira's default
-  simplified workflow offers all transitions from all states.
+- **Reports whether a ticket's claim transition is exclusive**, from the
+  transitions the ticket itself offers. Answerable only for a ticket already in the
+  status the claim leads to; otherwise reported as not determined. Costs one field
+  on a call `tracker show` already makes, needs no permission beyond viewing the
+  issue, and works on team-managed and company-managed projects alike.
+- **Does not** read a project's workflow definition, and makes no network call from
+  `tcw validate`. Both moved to C4 — see that child's boundary. Revised 2026-09-12
+  after review; C1's own spec records why in full.
+
 Blocked by: nothing.
 
 ### C2 — Claim a ticket and bind it to a work item
@@ -280,6 +282,24 @@ Blocked by: C2.
   remote assignment and state before a linked mutation, and refuses the
   destructive `drop` (`tcw/store/base.py:2812`) for a linked item in favour of a
   preserved discard resolution.
+- **Owns the `strict` configuration key**, which no earlier child accepts, and
+  introduces it together with the gates that honour it. A half-honoured flag would
+  tell a user their work is gated when it is not.
+- **Owns the authoritative workflow-shape verdict**, moved here from C1 on
+  2026-09-12. Reading a project's workflow definition decides, before any ticket
+  exists, whether the claim transition can exclude a second claimant.
+  `POST /rest/api/3/workflows` with `projectAndIssueTypes` was measured answering
+  it in one call, and the verdict logic was measured correct on both fixtures. It
+  lives here because this is where the consumer is, and because it brings three
+  problems C1 could not carry: it needs a project identifier no configuration key
+  holds, it may require site-administrator permission, and a severity tier
+  `tcw validate` does not have (`tcw/validate.py:220`, `tcw/cli.py:447`).
+  **C4 must settle the permission question with a non-admin token before designing
+  around the route**, and must not put the call on any lifecycle-transition path:
+  `tcw validate` is a `pre` hook on `complete` in this repository's own config
+  (`tcw-config.yaml:65`), and a `pre` failure means the store is not touched
+  (`tcw/work/hooks.py:115`), so a network call there makes completing an item
+  depend on Jira being reachable.
 - Drift blocks a strict-mode mutation: the conflict is recorded and reported, and
   local artifacts are preserved for explicit reconciliation.
 - No bypass flag. Changing strictness is a reviewable `tcw-config.yaml` edit.

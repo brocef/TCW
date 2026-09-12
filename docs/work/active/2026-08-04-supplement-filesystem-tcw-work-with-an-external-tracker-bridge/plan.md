@@ -242,17 +242,26 @@ landed. At each child's `verify` stage:
 
 ```sh
 python -m pytest -q
-git diff --exit-code --quiet <child-branch-point>..HEAD -- tests/ \
-  || git diff <child-branch-point>..HEAD -- tests/ | grep '^-[^-]'
+# Fails only if a line was REMOVED from tests/, which is where a weakened
+# assertion shows up. A new test file only adds lines, so it passes.
+git diff <child-branch-point>..HEAD -- tests/ | grep -q '^-[^-]' \
+  && { echo "lines removed from tests/ — read them:"; \
+       git diff <child-branch-point>..HEAD -- tests/ | grep '^-[^-]'; exit 1; } \
+  || echo "no test lines removed"
 ```
 
-The first form of this check used `git diff --stat`, which **exits zero whether or
-not files differ** and so could never fail. The form above does two things the
-`--stat` version could not: it fails when the tests directory changed at all, and
-it then prints every *removed* line, which is where a weakened assertion shows up.
-New test files add lines and remove none, so a clean addition produces no removed
-lines and passes. A human still reads the removals; the check's job is to make
-sure they are put in front of one.
+**This check has now been wrong twice, so here is what each version got wrong.**
+The first used `git diff --stat`, which exits zero whether or not files differ, so
+it could never fail. The second used
+`git diff --exit-code --quiet … || git diff … | grep '^-[^-]'`, and it fails on
+exactly the clean addition its own comment claimed it passed: adding a test file
+makes the first command exit non-zero, the `grep` then matches nothing and exits 1,
+and the pipeline's status is the grep's. I built a throwaway repository, added one
+test file, and measured it exiting 1.
+
+The form above tests the one thing that matters — was any line removed from
+`tests/` — and does not consult "did the directory change at all", which is true of
+every honest child.
 
 ## Task 10 — Decide the end state before it arrives
 
