@@ -38,7 +38,9 @@ suitable Feature exists — the registry holds `work-inbox`,
 `published-store-writes` and `configurable-work-lifecycle`, none of which is
 about an external tracker (`tcw taxonomy list`). C1 therefore registers an
 `external-work-tracker` Feature first, and the later children reuse it. That
-ordering is load-bearing, not cosmetic.
+ordering is load-bearing, not cosmetic, and because all four capabilities need
+the same Feature it is registered by the **epic's** coordination plan rather than
+by any one child.
 
 ## Problem
 
@@ -147,8 +149,6 @@ without leaving the terminal.
   `tcw/work/cli.py:1851`, `tcw/work/cli.py:1938`).
 - Malformed tracker configuration fails closed through `tcw validate`
   (`tcw/validate.py:90`) without breaking ordinary board reads.
-- Registers the `external-work-tracker` taxonomy Feature.
-
 Blocked by: nothing.
 
 ### C2 — Claim a ticket and bind it to a work item
@@ -328,7 +328,7 @@ writes no code.
 | 9 | yes | n/a | yes — adds the transition mappings | yes — adds the strict requirement | n/a |
 | 10 | n/a | n/a | n/a | n/a | yes |
 | 11 | n/a | yes | n/a | n/a | n/a |
-| 12 | yes — the Feature | yes | yes | yes | yes |
+| 12 | yes | yes | yes | yes | yes |
 
 Criterion 1 spans every child because every child can break it, and a single
 child's suite cannot prove it stayed true after the next one landed. It is
