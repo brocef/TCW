@@ -85,7 +85,12 @@ missing is not room in the model. It is the bridge.
 
 The request's seven goals are adopted unchanged, with one restatement.
 
-1. Two people or agents cannot independently claim the same tracker ticket.
+1. Two people or agents cannot independently claim the same tracker ticket
+   **when the tracker's workflow can express that**, and TCW refuses to promise it
+   when the workflow cannot. Restated 2026-09-12 after the claim experiment
+   (`jira-claim-experiment.md`) showed the property belongs to the user's workflow
+   configuration rather than to Jira. A guarantee TCW cannot keep is worse than a
+   refusal it can explain.
 2. Someone without a checkout can file and discuss a request in product
    language.
 3. An assigned ticket can be imported into one or more repository-local TCW
@@ -197,6 +202,13 @@ without leaving the terminal.
   `tcw/work/cli.py:1879`, `tcw/work/cli.py:1968`).
 - Malformed tracker configuration fails closed through `tcw validate`
   (`tcw/validate.py:93`) without breaking ordinary board reads.
+- **Verifies the claim workflow is capable of exclusion.** Read the transitions
+  available from the state the configured claim transition lands in; if the claim
+  transition is itself among them, the workflow cannot exclude a second claimant
+  and strict mode is refused with that reason. This is a static check against the
+  project's workflow, not a runtime race, and it is here because C1 already owns
+  configuration validation. The experiment proved it is needed: Jira's default
+  simplified workflow offers all transitions from all states.
 Blocked by: nothing.
 
 ### C2 — Claim a ticket and bind it to a work item
@@ -213,12 +225,17 @@ The first delivery completes here. C1 and C2 together are the scope agreed on
 - The idempotency key is `(TCW project id, provider id, ticket reference, part
   id)`, `part` defaulting to `default`. Re-running an import with the same key
   returns the existing item; a different `--part` deliberately creates another.
-- `tcw work tracker import <ticket> [--part <id>] [--title <title>]`: verify the
-  ticket is assigned to the authenticated identity, apply the configured
-  ready-to-in-progress transition as the **claim**, and only then create the
-  local item. Jira Cloud serializes simultaneous transitions on one issue and
-  reports the loser as a conflict; that result is reported as "already claimed",
-  never retried as transient.
+- `tcw work tracker import <ticket> [--part <id>] [--title <title>]`: claim the
+  ticket, then create the local item. **The claim is a read-modify-verify
+  sequence, not a single write**, because the experiment showed a transition's
+  response carries no contention signal: read the issue and require it in the
+  configured ready state and unassigned or already assigned to the authenticated
+  identity; apply the claim transition and the assignment; re-read and require the
+  issue in the claimed state assigned to that identity. Contention is detected
+  from that final read, never from the transition's status code — a rejected
+  transition returns `HTTP 400` with "Transition id 'N' is not valid for this
+  issue", which is the same response an operator gets for a misconfigured
+  transition id, and the two must not be conflated.
 - The ticket's product prose is snapshotted into the item's `intake`, not its
   request — `create` takes them as separate arguments precisely so an adapter can
   tell them apart (`tcw/store/base.py:2047`), and `BODY_ORDER`
@@ -356,7 +373,10 @@ own code; these are the ones that only make sense across children.
    whole work store plus captured output for it.
 9. `tcw validate` exits non-zero on a strict tracker configuration missing a
    required claim or terminal mapping, names the missing key, and still lets
-   `tcw work list` and `tcw work show` run.
+   `tcw work list` and `tcw work show` run. It also exits non-zero when the
+   configured claim transition is available from the state it lands in, and the
+   message says the workflow cannot exclude a second claimant. Checked against a
+   project using Jira's default simplified workflow, which fails this check.
 10. `tcw work show --json` validates against `WORK_ITEM_SCHEMA` for a bound item
     and for an unbound one, and `test_the_schema_declares_exactly_the_model_plus_two`
     passes without being edited to allow an undeclared property.
@@ -474,11 +494,16 @@ tracker client outside `WorkStore` either way. This was the user's decision in
 the planning session, recorded here rather than applied quietly. Everything else
 in the request stands as filed.
 
-**Assumption, not verified.** That Jira Cloud still serializes simultaneous
-transitions on one issue and reports the loser as a conflict is taken from the
-Atlassian change notice the request cites. Nothing in this repository proves it,
-and C1 or C2 should confirm it against the live API before the claim design is
-frozen — the entire single-winner guarantee rests on it.
+**That assumption was tested on 2026-09-12, and it is false as stated.** See
+`jira-claim-experiment.md`. Jira's default simplified workflow offers every
+transition from every state, so the claim transition applied twice returns `204`
+both times and two simultaneous claims both succeed. Whether serialization happens
+is beside the point: the second request is a legitimate no-op, not a loser. The
+design consequence is already folded into C1 (verify the workflow can exclude) and
+C2 (claim by read-modify-verify), and goal 1 is restated as conditional. What
+remains untested is a **conforming** workflow — one where the claim transition is
+unreachable from its destination — and C2 must build one in the `TCWTEST` fixture
+and rerun the experiment before freezing.
 
 **This epic is `type: epic` by a hand-written field.** No CLI verb promotes an
 existing item, and the gap is filed as
