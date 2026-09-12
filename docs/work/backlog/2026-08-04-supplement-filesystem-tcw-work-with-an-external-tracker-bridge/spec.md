@@ -1,0 +1,395 @@
+# Spec — Supplement filesystem TCW work with an external tracker bridge
+
+This is an **epic** spec. It fixes the initiative's boundaries, the child items
+that build it, and their order. Implementation detail belongs in each child's own
+spec, and every design question this document defers is named as deferred rather
+than left silent.
+
+## Capability changes
+
+Planned deltas only; nothing is written to the ledger here. Three new
+capabilities, one per delivering child, and two existing ones changed. No
+capability is removed.
+
+| Capability | Delta | Child |
+| ---------- | ----- | ----- |
+| `work/inspect-external-tracker-work` | new, seeded `Missing` | C1 |
+| `work/manage-external-tracker-intake` | new, seeded `Missing` | C2 |
+| `work/synchronize-external-tracker-work` | new, seeded `Missing` | C3 |
+| `work/require-tracker-backed-work` | new, seeded `Missing` | C4 |
+| `work/read-a-work-item` | changed | C5 |
+| `work/open-a-work-item` | changed | C5 |
+
+The request named two capabilities. This spec names four, because the request's
+`work/synchronize-external-tracker-work` bundled two things the decomposition
+separates: pushing lifecycle state outward (C3) and refusing local work that no
+ticket authorizes (C4). A single capability spanning both would be `Missing`
+until the last of five children landed, which tells a ledger reader nothing for
+most of the initiative's life.
+
+`work/manage-the-work-inbox` is **not** changed, per the request: a permissive
+filesystem inbox and an authoritative external tracker are distinct intake
+sources, and the inbox capability's text (`tcw capabilities show
+work/manage-the-work-inbox`) describes only the former.
+
+Each capability needs a taxonomy Feature before it can be written, because
+`tcw capabilities set` refuses a `Feature` reference that does not resolve. No
+suitable Feature exists — the registry holds `work-inbox`,
+`published-store-writes` and `configurable-work-lifecycle`, none of which is
+about an external tracker (`tcw taxonomy list`). C1 therefore registers an
+`external-work-tracker` Feature first, and the later children reuse it. That
+ordering is load-bearing, not cosmetic.
+
+## Problem
+
+TCW's work store is a folder tree in Git, and an item's status is *where it
+lives* rather than a stored field (`tcw/store/base.py:1862`). A status change is
+realized by moving the folder, and the filesystem adapter commits that move
+itself. This is the property the methodology is built on and it stays.
+
+Its limit is coordination between people who do not share a working copy. Three
+specifics, each checked:
+
+1. **A claim is not visible until it is pushed, and pushing is not guaranteed.**
+   `start` refuses a second claimant through `AlreadyClaimed`
+   (`tcw/store/base.py:1851`, raised at `tcw/store/base.py:2670`), but that
+   check reads the local tree. The store's own publication triad is explicit
+   that a store may not publish at all: `publishes` defaults to `False`
+   "so a new adapter cannot leak writes by omission"
+   (`tcw/store/base.py:2021`), and `publish` "raises to report that the write
+   did **not** become visible" (`tcw/store/base.py:2035`). Two people on two
+   clones can therefore both read `backlog`, both move the folder, and both be
+   correct locally.
+2. **There is no intake surface for someone without the repository.** The inbox
+   is a folder in the work store and `inbox_accept` consumes an entry from it
+   (`tcw/store/fs.py:5483`, `tcw/store/fs.py:5495`). Filing a request means
+   having a checkout and commit access.
+3. **Nothing records that a TCW item answers an external ticket.** The bounded
+   sidecar registry holds exactly `capabilities.yaml` and `rollup.md`
+   (`tcw/store/base.py:1790`), and `WorkItem` carries no external reference
+   field (`tcw/store/base.py:1862`). A ticket key in a title is prose.
+
+The store layer already anticipates a tracker: the comment on the publication
+triad says a tracker-backed store "answers `True` and implements both methods as
+no-ops — a tracker write is published by definition", and calls that "a
+legitimate implementation, not a stub" (`tcw/store/base.py:2013`). What is
+missing is not room in the model. It is the bridge.
+
+## Goals
+
+The request's seven goals are adopted unchanged, with one restatement.
+
+1. Two people or agents cannot independently claim the same tracker ticket.
+2. Someone without a checkout can file and discuss a request in product
+   language.
+3. An assigned ticket can be imported into one or more repository-local TCW
+   items without losing its product prose or its origin.
+4. Tracker status and concise progress links stay current as the TCW lifecycle
+   advances.
+5. A project may refuse local work that no assigned, claimed ticket authorizes.
+6. Jira Cloud works. **Restated:** the request asked for a provider-neutral
+   contract with Jira as the first of several providers. This initiative builds
+   Jira directly behind a narrow seam and extracts an interface when a second
+   provider exists. See `## Notes` — this is a deliberate departure from the
+   request, decided 2026-09-12, not an oversight.
+7. A project with no tracker configured behaves exactly as it does today.
+
+## Non-goals
+
+Everything the request listed as a non-goal for the first delivery stands, and is
+not repeated here. Added by this spec:
+
+- **A provider abstraction with one implementation.** No abstract provider base
+  class, no registry of providers, no deterministic fake provider. Tests fake the
+  HTTP layer instead.
+- **A new runtime dependency.** `pyproject.toml:12` declares `PyYAML>=6` and
+  nothing else, and `jsonschema` is explicitly test-only. The Jira client uses
+  `urllib.request` from the standard library.
+- **A `JiraWorkStore`.** That remains
+  `2026-06-19-remote-adapter-jiraworkstore`, and this initiative does not
+  advance it.
+- **Capability-metadata synchronization.** That remains
+  `2026-06-19-tracker-sync-for-capabilities`.
+- **Concurrency-safe claims for callers sharing one local store.** The request
+  points at a `2026-06-22-concurrency-safe-work-claims-…` item as the narrower
+  fallback. **That item is not on this board** (`tcw work list --all`), so the
+  cross-reference is stale. This initiative does not adopt its scope; if the
+  local-claim problem still matters it needs refiling.
+
+## Design — child boundaries and ordering
+
+Five children, each an `--initiative` child of this epic, each with its own
+`initial-request.md`, `spec.md` and `plan.md`. Ordering is recorded as
+`--blocked-by`, because `--initiative` carries no dependency relation and
+children with a required order would otherwise all read as workable at once.
+
+### C1 — Configure a tracker and read its tickets
+
+The foundation, and useful alone: a developer can see their assigned tickets
+without leaving the terminal.
+
+- Parse a `work.tracker` block from the node sentinel (`tcw-config.yaml`,
+  `tcw/store/project.py:21`). Read credentials only from environment variables
+  the config names; never store a secret in the repository.
+- Expose the parsed block through a `WorkStore` method, following the existing
+  pattern for config-derived facts — `documentation()`
+  (`tcw/store/base.py:2266`), `lifecycle_policy()` (`tcw/store/base.py:2277`),
+  `registered_tags()` (`tcw/store/base.py:2286`).
+- A Jira Cloud client over `urllib.request`: resolve the authenticated user,
+  run the configured JQL, fetch one issue, discover workflow transitions.
+- Distinguish authentication, permission, validation, not-found, rate-limit and
+  transient-network failures as separate, named outcomes. This taxonomy is built
+  here because every later child depends on telling "your token is wrong" from
+  "the ticket moved".
+- Commands: `tcw work tracker list`, `tcw work tracker show <ticket>`. Both
+  read-only. `tracker` is a nested subcommand group beside the existing `inbox`,
+  `tags`, `tombstone` and `stage` groups (`tcw/work/cli.py:1818`,
+  `tcw/work/cli.py:1851`, `tcw/work/cli.py:1938`).
+- Malformed tracker configuration fails closed through `tcw validate`
+  (`tcw/validate.py:90`) without breaking ordinary board reads.
+- Registers the `external-work-tracker` taxonomy Feature.
+
+Blocked by: nothing.
+
+### C2 — Claim a ticket and bind it to a work item
+
+The first delivery completes here. C1 and C2 together are the scope agreed on
+2026-09-12.
+
+- Add `tracker.yaml` to `WORK_SIDECARS` (`tcw/store/base.py:1790`) with
+  `yaml_mapping` validation. This buys revision-protected read and write
+  (`tcw/store/fs.py:6189`), participation in the item's modified timestamp
+  (`tcw/store/fs.py:4042`), and a `serve` read endpoint, at no cost.
+- The binding: schema version, provider id, ticket reference and stable URL, TCW
+  project id, part id, claimed remote identity. No credentials.
+- The idempotency key is `(TCW project id, provider id, ticket reference, part
+  id)`, `part` defaulting to `default`. Re-running an import with the same key
+  returns the existing item; a different `--part` deliberately creates another.
+- `tcw work tracker import <ticket> [--part <id>] [--title <title>]`: verify the
+  ticket is assigned to the authenticated identity, apply the configured
+  ready-to-in-progress transition as the **claim**, and only then create the
+  local item. Jira Cloud serializes simultaneous transitions on one issue and
+  reports the loser as a conflict; that result is reported as "already claimed",
+  never retried as transient.
+- The ticket's product prose is snapshotted into the item's `intake`, not its
+  request — `create` takes them as separate arguments precisely so an adapter can
+  tell them apart (`tcw/store/base.py:2047`), and `BODY_ORDER`
+  (`tcw/store/base.py:1786`) makes the intake the fallback body. The `request`
+  stage still has to run.
+- `tcw work tracker link <slug> <ticket> [--part <id>]` binds an existing item;
+  it refuses a second primary binding. `tcw work tracker unlink <slug> --reason
+  <text>` is an audited repair and records the reason.
+- Failure windows: a successful remote claim followed by a failed local create
+  leaves the ticket claimed, and re-running the import detects the same-identity
+  claim and completes the binding rather than failing.
+
+Blocked by: C1.
+
+### C3 — Synchronize the lifecycle outward
+
+- A deterministic outbound event recorded with the local transition, the local
+  transition committed, immediate delivery attempted, and `tcw work tracker sync
+  [<slug> | --all]` retrying until the remote target is observed. A temporary
+  outage must never undo a local transition that already happened — the store
+  already has a type for exactly this shape of news, `TransitionCommitError`
+  ("the item **did move**", `tcw/store/base.py:1815`) and its `PublicationError`
+  subclass (`tcw/store/base.py:1827`).
+- Mapping: bindings key on the *move*, so the existing `TRANSITION_IDS`
+  (`tcw/store/base.py:770`) are the mapping keys, and `complete --resolution
+  done` firing `complete` while `--resolution wontfix` fires `discard` is
+  behavior to reuse, not to reinvent.
+- Delivery state is derived from the observed remote state plus deterministic
+  event ids, so a successful delivery needs no second cleanup commit.
+- Only stable links and short summaries go outward. No `spec.md`, `plan.md`,
+  `outcome.md`, capability prose, diffs or code references.
+- Reports remote drift; never follows it automatically.
+
+Blocked by: C2.
+
+### C4 — Refuse work no ticket authorizes
+
+- Strict mode gates `work new` and `work start` for unlinked items, verifies
+  remote assignment and state before a linked mutation, and refuses the
+  destructive `drop` (`tcw/store/base.py:2803`) for a linked item in favour of a
+  preserved discard resolution.
+- Drift blocks a strict-mode mutation: the conflict is recorded and reported, and
+  local artifacts are preserved for explicit reconciliation.
+- No bypass flag. Changing strictness is a reviewable `tcw-config.yaml` edit.
+
+Blocked by: C3, because the drift check is C3's.
+
+### C5 — Surface the binding
+
+- `tcw work show` and `tcw work list` name the provider, the ticket, and whether
+  the remote state is current, pending or conflicting.
+- `tcw work show --json` is a **closed, versioned document**: `WORK_ITEM_SCHEMA`
+  sets `additionalProperties: false` and requires every declared property
+  (`tcw/work/projection.py:102`), and
+  `test_the_schema_declares_exactly_the_model_plus_two`
+  (`tests/test_projection.py:113`) pins the properties to `WorkItem`'s fields.
+  Surfacing tracker state there is one of exactly two choices — a `WorkItem`
+  field, which flows into the document automatically and forces the matching
+  schema entry in the same change, or a `SCHEMA_VERSION` bump. C5's spec picks
+  one and says why. It is not a free-form addition.
+- The web app displays the binding and does not mutate it.
+
+Blocked by: C2. Independent of C3 and C4, and must not be chained to them — a
+false blocker is a lie the tool enforces.
+
+### Ordering summary
+
+```
+C1 ──> C2 ──> C3 ──> C4
+              └────> (C5 blocked by C2 only)
+```
+
+## Abstraction litmus test
+
+Every operation this initiative adds or changes, with a verdict.
+
+| Operation | Verdict | Why |
+| --------- | ------- | --- |
+| Read the node's tracker configuration | **store interface** | A config-derived fact about the node, exactly like `documentation()`, `lifecycle_policy()` and `registered_tags()`. Any adapter can answer it. |
+| Read and write the `tracker.yaml` binding | **model** | `read_sidecar`/`write_sidecar` are already abstract (`tcw/store/base.py:2442`). The registry gains an entry; the interface gains nothing. |
+| The binding's content — ticket reference, URL, identity, part id, event ids | **model** | Portable data. A tracker-backed store would hold the same facts in its own fields. |
+| List / show / claim a ticket, apply a remote event | **neither — a new module beside the store** | These are operations on the *tracker*, not on the work store. Putting them behind `WorkStore` would make every adapter owe a tracker implementation, which is wrong: a store's job is to hold items. A coordinator composes the tracker client with the configured store, and no tracker network call goes inside `FsWorkStore`. |
+| Claim, assignment, external reference, remote transition, conflict | **model concepts** | Portable. Every one of them has an analogue in any tracker. |
+| JQL, Jira REST paths, transition-id discovery, environment variable names, HTTP status mapping | **adapter private detail** | Jira-shaped. None of it appears in a signature outside the Jira module. |
+| Surfacing tracker state in the JSON projection | **model** | A `WorkItem` field or a schema version bump; both are model-level and neither is filesystem-specific. |
+| Strict-mode gates on `new`, `start`, `drop` | **model** | Policy over abstract transitions, expressed against `TRANSITION_IDS`. |
+
+No operation in this initiative is a filesystem trick. The one thing that reads
+like a filesystem convenience — a sidecar file — is already an abstract named
+resource with a bounded registry, which is why it is the right place for the
+binding.
+
+## Acceptance criteria
+
+For the initiative as a whole. Each child's own spec carries the criteria for its
+own code; these are the ones that only make sense across children.
+
+1. With no `work.tracker` block in `tcw-config.yaml`, every existing `tcw work`
+   command produces byte-identical output and the same exit code as it does on
+   the commit before C1. Demonstrated by the existing suite passing unchanged,
+   with no test edited to accommodate the bridge.
+2. Two concurrent `tcw work tracker import` runs against one ticket produce
+   exactly one local work item. The loser creates no item, exits non-zero, and
+   its message names the current assignee and workflow state.
+3. Running `tcw work tracker import <ticket>` twice with the same `--part`
+   produces one item and reports the second run as already bound. Running it
+   twice with different `--part` values produces two items, each with its own
+   binding.
+4. A claim that succeeds remotely and then fails locally leaves the ticket
+   claimed, and a re-run of the same command completes the binding rather than
+   reporting a conflict.
+5. A local lifecycle transition whose outbound delivery fails leaves the item in
+   its new status, exits non-zero, and says the local move happened and the
+   tracker is pending. A later `tcw work tracker sync` reaches the tracker
+   without a second local transition.
+6. A tracker event already applied remotely is reported as delivered, and
+   produces no duplicate comment or transition.
+7. With strict mode on and a ticket reassigned away from the authenticated
+   identity, the next linked mutation is refused, the refusal names the
+   conflict, and no artifact is deleted or rewritten.
+8. No secret appears in any tracked file, any sidecar, or any command's stdout
+   or stderr. Checked by a test that sets a sentinel token value and greps the
+   whole work store plus captured output for it.
+9. `tcw validate` exits non-zero on a strict tracker configuration missing a
+   required claim or terminal mapping, names the missing key, and still lets
+   `tcw work list` and `tcw work show` run.
+10. `tcw work show --json` validates against `WORK_ITEM_SCHEMA` for a bound item
+    and for an unbound one, and `test_the_schema_declares_exactly_the_model_plus_two`
+    passes without being edited to allow an undeclared property.
+11. The `tracker.yaml` binding cannot be forged into a claim through a write
+    surface that does not go through the claim path. See the Risks section — this
+    criterion exists because the `serve` PUT endpoint currently accepts any
+    registered sidecar.
+12. Every capability in the `## Capability changes` table reads its final status,
+    and the taxonomy `external-work-tracker` Feature resolves, before this epic
+    completes. `tcw capabilities check` and `tcw validate` both exit zero.
+
+### Coverage
+
+The Design section numbers five children, so the axes are C1 to C5. A cell names
+the child that discharges the criterion, or `n/a` with what makes it so. An epic
+criterion is discharged by a child's tests, not by the epic's own — the epic
+writes no code.
+
+| # | C1 | C2 | C3 | C4 | C5 |
+| - | -- | -- | -- | -- | -- |
+| 1 | yes | yes | yes | yes | yes |
+| 2 | n/a — no claim exists until C2 | yes | n/a | n/a | n/a |
+| 3 | n/a — the idempotency key is C2's | yes | n/a | n/a | n/a |
+| 4 | n/a | yes | n/a | n/a | n/a |
+| 5 | n/a | n/a | yes | n/a | n/a |
+| 6 | n/a | n/a | yes | n/a | n/a |
+| 7 | n/a | n/a | n/a | yes | n/a |
+| 8 | yes — credentials are read here | yes | yes | yes | n/a — C5 adds no credential path |
+| 9 | yes | n/a | yes — adds the transition mappings | yes — adds the strict requirement | n/a |
+| 10 | n/a | n/a | n/a | n/a | yes |
+| 11 | n/a | yes | n/a | n/a | n/a |
+| 12 | yes — the Feature | yes | yes | yes | yes |
+
+Criterion 1 spans every child because every child can break it, and a single
+child's suite cannot prove it stayed true after the next one landed. It is
+therefore re-checked at each child's completion, not once.
+
+## Risks
+
+1. **A registered sidecar is writable over the web API.** `PUT
+   /api/work/<slug>/sidecars/<name>` accepts any name in `WORK_SIDECARS` and
+   calls `write_sidecar` with no further gate (`tcw/serve/__init__.py:1281`).
+   The `generated` marker that `rollup.md` carries is only *reported* to the
+   client (`tcw/serve/__init__.py:646`); it refuses nothing on the server. So
+   adding `tracker.yaml` to the registry makes a binding hand-writable by anyone
+   who can reach the local server, which would let a forged binding assert a
+   claim that was never made. C2 must decide how the claim path is
+   authenticated, and criterion 11 exists for it. This is a pre-existing hole in
+   the edit surface, not one this initiative opens, and whether to fix it here or
+   file it separately is C2's call to make explicitly.
+2. **A Jira client on `urllib.request` is more code than `requests`.** Retries,
+   pagination, timeouts and error mapping all get written by hand. The mitigation
+   is that the client stays small because the operation set is small; the
+   alternative — a first runtime dependency — changes what installing `tcw`
+   means for every user, which is a worse trade.
+3. **Deciding against a provider abstraction may prove wrong.** If a second
+   provider is wanted sooner than expected, the seam has to be widened after the
+   fact. Accepted: extracting an interface from one working implementation is
+   ordinary work, and guessing the interface from zero is how the wrong one gets
+   built.
+4. **C5 touches a closed schema.** A careless addition either fails the pinning
+   test or forces a `SCHEMA_VERSION` bump that every consumer of `--json` sees.
+   Mitigated by making the choice explicit in C5's spec rather than in code
+   review.
+5. **Strict mode can lock a project out of its own backlog.** Enabling it before
+   existing open items are linked blocks their next mutation by design. The
+   request already says so; C4 must make the refusal name the fix.
+6. **The epic spans a lot of calendar time.** Jira's REST surface, and the
+   simultaneous-transition behavior the claim depends on, can change between C1
+   and C4. Mitigated by keeping the claim's conflict handling in one place and
+   by C1's error taxonomy being explicit rather than incidental.
+
+## Notes
+
+**Deviation from the request, decided 2026-09-12.** The request's goal 6 asks to
+"remain provider-neutral at the coordination boundary and ship Jira Cloud as the
+first provider", and its `## Provider-neutral architecture` section specifies a
+nine-operation provider contract plus a deterministic fake provider. This spec
+builds Jira directly behind a narrow seam and defers the interface until a second
+provider exists. The reasoning: an interface with one implementation is a guess
+about the second one, and the testing benefit the fake provider was carrying is
+available by faking the HTTP layer instead. The abstract-spine litmus test is
+unaffected — it governs the *store* model, and the verdict table above holds a
+tracker client outside `WorkStore` either way. This was the user's decision in
+the planning session, recorded here rather than applied quietly. Everything else
+in the request stands as filed.
+
+**Assumption, not verified.** That Jira Cloud still serializes simultaneous
+transitions on one issue and reports the loser as a conflict is taken from the
+Atlassian change notice the request cites. Nothing in this repository proves it,
+and C1 or C2 should confirm it against the live API before the claim design is
+frozen — the entire single-winner guarantee rests on it.
+
+**This epic is `type: epic` by a hand-written field.** No CLI verb promotes an
+existing item, and the gap is filed as
+`docs/work/inbox/no-cli-verb-promotes-an-existing-item-to-an-epic.md`.
