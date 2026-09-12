@@ -12,5 +12,3 @@ tags:
 initiative: 2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge
 blocked_by:
 - slug: 2026-09-12-configure-an-external-tracker-and-read-its-tickets
-- external: conforming Jira workflow built in TCWTEST and the claim experiment rerun
-    against it
