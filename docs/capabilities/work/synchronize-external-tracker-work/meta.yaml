@@ -1,0 +1,9 @@
+id: cap-207f2c
+name: Synchronize external tracker work
+Status: Missing
+Planning doc: 2026-09-12-synchronize-the-work-lifecycle-outward-to-the-tracker
+Feature: external-work-tracker
+Subject:
+- work-item
+- cli
+- reference

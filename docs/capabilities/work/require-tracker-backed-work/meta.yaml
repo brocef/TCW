@@ -1,0 +1,9 @@
+id: cap-38f44c
+name: Require tracker-backed work
+Status: Missing
+Planning doc: 2026-09-12-refuse-local-work-that-no-claimed-tracker-ticket-authorizes
+Feature: external-work-tracker
+Subject:
+- work-item
+- cli
+- reference

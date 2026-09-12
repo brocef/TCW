@@ -1,0 +1,1 @@
+The coordination boundary between a project's TCW work store and an external tracker that owns ticket existence, assignment and claim state.

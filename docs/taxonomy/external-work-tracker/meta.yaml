@@ -1,0 +1,7 @@
+name: External work tracker
+kind: Feature
+relatesTo: []
+vocabulary:
+- work-item
+- cli
+- reference
