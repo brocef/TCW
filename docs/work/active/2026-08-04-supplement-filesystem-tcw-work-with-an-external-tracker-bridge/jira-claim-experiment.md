@@ -109,3 +109,93 @@ Three consequences, all of which belong to C1 and C2 rather than being deferred:
 - **Any behavior under a real second user.** Both racers authenticated as the same
   account, which is the right test for transition availability and the wrong one
   for assignment contention.
+
+---
+
+# Part 2 — a conforming workflow, built and measured
+
+**Date:** 2026-09-12, same session. **Fixture:** project `TCWCLAIM` ("TCW Bridge
+Claim Fixture"), project id `10004`, created empty so a workflow scheme could be
+assigned to it. Jira refuses to assign a scheme to a project that already holds
+issues ("Only empty projects can have workflow schemes assigned"), which is why
+this is a second project rather than a reconfiguration of `TCWTEST`.
+
+**The two fixtures are now a matched pair, and both are needed:**
+
+| project | workflow | claim transition reachable from its destination? |
+| ------- | -------- | ----------------------------------------------- |
+| `TCWTEST` | default simplified, global transitions | **yes** — cannot exclude |
+| `TCWCLAIM` | `TCW Bridge Claim Workflow`, directed only | **no** — excludes correctly |
+
+The conforming workflow was built with `POST /rest/api/3/workflows/create`:
+statuses `To Do` (10012), `In Progress` (3), `Done` (10009); transitions `Create`
+(INITIAL → To Do), `Start Progress` (id 21, DIRECTED, To Do → In Progress),
+`Finish` (id 31, DIRECTED, In Progress → Done). No global transitions. Existing
+statuses are referenced by supplying both an invented `statusReference` UUID and
+the real status `id`; supplying the status id alone is rejected as "not a UUID",
+and supplying the name alone is rejected as already in use.
+
+## Result: the claim works, and it is deterministic
+
+### The static property holds
+
+`TCWCLAIM-1`. Transitions offered in `To Do`: **only** id 21 `Start Progress`.
+After applying it, status is `In Progress` and transitions offered are **only** id
+31 `Finish`. The claim transition is gone. Applying id 21 a second time returns
+`HTTP 400`.
+
+### Exactly one winner, every time
+
+Concurrent applications of the claim transition to one freshly created issue:
+
+| issue | racers | winners | losers |
+| ----- | ------ | ------- | ------ |
+| `TCWCLAIM-2` | 3 | 1 | 2 |
+| `TCWCLAIM-3` | 4 | 1 | 3 |
+| `TCWCLAIM-4` | 4 | 1 | 3 |
+| `TCWCLAIM-5` | 4 | 1 | 3 |
+
+Four trials, no exceptions. The winner gets `HTTP 204`, every loser gets
+`HTTP 400`, and the final status is `In Progress` once. **Goal 1 is achievable on
+a conforming workflow**, and the epic's conditional restatement of it is the right
+shape: TCW can promise a single winner when the workflow can express exclusion,
+and must refuse strict mode when it cannot.
+
+## The finding that changes C2's implementation
+
+**Three different error bodies were observed for what is logically the same
+condition, all of them `HTTP 400`:**
+
+| condition | body |
+| --------- | ---- |
+| transition id does not exist at all | `Transition id '999' is not valid for this issue.` |
+| sequential second attempt, same caller | `Can't move (TCWCLAIM-1). You might not have permission, or the work item is missing required information. …` |
+| concurrent race loser | `Action 21 is invalid` |
+
+So the response tells you a transition did not apply, and nothing reliable about
+*why*. The second message is actively misleading: it suggests a permission problem
+or a missing field when the real cause is that someone else already claimed the
+ticket. Two consequences, both binding on C2:
+
+1. **Never parse these messages, and never surface one to the user as the
+   explanation.** The bridge decides what happened by re-reading the issue's
+   status and assignee, not from the error body.
+2. **A `400` on the claim transition is not by itself "already claimed".** It is
+   "the claim did not apply". Distinguishing already-claimed from misconfigured
+   requires the read: if the issue is in the claimed state and assigned to someone
+   else, it was claimed; if it is still in the ready state, the configuration is
+   wrong.
+
+That is the read-modify-verify sequence the spec now specifies, and this is the
+evidence for why a single write with error interpretation would have been wrong.
+
+## What is now settled, and what is still open
+
+Settled: the claim mechanism works; the workflow-shape check C1 performs is both
+necessary and sufficient to predict it; the guarantee is conditional and TCW must
+say so.
+
+Still open, and not blocking C2: behavior with two genuinely different Jira
+accounts, since every request above authenticated as the same user. That tests
+assignment contention rather than transition availability, and transition
+availability is what the claim rests on.
