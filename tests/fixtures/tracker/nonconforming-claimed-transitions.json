@@ -1,0 +1,77 @@
+{
+  "expand": "transitions",
+  "transitions": [
+    {
+      "hasScreen": false,
+      "id": "11",
+      "isAvailable": true,
+      "isConditional": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isLooped": false,
+      "name": "To Do",
+      "to": {
+        "description": "",
+        "iconUrl": "https://example.atlassian.net/",
+        "id": "10012",
+        "name": "To Do",
+        "self": "https://example.atlassian.net/rest/api/3/status/10012",
+        "statusCategory": {
+          "colorName": "blue-gray",
+          "id": 2,
+          "key": "new",
+          "name": "To Do",
+          "self": "https://example.atlassian.net/rest/api/3/statuscategory/2"
+        }
+      }
+    },
+    {
+      "hasScreen": false,
+      "id": "21",
+      "isAvailable": true,
+      "isConditional": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isLooped": false,
+      "name": "In Progress",
+      "to": {
+        "description": "",
+        "iconUrl": "https://example.atlassian.net/images/icons/statuses/inprogress.png",
+        "id": "3",
+        "name": "In Progress",
+        "self": "https://example.atlassian.net/rest/api/3/status/3",
+        "statusCategory": {
+          "colorName": "yellow",
+          "id": 4,
+          "key": "indeterminate",
+          "name": "In Progress",
+          "self": "https://example.atlassian.net/rest/api/3/statuscategory/4"
+        }
+      }
+    },
+    {
+      "hasScreen": false,
+      "id": "31",
+      "isAvailable": true,
+      "isConditional": false,
+      "isGlobal": true,
+      "isInitial": false,
+      "isLooped": false,
+      "name": "Done",
+      "to": {
+        "description": "",
+        "iconUrl": "https://example.atlassian.net/images/icons/statuses/generic.png",
+        "id": "10009",
+        "name": "Done",
+        "self": "https://example.atlassian.net/rest/api/3/status/10009",
+        "statusCategory": {
+          "colorName": "green",
+          "id": 3,
+          "key": "done",
+          "name": "Done",
+          "self": "https://example.atlassian.net/rest/api/3/statuscategory/3"
+        }
+      }
+    }
+  ]
+}

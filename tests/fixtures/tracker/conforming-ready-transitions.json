@@ -1,0 +1,29 @@
+{
+  "expand": "transitions",
+  "transitions": [
+    {
+      "hasScreen": false,
+      "id": "21",
+      "isAvailable": true,
+      "isConditional": false,
+      "isGlobal": false,
+      "isInitial": false,
+      "isLooped": false,
+      "name": "Start Progress",
+      "to": {
+        "description": "",
+        "iconUrl": "https://example.atlassian.net/images/icons/statuses/inprogress.png",
+        "id": "3",
+        "name": "In Progress",
+        "self": "https://example.atlassian.net/rest/api/3/status/3",
+        "statusCategory": {
+          "colorName": "yellow",
+          "id": 4,
+          "key": "indeterminate",
+          "name": "In Progress",
+          "self": "https://example.atlassian.net/rest/api/3/statuscategory/4"
+        }
+      }
+    }
+  ]
+}

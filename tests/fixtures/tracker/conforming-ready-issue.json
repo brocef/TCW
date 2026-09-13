@@ -1,0 +1,39 @@
+{
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "fields": {
+    "assignee": {
+      "accountId": "000000:00000000-0000-0000-0000-000000000000",
+      "accountType": "atlassian",
+      "active": true,
+      "avatarUrls": {
+        "16x16": "https://example.atlassian.net/avatar",
+        "24x24": "https://example.atlassian.net/avatar",
+        "32x32": "https://example.atlassian.net/avatar",
+        "48x48": "https://example.atlassian.net/avatar"
+      },
+      "displayName": "Probe",
+      "emailAddress": "probe@example.test",
+      "self": "https://example.atlassian.net/rest/api/3/user?accountId=000000%3A00000000-0000-0000-0000-000000000000",
+      "timeZone": "America/New_York"
+    },
+    "description": null,
+    "status": {
+      "description": "",
+      "iconUrl": "https://example.atlassian.net/",
+      "id": "10012",
+      "name": "To Do",
+      "self": "https://example.atlassian.net/rest/api/3/status/10012",
+      "statusCategory": {
+        "colorName": "blue-gray",
+        "id": 2,
+        "key": "new",
+        "name": "To Do",
+        "self": "https://example.atlassian.net/rest/api/3/statuscategory/2"
+      }
+    },
+    "summary": "A ready ticket for the claimable demo"
+  },
+  "id": "10052",
+  "key": "TCWCLAIM-6",
+  "self": "https://example.atlassian.net/rest/api/3/issue/10052"
+}

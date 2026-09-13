@@ -1,0 +1,29 @@
+{
+  "expand": "transitions",
+  "transitions": [
+    {
+      "hasScreen": false,
+      "id": "31",
+      "isAvailable": true,
+      "isConditional": false,
+      "isGlobal": false,
+      "isInitial": false,
+      "isLooped": false,
+      "name": "Finish",
+      "to": {
+        "description": "",
+        "iconUrl": "https://example.atlassian.net/images/icons/statuses/generic.png",
+        "id": "10009",
+        "name": "Done",
+        "self": "https://example.atlassian.net/rest/api/3/status/10009",
+        "statusCategory": {
+          "colorName": "green",
+          "id": 3,
+          "key": "done",
+          "name": "Done",
+          "self": "https://example.atlassian.net/rest/api/3/statuscategory/3"
+        }
+      }
+    }
+  ]
+}
