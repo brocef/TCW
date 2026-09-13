@@ -333,14 +333,33 @@ Nine are automated. Three, marked **[live]**, need the Atlassian fixtures and ar
 discharged once by hand; their responses are then committed as replay fixtures so
 the automated nine cover the same ground thereafter.
 
-1. On a **fixture node** built by `python evals/seed_fixture.py` with no
-   `work.tracker` key, `tcw work list`, `tcw work show <the fixture's item>` and
-   `tcw validate` each produce the same stdout, the same stderr and the same exit
-   code as the same commands on the same fixture at this item's branch point.
-   Compared stream by stream, not as one blob. The earlier wording said
-   "byte-identical output to the commit before this item" against the live
-   repository, which cannot hold: this item's own artifacts and its capability flip
-   change what `validate` scans and what the board prints.
+1. On a node with no `work.tracker` key, three properties hold, and the second is
+   the load-bearing one:
+
+   a. `tcw work list`, `list --all`, `validate`, `work docs`, `work lifecycle` and
+      `work show <slug>` all exit zero, and no output mentions a tracker, Jira,
+      claimability or exclusivity.
+   b. **The Jira client and the claim module are never imported.** Checked in a
+      *fresh interpreter* per command, because a listing cannot be paying any part
+      of this feature's cost if the modules that implement it were never loaded.
+   c. Output is identical across two consecutive runs, so nothing here introduced
+      ordering or timing dependence into neighbouring commands.
+
+   **Two earlier wordings of this criterion were unachievable and are recorded so
+   they are not reattempted.** The first asked for output byte-identical to the
+   commit before this item, in the live repository; that cannot hold, because this
+   item's own artifacts and its capability flip change what `validate` scans and
+   what the board prints. The second moved to a seeded fixture, which is no better:
+   `evals/seed_fixture.py` documents that two runs are deliberately *not*
+   byte-identical, since slugs are date-prefixed, capability ids are minted,
+   `started` is a timestamp, and commit hashes follow. A comparison there would fail
+   for reasons unrelated to trackers.
+
+   Property (b) is what those wordings were reaching for, and it is strictly
+   checkable. It also had to be fixed once: written in-process it passed vacuously,
+   because the CLI module is already imported before the test body runs, so hoisting
+   the client import to module scope did not fail it. The subprocess form fails on
+   all five commands under that mutation.
 2. No existing test is edited **to accommodate the tracker**. Adding
    `"tcw work tracker"` to `DOCUMENTED_VERBS`
    (`tests/test_documented_cli_surface.py:246`) and the matching prose to
