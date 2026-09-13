@@ -358,7 +358,10 @@ def grade_run(run_dir: Path) -> dict:
 
     run = {
         "events": load_events(run_dir / "transcript.jsonl"),
-        "fixture": Path(timing["fixture"]),
+        # Relative resolves against the run directory, which is where the
+        # runner puts the fixture. A live run writes an absolute path; the
+        # committed example runs are relative so they grade on any machine.
+        "fixture": run_dir / timing["fixture"],
         "nonces": timing.get("nonces", {}),
         "stage_items": timing.get("stage_items", {}),
         "items": timing.get("items", {}),

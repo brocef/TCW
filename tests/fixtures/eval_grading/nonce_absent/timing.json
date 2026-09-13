@@ -6,7 +6,7 @@
  "num_turns": 4,
  "capped": false,
  "isolation_problems": [],
- "fixture": "/Users/brian/Projects/TCW/tests/fixtures/eval_grading/nonce_absent/fixture",
+ "fixture": "fixture",
  "nonces": {
   "file": "a1b2c3d4e5f60718",
   "blob": "0000111122223333",
