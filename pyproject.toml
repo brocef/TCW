@@ -35,4 +35,11 @@ include = ["tcw*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repository root on sys.path, so `from evals import ...` resolves. The
+# eval-harness tests import it, and `evals` is deliberately not a published
+# package (`packages.find` includes only `tcw*`), so the editable install does
+# not put it there. `python -m pytest` happened to work anyway — that form puts
+# the current directory on sys.path and bare `pytest` does not — which is why
+# CI, which runs bare `pytest`, was the only place this failed.
+pythonpath = ["."]
 norecursedirs = [".venv", "build", "dist", "*.egg-info"]
