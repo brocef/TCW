@@ -80,6 +80,45 @@ Writes never follow that fallback. A body edit always targets
 the request and leaving `intake.md` byte-identical. Edit `intake.md` only as a
 named artifact — raw input that quietly changes is not raw input.
 
+## Reading an external tracker
+
+Read-only. Neither command writes anywhere, and no other command gains a network
+dependency because of them.
+
+| Goal | Command |
+| ---- | ------- |
+| list tickets the configured query selects | `tcw work tracker list` |
+| one ticket, plus its claimability report | `tcw work tracker show <ticket>` |
+
+Configured under `work.tracker` in the node sentinel: `provider` (only
+`jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
+`credentials.token-env`, `transitions.claim`, and optional `timeout-seconds`
+(default 15). All but the last are required. Unknown keys are reported rather than
+ignored, so a config written for a later release complains instead of silently doing
+less.
+
+**Credentials are named, never stored** — the config holds two environment variable
+names, read at request time.
+
+**A malformed block does not break a board read.** It reads as no tracker at all
+(the parse fails closed) and `tcw validate` reports it. With no tracker configured,
+nothing changes and no tracker code is even imported.
+
+**`tcw validate` never contacts the tracker**, because a project may bind it as a
+`pre` hook on `complete` and a `pre` failure stops the item moving. Do not add a
+network call to that path.
+
+`show` reports two distinct things. **claimable** is about this ticket now: does it
+offer the configured claim transition. **exclusive** is about the workflow: would a
+second claimant be refused. Exclusivity is only readable from the status the claim
+leads to, so a ticket nobody has started reports `not determined`. On a workflow
+offering every transition from every status — Jira's default — a started ticket
+reports `not exclusive`, and two people claiming it would both succeed.
+
+Neither command detects a wrong `transitions.claim` value. A ticket not offering it
+may have been claimed already, and that is indistinguishable from a typo without
+reading the project's workflow definition.
+
 ## Addressing
 
 A **bare slug** is local. `<project-id>/<slug>` resolves any node in the

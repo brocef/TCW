@@ -332,6 +332,60 @@ studies your code, proposes a first draft, refines it with you, and writes it.
 
 ---
 
+## Reading your Jira tickets
+
+A project can name the Jira Cloud site it uses, and then read from it. Both
+commands are read-only: nothing here changes a ticket, and nothing yet turns a
+ticket into a work item.
+
+```sh
+tcw work tracker list              # tickets the configured query selects
+tcw work tracker show ENG-482      # one ticket, and whether it is yours to take
+```
+
+Configuration goes in the node's `tcw-config.yaml`:
+
+```yaml
+work:
+    tracker:
+        provider: jira-cloud
+        base-url: https://yourcompany.atlassian.net
+        candidate-query: assignee = currentUser() AND status = "To Do"
+        credentials:
+            email-env: TCW_JIRA_EMAIL
+            token-env: TCW_JIRA_API_TOKEN
+        transitions:
+            claim: Start Progress
+        timeout-seconds: 15 # optional
+```
+
+**Credentials are named, never stored.** The file holds the names of two
+environment variables; TCW reads them at the moment it makes a request, so a token
+cannot be committed by accident.
+
+`tracker show` reports two different things, and the distinction matters:
+
+- **claimable** — whether this ticket currently offers the transition you
+  configured as the claim.
+- **exclusive** — whether your Jira workflow would actually refuse a second person
+  trying to take the same ticket.
+
+Many Jira workflows allow a status change from any status, including the one it
+leads to. On a workflow like that, two people who both take one ticket both
+succeed and neither is told. So a ticket that has been started reports
+`not exclusive` when that is the truth, and a ticket that has not been started
+reports `not determined`, because it cannot show you what happens to the second
+person. Making a workflow exclusive is a Jira administration change, not something
+TCW can do for you.
+
+Two guarantees worth stating plainly. A project with no `tracker` block behaves
+exactly as before, with no new required setting and no network access. And
+`tcw validate` never contacts the tracker, which matters because projects commonly
+run it when closing a work item — finishing your work must not depend on Jira being
+reachable.
+
+---
+
 ## Documentation
 
 | Document                                                             | Covers                                                                                                                 |

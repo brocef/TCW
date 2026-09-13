@@ -3,6 +3,71 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## Point TCW at your Jira project and read your tickets from the terminal
+
+A project can now tell TCW which Jira site it uses, and you can see the tickets
+assigned to you without leaving the terminal.
+
+Add a `tracker` block to your project's `tcw-config.yaml`:
+
+```yaml
+work:
+    tracker:
+        provider: jira-cloud
+        base-url: https://yourcompany.atlassian.net
+        candidate-query: assignee = currentUser() AND status = "To Do"
+        credentials:
+            email-env: TCW_JIRA_EMAIL
+            token-env: TCW_JIRA_API_TOKEN
+        transitions:
+            claim: Start Progress
+```
+
+Then:
+
+```
+tcw work tracker list
+tcw work tracker show ENG-482
+```
+
+Both only read. Nothing in this release changes a ticket, and nothing yet turns a
+ticket into a work item — that comes next.
+
+**Your password never goes in the file.** You name two environment variables and
+TCW reads them when it makes a request. A token cannot end up committed by
+accident, because it is never written down.
+
+**`tcw work tracker show` tells you whether a ticket is yours to take.** It says
+whether the ticket currently offers the transition you configured as the claim,
+and, for a ticket that has already been started, whether your Jira workflow would
+actually stop a second person from taking it as well.
+
+That last part is worth explaining, because it is the surprising one. Many Jira
+workflows are set up so that a status change can be applied at any time, from any
+status. On a workflow like that, two people who both try to take the same ticket
+both succeed, and neither is told. So TCW reports what your workflow would really
+do rather than assuming it protects you:
+
+```
+TCWTEST-1  [In Progress]
+claimable: claimable
+workflow: not exclusive
+note: 'In Progress' is still offered from 'In Progress', the status it leads to,
+      so applying it twice succeeds and a second claimant would not be refused.
+```
+
+If you see `not exclusive`, your workflow cannot prevent two people claiming one
+ticket, and a Jira administrator would need to change it before TCW could promise
+otherwise. If a ticket has not been started yet, TCW says `not determined`,
+because a ticket that has not been taken cannot show you what happens to the
+second person who tries.
+
+**A project with no tracker block is completely unaffected.** No new setting is
+required, no command behaves differently, and nothing contacts the network.
+Checking your project with `tcw validate` still never makes a network call, which
+matters because many projects run it as part of closing a work item — it would be
+wrong for finishing your work to depend on Jira being reachable.
+
 ## A broken work item is no longer reported as a healthy one
 
 If a work item's `state.yaml` was damaged — emptied to `[]` by a bad merge, say,

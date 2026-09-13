@@ -77,6 +77,89 @@ category.
 
 ## Added
 
+- **`work.tracker` configuration.** `TrackerConfig` and `parse_tracker_config` in
+  `tcw/store/base.py`, plus `WorkStore.tracker_config` / `tracker_problems`,
+  concrete with `None` / `[]` defaults so no adapter changes and a tracker-less
+  store answers by omission. Keys: `provider` (only `jira-cloud`), `base-url`,
+  `candidate-query`, `credentials.email-env`, `credentials.token-env`,
+  `transitions.claim`, and optional `timeout-seconds` (default 15). All required
+  keys are unconditional.
+
+    **The parser fails closed**, following `parse_repository_declaration`: any
+    problem returns `None` rather than a partial config, because a config whose
+    `token-env` is mistyped but whose `base-url` parses would send an
+    unauthenticated request to a real site. It holds the *names* of two
+    environment variables and never a value; a test sets a sentinel token and
+    asserts it appears nowhere on the object.
+
+    **Unknown keys are reported, deliberately forward-incompatible.** The keys
+    later work adds — terminal and submit/rework transition mappings, and
+    `strict` — are refused now, with tests naming them. Silently ignoring a key
+    someone set is silently not doing what they asked.
+
+- **`tcw/tracker/jira.py`, a Jira Cloud client on the standard library.** Runtime
+  dependencies stay at PyYAML alone. `JiraClient._request` is the only function
+  touching `urllib.request` and the only place credentials are read, so a client
+  that makes no call touches no secret. Four reads above it: `myself`, `search`,
+  `issue`, `transitions`. Every call passes an explicit `timeout` —
+  `urlopen` otherwise falls back to the global socket default, which is unset, so
+  the omission is an indefinite hang. A test walks the operations, and a second
+  test fails if an operation is added without being listed in the first.
+
+    `search` uses **`/rest/api/3/search/jql`**. `/rest/api/3/search` has been
+    removed by Atlassian; a live call returns 400 naming the replacement. The
+    replacement is token-paginated and reports `isLast` rather than a match count,
+    so `SearchResult` carries no total and only the first page is fetched.
+
+- **Six exception types, one per cause**: `TrackerAuthError`,
+  `TrackerPermissionError`, `TrackerNotFound`, `TrackerRequestInvalid`,
+  `TrackerRateLimited` (carrying `Retry-After`), `TrackerUnavailable`. All six are
+  reachable from this change alone, and each produces its own user-visible message
+  and exit path.
+
+    **Nothing is named for contention and nothing parses a response body.** A live
+    experiment recorded three different `HTTP 400` bodies for one logical
+    condition — a rejected transition, a bad transition id, and a lost claim race —
+    one of which blames permissions. A test asserts the same status with four
+    different bodies yields one type, so a future change cannot infer "already
+    claimed" from a body.
+
+- **`tcw/tracker/claim.py`**, a pure assessment of one ticket: whether it offers
+  the configured claim transition, and whether the workflow would refuse a second
+  claimant. Takes data rather than a client, so its tests run against transition
+  lists captured from a real site.
+
+    Exclusivity is answerable only from the status the claim leads to, and a ticket
+    that no longer offers the claim cannot reveal that status — so one ticket can
+    prove a workflow is **not** exclusive and can never prove it is. The
+    destination is an optional argument for a caller that knows it: one that read a
+    ready-state ticket, or code that has just applied the claim and watched where
+    it landed.
+
+- **`tcw work tracker list` and `tcw work tracker show <ticket>`**, a nested
+  subcommand group, both read-only. `tracker` joins `SUBCOMMANDS`. `show` prints
+  the ticket plus a claimability report using two distinct words: *claimable* for
+  the ticket now, *exclusive* for the workflow.
+
+- **Tracker problems reach `tcw validate`**, read directly from the store rather
+  than through `check()`, following `retention_problems`.
+
+    **`tcw validate` makes no network call and reads no credential variable**, and
+    three tests enforce it: one fails on any socket connection, one fails if either
+    variable is read, and one requires completion within a second against an
+    unroutable base URL. `tcw validate` is bound as a `pre` hook on the `complete`
+    transition in this repository's own config, and a `pre` failure means the store
+    is not touched — a network call there would make completing a work item depend
+    on Jira being reachable, on the variables being set in that shell, and on the
+    token not having expired.
+
+- **`tests/fixtures/tracker/`**, four responses captured from a live site and
+  scrubbed of the host, account id, email and avatar URLs. A test checks the scrub
+  rather than trusting it, and another asserts the two captured workflows really do
+  differ, so a recapture pointing both at one project fails instead of passing
+  vacuously.
+
+
 - **`autonomous-work` skill.** Ships the unattended-run procedure that was
   previously a personal skill: it drives named work items through
   `/tcw-drive-work-to-completion` back to back, and at every point the lifecycle

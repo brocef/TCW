@@ -22,6 +22,7 @@ so a green run means "names no nonexistent verb", not "the docs are correct".
 """
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -129,8 +130,22 @@ def _invocations(text: str) -> list[str]:
 
 
 def _help(argv: list[str]) -> str:
-    """`--help` text, or "" when the command path doesn't exist."""
-    r = subprocess.run(["tcw", *argv, "--help"], capture_output=True, text=True)
+    """`--help` text, or "" when the command path doesn't exist.
+
+    Invokes **this repository's** CLI, not the `tcw` on PATH. Those are routinely
+    different trees: the editable install registers an import hook pinned to the
+    primary checkout, so in a git worktree the `tcw` console script runs the other
+    checkout's source. This test then measures whether the *installed* CLI matches
+    *these* docs, which is not a question anyone wanted answered — a command added
+    in a worktree reads as "no such verb" however correct it is.
+
+    `sys.path.insert(0, REPO)` does win here, which is why this works; a leading
+    path entry beats the editable install's finder for a plain `import tcw`.
+    """
+    script = (f"import sys; sys.path.insert(0, {str(REPO)!r}); "
+              f"from tcw.cli import main; sys.exit(main({[*argv, '--help']!r}))")
+    r = subprocess.run([sys.executable, "-c", script],
+                       capture_output=True, text=True, cwd=REPO)
     return r.stdout + r.stderr if r.returncode == 0 else ""
 
 
@@ -244,7 +259,7 @@ def test_documented_verbs_and_flags_exist(doc, tree):
 # `--help`. The prose home for the work commands is `docs/guide/work.md`; the
 # README is the pitch and links out to it, so it is not checked here.
 DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage gate",
-                    "tcw work scaffold")
+                    "tcw work scaffold", "tcw work tracker")
 
 
 @pytest.mark.parametrize("verb", DOCUMENTED_VERBS)

@@ -601,3 +601,91 @@ inside, TCW refuses and names where to re-run it. Every other command works from
 either place.
 
 ---
+
+## Reading an external tracker
+
+A node may name the Jira Cloud site its team works from. Two read-only commands
+then work against it. Neither changes anything, locally or remotely, and no other
+command gains a network dependency.
+
+```sh
+tcw work tracker list              # tickets the configured query selects
+tcw work tracker show ENG-482      # one ticket, plus a claimability report
+```
+
+Configuration lives in the node sentinel, under `work.tracker`:
+
+```yaml
+work:
+    tracker:
+        provider: jira-cloud # the only accepted value
+        base-url: https://yourcompany.atlassian.net
+        candidate-query: assignee = currentUser() AND status = "To Do"
+        credentials:
+            email-env: TCW_JIRA_EMAIL
+            token-env: TCW_JIRA_API_TOKEN
+        transitions:
+            claim: Start Progress
+        timeout-seconds: 15 # optional, default 15
+```
+
+Everything but `timeout-seconds` is required. An unknown key is reported by
+`tcw validate` rather than ignored, so a configuration written for a later release
+complains here instead of silently doing less than you asked.
+
+**Credentials are named, not stored.** The file carries the names of two
+environment variables and TCW reads them when it makes a request. A configuration
+that never reaches a request never touches a secret.
+
+**A malformed block never breaks the board.** `tcw work list` and `tcw work show`
+keep working; `tcw validate` is where you hear about it. The parse fails closed, so
+a block with any problem reads as no tracker at all rather than as a half-configured
+one — a config whose token variable is mistyped but whose URL parses would otherwise
+send an unauthenticated request to a real site.
+
+**`tcw validate` never contacts the tracker.** That is deliberate and load-bearing.
+A project may bind `tcw validate` as a `pre` hook on the `complete` transition, and
+a `pre` failure means the item does not move. If validating touched the network,
+finishing a work item would depend on the tracker being reachable, on the
+credential variables being exported in that shell, and on the token not having
+expired.
+
+### Claimable and exclusive are different questions
+
+`tracker show` answers both, and conflating them would be misleading:
+
+- **claimable** — does this ticket, right now, offer the transition configured as
+  the claim?
+- **exclusive** — would the workflow refuse a *second* person who tried to claim
+  the same ticket?
+
+```
+TCWCLAIM-6  [To Do]
+summary: A ticket nobody has started
+assignee: Probe
+claimable: claimable
+workflow: not determined from this ticket
+note: 'Start Progress' leads to 'In Progress'. Exclusivity can only be read from a
+      ticket already in that status.
+```
+
+Exclusivity is a property of the workflow, and it is only observable from the status
+the claim leads to. Many Jira workflows offer every status change from every status;
+on one of those, applying the claim twice succeeds and two people who both take a
+ticket both succeed without being told. A ticket already in the landing status shows
+that plainly:
+
+```
+workflow: not exclusive
+note: 'In Progress' is still offered from 'In Progress', the status it leads to, so
+      applying it twice succeeds and a second claimant would not be refused.
+```
+
+A ticket that has not been started reports `not determined`, because a ticket nobody
+has taken cannot show what happens to the second person who tries. Making a workflow
+exclusive is a Jira administration change.
+
+One thing these commands deliberately do **not** do: tell you that the name in
+`transitions.claim` is wrong. A ticket that does not offer it may simply have been
+claimed already, and a whole query of such tickets looks identical to a typo. It is
+reported as information, never as a verdict.
