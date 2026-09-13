@@ -1,0 +1,361 @@
+"""The Jira client: its single seam, and what every operation puts through it.
+
+`_request` is the only function that touches `urllib.request`. That is a design
+decision rather than an implementation detail, because it is the one function a
+test replaces, and four of this item's acceptance criteria depend on replacing it.
+
+The timeout test is the one to keep. `urllib.request.urlopen` falls back to the
+global socket default when no timeout is given, and that default is unset, so a
+forgotten timeout is an indefinite hang rather than a slow call. The test walks the
+operations rather than naming them individually, so a sixth operation added without
+a timeout fails it.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import io
+import json
+import pathlib
+import socket
+import time
+import urllib.error
+
+import pytest
+
+from tcw.store.base import TrackerConfig
+from tcw.tracker import jira
+
+CONFIG = TrackerConfig(
+    provider="jira-cloud",
+    base_url="https://example.atlassian.net",
+    candidate_query='assignee = currentUser() AND status = "To Do"',
+    email_env="TCW_PROBE_EMAIL",
+    token_env="TCW_PROBE_TOKEN",
+    claim_transition="Start Progress",
+    timeout_seconds=15,
+)
+
+
+@pytest.fixture(autouse=True)
+def _credentials(monkeypatch):
+    monkeypatch.setenv("TCW_PROBE_EMAIL", "probe@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", "sentinel-token-value")
+
+
+class Recorder:
+    """Replaces `_request`; records every call and returns canned responses."""
+
+    def __init__(self, responses=None):
+        self.calls = []
+        self.responses = responses or {}
+
+    def __call__(self, method, path, body=None, *, timeout=None):
+        self.calls.append({"method": method, "path": path, "body": body,
+                           "timeout": timeout})
+        return self.responses.get(path, (200, {}, b"{}"))
+
+    @property
+    def last(self):
+        return self.calls[-1]
+
+
+def _client(monkeypatch, recorder):
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", recorder)
+    return client
+
+
+# ── each operation's shape ───────────────────────────────────────────────────
+
+
+def test_myself_gets_the_current_user(monkeypatch):
+    rec = Recorder({"/rest/api/3/myself": (200, {}, json.dumps(
+        {"accountId": "abc", "displayName": "Probe",
+         "emailAddress": "probe@example.test"}).encode())})
+    who = _client(monkeypatch, rec).myself()
+    assert rec.last["method"] == "GET"
+    assert rec.last["path"] == "/rest/api/3/myself"
+    assert who["accountId"] == "abc"
+
+
+def test_search_posts_the_configured_query(monkeypatch):
+    rec = Recorder()
+    _client(monkeypatch, rec).search(CONFIG.candidate_query)
+    assert rec.last["method"] == "POST"
+    assert CONFIG.candidate_query == rec.last["body"]["jql"]
+
+
+def test_search_sends_a_default_limit(monkeypatch):
+    rec = Recorder()
+    _client(monkeypatch, rec).search("project = X")
+    assert rec.last["body"]["maxResults"] == jira.DEFAULT_SEARCH_LIMIT
+
+
+def test_search_reports_truncation_rather_than_hiding_it(monkeypatch):
+    """Silently returning a short list would make a user believe they have no
+    other assigned tickets."""
+    rec = Recorder()
+    rec.responses = {}
+    payload = {"issues": [{"key": f"X-{n}"} for n in range(3)], "total": 99}
+
+    def respond(method, path, body=None, *, timeout=None):
+        rec.calls.append({"method": method, "path": path, "body": body,
+                          "timeout": timeout})
+        return (200, {}, json.dumps(payload).encode())
+
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", respond)
+    result = client.search("project = X", limit=3)
+    assert len(result.issues) == 3
+    assert result.truncated is True
+    assert result.total == 99
+
+
+def test_search_is_not_truncated_when_everything_fits(monkeypatch):
+    payload = {"issues": [{"key": "X-1"}], "total": 1}
+
+    def respond(method, path, body=None, *, timeout=None):
+        return (200, {}, json.dumps(payload).encode())
+
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", respond)
+    assert client.search("project = X", limit=50).truncated is False
+
+
+def test_issue_gets_one_ticket_by_key(monkeypatch):
+    rec = Recorder()
+    _client(monkeypatch, rec).issue("TCWCLAIM-1")
+    assert rec.last["method"] == "GET"
+    assert "TCWCLAIM-1" in rec.last["path"]
+
+
+def test_transitions_reads_what_the_issue_offers_now(monkeypatch):
+    rec = Recorder()
+    rec.responses = {}
+    payload = {"transitions": [
+        {"id": "21", "name": "Start Progress", "to": {"name": "In Progress", "id": "3"}}]}
+
+    def respond(method, path, body=None, *, timeout=None):
+        rec.calls.append({"method": method, "path": path, "body": body,
+                          "timeout": timeout})
+        return (200, {}, json.dumps(payload).encode())
+
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", respond)
+    offered = client.transitions("TCWCLAIM-1")
+    assert rec.last["method"] == "GET"
+    assert rec.last["path"].endswith("/transitions")
+    assert offered[0].name == "Start Progress"
+    assert offered[0].to_status == "In Progress"
+
+
+# ── the timeout, on every operation ──────────────────────────────────────────
+
+
+OPERATIONS = [
+    ("myself", ()),
+    ("search", ("project = X",)),
+    ("issue", ("X-1",)),
+    ("transitions", ("X-1",)),
+]
+
+
+def test_every_operation_is_accounted_for_here():
+    """If an operation is added and not listed above, the timeout test below would
+    silently stop covering it. This is what makes that impossible."""
+    public = {name for name in vars(jira.JiraClient)
+              if not name.startswith("_") and callable(getattr(jira.JiraClient, name))}
+    assert public == {name for name, _ in OPERATIONS}, public
+
+
+@pytest.mark.parametrize("name,args", OPERATIONS)
+def test_every_operation_passes_an_explicit_timeout(monkeypatch, name, args):
+    rec = Recorder()
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", rec)
+    getattr(client, name)(*args)
+    assert rec.last["timeout"] == CONFIG.timeout_seconds, (
+        f"{name} did not pass a timeout; urlopen would block forever")
+
+
+# ── the seam itself ──────────────────────────────────────────────────────────
+
+
+def test_the_authorization_header_is_built_from_the_named_variables(monkeypatch):
+    """The only place credentials are read. Asserted on the header rather than on
+    an attribute, because the config must never hold the value."""
+    captured = {}
+
+    def fake_urlopen(request, timeout=None):
+        captured["headers"] = dict(request.headers)
+        captured["timeout"] = timeout
+        captured["url"] = request.full_url
+
+        class R:
+            status = 200
+            headers = {}
+
+            def read(self):
+                return b"{}"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        return R()
+
+    monkeypatch.setattr(jira.urllib.request, "urlopen", fake_urlopen)
+    jira.JiraClient(CONFIG).myself()
+    auth = next(v for k, v in captured["headers"].items() if k.lower() == "authorization")
+    assert auth.startswith("Basic ")
+    import base64
+    decoded = base64.b64decode(auth.split(" ", 1)[1]).decode()
+    assert decoded == "probe@example.test:sentinel-token-value"
+    assert captured["timeout"] == 15
+    assert captured["url"].startswith("https://example.atlassian.net/")
+
+
+def test_a_missing_credential_variable_is_a_clear_error(monkeypatch):
+    monkeypatch.delenv("TCW_PROBE_TOKEN", raising=False)
+    with pytest.raises(jira.TrackerError) as excinfo:
+        jira.JiraClient(CONFIG).myself()
+    assert "TCW_PROBE_TOKEN" in str(excinfo.value)
+
+
+# ── the error taxonomy ───────────────────────────────────────────────────────
+#
+# Six causes, each its own type. The justification is that all six are reachable
+# from this item alone: a wrong token (401), a query selecting a project the
+# account cannot browse (403), `tracker show` on a bad key (404), a malformed
+# candidate query (400), a tight loop of list calls (429), and an unreachable
+# tracker (5xx or a timeout).
+
+
+def _raise_http(monkeypatch, status, headers=None, body=b"{}"):
+    """Make urlopen raise HTTPError with a given status."""
+    def fake_urlopen(request, timeout=None):
+        raise urllib.error.HTTPError(
+            request.full_url, status, "boom", headers or {}, io.BytesIO(body))
+    monkeypatch.setattr(jira.urllib.request, "urlopen", fake_urlopen)
+
+
+@pytest.mark.parametrize("status,expected", [
+    (401, jira.TrackerAuthError),
+    (403, jira.TrackerPermissionError),
+    (404, jira.TrackerNotFound),
+    (400, jira.TrackerRequestInvalid),
+    (429, jira.TrackerRateLimited),
+    (500, jira.TrackerUnavailable),
+    (503, jira.TrackerUnavailable),
+])
+def test_each_status_raises_its_own_cause(monkeypatch, status, expected):
+    _raise_http(monkeypatch, status)
+    with pytest.raises(expected):
+        jira.JiraClient(CONFIG).myself()
+
+
+def test_every_cause_is_a_tracker_error(monkeypatch):
+    """So a caller that wants to handle all of them can, with one except."""
+    for status in (400, 401, 403, 404, 429, 500):
+        _raise_http(monkeypatch, status)
+        with pytest.raises(jira.TrackerError):
+            jira.JiraClient(CONFIG).myself()
+
+
+def test_rate_limiting_carries_retry_after_when_given(monkeypatch):
+    _raise_http(monkeypatch, 429, headers={"Retry-After": "30"})
+    with pytest.raises(jira.TrackerRateLimited) as excinfo:
+        jira.JiraClient(CONFIG).myself()
+    assert excinfo.value.retry_after == "30"
+    assert "30" in str(excinfo.value)
+
+
+def test_rate_limiting_without_retry_after_still_raises_cleanly(monkeypatch):
+    _raise_http(monkeypatch, 429)
+    with pytest.raises(jira.TrackerRateLimited) as excinfo:
+        jira.JiraClient(CONFIG).myself()
+    assert excinfo.value.retry_after is None
+
+
+def test_an_auth_failure_names_the_variable_to_fix(monkeypatch):
+    """A user who sees "rejected" needs to know which variable to look at."""
+    _raise_http(monkeypatch, 401)
+    with pytest.raises(jira.TrackerAuthError) as excinfo:
+        jira.JiraClient(CONFIG).myself()
+    assert "work.tracker.credentials" in str(excinfo.value)
+
+
+def test_an_unavailable_tracker_names_the_timeout(monkeypatch):
+    _raise_http(monkeypatch, 503)
+    with pytest.raises(jira.TrackerUnavailable):
+        jira.JiraClient(CONFIG).myself()
+
+
+def test_a_refused_connection_is_unavailable_not_invalid(monkeypatch):
+    def fake_urlopen(request, timeout=None):
+        raise urllib.error.URLError(ConnectionRefusedError("refused"))
+    monkeypatch.setattr(jira.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(jira.TrackerUnavailable):
+        jira.JiraClient(CONFIG).myself()
+
+
+def test_no_cause_is_named_for_contention(monkeypatch):
+    """The standing guard. A live experiment recorded three different 400 bodies
+    for one condition — a rejected transition, a bad transition id, and a lost
+    race — one of which blames permissions. Inferring "already claimed" from a
+    status or a body would encode a guess as a fact. Deciding that needs a re-read
+    of the issue, which is the next child's job, not the transport's.
+    """
+    names = [n for n in vars(jira) if n.startswith("Tracker")]
+    assert names, "no exception types found; this test would pass vacuously"
+    for name in names:
+        assert "conflict" not in name.lower(), name
+        assert "claimed" not in name.lower(), name
+
+    # And the behavioural half, which a name check cannot give: the same status
+    # with different bodies must produce the same type. If anything ever branches
+    # on the body — the thing the experiment proved unsafe — this fails.
+    bodies = [
+        "Action 21 is invalid",
+        "Transition id '999' is not valid for this issue.",
+        "Can't move (X-1). You might not have permission, or the work item is "
+        "missing required information.",
+        "",
+    ]
+    kinds = {type(jira._for_status(400, {}, body, "/p")) for body in bodies}
+    assert kinds == {jira.TrackerRequestInvalid}, kinds
+
+
+def test_a_400_body_is_carried_but_not_interpreted(monkeypatch):
+    """The body reaches the message so a human can read it; nothing branches on it."""
+    _raise_http(monkeypatch, 400, body=b'{"errorMessages":["Action 21 is invalid"]}')
+    with pytest.raises(jira.TrackerRequestInvalid) as excinfo:
+        jira.JiraClient(CONFIG).myself()
+    assert "Action 21 is invalid" in str(excinfo.value)
+
+
+# ── the real socket: the one place a urllib mistake cannot hide ──────────────
+
+
+def test_a_server_that_never_answers_times_out_rather_than_hanging():
+    """The riskiest behaviour in the item, and the only test here that uses a real
+    socket. Every other test replaces the transport, so none of them would notice
+    a missing or ignored timeout in the actual `urlopen` call. This one binds a
+    listening socket that accepts a connection and never writes a byte.
+    """
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    port = listener.getsockname()[1]
+    try:
+        config = dataclasses.replace(
+            CONFIG, base_url=f"http://127.0.0.1:{port}", timeout_seconds=1)
+        started = time.monotonic()
+        with pytest.raises(jira.TrackerUnavailable):
+            jira.JiraClient(config).myself()
+        elapsed = time.monotonic() - started
+        assert elapsed < 10, f"took {elapsed:.1f}s; the timeout was not honoured"
+    finally:
+        listener.close()
