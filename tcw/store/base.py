@@ -867,6 +867,144 @@ class DocEntry:
 
 
 @dataclass(frozen=True)
+class TrackerConfig:
+    """A project's external-tracker coordination settings, as it records them.
+
+    Node configuration, not store content — a tracker-backed node has these
+    exactly as a filesystem node does, the same way `work.tags` and
+    `work.documentation` already do.
+
+    **It holds the *names* of two environment variables, never their values.** A
+    `TrackerConfig` that never reaches a request never touches a secret, which is
+    what lets it be logged, repr'd and compared freely.
+    """
+    provider: str
+    base_url: str
+    candidate_query: str
+    email_env: str
+    token_env: str
+    claim_transition: str
+    timeout_seconds: int = 15
+
+
+# The only `provider` value that parses. A literal in the abstract layer, which is
+# a wart named in this item's spec rather than hidden: it is a validated enum
+# value and not a behavioral branch, and it moves into a provider registry on the
+# day a second provider exists.
+TRACKER_PROVIDERS = ("jira-cloud",)
+
+TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
+                          "transitions", "timeout-seconds"})
+TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
+# `claim` alone. C3 adds submit/rework/terminal mappings and C4 adds `strict`;
+# until then an unknown key here is reported, because silently ignoring a key
+# someone set is silently not doing what they asked.
+TRACKER_TRANSITION_KEYS = frozenset({"claim"})
+
+TRACKER_DEFAULT_TIMEOUT = 15
+
+
+def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
+    """Parse a `work.tracker` mapping into a config plus a problem list.
+
+    Pure, touches no filesystem, never raises, and reads no environment variable.
+
+    **Unlike `parse_documentation_entries`, this fails closed**: any problem
+    returns `None` rather than a partially populated config. It follows
+    `parse_repository_declaration`'s reasoning — "a half-read repository is one
+    nobody declared" — and the case here is stronger. A config whose `token-env`
+    is mistyped but whose `base-url` parses would otherwise send an
+    unauthenticated request to a real site.
+
+    An absent block (`None` or `{}`) is not a problem. No tracker configured is
+    the overwhelmingly common case and must produce no noise.
+    """
+    if raw is None or raw == {}:
+        return None, []
+    if not isinstance(raw, dict):
+        return None, [f"work.tracker: expected a mapping, got {type(raw).__name__}"]
+
+    problems: list[str] = []
+
+    for key in sorted(set(raw) - TRACKER_KEYS):
+        problems.append(f"work.tracker.{key}: unknown key")
+
+    def required_str(key: str) -> str:
+        value = raw.get(key)
+        if value is None:
+            problems.append(f"work.tracker.{key}: required")
+            return ""
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"work.tracker.{key}: expected a non-empty string, "
+                            f"got {type(value).__name__}")
+            return ""
+        return value.strip()
+
+    provider = required_str("provider")
+    if provider and provider not in TRACKER_PROVIDERS:
+        problems.append(
+            f"work.tracker.provider: {provider!r} is not supported "
+            f"(choose from {', '.join(TRACKER_PROVIDERS)})")
+    base_url = required_str("base-url")
+    candidate_query = required_str("candidate-query")
+
+    def nested(key: str, allowed: frozenset[str]) -> dict:
+        value = raw.get(key)
+        if value is None:
+            problems.append(f"work.tracker.{key}: required")
+            return {}
+        if not isinstance(value, dict):
+            problems.append(f"work.tracker.{key}: expected a mapping, "
+                            f"got {type(value).__name__}")
+            return {}
+        for sub in sorted(set(value) - allowed):
+            problems.append(f"work.tracker.{key}.{sub}: unknown key")
+        return value
+
+    credentials = nested("credentials", TRACKER_CREDENTIAL_KEYS)
+    transitions = nested("transitions", TRACKER_TRANSITION_KEYS)
+
+    def nested_str(block: dict, key: str, path: str) -> str:
+        value = block.get(key)
+        if value is None:
+            problems.append(f"work.tracker.{path}: required")
+            return ""
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"work.tracker.{path}: expected a non-empty string, "
+                            f"got {type(value).__name__}")
+            return ""
+        return value.strip()
+
+    email_env = nested_str(credentials, "email-env", "credentials.email-env")
+    token_env = nested_str(credentials, "token-env", "credentials.token-env")
+    claim = nested_str(transitions, "claim", "transitions.claim")
+
+    timeout: Any = raw.get("timeout-seconds", TRACKER_DEFAULT_TIMEOUT)
+    # `bool` before `int`, because a bool *is* an int and `timeout-seconds: true`
+    # is a mistake rather than a one-second timeout.
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+        problems.append(f"work.tracker.timeout-seconds: expected a positive number, "
+                        f"got {type(timeout).__name__}")
+        timeout = TRACKER_DEFAULT_TIMEOUT
+    elif timeout <= 0:
+        problems.append(f"work.tracker.timeout-seconds: expected a positive number, "
+                        f"got {timeout}")
+        timeout = TRACKER_DEFAULT_TIMEOUT
+
+    if problems:
+        return None, sorted(problems)
+    return TrackerConfig(
+        provider=provider,
+        base_url=base_url.rstrip("/"),
+        candidate_query=candidate_query,
+        email_env=email_env,
+        token_env=token_env,
+        claim_transition=claim,
+        timeout_seconds=int(timeout),
+    ), []
+
+
+@dataclass(frozen=True)
 class RepositoryDeclaration:
     """Where a component store comes from, as the project records it.
 
@@ -2114,6 +2252,28 @@ class WorkStore(ABC):
         Separate from `retention_problems` because these are not malformed
         configuration: each is a pair of settings that are individually fine and
         cannot both be honored.
+        """
+        return []
+
+    def tracker_config(self) -> "TrackerConfig | None":
+        """The node's external-tracker settings, or `None` when none is configured.
+
+        Problems discarded, so a malformed key can never break a board read. Fails
+        *closed*: the parser returns `None` on any problem, so a half-read config
+        is one nobody declared. `tracker_problems` is where a user learns why.
+
+        Concrete with a `None` default rather than abstract, following
+        `retention_problems`: a store that knows nothing about trackers answers
+        correctly by omission, and no existing adapter has to change.
+        """
+        return None
+
+    def tracker_problems(self) -> list[str]:
+        """Complaints about how the tracker is configured, for `tcw validate`.
+
+        Read *directly* by validate rather than through `check()`, following
+        `retention_problems`. `check()` returns one undifferentiated problem list
+        and reaching around it keeps this simple.
         """
         return []
 

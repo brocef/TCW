@@ -47,6 +47,7 @@ from tcw.store.base import (
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
     parse_connected_entry, parse_repository_declaration, parse_retention,
+    parse_tracker_config, TrackerConfig,
     ProvisionResult,
     RepositoryDeclaration,
     PublicationError, StoreDeclarationError, StoreLocationUnusable,
@@ -5279,6 +5280,19 @@ class FsWorkStore(FsTreeStore, WorkStore):
         entries, _problems = parse_documentation_entries(
             self._work_config().get("documentation"))
         return entries
+
+    def tracker_config(self) -> "TrackerConfig | None":
+        """Configured tracker settings, problems discarded — same contract as
+        `documentation`: a malformed key must not break `tcw work list`."""
+        config, _problems = parse_tracker_config(self._work_config().get("tracker"))
+        return config
+
+    def tracker_problems(self) -> list[str]:
+        """Tracker-configuration problems, prefixed with the file they came from.
+        Shares the parser with `tracker_config`, so the two surfaces can never
+        disagree about what is legal."""
+        _config, problems = parse_tracker_config(self._work_config().get("tracker"))
+        return [f"{SENTINEL}: {p}" for p in problems]
 
     def documentation_problems(self) -> list[str]:
         """Documentation-entry problems, prefixed with the file they came from —
