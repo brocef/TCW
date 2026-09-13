@@ -266,6 +266,19 @@ def validate(node_root: Path, path: Path | None = None, *,
     if work_store is not None:
         problems += [f"work: {p}" for p in work_store.retention_problems()]
         problems += work_store.retention_conflicts()
+        # Tracker configuration, read *directly* rather than through `check()`,
+        # following the retention pair above: `check()` returns one
+        # undifferentiated problem list and reaching around it keeps this simple.
+        #
+        # Shape only. Nothing here calls the tracker, and nothing here may: this
+        # command is bound as a `pre` hook on `complete` in TCW's own
+        # `tcw-config.yaml`, and a `pre` failure means the store is not touched
+        # (`tcw/work/hooks.py`). A network call would make completing a work item
+        # depend on the tracker being reachable, on the credential variables being
+        # set in that shell, and on the token not having expired — and `validate`
+        # recurses across descendant projects, multiplying all three.
+        # `tests/test_tracker_validate.py` fails if a connection is ever attempted.
+        problems += work_store.tracker_problems()
 
     # (a) YAML well-formedness, and the shape of the files TCW writes
     #
