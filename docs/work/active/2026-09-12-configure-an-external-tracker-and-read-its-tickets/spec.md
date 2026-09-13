@@ -224,6 +224,19 @@ response answers two questions at no extra cost:
    offers the claim transition from the landing status, the conforming one does
    not, and those are the right answers.
 
+   **Correction, found in implementation.** There is an asymmetry this spec first
+   missed. A ticket that *offers* the claim reveals where the claim leads, because
+   the transition carries its own destination. A ticket that does **not** offer it
+   cannot. So from one ticket alone, only `not exclusive` is detectable — the case
+   where the claim is still offered from its own destination. Confirming
+   `exclusive` requires the destination from somewhere else, and the assessment
+   takes it as an optional argument for a caller that knows it: one that read a
+   second ticket in the ready state, or, in C2, the code that has just applied the
+   claim and watched where the ticket landed. That second case is the one that
+   matters, because it is the moment exclusivity is about to be relied on. With no
+   destination and no offered claim, the answer is `not determined`, reported
+   rather than papered over.
+
 Three outcomes, and the third is reported rather than hidden:
 
 - **can-exclude** — the ticket is in the landing status and the claim transition is
