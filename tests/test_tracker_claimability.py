@@ -20,8 +20,8 @@ from __future__ import annotations
 import pytest
 
 from tcw.tracker.claim import (
-    AMBIGUOUS, CLAIMABLE, EXCLUSIVE, MISCONFIGURED, NOT_CLAIMABLE,
-    NOT_DETERMINED, NOT_EXCLUSIVE, assess,
+    AMBIGUOUS, CLAIM_NOT_OFFERED, CLAIMABLE, EXCLUSIVE, MISCONFIGURED,
+    NOT_CLAIMABLE, NOT_DETERMINED, NOT_EXCLUSIVE, assess,
 )
 from tcw.tracker.jira import Transition
 
@@ -125,38 +125,45 @@ def test_the_landing_status_is_unknown_when_the_claim_is_not_offered():
 # ── misconfiguration, the highest-value thing this reports ───────────────────
 
 
-def test_a_claim_name_the_workflow_does_not_have_is_misconfigured():
-    """The next child cannot detect this: a bad transition name and a lost race
-    both come back as HTTP 400 with different bodies. Here it is unambiguous."""
+def test_a_claim_name_this_ticket_does_not_offer_is_reported_but_not_condemned():
+    """One ticket cannot tell a typo from a ticket that has already been claimed.
+    Found live: a ticket claimed during an experiment reported a misconfiguration,
+    which would fire on every claimed ticket forever."""
     result = assess("Begin Work", current_status="To Do", offered=DIRECTED_IN_TODO)
-    assert result.verdict is MISCONFIGURED
+    assert result.verdict is CLAIM_NOT_OFFERED
+    assert result.verdict is not MISCONFIGURED
     assert "Begin Work" in result.detail
     assert "Start Progress" in result.detail, "must list what is actually offered"
 
 
-def test_a_misconfigured_claim_lists_every_offered_name():
+def test_an_already_claimed_ticket_is_not_reported_as_misconfigured():
+    """The live case that forced this distinction."""
+    result = assess(CLAIM, current_status="In Progress", offered=DIRECTED_IN_PROGRESS)
+    assert result.verdict is not MISCONFIGURED
+
+
+def test_a_ticket_that_does_not_offer_the_claim_lists_every_offered_name():
     result = assess("Begin Work", current_status="To Do", offered=GLOBAL_WORKFLOW)
     for name in ("To Do", "Start Progress", "Done"):
         assert name in result.detail
 
 
-def test_a_duplicate_claim_name_is_refused_rather_than_guessed():
-    """Two transitions with one name is a real Jira configuration. Picking either
-    would be a coin flip performed silently."""
-    offered = [
-        Transition(id="21", name="Start Progress", to_status="In Progress", to_status_id="3"),
-        Transition(id="41", name="Start Progress", to_status="In Review", to_status_id="10013"),
-    ]
-    result = assess(CLAIM, current_status="To Do", offered=offered)
-    assert result.verdict is AMBIGUOUS
-    assert "21" in result.detail and "41" in result.detail
+def test_misconfiguration_is_not_detectable_from_issue_reads():
+    """The negative result, recorded as a test so nobody re-adds the heuristic.
 
-
-def test_a_ticket_outside_the_landing_status_without_the_claim_is_not_misconfigured():
-    """A ticket in Done offers neither; that is the workflow working, not a typo.
-    Calling it misconfigured would cry wolf on every resolved ticket."""
-    result = assess(CLAIM, current_status="Done", offered=[])
-    assert result.verdict is not MISCONFIGURED
+    Two live attempts to infer a wrong claim-transition name from issue reads both
+    produced false positives. A single ticket that does not offer the claim may have
+    been claimed already. So may every ticket in a query — a fixture whose tickets
+    had all been claimed reported a typo on a configuration that was correct.
+    Detecting this needs the project's workflow definition, which is a later child.
+    """
+    import tcw.tracker.claim as claim
+    assert not hasattr(claim, "misconfigured_across")
+    for status, offered in (("To Do", DIRECTED_IN_TODO),
+                            ("In Progress", DIRECTED_IN_PROGRESS),
+                            ("Done", [])):
+        assert assess("Begin Work", current_status=status,
+                      offered=offered).verdict is not MISCONFIGURED
 
 
 def test_matching_is_case_and_space_insensitive():

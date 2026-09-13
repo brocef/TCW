@@ -39,7 +39,8 @@ NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
                "rework", "edit", "complete", "drop", "delete", "nodes", "reconcile",
                "delegate",
-               "escalate", "tags", "lifecycle", "stage", "scaffold", "docs"}
+               "escalate", "tags", "lifecycle", "stage", "scaffold", "docs",
+               "tracker"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
 # TransitionCommitError is included deliberately: the item *did* move, and its
@@ -1603,6 +1604,94 @@ def _tag_args(values: list[str]) -> list[str]:
     return [tag for value in values for tag in _tag_list(value)]
 
 
+def _tracker_client(label: str):
+    """The configured tracker client, or None after printing why not.
+
+    A tracker that is absent and a tracker that is misconfigured are different
+    failures and get different messages: one tells you to configure it, the other
+    tells you what is wrong. `tracker_config` fails closed, so a misconfigured
+    block reads as absent — `tracker_problems` is the only way to tell them apart.
+    """
+    st = _store()
+    if st is None:
+        return None
+    config = st.tracker_config()
+    if config is None:
+        problems = st.tracker_problems()
+        if problems:
+            print(f"tcw work tracker {label}: the tracker configuration has "
+                  f"problems:", file=sys.stderr)
+            for problem in problems:
+                print(f"  - {problem}", file=sys.stderr)
+        else:
+            print(f"tcw work tracker {label}: no tracker is configured. Add a "
+                  f"work.tracker block to tcw-config.yaml.", file=sys.stderr)
+        return None
+    from tcw.tracker.jira import JiraClient
+    return JiraClient(config)
+
+
+def _tracker_list(args: argparse.Namespace) -> int:
+    client = _tracker_client("list")
+    if client is None:
+        return 1
+    from tcw.tracker.jira import TrackerError
+    try:
+        result = client.search(client.config.candidate_query)
+    except TrackerError as e:
+        print(f"tcw work tracker list: {e}", file=sys.stderr)
+        return 1
+    for issue in result.issues:
+        fields = issue.get("fields") or {}
+        status = (fields.get("status") or {}).get("name", "?")
+        assignee = (fields.get("assignee") or {}).get("displayName", "unassigned")
+        summary = fields.get("summary", "")
+        print(f"{issue.get('key', '?')} | {status} | {assignee} | {summary}")
+    if not result.issues:
+        print("No tickets matched the configured query.")
+    if result.truncated:
+        # Never silently short: a user would conclude they have nothing else. No
+        # total is printed because the endpoint does not report one.
+        print(f"Showing the first {len(result.issues)}; there are more. "
+              f"Narrow work.tracker.candidate-query to see the rest.",
+              file=sys.stderr)
+
+    return 0
+
+
+def _tracker_show(args: argparse.Namespace) -> int:
+    client = _tracker_client("show")
+    if client is None:
+        return 1
+    from tcw.tracker.claim import assess
+    from tcw.tracker.jira import TrackerError
+    try:
+        issue = client.issue(args.ticket)
+        offered = client.transitions(args.ticket)
+    except TrackerError as e:
+        print(f"tcw work tracker show: {e}", file=sys.stderr)
+        return 1
+
+    fields = issue.get("fields") or {}
+    status = (fields.get("status") or {}).get("name", "?")
+    assignee = (fields.get("assignee") or {}).get("displayName", "unassigned")
+    print(f"{issue.get('key', args.ticket)}  [{status}]")
+    print(f"summary: {fields.get('summary', '')}")
+    print(f"assignee: {assignee}")
+
+    result = assess(client.config.claim_transition,
+                    current_status=status, offered=offered)
+    # Two words, deliberately never one. "claimable" is this ticket right now;
+    # "exclusive" is whether the workflow would refuse a second claimant. A reader
+    # told "claimable" about a ticket on a non-excluding workflow has been told
+    # something true and misleading at once.
+    print(f"claimable: {result.claimable}")
+    print(f"workflow: {result.exclusivity}")
+    if result.detail:
+        print(f"note: {result.detail}")
+    return 0
+
+
 def _tags_list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -1887,6 +1976,15 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptgr.add_argument("tag", nargs="+",
                          help="tag(s) to unregister (a value may be a,b,c)")
     ptgr.set_defaults(func=_tags_rm)
+
+    ptr = g.add_parser("tracker",
+                       help="read the configured external tracker (read-only)")
+    ptrs = ptr.add_subparsers(dest="tracker_cmd", required=True)
+    ptrs.add_parser("list", help="list tickets the configured query selects"
+                    ).set_defaults(func=_tracker_list)
+    ptrsh = ptrs.add_parser("show", help="show one ticket and whether it is claimable")
+    ptrsh.add_argument("ticket")
+    ptrsh.set_defaults(func=_tracker_show)
 
     pts = g.add_parser(
         "tombstone",

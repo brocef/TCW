@@ -34,6 +34,18 @@ NOT_DETERMINED = "not determined from this ticket"
 
 # Configuration verdicts, which override the above when they fire.
 OK = "ok"
+# The configured claim name is not among this ticket's transitions. **Informational,
+# not an error.** Every ticket that has already been claimed is in this state, and
+# reporting a misconfiguration for each of them would cry wolf constantly — found by
+# running against a real ticket that had been claimed during an experiment.
+CLAIM_NOT_OFFERED = "claim not offered by this ticket"
+# Reserved, and deliberately unreachable from this module. Detecting a wrong claim
+# transition name needs the project's workflow definition, which is a later child's
+# job. Two live attempts to infer it from issue reads both produced false positives:
+# one ticket that does not offer the claim may simply have been claimed already, and
+# so may *every* ticket in a query — which is exactly what a fixture full of claimed
+# tickets looks like. Reporting a typo on a correct configuration is worse than not
+# reporting one at all.
 MISCONFIGURED = "misconfigured"
 AMBIGUOUS = "ambiguous"
 
@@ -148,11 +160,12 @@ def assess(claim_transition: str, *, current_status: str, offered,
         return Assessment(
             claimable=NOT_CLAIMABLE,
             exclusivity=NOT_DETERMINED,
-            verdict=MISCONFIGURED,
+            verdict=CLAIM_NOT_OFFERED,
             detail=(f"work.tracker.transitions.claim is {claim_transition!r}, which "
                     f"this ticket does not offer. It offers: "
                     f"{', '.join(repr(n) for n in offered_names)}. Either the name "
-                    f"is wrong, or this ticket is past the point where it applies."),
+                    f"is wrong, or this ticket is past the point where it applies — "
+                    f"one ticket cannot tell those apart."),
         )
 
     # No transitions at all: a resolved ticket, or one this account cannot move.
@@ -164,3 +177,4 @@ def assess(claim_transition: str, *, current_status: str, offered,
         detail="This ticket offers no transitions, so it says nothing about the "
                "claim configuration.",
     )
+

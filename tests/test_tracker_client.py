@@ -92,16 +92,22 @@ def test_search_sends_a_default_limit(monkeypatch):
     assert rec.last["body"]["maxResults"] == jira.DEFAULT_SEARCH_LIMIT
 
 
+def test_search_uses_the_endpoint_that_still_exists(monkeypatch):
+    """`/rest/api/3/search` has been removed by Atlassian. A live call returns 400
+    naming `/rest/api/3/search/jql` as the replacement. Found by running against a
+    real site, which is why this assertion is on the path."""
+    rec = Recorder()
+    _client(monkeypatch, rec).search("project = X")
+    assert rec.last["path"] == "/rest/api/3/search/jql"
+
+
 def test_search_reports_truncation_rather_than_hiding_it(monkeypatch):
     """Silently returning a short list would make a user believe they have no
-    other assigned tickets."""
-    rec = Recorder()
-    rec.responses = {}
-    payload = {"issues": [{"key": f"X-{n}"} for n in range(3)], "total": 99}
+    other assigned tickets. The endpoint reports `isLast`, not a count."""
+    payload = {"issues": [{"key": f"X-{n}"} for n in range(3)],
+               "isLast": False, "nextPageToken": "abc"}
 
     def respond(method, path, body=None, *, timeout=None):
-        rec.calls.append({"method": method, "path": path, "body": body,
-                          "timeout": timeout})
         return (200, {}, json.dumps(payload).encode())
 
     client = jira.JiraClient(CONFIG)
@@ -109,11 +115,10 @@ def test_search_reports_truncation_rather_than_hiding_it(monkeypatch):
     result = client.search("project = X", limit=3)
     assert len(result.issues) == 3
     assert result.truncated is True
-    assert result.total == 99
 
 
 def test_search_is_not_truncated_when_everything_fits(monkeypatch):
-    payload = {"issues": [{"key": "X-1"}], "total": 1}
+    payload = {"issues": [{"key": "X-1"}], "isLast": True}
 
     def respond(method, path, body=None, *, timeout=None):
         return (200, {}, json.dumps(payload).encode())
@@ -121,6 +126,17 @@ def test_search_is_not_truncated_when_everything_fits(monkeypatch):
     client = jira.JiraClient(CONFIG)
     monkeypatch.setattr(client, "_request", respond)
     assert client.search("project = X", limit=50).truncated is False
+
+
+def test_a_response_that_does_not_say_there_is_more_is_not_truncated(monkeypatch):
+    """`isLast` absent must not read as truncated. Claiming there is more when the
+    response never said so would send a user hunting for tickets that do not exist."""
+    def respond(method, path, body=None, *, timeout=None):
+        return (200, {}, json.dumps({"issues": [{"key": "X-1"}]}).encode())
+
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", respond)
+    assert client.search("project = X").truncated is False
 
 
 def test_issue_gets_one_ticket_by_key(monkeypatch):

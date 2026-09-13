@@ -91,9 +91,15 @@ class SearchResult:
 
     `truncated` exists because silently returning a short list would make a user
     believe they have no other assigned tickets.
+
+    **There is no total.** The endpoint this uses reports only whether the page it
+    returned is the last one; it does not count matches. An earlier version of this
+    class carried a `total` read from the old `/rest/api/3/search`, which Atlassian
+    has since removed outright — the live error names the replacement and links a
+    migration note. Inventing a total from a page size would be a number that looks
+    authoritative and is not.
     """
     issues: list[dict]
-    total: int
     truncated: bool
 
 
@@ -180,15 +186,27 @@ class JiraClient:
         return self._json("GET", "/rest/api/3/myself")
 
     def search(self, jql: str, limit: int = DEFAULT_SEARCH_LIMIT) -> SearchResult:
-        """Issues the query selects, and whether there were more than `limit`."""
-        payload = self._json("POST", "/rest/api/3/search", {
+        """Issues the query selects, and whether there are more pages.
+
+        `/rest/api/3/search/jql`, not `/rest/api/3/search`. The latter has been
+        **removed**: a live call returns 400 with "The requested API has been
+        removed. Please migrate to the /rest/api/3/search/jql API." Found by running
+        this code against a real site rather than by reading a changelog.
+
+        The replacement is token-paginated and reports `isLast` instead of a match
+        count, so there is no total to report. Only the first page is fetched: this
+        item lists what a developer should look at next, and walking every page of a
+        badly-scoped query is not that.
+        """
+        payload = self._json("POST", "/rest/api/3/search/jql", {
             "jql": jql,
             "maxResults": limit,
             "fields": ["summary", "status", "assignee"],
         })
         issues = payload.get("issues") or []
-        total = payload.get("total", len(issues))
-        return SearchResult(issues=issues, total=total, truncated=total > len(issues))
+        # `isLast` absent is treated as "this is the last page": a response that
+        # does not say there is more must not be reported as truncated.
+        return SearchResult(issues=issues, truncated=payload.get("isLast") is False)
 
     def issue(self, key: str) -> dict:
         """One issue, with the fields this item prints."""

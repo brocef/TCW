@@ -159,16 +159,21 @@ rather than an implementation detail, because four acceptance criteria depend on
 substituting it. Above it, four public operations, which is all this item needs:
 
 1. `myself()` — who the credentials authenticate as.
-2. `search(jql, limit)` — the configured candidate query. Default `limit` 50; when
-   more rows match, print what was returned and say the result was truncated and
-   by what flag to widen it. Never silently truncate.
+2. `search(jql, limit)` — the configured candidate query, against
+   **`/rest/api/3/search/jql`**. Not `/rest/api/3/search`, which Atlassian has
+   **removed**: a live call returns 400 with "The requested API has been removed.
+   Please migrate to the /rest/api/3/search/jql API." Found by running this code
+   against a real site, not by reading a changelog. The replacement is
+   token-paginated and reports `isLast` rather than a match count, so **there is no
+   total** and none is printed — a number that looks authoritative and is invented
+   is worse than saying "there are more". Only the first page is fetched. Default
+   `limit` 50; truncation is always reported, never silent.
 3. `issue(key)` — one ticket.
 4. `transitions(key)` — the transitions available for that issue right now.
 
 `project_statuses` is gone; an earlier draft listed it as "used by the workflow
-check" and the check no longer exists here. The REST paths are pinned in the
-plan, not here, because Atlassian is migrating search to a token-paginated
-endpoint and the plan is where a current-at-the-time path belongs.
+check" and the check no longer exists here. The remaining REST paths are `/rest/api/3/myself`, `/rest/api/3/issue/{key}` and
+`/rest/api/3/issue/{key}/transitions`, all verified live on 2026-09-13.
 
 **Every request passes an explicit `timeout`,** taken from the config. It is a
 parameter of `_request`, so there is exactly one place it can be forgotten and a
@@ -255,14 +260,26 @@ anyone who can view the issue, it works the same on team-managed and
 company-managed projects, and it needs no key beyond the ticket the user already
 named.
 
-**`transitions.claim` resolution is part of this.** When the configured name
-matches no transition the ticket offers *and* the ticket is in a status from which
-the claim should be possible, that is a misconfiguration and `tracker show` reports
-it as one, naming the configured value and listing the names actually offered. This
-is the highest-value thing this item does for C2, because the experiment showed C2
-*cannot* tell a wrong transition name from a lost race. When the name matches more
-than one offered transition, that is also reported, and the check refuses rather
-than guessing which was meant.
+**`transitions.claim` resolution, and a claim this spec had to withdraw.** When the
+configured name matches no transition a ticket offers, `tracker show` says so and
+lists what is offered. That is **informational, not a misconfiguration verdict.**
+
+An earlier draft called detecting a wrong claim-transition name "the highest-value
+thing this item does for C2". **Live testing disproved it, twice.** A ticket that
+does not offer the claim may simply have been claimed already, so one ticket proves
+nothing. The obvious repair — warn when *no* ticket in the candidate query offers
+it — was built, run against the conforming fixture, and reported a typo on a
+configuration that was correct, because every ticket in that fixture had already
+been claimed during the experiment. Reporting a typo on a correct configuration is
+worse than not reporting one.
+
+So a wrong claim-transition name **is not reliably detectable from issue-level reads
+at all.** It needs the project's workflow definition, which is C4's. The `misconfigured`
+verdict is retained as a name and is deliberately unreachable, with a test asserting
+that and recording why, so nobody rebuilds the heuristic.
+
+When the name matches more than one offered transition, *that* is reported and
+refused rather than guessed, because it is provable from one ticket.
 
 **Nothing here reaches `tcw validate`, and that is deliberate.**
 `tcw-config.yaml:65` binds `command: "tcw validate"` as a `pre` hook on the
@@ -359,9 +376,10 @@ the automated nine cover the same ground thereafter.
     both report **not determined**.
 12. **[live]** `tracker list` prints one row per ticket the configured query
     selects, and `tracker show` prints a named ticket's status and assignee.
-13. **[live]** With `transitions.claim` set to a name the workflow does not have,
-    `tracker show` reports the misconfiguration, names the configured value, and
-    lists the transition names actually offered.
+13. **[live]** With `transitions.claim` set to a name a ticket does not offer,
+    `tracker show` says so and lists the names actually offered, and does **not**
+    call it a misconfiguration. Verified 2026-09-13 against a claimed ticket on the
+    conforming fixture, which is the case that forced the distinction.
 14. `work/inspect-external-tracker-work` reads `Supported` before this item
     completes, and `tcw capabilities check` and `tcw validate` exit zero.
 
@@ -393,6 +411,13 @@ Criterion 7 is the one that protects the configured project, which nothing in th
 earlier draft did.
 
 ## Risks
+
+0. **A wrong claim-transition name is undetectable here.** Withdrawn from this
+   item's scope after live testing; see Design part 4. It moves to C4 with the
+   workflow read. The cost is that a project can configure a name that matches
+   nothing and only find out when claiming starts, where a wrong name and a lost
+   race are indistinguishable. C4 must therefore treat it as a required check, not
+   an optional one.
 
 1. **Claimability cannot be answered for a ticket outside the landing status.**
    That is most tickets most of the time, so "not determined" will be the common
