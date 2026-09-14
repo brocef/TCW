@@ -29,3 +29,15 @@ before that item and are outside its scope.
    nothing to document. Committing the described fix as the seeder's last commit
    would make the prompt true. Also open: whether a bug fix that restores
    existing behaviour should fire `README.md`'s `Public-API` trigger at all.
+5. **`run_one` never writes `items` to `timing.json`.** Its entry carries
+   `nonces` and `stage_items` but not `items`, while `grade_run` reads
+   `timing.get("items", {})`. So on a real run `item_status` and
+   `new_item_count` read an empty mapping and grade wrongly. The committed
+   grading fixtures under `tests/fixtures/eval_grading/` do contain `items`,
+   which is why no test notices. Confirmed by reading the code (verification
+   round 1 of the eval checks item).
+6. **Check what `claude -p` itself writes into the fixture.**
+   `files_changed_exactly` now counts every untracked file that isn't ignored,
+   so anything the harness writes into its working folder is charged to every
+   run. The first paid run should list `git status --porcelain --ignored` for one
+   fixture and exclude whatever the harness, rather than the agent, left there.
