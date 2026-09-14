@@ -1,6 +1,6 @@
 ---
 name: documentation-sync
-description: Use when completing a coding task and deciding whether documentation needs updating. Use when code changes have been made and you need to check if README, changelog, guides, or other docs should reflect those changes. Use when a project declares documentation entries — in `tcw-config.yaml` under `work.documentation`, or as a `## Documentation Sync` section in its CLAUDE.md. Use after completing development work to update release notes and changelogs. Use when offering to cut a new version of a project.
+description: Use when completing a coding task and deciding whether documentation needs updating. Use when code changes have been made and you need to check if README, changelog, guides, or other docs should reflect those changes. Use when a project has documentation entries — from `tcw work docs`, or a `## Documentation Sync` section in its CLAUDE.md — and a change may have fired one. Use after completing development work to update release notes and changelogs. Use when offering to cut a new version of a project.
 ---
 
 # Documentation Sync

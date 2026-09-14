@@ -136,3 +136,17 @@ def test_the_skill_and_setup_reference_do_not_contradict_each_other():
         assert "work.documentation" in text, f"{name} never names the config form"
     # docs-sync.md's framing is the one SKILL.md has to match.
     assert "prefer config" in setup.lower()
+
+
+def _frontmatter(path: Path) -> dict:
+    import yaml
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return yaml.safe_load("\n".join(lines[1:lines.index("---", 1)]))
+
+
+def test_the_description_is_a_usage_trigger_not_a_setup_one():
+    """Declaring entries is the `tcw-configure` skill's job. A description that
+    says "declares" pulls a "set up documentation tracking" request here instead
+    of there."""
+    description = _frontmatter(SKILL_DIR / "SKILL.md")["description"]
+    assert "declare" not in description.lower(), description

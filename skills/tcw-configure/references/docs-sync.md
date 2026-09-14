@@ -1,4 +1,4 @@
-# Set Up Documentation Sync
+# Declare which documents track which changes
 
 Read this when a project declares no documentation entries and the user wants to add some, or when you need to create tracked files that don't exist yet.
 
@@ -31,10 +31,10 @@ Ask the user: "Would you like to set up documentation entries?" and which form t
 If they agree, help them fill it out by asking:
 
 1. **Which files** should be kept in sync with code changes? (e.g., README.md, CHANGELOG.md, guides)
-2. **What trigger** applies to each file? Offer the base triggers from the "Trigger Reference" table in this skill's `SKILL.md` (`Public-API`, `Public-{Name}-API`, `Any-Code-Change`, `Only-Breaking`), and note that a project may define its own named trigger where none of those fit.
+2. **What trigger** applies to each file? Offer the base triggers from the "Trigger Reference" table in the `documentation-sync` skill's `SKILL.md` (`Public-API`, `Public-{Name}-API`, `Any-Code-Change`, `Only-Breaking`), and note that a project may define its own named trigger where none of those fit.
 3. **What description** should guide how updates are written for each file?
 
-Then write the entries in the chosen form. For the config form, add the `work.documentation` block and run `tcw validate` to confirm it parses. For the Markdown form, add the section to their CLAUDE.md in the format shown under "The Documentation Sync Section" in `SKILL.md`, and **always include the opening directive line** that tells the agent to invoke the `documentation-sync` skill — without it, future sessions may see the file list but skip the trigger-evaluation logic. (The config form needs no such directive: `tcw work stage` puts the entries in front of the agent itself.)
+Then write the entries in the chosen form. For the config form, add the `work.documentation` block and run `tcw validate` to confirm it parses. For the Markdown form, add the section to their CLAUDE.md in the format shown under "The Documentation Sync Section" in the `documentation-sync` skill's `SKILL.md`, and **always include the opening directive line** that tells the agent to invoke the `documentation-sync` skill — without it, future sessions may see the file list but skip the trigger-evaluation logic. (The config form needs no such directive: `tcw work stage` puts the entries in front of the agent itself.)
 
 ## Create Tracked Files (and Folders) That Don't Yet Exist
 
