@@ -82,10 +82,20 @@ tcw capabilities drift                     # inherited-but-unreviewed + shipped-
 tcw capabilities set billing/invoices --status Supported
 tcw capabilities set billing/invoices --field "Subject=invoice,billing"   # multi-valued
 tcw capabilities set billing/invoices --field "Planning doc=2026-06-19-pdf-export"
+
+tcw capabilities rm billing/invoices/bulk  # delete a local capability (stage-only)
 ```
 
 `set` updates a capability's status/fields in place (stage-only) — the mechanism
 the work→capability lifecycle uses to flip `Missing → Supported` at completion.
+
+`rm` deletes one local capability and nothing else. It refuses, deleting nothing,
+an inherited capability, one with capabilities nested under it (so
+`rm billing/invoices` is refused while `billing/invoices/bulk` exists), and one
+another capability still points at through `Superseded by`, `Blocked by`, `Roles`
+or `When`. A work item that deletes a capability lists its path under `removed:`
+in its `capabilities.yaml`, and completing the item is refused while the path
+still resolves.
 
 Status is one of `Supported · Partial · Missing · Blocked · Omitted`. `check`
 validates the metadata vocabulary, resolves each `Subject:` pointer against the
@@ -136,4 +146,4 @@ tcw capabilities reset shared/auth/login   # drop the local override, re-inherit
 
 `reset` removes only your local override folder (never the upstream node). It
 refuses with a clear message when there's nothing to drop — a standalone local
-capability (use `remove`) or a path that already inherits verbatim.
+capability (delete that with `tcw capabilities rm`) or a path that already inherits verbatim.

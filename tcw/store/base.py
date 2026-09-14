@@ -586,8 +586,8 @@ class CapabilitiesStore(ABC):
     def reset(self, identifier: str) -> None:
         """Drop the local override at `identifier`, re-inheriting the upstream
         capability verbatim. Raise `ValueError` when there is no override (a
-        standalone local capability is not an override — use `remove`, which
-        `tcw capabilities rm` drives; a bare
+        standalone local capability is not an override — the `remove` operation,
+        driven by `tcw capabilities rm`, deletes it; a bare
         inherited path has nothing to drop), or `AmbiguousRef` when a bare ref
         matches multiple extended stores. Never mutates an extended store."""
 
