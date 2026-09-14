@@ -138,6 +138,32 @@ suite cannot settle any of it.
    the project is at 2.0.3. That is the stale version-mismatched hook the guide warns
    shadows the right one. Untouched, and filed as an inbox note.
 
+## Open before verify: two notes that overstate what one ticket shows
+
+Reported in the side notes of GitHub issue
+[#36](https://github.com/brocef/TCW/issues/36) (2026-09-14, @brocef), from a
+hand run on tcw 2.1.1 through Triage → To Do → In Progress → Done. The rest of
+that issue is tracked separately as
+`2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key`. Both notes are
+in `tcw/tracker/claim.py` and neither is yet reworded.
+
+1. **The claim-not-offered note names two cases, and there are three**
+   (`claim.py:166-168`). For a ticket in Triage it said the name is wrong "or this
+   ticket is past the point where it applies". That ticket had not reached the
+   point yet. The reporter's suggested wording:
+
+   > "the name is wrong, or this ticket is not at the point where it applies
+   > (before it, or already past it)"
+
+2. **The leads-to note implies a second `show` would answer exclusivity**
+   (`claim.py:130-131`). `show` never passes `landing_status` to `assess()`, so
+   running it on the ticket once it is In Progress still prints "not determined".
+   A second `Start` was refused by Jira with HTTP 400, so that workflow was
+   exclusive. The reporter:
+
+   > "Rewording it to say exclusivity is confirmed at claim time, or from the
+   > workflow definition, would stop readers from trying."
+
 ## Version
 
 Not cut. The epic batches the version cut across the run and cuts it when this child
