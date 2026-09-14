@@ -398,3 +398,29 @@ DONE; the coordinator checked each finding and asked for these fixes:
    departure 3, the merge note, and AC 11's list of changed moved lines.
 
 `tcw validate` prints `validate OK` after these fixes.
+
+## Verification round 2
+
+The adversarial reviewer said DONE. Codex said NOT DONE on
+`tests/test_configuration_text_home.py` only, and showed both gaps by breaking
+the text in memory. Fixed in `02f43514`:
+
+- **The `commands.md` check was too narrow.** It rejected two exact phrases, so
+  "Keep shared settings in a node without a board instead" could come back. It now
+  rejects every moved declaring rule (`tracker: {}`, "same file as `base-url`",
+  "without a board", "once the node's block is merged"), with whitespace collapsed
+  so a rewrapped sentence still matches.
+- **The `null` rule was unchecked.** `tracker.md`'s check now asserts "a nearer
+  `null` lets the farther value through", the rule `merge_tracker_blocks` applies.
+- **`tracker.md` adds** that `tracker: {}` turns the tracker off only for the node
+  that writes it. Checked against `merge_tracker_blocks`, which skips an ancestor
+  block that is `None` or `{}` and keeps reading farther up, so that node's child
+  projects still inherit. A test checks the sentence; it failed before the
+  sentence was written.
+- **Each check was broken in a temporary copy**, never in the committed files, by
+  pointing the test module at the copy: `null` rewritten to delete the inherited
+  value, the new sentence changed, the old "required" sentence restored, and each
+  of the four rules plus the three full sentences Codex named put back into
+  `commands.md`. All eleven went red, each naming the text.
+- **Full bare `pytest` at `02f43514`: 3070 passed** (10 min 39 s). `tcw validate`
+  prints `validate OK`.
