@@ -1,0 +1,9 @@
+name: TCW Initialization Skill
+kind: Feature
+relatesTo:
+- provisioned-component-stores
+vocabulary:
+- skill
+- cli
+- node
+- store

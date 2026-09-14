@@ -1,0 +1,8 @@
+name: TCW Work Skill
+kind: Feature
+relatesTo:
+- work-inbox
+vocabulary:
+- skill
+- work-item
+- work-item/transition

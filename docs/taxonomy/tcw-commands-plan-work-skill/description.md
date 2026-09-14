@@ -1,0 +1,1 @@
+The TCW plugin command skill for planning a work item, from its request through its plan.

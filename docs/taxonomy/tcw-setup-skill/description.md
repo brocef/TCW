@@ -1,0 +1,1 @@
+The TCW plugin skill for getting TCW working where it does not work yet: the command-line tool, a repository, a machine, and a first taxonomy or capabilities ledger.

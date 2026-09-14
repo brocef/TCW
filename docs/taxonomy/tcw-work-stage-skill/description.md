@@ -1,0 +1,1 @@
+The TCW plugin skill for reading one lifecycle stage's working document together with the instructions a project adds to that stage.

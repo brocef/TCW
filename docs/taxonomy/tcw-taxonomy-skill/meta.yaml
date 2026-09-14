@@ -1,0 +1,8 @@
+name: TCW Taxonomy Skill
+kind: Feature
+relatesTo:
+- taxonomy-feature-registry
+vocabulary:
+- skill
+- vocabulary
+- feature

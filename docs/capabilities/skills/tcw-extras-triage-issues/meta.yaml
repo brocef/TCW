@@ -1,0 +1,8 @@
+id: cap-1c60e2
+name: Offer a skill dedicated to instructing agents how to triage a project's GitHub
+  issues into work items
+Status: Supported
+Feature: tcw-extras-triage-issues-skill
+Subject:
+- skill
+Planning doc: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill

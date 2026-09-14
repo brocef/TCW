@@ -1,0 +1,13 @@
+name: TCW Configuration Skill
+kind: Feature
+relatesTo:
+- configurable-work-lifecycle
+- configurable-component-store-location
+- external-work-tracker
+- connected-project-registry
+vocabulary:
+- skill
+- node
+- store
+- work-item/lifecycle-hook
+- work-item/definition-of-done

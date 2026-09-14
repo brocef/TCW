@@ -1,0 +1,7 @@
+name: TCW Work Stage Skill
+kind: Feature
+relatesTo:
+- configurable-work-lifecycle
+vocabulary:
+- skill
+- work-item/lifecycle-stage

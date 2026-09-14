@@ -1,0 +1,7 @@
+name: TCW Verify Work Command Skill
+kind: Feature
+relatesTo: []
+vocabulary:
+- skill
+- work-item/lifecycle-stage
+- work-item/transition
