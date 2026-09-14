@@ -1,7 +1,7 @@
 ---
 name: tcw-taxonomy
-description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase. The capabilities axis is tcw-capabilities, the work axis is tcw-work.
-when_to_use: Use when planning, seeding, or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, linking related entries, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase.
+description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features. The capabilities axis is tcw-capabilities, the work axis is tcw-work.
+when_to_use: Use when planning or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, or linking related entries.
 allowed-tools: Bash(tcw *), Read, Grep, Glob
 metadata:
     author: Brian Cefali
@@ -21,8 +21,7 @@ It is the first layer in the TCW chain: `Vocabulary -> Features -> Capabilities
 -> Work`. It exists so the other axes point at shared, unambiguous entries
 instead of re-defining words: capabilities can name a loose **Subject** and a
 strong **Feature**, and work references taxonomy entries. The pointers are
-one-directional — **taxonomy never points back** at capabilities or work. See
-`tcw-plugin` for the cross-skill map.
+one-directional — **taxonomy never points back** at capabilities or work.
 
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a

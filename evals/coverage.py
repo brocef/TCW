@@ -64,6 +64,14 @@ PARTIAL = {
     "tcw-configure":
         "B11 measures the documentation-entries route only. `work.md`, "
         "`tracker.md`, `stores.md` and `projects.md` are unmeasured.",
+    "tcw-setup":
+        "B12 measures the new-repository route (`project.md`) only. "
+        "Install and repair stay unmeasured: faking a broken `tcw` install "
+        "inside a subagent's environment is unsafe and would measure the "
+        "simulation. `taxonomy.md` and `capabilities.md` ask the user "
+        "questions, which a non-interactive harness cannot answer, the same "
+        "reason the `request` stage is unmeasured. Provisioning a project set "
+        "up elsewhere needs a remote repository.",
 }
 
 

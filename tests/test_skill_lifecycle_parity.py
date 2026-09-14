@@ -430,7 +430,7 @@ def test_the_manual_fallback_says_where_the_arguments_come_from():
 # must name the other in the same words, because "set up X" can mean either.
 
 # Each routing skill, and the other skill its body must name.
-ROUTING_SKILLS = {"tcw-configure": "tcw-setup"}
+ROUTING_SKILLS = {"tcw-configure": "tcw-setup", "tcw-setup": "tcw-configure"}
 
 routing = pytest.mark.parametrize("skill", sorted(ROUTING_SKILLS))
 
@@ -474,3 +474,19 @@ def test_a_routing_skill_names_the_other_one(skill):
     other = ROUTING_SKILLS[skill]
     assert f"the `{other}` skill" in _routing_body(skill), \
         f"{skill} never names the `{other}` skill"
+
+
+# Words that pull a setup or configuration request toward a usage skill. Setting
+# up belongs to `tcw-setup` and configuring to `tcw-configure`, so a usage
+# skill's `description` and `when_to_use` must not advertise either.
+SETUP_TRIGGER_WORDS = ("bootstrap", "seed", "federat")
+
+
+def test_the_taxonomy_skill_does_not_advertise_setup_or_federation():
+    import yaml
+    lines = (REPO / "skills/tcw-taxonomy/SKILL.md").read_text(
+        encoding="utf-8").splitlines()
+    front = yaml.safe_load("\n".join(lines[1:lines.index("---", 1)]))
+    text = f"{front['description']} {front['when_to_use']}".lower()
+    found = [w for w in SETUP_TRIGGER_WORDS if w in text]
+    assert not found, f"tcw-taxonomy's description or when_to_use says: {found}"

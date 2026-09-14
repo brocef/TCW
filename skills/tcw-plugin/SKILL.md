@@ -52,8 +52,8 @@ Practical routing:
 - If the user wants to check, sweep, or work through the GitHub issues on _their
   own_ project, use `tcw-triage-issues`. Note the direction: `tcw-report` writes
   an issue to TCW, this one reads issues from the user's repo.
-- If `tcw` itself is unavailable or the plugin install is stale, stay in this
-  skill and follow the install procedure below.
+- If `tcw` itself is unavailable or the plugin install is stale, use the
+  `tcw-setup` skill.
 
 The axes point forward, not backward: taxonomy entries do not point to
 capabilities or work; capabilities point to taxonomy and planning work; work
@@ -61,55 +61,4 @@ records the changes being made.
 
 # Getting `tcw` on PATH
 
-The plugin ships the skills; `tcw` is a Python package that has to be installed.
-**Under Claude it installs itself:** a `SessionStart` hook runs
-`scripts/session_bootstrap.sh`, which installs the published `tcw-cli`
-distribution from PyPI with `pipx` and reinstalls it when a plugin update changes
-the plugin's version. The first install needs network — there is no offline
-fallback — and the script is silent on success and on every deliberate skip, so
-it says nothing most sessions. Under Codex there is no hook, and you run it.
-
-**Check before reading further:**
-
-```
-tcw --version      # prints a version? → nothing to do. stop here.
-```
-
-If it does not:
-
-1. `pipx install tcw-cli`. The distribution is `tcw-cli` because `tcw` on PyPI is
-   an unrelated project; the command and the import package are both still `tcw`.
-   Installing over an existing `pipx install tcw-cli` replaces it in place.
-2. **No `pipx`?** `python3 -m pip install --user pipx && pipx ensurepath`, then
-   (1). `python3 -m pip install --user tcw-cli` works too. Never `pip install`
-   into a managed base interpreter. The bootstrap script stops rather than
-   choosing here, on purpose: picking someone's Python environment is a judgment
-   call that must not happen silently at session start.
-3. **Behind the latest release?** `pipx upgrade tcw-cli`. Report it, don't treat
-   it as breakage: the installed CLI floats, and it is not required to equal the
-   plugin's version.
-
-**Check who owns a `tcw` that is already on PATH before replacing it.** Read its
-shebang for the interpreter that owns the install — never the `python3` on PATH,
-which for a pipx or venv install is a different environment and will report no
-such distribution. If that interpreter reports `tcw-cli` as an editable install
-(`direct_url.json` → `dir_info.editable`), it is a developer's `pip install -e`
-checkout: say so and leave it alone. A non-Python shebang names no owner, so it
-is not yours to replace either. `pipx install --force` over either one silently
-destroys a working setup, and the bootstrap script declines for the same reason —
-which is why it sometimes does nothing and prints nothing.
-
-**A `tcw` that runs is not this skill's problem.** In particular, a `tcw work`
-command reporting that the store is _declared but not provisioned here_ is a
-working install telling you the truth: the project keeps its store in another
-repository and this machine has not obtained it. Run `tcw provision`.
-
-**Installing into a cloud environment** — a session that is thrown away, so
-anything installed by hand is gone by the next one — is a session-start hook in
-the user's own repository rather than anything this skill does. The README's
-_Install → In a cloud environment_ carries the script and the rules it must obey.
-
-Node.js is not a general TCW prerequisite. Check for Node 22.12 or newer only
-when the user intends to run or diagnose `tcw serve`. Installed TCW already
-contains the prebuilt Fastify/React assets; pnpm and `node_modules` are
-contributor-only requirements and must not be added to install steps.
+Installing or repairing the CLI is the `tcw-setup` skill.

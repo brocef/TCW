@@ -193,6 +193,10 @@ TAXONOMY_SKILL = "/p/skills/tcw-taxonomy/SKILL.md"
 CASE_ROUTING = [
     ("B11", "tool_input_contains", SETUP_PROJECT, CONFIGURE_DOCS),
     ("B11", "tool_input_absent", SETUP_PROJECT, CONFIGURE_DOCS),
+    ("B12", "tool_input_contains", CONFIGURE_DOCS, SETUP_PROJECT),
+    ("B12", "tool_input_absent", CONFIGURE_DOCS, SETUP_PROJECT),
+    ("B4", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
+    ("B8", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
 ]
 
 
