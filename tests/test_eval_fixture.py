@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from evals import grade
 from evals.seed_fixture import seed
 from tcw.store.base import LIFECYCLE_STEPS
 
@@ -35,7 +36,62 @@ def control(tmp_path_factory):
 @pytest.fixture(scope="module")
 def customized(tmp_path_factory):
     root = tmp_path_factory.mktemp("customized")
-    return root, seed(root, customized=True)
+    return root, seed(root, "customized")
+
+
+@pytest.fixture(scope="module")
+def bare(tmp_path_factory):
+    root = tmp_path_factory.mktemp("bare")
+    return root, seed(root, "bare")
+
+
+def test_the_bare_variant_is_a_repository_that_does_not_use_tcw(bare):
+    """For a case about setting TCW up in a fresh repository."""
+    root, manifest = bare
+    assert (root / ".git").is_dir()
+    assert (root / "src/reports.py").is_file(), "the code files are there"
+    assert not (root / "tcw-config.yaml").exists()
+    assert manifest["variant"] == "bare"
+    assert manifest["items"] == {}
+    assert manifest["nonces"] == {}
+    assert manifest["stage_items"] == {}
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    assert manifest["seeded_head"] == head
+    assert _tcw(root, "validate").returncode != 0
+    verdict = grade.p_files_changed_exactly(
+        {"fixture": root, "seeded_head": manifest["seeded_head"]}, paths=[])
+    assert verdict["passed"], verdict["evidence"]
+
+
+def test_a_bare_fixture_inside_a_tcw_project_is_refused(tmp_path):
+    """`tcw` looks for `tcw-config.yaml` in every parent folder. A bare fixture
+    under a TCW project, such as the runner's default `eval-runs/` inside this
+    checkout, would resolve to that project and stop being a repository that
+    does not use TCW."""
+    (tmp_path / "tcw-config.yaml").write_text("id: outer\n")
+    with pytest.raises(ValueError, match="tcw-config.yaml"):
+        seed(tmp_path / "runs" / "fixture", "bare")
+    assert not (tmp_path / "runs").exists(), "refused before building anything"
+
+
+@pytest.mark.parametrize("variant", ["control", "customized", "bare"])
+def test_a_folder_that_is_not_empty_is_refused(variant, tmp_path):
+    """Re-seeding a used folder, as `run_one` does when `--out` is reused,
+    would commit whatever was left there into the seeded commit."""
+    dest = tmp_path / "used"
+    dest.mkdir()
+    (dest / "tcw-config.yaml").write_text("id: left-over\n")
+    with pytest.raises(ValueError, match="not empty"):
+        seed(dest, variant)
+    assert sorted(p.name for p in dest.iterdir()) == ["tcw-config.yaml"], (
+        "refused before writing anything")
+
+
+def test_an_unknown_variant_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="nonsense"):
+        seed(tmp_path / "x", "nonsense")
+    assert not (tmp_path / "x").exists(), "refused before building anything"
 
 
 # --- the node itself -------------------------------------------------------
@@ -71,6 +127,31 @@ def test_the_mid_flight_item_still_fails_completion_closed(variant, request):
     assert result.returncode != 0, "completion no longer fails closed"
     assert "billing/download-invoice" in result.stderr
     assert "still Missing" in result.stderr
+
+
+@pytest.mark.parametrize("variant", ["control", "customized", "bare"])
+def test_a_freshly_seeded_node_shows_no_changes(variant, request):
+    """`files_changed_exactly` compares the working tree with `seeded_head` and
+    counts untracked files. Anything the seeder leaves behind uncommitted, such
+    as `manifest.json`, would otherwise be charged to every agent — and so would
+    the bytecode and pytest caches an agent leaves just by importing or testing
+    the fixture's code."""
+    root, manifest = request.getfixturevalue(variant)
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    assert manifest["seeded_head"] == head
+    caches = [root / "src/__pycache__/reports.cpython-314.pyc",
+              root / ".pytest_cache/v/cache/lastfailed"]
+    for cache in caches:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_bytes(b"\0cache")
+    try:
+        verdict = grade.p_files_changed_exactly(
+            {"fixture": root, "seeded_head": manifest["seeded_head"]}, paths=[])
+    finally:
+        for cache in caches:
+            cache.unlink()
+    assert verdict["passed"], verdict["evidence"]
 
 
 @pytest.mark.parametrize("variant", ["control", "customized"])

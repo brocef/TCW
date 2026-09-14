@@ -47,16 +47,61 @@ def test_axis_a_arms_are_fixture_variants_and_axis_b_arms_are_the_toggle(cases):
 
 def test_axis_a_arms_pick_opposite_fixture_variants():
     case = {"axis": "A"}
-    assert run_evals.variant_for(case, "customized") is True
-    assert run_evals.variant_for(case, "control") is False
+    assert run_evals.variant_for(case, "customized") == "customized"
+    assert run_evals.variant_for(case, "control") == "control"
 
 
 def test_axis_b_holds_the_fixture_constant_across_its_arms():
     """Axis B toggles the plugin. If it also swapped the fixture, its two arms
     would differ by two things and the delta would mean nothing."""
     case = {"axis": "B"}
-    assert run_evals.variant_for(case, "with-skill") is True
-    assert run_evals.variant_for(case, "no-skill") is True
+    assert run_evals.variant_for(case, "with-skill") == "customized"
+    assert run_evals.variant_for(case, "no-skill") == "customized"
+
+
+def test_every_named_fixture_is_a_variant_the_seeder_builds(cases):
+    """A misspelt `fixture` would otherwise surface as a `ValueError` partway
+    through a paid run, after earlier cases had already spent money."""
+    from evals.seed_fixture import VARIANTS
+    for case in cases:
+        if "fixture" in case:
+            assert case["fixture"] in VARIANTS, case["id"]
+
+
+BARE_CASE = {"id": "BX", "axis": "B", "fixture": "bare", "prompt": "x",
+             "arms": ["with-skill", "no-skill"], "assertions": []}
+
+
+def test_a_bare_case_under_a_tcw_project_is_refused_before_anything_runs(
+        tmp_path, monkeypatch, capsys):
+    """Refused up front, dry run or not. Otherwise `seed()` raises only when
+    the run loop reaches the bare case, after earlier cases have spent money."""
+    monkeypatch.setattr(run_evals, "load_cases",
+                        lambda: [{**BARE_CASE, "id": "B0", "fixture": None},
+                                 BARE_CASE])
+    (tmp_path / "tcw-config.yaml").write_text("id: outer\n")
+    code = run_evals.main(["--dry-run", "--out", str(tmp_path / "runs")])
+    out, err = capsys.readouterr()
+    assert code != 0
+    assert "tcw-config.yaml" in err and "BX" in err
+    assert "command:" not in out, "nothing was listed as if it would run"
+
+
+def test_a_bare_case_outside_any_tcw_project_passes_the_check(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run_evals, "load_cases", lambda: [BARE_CASE])
+    code = run_evals.main(["--dry-run", "--out", str(tmp_path / "runs")])
+    out, _ = capsys.readouterr()
+    assert code == 0
+    assert "fixture: bare" in out
+
+
+def test_a_case_can_name_its_fixture():
+    """A case about setting TCW up needs a repository that does not use it yet,
+    in both arms."""
+    case = {"axis": "B", "fixture": "bare"}
+    assert run_evals.variant_for(case, "no-skill") == "bare"
+    assert run_evals.variant_for(case, "with-skill") == "bare"
 
 
 def test_only_the_axis_b_baseline_drops_the_plugin(tmp_path):

@@ -11,6 +11,7 @@
    "prompt": "what the agent is given. '{item}' is substituted with the minted slug of the item named in 'item', since the CLI mints date-prefixed slugs and they cannot be hardcoded.",
    "arms": "which arms the case runs. Axis A: 'customized' (the node carrying work.lifecycle.stages and the nonces) and 'control' (the same seeder with that block omitted). Axis B: 'with-skill' and 'no-skill'.",
    "runner": "present only where the case is runner-specific; absent means the default runner",
+   "fixture": "optional; a named fixture variant ('customized', 'control' or 'bare') used in every arm of the case, overriding the per-axis default. Only 'bare' is used today.",
    "assertions": "each entry either names a predicate from 'predicates' below, or carries an 'unmechanized' marker"
   },
   "assertion_fields": {
@@ -53,6 +54,20 @@
    ],
    "reads": "the literal text appears nowhere in the transcript",
    "confirmed": "Not among the three transcript reads task 6 enumerates. Confirmed as an expansion rather than inherited silently: it is the same machinery as the listed reads, and A4 cannot be stated without it now that the skill binding carries no nonce. A general ordering read would be the same kind of step and is deliberately still not taken, so B8 stays unmechanized."
+  },
+  "tool_input_contains": {
+   "family": "transcript",
+   "args": [
+    "text"
+   ],
+   "reads": "the literal text appears in the input of some tool call the agent made (a `Read` file path, a `Bash` command, and so on). Ignores assistant text, user messages and tool results, so a path a loaded skill merely mentions does not count as opened."
+  },
+  "tool_input_absent": {
+   "family": "transcript",
+   "args": [
+    "text"
+   ],
+   "reads": "the literal text appears in the input of no tool call the agent made. Ignores assistant text, user messages and tool results. Fails with 'no tool calls found' when the transcript has no tool calls at all, so an unrecognised transcript shape cannot pass it."
   },
   "nonce_in_artifact": {
    "family": "fixture",
@@ -160,7 +175,7 @@
    "args": [
     "paths"
    ],
-   "reads": "`git diff --name-only` against the seeded HEAD lists exactly these paths. Says which files changed, not whether the change was any good."
+   "reads": "the working tree (committed, uncommitted and untracked non-ignored files) differs from the seeded commit in exactly these paths. The seeded commit is `seeded_head` in timing.json; a run recorded without it fails. Says which files changed, not whether the change was any good."
   }
  },
  "cases": [
@@ -764,7 +779,6 @@
      "predicate": "files_changed_exactly",
      "args": {
       "paths": [
-       "src/reports.py",
        "README.md",
        "docs/changelogs/upcoming.md"
       ]
@@ -776,7 +790,7 @@
      "why": "the path list says which files changed, not whether the edit was any good. The 'no others' half of the spec's assertion is mechanical; the 'the right entries' half is only mechanical as far as the filenames."
     }
    ],
-   "note": "The seeder declares exactly README.md and docs/changelogs/upcoming.md, so the path list reconciles. src/reports.py is the source file the case's prompt says was changed."
+   "note": "The seeder declares exactly README.md and docs/changelogs/upcoming.md, so the path list reconciles. src/reports.py is deliberately not listed: the fix the prompt describes is not in the seeded fixture, and the check compares against the seeded commit, so src/reports.py would only appear if the agent edited a file the user says is already fixed."
   }
  ]
 }

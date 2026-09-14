@@ -9,3 +9,7 @@ tags:
 - cli
 blocked_by:
 - slug: 2026-09-12-configure-an-external-tracker-and-read-its-tickets
+owner: ''
+started: ''
+worktree: .worktrees/2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key
+branch: work/2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key

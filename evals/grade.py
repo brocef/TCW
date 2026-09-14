@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -104,6 +105,23 @@ def _texts(events: list[dict]) -> list[str]:
                     elif isinstance(value, (dict, list)):
                         out.append(json.dumps(value))
     return out
+
+
+def _tool_inputs(events: list[dict]):
+    """The input of every tool call the run made, in order, as JSON text.
+
+    Only what the agent ran or opened: a `Read`'s `file_path`, a `Bash`
+    command. Assistant prose, user messages and tool *results* are left out,
+    because a skill body that merely mentions a path is not the agent opening it.
+    """
+    for event in events:
+        content = (event.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                # Non-ASCII left as is, so a search text containing it matches.
+                yield json.dumps(block.get("input"), ensure_ascii=False)
 
 
 def _first_index(texts: list[str], needle: str) -> int | None:
@@ -197,6 +215,28 @@ def p_transcript_absent(run, text="", **_):
     return _verdict(hit is None,
                     f"{text!r} is absent" if hit is None
                     else f"{text!r} appears at event {hit}")
+
+
+def p_tool_input_contains(run, text="", **_):
+    inputs = list(_tool_inputs(run["events"]))
+    hit = _first_index(inputs, text)
+    return _verdict(hit is not None,
+                    f"{text!r} is in tool call {hit}" if hit is not None
+                    else f"{text!r} is in none of {len(inputs)} tool calls")
+
+
+def p_tool_input_absent(run, text="", **_):
+    """Fails when the run made no tool calls at all. A transcript in a shape
+    `_tool_inputs` does not recognise yields none, and "absent" would then pass
+    for every text."""
+    inputs = list(_tool_inputs(run["events"]))
+    if not inputs:
+        return _verdict(False, "no tool calls found in the transcript")
+    hit = _first_index(inputs, text)
+    return _verdict(hit is None,
+                    f"{text!r} is in none of {len(inputs)} tool calls"
+                    if hit is None
+                    else f"{text!r} is in tool call {hit}: {inputs[hit][:140]}")
 
 
 def p_nonce_in_artifact(run, kind="", artifact="", **_):
@@ -336,8 +376,35 @@ def p_git_commit_per_artifact(run, **_):
 
 
 def p_files_changed_exactly(run, paths=(), **_):
-    changed = set(git(run["fixture"], "diff", "--name-only",
-                      "HEAD~1", "HEAD").split())
+    """What the agent changed since the seed, whether or not it committed.
+
+    `git diff <seeded_head>` compares the working tree with the seeded commit,
+    so it covers committed and uncommitted edits alike. Untracked files git does
+    not ignore are added, because a new file is a change too. A run recorded
+    without `seeded_head` fails rather than falling back to the last commit,
+    which is the misleading answer this replaced.
+
+    A git failure fails the check with git's error, rather than reading as an
+    empty change list. Renames are reported as a deletion plus an addition,
+    which is what a plain `mv` looks like too. The grading machine's own global
+    ignore file is not read, so a fixture grades the same on every machine, and
+    output is read as bytes, so a carriage return in a file name survives.
+    """
+    seeded_head = run.get("seeded_head")
+    if not seeded_head:
+        return _verdict(False, "the run entry has no `seeded_head`, so there is "
+                               "no seeded commit to compare against")
+    changed = set()
+    for args in (["diff", "--name-only", "--no-renames", "-z", seeded_head, "--"],
+                 ["-c", f"core.excludesFile={os.devnull}",
+                  "ls-files", "-z", "--others", "--exclude-standard"]):
+        proc = subprocess.run(["git", "-C", str(run["fixture"]), *args],
+                              capture_output=True)
+        if proc.returncode != 0:
+            verb = "ls-files" if "ls-files" in args else "diff"
+            return _verdict(False, f"`git {verb}` failed in the fixture: "
+                                   f"{os.fsdecode(proc.stderr).strip()[:200]}")
+        changed |= {os.fsdecode(p) for p in proc.stdout.split(b"\0") if p}
     wanted = set(paths)
     return _verdict(changed == wanted,
                     f"changed {sorted(changed)}, expected {sorted(wanted)}")
@@ -365,6 +432,7 @@ def grade_run(run_dir: Path) -> dict:
         "nonces": timing.get("nonces", {}),
         "stage_items": timing.get("stage_items", {}),
         "items": timing.get("items", {}),
+        "seeded_head": timing.get("seeded_head"),
     }
 
     results = []

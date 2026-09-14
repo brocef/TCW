@@ -15,6 +15,10 @@ One new capability, added `Missing` when implementation starts and flipped to
   from parent nodes", carrying `Feature=external-work-tracker` and
   `Planning doc` pointing here.
 
+The item declares it in a `capabilities.yaml` sidecar (`new:` list), so
+`tcw work complete` refuses while the record still reads Missing
+(`capability_gate`, `tcw/work/recursion.py:27-46`).
+
 `work/inspect-external-tracker-work` keeps its status. Its description gains
 one sentence saying the settings it describes may come partly from parent
 nodes.
@@ -64,6 +68,11 @@ workspace. Reading tickets was already possible without it.
    come from the same node as `base-url` or a nearer one.
 7. Keys added under `work.tracker` later (claim, sync and strict mode) inherit
    with no change to the merge.
+8. A malformed block never raises. Today `parse_tracker_config` raises
+   `TypeError` when a block mixes string and non-string keys, because
+   `sorted(set(raw) - TRACKER_KEYS)` (`tcw/store/base.py:929`, and the nested
+   `sorted(set(value) - allowed)` at `:960`) cannot compare them. That bug predates this item, but inheritance would carry one such
+   block into every node that opts in beneath it, so it is fixed here.
 
 ## Non-goals
 
@@ -128,7 +137,11 @@ the result:
   and is reported as today.
 
 The merge also records, for every key path in the result, which block
-supplied it. For example, `credentials.token-env` came from pkg.
+supplied its value. For example, `credentials.token-env` came from pkg. A key
+whose nearer null was skipped is recorded against the farther block whose
+value shows through, never against the block that wrote the null. When a value
+replaces a mapping wholesale, the replaced mapping's sub-paths leave the
+record.
 
 The merged mapping then goes through the existing `parse_tracker_config`
 unchanged. Required keys, unknown keys, types and failing closed all apply to
@@ -153,6 +166,12 @@ the new site. Today `JiraClient` builds the `Authorization` header from
 whatever variables the config names and sends it to whatever `base-url` it
 names (`tcw/tracker/jira.py:131-145`). Setting only `credentials` nearer than
 `base-url`, meaning a different account on the same site, is allowed.
+
+The comparison is between files, not values. A child that repeats its parent's
+`base-url` word for word has still set `base-url`, so it must set `credentials`
+too. A child that writes `credentials: {email-env: null, token-env: null}`
+has not set them: the nulls are skipped and the record names the parent's
+file (see "The merge"), so the rule still applies.
 
 ### Where the code lives (abstraction test)
 
@@ -189,8 +208,11 @@ tcw-config.yaml: work.tracker.candidate-query: required
 
 A problem goes to the block that supplied the value it is about: an unknown
 key, a wrong type, an unsupported `provider`, or an ancestor block that is not
-a mapping. A problem about a key nobody set, such as a missing required key,
-goes to the node being checked. Problems are sorted by the parser's message
+a mapping. The match is on the problem's exact key path. It is not the nearest
+enclosing mapping, and a key whose own name contains a dot is still one key.
+A problem about a key nobody set goes to the node being checked. That covers
+a missing required key, including a nested one such as
+`transitions.claim: required` when an ancestor supplied `transitions`. Problems are sorted by the parser's message
 before the prefix is added, so their order does not depend on where a value
 came from.
 
@@ -295,7 +317,27 @@ no work store, and repo and pkg each have one.
     board-holding-parent limit. `docs/changelogs/upcoming.md` and
     `docs/release-notes/upcoming.md` have entries.
 21. The capability ledger matches Capability changes, and `tcw capabilities
-    check` and `tcw validate` pass.
+    check` and `tcw validate` pass. The item's `capabilities.yaml` lists
+    `work/inherit-tracker-settings-from-parent-nodes` under `new:`.
+22. Root's block is complete except that it has `transitions: {}`. Pkg's block
+    is only `candidate-query`. Pkg's problems include exactly
+    `tcw-config.yaml: work.tracker.transitions.claim: required`. Root's file is
+    not named.
+23. Root's block is complete. Pkg's block is `candidate-query`, a different
+    `base-url`, and `credentials: {email-env: null, token-env: null}`.
+    `tracker_config()` at pkg is `None`, and its problems include the
+    credentials message. The merge's source record names root's label for both
+    `credentials.email-env` and `credentials.token-env`.
+24. Root's block is complete plus an unknown key literally named `a.b`. The
+    problem at pkg is
+    `<root config absolute path> (project 'root'): work.tracker.a.b: unknown key`.
+25. Root's block is complete. Pkg's block is `candidate-query` and
+    `base-url: 42`. Pkg's problems include exactly
+    `tcw-config.yaml: work.tracker.base-url: expected a non-empty string, got int`.
+    This is the own-file prefix, reached through the merge.
+26. `parse_tracker_config` given a block with an unknown key `5` (an integer)
+    and an unknown key `z` returns problems for both and does not raise. The
+    same holds for mixed unknown keys inside `credentials`.
 
 ## Risks
 
@@ -358,6 +400,23 @@ no work store, and repo and pkg each have one.
   - *Rejected as moot:* the risk of a new node under `none`, and the
     "no tracker is configured" message at a `none` node. Both disappear with
     opt-in.
+- **Plan review findings, 2026-09-14 (adversarial spec reviewer, second
+  round, on the plan and this spec).** These changed the spec:
+  - *Accepted:* attribution matched the nearest enclosing mapping, which blamed
+    an ancestor for a nested required key nobody set. It now matches the exact
+    key path (Design, criterion 22). Dotted key names are covered by
+    criterion 24.
+  - *Accepted:* the record for a skipped null was unspecified, which could
+    have silenced the credentials rule. It now names the file that supplied
+    the value (Design, criterion 23).
+  - *Accepted:* nothing enforced the capability flip; added the
+    `capabilities.yaml` sidecar (criterion 21).
+  - *Accepted:* no test sent an own-file value through the merge
+    (criterion 25).
+  - *Accepted, though filed as a separate change:* `parse_tracker_config`
+    raising on mixed key types (Goal 8, criterion 26). It is folded in because
+    inheritance spreads its effect.
+  - The remaining findings changed only the plan.
 - **Rejected: reading only the direct parent.** The requester chose every
   ancestor. That also matches taxonomy `extends`, which resolves through every
   ancestor since `2026-07-01-transitive-taxonomy-inheritance`.

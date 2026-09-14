@@ -4,13 +4,15 @@ The fixture is a small fake billing/reporting product with a taxonomy, a
 capability ledger, and a work store primed so that every eval case has something
 real to act on. It is disposable; the instrument that reads it is not.
 
-Two variants, one seeder, so they cannot drift apart:
+Three variants, one seeder, so they cannot drift apart:
 
 * **control** — the node as a project that has configured no lifecycle
   instructions at all. Every stage falls back to TCW's built-in floor. This is
   the complement of `tests/fixtures/prompt_fallback/unconfigured.json`.
 * **customized** (`--customized`, task 2) — the same node plus a
   `work.lifecycle.stages` block carrying nonce-bearing bindings.
+* **bare** (`--bare`) — the same code files committed to a repository that
+  does not use TCW yet: no `tcw init`, no items, no nonces.
 
 Determinism: fixed git identity, and no timestamps in any content this module
 writes. Two control runs are otherwise identical, but **not byte-identical**,
@@ -31,6 +33,7 @@ Usage:
 
     python evals/seed_fixture.py /tmp/probe
     python evals/seed_fixture.py --customized /tmp/probe
+    python evals/seed_fixture.py --bare /tmp/probe
 """
 
 from __future__ import annotations
@@ -45,9 +48,11 @@ from pathlib import Path
 
 import yaml
 
-from tcw.store.fs import init
+from tcw.store.fs import find_node_root, init
 
 PROJECT_ID = "demo-app"
+
+VARIANTS = ("customized", "control", "bare")
 
 # Where the customized variant's nonce-bearing assets live inside the node. The
 # `file` binding resolves relative to the node root, and `generate` runs with the
@@ -345,12 +350,39 @@ def _assert_customized(dest: Path, stage_items: dict[str, str],
             f"{len(silent)} bytes")
 
 
-def seed(dest: Path, customized: bool = False) -> dict:
+def refuse_bare_inside_a_project(dest: Path) -> None:
+    """Raise `ValueError` when a bare fixture at `dest` would sit inside a TCW
+    project.
+
+    `tcw` looks for `tcw-config.yaml` in every parent folder, so such a fixture
+    would quietly become part of the outer project. The runner calls this for
+    every bare arm before spawning anything; `seed()` calls it too.
+    """
+    outer = find_node_root(dest.parent)
+    if outer is not None:
+        raise ValueError(f"a bare fixture at {dest} would sit inside the TCW "
+                         f"project at {outer} (its tcw-config.yaml); seed it "
+                         f"outside any TCW project, e.g. `--out /tmp/...`")
+
+
+def seed(dest: Path, variant: str = "control") -> dict:
     """Seed the fixture at `dest` and return its manifest.
 
-    The manifest records the slugs the CLI minted, because they carry today's
-    date and grading cannot guess them.
+    `variant` is one of `VARIANTS`. `dest` must not exist or be empty: whatever
+    a used folder holds would be committed into the seeded commit. The manifest
+    records the slugs the CLI minted, because they carry today's date and
+    grading cannot guess them.
     """
+    if variant not in VARIANTS:
+        raise ValueError(f"unknown fixture variant {variant!r}; "
+                         f"expected one of {VARIANTS}")
+    if dest.exists() and (not dest.is_dir() or any(dest.iterdir())):
+        raise ValueError(f"{dest} exists and is not empty; seed into a new "
+                         f"folder, since anything left there would be "
+                         f"committed into the seeded commit")
+    if variant == "bare":
+        refuse_bare_inside_a_project(dest)
+    customized = variant == "customized"
     dest.mkdir(parents=True, exist_ok=True)
 
     # 1. A git repo with a fixed identity, then the product source.
@@ -361,6 +393,11 @@ def seed(dest: Path, customized: bool = False) -> dict:
         _write(dest, rel, text)
     _git(dest, "add", "-A")
     _git(dest, "commit", "-q", "-m", "demo-app: reporting and billing")
+
+    # The bare variant stops here: a repository that does not use TCW yet.
+    if variant == "bare":
+        return _record(dest, {"project_id": PROJECT_ID, "variant": variant,
+                              "items": {}, "stage_items": {}, "nonces": {}})
 
     # 2. Make it a TCW node.
     init(["taxonomy", "capabilities", "work"], dest, project_id=PROJECT_ID)
@@ -457,7 +494,7 @@ def render_invoice(account_id: str, line_items: list[dict]) -> str:
 
     manifest = {
         "project_id": PROJECT_ID,
-        "variant": "customized" if customized else "control",
+        "variant": variant,
         "items": {
             "backlog": backlog_slug,
             "active": active_slug,
@@ -481,6 +518,23 @@ def render_invoice(account_id: str, line_items: list[dict]) -> str:
         _git(dest, "commit", "-q", "-m", "demo-app: bind lifecycle instructions")
         _assert_customized(dest, manifest["stage_items"], manifest["nonces"])
 
+    return _record(dest, manifest)
+
+
+def _record(dest: Path, manifest: dict) -> dict:
+    """Stamp the seeded commit into the manifest and write it beside the node.
+
+    `files_changed_exactly` compares the working tree with `seeded_head` and
+    counts untracked files as changes, so the manifest, which is written after
+    the last commit, is excluded locally. Otherwise every run would appear to
+    have added it. The bytecode and pytest caches an agent leaves just by
+    importing or testing the fixture's code are excluded for the same reason.
+    """
+    manifest["seeded_head"] = subprocess.run(
+        ["git", "-C", str(dest), "rev-parse", "HEAD"], check=True,
+        capture_output=True, text=True).stdout.strip()
+    with (dest / ".git/info/exclude").open("a") as exclude:
+        exclude.write("/manifest.json\n__pycache__/\n.pytest_cache/\n")
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return manifest
 
@@ -488,10 +542,15 @@ def render_invoice(account_id: str, line_items: list[dict]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dest", type=Path, help="where to build the node")
-    parser.add_argument("--customized", action="store_true",
-                        help="add the lifecycle bindings and their nonces")
+    kind = parser.add_mutually_exclusive_group()
+    kind.add_argument("--customized", action="store_true",
+                      help="add the lifecycle bindings and their nonces")
+    kind.add_argument("--bare", action="store_true",
+                      help="commit the code files only, with no TCW set up")
     args = parser.parse_args(argv)
-    manifest = seed(args.dest, customized=args.customized)
+    variant = ("customized" if args.customized
+               else "bare" if args.bare else "control")
+    manifest = seed(args.dest, variant)
     print(json.dumps(manifest, indent=1))
     return 0
 
