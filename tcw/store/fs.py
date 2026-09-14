@@ -565,7 +565,10 @@ def git_stage(node_root: Path, *paths: Path) -> None:
 
 def git_rm(node_root: Path, path: Path) -> None:
     # -f so a term staged-but-not-yet-committed (just `add`ed) can still be removed.
-    _git(["git", "-C", str(node_root), "rm", "-rfq", "--", str(path)], check=True)
+    # --literal-pathspecs: `--` ends options but a path is still a glob to git, so
+    # removing a folder named `a*` would also delete `abc`.
+    _git(["git", "-C", str(node_root), "--literal-pathspecs", "rm", "-rfq", "--", str(path)],
+         check=True)
 
 
 NOT_A_REPOSITORY = "not inside a git repository. Run `git init` first."
@@ -2525,10 +2528,16 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             refs = [str(s).strip().lstrip("!") for s in toks if str(s).strip()]
             return [r for r in refs if r.startswith(f"{ns}/")]
 
+        def same(a: Path) -> bool:
+            try:
+                return a.samefile(target)
+            except OSError:        # gone since it was listed or resolved: not the target
+                return False
+
         out = []
         for p in self._all_meta_dirs():
             folder = self.root / p
-            if folder.samefile(target):
+            if same(folder):
                 continue
             meta = load_yaml(folder / "meta.yaml")
             for field in ("Superseded by", "Blocked by", "Roles", "When"):
@@ -2539,8 +2548,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                         hit = self.get(ref)
                     except RefError:
                         continue
-                    if (hit is not None and hit.origin == "local"
-                            and (self.root / hit.path).samefile(target)):
+                    if hit is not None and hit.origin == "local" and same(self.root / hit.path):
                         out.append(f"{p} ({field})")
                         break
         return out

@@ -198,6 +198,30 @@ def test_remove_refuses_capability_nested_in_a_dot_directory(tmp_path):
     _assert_nothing_removed(root, before)
 
 
+def test_remove_treats_a_glob_character_in_the_path_literally(tmp_path):
+    """A path is a git pathspec to `git rm`, where `a*` also matches `abc`."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "a*", id="cap-ast001", Status="Supported")
+    write_cap(root, "abc", id="cap-abc001", Status="Supported")
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
+    store(root).remove("a*")
+    assert store(root).get("a*") is None
+    assert store(root).get("abc") is not None
+    assert (root / "docs" / "capabilities" / "abc" / "meta.yaml").is_file()
+
+
+def test_remove_skips_a_folder_that_vanished_after_listing(tmp_path, monkeypatch):
+    """The listing and the identity comparison are not atomic; a folder gone in
+    between is no referrer, not a traceback."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "x", id="cap-x00001", Status="Supported")
+    st = store(root)
+    listed = st._all_meta_dirs()
+    monkeypatch.setattr(st, "_all_meta_dirs", lambda: [*listed, "gone/away"])
+    st.remove("x")
+    assert store(root).get("x") is None
+
+
 def test_remove_nested_check_respects_the_path_boundary(tmp_path):
     """`routes-v2` is a sibling of `routes`, not nested under it."""
     root = repo(tmp_path, "solo")

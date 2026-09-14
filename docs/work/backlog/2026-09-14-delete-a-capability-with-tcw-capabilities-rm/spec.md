@@ -284,7 +284,10 @@ Each is checked by a test in the suite unless it says otherwise.
    `no such capability` and deletes nothing. So does a loose spelling of a real
    path — `routes/`, `./routes`, `routes/.`, `routes//` — which would otherwise
    slip past the nested check. (Added during implementation: found by probing,
-   see `outcome.md`.)
+   see `outcome.md`.) Removing a capability whose name holds a glob character
+   (`a*`) deletes only that folder, not `abc`; and a folder that vanishes between
+   listing and comparison is skipped rather than raising. (Added in review
+   round 2.)
 10. Outside a git repository, `FsCapabilitiesStore.remove` refuses and writes
     nothing (the existing `tests/test_non_git_writes.py:265` stays green).
 11. `tcw capabilities --help` lists `rm`.

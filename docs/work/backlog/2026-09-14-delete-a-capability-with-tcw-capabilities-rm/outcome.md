@@ -8,20 +8,26 @@
 - **The store contract** (`CapabilitiesStore.remove` in `tcw/store/base.py`) now
   states when a delete is refused, and `FsCapabilitiesStore.remove`
   (`tcw/store/fs.py`) enforces it. It refuses, writing nothing:
-  - a path that resolves to nothing, or is spelled loosely (`routes/`,
-    `./routes`, `routes/.`, `routes//`);
+  - a path that resolves to nothing, or any spelling other than the listed path
+    (`routes/`, `./routes`, `routes/.`, `Routes` on a case-insensitive disk);
   - a bare path matching more than one inherited project (`AmbiguousRef`);
   - an inherited capability, overridden locally or not — the message names
     `tcw capabilities reset` for dropping an override;
-  - a capability with another capability or override folder nested under its
-    path, naming them;
+  - a capability with any `meta.yaml` inside its folder (capabilities and override
+    folders, including ones in dot-directories), naming them;
   - a capability that another local capability or override folder still
     references through `Superseded by`, `Blocked by`, `Roles` or `When`, naming
-    each as `<folder> (<field>)`.
+    each as `<folder> (<field>)`. Fields are read exactly as `check` reads them,
+    and references are matched by folder identity, so `a/b/`, `x/../a/b` and a
+    differently-cased spelling all count.
+- **`git_rm` treats a path literally** (`--literal-pathspecs`). Before, deleting a
+  folder named `a*` also deleted `abc`. The fix is in the shared helper, so
+  `tcw taxonomy rm` and the work store's deletes are fixed too.
 - **`removed:` in `capabilities.yaml`.** `declared_capabilities` reads it; the
   completion gate (`capability_gate`, `tcw/work/recursion.py`) refuses a
-  `removed:` path that still resolves or is ambiguous, and no longer skips a
-  sidecar holding only `removed:`; the epic rollup prints `removed <path>` rows.
+  `removed:` path while a **local** capability still exists there, and no longer
+  skips a sidecar holding only `removed:`; the epic rollup prints
+  `removed <path>` rows.
 
   ```yaml
   new:
@@ -36,18 +42,27 @@
   `Subject: capability` and `Planning doc` set to this item);
   `capabilities/reset-an-override` and `work/complete-a-work-item` bodies updated.
   The item's `capabilities.yaml` records all three.
-- **Inbox note:** `docs/work/inbox/tcw-taxonomy-rm-deletes-nested-terms-without-a-word.md`
-  — `tcw taxonomy rm` still deletes nested terms and only warns about relations.
+- **Inbox notes** (in `docs/work/inbox/`, undated like the others there — the
+  plan's dated name was dropped to match):
+  - `tcw-taxonomy-rm-deletes-nested-terms-without-a-word.md`
+  - `the-capability-completion-gate-ignores-a-configured-capabilities-location.md`
+  - `store-git-calls-read-a-path-as-a-glob-pattern.md`
 
-## Found during implementation
+## Found during implementation and review
 
-Probing the finished store code showed that `get` resolves `routes/`, `./routes`,
-`routes/.` and `routes//` to the `routes` folder but reports the spelling back as
-the capability's path. The nested check compares path strings, so
-`remove("routes/")` passed it and `git rm -rf` deleted `routes/login` too. `remove`
-now refuses any identifier `_safe_store_id` rejects, with `no such capability`.
-Test: `test_remove_refuses_non_canonical_path_spelling`. Acceptance criterion 9
-was extended to cover it.
+Each was a real defect in this change's code, fixed with a test that fails without
+the fix:
+
+1. **Loose target spelling** (found by probing). `get` resolves `routes/` to the
+   `routes` folder but echoes the spelling back as the path, so the nested check
+   compared the wrong prefix and `git rm -rf` took `routes/login` too.
+2. **Loose reference spelling** (found by probing). `Superseded by: a/b/` was
+   accepted by `set` but missed by the referrer check.
+3. **`..` and case in references; dot-directories in the nested check; the gate
+   counting an inherited capability at a removed path** (review round 1).
+4. **Glob characters in `git_rm`; a folder vanishing mid-scan** (review round 2).
+
+Details and each reviewer's findings are in `refined-outcome.md`.
 
 ## Deviations from the plan
 
@@ -60,20 +75,22 @@ was extended to cover it.
 - The command's separate `AmbiguousRef` branch was removed: a mutation check
   showed it changed nothing, because `AmbiguousRef` already carries the message
   `ambiguous ref '<path>' — qualify it with an alias prefix`.
+- The planned `test_cli_rm_is_not_rewritten_to_show` was not written separately;
+  `test_cli_rm_removes_and_reports` fails the same way if `rm` is rewritten.
 
 ## Tests
 
-- `python -m pytest` from the worktree root before each commit; last run before
-  this document: **2844 passed** (11 min 27 s).
-- New tests: `tests/test_capabilities_rm.py` (26), plus
-  `tests/test_capabilities_sidecar.py` (+2, four updated),
-  `tests/test_work.py` (+2), `tests/test_recursion.py` (+1).
-- **Mutation checks:** 15 mutations, each breaking one piece of the new code; every
-  one turned at least one of its covering tests red, and the failing test named
-  the broken behavior, except the command's `AmbiguousRef` branch (removed, see
-  above). The escaping-path test is also held green by the store's existing
-  containment check, so it does not isolate the new spelling check; the spelling
-  test does.
+- New: `tests/test_capabilities_rm.py` (42 test cases), plus
+  `tests/test_capabilities_sidecar.py` (+2, four updated), `tests/test_work.py`
+  (+2), `tests/test_recursion.py` (+1).
+- Full-suite counts are recorded in `refined-outcome.md`, run after the last code
+  change, with both `python -m pytest` and bare `pytest`.
+- **Mutation checks:** 24 mutations, each breaking one piece of the new code. 23
+  turned their covering tests red with a failure naming the broken behavior; the
+  24th, disabling the command's `AmbiguousRef` branch, stayed green and the branch
+  was removed (see above). The
+  escaping-path test is also held green by the store's existing containment
+  check, so it does not isolate the new spelling check; the spelling test does.
 
 ## Verification by hand
 
@@ -98,10 +115,10 @@ was extended to cover it.
 | --- | --- |
 | `README.md` [Public-API] | Evaluated, not changed: it shows a short walkthrough and lists no per-command reference (not even `tcw taxonomy rm`); the command reference is `docs/guide/taxonomy-and-capabilities.md`, which was updated. |
 | `docs/release-notes/upcoming.md` [Public-API] | Updated: "Delete a capability with `tcw capabilities rm`". |
-| `docs/changelogs/upcoming.md` [Any-Code-Change] | Updated: Added and Changed entries. |
-| `skills/<component>/SKILL.md` [Skill-Driven-Component] | `skills/tcw-capabilities/SKILL.md` updated: command list and reserved words, removed-capability planning step, `removed:` schema and gate rule, the stale "use `remove`", a quick-reference row. |
+| `docs/changelogs/upcoming.md` [Any-Code-Change] | Updated: Added, Changed and Fixed entries. |
+| `skills/<component>/SKILL.md` [Skill-Driven-Component] | `skills/tcw-capabilities/SKILL.md` updated (command list and reserved words, removed-capability planning step, `removed:` schema and gate rule, the stale "use `remove`", a quick-reference row). `skills/tcw-work` references `transitions.md` and `procedures/audit-backlog.md` updated for `removed:`. |
 
 ## Status
 
-This item's status was not transitioned by the implementation; see
-`refined-outcome.md` for acceptance and completion.
+The implementation did not transition this item; see `refined-outcome.md` for
+acceptance and completion.
