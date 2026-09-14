@@ -49,6 +49,13 @@
 > 12. **Only capabilities whose main subject is a skill are folded in.**
 >     Capabilities mainly about CLI behavior or the install hook stay, and just
 >     mention the skill.
+>
+> **Revised after the plan was written (2026-09-14):**
+>
+> 13. **Delete the five per-stage skills** (`tcw-work-stage-request`,
+>     `tcw-work-stage-spec`, `tcw-work-stage-plan`, `tcw-work-stage-implement`,
+>     `tcw-work-stage-verify`) in this item as well. `tcw-work-stage` is sufficient
+>     for every stage.
 
 ## What is being asked for
 
