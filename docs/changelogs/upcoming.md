@@ -71,6 +71,24 @@ category.
   coverage exclusion.
 - `tcw-work`'s `when_to_use` names searching the board, auditing the backlog
   and consolidating external plans, which were reached through slash commands.
+- **Taxonomy: a `skill` Vocabulary term and one Feature per skill.** Fifteen
+  Features, each slug the skill's directory name plus `-skill`
+  (`tcw-setup-skill`, `tcw-configure-skill`, `tcw-work-skill`, …), each naming
+  `skill` and the terms it operates on, with `relatesTo` links to the existing
+  Features they overlap.
+- **Capabilities: one `skills/<skill>` capability per skill.** Fifteen new
+  capabilities, all `Supported`, each with `Feature: <skill>-skill` and
+  `Subject: skill`. Nine capabilities that described a skill were folded into
+  their skill's capability and deleted with `tcw capabilities rm`:
+  `plugin/work-lifecycle` (split between `skills/tcw-commands-plan-work` and
+  `skills/tcw-commands-drive-work-to-completion`); `work/consolidate-plans`,
+  `work/search-the-work-items` and `work/audit-work-backlog` (into
+  `skills/tcw-work`); `plugin/report-an-issue-upstream` (into
+  `skills/tcw-extras-report`); `plugin/run-a-post-mortem` (into
+  `skills/tcw-post-mortem`); `plugin/triage-github-issues` (into
+  `skills/tcw-extras-triage-issues`); `taxonomy/bootstrap-the-taxonomy` and
+  `capabilities/bootstrap-the-capabilities` (into `skills/tcw-setup`).
+  `work/complete-a-work-item` now links `tcw://C/skills/tcw-extras-triage-issues`.
 
 ## Removed
 
