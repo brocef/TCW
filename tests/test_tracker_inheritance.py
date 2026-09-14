@@ -255,3 +255,299 @@ def test_mixed_key_types_inside_a_nested_mapping_are_reported_not_raised():
     assert config is None
     assert "work.tracker.credentials.5: unknown key" in problems
     assert "work.tracker.credentials.z: unknown key" in problems
+
+
+# ── through the filesystem store ─────────────────────────────────────────────
+#
+# Nodes are siblings under `tmp_path`, never nested, so deleting one (C13, C14)
+# leaves the others on disk.
+
+import shutil
+from pathlib import Path
+
+import yaml
+
+from tcw.store.fs import SENTINEL, FsWorkStore, init, write_sentinel
+from tcw.store.project import FsProjectRegistry
+
+ABSENT = object()
+
+
+def _node(path: Path, project_id: str, *, board: bool) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    if board:
+        init(["work"], path, project_id)
+    else:
+        write_sentinel(path, project_id)
+    return path.resolve()
+
+
+def _connect(parent: Path, child: Path, parent_id: str, child_id: str) -> None:
+    """Copied from `tests/test_store_nodes.py`. It replaces the child's whole
+    `connected-projects`, so a chain must be connected top-down."""
+    parent_cfg = yaml.safe_load((parent / SENTINEL).read_text()) or {}
+    parent_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+        child_id] = str(child)
+    (parent / SENTINEL).write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
+    child_cfg = yaml.safe_load((child / SENTINEL).read_text()) or {}
+    child_cfg["connected-projects"] = {"parent": {parent_id: str(parent)}}
+    (child / SENTINEL).write_text(yaml.safe_dump(child_cfg, sort_keys=False))
+
+
+def _set_tracker(node: Path, tracker) -> None:
+    if tracker is ABSENT:
+        return
+    cfg = yaml.safe_load((node / SENTINEL).read_text()) or {}
+    work = cfg.get("work") if isinstance(cfg.get("work"), dict) else {}
+    cfg["work"] = {**work, "tracker": tracker}
+    (node / SENTINEL).write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
+def _chain(tmp_path: Path, *, root_board: bool, root, repo, pkg) -> dict[str, Path]:
+    """root → repo → pkg. Every axis the store branches on is an explicit argument:
+    whether root has a board, and each node's tracker block (`ABSENT` for none).
+    Repo and pkg always have boards. The graph is checked before it is used, since
+    a broken one makes the store quietly fall back to the node's own block."""
+    nodes = {
+        "root": _node(tmp_path / "root", "root", board=root_board),
+        "repo": _node(tmp_path / "repo", "repo", board=True),
+        "pkg": _node(tmp_path / "pkg", "pkg", board=True),
+    }
+    _connect(nodes["root"], nodes["repo"], "root", "repo")
+    _connect(nodes["repo"], nodes["pkg"], "repo", "pkg")
+    for name, tracker in (("root", root), ("repo", repo), ("pkg", pkg)):
+        _set_tracker(nodes[name], tracker)
+    for node in nodes.values():
+        assert FsProjectRegistry.open(node).check() == []
+    return nodes
+
+
+def _store(node: Path) -> FsWorkStore:
+    return FsWorkStore.open(node)
+
+
+def _label(node: Path, project_id: str) -> str:
+    return f"{node / SENTINEL} (project '{project_id}')"
+
+
+QUERY_ONLY = {"candidate-query": "component = api"}
+
+
+def test_a_query_only_child_inherits_everything_else(tmp_path):
+    """C1."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=QUERY_ONLY)
+    expected, _ = parse_tracker_config({**COMPLETE, **QUERY_ONLY})
+    assert _store(nodes["pkg"]).tracker_config() == expected
+    assert _store(nodes["pkg"]).tracker_problems() == []
+
+
+def test_a_node_that_writes_no_block_does_not_inherit(tmp_path):
+    """C2."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=QUERY_ONLY)
+    assert _store(nodes["repo"]).tracker_config() is None
+    assert _store(nodes["repo"]).tracker_problems() == []
+
+
+def test_shared_settings_without_a_query_leave_non_tracking_nodes_green(tmp_path, monkeypatch):
+    """C3."""
+    shared = {k: v for k, v in COMPLETE.items() if k != "candidate-query"}
+    nodes = _chain(tmp_path, root_board=False, root=shared, repo=ABSENT, pkg=QUERY_ONLY)
+    expected, _ = parse_tracker_config({**shared, **QUERY_ONLY})
+    assert _store(nodes["pkg"]).tracker_config() == expected
+    assert _store(nodes["pkg"]).tracker_problems() == []
+    assert _store(nodes["repo"]).tracker_config() is None
+    assert _store(nodes["repo"]).tracker_problems() == []
+    monkeypatch.chdir(nodes["root"])
+    code, out, err = _run(["validate"])
+    assert (code, out.strip()) == (0, "validate OK"), err
+
+
+def test_nested_credentials_merge_through_the_store(tmp_path):
+    """C4."""
+    root = {**COMPLETE, "credentials": {"email-env": "A", "token-env": "B"}}
+    pkg = {**QUERY_ONLY, "credentials": {"token-env": "C"}}
+    nodes = _chain(tmp_path, root_board=False, root=root, repo=ABSENT, pkg=pkg)
+    config = _store(nodes["pkg"]).tracker_config()
+    assert (config.email_env, config.token_env) == ("A", "C")
+
+
+def test_each_node_gets_its_own_nearest_base_url(tmp_path):
+    """C5."""
+    repo = {**COMPLETE, "base-url": "https://repo.example.invalid"}
+    pkg = {**QUERY_ONLY, "base-url": "https://pkg.example.invalid",
+           "credentials": {"email-env": "PKG_EMAIL", "token-env": "PKG_TOKEN"}}
+    nodes = _chain(tmp_path, root_board=True, root=COMPLETE, repo=repo, pkg=pkg)
+    assert _store(nodes["pkg"]).tracker_config().base_url == "https://pkg.example.invalid"
+    assert _store(nodes["repo"]).tracker_config().base_url == "https://repo.example.invalid"
+    assert _store(nodes["root"]).tracker_config().base_url == "https://root.example.invalid"
+
+
+def test_a_child_null_takes_the_parents_value(tmp_path):
+    """C6."""
+    nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "timeout-seconds": 30},
+                   repo=ABSENT, pkg={**QUERY_ONLY, "timeout-seconds": None})
+    assert _store(nodes["pkg"]).tracker_config().timeout_seconds == 30
+
+
+def test_a_lone_null_is_still_reported(tmp_path):
+    """C7."""
+    node = _node(tmp_path / "solo", "solo", board=True)
+    _set_tracker(node, {**COMPLETE, "timeout-seconds": None})
+    assert _store(node).tracker_config() is None
+    assert [p for p in _store(node).tracker_problems()
+            if p.startswith("tcw-config.yaml: work.tracker.timeout-seconds: ")]
+
+
+def test_tracker_none_is_not_an_opt_out(tmp_path):
+    """C8."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg="none")
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert _store(nodes["pkg"]).tracker_problems() == [
+        "tcw-config.yaml: work.tracker: expected a mapping, got str"]
+
+
+def test_a_wrong_type_in_a_parent_names_the_parents_file(tmp_path):
+    """C9."""
+    nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "base-url": 42},
+                   repo=ABSENT, pkg=QUERY_ONLY)
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert (f"{_label(nodes['root'], 'root')}: work.tracker.base-url: expected a "
+            f"non-empty string, got int") in _store(nodes["pkg"]).tracker_problems()
+
+
+def test_an_unknown_key_in_a_parent_names_the_parents_file(tmp_path):
+    """C10."""
+    nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "colour": "red"},
+                   repo=ABSENT, pkg=QUERY_ONLY)
+    assert (f"{_label(nodes['root'], 'root')}: work.tracker.colour: unknown key"
+            in _store(nodes["pkg"]).tracker_problems())
+
+
+def test_a_parent_block_that_is_not_a_mapping_disables_the_child(tmp_path):
+    """C11."""
+    nodes = _chain(tmp_path, root_board=False, root="off", repo=ABSENT, pkg=COMPLETE)
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert _store(nodes["pkg"]).tracker_problems() == [
+        f"{_label(nodes['root'], 'root')}: work.tracker: expected a mapping, got str"]
+
+
+def test_a_missing_grandparent_is_named_when_settings_are_incomplete(tmp_path):
+    """C13."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=QUERY_ONLY)
+    shutil.rmtree(nodes["root"])
+    problems = _store(nodes["pkg"]).tracker_problems()
+    assert "tcw-config.yaml: work.tracker.base-url: required" in problems
+    assert ("tcw-config.yaml: work.tracker: declared parent 'root' is not available in "
+            "this checkout, so any tracker settings it holds were not read (run tcw "
+            "provision)") in problems
+
+
+def test_a_missing_direct_parent_is_named_when_settings_are_incomplete(tmp_path):
+    """C14."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=QUERY_ONLY)
+    shutil.rmtree(nodes["repo"])
+    problems = _store(nodes["pkg"]).tracker_problems()
+    assert [p for p in problems if "declared parent 'repo' is not available" in p]
+    assert not [p for p in problems if "declared parent 'root'" in p]
+
+
+def test_a_missing_parent_adds_nothing_when_settings_are_complete(tmp_path):
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=COMPLETE)
+    shutil.rmtree(nodes["root"])
+    assert _store(nodes["pkg"]).tracker_problems() == []
+
+
+def test_changing_the_site_without_credentials_is_refused(tmp_path):
+    """C15."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT,
+                   pkg={**QUERY_ONLY, "base-url": "https://elsewhere.example.invalid"})
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert _store(nodes["pkg"]).tracker_problems() == [
+        "tcw-config.yaml: work.tracker.credentials: inherited from a parent node, but "
+        "base-url is set nearer, in tcw-config.yaml; set credentials in the same file "
+        "as base-url"]
+
+
+def test_repeating_the_parents_base_url_still_needs_credentials(tmp_path):
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT,
+                   pkg={**QUERY_ONLY, "base-url": COMPLETE["base-url"]})
+    assert _store(nodes["pkg"]).tracker_config() is None
+    problems = _store(nodes["pkg"]).tracker_problems()
+    assert [p for p in problems if p.startswith(f"tcw-config.yaml: {CREDENTIALS_MESSAGE_START}")]
+    assert not [p for p in problems if p.endswith(": required")]
+
+
+def test_no_tracker_anywhere_means_no_tracker_and_no_problems(tmp_path):
+    """C16."""
+    nodes = _chain(tmp_path, root_board=True, root=ABSENT, repo=ABSENT, pkg=ABSENT)
+    for node in nodes.values():
+        assert _store(node).tracker_config() is None
+        assert _store(node).tracker_problems() == []
+
+
+def test_a_nested_required_key_nobody_set_is_blamed_on_the_child(tmp_path):
+    """C22."""
+    nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "transitions": {}},
+                   repo=ABSENT, pkg=QUERY_ONLY)
+    problems = _store(nodes["pkg"]).tracker_problems()
+    assert "tcw-config.yaml: work.tracker.transitions.claim: required" in problems
+    assert not [p for p in problems if str(nodes["root"]) in p]
+    # Root's settings were inherited: only the key nobody set is missing.
+    assert "tcw-config.yaml: work.tracker.transitions: required" not in problems
+    assert not [p for p in problems if "base-url" in p or "provider" in p]
+
+
+def test_all_null_credentials_do_not_hide_a_site_change(tmp_path):
+    """C23."""
+    pkg = {**QUERY_ONLY, "base-url": "https://elsewhere.example.invalid",
+           "credentials": {"email-env": None, "token-env": None}}
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=pkg)
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert [p for p in _store(nodes["pkg"]).tracker_problems()
+            if p.startswith(f"tcw-config.yaml: {CREDENTIALS_MESSAGE_START}")]
+
+
+def test_a_dotted_key_in_a_parent_names_the_parents_file(tmp_path):
+    """C24."""
+    nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "a.b": 1},
+                   repo=ABSENT, pkg=QUERY_ONLY)
+    assert (f"{_label(nodes['root'], 'root')}: work.tracker.a.b: unknown key"
+            in _store(nodes["pkg"]).tracker_problems())
+
+
+def test_a_childs_own_bad_value_keeps_the_own_file_prefix_through_the_merge(tmp_path):
+    """C25."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT,
+                   pkg={**QUERY_ONLY, "base-url": 42})
+    problems = _store(nodes["pkg"]).tracker_problems()
+    assert "tcw-config.yaml: work.tracker.base-url: expected a non-empty string, got int" in problems
+    assert not [p for p in problems if p.endswith(": required")]
+
+
+def test_a_broken_graph_falls_back_to_the_nodes_own_block_without_raising(tmp_path):
+    aa = _node(tmp_path / "aa", "aa", board=True)
+    bb = _node(tmp_path / "bb", "bb", board=True)
+    _connect(aa, bb, "aa", "bb")
+    _connect(bb, aa, "bb", "aa")
+    _set_tracker(aa, QUERY_ONLY)
+    _set_tracker(bb, COMPLETE)
+    assert FsProjectRegistry.open(aa).check() != []
+    store = _store(aa)
+    assert store.tracker_config() is None
+    problems = store.tracker_problems()
+    assert problems and all(p.startswith("tcw-config.yaml: ") for p in problems)
+
+
+def _run(argv):
+    """Run the CLI in-process, as `tests/test_tracker_cli.py` does."""
+    import contextlib
+    import io
+
+    from tcw.cli import main
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = main(argv)
+        except SystemExit as exit_:
+            code = exit_.code or 0
+    return code, out.getvalue(), err.getvalue()

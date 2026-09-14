@@ -47,7 +47,8 @@ from tcw.store.base import (
     Binding, DocEntry, body_title, frontmatter_end,
     parse_documentation_entries, parse_lifecycle_policy,
     parse_connected_entry, parse_repository_declaration, parse_retention,
-    parse_tracker_config, TrackerConfig,
+    parse_tracker_config, TrackerConfig, attribute_tracker_problems,
+    merge_tracker_blocks, tracker_credentials_problem,
     ProvisionResult,
     RepositoryDeclaration,
     PublicationError, StoreDeclarationError, StoreLocationUnusable,
@@ -5358,15 +5359,64 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def tracker_config(self) -> "TrackerConfig | None":
         """Configured tracker settings, problems discarded — same contract as
         `documentation`: a malformed key must not break `tcw work list`."""
-        config, _problems = parse_tracker_config(self._work_config().get("tracker"))
-        return config
+        return self._resolved_tracker()[0]
 
     def tracker_problems(self) -> list[str]:
-        """Tracker-configuration problems, prefixed with the file they came from.
-        Shares the parser with `tracker_config`, so the two surfaces can never
-        disagree about what is legal."""
-        _config, problems = parse_tracker_config(self._work_config().get("tracker"))
-        return [f"{SENTINEL}: {p}" for p in problems]
+        """Tracker-configuration problems, each prefixed with the file it came from.
+        Shares `_resolved_tracker` with `tracker_config`, so the two surfaces can
+        never disagree about what is legal."""
+        return self._resolved_tracker()[1]
+
+    def _resolved_tracker(self) -> "tuple[TrackerConfig | None, list[str]]":
+        """This node's `work.tracker`, merged over its ancestors' when it opts in.
+
+        Opt-in: only a node whose own block is a non-empty mapping consults its
+        ancestors. A node that writes nothing has no tracker whatever they hold, so
+        a node that never asked for one neither gains one nor fails `tcw validate`
+        because a parent keeps shared settings.
+
+        Ancestors are read through the project registry, not by walking
+        directories, and a graph with problems falls back to the node's own block:
+        both commands that read this refuse on graph problems first, so only a
+        direct caller reaches the fallback, and it must still not raise.
+        """
+        own = self._work_config().get("tracker")
+        if own is None or own == {}:
+            return None, []
+        blocks: list[tuple[str, object]] = [(SENTINEL, own)]
+        unreachable: str | None = None
+        if isinstance(own, dict):
+            try:
+                registry = FsProjectRegistry.open(self.node_root).require_valid()
+            except ValueError:
+                registry = None
+            if registry is not None:
+                ancestors = registry.ancestors()
+                for ancestor in ancestors:
+                    work = registry.config(ancestor.id).get("work")
+                    if isinstance(work, dict):
+                        blocks.append((f"{Path(ancestor.locator) / SENTINEL} "
+                                       f"(project '{ancestor.id}')", work.get("tracker")))
+                # `ancestors()` stops at the first parent this checkout lacks, at
+                # any depth, so ask who the last one reached declares.
+                parent_id = registry.declared_parent_id(
+                    ancestors[-1].id if ancestors else None)
+                if parent_id is not None and registry.get(parent_id) is None:
+                    unreachable = parent_id
+
+        merged, record, whole_block_label = merge_tracker_blocks(blocks)
+        config, parsed = parse_tracker_config(merged)
+        problems = attribute_tracker_problems(parsed, record, SENTINEL, whole_block_label)
+        if config is not None:
+            credentials = tracker_credentials_problem(record, [label for label, _ in blocks])
+            if credentials is not None:
+                config, problems = None, [f"{SENTINEL}: {credentials}"]
+        if problems and unreachable is not None:
+            problems.append(
+                f"{SENTINEL}: work.tracker: declared parent '{unreachable}' is not "
+                f"available in this checkout, so any tracker settings it holds were "
+                f"not read (run tcw provision)")
+        return config, problems
 
     def documentation_problems(self) -> list[str]:
         """Documentation-entry problems, prefixed with the file they came from —
