@@ -665,8 +665,9 @@ summary: A ticket nobody has started
 assignee: Probe
 claimable: claimable
 workflow: not determined from this ticket
-note: 'Start Progress' leads to 'In Progress'. Exclusivity can only be read from a
-      ticket already in that status.
+note: 'Start Progress' leads to 'In Progress'. A ticket already in that status can
+      show a workflow that is not exclusive, but never one that is. That is
+      confirmed only when a claim is made, or from the workflow definition.
 ```
 
 Exclusivity is a property of the workflow, and it is only observable from the status
@@ -682,10 +683,14 @@ note: 'In Progress' is still offered from 'In Progress', the status it leads to,
 ```
 
 A ticket that has not been started reports `not determined`, because a ticket nobody
-has taken cannot show what happens to the second person who tries. Making a workflow
-exclusive is a Jira administration change.
+has taken cannot show what happens to the second person who tries. So does a started
+ticket on a workflow that *is* exclusive: the claim is no longer offered there, so the
+ticket cannot say where the claim led, and running `show` on it again will not settle
+the question. Only making a claim, or reading the workflow definition, does. Making a
+workflow exclusive is a Jira administration change.
 
 One thing these commands deliberately do **not** do: tell you that the name in
-`transitions.claim` is wrong. A ticket that does not offer it may simply have been
-claimed already, and a whole query of such tickets looks identical to a typo. It is
+`transitions.claim` is wrong. A ticket that does not offer it may not have reached
+the point where the claim applies yet, or may have been claimed already, and a whole
+query of such tickets looks identical to a typo. It is
 reported as information, never as a verdict.

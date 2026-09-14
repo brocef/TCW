@@ -113,11 +113,13 @@ offer the configured claim transition. **exclusive** is about the workflow: woul
 second claimant be refused. Exclusivity is only readable from the status the claim
 leads to, so a ticket nobody has started reports `not determined`. On a workflow
 offering every transition from every status — Jira's default — a started ticket
-reports `not exclusive`, and two people claiming it would both succeed.
+reports `not exclusive`, and two people claiming it would both succeed. On an
+exclusive workflow a started ticket still reports `not determined`, and a second
+`show` will not change that; only a claim, or the workflow definition, confirms it.
 
 Neither command detects a wrong `transitions.claim` value. A ticket not offering it
-may have been claimed already, and that is indistinguishable from a typo without
-reading the project's workflow definition.
+may not have reached the claim yet, or may have been claimed already, and both are
+indistinguishable from a typo without reading the project's workflow definition.
 
 ## Addressing
 

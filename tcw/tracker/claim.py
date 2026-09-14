@@ -127,8 +127,10 @@ def assess(claim_transition: str, *, current_status: str, offered,
             exclusivity=NOT_DETERMINED,
             verdict=OK,
             landing_status=landing,
-            detail=(f"{matches[0].name!r} leads to {landing!r}. Exclusivity can only "
-                    f"be read from a ticket already in that status."),
+            detail=(f"{matches[0].name!r} leads to {landing!r}. A ticket already in "
+                    f"that status can show a workflow that is not exclusive, but never "
+                    f"one that is. That is confirmed only when a claim is made, or "
+                    f"from the workflow definition."),
         )
 
     # The claim is not offered. Two very different situations.
@@ -164,8 +166,9 @@ def assess(claim_transition: str, *, current_status: str, offered,
             detail=(f"work.tracker.transitions.claim is {claim_transition!r}, which "
                     f"this ticket does not offer. It offers: "
                     f"{', '.join(repr(n) for n in offered_names)}. Either the name "
-                    f"is wrong, or this ticket is past the point where it applies — "
-                    f"one ticket cannot tell those apart."),
+                    f"is wrong, or this ticket is not at the point where it applies — "
+                    f"it has not reached it yet, or is already past it. One ticket "
+                    f"cannot tell those apart."),
         )
 
     # No transitions at all: a resolved ticket, or one this account cannot move.

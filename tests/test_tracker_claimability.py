@@ -40,6 +40,12 @@ DIRECTED_IN_TODO = [
     Transition(id="21", name="Start Progress", to_status="In Progress", to_status_id="3"),
 ]
 
+# A directed workflow before the claim applies, as reported in GitHub issue #36.
+DIRECTED_IN_TRIAGE = [
+    Transition(id="41", name="Accept", to_status="To Do", to_status_id="10012"),
+    Transition(id="51", name="Cancel", to_status="Cancelled", to_status_id="10013"),
+]
+
 # The conforming fixture, once claimed: the claim is gone.
 DIRECTED_IN_PROGRESS = [
     Transition(id="31", name="Finish", to_status="Done", to_status_id="10009"),
@@ -140,6 +146,28 @@ def test_an_already_claimed_ticket_is_not_reported_as_misconfigured():
     """The live case that forced this distinction."""
     result = assess(CLAIM, current_status="In Progress", offered=DIRECTED_IN_PROGRESS)
     assert result.verdict is not MISCONFIGURED
+
+
+def test_the_claim_not_offered_note_covers_a_ticket_that_has_not_reached_the_claim():
+    """GitHub issue #36. A ticket in Triage, before the claim applies, was told it
+    was either misnamed or past the point — neither was true. The note has to name
+    all three situations, not two."""
+    result = assess(CLAIM, current_status="Triage", offered=DIRECTED_IN_TRIAGE)
+    assert "past the point where it applies — one ticket" not in result.detail
+    assert "not reached it yet" in result.detail
+    assert "already past it" in result.detail
+
+
+def test_the_leads_to_note_does_not_send_the_reader_to_a_second_show():
+    """GitHub issue #36. The note said exclusivity "can only be read from a ticket
+    already in that status", but `show` on that ticket still says not determined
+    on an exclusive workflow, because it never has the landing status."""
+    result = assess(CLAIM, current_status="To Do", offered=DIRECTED_IN_TODO)
+    assert "Exclusivity can only be read from a ticket already" not in result.detail
+    assert "workflow definition" in result.detail
+    # The claim that a second `show` answers it would be false on this workflow:
+    later = assess(CLAIM, current_status="In Progress", offered=DIRECTED_IN_PROGRESS)
+    assert later.exclusivity is NOT_DETERMINED
 
 
 def test_a_ticket_that_does_not_offer_the_claim_lists_every_offered_name():

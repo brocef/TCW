@@ -138,33 +138,47 @@ suite cannot settle any of it.
    the project is at 2.0.3. That is the stale version-mismatched hook the guide warns
    shadows the right one. Untouched, and filed as an inbox note.
 
-## Open before verify: two notes that overstate what one ticket shows
+## Follow-up: two notes that overstated what one ticket shows
 
 Reported in the side notes of GitHub issue
 [#36](https://github.com/brocef/TCW/issues/36) (2026-09-14, @brocef), from a
 hand run on tcw 2.1.1 through Triage → To Do → In Progress → Done. The rest of
 that issue is tracked separately as
 `2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key`. Both notes are
-in `tcw/tracker/claim.py` and neither is yet reworded.
+`Assessment.detail` strings in `tcw/tracker/claim.py`, and both were reworded on
+2026-09-14 in a worktree merged to `main`.
 
-1. **The claim-not-offered note names two cases, and there are three**
-   (`claim.py:166-168`). For a ticket in Triage it said the name is wrong "or this
-   ticket is past the point where it applies". That ticket had not reached the
-   point yet. The reporter's suggested wording:
+1. **The claim-not-offered note named two cases, and there are three.** For a
+   ticket in Triage it said the name is wrong "or this ticket is past the point
+   where it applies". That ticket had not reached the point yet. The note now
+   says the ticket "has not reached it yet, or is already past it".
+2. **The leads-to note implied a second `show` would answer exclusivity.** `show`
+   never passes `landing_status` to `assess()`, so on an exclusive workflow the
+   landed ticket still reports "not determined"; the reporter's second `Start`
+   was refused by Jira with HTTP 400. The note now says a landed ticket can show a
+   workflow that is not exclusive but never one that is, and that exclusivity "is
+   confirmed only when a claim is made, or from the workflow definition". The
+   reporter suggested "at claim time"; the wording covers both a refused claim in
+   Jira today and the claim command C2 will add.
 
-   > "the name is wrong, or this ticket is not at the point where it applies
-   > (before it, or already past it)"
+| Commit | What |
+| ------ | ---- |
+| `cbbcd72d` | Both notes reworded; two tests in `tests/test_tracker_claimability.py`, each asserting the new wording and the absence of the old. Both were run red against the old wording first. |
+| `29394fd7` | `docs/guide/work.md` and `skills/tcw-work/references/commands.md`, which repeated both two-case explanations; changelog and release-note entries in `upcoming.md`. |
 
-2. **The leads-to note implies a second `show` would answer exclusivity**
-   (`claim.py:130-131`). `show` never passes `landing_status` to `assess()`, so
-   running it on the ticket once it is In Progress still prints "not determined".
-   A second `Start` was refused by Jira with HTTP 400, so that workflow was
-   exclusive. The reporter:
+Full suite: **2814 passed** (`python -m pytest`, from the worktree, with the
+worktree's own `tcw` confirmed as the one imported).
 
-   > "Rewording it to say exclusivity is confirmed at claim time, or from the
-   > workflow definition, would stop readers from trying."
+**What the spec and the first build got wrong here:** the build's live
+verification ran `show` on a ready ticket and a claimed ticket, but never on a
+ticket *before* the claim applies, so the third case was never seen. And the
+leads-to note was written from the exclusivity asymmetry the spec correction
+already recorded (correction 1 above) without applying that asymmetry to its own
+wording.
 
 ## Version
 
-Not cut. The epic batches the version cut across the run and cuts it when this child
-and C2 are both publishable.
+This section said "not cut" when it was written. The code has since been
+released: the tracker commits are in `v2.1.0`, which never reached PyPI, and
+`v2.1.1`, which did. The #36 follow-up is not yet in any release; it waits in
+`docs/{changelogs,release-notes}/upcoming.md` for the next version cut.
