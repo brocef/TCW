@@ -182,7 +182,10 @@ tcw capabilities set <path> --field "Subject=work-item,cli,reference"
 
 C5 changes two existing capabilities rather than adding one, so it records
 `work/read-a-work-item` and `work/open-a-work-item` under `changed:` in its own
-`capabilities.yaml`.
+`capabilities.yaml`. C6, added 2026-09-14, is the same shape: it seeds no
+capability and records `work/manage-external-tracker-intake` — C2's — under
+`changed:`, because it rewrites the part of that capability's body describing
+`tracker link` as claiming.
 
 Remember that seeding is one-way: `tcw capabilities` has no `rm` verb, so a
 capability for a child that is later dropped ends as `Status: Omitted`.
@@ -270,12 +273,14 @@ what happens next, which left the epic open indefinitely with three children
 blocking closeout and two capabilities nobody had committed to building. At
 checkpoint 2, pick one, explicitly:
 
-- **Keep the epic open** with a stated review date, C3 through C5 in backlog, and
+- **Keep the epic open** with a stated review date, C3 through C6 in backlog, and
   their capabilities left `Missing`. Honest only if someone actually intends to
   return; a `Missing` capability whose planning doc is a completed item is what
   `tcw capabilities drift` reports.
-- **Close the epic after C2**, discard C3 through C5 into a successor epic, and
-  mark their three capabilities `Omitted`. The epic's `capabilities.yaml` then
+- **Close the epic after C2**, discard C3 through C6 into a successor epic, and
+  mark their three capabilities `Omitted`. C6 adds no capability, so it changes
+  no count here — but it corrects behaviour C2 shipped, so discarding it means
+  closing the epic over a `tracker link` that still claims. The epic's `capabilities.yaml` then
   names two paths, not four, and it must be edited before completion or the gate
   refuses.
 
@@ -310,12 +315,12 @@ is none of those.
 Each child carries its own block. The table below is what this plan expects each
 to schedule, so a missing entry at a child's plan stage is visible as a gap.
 
-| Entry | Trigger | C1 | C2 | C3 | C4 | C5 |
-| ----- | ------- | -- | -- | -- | -- | -- |
-| `README.md` | Public-API | yes — configuration and two read commands | yes — import, link, unlink | yes — sync and the state indicator | yes — strict mode | yes — the new board fields |
-| `docs/release-notes/upcoming.md` | Public-API | yes | yes | yes | yes | yes |
-| `docs/changelogs/upcoming.md` | Any-Code-Change | yes | yes | yes | yes | yes |
-| `skills/tcw-work/SKILL.md` | Skill-Driven-Component | yes — a gated reference for the tracker commands | yes | yes | yes | yes |
+| Entry | Trigger | C1 | C2 | C3 | C4 | C5 | C6 |
+| ----- | ------- | -- | -- | -- | -- | -- | -- |
+| `README.md` | Public-API | yes — configuration and two read commands | yes — import, link, unlink | yes — sync and the state indicator | yes — strict mode | yes — the new board fields | yes — `link` no longer claims |
+| `docs/release-notes/upcoming.md` | Public-API | yes | yes | yes | yes | yes | yes |
+| `docs/changelogs/upcoming.md` | Any-Code-Change | yes | yes | yes | yes | yes | yes |
+| `skills/tcw-work/SKILL.md` | Skill-Driven-Component | yes — a gated reference for the tracker commands | yes | yes | yes | yes | yes — `references/commands.md` describes `link` as claiming |
 
 One judgment recorded here rather than five times: the skill entry says to update
 the driving skill whenever the component's CLI surface, model, lifecycle or
@@ -353,6 +358,13 @@ What the test suite cannot settle, and who settles it.
 not treat their boundaries in the epic spec as their specs; each still runs its own
 `spec` stage, and checkpoints 2 and 3 exist because those boundaries were derived
 from a request written before any of this was built.
+
+**C6 was added on 2026-09-14, after C1 and C2 shipped**, and is the one child
+whose boundary was written from the built thing rather than from the request —
+it corrects `tracker link`, which C2 delivered claiming its ticket. It is
+unblocked and blocks C3. Unlike C3 through C5 it has already run its own `spec`
+and `plan` stages, so its boundary in the epic spec is a summary of those, not a
+substitute for them.
 
 **Child slugs are written as `<C1-slug>` and so on** because `tcw work new` mints
 the date-prefixed slug and prints it. Substitute the printed slugs; do not guess

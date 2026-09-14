@@ -19,6 +19,7 @@ capability is removed.
 | `work/require-tracker-backed-work` | new, seeded `Missing` | C4 |
 | `work/read-a-work-item` | changed | C5 |
 | `work/open-a-work-item` | changed | C5 |
+| `work/manage-external-tracker-intake` | changed again | C6 |
 
 The request named two capabilities. This spec names four, because the request's
 `work/synchronize-external-tracker-work` bundled two things the decomposition
@@ -142,6 +143,13 @@ Five children, each an `--initiative` child of this epic, each with its own
 `initial-request.md`, `spec.md` and `plan.md`. Ordering is recorded as
 `--blocked-by`, because `--initiative` carries no dependency relation and
 children with a required order would otherwise all read as workable at once.
+
+**A sixth child, C6, was added on 2026-09-14** and is not part of the original
+decomposition: it corrects behaviour C2 already shipped. It is an
+`--initiative` child like the rest, so the epic does not complete while it is
+open and `tcw work reconcile` rolls it up — which is the right answer, because
+the bridge is not finished while one of its commands does the wrong thing. Its
+boundary is below, after C5.
 
 ### The identity decision belongs to the epic
 
@@ -273,8 +281,26 @@ Blocked by: C1.
 - **Surfaces its own state.** `tcw work show` and `tcw work list` gain the
   current / pending / conflicting indicator here, moved from C5, because this is
   the child that creates those states.
+- **Owns claiming a linked item's ticket**, added 2026-09-14 after
+  `tcw work tracker link` was made a pure cross-reference. `link` shipped in C2
+  claiming the ticket by `import`'s rules, which made recording a
+  cross-reference inseparable from announcing that work had started;
+  `2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket`
+  removes that, and the claim moves to `tcw work start` against the ticket the
+  item is bound to. Decided in preference to a separate
+  `tcw work tracker claim <slug>` verb. `import` keeps claiming at import time,
+  unchanged. Two questions go with it and are C3's to settle, not decided when
+  the hand-off was: what `start` does when the claim fails, which is the same
+  local-transition-survives-a-remote-failure problem as the rest of this
+  boundary; and whether `submit`, `complete` and `discard` claim as well as
+  transition. C3's own `initial-request.md` records both in full.
+  **Until C3 lands, `tracker import` is the only command that claims** — an item
+  linked and then started leaves its ticket where it was. That gap was accepted
+  knowingly.
 
-Blocked by: C2.
+Blocked by: C2 and C6. Order matters rather than merely being tidy: C3
+teaching `start` to claim while `link` still claims would claim the same ticket
+twice.
 
 ### C4 — Refuse work no ticket authorizes
 
@@ -333,12 +359,46 @@ Blocked by: C2. Genuinely independent of C3 and C4 now that the sync-state
 indicator has moved to C3, and it must not be chained to them — a false blocker
 is a lie the tool enforces.
 
+### C6 — Make `tracker link` a cross-reference, not a claim
+
+**Added 2026-09-14, outside the original decomposition.** C2 shipped
+`tcw work tracker link` claiming the ticket by `import`'s rules, so there was no
+way to record that an item is a ticket without Jira reporting the ticket as In
+Progress. A workspace that wanted tickets for ten queued backlog items could not
+have them; it got through only on an accident of the claim table.
+
+- `link` writes the binding and makes no other change: no tracker transition, no
+  assignee change, and nothing written to the item but the binding sidecar.
+- `link` and `unlink` both accept every non-inbox status, `completed` and
+  `discarded` included — observable only where `work.retain` keeps resolved
+  items.
+- `link` accepts a ticket assigned to somebody else; `import` keeps refusing one.
+- `claimed-by` leaves `tracker.yaml` entirely, `import`'s bindings too. This is
+  what makes the rest mechanically possible: `_binding_for` is typed against a
+  `ClaimOutcome`, which only `claim` produces, so `link` cannot write a binding
+  without claiming until that field is gone.
+- The `tracker` subcommands gain real `--help`, and every positional in the CLI
+  gains a `help=` string.
+- **Does not** add a claiming verb or change `tcw work start` — that is C3's, per
+  its boundary above.
+
+This changes `work/manage-external-tracker-intake`, which C2 seeded: two
+sentences of its body describe `link` as claiming.
+
+Blocked by: nothing. C2 is complete, so a blocker naming it would be satisfied
+the moment it was written.
+
 ### Ordering summary
 
 ```
 C1 ──> C2 ──> C3 ──> C4
-              └────> (C5 blocked by C2 only)
+        │     └────> (C5 blocked by C2 only)
+        └────> C6 ──> C3
 ```
+
+C6 joined on 2026-09-14. It is reachable from C2 in the sense that it corrects
+what C2 shipped, but it carries no `--blocked-by` on C2: C2 is complete, so a
+blocker naming it would be satisfied the moment it was written.
 
 ## Abstraction litmus test
 
@@ -419,29 +479,40 @@ own code; these are the ones that only make sense across children.
 
 ### Coverage
 
-The Design section numbers five children, so the axes are C1 to C5. A cell names
+The Design section numbers six children, so the axes are C1 to C6. A cell names
 the child that discharges the criterion, or `n/a` with what makes it so. An epic
 criterion is discharged by a child's tests, not by the epic's own — the epic
 writes no code.
 
-| # | C1 | C2 | C3 | C4 | C5 |
-| - | -- | -- | -- | -- | -- |
-| 1 | yes | yes | yes | yes | yes |
-| 2 | n/a — no claim exists until C2 | yes | n/a | n/a | n/a |
-| 3 | n/a — the idempotency key is C2's | yes | n/a | n/a | n/a |
-| 4 | n/a | yes | n/a | n/a | n/a |
-| 5 | n/a | n/a | yes | n/a | n/a |
-| 6 | n/a | n/a | yes | n/a | n/a |
-| 7 | n/a | n/a | n/a | yes | n/a |
-| 8 | yes — credentials are read here | yes | yes | yes | n/a — C5 adds no credential path |
-| 9 | yes | n/a | yes — adds the transition mappings | yes — adds the strict requirement | n/a |
-| 10 | n/a | n/a | n/a | n/a | yes |
-| 11 | n/a | yes | n/a | n/a | n/a |
-| 12 | yes | yes | yes | yes | yes |
+| # | C1 | C2 | C3 | C4 | C5 | C6 |
+| - | -- | -- | -- | -- | -- | -- |
+| 1 | yes | yes | yes | yes | yes | yes, with one exception — see below |
+| 2 | n/a — no claim exists until C2 | yes | n/a | n/a | n/a | n/a — `import`'s claim is untouched |
+| 3 | n/a — the idempotency key is C2's | yes | n/a | n/a | n/a | n/a — as 2 |
+| 4 | n/a | yes | n/a | n/a | n/a | n/a — as 2 |
+| 5 | n/a | n/a | yes | n/a | n/a | n/a |
+| 6 | n/a | n/a | yes | n/a | n/a | n/a |
+| 7 | n/a | n/a | n/a | yes | n/a | n/a |
+| 8 | yes — credentials are read here | yes | yes | yes | n/a — C5 adds no credential path | yes — keeps `test_no_link_or_unlink_path_prints_or_stores_the_token` green |
+| 9 | yes | n/a | yes — adds the transition mappings | yes — adds the strict requirement | n/a | n/a — adds no configuration key |
+| 10 | n/a | n/a | n/a | n/a | yes | n/a — writes no projection field |
+| 11 | n/a | yes | n/a | n/a | n/a | yes — makes it literally true of `link`, which now never claims; the strict-mode re-read is still C4's |
+| 12 | yes | yes | yes | yes | yes | yes — declares `changed: work/manage-external-tracker-intake` |
 
 Criterion 1 spans every child because every child can break it, and a single
 child's suite cannot prove it stayed true after the next one landed. It is
 therefore re-checked at each child's completion, not once.
+
+**C6's exception to criterion 1, stated rather than waived.** C6 adds a `help=`
+string to every positional argument in the CLI, including `tcw taxonomy` and
+`tcw capabilities`, so `--help` output is *not* byte-identical to the commit
+before C1 on commands that have nothing to do with the tracker. Nothing else
+moves: no command's behaviour, exit code, or non-help output changes, and the
+criterion's own demonstration — the existing suite passing with no test edited
+to accommodate the bridge — still holds, because no test asserts on `--help`
+text. The criterion was written to stop the bridge leaking into unrelated
+commands' behaviour; argument documentation is not that leak. Recorded here so
+the next reader does not have to re-derive whether it was noticed.
 
 ## Risks
 
