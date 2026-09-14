@@ -200,3 +200,174 @@ def unlink_document(content: str, *, reason: str, today: str) -> str:
     data.pop("unlinked", None)
     data["unlinked"] = [*history, entry]
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
+# ── the claim ────────────────────────────────────────────────────────────────
+#
+# Row ids ("1a" … "3f") are the spec's decision tables, carried on every outcome so
+# tests assert decisions rather than wording.
+
+
+@dataclass(frozen=True)
+class TicketRead:
+    """What step 1 read: the ticket, what it offers now, and who is asking."""
+    issue_id: str
+    key: str
+    url: str
+    summary: str
+    status: str
+    category: str
+    assignee_id: str
+    assignee_name: str
+    offered: tuple
+    me_id: str
+    me_name: str
+
+
+@dataclass(frozen=True)
+class ClaimOutcome:
+    row: str
+    claimed: bool
+    message: str
+    detail: str = ""
+    issue_id: str = ""
+    key: str = ""
+    url: str = ""
+    summary: str = ""
+    status: str = ""
+    account_id: str = ""
+    account_name: str = ""
+    transitioned: bool = False
+
+
+def _fields(issue: dict) -> tuple[str, str, str, str]:
+    """(status, status category, assignee id, assignee name) from an issue."""
+    fields = issue.get("fields") or {}
+    status = fields.get("status") or {}
+    assignee = fields.get("assignee") or {}
+    return (str(status.get("name", "")),
+            str((status.get("statusCategory") or {}).get("key", "")),
+            str(assignee.get("accountId", "")),
+            str(assignee.get("displayName", "")))
+
+
+def read_ticket(client, key: str) -> TicketRead:
+    """Step 1's reads. Separate from `claim` so a caller can check for an existing
+    binding between reading the ticket and changing it."""
+    issue = client.issue(key)
+    issue_id = str(issue.get("id", ""))
+    canonical = str(issue.get("key", key))
+    status, category, assignee_id, assignee_name = _fields(issue)
+    offered = tuple(client.transitions(issue_id or canonical))
+    me = client.myself()
+    return TicketRead(
+        issue_id=issue_id, key=canonical,
+        url=f"{client.config.base_url}/browse/{canonical}",
+        summary=str((issue.get("fields") or {}).get("summary", "")),
+        status=status, category=category,
+        assignee_id=assignee_id, assignee_name=assignee_name, offered=offered,
+        me_id=str(me.get("accountId", "")), me_name=str(me.get("displayName", "")))
+
+
+def claim(client, ticket: TicketRead) -> ClaimOutcome:
+    """Claim `ticket` for the signed-in account, deciding only from what the tracker
+    says afterwards.
+
+    **Transition first; assign only after an applied transition.** On a workflow
+    that refuses the claim from its own destination, a second claimant's transition
+    is refused, so it never reaches the assign and cannot overwrite the first
+    claimant's assignment. Assigning first would let two accounts overwrite each
+    other before either transition ran.
+
+    Authentication, permission, rate-limit and not-found errors on the transition
+    propagate: the transition did not apply and there is nothing to read back.
+    """
+    from tcw.tracker.claim import AMBIGUOUS, _normalize, assess
+    from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerNotFound,
+                                  TrackerPermissionError, TrackerRateLimited,
+                                  TrackerRequestInvalid)
+
+    key, status = ticket.key, ticket.status
+    name = client.config.claim_transition
+
+    def refused(row: str, message: str, detail: str = "") -> ClaimOutcome:
+        return ClaimOutcome(row=row, claimed=False, message=message, detail=detail,
+                            issue_id=ticket.issue_id, key=key, url=ticket.url,
+                            summary=ticket.summary, status=status)
+
+    def claimed(row: str, message: str, now_status: str, transitioned: bool):
+        return ClaimOutcome(row=row, claimed=True, message=message,
+                            issue_id=ticket.issue_id, key=key, url=ticket.url,
+                            summary=ticket.summary, status=now_status,
+                            account_id=ticket.me_id, account_name=ticket.me_name,
+                            transitioned=transitioned)
+
+    # ── step 1 ──
+    if ticket.category == "done":
+        return refused("1a", f"{key} is resolved ('{status}'), so it cannot be claimed.")
+    if ticket.assignee_id and ticket.assignee_id != ticket.me_id:
+        return refused("1b", f"{key} is assigned to {ticket.assignee_name} in "
+                             f"'{status}', so it cannot be claimed.")
+    assessment = assess(name, current_status=status, offered=ticket.offered)
+    if assessment.verdict == AMBIGUOUS:
+        return refused("1c", f"{key} cannot be claimed: the claim transition name "
+                             f"is ambiguous on this ticket.", assessment.detail)
+    matches = [t for t in ticket.offered if _normalize(t.name) == _normalize(name)]
+    if not matches:
+        if ticket.assignee_id == ticket.me_id:
+            return claimed("1e", f"not claimed by this run: {key} is already in "
+                                 f"'{status}' and assigned to you.", status, False)
+        offers = ", ".join(repr(t.name) for t in ticket.offered) or "nothing"
+        return refused("1f", f"{key} is in '{status}', unassigned, and does not "
+                             f"offer {name!r}. It offers: {offers}.")
+    transition = matches[0]
+    landing = transition.to_status
+
+    # ── step 2 ──
+    detail = ""
+    try:
+        client.apply_transition(ticket.issue_id, transition.id)
+        result = "applied"
+    except TrackerRequestInvalid as error:
+        result, detail = "refused", str(error)
+    except (TrackerAuthError, TrackerPermissionError, TrackerRateLimited,
+            TrackerNotFound):
+        raise
+    except TrackerError as error:
+        result, detail = "unknown", str(error)
+    if result == "applied" and not ticket.assignee_id:
+        try:
+            client.assign(ticket.issue_id, ticket.me_id)
+        except TrackerError as error:
+            detail = str(error)
+
+    # ── step 3 ──
+    try:
+        now_status, now_category, now_id, now_name = _fields(client.issue(ticket.issue_id))
+    except TrackerError as error:
+        return refused("3-read", f"could not read {key} back, so whether this run's "
+                                 f"claim applied is unknown. Running this command "
+                                 f"again will find out.", str(error))
+    status = now_status
+    landed = _normalize(now_status) == _normalize(landing) and now_category != "done"
+    if now_id == ticket.me_id and landed:
+        return claimed("3a", f"claimed {key}: now in '{now_status}' and assigned to "
+                             f"you.", now_status, result == "applied")
+    if now_id:
+        if now_id != ticket.me_id:
+            also = (" This run's transition applied; the assignment is theirs."
+                    if result == "applied" else "")
+            return refused("3b", f"not claimed: {key} is assigned to {now_name} in "
+                                 f"'{now_status}'.{also}", detail)
+        return refused("3c", f"the claim did not take effect: {key} is assigned to "
+                             f"you but is in '{now_status}', not '{landing}'.", detail)
+    if result == "refused":
+        return refused("3d", f"the claim did not apply: {key} is in '{now_status}', "
+                             f"unassigned.", detail)
+    if result == "applied":
+        return refused("3e", f"{key} moved to '{now_status}' but is not assigned to "
+                             f"you. Assign it to yourself in the tracker, then run "
+                             f"this command again.", detail)
+    return refused("3f", f"could not tell whether this run's claim applied: {key} is "
+                         f"in '{now_status}', unassigned. Check the ticket's history "
+                         f"in the tracker before assigning it.", detail)
