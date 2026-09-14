@@ -145,6 +145,9 @@
 2026-09-12-configure-an-external-tracker-and-read-its-tickets:
   resolution: done
   resolved: '2026-09-14'
+2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill:
+  resolution: done
+  resolved: '2026-09-14'
 2026-09-14-delete-a-capability-with-tcw-capabilities-rm:
   resolution: done
   resolved: '2026-09-14'
