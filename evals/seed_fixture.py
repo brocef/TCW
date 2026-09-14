@@ -4,13 +4,15 @@ The fixture is a small fake billing/reporting product with a taxonomy, a
 capability ledger, and a work store primed so that every eval case has something
 real to act on. It is disposable; the instrument that reads it is not.
 
-Two variants, one seeder, so they cannot drift apart:
+Three variants, one seeder, so they cannot drift apart:
 
 * **control** — the node as a project that has configured no lifecycle
   instructions at all. Every stage falls back to TCW's built-in floor. This is
   the complement of `tests/fixtures/prompt_fallback/unconfigured.json`.
 * **customized** (`--customized`, task 2) — the same node plus a
   `work.lifecycle.stages` block carrying nonce-bearing bindings.
+* **bare** (`--bare`) — the same code files committed to a repository that
+  does not use TCW yet: no `tcw init`, no items, no nonces.
 
 Determinism: fixed git identity, and no timestamps in any content this module
 writes. Two control runs are otherwise identical, but **not byte-identical**,
@@ -31,6 +33,7 @@ Usage:
 
     python evals/seed_fixture.py /tmp/probe
     python evals/seed_fixture.py --customized /tmp/probe
+    python evals/seed_fixture.py --bare /tmp/probe
 """
 
 from __future__ import annotations
@@ -48,6 +51,8 @@ import yaml
 from tcw.store.fs import init
 
 PROJECT_ID = "demo-app"
+
+VARIANTS = ("customized", "control", "bare")
 
 # Where the customized variant's nonce-bearing assets live inside the node. The
 # `file` binding resolves relative to the node root, and `generate` runs with the
@@ -345,12 +350,16 @@ def _assert_customized(dest: Path, stage_items: dict[str, str],
             f"{len(silent)} bytes")
 
 
-def seed(dest: Path, customized: bool = False) -> dict:
+def seed(dest: Path, variant: str = "control") -> dict:
     """Seed the fixture at `dest` and return its manifest.
 
-    The manifest records the slugs the CLI minted, because they carry today's
-    date and grading cannot guess them.
+    `variant` is one of `VARIANTS`. The manifest records the slugs the CLI
+    minted, because they carry today's date and grading cannot guess them.
     """
+    if variant not in VARIANTS:
+        raise ValueError(f"unknown fixture variant {variant!r}; "
+                         f"expected one of {VARIANTS}")
+    customized = variant == "customized"
     dest.mkdir(parents=True, exist_ok=True)
 
     # 1. A git repo with a fixed identity, then the product source.
@@ -361,6 +370,11 @@ def seed(dest: Path, customized: bool = False) -> dict:
         _write(dest, rel, text)
     _git(dest, "add", "-A")
     _git(dest, "commit", "-q", "-m", "demo-app: reporting and billing")
+
+    # The bare variant stops here: a repository that does not use TCW yet.
+    if variant == "bare":
+        return _record(dest, {"project_id": PROJECT_ID, "variant": variant,
+                              "items": {}, "stage_items": {}, "nonces": {}})
 
     # 2. Make it a TCW node.
     init(["taxonomy", "capabilities", "work"], dest, project_id=PROJECT_ID)
@@ -457,7 +471,7 @@ def render_invoice(account_id: str, line_items: list[dict]) -> str:
 
     manifest = {
         "project_id": PROJECT_ID,
-        "variant": "customized" if customized else "control",
+        "variant": variant,
         "items": {
             "backlog": backlog_slug,
             "active": active_slug,
@@ -504,10 +518,15 @@ def _record(dest: Path, manifest: dict) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dest", type=Path, help="where to build the node")
-    parser.add_argument("--customized", action="store_true",
-                        help="add the lifecycle bindings and their nonces")
+    kind = parser.add_mutually_exclusive_group()
+    kind.add_argument("--customized", action="store_true",
+                      help="add the lifecycle bindings and their nonces")
+    kind.add_argument("--bare", action="store_true",
+                      help="commit the code files only, with no TCW set up")
     args = parser.parse_args(argv)
-    manifest = seed(args.dest, customized=args.customized)
+    variant = ("customized" if args.customized
+               else "bare" if args.bare else "control")
+    manifest = seed(args.dest, variant)
     print(json.dumps(manifest, indent=1))
     return 0
 

@@ -36,7 +36,38 @@ def control(tmp_path_factory):
 @pytest.fixture(scope="module")
 def customized(tmp_path_factory):
     root = tmp_path_factory.mktemp("customized")
-    return root, seed(root, customized=True)
+    return root, seed(root, "customized")
+
+
+@pytest.fixture(scope="module")
+def bare(tmp_path_factory):
+    root = tmp_path_factory.mktemp("bare")
+    return root, seed(root, "bare")
+
+
+def test_the_bare_variant_is_a_repository_that_does_not_use_tcw(bare):
+    """For a case about setting TCW up in a fresh repository."""
+    root, manifest = bare
+    assert (root / ".git").is_dir()
+    assert (root / "src/reports.py").is_file(), "the code files are there"
+    assert not (root / "tcw-config.yaml").exists()
+    assert manifest["variant"] == "bare"
+    assert manifest["items"] == {}
+    assert manifest["nonces"] == {}
+    assert manifest["stage_items"] == {}
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    assert manifest["seeded_head"] == head
+    assert _tcw(root, "validate").returncode != 0
+    verdict = grade.p_files_changed_exactly(
+        {"fixture": root, "seeded_head": manifest["seeded_head"]}, paths=[])
+    assert verdict["passed"], verdict["evidence"]
+
+
+def test_an_unknown_variant_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="nonsense"):
+        seed(tmp_path / "x", "nonsense")
+    assert not (tmp_path / "x").exists(), "refused before building anything"
 
 
 # --- the node itself -------------------------------------------------------

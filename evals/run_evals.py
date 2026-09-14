@@ -109,14 +109,18 @@ def command(case: dict, arm: str, settings_path: Path,
     return argv
 
 
-def variant_for(case: dict, arm: str) -> bool:
-    """Whether this run's fixture is the customized one.
+def variant_for(case: dict, arm: str) -> str:
+    """The name of this run's fixture variant (see `seed_fixture.VARIANTS`).
 
-    Axis A's arms *are* the variants. Axis B toggles the plugin instead and runs
-    against the customized node in both arms, so its two arms differ only by the
-    thing axis B is measuring.
+    A case's own `fixture` key wins. Otherwise axis A's arms *are* the variants,
+    and axis B toggles the plugin instead and runs against the customized node
+    in both arms, so its two arms differ only by the thing axis B is measuring.
     """
-    return arm == "customized" if case["axis"] == "A" else True
+    if case.get("fixture"):
+        return case["fixture"]
+    if case["axis"] == "A":
+        return "customized" if arm == "customized" else "control"
+    return "customized"
 
 
 def read_init(transcript: Path) -> dict:
@@ -154,7 +158,7 @@ def run_one(case: dict, arm: str, out: Path) -> dict:
     """Seed, spawn, capture. Returns this run's entry for `benchmark.json`."""
     out.mkdir(parents=True, exist_ok=True)
     fixture = out / "fixture"
-    manifest = seed(fixture, customized=variant_for(case, arm))
+    manifest = seed(fixture, variant_for(case, arm))
 
     settings_path = out / "settings.json"
     settings_path.write_text(json.dumps({"enabledPlugins": isolation_map()}))
@@ -269,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
             for arm in case["arms"]:
                 out = out_root / case["id"] / arm
                 print(f"\n{case['id']} [{arm}]  axis {case['axis']}  "
-                      f"fixture: {'customized' if variant_for(case, arm) else 'control'}")
+                      f"fixture: {variant_for(case, arm)}")
                 print(f"  cwd:     {out / 'fixture'}")
                 print(f"  command: {' '.join(command(case, arm, settings))}")
         return 0

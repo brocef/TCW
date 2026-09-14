@@ -11,6 +11,7 @@
    "prompt": "what the agent is given. '{item}' is substituted with the minted slug of the item named in 'item', since the CLI mints date-prefixed slugs and they cannot be hardcoded.",
    "arms": "which arms the case runs. Axis A: 'customized' (the node carrying work.lifecycle.stages and the nonces) and 'control' (the same seeder with that block omitted). Axis B: 'with-skill' and 'no-skill'.",
    "runner": "present only where the case is runner-specific; absent means the default runner",
+   "fixture": "optional; a named fixture variant ('customized', 'control' or 'bare') used in every arm of the case, overriding the per-axis default. Only 'bare' is used today.",
    "assertions": "each entry either names a predicate from 'predicates' below, or carries an 'unmechanized' marker"
   },
   "assertion_fields": {
