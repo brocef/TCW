@@ -2,3 +2,40 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
+
+## Write your Jira settings once for a whole workspace
+
+If several connected projects read the same Jira site, each one used to need the
+whole `tracker` block: the site address, the credential variable names, the claim
+transition and the query. Now a project can leave out anything its parent projects
+already say. Put the shared settings in the top-level project, and each project
+beneath it writes only the query for its own tickets.
+
+- **Only projects that ask for it are affected.** A project with no `tracker` block
+  still has no tracker, even when a parent has one.
+- **Set `credentials` wherever you set the site address.** If a project names its
+  own Jira site but not its own credentials, it is refused, so your token is never
+  sent to a site that was chosen somewhere else.
+- **Mistakes are easier to trace.** When a setting inherited from a parent is wrong,
+  `tcw validate` names the parent's file.
+
+Things to check when you upgrade, if you use this:
+
+- A mistake in a parent project's tracker settings now shows up in every project
+  that inherits them. Before, a parent project without its own work items was never
+  checked.
+- A project that doesn't set a request timeout now uses its parent's instead of the
+  default of 15 seconds.
+- Versions up to 2.1.2 don't understand a partial `tracker` block. Upgrade every
+  machine that works in the workspace.
+
+## Fixes to taking Jira tickets
+
+- **Taking a ticket no longer crashes if your settings change partway through.** If
+  the tracker settings stopped working while `tcw work tracker import` or `link` was
+  running, for example because a parent project's settings file changed, the
+  command could crash after the ticket had already been taken, leaving an item with
+  no link to it. It now finishes using the settings it started with.
+- **"No duplicate" now says where it applies.** Running `import` again gives you the
+  item you already have *in the same project*. Importing one ticket in two different
+  projects of a workspace gives one item in each; the documentation now says so.
