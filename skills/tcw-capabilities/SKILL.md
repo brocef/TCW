@@ -115,10 +115,7 @@ A per-node agent does **not** read the orchestrator's `docs/capabilities/`. To g
 
 The protocol is **non-blocking** — never wait on a reply. If canonical wording isn't available when needed, fall back to in-repo evidence and mark the entry `TODO: confirm wording`.
 
-## Bootstrap (read on demand)
-
-To seed `docs/capabilities/` for a project newly adopting TCW (deep-dive the
-codebase → draft → refine with the user → write) → read [`references/init.md`](references/init.md).
+To seed a new capabilities ledger from an existing codebase, use the `tcw-setup` skill.
 
 ## Quick reference
 
