@@ -93,6 +93,34 @@ def test_a_run_without_seeded_head_fails_and_says_so(tmp_path):
     assert "seeded_head" in verdict["evidence"]
 
 
+def test_a_seeded_head_git_cannot_resolve_fails_with_git_s_error(tmp_path):
+    """A git failure must not read as an empty change list, which would look
+    like "the agent changed nothing" and pass a case expecting no changes."""
+    run = _seeded(tmp_path, "README.md")
+    run["seeded_head"] = "0" * 40
+    verdict = grade.p_files_changed_exactly(run, paths=[])
+    assert not verdict["passed"]
+    assert "git" in verdict["evidence"]
+    assert "changed []" not in verdict["evidence"]
+
+
+def test_a_missing_fixture_folder_fails(tmp_path):
+    run = {"fixture": tmp_path / "nowhere", "seeded_head": "0" * 40}
+    verdict = grade.p_files_changed_exactly(run, paths=[])
+    assert not verdict["passed"]
+    assert "changed []" not in verdict["evidence"]
+
+
+def test_a_rename_counts_the_same_however_the_agent_moved_the_file(tmp_path):
+    """git reports a staged or committed rename as the new path only, and a
+    plain `mv` as a deletion plus an untracked file. Both are the same edit."""
+    run = _seeded(tmp_path, "README.md")
+    _git(tmp_path, "mv", EXPECTED, "src/renamed.py")
+    verdict = grade.p_files_changed_exactly(
+        run, paths=[EXPECTED, "src/renamed.py"])
+    assert verdict["passed"], verdict["evidence"]
+
+
 def test_grading_a_run_directory_carries_seeded_head_to_the_check(tmp_path):
     """The runner writes `seeded_head` to timing.json, and `grade_run` must hand
     it to the predicate, or every graded run fails for want of it."""

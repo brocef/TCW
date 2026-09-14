@@ -119,7 +119,8 @@ def _tool_inputs(events: list[dict]):
             continue
         for block in content:
             if isinstance(block, dict) and block.get("type") == "tool_use":
-                yield json.dumps(block.get("input"))
+                # Non-ASCII left as is, so a search text containing it matches.
+                yield json.dumps(block.get("input"), ensure_ascii=False)
 
 
 def _first_index(texts: list[str], needle: str) -> int | None:
@@ -381,15 +382,24 @@ def p_files_changed_exactly(run, paths=(), **_):
     not ignore are added, because a new file is a change too. A run recorded
     without `seeded_head` fails rather than falling back to the last commit,
     which is the misleading answer this replaced.
+
+    A git failure fails the check with git's error, rather than reading as an
+    empty change list. Renames are reported as a deletion plus an addition,
+    which is what a plain `mv` looks like too.
     """
     seeded_head = run.get("seeded_head")
     if not seeded_head:
         return _verdict(False, "the run entry has no `seeded_head`, so there is "
                                "no seeded commit to compare against")
-    changed = set(git(run["fixture"], "diff", "--name-only",
-                      seeded_head).splitlines())
-    changed |= set(git(run["fixture"], "ls-files", "--others",
-                       "--exclude-standard").splitlines())
+    changed = set()
+    for args in (["diff", "--name-only", "--no-renames", "-z", seeded_head, "--"],
+                 ["ls-files", "-z", "--others", "--exclude-standard"]):
+        proc = subprocess.run(["git", "-C", str(run["fixture"]), *args],
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            return _verdict(False, f"`git {args[0]}` failed in the fixture: "
+                                   f"{proc.stderr.strip()[:200]}")
+        changed |= {p for p in proc.stdout.split("\0") if p}
     wanted = set(paths)
     return _verdict(changed == wanted,
                     f"changed {sorted(changed)}, expected {sorted(wanted)}")

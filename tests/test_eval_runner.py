@@ -59,6 +59,15 @@ def test_axis_b_holds_the_fixture_constant_across_its_arms():
     assert run_evals.variant_for(case, "no-skill") == "customized"
 
 
+def test_every_named_fixture_is_a_variant_the_seeder_builds(cases):
+    """A misspelt `fixture` would otherwise surface as a `ValueError` partway
+    through a paid run, after earlier cases had already spent money."""
+    from evals.seed_fixture import VARIANTS
+    for case in cases:
+        if "fixture" in case:
+            assert case["fixture"] in VARIANTS, case["id"]
+
+
 def test_a_case_can_name_its_fixture():
     """A case about setting TCW up needs a repository that does not use it yet,
     in both arms."""

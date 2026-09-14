@@ -48,7 +48,7 @@ from pathlib import Path
 
 import yaml
 
-from tcw.store.fs import init
+from tcw.store.fs import find_node_root, init
 
 PROJECT_ID = "demo-app"
 
@@ -359,6 +359,13 @@ def seed(dest: Path, variant: str = "control") -> dict:
     if variant not in VARIANTS:
         raise ValueError(f"unknown fixture variant {variant!r}; "
                          f"expected one of {VARIANTS}")
+    # `tcw` looks for `tcw-config.yaml` in every parent folder, so a bare
+    # fixture under a TCW project would quietly become part of that project.
+    outer = find_node_root(dest.parent)
+    if variant == "bare" and outer is not None:
+        raise ValueError(f"a bare fixture at {dest} would sit inside the TCW "
+                         f"project at {outer} (its tcw-config.yaml); seed it "
+                         f"outside any TCW project, e.g. `--out /tmp/...`")
     customized = variant == "customized"
     dest.mkdir(parents=True, exist_ok=True)
 
