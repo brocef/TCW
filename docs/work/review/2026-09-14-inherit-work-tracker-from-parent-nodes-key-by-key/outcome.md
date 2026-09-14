@@ -11,7 +11,7 @@ in `.worktrees/2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key/`.
 | 2 | `c81b6a18` | `tcw/store/base.py`: `merge_tracker_blocks`, `tracker_credentials_problem`, `attribute_tracker_problems`; `parse_tracker_config` sorts unknown keys with `key=str` (Goal 8). Tests first. |
 | 3 | `54be3ffc` | `tcw/store/fs.py`: `tracker_config` / `tracker_problems` share `_resolved_tracker`, which reads ancestors through `FsProjectRegistry` when the node opts in. |
 | 4 | `30c7db37` | End-to-end tests: `tcw work tracker list` sends the child's query to the inherited site; `tcw validate` reports a parent's bad value under the child. |
-| — | `9fb77253` | Inbox entry for the same non-string-key crash in seven other config parsers (found in review; separate change). |
+| — | `9fb77253` | Inbox entry for the same non-string-key crash in other config parsers (found in review; separate change). |
 | — | `2b33ea2e` | Review fixes (see below). |
 | 6 | `8c2e608c` | Documentation: `README.md`, `docs/guide/work.md`, `skills/tcw-work/references/commands.md`, both `upcoming.md` files, both capability descriptions. |
 
@@ -119,15 +119,81 @@ usable output.
   `merge_tracker_blocks`** rather than straight to the parser. The merge returns
   that block unchanged, so the output is identical.
 
+## Second round, after the first verification
+
+The verifier recommended acceptance with five open points. The user did not accept
+it as is and asked for all five to be dealt with before coming back. Two were real
+problems in this item, and three were closeout or release matters.
+
+| Point | What was done | Commit |
+| --- | --- | --- |
+| Docs narrower than the code | The guide said a child can set `credentials.token-env` alone, without saying that is refused beside its own `base-url`. Three docs said the missing-parent notice appears only for incomplete settings; it appears with any tracker problem. Both corrected. | `35129ac0` |
+| The spec's "never raises" was false | `FsProjectRegistry` raised `TypeError` sorting `connected-projects` keys of mixed types, and this item made `tracker_config()` open the registry. Fixed where the registry builds the message (`tcw/store/project.py`), with a test that failed first. The C18 test now compares the whole merged mapping. | `2e236767` |
+| Capability status | `work/inherit-tracker-settings-from-parent-nodes` is Supported. | `bc16c1d0` |
+| Combined review with the claim item | See below. | — |
+| Issue #36 | Stays open until release. A reply is drafted for approval and not posted. | — |
+
+`v2.1.x` in the changelog was also made exact (`v2.1.1 and earlier`), because a patch
+release of this work would have been a `v2.1.x` that does inherit (`fc4b5ec0`).
+
+### The combined review with the claim item
+
+The claim item was completed on `main` (`32edbd8f`) while this round ran. Before
+that, both branches were merged into a throwaway copy of `main` and:
+
+- the full suite passed there: 3009 under `python -m pytest`, and 3009 under bare
+  `pytest`;
+- the reviewer agent and Codex reviewed how the two interact (the local model was
+  switched off for maintenance, so this round had two reviewers, not three).
+
+Both found the same two problems, neither in this item's code:
+
+1. **A crash in the claim code that only inheritance makes likely.** `_binding_for`
+   re-read `tracker_config()` after the ticket was already claimed. If a parent
+   node's file changed mid-run, that returned `None`, and `None.provider` escaped as
+   a traceback (in `link`, outside any handler). That left an unbound item, and a
+   re-run created a second one. The reviewer reproduced it.
+2. **Docs promised one item per ticket without saying "per node"**, in the same
+   release that encourages sibling nodes to share inherited settings.
+
+Because the claim item had already completed, `main` was merged into this branch
+(`f5fc042a`), which also settled the changelog conflict `complete` would otherwise
+have stopped on. Then:
+
+- `_binding_for` takes the provider and project id the claim was made with. There
+  are three new tests in `tests/test_tracker_import.py`: two failed first with the
+  `AttributeError`, and one shows import from an inheriting child binds with the
+  child's project id (`102d67ce`, with a changelog note in `8df69b1f`).
+- README, guide, skill reference, release notes and the claim capability's
+  description scope the promise to one node, and name importing in two nodes as a
+  third accepted limit (`10882d7f`).
+
+A third finding was filed rather than fixed:
+`docs/work/inbox/2026-09-14-a-tracker-binding-does-not-record-its-site.md`. A binding
+does not record which Jira site its ticket is from, so after a `base-url` change an
+unrelated ticket with the same numeric id reads as already bound. Editing a node's
+own `base-url` already did this; inheritance lets one parent edit do it for many
+nodes. The suggested fix needs no format change.
+
+### Results after this round, at `8df69b1f`
+
+- Full suite: **3012 passed** under `python -m pytest`, and **3012 passed** under
+  bare `pytest`. That is the 3009 of the combined tree plus the three new import
+  tests.
+- Codex reviewed `102d67ce` and `10882d7f` read-only (`sandbox: read-only`, tree
+  unchanged). It answered "no defect" to all five questions: `project` is bound
+  on every path, no other post-claim re-read remains, an early `_project_id`
+  failure claims nothing, the new tests fail without the fix, and the scoped
+  sentences match the code. VERDICT: CLEAN.
+- `tcw capabilities check` prints `capabilities OK` and `tcw validate` prints `validate OK`.
+
 ## Left for later, deliberately
 
-- The seven other config parsers with the non-string-key crash (inbox entry above).
+- The six other config parsers with the non-string-key crash
+  (`docs/work/inbox/2026-09-14-config-parsers-crash-on-a-non-string-key.md`).
+- A binding not recording its site (inbox entry above).
 - Unsetting an inherited optional key, and whether `strict` inherits: the sync and
   strict-mode items (spec Non-goals, Risks 2 and 4).
-- The claim item is being built in parallel. If both ship in one release, review
-  their combined change. Both edit `README.md`, `docs/guide/work.md`,
-  `skills/tcw-work/references/commands.md` and both `upcoming.md` files, so the
-  second to merge resolves text conflicts there.
 
 ## GitHub issue #36
 
