@@ -1,0 +1,10 @@
+slug: 2026-09-14-make-eval-checks-measure-what-the-agent-did-working-tree-file-changes-tool-call-routing-and-named-fixture-variants
+title: 'Make eval checks measure what the agent did: working-tree file changes, tool-call
+  routing, and named fixture variants'
+created: '2026-09-14'
+resolution: null
+effort: medium
+complexity: medium
+tags:
+- skills
+- tech-debt
