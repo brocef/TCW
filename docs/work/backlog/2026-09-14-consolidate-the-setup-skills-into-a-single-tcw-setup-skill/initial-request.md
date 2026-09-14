@@ -36,6 +36,19 @@
 >    to test routing across the axis skills rather than deleted.
 > 8. **A large change is acceptable.** The goal is to clean up and simplify, so a
 >    wide footprint is not a reason to hold back.
+>
+> **Revised after the second spec review (2026-09-14):**
+>
+> 9. **Replaced capabilities are deleted, not marked `Omitted`.** A separate item,
+>    `2026-09-14-delete-a-capability-with-tcw-capabilities-rm`, adds the delete
+>    command and lands first; this item is blocked by it.
+> 10. **Declaring inheritance (`extends`) moves to `tcw-configure`** alongside
+>     connected projects, even though it is stored in each component's own config
+>     file rather than `tcw-config.yaml`.
+> 11. **The broken `files_changed_exactly` eval check is fixed in this item.**
+> 12. **Only capabilities whose main subject is a skill are folded in.**
+>     Capabilities mainly about CLI behavior or the install hook stay, and just
+>     mention the skill.
 
 ## What is being asked for
 
