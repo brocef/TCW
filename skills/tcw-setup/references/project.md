@@ -19,9 +19,10 @@ Look for `tcw-config.yaml` in the current folder or any folder above it, and run
 
 ## A new project
 
-1. **Choose a project ID with the user.** It is the project's permanent name
-   across every connected repository: lowercase letters and digits, words joined
-   by single hyphens (`billing-service`). It cannot be changed afterwards.
+1. **Choose a project ID.** It is the project's permanent name across every
+   connected repository: lowercase letters and digits, words joined by single
+   hyphens (`billing-service`). It cannot be changed afterwards. When the user
+   has named the project, use that name in this form and say so; otherwise ask.
 2. **Run `tcw init` from the folder the project lives in**, inside a Git
    repository:
 

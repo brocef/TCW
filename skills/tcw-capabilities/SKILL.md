@@ -115,6 +115,8 @@ A per-node agent does **not** read the orchestrator's `docs/capabilities/`. To g
 
 The protocol is **non-blocking** — never wait on a reply. If canonical wording isn't available when needed, fall back to in-repo evidence and mark the entry `TODO: confirm wording`.
 
+## Starting a capabilities ledger
+
 To seed a new capabilities ledger from an existing codebase, use the `tcw-setup` skill.
 
 ## Quick reference

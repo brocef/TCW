@@ -31,9 +31,29 @@ and cannot be renamed.
 `tcw-config.yaml` is a file in the user's own repository and is trusted exactly
 as much as any other file there. This is not a sandbox.
 
+## Document templates: `artifacts`
+
+`work.lifecycle.artifacts` sets the template `tcw work scaffold <artifact> <slug>`
+writes for one lifecycle document, keyed by the artifact's name:
+
+```yaml
+work:
+    lifecycle:
+        artifacts:
+            spec:
+                - file: docs/lifecycle/templates/spec-bug.md
+                  when: { tags: [bug] }
+                - builtin: true
+```
+
+The first matching entry wins, so `builtin: true`, TCW's own template, goes
+last as the fallback. Which kinds an `artifacts` entry may use is in the same
+table in the `tcw-work` skill's `hooks.md`.
+
 ## Hook limits: `timeout` and `output-cap`
 
-Two more keys sit beside `stages` and `transitions` under `work.lifecycle`:
+Two more keys sit beside `stages`, `transitions` and `artifacts` under
+`work.lifecycle`:
 
 ```yaml
 work:
@@ -52,8 +72,9 @@ work:
   input.
 
 `tcw validate` reports either key when its value is not a positive whole number
-(`true` and `false` do not count), and the default is used in the meantime. Any
-other key under `work.lifecycle` is reported as unknown.
+(`true` and `false` do not count), and the default is used in the meantime. A
+key under `work.lifecycle` other than `stages`, `transitions`, `artifacts`,
+`timeout` and `output-cap` is reported as unknown.
 
 ## The Definition of Done: `dod.yaml`
 

@@ -218,7 +218,8 @@ repository is the `tcw-configure` skill's `stores.md`.
 resolution asks the project registry whether some project it has located is a
 checkout of the declared repository, and if so reads the store inside that copy.
 So a workspace cloned flat where the config describes it nested needs no symlink
-and no machine-specific path — `TCW_PROJECT_<ID>`, described below, is enough. A store
+and no machine-specific path — `TCW_PROJECT_<ID>`, a per-machine environment
+variable, is enough. A store
 reached that way does **not** publish: it is the user's own checkout, on
 whatever branch they have it on, and they push it themselves. Only a copy TCW
 fetched publishes.

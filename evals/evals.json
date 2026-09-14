@@ -849,7 +849,7 @@
      "text": "`tcw validate` is clean, so the new entry parses"
     }
    ],
-   "note": "The fixture declares README.md only under Public-API (evals/seed_fixture.py, _declare_documentation). The request adds a second (path, trigger) pair for the same file, under Any-Code-Change or a project-defined trigger, so the agent has no reason to create a file. In the no-skill arm no plugin is loaded, so no skill document can be opened: the contains check is expected to fail there and the absent check passes trivially. That difference is what the case measures."
+   "note": "The fixture declares README.md only under Public-API (evals/seed_fixture.py, _declare_documentation). The request adds a second (path, trigger) pair for the same file, under Any-Code-Change or a project-defined trigger, so the agent has no reason to create a file. In the no-skill arm no plugin is loaded, so no skill document can be opened: the contains check is expected to fail there and the absent check passes trivially. That difference is what the case measures. docs-sync.md tells the agent to ask which form, files, trigger and description to use; the prompt already names the file and when it must change, so an agent that still stops to ask has routed correctly but fails files_changed_exactly. Read those two checks separately when grading."
   },
   {
    "id": "B12",
@@ -883,7 +883,7 @@
      "text": "`tcw validate` is clean, so the repository is now a TCW project"
     }
    ],
-   "note": "Runs on the bare fixture: a git repository with demo-app's code and no tcw-config.yaml. The seeder refuses a bare fixture inside any TCW project (any parent folder holding tcw-config.yaml), and run_evals refuses such a case before running anything, so this case can only run with --out pointing outside this checkout. In the no-skill arm no plugin is loaded, so the contains check is expected to fail there and the absent check passes trivially."
+   "note": "Runs on the bare fixture: a git repository with demo-app's code and no tcw-config.yaml. The seeder refuses a bare fixture inside any TCW project (any parent folder holding tcw-config.yaml), and run_evals refuses such a case before running anything, so this case can only run with --out pointing outside this checkout. In the no-skill arm no plugin is loaded, so the contains check is expected to fail there and the absent check passes trivially. project.md says to use the project name the user gave as the ID (the prompt names demo-app) and to ask otherwise; an agent that stops to ask has routed correctly but fails validate_exit_zero, so read the routing checks and the validate check separately when grading."
   }
  ]
 }

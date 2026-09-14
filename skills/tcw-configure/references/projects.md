@@ -35,14 +35,15 @@ connected-projects:
   project) or a `{path, repository}` block, where `repository` takes the same
   keys as a store's repository block in `stores.md`.
 - Connections are declared from both sides: the parent lists the child, and the
-  child names the parent. Cross-project operations use only connections both
-  sides declare.
+  child names the parent. `tcw validate` reports a connection declared on only
+  one side, and commands that need a valid project graph, such as
+  `tcw taxonomy extends add`, refuse until both sides agree.
 
 A `repository` block answers only when the project is not found at its `path`.
 
-**A connected project declares the same way.** An entry under
+**A connected project declares a repository the way a store does.** An entry under
 `connected-projects` may be `{path, repository}` instead of a bare locator, with
-the same ladder — the project at `path` wins when it is here — so a checkout that
+the ladder a store uses — the project at `path` wins when it is here — so a checkout that
 cloned one repository can still resolve `extends`, cross-node refs and the
 topology. Declarations follow the graph: each config names only its own edges.
 

@@ -97,6 +97,8 @@ namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
 B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning
 project IDs. A source reached through multiple paths appears once.
 
+## Starting a taxonomy
+
 To seed a new taxonomy from an existing codebase, use the `tcw-setup` skill.
 
 ## Quick reference

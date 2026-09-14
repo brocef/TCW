@@ -22,6 +22,7 @@ the setting does, shows its shape, and names the check to run.
 | The user wants to… | Open |
 | --- | --- |
 | run a skill or command at a stage or transition, or change the prompt a stage prints | [`work.md`](references/work.md) |
+| change the template `tcw work scaffold` writes for a lifecycle document | [`work.md`](references/work.md) |
 | change how long a hook may run or how much a `generate:` script may print | [`work.md`](references/work.md) |
 | set the Definition of Done, the checklist `tcw work complete` prints | [`work.md`](references/work.md) |
 | stop transitions committing themselves, set a trunk branch, keep transitions local, or delete resolved items | [`work.md`](references/work.md) |
