@@ -93,15 +93,7 @@ dependency because of any of them.
 | claim a ticket for an existing unresolved item | `tcw work tracker link <slug> <ticket> [--part <id>]` |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 
-Configured under `work.tracker` in the node sentinel: `provider` (only
-`jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.claim`, and optional `timeout-seconds`
-(default 15). All but the last are required. Unknown keys are reported rather than
-ignored, so a config written for a later release complains instead of silently doing
-less.
-
-**Credentials are named, never stored** — the config holds two environment variable
-names, read at request time.
+Configured with the `tcw-configure` skill's `tracker.md`.
 
 **Settings inherit from parent nodes, opt-in.** A node whose own `work.tracker` is a
 non-empty mapping takes every key it leaves out from its ancestors (direct parent
