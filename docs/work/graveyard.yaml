@@ -148,6 +148,9 @@
 2026-09-14-delete-a-capability-with-tcw-capabilities-rm:
   resolution: done
   resolved: '2026-09-14'
+2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key:
+  resolution: done
+  resolved: '2026-09-14'
 ? 2026-09-14-make-eval-checks-measure-what-the-agent-did-working-tree-file-changes-tool-call-routing-and-named-fixture-variants
 : resolution: done
   resolved: '2026-09-14'
