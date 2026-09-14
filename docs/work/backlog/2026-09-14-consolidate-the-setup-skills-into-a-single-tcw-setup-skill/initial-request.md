@@ -56,6 +56,12 @@
 >     `tcw-work-stage-spec`, `tcw-work-stage-plan`, `tcw-work-stage-implement`,
 >     `tcw-work-stage-verify`) in this item as well. `tcw-work-stage` is sufficient
 >     for every stage.
+> 14. **Personal extras get a `tcw-extras-` prefix.** `autonomous-work` is not a
+>     core skill but one the requester made for themself, so it becomes
+>     `tcw-extras-autonomous-work`. `tcw-triage-issues` moves to extras too, as
+>     `tcw-extras-triage-issues`, and its slash command is renamed to match
+>     (`/tcw-extras-triage-issues`). Future skills of that kind use the same
+>     prefix.
 
 ## What is being asked for
 
