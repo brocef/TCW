@@ -1820,6 +1820,123 @@ def _tracker_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _unresolved_item(st, slug: str, label: str):
+    """The item `slug` names in this node, or None after saying why it cannot be
+    bound or unbound. A bare slug only: a tracker configuration and a project id
+    belong to one node."""
+    item = st.get(slug)
+    if item is None:
+        print(f"tcw work tracker {label}: no such work item in this node: {slug}",
+              file=sys.stderr)
+        return None
+    if item.status in RESOLVED_STATUSES:
+        print(f"tcw work tracker {label}: {slug} is {item.status}; a resolved item's "
+              f"binding is not changed.", file=sys.stderr)
+        return None
+    return item
+
+
+def _tracker_link(args: argparse.Namespace) -> int:
+    """Bind an existing unresolved item to a ticket, claiming it by the same rules
+    as `import`. The item's intake and request are not touched."""
+    from datetime import date
+
+    from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, Bound, Malformed,
+                                    binding_of, claim, find_binding, read_ticket,
+                                    unlinked_history, validate_part)
+    from tcw.tracker.jira import TrackerError
+
+    client = _tracker_client("link")
+    if client is None:
+        return 1
+    try:
+        part = validate_part(args.part)
+    except ValueError as e:
+        print(f"tcw work tracker link: {e}", file=sys.stderr)
+        return 1
+    st = _store()
+    if _unresolved_item(st, args.slug, "link") is None:
+        return 1
+    current, revision = binding_of(st, args.slug)
+    if isinstance(current, Malformed):
+        print(f"tcw work tracker link: {args.slug} has a {BINDING_SIDECAR} that cannot "
+              f"be read ({current.reason}).", file=sys.stderr)
+        return 1
+    if isinstance(current, Bound):
+        print(f"tcw work tracker link: {args.slug} is already bound to "
+              f"{current.ticket_key} (part {current.part}). Run `tcw work tracker "
+              f"unlink {args.slug} --reason <text>` first.", file=sys.stderr)
+        return 1
+    try:
+        ticket = read_ticket(client, args.ticket)
+        holder = find_binding(st, project=_project_id(st),
+                              provider=client.config.provider,
+                              ticket_id=ticket.issue_id, part=part)
+        if holder is not None:
+            print(f"tcw work tracker link: {ticket.key} (part {part}) is already bound "
+                  f"to {holder}.", file=sys.stderr)
+            return 1
+        outcome = claim(client, ticket)
+    except (TrackerError, BindingProblem, ValueError) as e:
+        print(f"tcw work tracker link: {e}", file=sys.stderr)
+        return 1
+    if not outcome.claimed:
+        _print_refusal("link", outcome)
+        return 1
+    existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
+    today = date.today().isoformat()
+    document = _binding_for(st, outcome, part, today,
+                            unlinked_history(existing.content if existing else None))
+    try:
+        st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
+    except _LOCAL_WRITE_ERRORS as e:
+        print(f"tcw work tracker link: claimed {outcome.key}, but the binding could not "
+              f"be written: {e}. Run this command again.", file=sys.stderr)
+        return 1
+    print(f"→ {_claim_summary(outcome)}; bound to {args.slug}", file=sys.stderr)
+    return 0
+
+
+def _tracker_unlink(args: argparse.Namespace) -> int:
+    """Remove an item's binding, keeping the record of it and the reason.
+
+    A local repair: no tracker call and no tracker configuration needed, so a
+    binding can be removed after `work.tracker` itself is gone.
+    """
+    from datetime import date
+
+    from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, binding_of,
+                                    unlink_document)
+
+    if not args.reason.strip():
+        print("tcw work tracker unlink: --reason is empty; say why the binding is "
+              "being removed.", file=sys.stderr)
+        return 1
+    st = _store()
+    if st is None or _unresolved_item(st, args.slug, "unlink") is None:
+        return 1
+    current, revision = binding_of(st, args.slug)
+    if isinstance(current, Malformed):
+        print(f"tcw work tracker unlink: {args.slug} has a {BINDING_SIDECAR} that "
+              f"cannot be read ({current.reason}).", file=sys.stderr)
+        return 1
+    if not isinstance(current, Bound):
+        print(f"tcw work tracker unlink: {args.slug} is not bound to a ticket.",
+              file=sys.stderr)
+        return 1
+    content = st.read_sidecar(args.slug, BINDING_SIDECAR).content
+    document = unlink_document(content, reason=args.reason.strip(),
+                               today=date.today().isoformat())
+    try:
+        st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision)
+    except _LOCAL_WRITE_ERRORS as e:
+        print(f"tcw work tracker unlink: {e}", file=sys.stderr)
+        return 1
+    print(f"→ unlinked {args.slug} from {current.ticket_key}. The ticket is unchanged "
+          f"in the tracker.", file=sys.stderr)
+    return 0
+
+
 def _tags_list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -2120,6 +2237,17 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                                      "(default: default)")
     ptri.add_argument("--title", help="the item's title (default: '<KEY> — <summary>')")
     ptri.set_defaults(func=_tracker_import)
+    ptrl = ptrs.add_parser("link", help="claim a ticket and bind an existing item to it")
+    ptrl.add_argument("slug")
+    ptrl.add_argument("ticket")
+    ptrl.add_argument("--part", help="which of several items for this ticket "
+                                     "(default: default)")
+    ptrl.set_defaults(func=_tracker_link)
+    ptru = ptrs.add_parser("unlink", help="remove an item's binding, keeping a record "
+                                          "of it; the ticket is not changed")
+    ptru.add_argument("slug")
+    ptru.add_argument("--reason", required=True, help="why the binding is removed")
+    ptru.set_defaults(func=_tracker_unlink)
 
     pts = g.add_parser(
         "tombstone",
