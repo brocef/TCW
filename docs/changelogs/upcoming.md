@@ -37,6 +37,11 @@ category.
 
 ## Fixed
 
+- **A connection dropped after a tracker request was sent crashed the command.**
+  `http.client.RemoteDisconnected` (and any `ConnectionError` or
+  `http.client.HTTPException`) escaped `JiraClient._request` as a traceback; it now
+  raises `TrackerUnavailable`, so a claim whose write may have landed reads the
+  ticket back and reports the result as unknown.
 - **Two `tcw work tracker show` notes overstated what one ticket can show**
   (GitHub issue #36). Both are `Assessment.detail` strings in
   `tcw/tracker/claim.py`.

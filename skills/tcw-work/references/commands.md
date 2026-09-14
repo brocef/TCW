@@ -146,7 +146,8 @@ leads to and assigned to this account. A transition's error text is shown on a
   can both create an item. Both are accepted limits, not bugs to work around.
 
 **The binding is `tracker.yaml`**, a sidecar marked `generated`: written by these
-commands, never by hand, and not editable in the web app. It records provider,
+commands, never by hand; the web app offers no edit for it, though its server does
+not yet refuse a write. It records provider,
 project id, part, the ticket's stable id, key and URL, the claiming account id and
 name, the date, and an `unlinked` history. No credential and no e-mail address.
 **Never treat a binding as proof of a claim** — `import` re-reads the ticket even
