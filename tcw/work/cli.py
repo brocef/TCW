@@ -2234,30 +2234,107 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                          help="tag(s) to unregister (a value may be a,b,c)")
     ptgr.set_defaults(func=_tags_rm)
 
+    # Every description below states what the command changes in the tracker and
+    # what it changes in the work store, in that order, because a command reaching
+    # a system outside the repository is the one place a surprise is expensive.
+    SLUG_HELP = "a work item slug in this node"
+    TICKET_HELP = "a ticket key, e.g. EX-123"
     ptr = g.add_parser("tracker",
                        help="read the configured external tracker, and take its tickets")
     ptrs = ptr.add_subparsers(dest="tracker_cmd", required=True)
-    ptrs.add_parser("list", help="list tickets the configured query selects"
-                    ).set_defaults(func=_tracker_list)
-    ptrsh = ptrs.add_parser("show", help="show one ticket and whether it is claimable")
-    ptrsh.add_argument("ticket")
+    ptrs.add_parser(
+        "list", help="list tickets the configured query selects",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Print the tickets work.tracker.candidate-query selects, one per line,\n"
+                    "as KEY | status | assignee | summary.\n\n"
+                    "Reads only: nothing changes in the tracker or in this node.",
+        epilog="Refuses when no tracker is configured for this node.\n\n"
+               "A long result is cut short and says so; narrow the query to see the\n"
+               "rest.\n\n"
+               "  tcw work tracker list\n",
+    ).set_defaults(func=_tracker_list)
+
+    ptrsh = ptrs.add_parser(
+        "show", help="show one ticket and whether it is claimable",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Print one ticket's status, summary and assignee, then whether it can\n"
+                    "be claimed now and whether the workflow would keep a second claimant\n"
+                    "out.\n\n"
+                    "Reads only: nothing changes in the tracker or in this node.",
+        epilog="'claimable' is this ticket right now; 'workflow' is whether claiming\n"
+               "excludes anyone else. They are reported separately on purpose.\n\n"
+               "Refuses when no tracker is configured, or when the key does not exist.\n\n"
+               "  tcw work tracker show EX-123\n",
+    )
+    ptrsh.add_argument("ticket", help=TICKET_HELP)
     ptrsh.set_defaults(func=_tracker_show)
-    ptri = ptrs.add_parser("import",
-                           help="claim a ticket and create a backlog item bound to it")
-    ptri.add_argument("ticket")
+
+    ptri = ptrs.add_parser(
+        "import", help="claim a ticket and create a backlog item bound to it",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Claim a ticket, then create a work item for it.\n\n"
+                    "In the tracker: moves the ticket through the configured claim\n"
+                    "transition and assigns it to you.\n\n"
+                    "In this node: creates a backlog item whose intake is the ticket's\n"
+                    "description, and binds the two.\n\n"
+                    "No item is created unless the claim succeeds, so a run that fails\n"
+                    "locally is finished by running it again.",
+        epilog="Use --part when one ticket is split across several items; each part\n"
+               "is bound separately and the name is yours to choose.\n\n"
+               "Refuses when: no tracker is configured; the key does not exist; the\n"
+               "ticket is assigned to somebody else; the workflow does not offer the\n"
+               "claim transition; or the ticket and part are already bound here.\n\n"
+               "  tcw work tracker import EX-123\n"
+               "  tcw work tracker import EX-123 --part api --title 'The API half'\n",
+    )
+    ptri.add_argument("ticket", help=TICKET_HELP)
     ptri.add_argument("--part", help="name one of several items for this ticket "
                                      "(default: default)")
     ptri.add_argument("--title", help="the item's title (default: '<KEY> — <summary>')")
     ptri.set_defaults(func=_tracker_import)
-    ptrl = ptrs.add_parser("link", help="claim a ticket and bind an existing item to it")
-    ptrl.add_argument("slug")
-    ptrl.add_argument("ticket")
+
+    ptrl = ptrs.add_parser(
+        "link", help="record that an existing item and a ticket are the same work",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Write down that a work item and a ticket are the same piece of work.\n\n"
+                    "In the tracker: nothing. The ticket keeps its status and whoever holds\n"
+                    "it, and it may be held by anyone. It is read — which is how a key that\n"
+                    "does not exist is refused — and not written to.\n\n"
+                    "In this node: the binding sidecar is the only file written, so the\n"
+                    "item's status, owner, intake and request are left alone.",
+        epilog="Any status can be linked, a finished item included. Nothing moves the\n"
+               "ticket for you afterwards — do that in the tracker yourself.\n\n"
+               "Use --part when one ticket is split across several items.\n\n"
+               "Refuses when: no tracker is configured; the slug is not an item here;\n"
+               "the key does not exist; the item is already bound (unlink it first);\n"
+               "or another item already holds this ticket and part.\n\n"
+               "  tcw work tracker link 2026-09-14-rename-the-widget EX-123\n"
+               "  tcw work tracker link 2026-09-14-rename-the-widget EX-123 --part api\n",
+    )
+    ptrl.add_argument("slug", help=SLUG_HELP)
+    ptrl.add_argument("ticket", help=TICKET_HELP)
     ptrl.add_argument("--part", help="which of several items for this ticket "
                                      "(default: default)")
     ptrl.set_defaults(func=_tracker_link)
-    ptru = ptrs.add_parser("unlink", help="remove an item's binding, keeping a record "
-                                          "of it; the ticket is not changed")
-    ptru.add_argument("slug")
+
+    ptru = ptrs.add_parser(
+        "unlink", help="remove an item's binding, keeping a record "
+                       "of it; the ticket is not changed",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Remove an item's binding.\n\n"
+                    "In the tracker: nothing. No call is made and none needs to be\n"
+                    "configured, so a binding can be removed after work.tracker itself is\n"
+                    "gone.\n\n"
+                    "In this node: the sidecar is kept rather than deleted — what was\n"
+                    "bound, when, and why it stopped move into its unlinked history.",
+        epilog="Any status can be unlinked, a finished item included, so a wrong\n"
+               "binding is repairable wherever it is found.\n\n"
+               "Refuses when the slug is not an item here, when it is not bound, or\n"
+               "when --reason is blank.\n\n"
+               "  tcw work tracker unlink 2026-09-14-rename-the-widget "
+               "--reason 'bound to the wrong ticket'\n",
+    )
+    ptru.add_argument("slug", help=SLUG_HELP)
     ptru.add_argument("--reason", required=True, help="why the binding is removed")
     ptru.set_defaults(func=_tracker_unlink)
 
