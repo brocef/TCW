@@ -1,7 +1,8 @@
 # Consolidate the setup skills into a single tcw-setup skill
 
-> **Still being shaped.** This request is being refined during a brainstorming
-> conversation. Sections marked _open_ are not yet decided.
+> Shaped during a brainstorming conversation on 2026-09-14. The one decision left
+> to `spec` is whether configuration changes fit in `tcw-setup` or need a
+> separate `tcw-config` skill.
 
 ## What is being asked for
 
@@ -22,25 +23,41 @@ All setup material moves into **one skill, `tcw-setup`**, whose `SKILL.md` is
 only a routing file: it says which reference document covers which part of TCW,
 and the reference documents carry the actual setup instructions.
 
-The requester's proposed shape:
+The agreed shape — all of these are documents inside the one skill, not
+separate skills:
 
 ```
 tcw-setup/
+  SKILL.md           # routing only: which document covers which part
   references/
-    plugin.md        # general plugin setup
-    taxonomy.md      # taxonomy-specific setup
+    install.md       # the CLI and plugin — once per machine, incl. a missing or stale CLI
+    project.md       # tcw init / provision / first validate — once per repository
+    taxonomy.md
     capabilities.md
     work.md
+    docs-sync.md
 ```
+
+The requester first proposed a single `plugin.md`; splitting it into
+`install.md` and `project.md` was suggested in discussion and accepted, because
+the two happen at different times and the model then reads only the one it needs.
 
 ### Decided by the requester
 
+- **The skill map is deleted, not moved.** The first half of
+  `skills/tcw-plugin/SKILL.md` (`# TCW skill map`) is usage orientation, not
+  setup. Each usage skill's description already names its siblings, so it goes
+  when `tcw-plugin` does. `spec` should confirm nothing in it is said nowhere
+  else, and remove the "`tcw-plugin` maps the skills" line in
+  `skills/tcw-work/SKILL.md`.
 - **Documentation-entry setup is in scope.** `documentation-sync`'s setup
   material moves into `tcw-setup` alongside the rest.
 - **The setup commands are replaced, not kept alongside.** `tcw-taxonomy-init`,
   `tcw-capabilities-init`, and `tcw-docs-sync-setup` go away in favour of the new
   skill. The point is simplification; two parallel ways to set things up would
-  work against it.
+  work against it. They are deleted outright with a changelog entry and **no**
+  stub under the old names: nobody but the requester uses TCW yet, so there is
+  no one to redirect.
 - **Changing configuration later belongs here only if it stays small.** Include
   it in `tcw-setup` if that does not greatly increase the skill's size. If two
   skills make more sense, split into `tcw-setup` (first-time setup) and
@@ -72,21 +89,14 @@ each piece ends up.
 
 ## Notes
 
-Suggestions raised in discussion — _open_, not yet agreed by the requester:
+Points raised in discussion for `spec` to carry, not separately confirmed by the
+requester:
 
-- **Split `plugin.md` in two**: `install.md` (the CLI and plugin, once per
-  machine, including a missing or stale CLI) and `project.md` (`tcw init`,
-  `tcw provision`, first `tcw validate`, once per repository).
 - **Keep the broken-CLI trigger.** `tcw-plugin` is mostly opened when the CLI is
   missing or stale after the `SessionStart` hook failed, not at first setup. The
   `tcw-setup` description must name those situations or it will not be found.
-- **Delete the skill map rather than move it.** Each usage skill's description
-  already names its siblings; the router needs only a short list of parts.
 - **`documentation-sync` keeps a one-line pointer** to its setup document once
   that moves, since the skill also serves projects that do not use TCW.
-- **Removing the setup commands** gets a changelog entry and **no** stub under the
-  old names — decided by the requester: nobody but the requester uses TCW yet, so
-  there is no one to redirect.
 
 Constraints: none stated beyond the above. No deadline.
 
