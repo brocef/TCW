@@ -1,0 +1,9 @@
+slug: 2026-09-14-delete-a-capability-with-tcw-capabilities-rm
+title: Delete a capability with tcw capabilities rm
+created: '2026-09-14'
+resolution: null
+effort: medium
+complexity: medium
+tags:
+- cli
+- capabilities
