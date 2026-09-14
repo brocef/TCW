@@ -3,25 +3,30 @@
 Built on branch `work/2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key`
 in `.worktrees/2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key/`.
 
+Commit ids below are the branch as rebased onto `main` after v2.1.2 (see "Rebased
+onto main after v2.1.2" at the end). Test results quoted at a commit before that
+section were run on the pre-rebase commits and are kept as the record of that
+round; the rebased branch was re-run in full.
+
 ## What shipped, task by task
 
 | Task | Commit | What |
 | --- | --- | --- |
-| 1 | `c83f84bd` | Capability `work/inherit-tracker-settings-from-parent-nodes` (`cap-69ba01`), Missing, and the item's `capabilities.yaml` declaring it under `new:`. |
-| 2 | `c81b6a18` | `tcw/store/base.py`: `merge_tracker_blocks`, `tracker_credentials_problem`, `attribute_tracker_problems`; `parse_tracker_config` sorts unknown keys with `key=str` (Goal 8). Tests first. |
-| 3 | `54be3ffc` | `tcw/store/fs.py`: `tracker_config` / `tracker_problems` share `_resolved_tracker`, which reads ancestors through `FsProjectRegistry` when the node opts in. |
-| 4 | `30c7db37` | End-to-end tests: `tcw work tracker list` sends the child's query to the inherited site; `tcw validate` reports a parent's bad value under the child. |
-| — | `9fb77253` | Inbox entry for the same non-string-key crash in other config parsers (found in review; separate change). |
-| — | `2b33ea2e` | Review fixes (see below). |
-| 6 | `8c2e608c` | Documentation: `README.md`, `docs/guide/work.md`, `skills/tcw-work/references/commands.md`, both `upcoming.md` files, both capability descriptions. |
+| 1 | `376b6090` | Capability `work/inherit-tracker-settings-from-parent-nodes` (`cap-69ba01`), Missing, and the item's `capabilities.yaml` declaring it under `new:`. |
+| 2 | `dd9d55cf` | `tcw/store/base.py`: `merge_tracker_blocks`, `tracker_credentials_problem`, `attribute_tracker_problems`; `parse_tracker_config` sorts unknown keys with `key=str` (Goal 8). Tests first. |
+| 3 | `d3e91aeb` | `tcw/store/fs.py`: `tracker_config` / `tracker_problems` share `_resolved_tracker`, which reads ancestors through `FsProjectRegistry` when the node opts in. |
+| 4 | `e1808ff0` | End-to-end tests: `tcw work tracker list` sends the child's query to the inherited site; `tcw validate` reports a parent's bad value under the child. |
+| — | `0360fec4` | Inbox entry for the same non-string-key crash in other config parsers (found in review; separate change). |
+| — | `2cd9a8fe` | Review fixes (see below). |
+| 6 | `a3297e9e` | Documentation: `README.md`, `docs/guide/work.md`, `skills/tcw-work/references/commands.md`, both `upcoming.md` files, both capability descriptions. |
 
 Task 5 (full suite) and Task 7 (this file) have no code commit of their own.
 
 ## Test results
 
-- **Before the review fixes, at `30c7db37`:** 2867 passed under
+- **Before the review fixes (pre-rebase `30c7db37`):** 2867 passed under
   `python -m pytest`, and 2867 passed under bare `pytest` (what CI runs).
-- **Final, at `8c2e608c`:** 2874 passed under `python -m pytest` (14:47), and 2874 passed under bare `pytest` (14:58).
+- **After the documentation commit (pre-rebase `8c2e608c`):** 2874 passed under `python -m pytest` (14:47), and 2874 passed under bare `pytest` (14:58).
 - `tests/test_tracker_inheritance.py`: 59 tests, and the four existing tracker test
   files (`test_tracker_config.py`, `test_tracker_validate.py`,
   `test_tracker_absent.py`, `test_tracker_cli.py`) pass unchanged (C12).
@@ -42,7 +47,7 @@ Task 5 (full suite) and Task 7 (this file) have no code commit of their own.
 
 ## Reviews
 
-A multi review of the code (commits `c81b6a18..30c7db37`). All three produced
+A multi review of the code (pre-rebase commits `c81b6a18..30c7db37`). All three produced
 usable output.
 
 - **Adversarial code reviewer (agent): DONE, nothing blocking.** It ran 63,878
@@ -127,14 +132,14 @@ problems in this item, and three were closeout or release matters.
 
 | Point | What was done | Commit |
 | --- | --- | --- |
-| Docs narrower than the code | The guide said a child can set `credentials.token-env` alone, without saying that is refused beside its own `base-url`. Three docs said the missing-parent notice appears only for incomplete settings; it appears with any tracker problem. Both corrected. | `35129ac0` |
-| The spec's "never raises" was false | `FsProjectRegistry` raised `TypeError` sorting `connected-projects` keys of mixed types, and this item made `tracker_config()` open the registry. Fixed where the registry builds the message (`tcw/store/project.py`), with a test that failed first. The C18 test now compares the whole merged mapping. | `2e236767` |
-| Capability status | `work/inherit-tracker-settings-from-parent-nodes` is Supported. | `bc16c1d0` |
+| Docs narrower than the code | The guide said a child can set `credentials.token-env` alone, without saying that is refused beside its own `base-url`. Three docs said the missing-parent notice appears only for incomplete settings; it appears with any tracker problem. Both corrected. | `d3879888` |
+| The spec's "never raises" was false | `FsProjectRegistry` raised `TypeError` sorting `connected-projects` keys of mixed types, and this item made `tracker_config()` open the registry. Fixed where the registry builds the message (`tcw/store/project.py`), with a test that failed first. The C18 test now compares the whole merged mapping. | `fda5e720` |
+| Capability status | `work/inherit-tracker-settings-from-parent-nodes` is Supported. | `9fccddfe` |
 | Combined review with the claim item | See below. | — |
 | Issue #36 | Stays open until release. A reply is drafted for approval and not posted. | — |
 
-`v2.1.x` in the changelog was also made exact (`v2.1.1 and earlier`), because a patch
-release of this work would have been a `v2.1.x` that does inherit (`fc4b5ec0`).
+`v2.1.x` in the changelog was also made exact (`fc4b5ec0` before the rebase). After
+v2.1.2 was cut without this item, it reads `v2.1.2 and earlier`.
 
 ### The combined review with the claim item
 
@@ -157,16 +162,15 @@ Both found the same two problems, neither in this item's code:
    release that encourages sibling nodes to share inherited settings.
 
 Because the claim item had already completed, `main` was merged into this branch
-(`f5fc042a`), which also settled the changelog conflict `complete` would otherwise
-have stopped on. Then:
+(a merge commit since replaced by the rebase below). Then:
 
 - `_binding_for` takes the provider and project id the claim was made with. There
   are three new tests in `tests/test_tracker_import.py`: two failed first with the
   `AttributeError`, and one shows import from an inheriting child binds with the
-  child's project id (`102d67ce`, with a changelog note in `8df69b1f`).
+  child's project id (`d2b60bd9`).
 - README, guide, skill reference, release notes and the claim capability's
   description scope the promise to one node, and name importing in two nodes as a
-  third accepted limit (`10882d7f`).
+  third accepted limit (`78c44333`).
 
 A third finding was filed rather than fixed:
 `docs/work/inbox/2026-09-14-a-tracker-binding-does-not-record-its-site.md`. A binding
@@ -175,17 +179,45 @@ unrelated ticket with the same numeric id reads as already bound. Editing a node
 own `base-url` already did this; inheritance lets one parent edit do it for many
 nodes. The suggested fix needs no format change.
 
-### Results after this round, at `8df69b1f`
+### Results after this round (pre-rebase `8df69b1f`)
 
 - Full suite: **3012 passed** under `python -m pytest`, and **3012 passed** under
   bare `pytest`. That is the 3009 of the combined tree plus the three new import
   tests.
-- Codex reviewed `102d67ce` and `10882d7f` read-only (`sandbox: read-only`, tree
+- Codex reviewed those two commits (pre-rebase `102d67ce`, `10882d7f`) read-only (`sandbox: read-only`, tree
   unchanged). It answered "no defect" to all five questions: `project` is bound
   on every path, no other post-claim re-read remains, an early `_project_id`
   failure claims nothing, the new tests fail without the fix, and the scoped
   sentences match the code. VERDICT: CLEAN.
 - `tcw capabilities check` prints `capabilities OK` and `tcw validate` prints `validate OK`.
+
+## Rebased onto main after v2.1.2
+
+At the user's request the branch was rebased onto the latest `main`. `main` moved
+during the rebase: v2.1.2 was cut and pushed (`bb259e7c`), shipping the claim item
+without this one. So the rebase was done onto `bb259e7c`, in two passes:
+
+- The merge commit of `main` was dropped, as a rebase does, and the 16 commits
+  replayed. The one commit that changed only the changelog became empty and was
+  dropped, leaving 15.
+- v2.1.2 had rotated `docs/changelogs/upcoming.md` and
+  `docs/release-notes/upcoming.md` into `v2.1.2.md` files. Every conflict in them
+  took `main`'s fresh files. Then one commit (`91be00ea`) wrote this item's entries
+  into the fresh files. The fixes to the claim commands and their docs are listed
+  as fixes, since the claim item was released in v2.1.2 with those defects, and
+  the non-inheriting versions are named as `v2.1.2 and earlier`.
+- **Checked:** apart from the two `upcoming.md` files, the rebased branch differs
+  from the pre-rebase branch by exactly the changes `main` gained, file by file.
+  The inheritance entries in the new changelog are identical to the pre-rebase
+  text apart from the version. One pre-rebase bullet (`parse_tracker_config`)
+  turned out to have doubled lines from an earlier conflict resolution, and it was
+  restored from the pre-rebase text.
+
+**Results on the rebased branch, at `91be00ea`:** 3061 passed under
+`python -m pytest`, and 3061 passed under bare `pytest` (both 14:19). The count is
+higher than before because the claim and capability-removal work from `main` is now
+included. `tcw capabilities check` prints `capabilities OK` and `tcw validate`
+prints `validate OK`.
 
 ## Left for later, deliberately
 
