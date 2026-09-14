@@ -174,9 +174,9 @@ Spec D8, revision note 13.
 - `tcw capabilities check` prints `capabilities OK`.
 - Bare `pytest` is green.
 
-#### Task 3b — Rename the two extras skills and the triage command
+#### Task 3b — Rename the three extras skills
 
-Spec D8, revision note 14.
+Spec D8, revision notes 14–15.
 
 **Renames**
 
@@ -185,39 +185,103 @@ Spec D8, revision note 14.
 - `git mv skills/tcw-triage-issues skills/tcw-extras-triage-issues`, and set its
   `name:` to `tcw-extras-triage-issues`. Replace every mention of its own old name
   inside the skill.
-- `git mv commands/tcw-triage-issues.md commands/tcw-extras-triage-issues.md`, and
-  update its `:5` ("Use the `tcw-extras-triage-issues` skill") and its `:10`
-  (`skills/tcw-extras-triage-issues/SKILL.md`).
+- `git mv skills/tcw-report skills/tcw-extras-report`, and set its `name:` to
+  `tcw-extras-report`. In `skills/tcw-extras-triage-issues/SKILL.md:3-4`,
+  `tcw-report` → `tcw-extras-report`.
+- In `commands/tcw-triage-issues.md`, update `:5`, `:8` and `:10` to the new skill
+  names, so the command still routes correctly until task 11 deletes it.
 
 **References**
 
 - **Modify `skills/tcw-work/references/lifecycle/stage-inbox.md:11`** and
   **`skills/tcw-work/references/transitions.md:117`, `:157`:**
   `tcw-triage-issues` → `tcw-extras-triage-issues`.
-- **Modify `docs/guide/work.md:212`:** `/tcw-triage-issues` →
-  `/tcw-extras-triage-issues`.
+- **Modify `docs/guide/work.md:212`:** `/tcw-triage-issues` → "the
+  `tcw-extras-triage-issues` skill".
 - **Modify `README.md`:**
-  - rename the `tcw-triage-issues` (`:442`) and `autonomous-work` (`:445`) rows,
-    and move them under a short "Extras" note: "`tcw-extras-*` skills are
-    optional, built for one way of working, and not needed to use TCW";
-  - `:469`: `/tcw-triage-issues` → `/tcw-extras-triage-issues`.
-- **Modify `.codex-plugin/plugin.json`:** rename both skills in
+  - rename the `tcw-report` (`:441`), `tcw-triage-issues` (`:442`) and
+    `autonomous-work` (`:445`) rows, and move them under a short "Extras" note:
+    "`tcw-extras-*` skills are optional, built for one way of working, and not
+    needed to use TCW".
+  - The slash-command paragraph (`:465-472`) is left for task 11.
+- **Modify `.codex-plugin/plugin.json`:** rename all three skills in
   `longDescription`. The count stays "ten skills".
-- **Modify `evals/evals.json` B7 (`:653-654`):** `skill` and `invokes` become
-  `tcw-extras-triage-issues`.
+- **Modify `evals/evals.json`:**
+  - B7 (`:653-654`): `skill` and `invokes` become `tcw-extras-triage-issues`;
+  - B6 (`:625-626`): `skill` and `invokes` become `tcw-extras-report`.
 - **Modify `evals/coverage.py:39`:** re-key `EXCLUSIONS["autonomous-work"]` to
   `tcw-extras-autonomous-work`.
-- **Leave `skills/tcw-plugin/SKILL.md:34`, `:53` and
-  `docs/capabilities/plugin/triage-github-issues/description.md` alone.** Tasks 11
-  and 13 delete both.
+- **Leave these alone; tasks 11 and 13 delete them:**
+  `skills/tcw-plugin/SKILL.md:29-54`,
+  `docs/capabilities/plugin/triage-github-issues/description.md`, and
+  `docs/capabilities/plugin/report-an-issue-upstream/description.md`.
 
 **Proof**
 
 - `tests/test_plugin_manifests.py` passes: every shipped skill is named as a whole
   token.
 - `tests/test_eval_coverage.py` passes.
-- `git grep -nP '(?<![-\w])autonomous-work|tcw-triage-issues' -- skills commands README.md .codex-plugin evals docs/guide`
+- `git grep -nP '(?<![-\w])autonomous-work|(?<![-\w])tcw-triage-issues|(?<![-\w])tcw-report' -- skills README.md .codex-plugin evals docs/guide`
   prints only `skills/tcw-plugin/SKILL.md` lines.
+- Bare `pytest` is green.
+
+#### Task 3c — Turn the four workflow commands into `tcw-commands-*` skills
+
+Spec D9.
+
+**For each pair**
+
+- `commands/tcw-plan-work.md` → `skills/tcw-commands-plan-work/SKILL.md`
+- `commands/tcw-drive-work-to-completion.md` →
+  `skills/tcw-commands-drive-work-to-completion/SKILL.md`
+- `commands/tcw-verify-work.md` → `skills/tcw-commands-verify-work/SKILL.md`
+- `commands/tcw-process-inbox.md` → `skills/tcw-commands-process-inbox/SKILL.md`
+
+**Steps**
+
+1. **Rename commit.** `git mv` each file to its new path and edit nothing in
+   those files. `tests/test_plugin_manifests.py` would fail on a `SKILL.md`
+   without `name`, so this commit also adds the frontmatter keys:
+   - `name: tcw-commands-<rest>`;
+   - a `when_to_use` built from the command's `description`;
+   - `allowed-tools`: the list at `skills/tcw-work/SKILL.md:5`;
+   - `metadata.author` and `license`, as on other skills.
+
+   The rename therefore won't be `R100`. No acceptance criterion needs it to be;
+   git history still follows the file at a lower similarity.
+2. **Body edits:**
+   - Paths written relative to `tcw-work` (`references/lifecycle/stage-*.md`,
+     `references/epic-deltas.md`, `references/procedures/delegation.md`,
+     `skills/tcw-work/SKILL.md`) become "the `tcw-work` skill's `<document>`", in
+     words.
+   - "This command covers" → "This skill covers".
+   - `/tcw-drive-work-to-completion` and `/tcw-plan-work` in the bodies become
+     "the `tcw-commands-drive-work-to-completion` skill" and "the
+     `tcw-commands-plan-work` skill".
+   - Remove the trailing `$ARGUMENTS`; the work item is named in the request.
+3. **Wiring:**
+   - **`.codex-plugin/plugin.json`:** "ten skills" → "fourteen skills", naming the
+     four command skills.
+   - **`evals/coverage.py`:** add an `EXCLUSIONS` entry for each of the four, with
+     the spec's reason (D6.3 item 7).
+   - **`skills/tcw-extras-autonomous-work/SKILL.md:8`:**
+     `/tcw-drive-work-to-completion` → the `tcw-commands-drive-work-to-completion`
+     skill.
+   - **`skills/tcw-work/references/commands.md:135-140`:** the section "Slash
+     commands (Claude only)" becomes "Command skills", naming the four
+     `tcw-commands-*` skills and saying that every one works by invoking the
+     skill, under any harness.
+   - **Any other file under `skills/` or `docs/guide/`:** replace each mention of
+     `/tcw-plan-work`, `/tcw-drive-work-to-completion`, `/tcw-verify-work` or
+     `/tcw-process-inbox` with the matching skill. Find them with
+     `git grep -n '/tcw-\(plan-work\|drive-work\|verify-work\|process-inbox\)' skills docs/guide`.
+
+**Proof**
+
+- `tests/test_plugin_manifests.py` passes: frontmatter parses, and the count and
+  names match.
+- `tests/test_eval_coverage.py` passes.
+- `commands/` no longer holds those four files.
 - Bare `pytest` is green.
 
 ### Phase B — `tcw-configure`
@@ -413,8 +477,8 @@ Tests first.
 
 **Wiring**
 
-- **Modify `.codex-plugin/plugin.json`** `longDescription`: "ten skills" →
-  "eleven skills", and add a clause "tcw-configure for changing a project's TCW
+- **Modify `.codex-plugin/plugin.json`** `longDescription`: "fourteen skills" →
+  "fifteen skills", and add a clause "tcw-configure for changing a project's TCW
   configuration".
 - **Modify `evals/evals.json`:** add case **B11**:
   - `axis: B`, `skill: tcw-configure`, `invokes: tcw-configure`, arms `with-skill`
@@ -554,7 +618,7 @@ Tests first.
   - Keep the sentences grammatical (AC 9).
 - **Modify `skills/tcw-taxonomy/SKILL.md:24-25`:** delete "See `tcw-plugin` for
   the cross-skill map."
-- **Modify `.codex-plugin/plugin.json`:** "eleven skills" → "twelve skills", and
+- **Modify `.codex-plugin/plugin.json`:** "fifteen skills" → "sixteen skills", and
   add a clause "tcw-setup for setting TCW up and repairing the CLI". This count is
   temporary until task 11.
 - **Modify `evals/evals.json`:**
@@ -578,7 +642,7 @@ Tests first.
 - `bash -n scripts/session_bootstrap.sh` passes.
 - Bare `pytest` is green.
 
-#### Task 11 — Remove `tcw-plugin` and the three commands
+#### Task 11 — Remove `tcw-plugin` and every remaining command
 
 Tests first.
 
@@ -591,34 +655,56 @@ Tests first.
   - `tcw-plugin`, `tcw-taxonomy-init`, `tcw-capabilities-init`,
     `tcw-docs-sync-setup`;
   - the five `tcw-work-stage-<stage>` names;
-  - `autonomous-work` and `tcw-triage-issues`.
+  - `autonomous-work`, `tcw-triage-issues`, `tcw-report`;
+  - `tcw-plan-work`, `tcw-drive-work-to-completion`, `tcw-verify-work`,
+    `tcw-process-inbox`, `tcw-work-search`, `tcw-audit-work-backlog`,
+    `tcw-consolidate-plans`, `tcw-cut-version`.
 
-  It scans every file under `skills/`, `commands/`, `.claude-plugin/`,
-  `.codex-plugin/`, `README.md` and `docs/guide/`. Confirm it fails before the
-  deletions below, and passes after them (tasks 3a and 3b already removed the
-  other names).
+  It scans every file under `skills/`, `.claude-plugin/`, `.codex-plugin/`,
+  `README.md`, `docs/guide/` and `docs/lifecycle/`, and asserts `commands/` does
+  not exist. Confirm it fails before the deletions below and passes after them.
 
 **Deletions**
 
 - `git rm -r skills/tcw-plugin`
-- `git rm commands/tcw-taxonomy-init.md commands/tcw-capabilities-init.md commands/tcw-docs-sync-setup.md`
+- `git rm -r commands`. By now it holds only `tcw-taxonomy-init`,
+  `tcw-capabilities-init`, `tcw-docs-sync-setup`, `tcw-cut-version`,
+  `tcw-post-mortem`, `tcw-triage-issues`, `tcw-work-search`,
+  `tcw-audit-work-backlog` and `tcw-consolidate-plans`. Spec D9 records, for each,
+  the skill text that already covers it. Re-read that table against each file
+  before deleting it.
 
 **Wiring**
 
-- **Modify `.codex-plugin/plugin.json`:** "twelve skills" → "eleven skills", and
+- **Modify `.claude-plugin/plugin.json:21`:** remove the `commands` key.
+- **Modify `.codex-plugin/plugin.json`:** "sixteen skills" → "fifteen skills", and
   remove the "tcw-plugin for installing and repairing the CLI" clause.
-- **Modify `tests/test_documentation_sync_wiring.py:23-26`:** remove the
-  `tcw-docs-sync-setup` entry from `COMMAND_ROUTES`. The `tcw-cut-version` entry
-  stays.
+- **Modify `tests/test_documentation_sync_wiring.py`:** delete `COMMAND_ROUTES`
+  (`:21-26`) and `test_commands_route_into_the_skill` (`:97-104`).
+- **Modify `skills/tcw-work/SKILL.md` `when_to_use`:** add "searching the board,
+  auditing the backlog, or consolidating external planning documents".
+- **Modify `skills/tcw-work/references/procedures/search.md:7-8`,
+  `audit-backlog.md:5`, `consolidate-plans.md:6`:** "Claude users reach it as
+  `/tcw-…`" → "ask the `tcw-work` skill for it".
+- **Modify `skills/tcw-work/references/lifecycle/stage-verify.md:36`:** drop
+  "`/tcw-cut-version` is the Claude shortcut to the same thing".
+- **Modify `docs/lifecycle/harness.md:18`:** use the sentence from spec D9.
+- **Modify `docs/guide/work.md:465`, `:475`:** `/tcw-audit-work-backlog` and
+  `/tcw-consolidate-plans` → "ask the `tcw-work` skill to audit the backlog" or
+  "to consolidate external plans".
 - **Modify `tests/test_plugin_manifests.py:4`:** the docstring names `tcw-setup`.
 - **Modify `evals/evals.json` B5:** `skill: cross-axis`,
   `invokes: ["tcw-taxonomy", "tcw-capabilities"]`. The prompt and assertions are
   unchanged.
 - **Modify `evals/coverage.py`:** remove `PARTIAL["tcw-plugin"]` and its comment
   (`:46-57`).
-- **Modify `README.md`:** `:217` and `:227` name `tcw-setup`; `:352` asks for the
-  `tcw-setup` skill instead of the two commands; `:470-471` drop the three
-  commands. Task 15 handles the rest of the README.
+- **Modify `README.md`:**
+  - `:217` and `:227` name `tcw-setup`;
+  - `:352` asks for the `tcw-setup` skill instead of the two commands;
+  - the slash-command paragraph (`:465-472`) becomes two sentences naming the four
+    `tcw-commands-*` skills and the three `tcw-extras-*` skills.
+
+  Task 15 handles the rest of the README.
 - **Modify `docs/guide/taxonomy-and-capabilities.md:59`:** the same change as
   `README.md:352`.
 
@@ -632,7 +718,7 @@ Tests first.
 
 ### Phase D — Taxonomy and ledger (needs `tcw capabilities rm`)
 
-#### Task 12 — Register the `skill` term and eleven Features
+#### Task 12 — Register the `skill` term and fifteen Features
 
 **Commands**
 
@@ -658,7 +744,7 @@ Tests first.
 - Bare `pytest` is green.
 - The commit contains only `docs/taxonomy/`.
 
-#### Task 13 — Write the eleven capabilities and delete the nine they replace
+#### Task 13 — Write the fifteen capabilities and delete the nine they replace
 
 **Every new capability**
 
@@ -674,11 +760,16 @@ Tests first.
 Each commit writes a successor and deletes what it replaces together, so the
 ledger is never missing either:
 
-1. `skills/tcw-work`, whose body folds in the bodies of `plugin/work-lifecycle`,
-   `work/consolidate-plans`, `work/search-the-work-items` and
-   `work/audit-work-backlog` as they stood at `<base>`. Then `tcw capabilities rm`
-   each of those four.
-2. `skills/tcw-report`, `skills/tcw-post-mortem` and `skills/tcw-extras-triage-issues`,
+1. **`skills/tcw-work`, `skills/tcw-commands-plan-work` and
+   `skills/tcw-commands-drive-work-to-completion`.**
+   - `skills/tcw-work` folds in the bodies of `work/consolidate-plans`,
+     `work/search-the-work-items` and `work/audit-work-backlog`, as they stood at
+     `<base>`.
+   - `plugin/work-lifecycle`'s body is split: planning goes into the plan-work
+     capability, and driving through closeout, including bounded stage documents,
+     goes into the drive-work capability.
+   - Then `tcw capabilities rm` those four.
+2. `skills/tcw-extras-report`, `skills/tcw-post-mortem` and `skills/tcw-extras-triage-issues`,
    each folding its predecessor. Then `rm` `plugin/report-an-issue-upstream`,
    `plugin/run-a-post-mortem` and `plugin/triage-github-issues`.
    - In the same commit, change `docs/capabilities/work/complete-a-work-item/description.md:20`'s
@@ -687,15 +778,16 @@ ledger is never missing either:
    `capabilities/bootstrap-the-capabilities`. Then `rm` both.
    - In the same commit, reword `plugin/bootstrap-the-cli`'s two `tcw-plugin`
      mentions to `tcw-setup`.
-4. The remaining six, which delete nothing: `skills/tcw-configure` (`Missing`),
+4. The remaining eight, which delete nothing: `skills/tcw-configure` (`Missing`),
    `skills/tcw-taxonomy`, `skills/tcw-capabilities`, `skills/documentation-sync`,
-   `skills/tcw-work-stage`, `skills/tcw-extras-autonomous-work`.
+   `skills/tcw-work-stage`, `skills/tcw-extras-autonomous-work`,
+   `skills/tcw-commands-verify-work`, `skills/tcw-commands-process-inbox`.
 
-   Eleven skills ship after this item, and commits 1–4 cover all eleven.
+   Fifteen skills ship after this item, and commits 1–4 cover all fifteen.
 
 **This item's capability delta**
 
-- Write `capabilities.yaml` in this item's folder: `new:` lists the eleven
+- Write `capabilities.yaml` in this item's folder: `new:` lists the fifteen
   `skills/*` paths, and `changed:` lists `plugin/bootstrap-the-cli`,
   `work/complete-a-work-item` and `work/run-a-lifecycle-stage` (edited in task 3a).
 - Record the nine deletions in the form the dependency item defined (see Before
@@ -752,8 +844,9 @@ pass over the finished diff, after task 14.
 Slash commands are removed, and skills are added and renamed.
 
 - `:430-432`: "Fifteen skills … Nine carry a distinct procedure; the other six all
-  compose one lifecycle stage" → "Eleven skills … Ten carry a distinct procedure;
-  the eleventh composes a lifecycle stage".
+  compose one lifecycle stage" → fifteen skills in three groups: eight core skills
+  (one composes a lifecycle stage), four command skills for the everyday workflow,
+  and three extras.
 - The skills table (`:438-446`): replace the `tcw-plugin` row with a `tcw-setup`
   row ("Gets TCW working: installs or repairs the CLI, sets up a repository,
   starts a taxonomy or capabilities ledger") and a `tcw-configure` row ("Changes a
@@ -776,8 +869,8 @@ In plain language:
 
 Technical, grouped:
 
-- **Added:** the two skills and their references, the `skill` term and eleven
-  Features, eleven `skills/*` capabilities, `tool_input_contains` and
+- **Added:** the two skills and their references, the four `tcw-commands-*`
+  skills, the `skill` term and fifteen Features, fifteen `skills/*` capabilities, `tool_input_contains` and
   `tool_input_absent`, the `bare` fixture and per-case `fixture` key, the
   `Configuration-Key-Change` documentation entry, and the new tests.
 - **Changed:** `files_changed_exactly` compares against `seeded_head`, and
@@ -788,7 +881,11 @@ Technical, grouped:
   per-stage tests, the three commands, the nine capability paths with their
   successors, and the skill map.
 - **Renamed:** `autonomous-work` → `tcw-extras-autonomous-work`;
-  `tcw-triage-issues` → `tcw-extras-triage-issues`, with its command.
+  `tcw-triage-issues` → `tcw-extras-triage-issues`; `tcw-report` →
+  `tcw-extras-report`.
+- **Removed:** every slash command, and `commands/` with its manifest key. Four
+  commands became `tcw-commands-*` skills; the other nine were covered by existing
+  skills.
 
 ### `skills/<component>/SKILL.md` [Skill-Driven-Component] — expected not to fire
 
@@ -848,7 +945,7 @@ things no test can check. Record every result in `outcome.md`.
    Compare each `vocabulary:` line with the spec table, then run
    `tcw taxonomy check`.
 7. **AC 16.**
-   - For each of the nine already-shipping skills, `tcw capabilities show skills/<s>`
+   - For each of the thirteen skills whose behavior already ships, `tcw capabilities show skills/<s>`
      must show `**Status:** Supported` and a Feature line.
    - `tcw capabilities show skills/tcw-setup` and `skills/tcw-configure` must show
      `**Status:** Missing` and `**Planning doc:**`.
@@ -876,7 +973,7 @@ things no test can check. Record every result in `outcome.md`.
 ## Notes
 
 - **Traceability.**
-  - ACs 1–5 → tasks 3a, 3b, 4, 8, 11.
+  - ACs 1–5 → tasks 3a, 3b, 3c, 4, 8, 11.
   - AC 6 → tasks 7, 10.
   - AC 7 → task 10.
   - AC 8 → tasks 7, 10.
@@ -888,7 +985,7 @@ things no test can check. Record every result in `outcome.md`.
   - AC 14 → task 7.
   - AC 15 → task 12.
   - ACs 16–17 → tasks 3a, 13.
-  - AC 18 → tasks 1–3, 3a, 3b, 7, 10, 11.
+  - AC 18 → tasks 1–3, 3a, 3b, 3c, 7, 10, 11.
   - AC 19 → task 7.
   - AC 20 → every task.
 - **The riskiest change, in isolation.** Tasks 6 and 13 are the riskiest: text cut
@@ -896,8 +993,9 @@ things no test can check. Record every result in `outcome.md`.
   rename commit and before its router exists, so a mistake there is visible in the
   documents alone. Task 13 runs last, after every skill it describes exists, one
   successor and deletion per commit.
-- **Temporary skill counts.** The plugin ships ten skills after task 3a, eleven
-  after task 7, twelve after task 10, and eleven again after task 11. The Codex
+- **Temporary skill counts.** The plugin ships ten skills after task 3a, fourteen
+  after task 3c, fifteen after task 7, sixteen after task 10, and fifteen again
+  after task 11. The Codex
   manifest says so at each step. That keeps
   `test_the_codex_description_counts_the_skills_it_ships` green at every commit.
 - **Delegation.** Tasks 1–3 are independent of each other and of Phase B, and
