@@ -32,7 +32,7 @@ EVALS = Path(__file__).with_name("evals.json")
 SKILL_GLOB = "*/SKILL.md"
 
 EXCLUSIONS = {
-    "autonomous-work":
+    "tcw-extras-autonomous-work":
         "It drives whole work items unattended through other skills, spawning "
         "advisor subagents and a `codex exec` call per checkpoint. A case would "
         "cost a full multi-item run to grade, and would mostly re-measure the "

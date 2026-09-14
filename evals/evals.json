@@ -637,8 +637,8 @@
   {
    "id": "B6",
    "axis": "B",
-   "skill": "tcw-report",
-   "invokes": "tcw-report",
+   "skill": "tcw-extras-report",
+   "invokes": "tcw-extras-report",
    "arms": [
     "with-skill",
     "no-skill"
@@ -665,8 +665,8 @@
   {
    "id": "B7",
    "axis": "B",
-   "skill": "tcw-triage-issues",
-   "invokes": "tcw-triage-issues",
+   "skill": "tcw-extras-triage-issues",
+   "invokes": "tcw-extras-triage-issues",
    "arms": [
     "with-skill",
     "no-skill"

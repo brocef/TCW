@@ -2,12 +2,12 @@
 description: Sweep this project's open GitHub issues, triage them, and turn the ones worth doing into TCW work items.
 ---
 
-Use the `tcw-triage-issues` skill.
+Use the `tcw-extras-triage-issues` skill.
 
 It sweeps the **open GitHub issues on this project's own repo** — not TCW's; to
-send a report upstream to the TCW project, that is the `tcw-report` skill.
+send a report upstream to the TCW project, that is the `tcw-extras-report` skill.
 
-Read `skills/tcw-triage-issues/SKILL.md` for the procedure, and
+Read `skills/tcw-extras-triage-issues/SKILL.md` for the procedure, and
 `skills/tcw-work/references/lifecycle/stage-inbox.md` for the intake judgment it defers to
 — a GitHub issue is an inbox entry that happens to live on GitHub, and the
 retitling, splitting, and tag choice are the same.

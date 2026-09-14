@@ -1,5 +1,5 @@
 ---
-name: autonomous-work
+name: tcw-extras-autonomous-work
 description: Use when asked to work TCW items autonomously, unattended, or "without asking me" — drives one or more items to completion via tcw-drive-work-to-completion, consulting Codex and an Opus subagent in place of every human checkpoint.
 ---
 

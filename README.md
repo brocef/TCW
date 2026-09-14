@@ -485,11 +485,16 @@ are listed together at the end.
 | [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)     | The capability-delta planning check, contradiction detection, and the ledger flip at completion                                                            |
 | [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and federating shared vocabulary                                                                          |
 | [`tcw-plugin`](skills/tcw-plugin/SKILL.md)                 | Installs the CLI from PyPI, and maps the other skills                                                                                                      |
-| [`tcw-report`](skills/tcw-report/SKILL.md)                 | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                                              |
-| [`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)   | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                                     |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                                         |
 | [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md)       | Finds which lifecycle stage could first have caught a problem, once one has surfaced                                                                       |
-| [`autonomous-work`](skills/autonomous-work/SKILL.md)       | Drives work items to completion unattended, consulting two read-only advisors wherever the lifecycle would ask you                                         |
+
+**Extras.** `tcw-extras-*` skills are optional, built for one way of working, and not needed to use TCW.
+
+| Skill | What it does |
+| ----- | ------------ |
+| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, consulting two read-only advisors wherever the lifecycle would ask you                                         |
+| [`tcw-extras-triage-issues`](skills/tcw-extras-triage-issues/SKILL.md) | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                                     |
+| [`tcw-extras-report`](skills/tcw-extras-report/SKILL.md) | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                                              |
 
 They name `tcw` commands and never reimplement tool logic: mechanism stays in the
 binary, judgment stays in the skills.
