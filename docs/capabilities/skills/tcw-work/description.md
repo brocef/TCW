@@ -1,4 +1,4 @@
-As a user or agent, I open the `tcw-work` skill to learn how to drive the `tcw work` command: filing, planning, starting, implementing, verifying and completing work items, resuming one across sessions, splitting an item into child items, and coordinating work across connected projects. The skill carries the judgment on top of the command. It names `tcw` commands and never has me edit the work store by hand.
+As a user or agent, I open the `tcw-work` skill to learn how to drive the `tcw work` command: filing, planning, starting, implementing, verifying and completing work items, resuming one across sessions, splitting an item into child items, and coordinating work across connected projects. The skill carries the judgment on top of the command. It names `tcw` commands and never has me edit the work store by hand where a `tcw` command does the job.
 
 Three procedures in the skill are carried out by the agent rather than by a `tcw` subcommand, because each needs judgment the command-line tool cannot supply. I reach each one by asking the `tcw-work` skill for it, and each works the same under Claude and Codex.
 
