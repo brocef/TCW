@@ -387,6 +387,32 @@ work:
 environment variables; TCW reads them at the moment it makes a request, so a token
 cannot be committed by accident.
 
+**Write the shared settings once.** In a workspace of connected nodes, a node's
+`tracker` block takes any setting it leaves out from its parent nodes, all the way
+up. So the site, credentials and claim transition can live in the workspace root,
+and each package writes only the tickets it wants to see:
+
+```yaml
+# packages/api/tcw-config.yaml
+work:
+    tracker:
+        candidate-query: project = EX AND component = api AND status = "To Do"
+```
+
+The nearest file wins each setting, and `credentials` and `transitions` merge
+setting by setting too. A node with no `tracker` block of its own has no tracker,
+whatever its parents say. Two rules keep this safe:
+
+- **`credentials` must sit beside `base-url`.** A node that sets its own `base-url`
+  must also set its own `credentials`, even if the address is the same as its
+  parent's, so a token is never sent to a site chosen in a different file.
+- **A node with its own board is checked like any tracking node.** If it holds the
+  shared settings, it needs a `candidate-query` of its own. Keeping shared settings
+  in a node without a board avoids that.
+
+A mistake in a parent's settings is reported by `tcw validate` in every node that
+inherits it, naming the parent's file.
+
 `tracker show` reports two different things, and the distinction matters:
 
 - **claimable** — whether this ticket currently offers the transition you

@@ -3,7 +3,8 @@ at the Jira site in `tcw-config.yaml` under `work.tracker` — the site address,
 query that selects the tickets I could pick up, the names of the environment
 variables holding my credentials, and the name of the transition that claims a
 ticket — and then read those tickets from the terminal without changing anything
-in Jira.
+in Jira. Settings a node leaves out can come from its parent nodes
+(`work/inherit-tracker-settings-from-parent-nodes`).
 
 `tcw work tracker list` prints one row per ticket the query selects, with its
 status, assignee and summary. `tcw work tracker show <key>` prints one ticket and

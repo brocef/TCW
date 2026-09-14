@@ -641,6 +641,70 @@ complains here instead of silently doing less than you asked.
 environment variables and TCW reads them when it makes a request. A configuration
 that never reaches a request never touches a secret.
 
+### Inheriting settings from parent nodes
+
+In a workspace of connected nodes that all read one Jira site, the site, the
+credential variable names and the claim transition are the same everywhere; only
+the query differs. A node can therefore write just what is its own:
+
+```yaml
+# workspace root (tcw-config.yaml) — no board of its own
+work:
+    tracker:
+        provider: jira-cloud
+        base-url: https://yourcompany.atlassian.net
+        credentials:
+            email-env: TCW_JIRA_EMAIL
+            token-env: TCW_JIRA_API_TOKEN
+        transitions:
+            claim: Start Progress
+```
+
+```yaml
+# packages/api (tcw-config.yaml)
+work:
+    tracker:
+        candidate-query: project = EX AND component = api AND status = "To Do"
+```
+
+The rules:
+
+- **It is opt-in.** Only a node whose own `tracker` block has at least one key
+  inherits. A node with no block, or an empty one, has no tracker and reports no
+  tracker problems, whatever its parents hold. Adding a parent's settings never
+  gives a node that did not ask for one a tracker.
+- **Every ancestor counts**, direct parent first and all the way up, including
+  nodes that keep no board. The nearest file that sets a key wins that key.
+- **Mappings merge key by key.** A child can set `credentials.token-env` alone and
+  keep its parent's `credentials.email-env`. A list or a plain value replaces what
+  is above it outright.
+- **`null` means "not set here".** A nearer `timeout-seconds: null` lets the
+  parent's value through. With no value above it, it is reported as before. A child
+  cannot remove a key a parent set.
+- **`credentials` must come from the same file as `base-url`, or a nearer one.** A
+  node that sets `base-url` and inherits `credentials` has no tracker, and `tcw
+  validate` says so. This holds even when the address is the same as the parent's,
+  because the rule is about which file chose the site, not what it says. Without it,
+  a node pointed at a different site would send its parent's token there.
+- **Once a node opts in, the merged settings are checked in full.** A node with its
+  own board that holds shared settings is checked like any tracking node, so it
+  needs a `candidate-query` of its own. Keeping shared settings in a node without a
+  board, such as a workspace root, avoids that.
+
+**Problems name the file to fix.** A problem about the node's own file starts with
+`tcw-config.yaml:` as always. A problem about a value inherited from a parent names
+that parent's file and project:
+
+```
+/work/ex/tcw-config.yaml (project 'ex-root'): work.tracker.base-url: expected a non-empty string, got int
+```
+
+A missing required key is blamed on the node being checked, since no file wrote it.
+A bad value in a parent is reported once for every node that inherits it, because
+each of those nodes has no tracker until it is fixed. If a declared parent is not
+checked out on this machine and the settings come out incomplete, one more problem
+names that parent and suggests `tcw provision`.
+
 **A malformed block never breaks the board.** `tcw work list` and `tcw work show`
 keep working; `tcw validate` is where you hear about it. The parse fails closed, so
 a block with any problem reads as no tracker at all rather than as a half-configured
