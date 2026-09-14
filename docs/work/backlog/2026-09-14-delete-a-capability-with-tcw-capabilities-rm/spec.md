@@ -264,7 +264,10 @@ Each is checked by a test in the suite unless it says otherwise.
 8. After the referrer is repointed with `tcw capabilities set`, `rm` of the same
    target succeeds.
 9. `rm ../taxonomy/<term>` (a path escaping the store) exits 1 with
-   `no such capability` and deletes nothing.
+   `no such capability` and deletes nothing. So does a loose spelling of a real
+   path — `routes/`, `./routes`, `routes/.`, `routes//` — which would otherwise
+   slip past the nested check. (Added during implementation: found by probing,
+   see `outcome.md`.)
 10. Outside a git repository, `FsCapabilitiesStore.remove` refuses and writes
     nothing (the existing `tests/test_non_git_writes.py:265` stays green).
 11. `tcw capabilities --help` lists `rm`.

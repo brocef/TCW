@@ -2479,6 +2479,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return self._capability(path)
 
     def remove(self, identifier: str) -> None:
+        # Canonical spellings only. `get` resolves `routes/` or `./routes` to the
+        # `routes` folder but reports the spelling back as its path, and the
+        # nested check below compares path strings — so a loose spelling would
+        # slip past it and `git rm -rf` would take the nested capabilities too.
+        try:
+            _safe_store_id(identifier, "path")
+        except ValueError:
+            raise ValueError(f"no such capability: {identifier}") from None
         cap = self.get(identifier)
         if cap is None:
             raise ValueError(f"no such capability: {identifier}")

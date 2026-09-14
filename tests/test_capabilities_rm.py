@@ -187,6 +187,20 @@ def test_remove_refuses_nested_capability(tmp_path):
     assert store(root).get("routes/login") is not None
 
 
+@pytest.mark.parametrize("ref", ["routes/", "./routes", "routes/.", "routes//"])
+def test_remove_refuses_non_canonical_path_spelling(tmp_path, ref):
+    """`get` resolves these spellings to the `routes` folder but reports the
+    spelling back as the path, so the nested check compared against the wrong
+    prefix and `git rm -rf` took `routes/login` with it."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "routes", id="cap-rou001", Status="Supported")
+    write_cap(root, "routes/login", id="cap-log001", Status="Supported")
+    before = tree_hash(root)
+    with pytest.raises(ValueError, match="no such capability"):
+        store(root).remove(ref)
+    _assert_nothing_removed(root, before)
+
+
 def test_remove_refuses_nested_override_folder(tmp_path):
     base, child = federated(tmp_path)
     write_cap(child, "auth", id="cap-aut001", Status="Supported")
