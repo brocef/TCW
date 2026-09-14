@@ -93,21 +93,9 @@ dependency because of any of them.
 | claim a ticket for an existing unresolved item | `tcw work tracker link <slug> <ticket> [--part <id>]` |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 
-Configured with the `tcw-configure` skill's `tracker.md`.
+**Configured with the `tcw-configure` skill's `tracker.md`**, including settings a
+node merges from its ancestors'. At runtime:
 
-**Settings inherit from parent nodes, opt-in.** A node whose own `work.tracker` is a
-non-empty mapping takes every key it leaves out from its ancestors (direct parent
-first, all the way up, including nodes without a board). The nearest file wins each
-key; `credentials` and `transitions` merge key by key; a nearer `null` lets the
-farther value through. A node with no block, or `tracker: {}`, has no tracker and no
-problems whatever its ancestors hold — there is no `tracker: none`. Rules to know:
-
-- **`credentials` must come from the same file as `base-url`, or a nearer one.** A
-  child that sets `base-url` — even to its parent's value — and inherits
-  `credentials`, or either one of its keys, has no tracker, and `validate` says why.
-- **A node with a board that holds shared settings is checked like any tracking
-  node**, so it needs its own `candidate-query`. Keep shared settings in a node
-  without a board instead.
 - **A problem names the file its value came from.** `tcw-config.yaml: …` is the
   node's own file; `<path>/tcw-config.yaml (project '<id>'): …` is an ancestor's —
   fix it there. A missing required key is blamed on the node being checked. When a

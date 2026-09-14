@@ -27,7 +27,7 @@ the setting does, shows its shape, and names the check to run.
 | set the Definition of Done, the checklist `tcw work complete` prints | [`work.md`](references/work.md) |
 | stop transitions committing themselves, set a trunk branch, keep transitions local, or delete resolved items | [`work.md`](references/work.md) |
 | set up documentation tracking: which documents must be updated when which kind of change lands | [`docs-sync.md`](references/docs-sync.md) |
-| connect an external tracker such as Jira | [`tracker.md`](references/tracker.md) |
+| connect an external tracker such as Jira, or share tracker settings from a parent project | [`tracker.md`](references/tracker.md) |
 | keep a component's store in another folder or another repository | [`stores.md`](references/stores.md) |
 | connect a parent or child project, or say where a project is on this machine | [`projects.md`](references/projects.md) |
 | inherit another project's taxonomy or capabilities | [`projects.md`](references/projects.md) |
