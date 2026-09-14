@@ -1,6 +1,6 @@
 slug: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill
-title: 'Separate setting up and configuring TCW from using it: tcw-setup, tcw-configure,
-  and a Feature and capability per skill'
+title: 'Restructure TCW''s skills: setup and configure skills, command and extras
+  skills, no slash commands, and a Feature and capability per skill'
 created: '2026-09-14'
 resolution: null
 effort: very-high
