@@ -1,22 +1,7 @@
-# Lifecycle bindings
+# How lifecycle bindings run
 
-A node may bind its own agent skills or shell commands to any stage or transition
-id, in `tcw-config.yaml`:
-
-```yaml
-work:
-    lifecycle:
-        stages:
-            spec: [{ skill: superpowers:brainstorming }]
-        transitions:
-            complete:
-                pre: [{ command: "pytest -q" }]
-```
-
-A binding declares one **kind** explicitly — a bare string is rejected, never
-guessed at. Declaration order is significant. `tcw validate` rejects unknown ids,
-malformed shapes, blank or duplicated references, a kind used in a position that
-does not allow it, and a malformed `when:`.
+What a binding means and how it runs. To declare or change bindings, see the
+`tcw-configure` skill's `work.md`.
 
 ## Roles, kinds, and conditions
 
@@ -34,11 +19,6 @@ instructions, and is the weakest kind.
 Any binding may carry `when: {tags: […], not_tags: […], type: …}` — keys ANDed, a
 list meaning any-of. Three keys by decision; anything harder is a `generate:`
 script.
-
-A bare list under a stage id still means `prompt:`. It is the one place
-`command:` is accepted in a prompt position — the explicit `prompt:` key rejects
-it and points at `generate:` — because the legacy shape predates the distinction
-and cannot be renamed.
 
 ## The three verbs
 
@@ -77,7 +57,7 @@ A check carrying a `when:` runs only when it matches — and a check that cannot
 evaluated, because no item was resolved, does **not** run.
 
 The `item` a `generate:` hook reads on stdin carries its `body` capped at 64 KiB
-— a separate limit from the output cap — and `hook.body_truncated` says when it
+— a separate limit from the output cap (`work.lifecycle.output-cap`) — and `hook.body_truncated` says when it
 was cut.
 
 **`skill:` bindings are named, never executed** — TCW cannot invoke a skill; you
@@ -93,6 +73,3 @@ though it ran, and never build anything that depends on such a check firing.
 commits the move but skips every binding — a `pre` hook that would block it does
 not block it there — and, where a status is not retained, performs no removal:
 the item waits in its resolved folder for `tcw work delete`.
-
-`tcw-config.yaml` is a file in the user's own repository and is trusted exactly
-as much as any other file there. This is not a sandbox.
