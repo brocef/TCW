@@ -670,14 +670,14 @@ The `tcw-plugin` entry goes.
 | `scripts/session_bootstrap.sh:9`, `:45` | Comments name `tcw-setup` and `install.md`. |
 | `README.md:217`, `:227` | `tcw-plugin` → `tcw-setup`. |
 | `README.md:352` | The two slash commands → asking for the `tcw-setup` skill. |
-| `README.md:430-432` | "Fifteen skills … Nine carry a distinct procedure; the other six all compose one lifecycle stage" → eleven skills, ten with a distinct procedure and one that composes a lifecycle stage. |
+| `README.md:430-432` | "Fifteen skills … Nine carry a distinct procedure; the other six all compose one lifecycle stage" → fifteen skills in three groups: eight core skills (one of which composes a lifecycle stage), four command skills, and three extras. |
 | `README.md:438-446` | The `tcw-plugin` row → rows for `tcw-setup` and `tcw-configure`; `tcw-triage-issues` and `autonomous-work` rows renamed, under an "Extras" note saying `tcw-extras-*` skills are optional. |
 | `README.md:451-461` | "Reading a lifecycle stage" describes one skill, `tcw-work-stage`. |
 | `README.md:465-472` | The "slash commands" paragraph becomes a short description of the four `tcw-commands-*` skills and the three `tcw-extras-*` skills. |
 | `docs/guide/work.md:212`, `:465`, `:475` | Slash-command mentions become the skill to ask for: `tcw-extras-triage-issues`, and the `tcw-work` skill for auditing and consolidating. |
 | `skills/tcw-work/references/lifecycle/stage-inbox.md:11`, `skills/tcw-work/references/transitions.md:117`, `:157` | `tcw-triage-issues` → `tcw-extras-triage-issues`. |
 | `docs/guide/taxonomy-and-capabilities.md:59` | As `README.md:352`. |
-| `.codex-plugin/plugin.json` `longDescription` | "fifteen skills" → "eleven skills"; `tcw-plugin` clause → `tcw-setup` and `tcw-configure` clauses; the per-stage skills' names removed; the two extras renamed. |
+| `.codex-plugin/plugin.json` `longDescription` | The count stays "fifteen skills", with a different set named: the `tcw-plugin` clause becomes `tcw-setup` and `tcw-configure` clauses; the per-stage skills' names are removed; the three extras are renamed; the four command skills are added. |
 | `tests/test_documentation_sync_wiring.py` | `SKILL_FILES` (`:13-19`) drops `setup.md`. `COMMAND_ROUTES`' `tcw-docs-sync-setup` entry (`:23-26`) goes. The docstring at `:109-115` and the test at `:127-134` read the `tcw-configure` skill's `docs-sync.md`. |
 | `tests/test_documentation_config.py:137` | Docstring names the moved document. |
 | `tests/test_plugin_manifests.py:4` | Docstring names `tcw-setup`. |
