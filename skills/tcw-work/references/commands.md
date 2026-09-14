@@ -209,13 +209,10 @@ and it still works while that state persists. A configured `work.path` changes o
 filesystem adapter location; project identity, hooks, and code worktrees stay
 with the owning node.
 
-**The work store can also declare where it comes from.** `work.repository` in
-`tcw-config.yaml` names the repository holding the store (`url`, and optionally
-`ref`, `path` within it, and a local `checkout`), which is the portable half:
-`work.path` says where it is on one machine, `repository` says how any machine
-gets it. Resolution prefers a store that is **already here** — the declaration
-answers only when the local one is absent, so one config serves a laptop that has
-the folder and a fresh clone that does not.
+A store may also declare the repository it comes from, which `tcw provision`
+fetches. Resolution prefers a store that is **already here**: the declaration
+answers only when the local one is absent. Declaring a store's location or its
+repository is the `tcw-configure` skill's `stores.md`.
 
 **"Already here" includes another repository on this disk.** Before fetching,
 resolution asks the project registry whether some project it has located is a
