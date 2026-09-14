@@ -41,3 +41,10 @@ before that item and are outside its scope.
    so anything the harness writes into its working folder is charged to every
    run. The first paid run should list `git status --porcelain --ignored` for one
    fixture and exclude whatever the harness, rather than the agent, left there.
+7. **Reusing an `--out` folder can still stop a paid run partway.** `seed()`
+   now refuses a fixture folder that is not empty, but `run_evals.main()` only
+   checks bare arms up front. A run with `--axis b --out X`, after an earlier
+   `--case B11 --out X`, spawns the new arms and then raises when it reaches
+   B11's used folder. Moving the "fixture folder must be new or empty" check into
+   the same up-front loop for every arm would stop it before anything runs.
+   Found by both reviewers in verification round 2 of the eval checks item.
