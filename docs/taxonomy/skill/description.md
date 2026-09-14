@@ -1,0 +1,1 @@
+An agent skill: a document an agent loads to learn how to do one kind of task. The TCW plugin ships some, and a project can bind its own to lifecycle stages.

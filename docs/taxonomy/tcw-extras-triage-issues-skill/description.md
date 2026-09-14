@@ -1,0 +1,1 @@
+The optional TCW plugin skill for turning a project's own GitHub issues into work items.

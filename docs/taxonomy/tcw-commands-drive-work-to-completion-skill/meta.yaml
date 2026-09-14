@@ -1,0 +1,8 @@
+name: TCW Drive Work to Completion Command Skill
+kind: Feature
+relatesTo: []
+vocabulary:
+- skill
+- work-item
+- work-item/lifecycle-stage
+- work-item/transition

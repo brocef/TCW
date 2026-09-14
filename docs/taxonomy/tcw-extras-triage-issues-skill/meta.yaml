@@ -1,0 +1,7 @@
+name: TCW Extras Issue Triage Skill
+kind: Feature
+relatesTo:
+- work-inbox
+vocabulary:
+- skill
+- work-item/intake

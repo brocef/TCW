@@ -1,0 +1,7 @@
+name: TCW Capabilities Skill
+kind: Feature
+relatesTo:
+- capability-feature-association
+vocabulary:
+- skill
+- capability

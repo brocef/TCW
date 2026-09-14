@@ -1,0 +1,1 @@
+The TCW plugin skill for a project's ledger of what users can do, kept with the tcw capabilities command.
