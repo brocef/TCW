@@ -130,7 +130,9 @@ None.
    - passes when a `tool_use` block's input holds the path;
    - **fails** when the path appears only in a tool result or in assistant text.
 
-   They also assert that `tool_input_absent` behaves as the mirror image.
+   They also assert that `tool_input_absent` behaves as the mirror image, and
+   **fails** with "no tool calls found" on a transcript that has no `tool_use`
+   blocks at all.
 3. `test_every_declared_predicate_has_a_grader` and
    `test_no_grader_exists_for_an_undeclared_predicate` pass, with both new
    predicates declared.
