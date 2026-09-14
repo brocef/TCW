@@ -206,10 +206,10 @@ outside the repository.
 
 ### 7. Documentation
 
-`README.md:366` describes `link` as "take it for an item you already have" and
-§ Taking a ticket (`README.md:431-442`) folds `link` in with `import`'s claim.
+`README.md:368` describes `link` as "take it for an item you already have" and
+§ Taking a ticket (`README.md:433-444`) folds `link` in with `import`'s claim.
 Both are corrected, and the release notes and changelog get entries.
-`skills/tcw-work/references/commands.md:94` says "claim a ticket for an existing
+`skills/tcw-work/references/commands.md:93` says "claim a ticket for an existing
 unresolved item" and is corrected on both counts — claiming and unresolved.
 
 ## Abstraction litmus test

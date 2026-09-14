@@ -249,13 +249,13 @@ All four of this project's entries fire. Scope is concrete, so each is named.
 
 **`README.md` — [Public-API].** Fires: the public CLI surface changes.
 
-- Line 366, the command table comment: "take it for an item you already have"
+- Line 368, the command table comment: "take it for an item you already have"
   becomes wording that says it records a cross-reference and changes nothing in
   the tracker.
-- § Taking a ticket (lines 431–442) folds `link` into `import`'s claim. Split
+- § Taking a ticket (lines 433–444) folds `link` into `import`'s claim. Split
   them: `import` claims, `link` only records, and say that a ticket can be
   linked at any status including a finished item, and whoever holds it.
-- The "Three limits to know" paragraph (line 445) gains the limit from the spec's
+- The "Three limits to know" paragraph (line 446) gains the limit from the spec's
   Risks: a ticket held by a resolved item can be bound to a second, open item.
 
 **`docs/release-notes/upcoming.md` — [Public-API].** Fires: user-visible
@@ -273,7 +273,7 @@ the `tracker` help text and the CLI-wide positional `help=` sweep.
 **`skills/tcw-work/…` — [Skill-Driven-Component].** Fires: the work component's
 CLI surface changes.
 
-- `skills/tcw-work/references/commands.md:94` — "claim a ticket for an existing
+- `skills/tcw-work/references/commands.md:93` — "claim a ticket for an existing
   unresolved item" is wrong twice over.
 - Grep the rest of `skills/tcw-work/` for `tracker link` and for claim wording
   before deciding the file is the only site.
