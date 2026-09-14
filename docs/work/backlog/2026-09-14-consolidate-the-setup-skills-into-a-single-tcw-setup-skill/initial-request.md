@@ -33,6 +33,20 @@ tcw-setup/
     work.md
 ```
 
+### Decided by the requester
+
+- **Documentation-entry setup is in scope.** `documentation-sync`'s setup
+  material moves into `tcw-setup` alongside the rest.
+- **The setup commands are replaced, not kept alongside.** `tcw-taxonomy-init`,
+  `tcw-capabilities-init`, and `tcw-docs-sync-setup` go away in favour of the new
+  skill. The point is simplification; two parallel ways to set things up would
+  work against it.
+- **Changing configuration later belongs here only if it stays small.** Include
+  it in `tcw-setup` if that does not greatly increase the skill's size. If two
+  skills make more sense, split into `tcw-setup` (first-time setup) and
+  `tcw-config` (changing configuration afterwards) — still short, still
+  predictable. Which of the two is for `spec` to decide against that size test.
+
 ### How this request got here
 
 The first idea was a predictable suffix (`-setup` and/or `-config`) on a
@@ -60,9 +74,6 @@ each piece ends up.
 
 Suggestions raised in discussion — _open_, not yet agreed by the requester:
 
-- **Add `docs-sync.md`** so documentation-entry setup lives with the rest;
-  `documentation-sync` keeps a one-line pointer, since it also serves projects
-  that do not use TCW.
 - **Split `plugin.md` in two**: `install.md` (the CLI and plugin, once per
   machine, including a missing or stale CLI) and `project.md` (`tcw init`,
   `tcw provision`, first `tcw validate`, once per repository).
@@ -71,23 +82,16 @@ Suggestions raised in discussion — _open_, not yet agreed by the requester:
   `tcw-setup` description must name those situations or it will not be found.
 - **Delete the skill map rather than move it.** Each usage skill's description
   already names its siblings; the router needs only a short list of parts.
-- **Remove the three setup commands** (`tcw-taxonomy-init`,
-  `tcw-capabilities-init`, `tcw-docs-sync-setup`) in favour of invoking the skill
-  with an argument (`/tcw:tcw-setup taxonomy`), which also works under Codex. This
-  renames things users may already type or name in their own `CLAUDE.md` or
-  `tcw-config.yaml`, so it needs a changelog entry and possibly a one-release stub
-  under the old names.
-
-Other open questions:
-
-- Does "setup" also cover changing configuration later (adding a lifecycle
-  binding months in), or only first-time setup?
-- Is `documentation-sync` in scope, given it is not `tcw-` prefixed and serves
-  non-TCW projects too?
+- **`documentation-sync` keeps a one-line pointer** to its setup document once
+  that moves, since the skill also serves projects that do not use TCW.
+- **Removing the setup commands breaks names** users may already type or write in
+  their own `CLAUDE.md` or `tcw-config.yaml`. It needs a changelog entry; whether
+  a one-release stub under the old names is worth it is open, weighed against
+  the requester's goal of having only one way to set things up.
 
 Constraints: none stated beyond the above. No deadline.
 
-Reference material: asked in this conversation, not yet answered.
+Reference material: asked; none provided.
 
 ## References
 
