@@ -2,8 +2,8 @@
 
 Keep the backlog relevant, actionable, and correctly located. This is an
 AI-driven review, not a `tcw` subcommand — there is no `tcw work
-audit-work-backlog`. Claude users can reach it as `/tcw-audit-work-backlog`;
-under any harness, this document is the procedure.
+audit-work-backlog`. Ask the `tcw-work` skill for it; under any harness, this
+document is the procedure.
 
 Start with `tcw work list --status backlog`. Read each item folder via
 `tcw work path <slug>` — `initial-request.md` **or** `intake.md` (the item's

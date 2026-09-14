@@ -8,7 +8,7 @@ produce with `tcw work stage prompt inbox` — neither takes a work item
 reference, because none exists yet.
 
 A **GitHub issue is the same shape from a different source**: someone else's raw
-text, accepted or rejected. The `tcw-triage-issues` skill sweeps a project's open
+text, accepted or rejected. The `tcw-extras-triage-issues` skill sweeps a project's open
 issues and reuses this stage's judgment for the ones it accepts; what it adds is
 GitHub-specific — reaching the issues, and replying to the reporter.
 

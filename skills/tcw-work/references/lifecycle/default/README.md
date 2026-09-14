@@ -48,5 +48,5 @@ is not a substitute for running the command.
 - **`builtin: true` appears in that list** → the default goes back in, at that
   position in the order.
 
-[`hooks.md`](../../hooks.md) has the binding shapes and the conditions that
-select between them.
+The `tcw-configure` skill's `work.md` has the binding shapes, and
+[`hooks.md`](../../hooks.md) has the conditions that select between them.

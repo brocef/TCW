@@ -2,7 +2,7 @@
  "schema": {
   "note": "The eval test set. Axis A measures whether lifecycle prompt injection reaches the artifact; axis B measures what a plugin skill adds over the shipped CLI prompts alone.",
   "case_fields": {
-   "id": "case identifier, A1-A8 or B1-B10",
+   "id": "case identifier, A1-A8 or B1-B12",
    "axis": "A or B",
    "stage": "axis A only: the lifecycle stage the case works",
    "skill": "axis B only: the skill the case is about; 'cross-axis' where the scenario spans several",
@@ -183,7 +183,7 @@
    "id": "A1",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage-spec",
+   "invokes": "tcw-work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -219,7 +219,7 @@
    "id": "A2",
    "axis": "A",
    "stage": "plan",
-   "invokes": "tcw-work-stage-plan",
+   "invokes": "tcw-work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -255,7 +255,7 @@
    "id": "A3",
    "axis": "A",
    "stage": "implement",
-   "invokes": "tcw-work-stage-implement",
+   "invokes": "tcw-work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -291,7 +291,7 @@
    "id": "A4",
    "axis": "A",
    "stage": "verify",
-   "invokes": "tcw-work-stage-verify",
+   "invokes": "tcw-work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -414,7 +414,7 @@
    "id": "A8",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage-spec",
+   "invokes": "tcw-work-stage",
    "item": "backlog",
    "runner": "codex",
    "arms": [
@@ -600,14 +600,24 @@
      "predicate": "validate_exit_zero",
      "args": {},
      "text": "`tcw validate` is clean"
+    },
+    {
+     "predicate": "tool_input_absent",
+     "args": {
+      "text": "tcw-setup/references/"
+     },
+     "text": "recording new terms in a project that already uses TCW is taxonomy work, so no tcw-setup document was opened"
     }
    ]
   },
   {
    "id": "B5",
    "axis": "B",
-   "skill": "tcw-plugin",
-   "invokes": "tcw-plugin",
+   "skill": "cross-axis",
+   "invokes": [
+    "tcw-taxonomy",
+    "tcw-capabilities"
+   ],
    "arms": [
     "with-skill",
     "no-skill"
@@ -637,8 +647,8 @@
   {
    "id": "B6",
    "axis": "B",
-   "skill": "tcw-report",
-   "invokes": "tcw-report",
+   "skill": "tcw-extras-report",
+   "invokes": "tcw-extras-report",
    "arms": [
     "with-skill",
     "no-skill"
@@ -665,8 +675,8 @@
   {
    "id": "B7",
    "axis": "B",
-   "skill": "tcw-triage-issues",
-   "invokes": "tcw-triage-issues",
+   "skill": "tcw-extras-triage-issues",
+   "invokes": "tcw-extras-triage-issues",
    "arms": [
     "with-skill",
     "no-skill"
@@ -725,6 +735,13 @@
      "predicate": "validate_exit_zero",
      "args": {},
      "text": "the node still validates, which is what catches a capability referencing a Feature that was never registered"
+    },
+    {
+     "predicate": "tool_input_absent",
+     "args": {
+      "text": "tcw-setup/references/"
+     },
+     "text": "\"Set it up\" here asks for a term, a capability and a work item in a project that already uses TCW, so no tcw-setup document was opened"
     },
     {
      "unmechanized": "the three axes were touched in the right order — the term registered before the capability that uses it, the capability declared before the work item that delivers it",
@@ -791,6 +808,82 @@
     }
    ],
    "note": "The seeder declares exactly README.md and docs/changelogs/upcoming.md, so the path list reconciles. src/reports.py is deliberately not listed: the fix the prompt describes is not in the seeded fixture, and the check compares against the seeded commit, so src/reports.py would only appear if the agent edited a file the user says is already fixed."
+  },
+  {
+   "id": "B11",
+   "axis": "B",
+   "skill": "tcw-configure",
+   "invokes": "tcw-configure",
+   "arms": [
+    "with-skill",
+    "no-skill"
+   ],
+   "prompt": "Set up documentation tracking so README.md is also updated whenever any code in demo-app changes.",
+   "assertions": [
+    {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw-configure/references/docs-sync.md"
+     },
+     "text": "the agent opened the tcw-configure skill's docs-sync.md, the document for declaring documentation entries"
+    },
+    {
+     "predicate": "tool_input_absent",
+     "args": {
+      "text": "tcw-setup/references/"
+     },
+     "text": "the agent did not open any tcw-setup document: \"set up\" here names a configuration area in a project that already uses TCW"
+    },
+    {
+     "predicate": "files_changed_exactly",
+     "args": {
+      "paths": [
+       "tcw-config.yaml"
+      ]
+     },
+     "text": "only tcw-config.yaml changed: README.md already exists, so the entry is new and nothing needs creating"
+    },
+    {
+     "predicate": "validate_exit_zero",
+     "args": {},
+     "text": "`tcw validate` is clean, so the new entry parses"
+    }
+   ],
+   "note": "The fixture declares README.md only under Public-API (evals/seed_fixture.py, _declare_documentation). The request adds a second (path, trigger) pair for the same file, under Any-Code-Change or a project-defined trigger, so the agent has no reason to create a file. In the no-skill arm no plugin is loaded, so no skill document can be opened: the contains check is expected to fail there and the absent check passes trivially. That difference is what the case measures. docs-sync.md tells the agent to ask which form, files, trigger and description to use; the prompt already names the file and when it must change, so an agent that still stops to ask has routed correctly but fails files_changed_exactly. Read those two checks separately when grading. A second way a correct route fails files_changed_exactly: docs-sync.md's \"Create Tracked Files\" step can lead the agent to create docs/release-notes/upcoming.md, which the fixture does not have. The fixture is left as it is, because B10 relies on its exact files."
+  },
+  {
+   "id": "B12",
+   "axis": "B",
+   "skill": "tcw-setup",
+   "invokes": "tcw-setup",
+   "fixture": "bare",
+   "arms": [
+    "with-skill",
+    "no-skill"
+   ],
+   "prompt": "This is demo-app. Start tracking it with TCW.",
+   "assertions": [
+    {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw-setup/references/project.md"
+     },
+     "text": "the agent opened the tcw-setup skill's project.md, the document for starting TCW in a repository"
+    },
+    {
+     "predicate": "tool_input_absent",
+     "args": {
+      "text": "tcw-configure/references/"
+     },
+     "text": "the agent opened no tcw-configure document: a repository with no tcw-config.yaml has nothing to configure yet"
+    },
+    {
+     "predicate": "validate_exit_zero",
+     "args": {},
+     "text": "`tcw validate` is clean, so the repository is now a TCW project"
+    }
+   ],
+   "note": "Runs on the bare fixture: a git repository with demo-app's code and no tcw-config.yaml. The seeder refuses a bare fixture inside any TCW project (any parent folder holding tcw-config.yaml), and run_evals refuses such a case before running anything, so this case can only run with --out pointing outside this checkout. In the no-skill arm no plugin is loaded, so the contains check is expected to fail there and the absent check passes trivially. project.md says to use the project name the user gave as the ID (the prompt names demo-app) and to ask otherwise; an agent that stops to ask has routed correctly but fails validate_exit_zero, so read the routing checks and the validate check separately when grading."
   }
  ]
 }

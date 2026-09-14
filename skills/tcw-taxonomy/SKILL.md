@@ -1,7 +1,7 @@
 ---
 name: tcw-taxonomy
-description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase. The capabilities axis is tcw-capabilities, the work axis is tcw-work.
-when_to_use: Use when planning, seeding, or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, linking related entries, federating shared vocabulary across repos, or bootstrapping a taxonomy from an existing codebase.
+description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features. The capabilities axis is tcw-capabilities, the work axis is tcw-work.
+when_to_use: Use when planning or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, or linking related entries.
 allowed-tools: Bash(tcw *), Read, Grep, Glob
 metadata:
     author: Brian Cefali
@@ -21,8 +21,7 @@ It is the first layer in the TCW chain: `Vocabulary -> Features -> Capabilities
 -> Work`. It exists so the other axes point at shared, unambiguous entries
 instead of re-defining words: capabilities can name a loose **Subject** and a
 strong **Feature**, and work references taxonomy entries. The pointers are
-one-directional — **taxonomy never points back** at capabilities or work. See
-`tcw-plugin` for the cross-skill map.
+one-directional — **taxonomy never points back** at capabilities or work.
 
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
@@ -92,19 +91,15 @@ viewers; it is not an editable taxonomy field.
 
 ## Inheritance (federation)
 
-Import another registered project's taxonomy explicitly:
-`tcw taxonomy extends add <project-id>` (`rm <project-id>` drops it). The ID must
-be reachable through the validated project graph; a connection alone does not
-imply inheritance. `extends` is a list and the source project ID is the inherited
+A project may inherit another registered project's taxonomy. Declaring that is
+the `tcw-configure` skill's `projects.md`. The source project ID is the inherited
 namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
 B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning
-project IDs. A source reached through multiple paths appears once. Legacy
-alias/path maps fail closed.
+project IDs. A source reached through multiple paths appears once.
 
-## Bootstrap (read on demand)
+## Starting a taxonomy
 
-To seed a new or empty taxonomy from an existing codebase (deep-dive → draft →
-refine with the user → write) → read [`references/init.md`](references/init.md).
+To seed a new taxonomy from an existing codebase, use the `tcw-setup` skill.
 
 ## Quick reference
 
@@ -116,6 +111,6 @@ refine with the user → write) → read [`references/init.md`](references/init.
 | link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                                                                         |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
 | locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
-| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>`                                                                                            |
+| inherit another project's terms | declared with the `tcw-configure` skill's `projects.md`                                                                                                          |
 | validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                                                     |
 | remove a local term             | `tcw taxonomy rm <path>`                                                                                                                                         |

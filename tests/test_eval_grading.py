@@ -9,6 +9,7 @@ and the manual fallback rescued it would grade as injection working.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -173,6 +174,56 @@ def test_tool_input_absent_fails_when_there_are_no_tool_calls_at_all():
     verdict = grade.p_tool_input_absent(run, text=READ_PATH)
     assert not verdict["passed"]
     assert "no tool calls found" in verdict["evidence"]
+
+
+# --- the routing assertions the cases actually carry ----------------------
+#
+# Read from `evals/evals.json` rather than restated, so a case whose search text
+# is edited into something that no longer tells the two routes apart goes red
+# here. Each row names a file an agent on the wrong route would open, which must
+# fail the assertion, and one on the right route, which must pass it.
+
+EVALS = json.loads((Path(grade.__file__).parent / "evals.json")
+                   .read_text(encoding="utf-8"))
+
+SETUP_PROJECT = "/p/skills/tcw-setup/references/project.md"
+CONFIGURE_DOCS = "/p/skills/tcw-configure/references/docs-sync.md"
+TAXONOMY_SKILL = "/p/skills/tcw-taxonomy/SKILL.md"
+
+CASE_ROUTING = [
+    ("B11", "tool_input_contains", SETUP_PROJECT, CONFIGURE_DOCS),
+    ("B11", "tool_input_absent", SETUP_PROJECT, CONFIGURE_DOCS),
+    ("B12", "tool_input_contains", CONFIGURE_DOCS, SETUP_PROJECT),
+    ("B12", "tool_input_absent", CONFIGURE_DOCS, SETUP_PROJECT),
+    ("B4", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
+    ("B8", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
+]
+
+
+def _case_routing_assertion(case_id, predicate):
+    case = next(c for c in EVALS["cases"] if c["id"] == case_id)
+    found = [a for a in case["assertions"] if a.get("predicate") == predicate]
+    assert len(found) == 1, f"{case_id} has {len(found)} {predicate} assertions"
+    return found[0]
+
+
+def _run_that_reads(path):
+    return {"events": [{"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "t1", "name": "Read",
+         "input": {"file_path": path}}]}}]}
+
+
+@pytest.mark.parametrize("case_id, predicate, wrong, right", CASE_ROUTING,
+                         ids=[f"{c}-{p}" for c, p, _, _ in CASE_ROUTING])
+def test_a_case_routing_assertion_fails_the_wrong_route(case_id, predicate,
+                                                        wrong, right):
+    assertion = _case_routing_assertion(case_id, predicate)
+    fn = grade.PREDICATES[predicate]
+    failed = fn(_run_that_reads(wrong), **assertion["args"])
+    assert not failed["passed"], (
+        f"{case_id} {predicate} passed for a run that only opened {wrong}")
+    passed = fn(_run_that_reads(right), **assertion["args"])
+    assert passed["passed"], passed["evidence"]
 
 
 # --- grading discipline ---------------------------------------------------

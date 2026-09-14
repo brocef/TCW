@@ -17,6 +17,5 @@
         "sdlc",
         "agent-sdlc"
     ],
-    "skills": "./skills/",
-    "commands": "./commands/"
+    "skills": "./skills/"
 }

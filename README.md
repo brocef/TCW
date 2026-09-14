@@ -31,7 +31,7 @@ other's content.
 - [Documentation](#documentation)
 - [Skills — the judgment layer](#skills--the-judgment-layer)
   - [Reading a lifecycle stage](#reading-a-lifecycle-stage)
-  - [Review agents and slash commands](#review-agents-and-slash-commands)
+  - [Review agents and command skills](#review-agents-and-command-skills)
 - [Status](#status)
 - [Further reading](#further-reading)
 
@@ -214,20 +214,20 @@ by installing `tcw-cli` from PyPI with `pipx`, so one installed mid-session
 cannot run until the next one begins. That first session needs network access. It
 installs over an existing `pipx install tcw-cli` rather than beside it, and
 leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
-anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-plugin`** skill
+anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-setup`** skill
 carries the cases where it is not.
 
-In **Codex** (skills only, no slash commands):
+In **Codex**:
 
 ```bash
 codex plugin marketplace add brocef/TCW --ref main
 codex plugin add tcw@tcw
 ```
 
-Codex has no session-start hook, so ask the agent to run the **`tcw-plugin`**
-setup — it runs the same install script Claude runs automatically.
+Codex has no session-start hook, so ask the agent to run the **`tcw-setup`**
+skill — it runs the same install script Claude runs automatically.
 
-The plugin ships the agent skills, slash commands, and read-only review agents
+The plugin ships the agent skills, command skills, and read-only review agents
 listed under [Skills](#skills--the-judgment-layer).
 
 ### As a Python package
@@ -349,8 +349,10 @@ projects. Each component group also has its own `init`: `tcw taxonomy init`,
 `tcw capabilities init`, `tcw work init`.
 
 To bootstrap a taxonomy or capabilities ledger on a project that already has a
-codebase, run `/tcw-taxonomy-init` or `/tcw-capabilities-init` — the assistant
-studies your code, proposes a first draft, refines it with you, and writes it.
+codebase, ask for the `tcw-setup` skill — the assistant studies your code,
+proposes a first draft, refines it with you, and writes it. To change a working
+project's configuration afterwards — documentation entries, lifecycle bindings,
+a tracker, where stores live — ask for the `tcw-configure` skill.
 
 ---
 
@@ -475,48 +477,52 @@ Every command group also has `--help`, and a `check` that validates its tree.
 ## Skills — the judgment layer
 
 The CLI is the _mechanism_. Fifteen skills in [`skills/`](skills/) supply the
-_judgment_ that drives it — the parts a deterministic tool cannot decide. Nine
-carry a distinct procedure; the other six all compose one lifecycle stage and
-are listed together at the end.
+_judgment_ that drives it — the parts a deterministic tool cannot decide. They
+come in three groups, told apart by name: eight core skills (seven in the table
+below, and `tcw-work-stage`, which composes a lifecycle stage and is described
+after it), four `tcw-commands-*` skills for the everyday workflow, and three
+optional `tcw-extras-*` skills.
 
 | Skill                                                      | What it does                                                                                                                                               |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`tcw-work`](skills/tcw-work/SKILL.md)                     | Plans a request through spec and plan, drives implementation and verification, triages the inbox, runs the lifecycle, decomposes epics, searches the board |
 | [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)     | The capability-delta planning check, contradiction detection, and the ledger flip at completion                                                            |
-| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and federating shared vocabulary                                                                          |
-| [`tcw-plugin`](skills/tcw-plugin/SKILL.md)                 | Installs the CLI from PyPI, and maps the other skills                                                                                                      |
-| [`tcw-report`](skills/tcw-report/SKILL.md)                 | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                                              |
-| [`tcw-triage-issues`](skills/tcw-triage-issues/SKILL.md)   | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                                     |
+| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and resolving vocabulary inherited from another project                                                   |
+| [`tcw-setup`](skills/tcw-setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, sets up a repository, starts a taxonomy or capabilities ledger                                              |
+| [`tcw-configure`](skills/tcw-configure/SKILL.md)           | Changes a project's configuration: lifecycle bindings, Definition of Done, documentation entries, tracker, stores, connected and inherited projects        |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                                         |
 | [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md)       | Finds which lifecycle stage could first have caught a problem, once one has surfaced                                                                       |
-| [`autonomous-work`](skills/autonomous-work/SKILL.md)       | Drives work items to completion unattended, consulting two read-only advisors wherever the lifecycle would ask you                                         |
+
+**Extras.** `tcw-extras-*` skills are optional, built for one way of working, and not needed to use TCW.
+
+| Skill | What it does |
+| ----- | ------------ |
+| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, consulting two read-only advisors wherever the lifecycle would ask you                                         |
+| [`tcw-extras-triage-issues`](skills/tcw-extras-triage-issues/SKILL.md) | Sweeps **your** project's GitHub issues and turns the ones worth doing into work items                                                                     |
+| [`tcw-extras-report`](skills/tcw-extras-report/SKILL.md) | Reporting a `tcw` bug or suggestion upstream to [this project's issues](https://github.com/brocef/TCW/issues)                                              |
 
 They name `tcw` commands and never reimplement tool logic: mechanism stays in the
 binary, judgment stays in the skills.
 
 ### Reading a lifecycle stage
 
-Six more skills do one job between them: hand you a stage's own working document
-and the instructions your project resolves for it, as a single read rather than a
-file you open and a command you run separately. They only read — `tcw work stage
-gate` is still what refuses.
+One more skill, [`tcw-work-stage`](skills/tcw-work-stage/SKILL.md), hands you a
+stage's own working document and the instructions your project resolves for it,
+as a single read rather than a file you open and a command you run separately.
+It takes the stage id and the work item, so it reaches all seven stages
+including `inbox` and `postmortem`, under Claude and Codex alike. It only reads
+— `tcw work stage gate` is still what refuses.
 
-[`tcw-work-stage`](skills/tcw-work-stage/SKILL.md) is the general one and takes
-the stage id, so it reaches all seven stages including `inbox` and `postmortem`.
-The other five bake their stage in and ask only for the work item, which is
-optional: `tcw-work-stage-request`, `tcw-work-stage-spec`,
-`tcw-work-stage-plan`, `tcw-work-stage-implement`, `tcw-work-stage-verify`.
-
-### Review agents and slash commands
+### Review agents and command skills
 
 Three read-only review agents ship alongside them — `tcw-verifier`,
 `tcw-backlog-auditor`, and `tcw-post-mortem`, which accelerates the skill of the
-same name — plus slash commands for each skill's main procedure
-(`/tcw-plan-work`, `/tcw-drive-work-to-completion`, `/tcw-verify-work`,
-`/tcw-process-inbox`, `/tcw-work-search`, `/tcw-triage-issues`,
-`/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,
-`/tcw-capabilities-init`, `/tcw-docs-sync-setup`, `/tcw-cut-version`,
-`/tcw-post-mortem`).
+same name. Four command skills carry the everyday workflows:
+`tcw-commands-plan-work`, `tcw-commands-drive-work-to-completion`,
+`tcw-commands-verify-work` and `tcw-commands-process-inbox`. The three extras,
+`tcw-extras-autonomous-work`, `tcw-extras-triage-issues` and
+`tcw-extras-report`, are optional. Under Claude and Codex alike, every entry
+point is a skill.
 
 ---
 

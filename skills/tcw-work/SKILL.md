@@ -1,7 +1,7 @@
 ---
 name: tcw-work
 description: Drives the `tcw work` change-tracking CLI — the Work axis of TCW (Taxonomy · Capabilities · Work). Use when planning, starting, implementing, verifying, or completing a tcw work item; resuming one across sessions; triaging a docs/work/inbox request; decomposing an item into child items; or coordinating a cross-node epic. Does not reimplement the CLI.
-when_to_use: Use when starting, continuing, triaging, planning, implementing, verifying, or decomposing tcw work items — when a user asks to plan work, drive work to completion, process a docs/work/inbox request, start or complete an item, resume an active item across sessions, break a large item into child items (`tcw work new --parent`), or coordinate orchestrator-level work across sub-project nodes via a cross-node epic.
+when_to_use: Use when starting, continuing, triaging, planning, implementing, verifying, or decomposing tcw work items — when a user asks to plan work, drive work to completion, process a docs/work/inbox request, start or complete an item, resume an active item across sessions, break a large item into child items (`tcw work new --parent`), or coordinate orchestrator-level work across sub-project nodes via a cross-node epic. Also when searching the board, auditing the backlog, or consolidating external planning documents.
 allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
 metadata:
     author: Brian Cefali
@@ -16,8 +16,7 @@ exists, and never compose store paths — see [`commands.md`](references/command
 
 Work is the last layer in `Vocabulary → Features → Capabilities → Work`; an item
 may change any earlier one. For a product delta, check those layers in order
-first. **REQUIRED SUB-SKILL: Use tcw-capabilities.** `tcw-plugin` maps the
-skills.
+first. **REQUIRED SUB-SKILL: Use tcw-capabilities.**
 
 ## Two ladders
 
@@ -52,13 +51,13 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
   itself; do not commit those by hand.
 - **`tcw work stage gate <id> <slug>`, then `prompt`** at every stage entry —
   `gate` refuses, `prompt` carries the methodology, the stage document only what
-  the CLI cannot. Bindings → [`hooks.md`](references/hooks.md) · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
+  the CLI cannot. Bindings → [`hooks.md`](references/hooks.md) · declaring them: the `tcw-configure` skill · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
 - For a small change, ask whether to compress planning detail — but keep the item
   the durable source of truth and write whatever is needed to resume or review.
 
 ## Read on demand
 
-- [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, slash commands, the documentation gate (`tcw work docs`), publication on a provisioned store
+- [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, command skills, the documentation gate (`tcw work docs`), publication on a provisioned store
 - [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into nested pieces
 - [`tags.md`](references/tags.md) — the node's tag vocabulary
 - [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences

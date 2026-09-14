@@ -304,35 +304,19 @@ def test_the_router_routes_to_every_reference_file():
     assert not orphans, f"unreachable from SKILL.md: {orphans}"
 
 
-# ── the composing skills ─────────────────────────────────────────────────────
+# ── the composing skill ──────────────────────────────────────────────────────
 #
-# Six documents compose a stage out of `cat <router>` + `tcw work stage prompt`:
-# the generic `tcw-work-stage`, which takes the stage id as an argument, and one
-# `tcw-work-stage-<stage>` per stage a person actually drives, which bakes it in.
-#
-# Every property below held for one file before the five shipped. Each is now
-# parametrised over all six, because a guard that covers one of six near-identical
-# documents has stopped being a guard.
+# One document composes a stage out of `cat <router>` + `tcw work stage prompt`:
+# `tcw-work-stage`, which takes the stage id and the work item as arguments and
+# reaches every stage. Five per-stage skills that baked the stage in were
+# deleted; the tests below keep their parametrised shape, keyed by None for the
+# generic skill, so a second composing document would slot back in.
 
 STAGE_SKILL = REPO / "skills/tcw-work-stage/SKILL.md"
 
-# Derived from STAGE_IDS, never written out as a second list — a stage added to
-# the lifecycle shows up here rather than being silently skipped. Only the two
-# exclusions are hand-written, and each is excluded for a reason that would have
-# to stop being true before it gets a skill:
-#   inbox      — runs before an item exists and takes no work item reference on
-#                either verb, so a per-stage skill would wrap a zero-argument
-#                command and add nothing.
-#   postmortem — already has `tcw-post-mortem`, with a read-only agent behind it;
-#                a second skill for the stage would compete with it.
-NO_PER_STAGE_SKILL = {"inbox", "postmortem"}
-PER_STAGE_IDS = tuple(s for s in STAGE_IDS if s not in NO_PER_STAGE_SKILL)
-PER_STAGE_SKILLS = {s: REPO / f"skills/tcw-work-stage-{s}/SKILL.md"
-                    for s in PER_STAGE_IDS}
-
 # The generic skill keyed by None: it has no single stage, and every parametrised
 # test below has to say what it does differently for that case anyway.
-COMPOSING_SKILLS = {None: STAGE_SKILL, **PER_STAGE_SKILLS}
+COMPOSING_SKILLS = {None: STAGE_SKILL}
 
 
 def _composing(stage):
@@ -343,39 +327,6 @@ def _composing(stage):
 composing = pytest.mark.parametrize(
     "stage", sorted(COMPOSING_SKILLS, key=lambda s: s or ""),
     ids=lambda s: s or "generic")
-
-
-def test_the_per_stage_skills_are_exactly_the_stages_that_get_one():
-    """Both directions. A stage in `PER_STAGE_IDS` with no file is a skill that
-    was planned and never written; a `skills/tcw-work-stage-*/` directory with no
-    matching stage is one that appeared without the exclusion list being
-    revisited — most likely `postmortem`, whose exclusion is a judgement call
-    someone will eventually want to reverse. Reversing it should mean editing
-    `NO_PER_STAGE_SKILL`, not just adding a folder.
-
-    The glob discriminates on its own: every per-stage skill carries the
-    `tcw-work-stage-` prefix and the generic skill does not match it.
-    """
-    missing = sorted(s for s, p in PER_STAGE_SKILLS.items() if not p.is_file())
-    assert not missing, f"stages with no skill file: {missing}"
-    on_disk = {p.parent.name.removeprefix("tcw-work-stage-")
-               for p in REPO.glob("skills/tcw-work-stage-*/SKILL.md")}
-    assert on_disk == set(PER_STAGE_IDS), (
-        f"skills on disk {sorted(on_disk)} disagree with the stages that get one "
-        f"{sorted(PER_STAGE_IDS)}; excluded deliberately: {sorted(NO_PER_STAGE_SKILL)}")
-
-
-@pytest.mark.parametrize("stage", PER_STAGE_IDS)
-def test_a_per_stage_skill_takes_the_item_alone(stage):
-    """The whole point of splitting the generic skill. `arguments: [stage, item]`
-    made the caller restate a stage they already knew, and forced the item to be
-    supplied positionally after it; `arguments: [item]` leaves one argument, and
-    an omitted one interpolates to the empty string, which the CLI accepts."""
-    front = _composing(stage).read_text().split("---")[1]
-    args = next(l for l in front.splitlines() if l.startswith("arguments:"))
-    assert args.strip() == "arguments: [item]", args
-    assert "$stage" not in _composing(stage).read_text(), (
-        f"tcw-work-stage-{stage} still interpolates a stage argument")
 
 
 @composing
@@ -458,3 +409,129 @@ def test_the_composing_skill_declares_the_commands_it_injects(stage):
     front = body.split("---")[1]
     allowed = next(l for l in front.splitlines() if l.startswith("allowed-tools:"))
     assert "Bash(tcw *)" in allowed and "Bash(cat *)" in allowed, allowed
+
+
+def test_the_manual_fallback_says_where_the_arguments_come_from():
+    """Codex has no skill arguments, so `$stage` and `$item` reach a Codex reader
+    as literal text. With the per-stage skills gone, the fallback block is the
+    only thing telling that reader to take both from the request."""
+    body = STAGE_SKILL.read_text(encoding="utf-8")
+    sentences = re.split(r"(?<=\.)\s+", body)
+    assert any("in place of" in s and "$stage" in s and "$item" in s
+               for s in sentences), (
+        "tcw-work-stage never says to use the stage and item named in the "
+        "request in place of `$stage` and `$item`")
+
+
+# ── the setup and configure routers ──────────────────────────────────────────
+#
+# `tcw-setup` and `tcw-configure` route and nothing else: a purpose line, the
+# other skill named, and a table of situations to reference documents. Each
+# must name the other in the same words, because "set up X" can mean either.
+
+# Each routing skill, and the other skill its body must name.
+ROUTING_SKILLS = {"tcw-configure": "tcw-setup", "tcw-setup": "tcw-configure"}
+
+routing = pytest.mark.parametrize("skill", sorted(ROUTING_SKILLS))
+
+
+def _routing_body(skill: str) -> str:
+    lines = (REPO / "skills" / skill / "SKILL.md").read_text(
+        encoding="utf-8").splitlines()
+    return "\n".join(lines[lines.index("---", 1) + 1:])
+
+
+@routing
+def test_a_routing_skill_stays_within_the_line_budget(skill):
+    lines = len(_routing_body(skill).splitlines())
+    assert lines <= SKILL_LINE_BUDGET, \
+        f"{skill} body is {lines} lines, budget is {SKILL_LINE_BUDGET}"
+
+
+@routing
+def test_a_routing_skill_links_every_reference_and_every_link_resolves(skill):
+    folder = REPO / "skills" / skill
+    links = re.findall(r"\]\(([^)#\s]+)\)", _routing_body(skill))
+    broken = [link for link in links if not (folder / link).is_file()]
+    assert not broken, f"{skill} links to files that do not exist: {broken}"
+    linked = {(folder / link).resolve() for link in links}
+    unlinked = sorted(p.name for p in (folder / "references").glob("*.md")
+                      if p.resolve() not in linked)
+    assert not unlinked, f"{skill} never links: {unlinked}"
+
+
+@routing
+def test_a_routing_skill_depends_on_no_claude_only_mechanism(skill):
+    """Skill arguments and context injection are Claude-only. A router that
+    needed either would route nowhere under Codex."""
+    body = _routing_body(skill)
+    assert "$ARGUMENTS" not in body
+    assert "!`" not in body
+
+
+@routing
+def test_a_routing_skill_names_the_other_one(skill):
+    other = ROUTING_SKILLS[skill]
+    assert f"the `{other}` skill" in _routing_body(skill), \
+        f"{skill} never names the `{other}` skill"
+
+
+# Words that pull a setup or configuration request toward a usage skill. Setting
+# up belongs to `tcw-setup` and configuring to `tcw-configure`, so a usage
+# skill's `description` and `when_to_use` must not advertise either.
+SETUP_TRIGGER_WORDS = ("bootstrap", "seed", "federat")
+
+
+def test_the_taxonomy_skill_does_not_advertise_setup_or_federation():
+    import yaml
+    lines = (REPO / "skills/tcw-taxonomy/SKILL.md").read_text(
+        encoding="utf-8").splitlines()
+    front = yaml.safe_load("\n".join(lines[1:lines.index("---", 1)]))
+    text = f"{front['description']} {front['when_to_use']}".lower()
+    found = [w for w in SETUP_TRIGGER_WORDS if w in text]
+    assert not found, f"tcw-taxonomy's description or when_to_use says: {found}"
+
+
+# ── removed skills and commands ──────────────────────────────────────────────
+#
+# The plugin ships no slash commands, and these skill and command names were
+# removed or renamed. A live document still naming one sends a reader to
+# something that is not there. Matched as whole names: a preceding or following
+# `-` or word character means the match sits inside a longer name, so
+# `tcw-extras-autonomous-work` does not count as `autonomous-work`.
+
+DELETED_NAMES = (
+    "tcw-plugin", "tcw-taxonomy-init", "tcw-capabilities-init",
+    "tcw-docs-sync-setup",
+    *(f"tcw-work-stage-{s}" for s in ("request", "spec", "plan", "implement",
+                                      "verify")),
+    "autonomous-work", "tcw-triage-issues", "tcw-report",
+    "tcw-plan-work", "tcw-drive-work-to-completion", "tcw-verify-work",
+    "tcw-process-inbox", "tcw-work-search", "tcw-audit-work-backlog",
+    "tcw-consolidate-plans", "tcw-cut-version",
+)
+
+LIVE_ROUTES = ("skills", ".claude-plugin", ".codex-plugin", "README.md",
+               "docs/guide", "docs/lifecycle")
+
+
+def _live_route_files():
+    for root in LIVE_ROUTES:
+        path = REPO / root
+        yield from (sorted(p for p in path.rglob("*") if p.is_file())
+                    if path.is_dir() else [path])
+
+
+@pytest.mark.parametrize("name", DELETED_NAMES)
+def test_no_live_route_names_a_removed_skill_or_command(name):
+    pattern = re.compile(rf"(?<![-\w]){re.escape(name)}(?![-\w])")
+    hits = [str(p.relative_to(REPO)) for p in _live_route_files()
+            if pattern.search(p.read_text(encoding="utf-8", errors="replace"))]
+    assert not hits, f"'{name}' was removed but is still named by: {hits}"
+
+
+def test_the_plugin_ships_no_slash_commands():
+    import json
+    assert not (REPO / "commands").exists(), "commands/ still exists"
+    manifest = json.loads((REPO / ".claude-plugin/plugin.json").read_text())
+    assert "commands" not in manifest, "the Claude manifest still has a commands key"

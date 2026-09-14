@@ -32,28 +32,40 @@ EVALS = Path(__file__).with_name("evals.json")
 SKILL_GLOB = "*/SKILL.md"
 
 EXCLUSIONS = {
-    "tcw-work-stage-request":
-        "`request` is the one stage whose job is asking the user questions, "
-        "which a non-interactive harness cannot do — the skill's own file says "
-        "so. There is no axis A request case to cover it.",
-    "autonomous-work":
+    "tcw-extras-autonomous-work":
         "It drives whole work items unattended through other skills, spawning "
         "advisor subagents and a `codex exec` call per checkpoint. A case would "
         "cost a full multi-item run to grade, and would mostly re-measure the "
         "skills it delegates to.",
+    **{name: "Composes `tcw-work` stage documents that axis A measures, and has "
+             "no case of its own yet."
+       for name in ("tcw-commands-plan-work",
+                    "tcw-commands-drive-work-to-completion",
+                    "tcw-commands-verify-work",
+                    "tcw-commands-process-inbox")},
 }
 
-# Not exclusions. `tcw-plugin` is covered by B5, so it does not belong in
-# EXCLUSIONS: putting it there would both double-count it and leave a dead
-# entry. But only half of it is measured, and a directory-level gate cannot
-# express half a skill, so the unmeasured half is recorded here rather than
-# left to look like clean coverage.
+# Not exclusions. A skill a case names counts as covered, but a directory-level
+# gate cannot express that only some of its routes are measured, so the
+# unmeasured routes are recorded here rather than left to look like clean
+# coverage.
 PARTIAL = {
-    "tcw-plugin":
-        "B5 covers the orientation half only. The install/repair half stays "
-        "deliberately unmeasured: simulating a broken `tcw` install inside a "
-        "subagent's environment is unsafe and would measure the simulation. "
-        "The gate counts this skill as covered, which overstates it.",
+    "tcw-work-stage":
+        "Axis A covers the spec, plan, implement and verify routes. The "
+        "`request` route is unmeasured: `request` is the one stage whose job is "
+        "asking the user questions, which a non-interactive harness cannot do. "
+        "There is no axis A request case to cover it.",
+    "tcw-configure":
+        "B11 measures the documentation-entries route only. `work.md`, "
+        "`tracker.md`, `stores.md` and `projects.md` are unmeasured.",
+    "tcw-setup":
+        "B12 measures the new-repository route (`project.md`) only. "
+        "Install and repair stay unmeasured: faking a broken `tcw` install "
+        "inside a subagent's environment is unsafe and would measure the "
+        "simulation. `taxonomy.md` and `capabilities.md` ask the user "
+        "questions, which a non-interactive harness cannot answer, the same "
+        "reason the `request` stage is unmeasured. Provisioning a project set "
+        "up elsewhere needs a remote repository.",
 }
 
 

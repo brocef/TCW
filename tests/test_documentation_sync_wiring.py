@@ -14,16 +14,12 @@ SKILL_DIR = REPO / "skills" / "documentation-sync"
 SKILL_FILES = [
     SKILL_DIR / "SKILL.md",
     SKILL_DIR / "references" / "release-notes-and-changelogs.md",
-    SKILL_DIR / "references" / "setup.md",
     SKILL_DIR / "references" / "cut-version.md",
 ]
 
-# Claude-only slash commands are thin routers; the procedure they route to must
-# live in the skill so a Codex user reaches it too (AGENTS.md harness rule).
-COMMAND_ROUTES = {
-    REPO / "commands" / "tcw-docs-sync-setup.md": "references/setup.md",
-    REPO / "commands" / "tcw-cut-version.md": "references/cut-version.md",
-}
+# Declaring documentation entries is configuration, so the document that walks
+# a project through it lives in the `tcw-configure` skill.
+DOCS_SYNC_SETUP = REPO / "skills" / "tcw-configure" / "references" / "docs-sync.md"
 
 # Absorption must leave no dangling reference to the source plugin here.
 NO_CEFAILURES_ROOTS = [
@@ -52,7 +48,7 @@ def _md_files(root: Path):
 
 
 def test_skill_files_exist():
-    for f in SKILL_FILES:
+    for f in [*SKILL_FILES, DOCS_SYNC_SETUP]:
         assert f.is_file(), f"missing documentation-sync skill file: {f}"
 
 
@@ -93,22 +89,12 @@ def test_skill_has_no_cut_version_command_ref():
     assert not offenders, f"stray :cut-version command reference: {offenders}"
 
 
-def test_commands_route_into_the_skill():
-    """Each slash command is a router: it must exist and name the skill reference
-    that carries the procedure, so Codex (no slash commands) reaches the same
-    content by invoking the skill directly."""
-    for cmd, ref in COMMAND_ROUTES.items():
-        assert cmd.is_file(), f"missing command: {cmd}"
-        body = cmd.read_text(encoding="utf-8")
-        assert "documentation-sync" in body, f"{cmd} does not name the skill"
-        assert ref in body, f"{cmd} does not route to {ref}"
-
-
 # ── which form the skill recommends ────────────────────────────────────────
 
 def test_the_skill_presents_the_markdown_section_as_the_fallback():
-    """`SKILL.md` and `references/setup.md` must agree on which form is
-    recommended. `setup.md` already says "prefer config in a TCW project"; the
+    """`SKILL.md` and the `tcw-configure` skill's `docs-sync.md` must agree on
+    which form is recommended. `docs-sync.md` already says "prefer config in a
+    TCW project"; the
     section in `SKILL.md` that shows the Markdown format must not read as the
     default, or a project owner arriving at that heading sets up the legacy form
     without ever learning the config one exists.
@@ -126,9 +112,23 @@ def test_the_skill_presents_the_markdown_section_as_the_fallback():
 
 def test_the_skill_and_setup_reference_do_not_contradict_each_other():
     """Both name the config form as the recommended one."""
-    setup = (SKILL_DIR / "references" / "setup.md").read_text(encoding="utf-8")
+    setup = DOCS_SYNC_SETUP.read_text(encoding="utf-8")
     skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
-    for name, text in (("setup.md", setup), ("SKILL.md", skill)):
+    for name, text in (("docs-sync.md", setup), ("SKILL.md", skill)):
         assert "work.documentation" in text, f"{name} never names the config form"
-    # setup.md's framing is the one SKILL.md has to match.
+    # docs-sync.md's framing is the one SKILL.md has to match.
     assert "prefer config" in setup.lower()
+
+
+def _frontmatter(path: Path) -> dict:
+    import yaml
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return yaml.safe_load("\n".join(lines[1:lines.index("---", 1)]))
+
+
+def test_the_description_is_a_usage_trigger_not_a_setup_one():
+    """Declaring entries is the `tcw-configure` skill's job. A description that
+    says "declares" pulls a "set up documentation tracking" request here instead
+    of there."""
+    description = _frontmatter(SKILL_DIR / "SKILL.md")["description"]
+    assert "declare" not in description.lower(), description

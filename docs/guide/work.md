@@ -209,7 +209,7 @@ from every completion, with no error. And it is printed only when the resolution
 is `done`: discarding an item (`wontfix`, `duplicate`, `superseded`) prints no
 checklist at all, so a line meant to cover those closures has nowhere to land.
 
-If the item came from a GitHub issue — `/tcw-triage-issues` records it — closing
+If the item came from a GitHub issue — the `tcw-extras-triage-issues` skill records it — closing
 the item out means answering that issue and usually closing it too. A checklist
 line is the natural place to be reminded.
 
@@ -463,8 +463,8 @@ cleanup recommendations: likely duplicates or already-finished work, broken file
 references, stale blockers, malformed capability deltas, vague items, and items
 that look like they belong in another TCW node. It reports evidence and suggested
 next actions and asks before changing anything. Ask the assistant to audit the
-backlog, or run `/tcw-audit-work-backlog` in Claude Code; the procedure lives in
-the `tcw-work` skill, so it works under either harness.
+backlog; the procedure lives in the `tcw-work` skill, so it works under either
+harness.
 
 **Consolidating external plans** finds Markdown planning documents outside
 `docs/work/` and migrates them into backlog items, writing `initial-request.md`
@@ -472,9 +472,8 @@ with the source content and provenance and copying obvious spec/plan sections
 into `spec.md` and `plan.md`. It runs only when you ask for it, lists every
 source file it proposes to delete before deleting any, and deletes only files git
 has already committed — anything untracked or with uncommitted changes is
-reported and left alone. Ask the assistant to consolidate external plans, or run
-`/tcw-consolidate-plans` in Claude Code; the procedure lives in the `tcw-work`
-skill, so it works under either harness.
+reported and left alone. Ask the assistant to consolidate external plans; the
+procedure lives in the `tcw-work` skill, so it works under either harness.
 
 ## Decomposing an item
 

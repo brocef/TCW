@@ -422,3 +422,7 @@ This item remains in backlog until separately specified and planned. Creating or
 refining this request does not authorize `tcw work start`, implementation,
 capability/taxonomy writes, public documentation changes, a release, or a version
 bump. Those occur only through the normal TCW lifecycle with explicit acceptance.
+
+## Notes
+
+- **Tracker configuration text has moved** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): how to declare `work.tracker` keys is now the `tcw-configure` skill's `tracker.md`, not `skills/tcw-work/references/commands.md`. New tracker keys are documented there, per the `Configuration-Key-Change` documentation entry. This also applies to the child items `2026-09-12-synchronize-the-work-lifecycle-outward-to-the-tracker`, `2026-09-12-refuse-local-work-that-no-claimed-tracker-ticket-authorizes` and `2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app`, which have no body document of their own yet.

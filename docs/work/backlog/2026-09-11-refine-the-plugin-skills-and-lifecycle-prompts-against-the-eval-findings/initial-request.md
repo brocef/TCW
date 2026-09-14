@@ -68,3 +68,7 @@ reliably it does it, those need a body edit rather than a status flip.
 - `2026-09-11-validate-a-skill-prompt-binding-names-something-that-exists`,
   which is a real injection-layer defect already found and filed separately. It
   does not need a run to justify it and should not wait on one.
+
+## Notes
+
+- **The skill set was restructured** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): `tcw-plugin` and the five `tcw-work-stage-<stage>` skills are gone; `tcw-setup` and `tcw-configure` are new; the four workflow commands are `tcw-commands-*` skills; the three optional skills are `tcw-extras-*`; there are no slash commands. Refine that set.

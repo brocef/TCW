@@ -28,8 +28,7 @@
 | topology                 | `tcw work nodes`                                                                                                                                |
 | check a stage may run    | `tcw work stage gate <id> <slug> [--no-exec]` — status legality, then the stage's `pre` checks. Prints **no** instructions and writes nothing; success is exit 0 with empty stdout. `inbox` takes no slug: `tcw work stage gate inbox` |
 | read a stage's instructions | `tcw work stage prompt <id> [<slug>]` — the **only** verb that prints them; runs **no** legality check and **no** `pre` checks. The slug is optional: without one they resolve generically, with one they resolve for that item. What it prints is wrapped in a gate reminder and a next-step section |
-| read a stage as one document | `tcw-work-stage <id> <item>` — **Claude only.** The skill composes `lifecycle/stage-<id>.md` with the output of `tcw work stage prompt` so both arrive in one read. It reads: no legality check, no `pre` checks. `tcw work stage gate` is still what refuses |
-| read one named stage     | `tcw-work-stage-<id> [<item>]` — **Claude only**, and the same composition with the stage baked in, for the five stages a person drives (`request`, `spec`, `plan`, `implement`, `verify`). The item is optional because `tcw work stage prompt` accepts being called without one. `inbox` and `postmortem` have no such skill; use `tcw-work-stage` for those |
+| read a stage as one document | `tcw-work-stage <id> <item>` — the skill composes `lifecycle/stage-<id>.md` with the output of `tcw work stage prompt` so both arrive in one read. It reads: no legality check, no `pre` checks. `tcw work stage gate` is still what refuses |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 | obtain a declared store or project | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores **and connected projects** this node declares but does not have here; connected projects are followed transitively; every declared component by default; idempotent |
@@ -39,8 +38,8 @@ behind them — the CLI cannot run them, and asking it to is an argparse error:
 
 | Goal                   | How to reach it                                                                                   |
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
-| audit the backlog      | [`audit-backlog.md`](procedures/audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude        |
-| migrate external plans | [`consolidate-plans.md`](procedures/consolidate-plans.md) — any harness · `/tcw-consolidate-plans` in Claude |
+| audit the backlog      | [`audit-backlog.md`](procedures/audit-backlog.md) — any harness · ask the `tcw-work` skill        |
+| migrate external plans | [`consolidate-plans.md`](procedures/consolidate-plans.md) — any harness · ask the `tcw-work` skill |
 
 ## The body surface
 
@@ -94,29 +93,9 @@ dependency because of any of them.
 | claim a ticket for an existing unresolved item | `tcw work tracker link <slug> <ticket> [--part <id>]` |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 
-Configured under `work.tracker` in the node sentinel: `provider` (only
-`jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.claim`, and optional `timeout-seconds`
-(default 15). All but the last are required. Unknown keys are reported rather than
-ignored, so a config written for a later release complains instead of silently doing
-less.
+**Configured with the `tcw-configure` skill's `tracker.md`**, including settings a
+node merges from its ancestors'. At runtime:
 
-**Credentials are named, never stored** — the config holds two environment variable
-names, read at request time.
-
-**Settings inherit from parent nodes, opt-in.** A node whose own `work.tracker` is a
-non-empty mapping takes every key it leaves out from its ancestors (direct parent
-first, all the way up, including nodes without a board). The nearest file wins each
-key; `credentials` and `transitions` merge key by key; a nearer `null` lets the
-farther value through. A node with no block, or `tracker: {}`, has no tracker and no
-problems whatever its ancestors hold — there is no `tracker: none`. Rules to know:
-
-- **`credentials` must come from the same file as `base-url`, or a nearer one.** A
-  child that sets `base-url` — even to its parent's value — and inherits
-  `credentials`, or either one of its keys, has no tracker, and `validate` says why.
-- **A node with a board that holds shared settings is checked like any tracking
-  node**, so it needs its own `candidate-query`. Keep shared settings in a node
-  without a board instead.
 - **A problem names the file its value came from.** `tcw-config.yaml: …` is the
   node's own file; `<path>/tcw-config.yaml (project '<id>'): …` is an ancestor's —
   fix it there. A missing required key is blamed on the node being checked. When a
@@ -197,12 +176,12 @@ always the identity.
 Reference another object in prose with `[text](tcw://W/<slug>)`, or
 `tcw://W/<project-id>/<slug>` across nodes.
 
-## Slash commands (Claude only)
+## Command skills
 
-`/tcw-process-inbox`, `/tcw-plan-work`, `/tcw-drive-work-to-completion`,
-`/tcw-verify-work`. **Codex has no slash commands**, so every one of these
-workflows is also reachable by invoking the `tcw-work` skill and following the
-stage documents directly. Nothing is only available through a command.
+Four skills carry the everyday workflows: `tcw-commands-process-inbox`,
+`tcw-commands-plan-work`, `tcw-commands-drive-work-to-completion` and
+`tcw-commands-verify-work`. Each works by invoking the skill, under any
+harness, and each follows the stage documents this skill already carries.
 
 # Claims and external work stores
 
@@ -218,42 +197,25 @@ and it still works while that state persists. A configured `work.path` changes o
 filesystem adapter location; project identity, hooks, and code worktrees stay
 with the owning node.
 
-**The work store can also declare where it comes from.** `work.repository` in
-`tcw-config.yaml` names the repository holding the store (`url`, and optionally
-`ref`, `path` within it, and a local `checkout`), which is the portable half:
-`work.path` says where it is on one machine, `repository` says how any machine
-gets it. Resolution prefers a store that is **already here** — the declaration
-answers only when the local one is absent, so one config serves a laptop that has
-the folder and a fresh clone that does not.
+A store may also declare the repository it comes from, which `tcw provision`
+fetches. Resolution prefers a store that is **already here**: the declaration
+answers only when the local one is absent. Declaring a store's location or its
+repository is the `tcw-configure` skill's `stores.md`.
 
 **"Already here" includes another repository on this disk.** Before fetching,
 resolution asks the project registry whether some project it has located is a
 checkout of the declared repository, and if so reads the store inside that copy.
 So a workspace cloned flat where the config describes it nested needs no symlink
-and no machine-specific path — `TCW_PROJECT_<ID>` below is enough. A store
+and no machine-specific path — `TCW_PROJECT_<ID>`, a per-machine environment
+variable, is enough. A store
 reached that way does **not** publish: it is the user's own checkout, on
 whatever branch they have it on, and they push it themselves. Only a copy TCW
 fetched publishes.
 
-**A connected project declares the same way.** An entry under
-`connected-projects` may be `{path, repository}` instead of a bare locator, with
-the same ladder — the project at `path` wins when it is here — so a checkout that
-cloned one repository can still resolve `extends`, cross-node refs and the
-topology. Declarations follow the graph: each config names only its own edges.
-
-**One rung sits above both: `TCW_PROJECT_<ID>`** (the id uppercased, `-` as `_`),
-naming where that project is on *this* machine. It wins over the declared path
-and the declaration, because the case it exists for is a path that resolves to
-the *wrong* node — a workspace laid out flat where the config describes it
-nested, which is what makes `tcw provision` fetch a second copy of a project the
-machine already has. Reach for it before editing a shared config to match one
-machine. It reaches component stores too, through the rung above: a store whose
-declared repository is a project this variable located is read there. A variable naming a path that is not here is not an error and falls
-through to `repository`, so one set can serve a whole environment; one naming a
-directory that is present and wrong is refused — by `tcw provision` too, which
-stops before contacting anything rather than falling back to a fetch.
-`tcw validate` lists the ones in effect — if a graph resolves for a reason no
-config explains, that list is where to look.
+A connected project can declare a repository the same way, and
+`TCW_PROJECT_<ID>`, a per-machine environment variable, can say where a project
+is on this machine, ahead of every declaration. Declaring either is the
+`tcw-configure` skill's `projects.md`.
 
 `tcw provision` obtains the missing stores and connected projects. `--component`
 scopes the component pass; connected projects are obtained after it and

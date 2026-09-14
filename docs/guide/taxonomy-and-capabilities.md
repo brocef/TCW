@@ -56,7 +56,7 @@ above).
 ## Bootstrapping a taxonomy or a capabilities ledger
 
 To **bootstrap** a taxonomy or capabilities ledger on a project newly adopting
-TCW, run `/tcw-taxonomy-init` or `/tcw-capabilities-init`: the assistant studies
+TCW, ask for the `tcw-setup` skill: the assistant studies
 your code, proposes a first draft, refines it with you, and writes it.
 
 ## `tcw capabilities` — the user stories

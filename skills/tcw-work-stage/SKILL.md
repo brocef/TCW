@@ -39,7 +39,8 @@ refusal is the answer; do not proceed on the strength of having read the
 instructions here.
 
 If a block above is missing, empty, or shows a command error, this harness did
-not run the injected commands. Nothing is lost — run them yourself:
+not run the injected commands. Nothing is lost — run them yourself. Use the
+stage and work item named in the request in place of `$stage` and `$item`.
 
 ```sh
 cat <plugin>/skills/tcw-work/references/lifecycle/stage-$stage.md
