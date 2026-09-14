@@ -9,6 +9,11 @@ decision rather than an accident: with `urlopen` called inline in four places th
 only way to test would be a live server or a monkeypatched module attribute, and
 several of this item's acceptance criteria depend on substituting the transport.
 
+**Two writes, and their responses are never interpreted.** `apply_transition` and
+`assign` exist for claiming a ticket. What a write returns is read only as success
+or as one of the error types below; whether a claim actually took effect is decided
+by the caller re-reading the issue (`tcw/tracker/intake.py`).
+
 **The error taxonomy is a deliverable, not an afterthought.** A live experiment
 against Jira recorded *three different* `HTTP 400` bodies for the same logical
 condition — a transition that did not apply — one of which blames permissions for
@@ -26,6 +31,7 @@ import json
 import os
 import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
@@ -107,7 +113,7 @@ class SearchResult:
 
 
 class JiraClient:
-    """Read-only Jira Cloud operations this item needs.
+    """The Jira Cloud operations TCW needs: four reads and the two claim writes.
 
     Holds a `TrackerConfig`, which carries the *names* of the two environment
     variables. The values are read in `_request` and nowhere else, so an instance
@@ -209,9 +215,14 @@ class JiraClient:
         return SearchResult(issues=issues, truncated=payload.get("isLast") is False)
 
     def issue(self, key: str) -> dict:
-        """One issue, with the fields this item prints."""
+        """One issue, with the fields this item prints.
+
+        `key` is whatever the user typed, so it is quoted: a slash in it must not
+        address a different resource. Jira accepts a numeric issue id here too.
+        """
+        quoted = urllib.parse.quote(key, safe="")
         return self._json(
-            "GET", f"/rest/api/3/issue/{key}?fields=summary,status,assignee,description")
+            "GET", f"/rest/api/3/issue/{quoted}?fields=summary,status,assignee,description")
 
     def transitions(self, key: str) -> list[Transition]:
         """The transitions this issue offers **right now**, from its current status.
@@ -232,6 +243,34 @@ class JiraClient:
                 to_status_id=str(to.get("id", "")),
             ))
         return out
+
+
+    def apply_transition(self, issue_id: str, transition_id: str) -> None:
+        """Apply one transition. Success says only that Jira accepted the request.
+
+        A refused transition raises `TrackerRequestInvalid` whatever the reason —
+        a lost race, a validator, a misconfigured id — so the caller re-reads the
+        issue to learn what happened.
+        """
+        self._json("POST", f"/rest/api/3/issue/{issue_id}/transitions",
+                   {"transition": {"id": transition_id}})
+
+    def assign(self, issue_id: str, account_id: str) -> None:
+        """Assign the issue to an account. Overwrites whatever assignee it had."""
+        self._json("PUT", f"/rest/api/3/issue/{issue_id}/assignee",
+                   {"accountId": account_id})
+
+    def description(self, issue_id: str) -> str:
+        """The issue's description as text, or `""`.
+
+        From the **v2** endpoint, which returns the description as a wiki-markup
+        string. The v3 endpoint returns a rich-text document tree that would need
+        converting, and a converter that silently drops parts of a description is
+        worse than markup a person can read.
+        """
+        payload = self._json("GET", f"/rest/api/2/issue/{issue_id}?fields=description")
+        value = (payload.get("fields") or {}).get("description")
+        return value if isinstance(value, str) else ""
 
 
 def _for_status(status: int, headers: dict, detail: str, path: str) -> TrackerError:

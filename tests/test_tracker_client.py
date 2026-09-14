@@ -166,6 +166,56 @@ def test_transitions_reads_what_the_issue_offers_now(monkeypatch):
     assert offered[0].to_status == "In Progress"
 
 
+def test_issue_quotes_the_key_it_puts_in_the_path(monkeypatch):
+    """The key is whatever the user typed. A slash in it must not reach a
+    different resource."""
+    rec = Recorder()
+    _client(monkeypatch, rec).issue("a/b")
+    assert rec.last["path"].startswith("/rest/api/3/issue/a%2Fb?")
+
+
+def test_apply_transition_posts_the_transition_id_by_issue_id(monkeypatch):
+    rec = Recorder()
+    assert _client(monkeypatch, rec).apply_transition("10052", "21") is None
+    assert rec.last["method"] == "POST"
+    assert rec.last["path"] == "/rest/api/3/issue/10052/transitions"
+    assert rec.last["body"] == {"transition": {"id": "21"}}
+
+
+def test_assign_puts_the_account_id_by_issue_id(monkeypatch):
+    rec = Recorder()
+    assert _client(monkeypatch, rec).assign("10052", "acct-a") is None
+    assert rec.last["method"] == "PUT"
+    assert rec.last["path"] == "/rest/api/3/issue/10052/assignee"
+    assert rec.last["body"] == {"accountId": "acct-a"}
+
+
+def test_a_write_answered_with_no_content_succeeds(monkeypatch):
+    """Jira answers both writes with 204 and an empty body."""
+    rec = Recorder({"/rest/api/3/issue/10052/transitions": (204, {}, b""),
+                    "/rest/api/3/issue/10052/assignee": (204, {}, b"")})
+    client = _client(monkeypatch, rec)
+    client.apply_transition("10052", "21")
+    client.assign("10052", "acct-a")
+
+
+def test_description_reads_the_plain_text_form(monkeypatch):
+    """The v2 endpoint returns the description as a wiki-markup string; v3 returns
+    a document tree this module would otherwise have to convert."""
+    path = "/rest/api/2/issue/10052?fields=description"
+    rec = Recorder({path: (200, {}, json.dumps(
+        {"fields": {"description": "h2. Problem\n\nIt is broken."}}).encode())})
+    assert _client(monkeypatch, rec).description("10052") == "h2. Problem\n\nIt is broken."
+    assert (rec.last["method"], rec.last["path"]) == ("GET", path)
+
+
+@pytest.mark.parametrize("value", [None, {"type": "doc"}])
+def test_a_missing_or_unexpected_description_is_empty(monkeypatch, value):
+    path = "/rest/api/2/issue/10052?fields=description"
+    rec = Recorder({path: (200, {}, json.dumps({"fields": {"description": value}}).encode())})
+    assert _client(monkeypatch, rec).description("10052") == ""
+
+
 # ── the timeout, on every operation ──────────────────────────────────────────
 
 
@@ -174,6 +224,9 @@ OPERATIONS = [
     ("search", ("project = X",)),
     ("issue", ("X-1",)),
     ("transitions", ("X-1",)),
+    ("apply_transition", ("10052", "21")),
+    ("assign", ("10052", "acct-a")),
+    ("description", ("10052",)),
 ]
 
 
