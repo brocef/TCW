@@ -352,3 +352,64 @@ def test_a_description_that_cannot_be_read_says_the_ticket_is_claimed(node, fake
     assert code == 1 and f"claimed {TICKET}" in err
     assert_no_item(node)
     _re_run_finishes(node, fake)
+
+
+# ── with tracker settings inherited from a parent node ──────────────────────
+
+
+def _inheriting_child(tmp_path: Path) -> tuple[Path, Path]:
+    """A root holding the whole tracker block, and a child holding only its query."""
+    root = make_node(tmp_path, "root", email_env="TCW_A_EMAIL")
+    child = make_node(tmp_path, "child", email_env=None)
+    root_cfg = yaml.safe_load((root / "tcw-config.yaml").read_text())
+    root_cfg["connected-projects"] = {"children": {"child": str(child)}}
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(root_cfg, sort_keys=False))
+    child_cfg = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    child_cfg["connected-projects"] = {"parent": {"root": str(root)}}
+    child_cfg.setdefault("work", {})["tracker"] = {"candidate-query": "project = EX"}
+    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_cfg, sort_keys=False))
+    from tcw.store.project import FsProjectRegistry
+    assert FsProjectRegistry.open(child).check() == []
+    assert FsWorkStore.open(child).tracker_config() is not None
+    return root, child
+
+
+def _break_tracker_settings(root: Path):
+    def run():
+        cfg = yaml.safe_load((root / "tcw-config.yaml").read_text())
+        cfg["work"]["tracker"]["base-url"] = 42
+        (root / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return run
+
+
+def test_import_from_an_inheriting_child_binds_with_the_childs_project(tmp_path, fake):
+    root, child = _inheriting_child(tmp_path)
+    code, out, err = run(child, "import", TICKET)
+    assert code == 0, err
+    (item,) = items(child)
+    assert binding(child, item.slug)["project"] == "child"
+    assert items(root) == []
+
+
+def test_import_binds_with_the_settings_it_claimed_with_if_a_parent_changes_meanwhile(
+        tmp_path, fake):
+    """The binding's provider comes from the client that made the claim. Re-reading
+    the settings after the claim returned None once a parent's file broke, and
+    `None.provider` escaped as a traceback, leaving an unbound item behind."""
+    root, child = _inheriting_child(tmp_path)
+    fake.before("POST", "/transitions", _break_tracker_settings(root))
+    code, out, err = run(child, "import", TICKET)
+    assert code == 0, err
+    assert "Traceback" not in err and "AttributeError" not in err
+    (item,) = items(child)
+    assert binding(child, item.slug)["provider"] == "jira-cloud"
+
+
+def test_link_binds_with_the_settings_it_claimed_with_if_a_parent_changes_meanwhile(
+        tmp_path, fake):
+    root, child = _inheriting_child(tmp_path)
+    slug = FsWorkStore.open(child).create("An existing item").slug
+    fake.before("POST", "/transitions", _break_tracker_settings(root))
+    code, out, err = run(child, "link", slug, TICKET)
+    assert code == 0, err
+    assert binding(child, slug)["provider"] == "jira-cloud"

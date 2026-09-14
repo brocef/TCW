@@ -1711,10 +1711,15 @@ def _intake_text(outcome, description: str, today: str) -> str:
             f"{body}\n")
 
 
-def _binding_for(st, outcome, part: str, today: str, unlinked: list) -> str:
+def _binding_for(provider: str, project: str, outcome, part: str, today: str,
+                 unlinked: list) -> str:
+    """The binding document. `provider` and `project` are the values the claim was
+    looked up and made with, passed in rather than read again: tracker settings can
+    come from parent nodes' files, and one changed or broken mid-run would otherwise
+    fail here, after the ticket is already claimed."""
     from tcw.tracker.intake import binding_document
     return binding_document(
-        provider=st.tracker_config().provider, project=_project_id(st), part=part,
+        provider=provider, project=project, part=part,
         ticket_id=outcome.issue_id, ticket_key=outcome.key, ticket_url=outcome.url,
         account_id=outcome.account_id, account_name=outcome.account_name,
         bound=today, unlinked=unlinked)
@@ -1761,7 +1766,8 @@ def _tracker_import(args: argparse.Namespace) -> int:
     today = date.today().isoformat()
     try:
         ticket = read_ticket(client, args.ticket)
-        existing = find_binding(st, project=_project_id(st),
+        project = _project_id(st)
+        existing = find_binding(st, project=project,
                                 provider=client.config.provider,
                                 ticket_id=ticket.issue_id, part=part)
         if existing is not None:
@@ -1799,7 +1805,8 @@ def _tracker_import(args: argparse.Namespace) -> int:
         return 1
     try:
         st.write_sidecar(slug, BINDING_SIDECAR,
-                         _binding_for(st, outcome, part, today, []), revision="")
+                         _binding_for(client.config.provider, project, outcome, part,
+                                      today, []), revision="")
     except _LOCAL_WRITE_ERRORS as e:
         try:
             st.drop(slug)
@@ -1869,7 +1876,8 @@ def _tracker_link(args: argparse.Namespace) -> int:
         return 1
     try:
         ticket = read_ticket(client, args.ticket)
-        holder = find_binding(st, project=_project_id(st),
+        project = _project_id(st)
+        holder = find_binding(st, project=project,
                               provider=client.config.provider,
                               ticket_id=ticket.issue_id, part=part)
         if holder is not None:
@@ -1885,7 +1893,7 @@ def _tracker_link(args: argparse.Namespace) -> int:
         return 1
     existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
     today = date.today().isoformat()
-    document = _binding_for(st, outcome, part, today,
+    document = _binding_for(client.config.provider, project, outcome, part, today,
                             unlinked_history(existing.content if existing else None))
     try:
         st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
