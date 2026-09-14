@@ -1,0 +1,8 @@
+id: cap-69ba01
+name: Inherit tracker settings from parent nodes
+Status: Missing
+Feature: external-work-tracker
+Planning doc: 2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key
+Subject:
+- cli
+- reference
