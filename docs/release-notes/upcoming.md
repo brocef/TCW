@@ -35,3 +35,42 @@ commands any more. If you used the old names, here is where everything went.
   `work/audit-work-backlog`, `taxonomy/bootstrap-the-taxonomy` and
   `capabilities/bootstrap-the-capabilities`. A link to one of those should point
   at the matching `skills/` entry instead.
+
+## Linking a work item to a ticket no longer takes the ticket
+
+`tcw work tracker link` used to do two things at once: it wrote down that a work
+item and a ticket were the same work, **and** it took the ticket — moving it into
+your in-progress status and assigning it to you. It refused to record anything if
+it could not do that, so there was no way to note a cross-reference without
+announcing that the work had started. Queue up ten tickets for ten backlog items
+and your board showed ten pieces of work under way when none were.
+
+`link` now records the cross-reference and nothing else. What changes:
+
+- **Your ticket is left exactly as it is** — same status, same assignee. The
+  ticket is still read, so a key that does not exist is still refused.
+- **You can link a ticket somebody else is assigned.** Writing a note about a
+  ticket takes it from nobody. `tracker import` still refuses one.
+- **You can link a finished item**, and unlink one. That is how work that is
+  already done gets tied to the ticket that tracked it, and it means a binding
+  pointed at the wrong ticket is repairable wherever you find it — previously
+  both were refused once an item was completed or discarded.
+- **The binding no longer records who claimed the ticket**, because nothing is
+  claimed. Bindings written before this release still work; the old field is
+  ignored.
+
+**One thing to know:** nothing moves a linked ticket for you yet. If you link an
+item and then start work, the ticket stays where it is until you move it in Jira
+yourself. `tracker import` remains the only command that takes a ticket. Claiming
+for an item you already linked is coming separately.
+
+## Every command now explains its arguments
+
+Every argument you type without a flag — the slug, the ticket key, the stage name
+— now has a line of help describing it, across `tcw work`, `tcw taxonomy` and
+`tcw capabilities`. Previously 46 of them had none, so `tcw work tracker link
+<slug> <ticket>` could not tell you which of the two came first.
+
+The five `tracker` commands also got a full write-up in `--help`: what each one
+changes in your tracker, what it changes in your project, when it refuses, and a
+worked example. `link`'s says plainly that it changes nothing in the tracker.

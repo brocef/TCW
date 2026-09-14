@@ -365,7 +365,7 @@ a work item.
 tcw work tracker list              # tickets the configured query selects
 tcw work tracker show ENG-482      # one ticket, and whether it is yours to take
 tcw work tracker import ENG-482    # take the ticket and get a work item for it
-tcw work tracker link <slug> ENG-482       # take it for an item you already have
+tcw work tracker link <slug> ENG-482       # record that an item and a ticket are the same work
 tcw work tracker unlink <slug> --reason "wrong ticket"
 ```
 
@@ -440,14 +440,30 @@ refused, and so is one that is already closed.
 Running `import` again for the same ticket in the same node gives you the same item
 rather than a second one, and if the first run took the ticket but stopped before creating the
 item, the second run finishes the job. One ticket can deliberately become several
-items with `--part api`, `--part web`, and so on. `unlink` removes a wrong binding
-and keeps a record of it with your reason; it never changes the ticket in Jira.
+items with `--part api`, `--part web`, and so on.
 
-Three limits to know. On a workflow that lets anyone start a ticket from any status,
+**Recording that a ticket and an item are the same work.** `tracker link` is the
+other half, and it does only that: it writes the cross-reference down and leaves
+Jira alone. The ticket keeps its status and whoever holds it — you can link a ticket
+somebody else is assigned, because writing a note about a ticket takes it from
+nobody. On your side nothing but the binding is written, so the item keeps its
+status, its owner and its documents. Any item can be linked, a finished one
+included, which is how work that is already done gets tied to the ticket that
+tracked it; the same goes for `unlink`, so a binding pointed at the wrong ticket is
+repairable wherever you find it. `unlink` keeps a record of what was bound and your
+reason, and like `link` it never changes the ticket in Jira.
+
+Because `link` does not claim, **nothing moves a linked ticket for you.** When you
+start work on an item you linked, move the ticket in Jira yourself; `import` is
+still the only command that takes one.
+
+Four limits to know. On a workflow that lets anyone start a ticket from any status,
 two people can both take the same ticket, and TCW does not stop that. Two runs by the
-same Jira account at the same moment can both create an item. And each node keeps its
+same Jira account at the same moment can both create an item. Each node keeps its
 own bindings: importing one ticket in two nodes of a workspace, even nodes sharing
-inherited settings, gives two items, one in each.
+inherited settings, gives two items, one in each. And a ticket held by a finished
+item can be bound to a second, open one with no warning — a discarded item's ticket
+is meant to be available again, and TCW cannot tell that case from the other.
 
 Two guarantees worth stating plainly. A project with no `tracker` block behaves
 exactly as before, with no new required setting and no network access. And

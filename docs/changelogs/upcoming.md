@@ -46,6 +46,33 @@ category.
   checks that `tcw-work-stage`'s fallback names where `$stage` and `$item` come
   from, and that `tcw-taxonomy` and `documentation-sync` descriptions do not
   advertise setup.
+- **`description=`, `epilog=` and positional `help=` on all five `tracker`
+  subcommands**, under `RawDescriptionHelpFormatter`. Each description states
+  what the command changes in the tracker and in the work store, under those
+  two headings; each epilog lists the refusals and shows a worked invocation.
+  Descriptions are hand-wrapped to 70 columns because the raw formatter does
+  not wrap. `link`'s `help=` in the group listing is rewritten.
+- **A `help=` on every positional argument reachable from `build_parser()`** —
+  46 of them had none: 31 under `tcw work`, 15 across `tcw taxonomy` and
+  `tcw capabilities`. Most slugs note that `<project-id>/<slug>` reaches another
+  node; the tracker's say they do not, since a tracker belongs to one node.
+- **`tests/test_cli_help_coverage.py`** — walks `build_parser()` through every
+  `_SubParsersAction` and fails naming any positional without help, plus a
+  companion asserting the walk still reaches all three command groups so it
+  cannot pass by seeing nothing.
+- **`tests/test_tracker_help.py`** — structural assertions over the five
+  `tracker` parsers as built: a description, an epilog, an example invocation
+  and per-positional help on each; "claim"/"assign" absent from `link`'s help
+  (including the parent's one-liner) and present in `import`'s.
+- **Tracker-link coverage** — `link` writes nothing to the tracker and leaves
+  status and assignee alone; only `tracker.yaml` changes in the item folder;
+  binds a ticket another account holds; binds and unlinks at both resolved
+  statuses; refuses an unknown ticket key and an unknown slug. The two tests
+  pinning the removed refusals are deleted rather than inverted.
+- **Legacy-binding coverage** (`tests/test_tracker_binding.py`) — a document
+  written before `claimed-by` was dropped still reads as `Bound`, and `unlink`
+  leaves the stale key at the top level instead of moving it into history.
+  Previously a hand check in the plan.
 
 ## Changed
 
@@ -89,6 +116,33 @@ category.
   `skills/tcw-extras-triage-issues`); `taxonomy/bootstrap-the-taxonomy` and
   `capabilities/bootstrap-the-capabilities` (into `skills/tcw-setup`).
   `work/complete-a-work-item` now links `tcw://C/skills/tcw-extras-triage-issues`.
+- **`tcw work tracker link` no longer claims the ticket** (`_tracker_link`,
+  `tcw/work/cli.py`). The `claim()` call and the `outcome.claimed` guard are
+  gone; `read_ticket` stays, as the proof the key exists and the source of the
+  canonical id, key and URL the binding stores. The surviving guards keep their
+  order. Two consequences: a ticket assigned to another account now binds
+  (the assignee check lived in `claim`, row `1b`), and the success line reports
+  what was bound and that the ticket is unchanged rather than a claim summary.
+  The local-write failure message drops "claimed X, but". `_tracker_import` is
+  untouched and still claims.
+- **`link` and `unlink` accept every status**, `completed` and `discarded`
+  included. `_unresolved_item` loses its `RESOLVED_STATUSES` branch and is
+  renamed `_item_or_reason`; it is now a lookup. `RESOLVED_STATUSES` stays
+  imported for `_work_list` and `_work_delete`. In a node that does not retain
+  resolved items the slug simply is not found, which is the honest answer.
+- **`_binding_for` takes `ticket_id`, `ticket_key`, `ticket_url`** instead of a
+  `ClaimOutcome`, so a binding can be built from a `TicketRead`. Both call sites
+  pass the three values.
+- **`find_binding`'s docstring** drops the half of its reason that expired
+  ("a resolved item's binding cannot be repaired from here") and states the
+  limit that survives: a ticket held by a resolved item can be bound to a
+  second, open item.
+- **`skills/tcw-work/references/commands.md`** — the `link` row, the
+  read/write summary, the claim section (now `import`-only, with a new
+  `link` paragraph), and the `tracker.yaml` field list.
+- **`README.md`** — the command comment for `link`, a new paragraph splitting
+  recording from taking, the note that nothing moves a linked ticket, and a
+  fourth entry in the limits list.
 
 ## Removed
 
@@ -99,3 +153,9 @@ category.
 - **Every slash command**: `commands/`, the `commands` key in
   `.claude-plugin/plugin.json`, and `COMMAND_ROUTES` with
   `test_commands_route_into_the_skill`.
+- **`claimed-by` from `tracker.yaml`.** `binding_document` drops its
+  `account_id` / `account_name` parameters and the block they wrote;
+  `_BINDING_KEYS` drops the key, so `unlink_document` stops moving one that is
+  no longer written. `import`'s bindings lose it too — no binding asserts a
+  claim. No migration: `read_binding` never required the key, so existing
+  documents still read as `Bound`.
