@@ -2535,7 +2535,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                         hit = self.get(ref) if ref else None
                     except RefError:
                         continue
-                    if hit is not None and hit.origin == "local" and hit.path == path:
+                    # `Path`, not string, equality: `get` reports a loose
+                    # spelling (`a/b/`, `./a//b`) back as the path, and `set`
+                    # accepts one, so a string compare would miss the reference.
+                    if hit is not None and hit.origin == "local" and Path(hit.path) == Path(path):
                         out.append(f"{p} ({field})")
                         break
         return out

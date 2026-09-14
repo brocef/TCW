@@ -215,6 +215,9 @@ def test_remove_refuses_nested_override_folder(tmp_path):
 @pytest.mark.parametrize("field, target, value", [
     ("Superseded by", "billing/old-refund", "billing/old-refund"),
     ("Blocked by", "billing/old-refund", "billing/old-refund"),
+    # `set` accepts a loose spelling, because `get` resolves it.
+    ("Superseded by", "billing/old-refund", "billing/old-refund/"),
+    ("Blocked by", "billing/old-refund", "./billing//old-refund"),
     ("Roles", "roles/admin", ["!roles/admin"]),
     ("Roles", "roles/admin", "roles/other, roles/admin"),
     ("When", "conditions/signed-in", "conditions/signed-in"),
