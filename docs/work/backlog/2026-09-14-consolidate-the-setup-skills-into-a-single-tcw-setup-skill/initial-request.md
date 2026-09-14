@@ -61,7 +61,28 @@
 >     `tcw-extras-autonomous-work`. `tcw-triage-issues` moves to extras too, as
 >     `tcw-extras-triage-issues`, and its slash command is renamed to match
 >     (`/tcw-extras-triage-issues`). Future skills of that kind use the same
->     prefix.
+>     prefix. *(The command rename is superseded by note 15.)*
+> 15. **No slash commands at all.** Commands and skills are the same thing to
+>     Claude, and no other harness supports commands, so `commands/` is removed.
+>     - A command that only points at an existing skill is deleted, after
+>       checking the skill really covers what the command says.
+>     - A command that carries its own procedure becomes a skill. There are now
+>       three kinds of skill, told apart by name:
+>       - **`tcw-commands-*`** for the core workflow entry points the requester
+>         uses constantly: `tcw-commands-plan-work`,
+>         `tcw-commands-drive-work-to-completion`, `tcw-commands-verify-work`,
+>         `tcw-commands-process-inbox`;
+>       - **`tcw-extras-*`** for optional skills a user may never need:
+>         `tcw-extras-autonomous-work`, `tcw-extras-triage-issues`,
+>         `tcw-extras-report` (renamed from `tcw-report`);
+>       - plain `tcw-*` for the rest, including `tcw-post-mortem`, which keeps
+>         its name.
+>     - `/tcw-work-search`, `/tcw-audit-work-backlog` and
+>       `/tcw-consolidate-plans` are deleted only if the `tcw-work` skill
+>       already covers what they say; anything not covered becomes a `tcw-work`
+>       reference document or a `tcw-commands-`/`tcw-extras-` skill.
+>     - When it is unclear whether something is a command skill or an extra,
+>       ask the requester.
 
 ## What is being asked for
 
