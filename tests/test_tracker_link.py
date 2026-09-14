@@ -39,6 +39,23 @@ def plain_item(root, title="Existing item") -> str:
     return slug
 
 
+def resolve(root, slug, status: str) -> None:
+    """Drive `slug` into a terminal status. `status` has no default: which one is
+    the axis these tests vary, and a default would hide whichever cell it picked."""
+    st = FsWorkStore.open(root)
+    if status == "completed":
+        st.start(slug)
+        st.complete(slug, "done", ["acked"])
+    elif status == "discarded":
+        st.complete(slug, "wontfix", dod_ack=[], force=True)
+    else:
+        raise ValueError(f"not a resolved status: {status}")
+    assert st.get(slug).status == status
+
+
+RESOLVED = pytest.mark.parametrize("status", ["completed", "discarded"])
+
+
 # ── link ─────────────────────────────────────────────────────────────────────
 
 
@@ -114,15 +131,6 @@ def test_link_refuses_an_item_already_bound_and_names_its_ticket(node, fake):  #
     assert TICKET in err and "unlink" in err
 
 
-def test_link_refuses_a_resolved_item(node, fake):  # noqa: F811
-    st = FsWorkStore.open(node)
-    slug = plain_item(node)
-    st.start(slug)
-    st.complete(slug, "done", ["acked"])
-    err = _refused_without_change(node, fake, slug, TICKET)
-    assert "completed" in err
-
-
 def test_link_refuses_a_key_another_item_holds(node, fake):  # noqa: F811
     holder = write_binding(node, "Holder")
     slug = plain_item(node)
@@ -155,6 +163,30 @@ def test_link_refuses_an_unknown_ticket(node, fake):  # noqa: F811
     assert not (FsWorkStore.open(node).path(slug) / "tracker.yaml").exists()
 
 
+@RESOLVED
+def test_link_binds_a_resolved_item(node, fake, status):  # noqa: F811
+    """Finished work can be linked to the ticket that tracked it. Nothing about a
+    binding needs the item to still be open, now that binding does not claim."""
+    slug = plain_item(node)
+    resolve(node, slug, status)
+    ticket_before = ticket_state(fake)
+    code, _out, err = run(node, "link", slug, TICKET)
+    assert code == 0, err
+    assert "a resolved item's binding is not changed" not in err
+    assert binding(node, slug)["ticket"]["key"] == TICKET
+    _assert_tracker_untouched(fake, ticket_before)
+
+
+def test_link_refuses_a_slug_that_does_not_exist(node, fake):  # noqa: F811
+    """The status guard is gone; the existence check is not. In a node that does
+    not retain resolved items this is also what a completed slug now hits."""
+    before = len(fake.writes())
+    code, _out, err = run(node, "link", "2026-01-01-not-a-real-item", TICKET)
+    assert code == 1
+    assert "no such work item in this node" in err
+    assert len(fake.writes()) == before
+
+
 # ── unlink ───────────────────────────────────────────────────────────────────
 
 
@@ -174,17 +206,6 @@ def test_unlink_refuses_an_unbound_item(node, fake):  # noqa: F811
     before = snapshot(node, slug)
     code, _out, err = run(node, "unlink", slug, "--reason", "wrong ticket")
     assert code == 1 and "not bound" in err
-    assert snapshot(node, slug) == before
-
-
-def test_unlink_refuses_a_resolved_item(node, fake):  # noqa: F811
-    st = FsWorkStore.open(node)
-    slug = write_binding(node, "Bound item")
-    st.start(slug)
-    st.complete(slug, "done", ["acked"])
-    before = snapshot(node, slug)
-    code, _out, _err = run(node, "unlink", slug, "--reason", "wrong ticket")
-    assert code == 1
     assert snapshot(node, slug) == before
 
 
@@ -227,3 +248,17 @@ def test_no_link_or_unlink_path_prints_or_stores_the_token(node, fake):  # noqa:
     for path in FsWorkStore.open(node).root.rglob("*"):
         if path.is_file():
             assert SENTINEL not in path.read_text(encoding="utf-8", errors="replace"), path
+
+
+@RESOLVED
+def test_unlink_removes_a_binding_from_a_resolved_item(node, fake, status):  # noqa: F811
+    """A wrong binding on finished work was unrepairable: `unlink` refused every
+    resolved status, so the only way out was editing the sidecar by hand."""
+    slug = write_binding(node, "Bound item")
+    resolve(node, slug, status)
+    code, _out, err = run(node, "unlink", slug, "--reason", "wrong ticket")
+    assert code == 0, err
+    assert "a resolved item's binding is not changed" not in err
+    doc = binding(node, slug)
+    assert "ticket" not in doc
+    assert [e["reason"] for e in doc["unlinked"]] == ["wrong ticket"]

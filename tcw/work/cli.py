@@ -1827,18 +1827,18 @@ def _tracker_import(args: argparse.Namespace) -> int:
     return 0
 
 
-def _unresolved_item(st, slug: str, label: str):
-    """The item `slug` names in this node, or None after saying why it cannot be
-    bound or unbound. A bare slug only: a tracker configuration and a project id
-    belong to one node."""
+def _item_or_reason(st, slug: str, label: str):
+    """The item `slug` names in this node, or None after saying it is not there. A
+    bare slug only: a tracker configuration and a project id belong to one node.
+
+    Every status is bindable, resolved ones included: finished work can be linked to
+    the ticket that tracked it, and a wrong binding on it can be repaired. In a node
+    that does not retain resolved items there is no folder to find, so such a slug
+    refuses here as an unknown one — the honest limit of a store that dropped it."""
     item = st.get(slug)
     if item is None:
         print(f"tcw work tracker {label}: no such work item in this node: {slug}",
               file=sys.stderr)
-        return None
-    if item.status in RESOLVED_STATUSES:
-        print(f"tcw work tracker {label}: {slug} is {item.status}; a resolved item's "
-              f"binding is not changed.", file=sys.stderr)
         return None
     return item
 
@@ -1868,7 +1868,7 @@ def _tracker_link(args: argparse.Namespace) -> int:
         print(f"tcw work tracker link: {e}", file=sys.stderr)
         return 1
     st = _store()
-    if _unresolved_item(st, args.slug, "link") is None:
+    if _item_or_reason(st, args.slug, "link") is None:
         return 1
     current, revision = binding_of(st, args.slug)
     if isinstance(current, Malformed):
@@ -1925,7 +1925,7 @@ def _tracker_unlink(args: argparse.Namespace) -> int:
               "being removed.", file=sys.stderr)
         return 1
     st = _store()
-    if st is None or _unresolved_item(st, args.slug, "unlink") is None:
+    if st is None or _item_or_reason(st, args.slug, "unlink") is None:
         return 1
     current, revision = binding_of(st, args.slug)
     if isinstance(current, Malformed):
