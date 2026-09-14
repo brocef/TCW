@@ -551,3 +551,48 @@ def _run(argv):
         except SystemExit as exit_:
             code = exit_.code or 0
     return code, out.getvalue(), err.getvalue()
+
+
+# ── the commands ─────────────────────────────────────────────────────────────
+
+
+def test_tracker_list_sends_the_childs_query_to_the_inherited_site(tmp_path, monkeypatch):
+    """C17. No CLI code changed; this proves `tcw work tracker list` reads the merge."""
+    import json
+
+    from tcw.tracker import jira
+
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=QUERY_ONLY)
+    monkeypatch.chdir(nodes["pkg"])
+    monkeypatch.setenv("ROOT_EMAIL", "probe@example.test")
+    monkeypatch.setenv("ROOT_TOKEN", "probe-token")
+    calls = []
+
+    def fake(self, method, path, body=None, *, timeout=None):
+        calls.append((self.config.base_url, path, body))
+        return (200, {}, json.dumps({"isLast": True, "issues": []}).encode())
+
+    monkeypatch.setattr(jira.JiraClient, "_request", fake)
+    code, out, err = _run(["work", "tracker", "list"])
+    assert code == 0, err
+    assert "no tracker is configured" not in err
+    assert len(calls) == 1
+    base_url, path, body = calls[0]
+    assert base_url == COMPLETE["base-url"]
+    assert path.startswith("/rest/api/3/search/jql")
+    sent = json.loads(body) if isinstance(body, (bytes, str)) else body
+    assert sent["jql"] == QUERY_ONLY["candidate-query"]
+
+
+def test_validate_reports_a_parents_bad_value_under_each_child_that_inherits_it(
+        tmp_path, monkeypatch):
+    nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "base-url": 42},
+                   repo=ABSENT, pkg=QUERY_ONLY)
+    monkeypatch.chdir(nodes["root"])
+    code, out, err = _run(["validate"])
+    assert code == 1
+    assert "validate OK" not in out
+    assert (f"[pkg] {_label(nodes['root'], 'root')}: work.tracker.base-url: expected a "
+            f"non-empty string, got int") in err
+    # Repo writes no block, so it inherits nothing and reports nothing.
+    assert "[repo]" not in err
