@@ -80,7 +80,10 @@ The parent must be connected to the child through `connected-projects` (see
 `projects.md`); ancestors are found through that graph, not by folder.
 
 **Turning an ancestor's tracker off for one node.** Leave `work.tracker` out of
-that node, or write `tracker: {}`: the node then has no tracker at all. A node
+that node, or write `tracker: {}`: the node then has no tracker at all. That
+turns the tracker off only for the node that writes it: an ancestor's empty
+block is skipped when blocks are merged, so that node's child projects still
+inherit from farther up. A node
 cannot keep its own tracker block while refusing a key an ancestor sets, because a
 `null` lets the farther value through; to use different values, set them in the
 node's own block, where the nearest file wins.
