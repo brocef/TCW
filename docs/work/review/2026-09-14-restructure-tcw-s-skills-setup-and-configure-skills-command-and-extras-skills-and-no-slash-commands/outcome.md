@@ -1,7 +1,13 @@
 # Outcome — Restructure TCW's skills: setup and configure skills, command and extras skills, and no slash commands
 
 `<base>` (the commit that last touched `plan.md`): `fe735d94`. The branch started
-from `e73b0a6c` (item A completed); the item was started at `8a548c8a`. The
+from `e73b0a6c` (item A completed); the item was started at `8a548c8a` (`fce4c035` after the rebase).
+
+Commit ids in the task table are the branch as rebased onto `main` after v2.1.3
+(see "Rebased onto main after v2.1.3" at the end, which maps old ids to new).
+Commit ids elsewhere, and the test results and checks quoted at them, are the
+pre-rebase commits, kept as the record of that round; the rebased branch was
+re-run in full. The
 tracker item `2026-09-12-configure-an-external-tracker-and-read-its-tickets` had
 already completed, so task 6 moved its final text.
 
@@ -9,23 +15,24 @@ already completed, so task 6 moved its final text.
 
 | Task | Commit | What |
 | --- | --- | --- |
-| start | `8a548c8a` | `tcw work start` |
-| 1 | `35bd788e` | The five per-stage skills deleted; `tcw-work-stage`'s fallback says to use the stage and item named in the request in place of `$stage` and `$item`; A1–A4 and A8 invoke `tcw-work-stage`; the `request` exclusion moved into `PARTIAL["tcw-work-stage"]`; the capability paragraph reworded; the per-stage parity tests removed |
-| 2 | `120841ad` | `tcw-extras-autonomous-work`, `tcw-extras-triage-issues`, `tcw-extras-report`, and every reference |
-| 3 | `226f5ba0`, `4a867aed` | The four `tcw-commands-*` skills: a move-plus-frontmatter commit, then body edits and wiring |
-| 4 | `4b0f0e38` | `setup.md` → `tcw-configure/references/docs-sync.md` (R100) with pointer updates |
-| 5 | `f7c2935d` | `docs-sync.md` retitled, pointers name `documentation-sync`; that skill's description reworded, with a test |
-| 6 | `54079182`, `ec98881b`, `e222b650`, `057592ea` | `work.md`, `tracker.md`, `stores.md`, `projects.md`, one commit each |
-| 7 | `b63ac309` | `tcw-configure` router; router tests; `tests/test_skill_path_pointers.py`; B11 with grading tests; `Configuration-Key-Change` entry |
-| 8 | `5965d329` | Both `init.md` → `tcw-setup/references/` (R100) with pointer updates |
-| 9 | `cdbce915` | `taxonomy.md` inheritance step and `capabilities.md` pointer |
-| 10 | `7947bc0e` | `tcw-setup` router, `install.md`, `project.md`; B12; B4 and B8 routing checks; `tcw-taxonomy` description; capability and `session_bootstrap.sh` comments |
-| 11 | `9af531b1` | `tcw-plugin` and `commands/` removed; deleted-names and no-commands tests; `cut-version.md`; B5 retargeted |
-| 12 | `cad2a907` | Notes on related open items |
-| 13 | `b6804a4d` | README |
-| 14 | `630a45c7` | Release notes |
-| 15 | `ba2e4e73` | Changelog |
-| review | `f6528984`, `15ecaf50`, `d8738f65` | Review fixes, changelog line, inbox note (see Review) |
+| start | `fce4c035` | `tcw work start` |
+| 1 | `a0cb1848` | The five per-stage skills deleted; `tcw-work-stage`'s fallback says to use the stage and item named in the request in place of `$stage` and `$item`; A1–A4 and A8 invoke `tcw-work-stage`; the `request` exclusion moved into `PARTIAL["tcw-work-stage"]`; the capability paragraph reworded; the per-stage parity tests removed |
+| 2 | `3caa5c94` | `tcw-extras-autonomous-work`, `tcw-extras-triage-issues`, `tcw-extras-report`, and every reference |
+| 3 | `6f7b7722`, `8d912383` | The four `tcw-commands-*` skills: a move-plus-frontmatter commit, then body edits and wiring |
+| 4 | `4beb8bcc` | `setup.md` → `tcw-configure/references/docs-sync.md` (R100) with pointer updates |
+| 5 | `45e390ef` | `docs-sync.md` retitled, pointers name `documentation-sync`; that skill's description reworded, with a test |
+| 6 | `89906e14`, `fd8c72f0`, `e7410d1d`, `458327be` | `work.md`, `tracker.md`, `stores.md`, `projects.md`, one commit each |
+| 7 | `5158ad12` | `tcw-configure` router; router tests; `tests/test_skill_path_pointers.py`; B11 with grading tests; `Configuration-Key-Change` entry |
+| 8 | `a776bb0f` | Both `init.md` → `tcw-setup/references/` (R100) with pointer updates |
+| 9 | `06497fa5` | `taxonomy.md` inheritance step and `capabilities.md` pointer |
+| 10 | `85c6d2e2` | `tcw-setup` router, `install.md`, `project.md`; B12; B4 and B8 routing checks; `tcw-taxonomy` description; capability and `session_bootstrap.sh` comments |
+| 11 | `7caff3d0` | `tcw-plugin` and `commands/` removed; deleted-names and no-commands tests; `cut-version.md`; B5 retargeted |
+| 12 | `9b73c9d7` | Notes on related open items |
+| 13 | `d30dec1d` | README |
+| 14 | `41f0b0d2` | Release notes |
+| 15 | `b6637e6c` | Changelog |
+| verification round 1 | `71cbf89b`, `0c095335` | Tracker inheritance moved into `tracker.md`; B11 note and inbox addition (see "Rebased onto main") |
+| review | `2b0bb827`, `8a165a2b` | Review fixes, inbox note (see Review) |
 
 Skill counts, confirmed by `tests/test_plugin_manifests.py` at each commit: 10
 after task 1, 10 after task 2, 14 after task 3, 15 after task 7, 16 after task
@@ -33,10 +40,15 @@ after task 1, 10 after task 2, 14 after task 3, 15 after task 7, 16 after task
 
 ## Tests
 
-- **Full bare `pytest` at `ba2e4e73`** (after the last code task and the
-  documentation pass): **2850 passed** in 12 min 39 s.
-- **Full bare `pytest` at `d8738f65`** (after the review fixes, the last code
-  change): **2850 passed** in 14 min 29 s. Only `outcome.md` changed after it.
+- **Full bare `pytest` at pre-rebase `ba2e4e73`** (after the last code task
+  and the documentation pass): **2850 passed** in 12 min 39 s.
+- **Full bare `pytest` at pre-rebase `d8738f65`** (after the review fixes):
+  **2850 passed** in 14 min 29 s.
+- **Full bare `pytest` at `feb4771b`** (rebased onto `main` after v2.1.3, run
+  by the coordinator): **3067 passed**.
+- **Full bare `pytest` at `0c095335`** (after verification round 1's fixes):
+  **3070 passed** in 13 min 2 s (the three new tests account for the difference
+  from 3067).
 - **Every intermediate commit was checked with partial runs only**: the test
   files each task touches or could break (`test_skill_lifecycle_parity`,
   `test_plugin_manifests`, `test_eval_coverage`, `test_eval_grading`,
@@ -109,10 +121,10 @@ after the review fixes:
 5. **AC 8, AC 9.** Every required word present; no forbidden word. AC 9 is also
    enforced by tests.
 6. **AC 10.** All pointers present; no `## Bootstrap` heading.
-7. **AC 11, renames.** R100 for all three moves, in `4b0f0e38` and `5965d329`.
+7. **AC 11, renames.** R100 for all three moves, in `4beb8bcc` and `a776bb0f` (pre-rebase
+   `4b0f0e38` and `5965d329`), confirmed again after the rebase.
 8. **AC 11, partial moves.** The substring check against `fe735d94` passes for
-   `hooks.md` → `work.md`, and for `commands.md` 93–100 → `tracker.md` and
-   156–162 → `stores.md`. The lines it reports missing are listed below.
+   `hooks.md` → `work.md` and `commands.md` 156–162 → `stores.md`. The lines it reports missing are listed below.
 9. **AC 12, AC 13.** All strings present; `hooks.md` opens "# How lifecycle
    bindings run"; the default lifecycle README names `tcw-configure`.
 10. **AC 14.** Enforced by `tests/test_skill_path_pointers.py`.
@@ -135,6 +147,14 @@ From `skills/tcw-plugin/SKILL.md` (62–115) → `tcw-setup/references/install.m
   and `_Install → In a cloud environment_ carries the script and the rules it must
   obey.` → the rule is kept in its own words and the README pointer is dropped, as
   spec D3 requires: reference documents never send the agent to the README.
+
+From `skills/tcw-work/references/commands.md` (93–100) →
+`tcw-configure/references/tracker.md`:
+
+- `(default 15). All but the last are required. Unknown keys are reported rather than`
+  → "All but the last are required once the node's block is merged with its
+  ancestors' blocks". Tracker inheritance (v2.1.3, on `main`) made "required"
+  mean required after the merge, so a child can set only `candidate-query`.
 
 From `skills/tcw-work/references/commands.md` (173–191) →
 `tcw-configure/references/projects.md`:
@@ -162,9 +182,11 @@ From `skills/tcw-work/references/commands.md` (173–191) →
    `state.yaml` only). Writing an `intake.md` or `initial-request.md` by hand would
    change their stage or pretend to be raw input, so their note went on the parent
    epic `2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge`.
-   The completed tracker item is gitignored and was not edited. A note was also
-   added to `2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key`, which
-   adds tracker configuration but postdates the plan.
+   The completed tracker item is gitignored and was not edited. Notes written to
+   `2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item` and
+   `2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key` were dropped in
+   the rebase, because both items completed on `main` first (see "Rebased onto
+   main after v2.1.3").
 4. **AC 17's grading-test bullet is narrowed.** B11 and B12 each have grading
    tests for both routing assertions, read from `evals/evals.json`. Their
    `files_changed_exactly` and `validate_exit_zero` assertions are fixture
@@ -275,10 +297,10 @@ that `EXCLUSIONS`/`PARTIAL` keys still ship; `install.md` does not say how to ru
 the bootstrap script under Codex; `tcw-work-stage`'s `<plugin>` placeholder has
 no Codex instruction; small duplication in test helpers.
 
-**Merge note from the review.** On `main`,
-`2026-09-12-claim-…` and `2026-09-14-inherit-work-tracker-…` have moved from
-`active/` to `review/`. This branch appends a note to each under `active/`; the
-merge should follow the rename, but the combined result needs a look.
+**Merge note from the review.** It warned that `main` had moved
+`2026-09-12-claim-…` and `2026-09-14-inherit-work-tracker-…` out of `active/`
+while this branch appended notes to both. Resolved in the rebase: both items
+completed, and the two notes were dropped.
 
 ## Not verified here
 
@@ -287,3 +309,92 @@ merge should follow the rename, but the combined result needs a look.
   (`2026-09-11-run-the-eval-harness-and-act-on-what-it-finds`).
 - The skills in a real Codex session.
 - Codex and `bllm` were not asked to review; this was a single adversarial review.
+
+## Rebased onto main after v2.1.3
+
+The coordinator rebased the branch onto `main` twice, after `main` gained
+`tcw work tracker import`, `link` and `unlink` (v2.1.2) and tracker settings
+inherited from parent nodes (v2.1.3, `main` at `363e4c7a`). The rebased head was
+`feb4771b`.
+
+| Before | After | Commit |
+| --- | --- | --- |
+| `8a548c8a` | `fce4c035` | start |
+| `35bd788e` | `a0cb1848` | task 1 |
+| `120841ad` | `3caa5c94` | task 2 |
+| `226f5ba0` | `6f7b7722` | task 3, move |
+| `4a867aed` | `8d912383` | task 3, bodies |
+| `4b0f0e38` | `4beb8bcc` | task 4 |
+| `f7c2935d` | `45e390ef` | task 5 |
+| `54079182` | `89906e14` | task 6, work.md |
+| `ec98881b` | `fd8c72f0` | task 6, tracker.md |
+| `e222b650` | `e7410d1d` | task 6, stores.md |
+| `057592ea` | `458327be` | task 6, projects.md |
+| `b63ac309` | `5158ad12` | task 7 |
+| `5965d329` | `a776bb0f` | task 8 |
+| `cdbce915` | `06497fa5` | task 9 |
+| `7947bc0e` | `85c6d2e2` | task 10 |
+| `9af531b1` | `7caff3d0` | task 11 |
+| `cad2a907` | `9b73c9d7` | task 12 (two notes dropped, see below) |
+| `b6804a4d` | `d30dec1d` | task 13 |
+| `630a45c7` | `41f0b0d2` | task 14 (rebuilt, see below) |
+| `ba2e4e73` | `b6637e6c` | task 15 (rebuilt, see below) |
+| `f6528984` | `2b0bb827` | review fixes |
+| `15ecaf50` | — | changelog line; folded into the rebuilt `b6637e6c` |
+| `d8738f65` | `8a165a2b` | inbox note |
+| `fd132fe2` | `df48a923` | outcome.md |
+| `f58c6a31` | `feb4771b` | submit |
+
+**Conflicts, as the coordinator resolved them:**
+
+- **Notes to two related items dropped.** The notes to
+  `2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item` and
+  `2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key` were dropped:
+  both items completed on `main`, so the note had no open item to inform.
+- **`docs/changelogs/upcoming.md` and `docs/release-notes/upcoming.md` rebuilt**
+  to hold only this item's entries, because `main` cut v2.1.3 and rotated both
+  files. The pre-rebase changelog-line commit `15ecaf50` is inside the rebuilt
+  `b6637e6c`.
+- **`.claude-plugin/marketplace.json`** keeps this item's description ("skills
+  that drive the tcw workflow") with `main`'s version `2.1.3`.
+
+**Full bare `pytest` at `feb4771b`: 3067 passed** (coordinator's run).
+
+**Verification round 1.** Codex and a fresh adversarial reviewer both said NOT
+DONE; the coordinator checked each finding and asked for these fixes:
+
+1. **Tracker inheritance was documented in the wrong skill** (`71cbf89b`). The
+   rebase left v2.1.3's inheritance paragraph and its rules in `tcw-work`'s
+   `commands.md`, and `tcw-configure`'s `tracker.md` still said every key was
+   required. Spec Risks say whichever of the two items lands second puts the
+   declaring text in `tcw-configure`, and this item landed second.
+   - `tracker.md` now carries the inheritance paragraph and its two rules (the
+     credentials rule, and keeping shared settings in a node without a board),
+     says the keys are required once the node's block is merged with its
+     ancestors', shows a parent and child example, and says a node goes without an
+     ancestor's tracker by having no block or `tracker: {}`. Checked against
+     `tcw/store/fs.py` `_resolved_tracker` and `merge_tracker_blocks`,
+     `tracker_credentials_problem` in `tcw/store/base.py`: a nearer `null` lets the
+     farther value through, so there is no key that refuses one inherited value,
+     and none was invented.
+   - `tracker.md`'s opening names `import`, `link` and `transitions.claim`.
+   - `commands.md` keeps only runtime text: which file a problem names, the
+     unreachable-ancestor problem, what a malformed block does.
+   - The `tcw-configure` router's tracker row adds "or share tracker settings from
+     a parent project".
+   - `tests/test_configuration_text_home.py` holds all three, watched fail first
+     against `feb4771b`, and mutation-checked: restoring the old "required"
+     sentence, dropping "parent" from the row, and putting "Settings inherit from
+     parent nodes" back into `commands.md` each turn one test red, naming the text.
+2. **B11 has a second way to fail a correct route** (`0c095335`).
+   `docs-sync.md`'s "Create Tracked Files" step can lead an agent to create
+   `docs/release-notes/upcoming.md`, which the fixture lacks, and that fails
+   `files_changed_exactly ["tcw-config.yaml"]`. B11's `note` says so. The fixture
+   is unchanged, because B10 relies on its exact files.
+3. **Inbox addition** (`0c095335`): B4 and B8 catch only a wrong route into
+   `tcw-setup`; a B8 run that opened a `tcw-configure` document passes every
+   mechanized check. A gap in the spec, not a departure from it.
+4. **This section**, and the statements the rebase made untrue: the commit ids,
+   departure 3, the merge note, and AC 11's list of changed moved lines.
+
+`tcw validate` prints `validate OK` after these fixes.
