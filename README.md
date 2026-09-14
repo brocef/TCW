@@ -349,8 +349,10 @@ projects. Each component group also has its own `init`: `tcw taxonomy init`,
 `tcw capabilities init`, `tcw work init`.
 
 To bootstrap a taxonomy or capabilities ledger on a project that already has a
-codebase, ask for the `tcw-setup` skill — the assistant
-studies your code, proposes a first draft, refines it with you, and writes it.
+codebase, ask for the `tcw-setup` skill — the assistant studies your code,
+proposes a first draft, refines it with you, and writes it. To change a working
+project's configuration afterwards — documentation entries, lifecycle bindings,
+a tracker, where stores live — ask for the `tcw-configure` skill.
 
 ---
 
@@ -475,15 +477,17 @@ Every command group also has `--help`, and a `check` that validates its tree.
 ## Skills — the judgment layer
 
 The CLI is the _mechanism_. Fifteen skills in [`skills/`](skills/) supply the
-_judgment_ that drives it — the parts a deterministic tool cannot decide. Nine
-carry a distinct procedure; the other six all compose one lifecycle stage and
-are listed together at the end.
+_judgment_ that drives it — the parts a deterministic tool cannot decide. They
+come in three groups, told apart by name: eight core skills (seven in the table
+below, and `tcw-work-stage`, which composes a lifecycle stage and is described
+after it), four `tcw-commands-*` skills for the everyday workflow, and three
+optional `tcw-extras-*` skills.
 
 | Skill                                                      | What it does                                                                                                                                               |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`tcw-work`](skills/tcw-work/SKILL.md)                     | Plans a request through spec and plan, drives implementation and verification, triages the inbox, runs the lifecycle, decomposes epics, searches the board |
 | [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)     | The capability-delta planning check, contradiction detection, and the ledger flip at completion                                                            |
-| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and federating shared vocabulary                                                                          |
+| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and resolving vocabulary inherited from another project                                                   |
 | [`tcw-setup`](skills/tcw-setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, sets up a repository, starts a taxonomy or capabilities ledger                                              |
 | [`tcw-configure`](skills/tcw-configure/SKILL.md)           | Changes a project's configuration: lifecycle bindings, Definition of Done, documentation entries, tracker, stores, connected and inherited projects        |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                                         |
