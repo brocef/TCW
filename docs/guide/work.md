@@ -675,16 +675,18 @@ The rules:
   gives a node that did not ask for one a tracker.
 - **Every ancestor counts**, direct parent first and all the way up, including
   nodes that keep no board. The nearest file that sets a key wins that key.
-- **Mappings merge key by key.** A child can set `credentials.token-env` alone and
-  keep its parent's `credentials.email-env`. A list or a plain value replaces what
-  is above it outright.
+- **Mappings merge key by key.** A child that reads the same site can set
+  `credentials.token-env` alone and keep its parent's `credentials.email-env`. A
+  list or a plain value replaces what is above it outright. (A child that also sets
+  its own `base-url` must set both credential keys; see the next rule but one.)
 - **`null` means "not set here".** A nearer `timeout-seconds: null` lets the
   parent's value through. With no value above it, it is reported as before. A child
   cannot remove a key a parent set.
 - **`credentials` must come from the same file as `base-url`, or a nearer one.** A
-  node that sets `base-url` and inherits `credentials` has no tracker, and `tcw
-  validate` says so. This holds even when the address is the same as the parent's,
-  because the rule is about which file chose the site, not what it says. Without it,
+  node that sets `base-url` and inherits `credentials`, or even one of its two
+  keys, has no tracker, and `tcw validate` says so. This holds even when the address
+  is the same as the parent's, because the rule is about which file chose the site,
+  not what it says. Without it,
   a node pointed at a different site would send its parent's token there.
 - **Once a node opts in, the merged settings are checked in full.** A node with its
   own board that holds shared settings is checked like any tracking node, so it
@@ -702,8 +704,9 @@ that parent's file and project:
 A missing required key is blamed on the node being checked, since no file wrote it.
 A bad value in a parent is reported once for every node that inherits it, because
 each of those nodes has no tracker until it is fixed. If a declared parent is not
-checked out on this machine and the settings come out incomplete, one more problem
-names that parent and suggests `tcw provision`.
+checked out on this machine, any tracker problem the node has comes with one more
+that names that parent and suggests `tcw provision`, since the missing settings may
+be what caused it.
 
 **A malformed block never breaks the board.** `tcw work list` and `tcw work show`
 keep working; `tcw validate` is where you hear about it. The parse fails closed, so

@@ -404,8 +404,8 @@ setting by setting too. A node with no `tracker` block of its own has no tracker
 whatever its parents say. Two rules keep this safe:
 
 - **`credentials` must sit beside `base-url`.** A node that sets its own `base-url`
-  must also set its own `credentials`, even if the address is the same as its
-  parent's, so a token is never sent to a site chosen in a different file.
+  must also set both of its own `credentials` keys, even if the address is the same
+  as its parent's, so a token is never sent to a site chosen in a different file.
 - **A node with its own board is checked like any tracking node.** If it holds the
   shared settings, it needs a `candidate-query` of its own. Keeping shared settings
   in a node without a board avoids that.

@@ -12,5 +12,5 @@ never sent to a site chosen in a different file.
 
 When something is wrong, `tcw validate` reports it in every node that inherits it
 and names the file the bad value came from, so I know which file to fix. If a
-parent is not checked out on this machine and the settings come out incomplete, it
-says which one is missing.
+parent is not checked out on this machine and the settings have any problem, it
+also says which parent is missing.
