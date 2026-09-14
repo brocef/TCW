@@ -1844,12 +1844,18 @@ def _unresolved_item(st, slug: str, label: str):
 
 
 def _tracker_link(args: argparse.Namespace) -> int:
-    """Bind an existing unresolved item to a ticket, claiming it by the same rules
-    as `import`. The item's intake and request are not touched."""
+    """Record that an existing item and a ticket are the same work.
+
+    The binding sidecar is the whole effect. The ticket is read — which is what
+    proves the key exists and yields the canonical key, id and URL the binding
+    stores — and is otherwise left exactly as it was: no transition, no assignee
+    change. Nothing in the item but `tracker.yaml` is written either, so its
+    status, owner, intake and request are untouched.
+    """
     from datetime import date
 
     from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, Bound, Malformed,
-                                    binding_of, claim, find_binding, read_ticket,
+                                    binding_of, find_binding, read_ticket,
                                     unlinked_history, validate_part)
     from tcw.tracker.jira import TrackerError
 
@@ -1884,25 +1890,22 @@ def _tracker_link(args: argparse.Namespace) -> int:
             print(f"tcw work tracker link: {ticket.key} (part {part}) is already bound "
                   f"to {holder}.", file=sys.stderr)
             return 1
-        outcome = claim(client, ticket)
     except (TrackerError, BindingProblem, ValueError) as e:
         print(f"tcw work tracker link: {e}", file=sys.stderr)
         return 1
-    if not outcome.claimed:
-        _print_refusal("link", outcome)
-        return 1
     existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
     today = date.today().isoformat()
-    document = _binding_for(client.config.provider, project, outcome.issue_id,
-                            outcome.key, outcome.url, part, today,
+    document = _binding_for(client.config.provider, project, ticket.issue_id,
+                            ticket.key, ticket.url, part, today,
                             unlinked_history(existing.content if existing else None))
     try:
         st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
     except _LOCAL_WRITE_ERRORS as e:
-        print(f"tcw work tracker link: claimed {outcome.key}, but the binding could not "
-              f"be written: {e}. Run this command again.", file=sys.stderr)
+        print(f"tcw work tracker link: the binding could not be written: {e}. "
+              f"Run this command again.", file=sys.stderr)
         return 1
-    print(f"→ {_claim_summary(outcome)}; bound to {args.slug}", file=sys.stderr)
+    print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}). The ticket is "
+          f"unchanged in the tracker.", file=sys.stderr)
     return 0
 
 

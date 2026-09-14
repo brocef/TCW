@@ -1,9 +1,11 @@
 """`tcw work tracker link` and `unlink`: bind an existing item, and remove a binding
 while keeping the record of it.
 
-`link` claims by exactly the rules `import` does (`test_tracker_claim.py`); what is
-tested here is what it must not touch. `unlink` is a local repair: it makes no
-tracker call and needs no tracker configured.
+`link` records a cross-reference and nothing else: it reads the ticket to prove it
+exists, then writes the binding, leaving the ticket exactly as it found it. What is
+tested here is that whole list of things it must not touch. Claiming is `import`'s
+alone (`test_tracker_claim.py`). `unlink` is a local repair: it makes no tracker
+call and needs no tracker configured.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import pytest
 import yaml
 
 from tcw.store.fs import FsWorkStore
-from test_tracker_import import (A, BASE_URL, SENTINEL, TICKET, binding, fake,  # noqa: F401
+from test_tracker_import import (SENTINEL, TICKET, binding, fake,  # noqa: F401
                                  make_node, run, write_binding)
 
 SECOND = "TCWCLAIM-7"
@@ -49,17 +51,51 @@ def test_with_no_tracker_link_refuses_naming_the_key(tmp_path, fake):  # noqa: F
     assert snapshot(root, slug) == before
 
 
-def test_link_claims_and_binds_without_touching_the_body(node, fake):  # noqa: F811
+def ticket_state(fake, ticket_id="10052") -> tuple:  # noqa: F811
+    """The two ticket fields a claim would change, and `link` must not."""
+    held = fake.tickets[ticket_id]
+    return held.status, held.assignee
+
+
+def _assert_tracker_untouched(fake, before, ticket_id="10052") -> None:  # noqa: F811
+    """`link` records a cross-reference: nothing is written to the tracker, and the
+    ticket's status and assignee are what they were. Every test that links calls
+    this, so one that skips it is visible in the diff."""
+    assert fake.writes() == []
+    assert ticket_state(fake, ticket_id) == before
+
+
+def _assert_only_the_binding_changed(root, slug, before) -> None:
+    """`tracker.yaml` is the whole of `link`'s local effect: every other file in the
+    item's folder is byte-for-byte what it was, and none is removed."""
+    after = snapshot(root, slug)
+    assert {n: b for n, b in after.items() if n != "tracker.yaml"} == before
+    item = FsWorkStore.open(root).get(slug)
+    assert (item.status, item.owner) == ("backlog", "")
+
+
+def test_link_binds_without_touching_the_body(node, fake):  # noqa: F811
     slug = plain_item(node)
-    before = snapshot(node, slug)
+    before, ticket_before = snapshot(node, slug), ticket_state(fake)
     code, _out, err = run(node, "link", slug, TICKET)
     assert code == 0, err
-    after = snapshot(node, slug)
-    assert after["intake.md"] == before["intake.md"]
-    assert after["initial-request.md"] == before["initial-request.md"]
     doc = binding(node, slug)
     assert doc["ticket"]["key"] == TICKET and "claimed-by" not in doc
-    assert fake.tickets["10052"].assignee == A
+    _assert_only_the_binding_changed(node, slug, before)
+    _assert_tracker_untouched(fake, ticket_before)
+
+
+def test_link_binds_a_ticket_someone_else_holds(node, fake):  # noqa: F811
+    """Recording a reference takes the ticket from nobody, so who holds it is not
+    `link`'s business. `import` still refuses one (`test_tracker_claim.py`)."""
+    fake.tickets["10052"].assignee = "acct-b"
+    slug = plain_item(node)
+    ticket_before = ticket_state(fake)
+    code, _out, err = run(node, "link", slug, TICKET)
+    assert code == 0, err
+    assert binding(node, slug)["ticket"]["key"] == TICKET
+    _assert_tracker_untouched(fake, ticket_before)
+    assert fake.tickets["10052"].assignee == "acct-b"
 
 
 def _refused_without_change(node, fake, slug, *argv):  # noqa: F811
@@ -111,11 +147,12 @@ def test_link_refuses_a_malformed_binding_on_another_item(node, fake):  # noqa: 
     assert other in err
 
 
-def test_link_refuses_a_ticket_someone_else_holds(node, fake):  # noqa: F811
-    fake.tickets["10052"].assignee = "acct-b"
+def test_link_refuses_an_unknown_ticket(node, fake):  # noqa: F811
+    """The ticket read is what proves the key exists, and it is the one tracker call
+    `link` keeps. A typo must not leave a binding pointing at nothing."""
     slug = plain_item(node)
-    err = _refused_without_change(node, fake, slug, TICKET)
-    assert "Bob" in err
+    _refused_without_change(node, fake, slug, "NOSUCH-1")
+    assert not (FsWorkStore.open(node).path(slug) / "tracker.yaml").exists()
 
 
 # ── unlink ───────────────────────────────────────────────────────────────────
