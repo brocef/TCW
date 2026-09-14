@@ -14,6 +14,7 @@ extracted in Phase 4 — not pre-abstracted here.
 # time. Python 3.14 defers natively (PEP 649); this keeps <3.14 working too.
 from __future__ import annotations
 
+import copy
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -943,7 +944,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
 
     problems: list[str] = []
 
-    for key in sorted(set(raw) - TRACKER_KEYS):
+    for key in sorted(set(raw) - TRACKER_KEYS, key=str):
         problems.append(f"work.tracker.{key}: unknown key")
 
     def required_str(key: str) -> str:
@@ -974,7 +975,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
             problems.append(f"work.tracker.{key}: expected a mapping, "
                             f"got {type(value).__name__}")
             return {}
-        for sub in sorted(set(value) - allowed):
+        for sub in sorted(set(value) - allowed, key=str):
             problems.append(f"work.tracker.{key}.{sub}: unknown key")
         return value
 
@@ -1019,6 +1020,126 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         claim_transition=claim,
         timeout_seconds=int(timeout),
     ), []
+
+
+TrackerKeyPath = tuple[str, ...]
+
+
+def merge_tracker_blocks(
+    blocks: list[tuple[str, Any]],
+) -> tuple[Any, dict[TrackerKeyPath, str], str | None]:
+    """Lay `work.tracker` blocks over each other, nearest first, key by key.
+
+    Pure, like `parse_tracker_config`: the caller gathers the blocks from its own
+    project graph, so a store that is not a filesystem merges the same way. Each
+    block is `(label, raw)`, and labels must be distinct — the node itself first,
+    then its ancestors, direct parent first. Whether a node takes part at all
+    (opt-in) is the caller's decision; this only merges what it is given.
+
+    Returns `(merged, record, whole_block_label)`:
+
+    - `merged` goes to `parse_tracker_config` unchanged.
+    - `record` maps each key path in `merged` to the label that supplied its
+      value. A nearer null that let a farther value show through does not move
+      it: the credentials rule reads it, and naming the null's file there would
+      let a token follow a changed `base-url`.
+    - `whole_block_label` is set when an ancestor's block is not a mapping. The
+      merge stops there and returns that block, so the parser's "expected a
+      mapping" is reported against the ancestor and every node beneath it fails
+      closed.
+    """
+    if not blocks:
+        return None, {}, None
+    own = blocks[0][1]
+    if not isinstance(own, dict):
+        return own, {}, None
+    layers = [blocks[0]]
+    for label, raw in blocks[1:]:
+        if raw is None or raw == {}:
+            continue
+        if not isinstance(raw, dict):
+            return raw, {}, label
+        layers.append((label, raw))
+
+    merged: dict = {}
+    record: dict[TrackerKeyPath, str] = {}
+    for label, raw in reversed(layers):
+        _lay_tracker_block(merged, copy.deepcopy(raw), label, (), record)
+    return merged, record, None
+
+
+def _lay_tracker_block(target: dict, source: dict, label: str,
+                       path: TrackerKeyPath, record: dict[TrackerKeyPath, str]) -> None:
+    for key, value in source.items():
+        key_path = (*path, str(key))
+        if value is None:
+            if key not in target:          # nothing farther: kept, for the parser
+                target[key] = None
+                record[key_path] = label
+            continue                       # otherwise the farther value shows through
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            record[key_path] = label
+            _lay_tracker_block(target[key], value, label, key_path, record)
+            continue
+        for stale in [p for p in record if p[:len(key_path)] == key_path]:
+            del record[stale]
+        target[key] = value
+        record[key_path] = label
+        if isinstance(value, dict):
+            _record_tracker_paths(value, label, key_path, record)
+
+
+def _record_tracker_paths(block: dict, label: str, path: TrackerKeyPath,
+                          record: dict[TrackerKeyPath, str]) -> None:
+    for key, value in block.items():
+        key_path = (*path, str(key))
+        record[key_path] = label
+        if isinstance(value, dict):
+            _record_tracker_paths(value, label, key_path, record)
+
+
+def tracker_credentials_problem(record: dict[TrackerKeyPath, str],
+                                labels: list[str]) -> str | None:
+    """A problem when `credentials` came from farther up than `base-url`.
+
+    `JiraClient` sends a token built from the named variables to whatever
+    `base-url` names. Before inheritance both sat in one block, so whoever chose
+    the site chose the token. This keeps that true: a node that sets `base-url`
+    also sets `credentials`, even when the URL repeats its parent's. Credentials
+    partly inherited count by their farthest key. Run on a config that parsed.
+    """
+    position = {label: index for index, label in enumerate(labels)}
+    base_url = record.get(("base-url",))
+    credentials = [label for key_path, label in record.items()
+                   if len(key_path) > 1 and key_path[0] == "credentials"]
+    if base_url is None or not credentials:
+        return None
+    if max(position[label] for label in credentials) <= position[base_url]:
+        return None
+    return (f"work.tracker.credentials: inherited from a parent node, but base-url "
+            f"is set nearer, in {base_url}; set credentials in the same file as "
+            f"base-url")
+
+
+def attribute_tracker_problems(problems: list[str], record: dict[TrackerKeyPath, str],
+                               own_label: str, whole_block_label: str | None) -> list[str]:
+    """Prefix each parser problem with the label of the file that caused it.
+
+    Matched on the problem's exact key path, never the nearest enclosing
+    mapping: `transitions.claim: required` under a `transitions` an ancestor
+    supplied is about a key nobody set, and goes to `own_label`. A key whose own
+    name contains a dot still matches, because paths are compared joined.
+    """
+    joined = {".".join(key_path): label for key_path, label in record.items()}
+    attributed = []
+    for problem in problems:
+        if problem.startswith("work.tracker: "):
+            label = whole_block_label or own_label
+        else:
+            key = problem.removeprefix("work.tracker.").split(": ", 1)[0]
+            label = joined.get(key, own_label)
+        attributed.append(f"{label}: {problem}")
+    return attributed
 
 
 @dataclass(frozen=True)
