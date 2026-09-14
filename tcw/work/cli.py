@@ -13,7 +13,7 @@ from tcw.store.base import (
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TransitionCommitError, WorkItem,
     normalize_tag, AlreadyClaimed,
-    normalize_work_level, resolution_status,
+    normalize_work_level, resolution_status, StaleRevision,
 )
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
@@ -1692,6 +1692,134 @@ def _tracker_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _project_id(st) -> str:
+    return registered_project_id(st.node_root, st.node_root)
+
+
+def _print_refusal(label: str, outcome) -> None:
+    """A claim refusal: a fixed first line, and the tracker's own text only on a
+    `detail:` line, so it is never read as the explanation."""
+    print(f"tcw work tracker {label}: {outcome.message}", file=sys.stderr)
+    if outcome.detail:
+        print(f"  detail: {outcome.detail}", file=sys.stderr)
+
+
+def _intake_text(outcome, description: str, today: str) -> str:
+    body = description.strip() or "The ticket has no description."
+    return (f"# {outcome.key} — {outcome.summary}\n\n"
+            f"Imported on {today} from [{outcome.key}]({outcome.url}) (jira-cloud).\n\n"
+            f"{body}\n")
+
+
+def _binding_for(st, outcome, part: str, today: str, unlinked: list) -> str:
+    from tcw.tracker.intake import binding_document
+    return binding_document(
+        provider=st.tracker_config().provider, project=_project_id(st), part=part,
+        ticket_id=outcome.issue_id, ticket_key=outcome.key, ticket_url=outcome.url,
+        account_id=outcome.account_id, account_name=outcome.account_name,
+        bound=today, unlinked=unlinked)
+
+
+def _claim_summary(outcome) -> str:
+    how = "claimed by this run" if outcome.transitioned else "already assigned to you"
+    return f"{outcome.key} is in '{outcome.status}', {how}"
+
+
+# The failures a local write can raise after a successful claim. Wider than
+# `_ERRORS` on purpose: a held Git index lock surfaces as `CalledProcessError`, and
+# the claimed ticket has to be reported whichever way the write failed.
+_LOCAL_WRITE_ERRORS = (*_ERRORS, StaleRevision, OSError, subprocess.CalledProcessError)
+
+
+def _tracker_import(args: argparse.Namespace) -> int:
+    """Claim a ticket, then create a backlog item bound to it.
+
+    No item is created unless the claim ends with the ticket in the status the claim
+    leads to and assigned to this account. A claim that succeeds and then fails
+    locally is finished by running the command again: the ticket is then already
+    assigned to this account, which the claim accepts without a second transition.
+    """
+    from datetime import date
+
+    from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, claim,
+                                    find_binding, read_ticket, validate_part)
+    from tcw.tracker.jira import TrackerError
+
+    client = _tracker_client("import")
+    if client is None:
+        return 1
+    try:
+        part = validate_part(args.part)
+    except ValueError as e:
+        print(f"tcw work tracker import: {e}", file=sys.stderr)
+        return 1
+    if args.title is not None and not args.title.strip():
+        print("tcw work tracker import: --title is empty; give a title or omit it "
+              "to use the ticket's key and summary.", file=sys.stderr)
+        return 1
+    st = _store()
+    today = date.today().isoformat()
+    try:
+        ticket = read_ticket(client, args.ticket)
+        existing = find_binding(st, project=_project_id(st),
+                                provider=client.config.provider,
+                                ticket_id=ticket.issue_id, part=part)
+        if existing is not None:
+            print(existing)
+            if ticket.assignee_id == ticket.me_id:
+                print(f"→ already bound: {ticket.key} (part {part}) is {existing}",
+                      file=sys.stderr)
+                return 0
+            holder = ticket.assignee_name or "nobody"
+            print(f"tcw work tracker import: {existing} is bound here, but the tracker "
+                  f"says {ticket.key} is assigned to {holder} in '{ticket.status}'.",
+                  file=sys.stderr)
+            return 1
+        outcome = claim(client, ticket)
+    except (TrackerError, BindingProblem, ValueError) as e:
+        print(f"tcw work tracker import: {e}", file=sys.stderr)
+        return 1
+    if not outcome.claimed:
+        _print_refusal("import", outcome)
+        return 1
+    try:
+        description = client.description(outcome.issue_id)
+    except TrackerError as e:
+        print(f"tcw work tracker import: claimed {outcome.key}, but its description "
+              f"could not be read: {e}. Run this command again.", file=sys.stderr)
+        return 1
+
+    title = args.title.strip() if args.title else f"{outcome.key} — {outcome.summary}"
+    try:
+        slug = st.create_work(title, intake=_intake_text(outcome, description, today)
+                              ).item.slug
+    except _LOCAL_WRITE_ERRORS as e:
+        print(f"tcw work tracker import: claimed {outcome.key}, but the item could not "
+              f"be created: {e}. Fix that and run this command again.", file=sys.stderr)
+        return 1
+    try:
+        st.write_sidecar(slug, BINDING_SIDECAR,
+                         _binding_for(st, outcome, part, today, []), revision="")
+    except _LOCAL_WRITE_ERRORS as e:
+        try:
+            st.drop(slug)
+        except _LOCAL_WRITE_ERRORS as drop_error:
+            print(f"tcw work tracker import: claimed {outcome.key}, but the binding "
+                  f"could not be written: {e}. The item {slug} was created unbound and "
+                  f"could not be removed either ({drop_error}). Run "
+                  f"`tcw work drop {slug} --confirm` before importing again, or a "
+                  f"second item will be created.", file=sys.stderr)
+            return 1
+        print(f"tcw work tracker import: claimed {outcome.key}, but the binding could "
+              f"not be written: {e}. Run this command again.", file=sys.stderr)
+        return 1
+    print(slug)
+    print(f"→ {_claim_summary(outcome)}; bound to {slug}", file=sys.stderr)
+    if not outcome.transitioned:
+        print(f"→ {outcome.message}", file=sys.stderr)
+    return 0
+
+
 def _tags_list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -1978,13 +2106,20 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptgr.set_defaults(func=_tags_rm)
 
     ptr = g.add_parser("tracker",
-                       help="read the configured external tracker (read-only)")
+                       help="read the configured external tracker, and take its tickets")
     ptrs = ptr.add_subparsers(dest="tracker_cmd", required=True)
     ptrs.add_parser("list", help="list tickets the configured query selects"
                     ).set_defaults(func=_tracker_list)
     ptrsh = ptrs.add_parser("show", help="show one ticket and whether it is claimable")
     ptrsh.add_argument("ticket")
     ptrsh.set_defaults(func=_tracker_show)
+    ptri = ptrs.add_parser("import",
+                           help="claim a ticket and create a backlog item bound to it")
+    ptri.add_argument("ticket")
+    ptri.add_argument("--part", help="name one of several items for this ticket "
+                                     "(default: default)")
+    ptri.add_argument("--title", help="the item's title (default: '<KEY> — <summary>')")
+    ptri.set_defaults(func=_tracker_import)
 
     pts = g.add_parser(
         "tombstone",
