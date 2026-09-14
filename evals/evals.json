@@ -54,6 +54,20 @@
    "reads": "the literal text appears nowhere in the transcript",
    "confirmed": "Not among the three transcript reads task 6 enumerates. Confirmed as an expansion rather than inherited silently: it is the same machinery as the listed reads, and A4 cannot be stated without it now that the skill binding carries no nonce. A general ordering read would be the same kind of step and is deliberately still not taken, so B8 stays unmechanized."
   },
+  "tool_input_contains": {
+   "family": "transcript",
+   "args": [
+    "text"
+   ],
+   "reads": "the literal text appears in the input of some tool call the agent made (a `Read` file path, a `Bash` command, and so on). Ignores assistant text, user messages and tool results, so a path a loaded skill merely mentions does not count as opened."
+  },
+  "tool_input_absent": {
+   "family": "transcript",
+   "args": [
+    "text"
+   ],
+   "reads": "the literal text appears in the input of no tool call the agent made. Ignores assistant text, user messages and tool results. Fails with 'no tool calls found' when the transcript has no tool calls at all, so an unrecognised transcript shape cannot pass it."
+  },
   "nonce_in_artifact": {
    "family": "fixture",
    "args": [
