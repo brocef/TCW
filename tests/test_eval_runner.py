@@ -68,6 +68,34 @@ def test_every_named_fixture_is_a_variant_the_seeder_builds(cases):
             assert case["fixture"] in VARIANTS, case["id"]
 
 
+BARE_CASE = {"id": "BX", "axis": "B", "fixture": "bare", "prompt": "x",
+             "arms": ["with-skill", "no-skill"], "assertions": []}
+
+
+def test_a_bare_case_under_a_tcw_project_is_refused_before_anything_runs(
+        tmp_path, monkeypatch, capsys):
+    """Refused up front, dry run or not. Otherwise `seed()` raises only when
+    the run loop reaches the bare case, after earlier cases have spent money."""
+    monkeypatch.setattr(run_evals, "load_cases",
+                        lambda: [{**BARE_CASE, "id": "B0", "fixture": None},
+                                 BARE_CASE])
+    (tmp_path / "tcw-config.yaml").write_text("id: outer\n")
+    code = run_evals.main(["--dry-run", "--out", str(tmp_path / "runs")])
+    out, err = capsys.readouterr()
+    assert code != 0
+    assert "tcw-config.yaml" in err and "BX" in err
+    assert "command:" not in out, "nothing was listed as if it would run"
+
+
+def test_a_bare_case_outside_any_tcw_project_passes_the_check(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run_evals, "load_cases", lambda: [BARE_CASE])
+    code = run_evals.main(["--dry-run", "--out", str(tmp_path / "runs")])
+    out, _ = capsys.readouterr()
+    assert code == 0
+    assert "fixture: bare" in out
+
+
 def test_a_case_can_name_its_fixture():
     """A case about setting TCW up needs a repository that does not use it yet,
     in both arms."""

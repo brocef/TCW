@@ -38,7 +38,7 @@ import sys
 import time
 from pathlib import Path
 
-from evals.seed_fixture import seed
+from evals.seed_fixture import refuse_bare_inside_a_project, seed
 
 REPO = Path(__file__).resolve().parent.parent
 EVALS = Path(__file__).with_name("evals.json")
@@ -263,6 +263,20 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     out_root = args.out or Path("eval-runs/iteration-1")
+
+    # Checked for every arm before anything runs, so a misplaced bare fixture
+    # stops the whole run rather than failing partway through a paid one.
+    for case in chosen:
+        for arm in case["arms"]:
+            if variant_for(case, arm) != "bare":
+                continue
+            try:
+                refuse_bare_inside_a_project(out_root / case["id"] / arm
+                                             / "fixture")
+            except ValueError as refusal:
+                print(f"run_evals: {case['id']} [{arm}]: {refusal}",
+                      file=sys.stderr)
+                return 1
 
     if args.dry_run:
         settings = out_root / "<case>/<arm>/settings.json"

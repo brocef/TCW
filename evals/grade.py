@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -385,7 +386,9 @@ def p_files_changed_exactly(run, paths=(), **_):
 
     A git failure fails the check with git's error, rather than reading as an
     empty change list. Renames are reported as a deletion plus an addition,
-    which is what a plain `mv` looks like too.
+    which is what a plain `mv` looks like too. The grading machine's own global
+    ignore file is not read, so a fixture grades the same on every machine, and
+    output is read as bytes, so a carriage return in a file name survives.
     """
     seeded_head = run.get("seeded_head")
     if not seeded_head:
@@ -393,13 +396,15 @@ def p_files_changed_exactly(run, paths=(), **_):
                                "no seeded commit to compare against")
     changed = set()
     for args in (["diff", "--name-only", "--no-renames", "-z", seeded_head, "--"],
-                 ["ls-files", "-z", "--others", "--exclude-standard"]):
+                 ["-c", f"core.excludesFile={os.devnull}",
+                  "ls-files", "-z", "--others", "--exclude-standard"]):
         proc = subprocess.run(["git", "-C", str(run["fixture"]), *args],
-                              capture_output=True, text=True)
+                              capture_output=True)
         if proc.returncode != 0:
-            return _verdict(False, f"`git {args[0]}` failed in the fixture: "
-                                   f"{proc.stderr.strip()[:200]}")
-        changed |= {p for p in proc.stdout.split("\0") if p}
+            verb = "ls-files" if "ls-files" in args else "diff"
+            return _verdict(False, f"`git {verb}` failed in the fixture: "
+                                   f"{os.fsdecode(proc.stderr).strip()[:200]}")
+        changed |= {os.fsdecode(p) for p in proc.stdout.split(b"\0") if p}
     wanted = set(paths)
     return _verdict(changed == wanted,
                     f"changed {sorted(changed)}, expected {sorted(wanted)}")

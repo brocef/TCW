@@ -121,6 +121,34 @@ def test_a_rename_counts_the_same_however_the_agent_moved_the_file(tmp_path):
     assert verdict["passed"], verdict["evidence"]
 
 
+def test_the_grading_machine_s_global_ignore_file_is_not_read(
+        tmp_path, monkeypatch):
+    """The same fixture must grade the same on every machine, so a file the
+    grader's own `core.excludesFile` ignores is still the agent's change."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "ignore").write_text("stray.txt\n")
+    (home / "gitconfig").write_text(f"[core]\n\texcludesFile = {home / 'ignore'}\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(home / "gitconfig"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run = _seeded(repo, "README.md")
+    (repo / EXPECTED).write_text("after\n")
+    (repo / "stray.txt").write_text("not asked for\n")
+    verdict = _check(run)
+    assert not verdict["passed"]
+    assert "stray.txt" in verdict["evidence"]
+
+
+def test_a_carriage_return_in_a_file_name_survives(tmp_path):
+    run = _seeded(tmp_path, "README.md")
+    (tmp_path / EXPECTED).write_text("after\n")
+    (tmp_path / "new\rname.txt").write_text("added\n")
+    verdict = grade.p_files_changed_exactly(
+        run, paths=[EXPECTED, "new\rname.txt"])
+    assert verdict["passed"], verdict["evidence"]
+
+
 def test_grading_a_run_directory_carries_seeded_head_to_the_check(tmp_path):
     """The runner writes `seeded_head` to timing.json, and `grade_run` must hand
     it to the predicate, or every graded run fails for want of it."""

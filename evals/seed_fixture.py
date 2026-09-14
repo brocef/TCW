@@ -350,22 +350,38 @@ def _assert_customized(dest: Path, stage_items: dict[str, str],
             f"{len(silent)} bytes")
 
 
+def refuse_bare_inside_a_project(dest: Path) -> None:
+    """Raise `ValueError` when a bare fixture at `dest` would sit inside a TCW
+    project.
+
+    `tcw` looks for `tcw-config.yaml` in every parent folder, so such a fixture
+    would quietly become part of the outer project. The runner calls this for
+    every bare arm before spawning anything; `seed()` calls it too.
+    """
+    outer = find_node_root(dest.parent)
+    if outer is not None:
+        raise ValueError(f"a bare fixture at {dest} would sit inside the TCW "
+                         f"project at {outer} (its tcw-config.yaml); seed it "
+                         f"outside any TCW project, e.g. `--out /tmp/...`")
+
+
 def seed(dest: Path, variant: str = "control") -> dict:
     """Seed the fixture at `dest` and return its manifest.
 
-    `variant` is one of `VARIANTS`. The manifest records the slugs the CLI
-    minted, because they carry today's date and grading cannot guess them.
+    `variant` is one of `VARIANTS`. `dest` must not exist or be empty: whatever
+    a used folder holds would be committed into the seeded commit. The manifest
+    records the slugs the CLI minted, because they carry today's date and
+    grading cannot guess them.
     """
     if variant not in VARIANTS:
         raise ValueError(f"unknown fixture variant {variant!r}; "
                          f"expected one of {VARIANTS}")
-    # `tcw` looks for `tcw-config.yaml` in every parent folder, so a bare
-    # fixture under a TCW project would quietly become part of that project.
-    outer = find_node_root(dest.parent)
-    if variant == "bare" and outer is not None:
-        raise ValueError(f"a bare fixture at {dest} would sit inside the TCW "
-                         f"project at {outer} (its tcw-config.yaml); seed it "
-                         f"outside any TCW project, e.g. `--out /tmp/...`")
+    if dest.exists() and (not dest.is_dir() or any(dest.iterdir())):
+        raise ValueError(f"{dest} exists and is not empty; seed into a new "
+                         f"folder, since anything left there would be "
+                         f"committed into the seeded commit")
+    if variant == "bare":
+        refuse_bare_inside_a_project(dest)
     customized = variant == "customized"
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -511,13 +527,14 @@ def _record(dest: Path, manifest: dict) -> dict:
     `files_changed_exactly` compares the working tree with `seeded_head` and
     counts untracked files as changes, so the manifest, which is written after
     the last commit, is excluded locally. Otherwise every run would appear to
-    have added it.
+    have added it. The bytecode and pytest caches an agent leaves just by
+    importing or testing the fixture's code are excluded for the same reason.
     """
     manifest["seeded_head"] = subprocess.run(
         ["git", "-C", str(dest), "rev-parse", "HEAD"], check=True,
         capture_output=True, text=True).stdout.strip()
     with (dest / ".git/info/exclude").open("a") as exclude:
-        exclude.write("/manifest.json\n")
+        exclude.write("/manifest.json\n__pycache__/\n.pytest_cache/\n")
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return manifest
 
