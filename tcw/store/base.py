@@ -287,24 +287,27 @@ class ProjectRegistry(ABC):
 
 def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
     """Canonical read of a work item's ``capabilities.yaml`` into
-    ``{"new": [...], "changed": [...]}`` — the work→capability back-pointers the
-    DoD gate enforces.
+    ``{"new": [...], "changed": [...], "removed": [...]}`` — the work→capability
+    back-pointers the DoD gate enforces.
 
     ``capabilities`` is the already-parsed sidecar object (``WorkItem.capabilities``):
-    a mapping with ``new:``/``changed:`` lists of canonical ``namespace/path``
-    strings. ``added:`` is accepted as a deprecated alias of ``new:``. A trailing
+    a mapping with ``new:``/``changed:``/``removed:`` lists of canonical
+    ``namespace/path`` strings. ``removed:`` names capabilities the item deleted,
+    which cannot sit under ``changed:`` because they no longer resolve.
+    ``added:`` is accepted as a deprecated alias of ``new:``. A trailing
     `` # comment`` on a value is stripped (YAML strips it already; belt and
     suspenders). The reconcile list-form sidecar and any other shape declare
     nothing here. The ``_tcw_parse_error`` sentinel the FS adapter produces on bad
     YAML raises ``SidecarError`` so the gate fails closed rather than reading
     "no deltas".
     """
-    out: dict[str, list[str]] = {"new": [], "changed": []}
+    out: dict[str, list[str]] = {"new": [], "changed": [], "removed": []}
     if not capabilities or not isinstance(capabilities, dict):
         return out
     if "_tcw_parse_error" in capabilities:
         raise SidecarError(str(capabilities["_tcw_parse_error"]))
-    for key, bucket in (("new", "new"), ("added", "new"), ("changed", "changed")):
+    for key, bucket in (("new", "new"), ("added", "new"), ("changed", "changed"),
+                        ("removed", "removed")):
         vals = capabilities.get(key)
         if vals is None:
             continue

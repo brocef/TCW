@@ -958,6 +958,29 @@ def test_complete_gate_unresolved_refuses(tmp_path, monkeypatch, capsys):
     assert "does not resolve" in capsys.readouterr().err
 
 
+def test_complete_gate_removed_absent_passes(tmp_path, monkeypatch, capsys):
+    """A removed: path passes once it no longer resolves."""
+    from tcw.cli import main
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    slug = _item_with_delta(root, "removed:\n- ghost/path\n")
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+
+
+def test_complete_gate_removed_still_resolving_refuses(tmp_path, monkeypatch, capsys):
+    """A sidecar holding only removed: is not skipped, and a path that still
+    resolves was not deleted."""
+    from tcw.cli import main
+    from tcw.store.fs import FsCapabilitiesStore
+    root = _wc_node(tmp_path)
+    monkeypatch.chdir(root)
+    FsCapabilitiesStore.open(root).add("auth/login", name="Login", status="Supported")
+    slug = _item_with_delta(root, "removed:\n- auth/login\n")
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    assert "auth/login: declared (removed) but still resolves" in capsys.readouterr().err
+    assert FsWorkStore.open(root).get(slug).status == "active"
+
+
 def test_complete_gate_unparseable_sidecar_refuses(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = _wc_node(tmp_path)

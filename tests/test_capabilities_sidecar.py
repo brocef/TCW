@@ -8,12 +8,13 @@ from tcw.store.base import SidecarError, declared_capabilities
 def test_canonical_new_and_changed():
     obj = {"new": ["a/one", "b/two"], "changed": ["c/three"]}
     assert declared_capabilities(obj) == {"new": ["a/one", "b/two"],
-                                          "changed": ["c/three"]}
+                                          "changed": ["c/three"], "removed": []}
 
 
 def test_added_is_alias_for_new():
     obj = {"added": ["a/one"], "changed": ["b/two"]}
-    assert declared_capabilities(obj) == {"new": ["a/one"], "changed": ["b/two"]}
+    assert declared_capabilities(obj) == {"new": ["a/one"], "changed": ["b/two"],
+                                          "removed": []}
 
 
 def test_new_and_added_merge():
@@ -35,14 +36,15 @@ def test_internal_hash_kept():
 
 
 def test_none_and_empty():
-    assert declared_capabilities(None) == {"new": [], "changed": []}
-    assert declared_capabilities({}) == {"new": [], "changed": []}
+    empty = {"new": [], "changed": [], "removed": []}
+    assert declared_capabilities(None) == empty
+    assert declared_capabilities({}) == empty
 
 
 def test_list_form_declares_nothing():
     # reconcile's {file, heading, from, to} list shape is not a gate declaration.
     obj = [{"file": "x", "heading": "y", "from": "Missing", "to": "Supported"}]
-    assert declared_capabilities(obj) == {"new": [], "changed": []}
+    assert declared_capabilities(obj) == {"new": [], "changed": [], "removed": []}
 
 
 def test_parse_error_sentinel_raises():
@@ -59,3 +61,14 @@ def test_new_and_added_dedup():
     # A path in both new: and added: is not double-counted.
     obj = {"new": ["a/one"], "added": ["a/one", "b/two"]}
     assert declared_capabilities(obj)["new"] == ["a/one", "b/two"]
+
+
+def test_removed_is_read():
+    # A deleted capability no longer resolves, so it cannot sit under changed:.
+    obj = {"removed": ["a/b # gone"]}
+    assert declared_capabilities(obj) == {"new": [], "changed": [], "removed": ["a/b"]}
+
+
+def test_removed_non_list_raises():
+    with pytest.raises(SidecarError, match="'removed:' must be a list"):
+        declared_capabilities({"removed": "a/b"})

@@ -409,6 +409,16 @@ def test_reconcile_surfaces_canonical_capability_deltas(tmp_path):
     assert "skipped" not in block.lower()
 
 
+def test_reconcile_surfaces_removed_capability_deltas(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    epic = FsWorkStore.open(parent).create("E", created="2026-01-01")
+    a = mk_node(parent, "child-a")
+    _child_task(a, epic.slug, caps="removed:\n  - a/b\n")
+    block = reconcile(parent, epic.slug)
+    assert "removed a/b" in block
+    assert "skipped" not in block.lower()
+
+
 def test_reconcile_honors_added_alias(tmp_path):
     """`added:` is a deprecated alias of `new:` in declared_capabilities, so the
     rollup inherits it for free — which is the point of sharing one reader."""
