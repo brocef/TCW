@@ -43,6 +43,8 @@ In the outline, list items are section headers, except items starting with
   - Lifecycle
     - note: This should have a mermaid diagram showing the lifecycle stages
     - Jira integration
+      - note: the Jira integraiton section should show exactly where it fits into the existing TCW work lifecycle
+      - note: we should provide examples of the workflow if Jira integraiton is enabled
   - Usage
     - Skills
     - CLI
