@@ -13,6 +13,28 @@ They link by one-directional pointers — a capability names the taxonomy terms 
 involves, a work item names the capability it changes — and never copy each
 other's content.
 
+## Contents
+
+- [The problem](#the-problem)
+- [What it looks like](#what-it-looks-like)
+- [Why many repositories is the case it is built for](#why-many-repositories-is-the-case-it-is-built-for)
+- [What it deliberately refuses](#what-it-deliberately-refuses)
+- [What adopting it costs](#what-adopting-it-costs)
+- [Who it's for](#who-its-for)
+- [Storage abstraction (the prime directive)](#storage-abstraction-the-prime-directive)
+- [Install](#install)
+  - [As a plugin (recommended)](#as-a-plugin-recommended)
+  - [As a Python package](#as-a-python-package)
+  - [In a cloud environment](#in-a-cloud-environment)
+- [Quickstart](#quickstart)
+- [Reading your Jira tickets](#reading-your-jira-tickets)
+- [Documentation](#documentation)
+- [Skills — the judgment layer](#skills--the-judgment-layer)
+  - [Reading a lifecycle stage](#reading-a-lifecycle-stage)
+  - [Review agents and slash commands](#review-agents-and-slash-commands)
+- [Status](#status)
+- [Further reading](#further-reading)
+
 ---
 
 ## The problem
