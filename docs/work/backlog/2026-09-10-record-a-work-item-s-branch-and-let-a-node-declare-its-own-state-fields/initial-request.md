@@ -48,6 +48,8 @@ what describes the item.
   still touches this one. It is a question for the spec, and it is a
   node-configuration question, not a declared-field one.
 
+- **Configuration keys are documented in `tcw-configure`** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): a new key's "how to declare it" text goes in the matching document under `skills/tcw-configure/references/`, per the `Configuration-Key-Change` documentation entry, not in the component's usage skill.
+
 ## References
 
 - `tcw/store/base.py` — `WorkItem`, where `worktree` and `branch` already live.

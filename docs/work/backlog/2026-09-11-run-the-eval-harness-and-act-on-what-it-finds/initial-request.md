@@ -109,3 +109,5 @@ record capped runs separately from failures — the runner already does.
   `fixture` key exist; and the first real run must confirm the transcript shape
   the tool-input predicates assume — content blocks with `type: tool_use` and an
   `input` object — because it was only checked against hand-built transcripts.
+
+- **Eval cases changed** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): B11 (`tcw-configure`, "set up documentation tracking") and B12 (`tcw-setup`, `fixture: bare`, which can only run with `--out` outside this checkout) are new; B5 is retargeted to `cross-axis` over `tcw-taxonomy` and `tcw-capabilities`; B4 and B8 gained `tool_input_absent` `tcw-setup/references/`; A1–A4 and A8 now invoke `tcw-work-stage`, and the axis A baseline may move, because the agent must now pass the stage as well as the item (if it passes only the item, the injected blocks fail quietly and nonces shift from `injected` to `fallback`); the four `tcw-commands-*` skills are excluded with no case yet, a gap to consider; `PARTIAL` gained `tcw-setup`, `tcw-configure` and `tcw-work-stage`.
