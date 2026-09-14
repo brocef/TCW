@@ -236,3 +236,15 @@ def test_history_survives_a_second_binding_and_a_second_unlink():
                         unlinked=yaml.safe_load(first)["unlinked"])
     second = intake.unlink_document(rebound, reason="two", today="2026-09-16")
     assert [e["reason"] for e in yaml.safe_load(second)["unlinked"]] == ["one", "two"]
+
+
+def test_validate_holds_a_binding_to_the_mapping_contract(store):
+    """`tracker.yaml` is a record TCW writes, so `tcw validate` treats it like
+    `state.yaml`: a binding that is not a mapping is reported. A syntax error in it
+    was already reported, as for every YAML file in the store."""
+    from tcw.validate import validate
+
+    slug = store.create("Hand-edited").slug
+    (store.path(slug) / "tracker.yaml").write_text("- TCWCLAIM-6\n", encoding="utf-8")
+    problems = validate(store.node_root)
+    assert any("tracker.yaml: expected a mapping" in p for p in problems), problems

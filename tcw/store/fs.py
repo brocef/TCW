@@ -1077,8 +1077,13 @@ _UniqueKeyLoader.add_constructor(
 #: the Definition-of-Done gate reads, and the list form `reconcile` writes — so
 #: holding it to one of them would report a sound file, and worse, make that
 #: gate fail closed on it. See `declared_capabilities` in `tcw/store/base.py`.
+#:
+#: `tracker.yaml`, an item's binding to a tracker ticket, has one shape — a mapping,
+#: which `write_sidecar` already enforces — so it is held to the contract like
+#: `state.yaml`.
 OWNED_YAML_NAMES = frozenset({
     "state.yaml", "meta.yaml", "graveyard.yaml", "config.yaml", ".config.yaml",
+    "tracker.yaml",
 })
 
 
