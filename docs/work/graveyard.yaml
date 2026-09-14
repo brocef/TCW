@@ -142,3 +142,6 @@
 2026-09-12-configure-an-external-tracker-and-read-its-tickets:
   resolution: done
   resolved: '2026-09-14'
+? 2026-09-14-make-eval-checks-measure-what-the-agent-did-working-tree-file-changes-tool-call-routing-and-named-fixture-variants
+: resolution: done
+  resolved: '2026-09-14'
