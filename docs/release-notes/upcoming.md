@@ -17,3 +17,26 @@ allows, and have been reworded.
   claimed. On a workflow that does refuse them, that check still says "not
   determined". The note now says so, and points you to the two things that do
   answer it: actually making a claim, or reading the workflow's definition in Jira.
+
+## Take a Jira ticket as a work item
+
+You can now take a Jira ticket from the terminal and get a work item for it.
+
+- **`tcw work tracker import ENG-482`** starts the ticket in Jira, assigns it to you
+  if nobody had it, and creates a backlog item holding the ticket's text and a link
+  back to it. If Jira shows the ticket isn't actually yours afterwards, no item is
+  created.
+- **Running it again doesn't make a duplicate.** You get the item you already have.
+  If the first run took the ticket but stopped before creating the item, running it
+  again finishes the job.
+- **One ticket, several items.** Add `--part api`, `--part web` and so on when one
+  ticket needs separate pieces of work.
+- **`tcw work tracker link`** takes a ticket for an item you already have.
+  **`tcw work tracker unlink`** removes a wrong link, keeps a record of it with your
+  reason, and leaves the ticket in Jira untouched.
+
+Tickets assigned to someone else, and tickets that are already closed, are refused.
+
+Two things TCW does not prevent: if your Jira workflow lets anyone start a ticket from
+any status, two people can both take the same ticket; and two runs under the same
+Jira account at the same moment can both create an item.

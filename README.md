@@ -27,7 +27,7 @@ other's content.
   - [As a Python package](#as-a-python-package)
   - [In a cloud environment](#in-a-cloud-environment)
 - [Quickstart](#quickstart)
-- [Reading your Jira tickets](#reading-your-jira-tickets)
+- [Working from your Jira tickets](#working-from-your-jira-tickets)
 - [Documentation](#documentation)
 - [Skills — the judgment layer](#skills--the-judgment-layer)
   - [Reading a lifecycle stage](#reading-a-lifecycle-stage)
@@ -354,15 +354,17 @@ studies your code, proposes a first draft, refines it with you, and writes it.
 
 ---
 
-## Reading your Jira tickets
+## Working from your Jira tickets
 
-A project can name the Jira Cloud site it uses, and then read from it. Both
-commands are read-only: nothing here changes a ticket, and nothing yet turns a
-ticket into a work item.
+A project can name the Jira Cloud site it uses, read its tickets, and take one as
+a work item.
 
 ```sh
 tcw work tracker list              # tickets the configured query selects
 tcw work tracker show ENG-482      # one ticket, and whether it is yours to take
+tcw work tracker import ENG-482    # take the ticket and get a work item for it
+tcw work tracker link <slug> ENG-482       # take it for an item you already have
+tcw work tracker unlink <slug> --reason "wrong ticket"
 ```
 
 Configuration goes in the node's `tcw-config.yaml`:
@@ -399,6 +401,23 @@ succeed and neither is told. So a ticket that has been started reports
 reports `not determined`, because it cannot show you what happens to the second
 person. Making a workflow exclusive is a Jira administration change, not something
 TCW can do for you.
+
+**Taking a ticket.** `tracker import` moves the ticket through your configured
+claim transition, assigns it to you if nobody had it, and then checks Jira again:
+only when the ticket really is started and yours does it create a backlog item. The
+ticket's text goes into the item as its raw input, with a link back, and the item's
+request still gets written the usual way. A ticket assigned to someone else is
+refused, and so is one that is already closed.
+
+Running `import` again for the same ticket gives you the same item rather than a
+second one, and if the first run took the ticket but stopped before creating the
+item, the second run finishes the job. One ticket can deliberately become several
+items with `--part api`, `--part web`, and so on. `unlink` removes a wrong binding
+and keeps a record of it with your reason; it never changes the ticket in Jira.
+
+Two limits to know. On a workflow that lets anyone start a ticket from any status,
+two people can both take the same ticket, and TCW does not stop that. And two runs
+by the same Jira account at the same moment can both create an item.
 
 Two guarantees worth stating plainly. A project with no `tracker` block behaves
 exactly as before, with no new required setting and no network access. And

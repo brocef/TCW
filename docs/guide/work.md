@@ -602,15 +602,18 @@ either place.
 
 ---
 
-## Reading an external tracker
+## Working from an external tracker
 
-A node may name the Jira Cloud site its team works from. Two read-only commands
-then work against it. Neither changes anything, locally or remotely, and no other
-command gains a network dependency.
+A node may name the Jira Cloud site its team works from. Two read-only commands then
+work against it, and three more take tickets as work items. No other command gains a
+network dependency.
 
 ```sh
 tcw work tracker list              # tickets the configured query selects
 tcw work tracker show ENG-482      # one ticket, plus a claimability report
+tcw work tracker import ENG-482    # claim it and create a backlog item bound to it
+tcw work tracker link <slug> ENG-482       # claim it for an item that already exists
+tcw work tracker unlink <slug> --reason "bound to the wrong ticket"
 ```
 
 Configuration lives in the node sentinel, under `work.tracker`:
@@ -694,3 +697,58 @@ One thing these commands deliberately do **not** do: tell you that the name in
 the point where the claim applies yet, or may have been claimed already, and a whole
 query of such tickets looks identical to a typo. It is
 reported as information, never as a verdict.
+
+### Taking a ticket
+
+`tcw work tracker import <ticket>` claims the ticket, then creates a backlog item for
+it. `tcw work tracker link <slug> <ticket>` does the same claim for an unresolved item
+you already have, and leaves that item's intake and request alone.
+
+**The claim decides from the ticket, not from Jira's reply.** Jira's answer to a
+refused transition does not reliably say why: the same refusal has been seen worded
+as a permissions problem when someone else had simply got there first. So TCW:
+
+1. reads the ticket, and refuses one that is closed or assigned to someone else;
+2. applies the transition named in `transitions.claim`;
+3. assigns the ticket to you, only if that transition applied and nobody had it;
+4. reads the ticket again, and counts the claim only if it is now in the status the
+   claim leads to and assigned to you.
+
+Assigning only after the transition applied is what keeps two people apart on a
+workflow that refuses a second claim: the second person's transition is refused, so
+they never reach the assign and cannot take the ticket from the first.
+
+When a ticket is already assigned to you and no longer offers the claim, it is bound
+without a transition, and the command says "not claimed by this run". That is how a
+claim that took the ticket but stopped before creating the item finishes: run the
+same command again.
+
+What `import` creates:
+
+- a **backlog** item titled `<KEY> — <summary>` (or `--title`), with no owner —
+  importing is not starting;
+- its **intake** holds the ticket's description, as Jira stores it, with a link to
+  the ticket. Its request is not written; the `request` stage still runs;
+- a **binding**, `tracker.yaml`, naming the ticket.
+
+**One item per ticket and part.** Running `import` again prints the item you already
+have. `--part api`, `--part web` and so on make separate items for one ticket on
+purpose. The check covers unresolved items in this working copy, so a binding you
+have not committed and pushed is not visible from another clone.
+
+**The binding is not proof of a claim.** It is a file in your repository and anyone
+can edit it. `import` reads the ticket even when a binding exists, and refuses when
+Jira says the ticket is someone else's. A binding that cannot be read, or two items
+bound to one ticket and part, makes `import` and `link` refuse and name the items
+rather than guess. The binding is written by these commands; the web app shows it but
+offers no edit.
+
+**`unlink` is a local repair.** It moves the binding into a kept history with your
+reason, makes no call to Jira, and works even with no tracker configured. The ticket
+stays where it is, assigned to whoever holds it.
+
+Two limits, accepted rather than worked around. On a workflow that offers the claim
+from every status, two people can both claim a ticket and both get an item — `tracker
+show` reports such a workflow as `not exclusive`. And two runs by the same Jira
+account at the same moment, such as two agents sharing credentials, can both create
+an item.

@@ -80,15 +80,19 @@ Writes never follow that fallback. A body edit always targets
 the request and leaving `intake.md` byte-identical. Edit `intake.md` only as a
 named artifact — raw input that quietly changes is not raw input.
 
-## Reading an external tracker
+## Working from an external tracker
 
-Read-only. Neither command writes anywhere, and no other command gains a network
-dependency because of them.
+`list` and `show` only read. `import` and `link` change the ticket (a claim) and
+then the store; `unlink` changes only the store. No other command gains a network
+dependency because of any of them.
 
 | Goal | Command |
 | ---- | ------- |
 | list tickets the configured query selects | `tcw work tracker list` |
 | one ticket, plus its claimability report | `tcw work tracker show <ticket>` |
+| claim a ticket and create a bound backlog item | `tcw work tracker import <ticket> [--part <id>] [--title <title>]` |
+| claim a ticket for an existing unresolved item | `tcw work tracker link <slug> <ticket> [--part <id>]` |
+| remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
@@ -117,7 +121,45 @@ reports `not exclusive`, and two people claiming it would both succeed. On an
 exclusive workflow a started ticket still reports `not determined`, and a second
 `show` will not change that; only a claim, or the workflow definition, confirms it.
 
-Neither command detects a wrong `transitions.claim` value. A ticket not offering it
+### Claiming and binding
+
+**The claim decides from the ticket, never from Jira's reply.** `import` and `link`
+read the ticket, apply the configured claim transition, assign the ticket to the
+signed-in account only if that transition applied and nobody had it, then read the
+ticket again. It counts as claimed only when it is now in the status the claim
+leads to and assigned to this account. A transition's error text is shown on a
+`detail:` line and never used as the reason.
+
+- **Who may claim:** an unassigned ticket, or one already assigned to this
+  account. Assigned to anyone else, or in a done status: refused, naming the
+  assignee and status.
+- **Already yours:** a ticket assigned to this account that no longer offers the
+  claim is bound without a transition ("not claimed by this run"). This is how a
+  claim that stopped before its item was created finishes on a re-run.
+- **One item per ticket and part:** re-running `import` prints the existing slug and
+  exits 0. `--part` (lowercase letters, digits, hyphens; default `default`) makes
+  another item for the same ticket on purpose. The lookup covers unresolved items in
+  this working copy; a binding nobody has committed and pushed is invisible to other
+  clones.
+- **Not guarded:** on a workflow that offers the claim from its own destination, two
+  accounts can both claim one ticket; and two runs by one account at the same moment
+  can both create an item. Both are accepted limits, not bugs to work around.
+
+**The binding is `tracker.yaml`**, a sidecar marked `generated`: written by these
+commands, never by hand, and not editable in the web app. It records provider,
+project id, part, the ticket's stable id, key and URL, the claiming account id and
+name, the date, and an `unlinked` history. No credential and no e-mail address.
+**Never treat a binding as proof of a claim** — `import` re-reads the ticket even
+when a binding exists, and refuses when the tracker disagrees. A binding that is not
+a readable mapping, or two items holding one ticket and part, makes `import` and
+`link` refuse and name the items; `tcw validate` reports a binding that is not a
+mapping, as it does for any record TCW writes.
+
+`import` puts the ticket's description into the item's **intake** with a link to the
+ticket; the `request` stage still runs. It does not set `owner` — importing is not
+starting. `unlink` makes no tracker call and needs no tracker configured.
+
+Neither `list` nor `show` detects a wrong `transitions.claim` value. A ticket not offering it
 may not have reached the claim yet, or may have been claimed already, and both are
 indistinguishable from a typo without reading the project's workflow definition.
 
