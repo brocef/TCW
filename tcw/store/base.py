@@ -1940,6 +1940,16 @@ WORK_SIDECARS: dict[str, dict[str, str]] = {
         "media_type": "text/markdown",
         "generated": "yes",
     },
+    # The binding between an item and the tracker ticket it answers. Written by
+    # `tcw work tracker import | link | unlink`, never by hand, so it is
+    # `generated` like `rollup.md` and edit surfaces must not offer to write it.
+    # Nothing treats it as proof that a claim was made: every command that acts on
+    # a binding re-reads the ticket from the tracker.
+    "tracker.yaml": {
+        "media_type": "application/yaml",
+        "validation": "yaml_mapping",
+        "generated": "yes",
+    },
 }
 
 # Taxonomy term fields that the abstract ``update_term`` operation may modify.
