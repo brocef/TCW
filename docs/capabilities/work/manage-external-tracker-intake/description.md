@@ -9,9 +9,9 @@ to someone else, or already closed, is refused, and I am told who has it and whe
 it is. The item's intake holds the ticket's description with a link to the ticket,
 its request is still mine to write, and it has no owner until I start it.
 
-Running the same import again gives me the item I already have. If a run took the
-ticket but stopped before the item existed, the next run finishes it without moving
-the ticket again. `--part` lets one ticket become several items on purpose.
+Running the same import again in the same node gives me the item I already have.
+If a run took the ticket but stopped before the item existed, the next run finishes
+it without moving the ticket again. `--part` lets one ticket become several items on purpose.
 `tcw work tracker link <slug> <key>` claims a ticket for an item I already have, and
 `tcw work tracker unlink <slug> --reason <text>` removes a wrong binding, keeps a
 record of it with my reason, and leaves the ticket in Jira as it is.
@@ -20,8 +20,9 @@ The binding is written by these commands, not by hand, and the web app offers no
 edit for it. It is never treated as proof of a claim: importing re-reads the ticket
 and refuses when Jira disagrees.
 
-Two limits are accepted rather than prevented. On a workflow that offers the claim
-from every status, two people can both claim one ticket. And two runs by the same
-Jira account at the same moment can both create an item. Keeping the ticket in step
-with the item's lifecycle, and requiring tracked work, are separate capabilities
-that are not yet built.
+Three limits are accepted rather than prevented. On a workflow that offers the claim
+from every status, two people can both claim one ticket. Two runs by the same Jira
+account at the same moment can both create an item. And each node keeps its own
+bindings, so importing one ticket in two nodes gives an item in each. Keeping the
+ticket in step with the item's lifecycle, and requiring tracked work, are separate
+capabilities that are not yet built.

@@ -158,8 +158,9 @@ leads to and assigned to this account. A transition's error text is shown on a
 - **One item per ticket and part:** re-running `import` prints the existing slug and
   exits 0. `--part` (lowercase letters, digits, hyphens; default `default`) makes
   another item for the same ticket on purpose. The lookup covers unresolved items in
-  this working copy; a binding nobody has committed and pushed is invisible to other
-  clones.
+  **this node** of this working copy: a binding nobody has committed and pushed is
+  invisible to other clones, and a binding in one node is invisible to its siblings, so
+  importing one ticket in two nodes gives an item in each.
 - **Not guarded:** on a workflow that offers the claim from its own destination, two
   accounts can both claim one ticket; and two runs by one account at the same moment
   can both create an item. Both are accepted limits, not bugs to work around.

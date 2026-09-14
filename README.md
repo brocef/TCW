@@ -435,15 +435,17 @@ ticket's text goes into the item as its raw input, with a link back, and the ite
 request still gets written the usual way. A ticket assigned to someone else is
 refused, and so is one that is already closed.
 
-Running `import` again for the same ticket gives you the same item rather than a
-second one, and if the first run took the ticket but stopped before creating the
+Running `import` again for the same ticket in the same node gives you the same item
+rather than a second one, and if the first run took the ticket but stopped before creating the
 item, the second run finishes the job. One ticket can deliberately become several
 items with `--part api`, `--part web`, and so on. `unlink` removes a wrong binding
 and keeps a record of it with your reason; it never changes the ticket in Jira.
 
-Two limits to know. On a workflow that lets anyone start a ticket from any status,
-two people can both take the same ticket, and TCW does not stop that. And two runs
-by the same Jira account at the same moment can both create an item.
+Three limits to know. On a workflow that lets anyone start a ticket from any status,
+two people can both take the same ticket, and TCW does not stop that. Two runs by the
+same Jira account at the same moment can both create an item. And each node keeps its
+own bindings: importing one ticket in two nodes of a workspace, even nodes sharing
+inherited settings, gives two items, one in each.
 
 Two guarantees worth stating plainly. A project with no `tracker` block behaves
 exactly as before, with no new required setting and no network access. And

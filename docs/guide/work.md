@@ -801,8 +801,10 @@ What `import` creates:
 
 **One item per ticket and part.** Running `import` again prints the item you already
 have. `--part api`, `--part web` and so on make separate items for one ticket on
-purpose. The check covers unresolved items in this working copy, so a binding you
-have not committed and pushed is not visible from another clone.
+purpose. The check covers unresolved items **in this node** of this working copy.
+A binding you have not committed and pushed is not visible from another clone, and a
+binding in one node is not visible from another: importing one ticket in two nodes of
+a workspace, even two that share inherited tracker settings, gives an item in each.
 
 **The binding is not proof of a claim.** It is a file in your repository and anyone
 can edit it. `import` reads the ticket even when a binding exists, and refuses when
