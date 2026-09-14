@@ -168,6 +168,15 @@ def test_partly_inherited_credentials_count_by_their_farthest_key(empty_cwd):
     assert problem is not None and problem.startswith(CREDENTIALS_MESSAGE_START)
 
 
+def test_an_inherited_token_beside_a_nearer_base_url_is_a_problem(empty_cwd):
+    """The other direction of partial inheritance: email set nearer, token inherited.
+    Checking only one credential key's source would pass the test above and miss this."""
+    problem = _credentials_problem(
+        [("pkg", {"base-url": "https://pkg", "credentials": {"email-env": "E"}}),
+         ("root", COMPLETE)])
+    assert problem is not None and problem.startswith(CREDENTIALS_MESSAGE_START)
+
+
 def test_all_null_credentials_beside_a_nearer_base_url_are_a_problem(empty_cwd):
     """C23 at merge level."""
     problem = _credentials_problem(
@@ -226,6 +235,19 @@ def test_a_key_whose_name_contains_a_dot_is_one_key(empty_cwd):
     """C24 at merge level."""
     assert "root: work.tracker.a.b: unknown key" in _attributed(
         [("pkg", {"candidate-query": "q"}), ("root", {**COMPLETE, "a.b": 1})])
+
+
+def test_a_key_whose_name_contains_a_colon_and_space_names_the_file_that_wrote_it(empty_cwd):
+    assert "root: work.tracker.a: b: unknown key" in _attributed(
+        [("pkg", {"candidate-query": "q"}), ("root", {**COMPLETE, "a: b": 1})])
+
+
+def test_an_integer_key_and_a_string_key_keep_separate_sources(empty_cwd):
+    """A nearer null under the string key "5" must not move the record of the integer
+    key 5 a farther file wrote."""
+    _merged, record, _ = merge_tracker_blocks([("pkg", {"5": None}), ("root", {5: "far"})])
+    assert record[(5,)] == "root"
+    assert record[("5",)] == "pkg"
 
 
 def test_a_whole_block_that_is_not_a_mapping_names_the_ancestor(empty_cwd):
@@ -524,6 +546,42 @@ def test_a_childs_own_bad_value_keeps_the_own_file_prefix_through_the_merge(tmp_
     assert not [p for p in problems if p.endswith(": required")]
 
 
+def test_an_empty_block_does_not_opt_in(tmp_path):
+    """Goal 2: `tracker: {}` is the same as writing nothing."""
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg={})
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert _store(nodes["pkg"]).tracker_problems() == []
+
+
+def test_a_missing_ancestor_three_levels_up_is_named(tmp_path):
+    """With one reachable ancestor, the first and the last are the same node; this
+    chain has two, so asking the wrong one for its parent names nothing."""
+    top = _node(tmp_path / "top", "top", board=False)
+    nodes = {name: _node(tmp_path / name, name, board=True) for name in ("root", "repo", "pkg")}
+    _connect(top, nodes["root"], "top", "root")
+    _connect(nodes["root"], nodes["repo"], "root", "repo")
+    _connect(nodes["repo"], nodes["pkg"], "repo", "pkg")
+    _set_tracker(top, COMPLETE)
+    _set_tracker(nodes["pkg"], QUERY_ONLY)
+    for node in (top, *nodes.values()):
+        assert FsProjectRegistry.open(node).check() == []
+    assert _store(nodes["pkg"]).tracker_problems() == []
+    shutil.rmtree(top)
+    problems = _store(nodes["pkg"]).tracker_problems()
+    assert [p for p in problems if "declared parent 'top' is not available" in p]
+    assert not [p for p in problems if "declared parent 'root'" in p]
+
+
+def test_a_base_url_set_in_an_intermediate_parent_names_that_parents_file(tmp_path):
+    nodes = _chain(tmp_path, root_board=False, root=COMPLETE,
+                   repo={"base-url": "https://repo.example.invalid"}, pkg=QUERY_ONLY)
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert _store(nodes["pkg"]).tracker_problems() == [
+        f"tcw-config.yaml: work.tracker.credentials: inherited from a parent node, but "
+        f"base-url is set nearer, in {_label(nodes['repo'], 'repo')}; set credentials in "
+        f"the same file as base-url"]
+
+
 def test_a_broken_graph_falls_back_to_the_nodes_own_block_without_raising(tmp_path):
     aa = _node(tmp_path / "aa", "aa", board=True)
     bb = _node(tmp_path / "bb", "bb", board=True)
@@ -596,3 +654,17 @@ def test_validate_reports_a_parents_bad_value_under_each_child_that_inherits_it(
             f"non-empty string, got int") in err
     # Repo writes no block, so it inherits nothing and reports nothing.
     assert "[repo]" not in err
+
+
+def test_validate_repeats_a_parents_bad_value_for_every_child_that_inherits_it(
+        tmp_path, monkeypatch):
+    """No de-duplication: each opted-in node has no tracker until the value is fixed."""
+    nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "base-url": 42},
+                   repo=QUERY_ONLY, pkg=QUERY_ONLY)
+    monkeypatch.chdir(nodes["root"])
+    code, _out, err = _run(["validate"])
+    assert code == 1
+    line = (f"{_label(nodes['root'], 'root')}: work.tracker.base-url: expected a "
+            f"non-empty string, got int")
+    assert f"[repo] {line}" in err
+    assert f"[pkg] {line}" in err

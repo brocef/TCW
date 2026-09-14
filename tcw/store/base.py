@@ -1022,7 +1022,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
     ), []
 
 
-TrackerKeyPath = tuple[str, ...]
+TrackerKeyPath = tuple[Any, ...]
 
 
 def merge_tracker_blocks(
@@ -1071,7 +1071,7 @@ def merge_tracker_blocks(
 def _lay_tracker_block(target: dict, source: dict, label: str,
                        path: TrackerKeyPath, record: dict[TrackerKeyPath, str]) -> None:
     for key, value in source.items():
-        key_path = (*path, str(key))
+        key_path = (*path, key)
         if value is None:
             if key not in target:          # nothing farther: kept, for the parser
                 target[key] = None
@@ -1092,7 +1092,7 @@ def _lay_tracker_block(target: dict, source: dict, label: str,
 def _record_tracker_paths(block: dict, label: str, path: TrackerKeyPath,
                           record: dict[TrackerKeyPath, str]) -> None:
     for key, value in block.items():
-        key_path = (*path, str(key))
+        key_path = (*path, key)
         record[key_path] = label
         if isinstance(value, dict):
             _record_tracker_paths(value, label, key_path, record)
@@ -1127,17 +1127,26 @@ def attribute_tracker_problems(problems: list[str], record: dict[TrackerKeyPath,
 
     Matched on the problem's exact key path, never the nearest enclosing
     mapping: `transitions.claim: required` under a `transitions` an ancestor
-    supplied is about a key nobody set, and goes to `own_label`. A key whose own
-    name contains a dot still matches, because paths are compared joined.
+    supplied is about a key nobody set, and goes to `own_label`. The parser
+    writes a path as its keys joined with `.` followed by `: `, so the longest
+    recorded path whose spelling prefixes the problem that way is the one it is
+    about — which also holds for a key whose own name contains `.` or `: `.
+
+    Two recorded paths can share a spelling (an integer key `5` and a string key
+    `"5"`, or a key named `credentials.x` beside a nested one). Such a block is
+    already invalid and every problem is still reported; only the file named for
+    it may be the other one's.
     """
-    joined = {".".join(key_path): label for key_path, label in record.items()}
+    spelled = sorted(((".".join(map(str, key_path)), label)
+                      for key_path, label in record.items()),
+                     key=lambda entry: len(entry[0]), reverse=True)
     attributed = []
     for problem in problems:
         if problem.startswith("work.tracker: "):
             label = whole_block_label or own_label
         else:
-            key = problem.removeprefix("work.tracker.").split(": ", 1)[0]
-            label = joined.get(key, own_label)
+            label = next((label for spelling, label in spelled
+                          if problem.startswith(f"work.tracker.{spelling}: ")), own_label)
         attributed.append(f"{label}: {problem}")
     return attributed
 
@@ -2405,6 +2414,11 @@ class WorkStore(ABC):
 
     def tracker_config(self) -> "TrackerConfig | None":
         """The node's external-tracker settings, or `None` when none is configured.
+
+        A node whose own `work.tracker` is a non-empty mapping inherits the keys it
+        does not set from its ancestors: an adapter gathers their blocks from its
+        project graph, lays them with `merge_tracker_blocks`, parses the result,
+        and refuses a config `tracker_credentials_problem` objects to.
 
         Problems discarded, so a malformed key can never break a board read. Fails
         *closed*: the parser returns `None` on any problem, so a half-read config
