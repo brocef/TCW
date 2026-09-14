@@ -1,6 +1,6 @@
 id: cap-1b0a04
 name: Inspect external tracker work
-Status: Missing
+Status: Supported
 Planning doc: 2026-09-12-configure-an-external-tracker-and-read-its-tickets
 Feature: external-work-tracker
 Subject:
