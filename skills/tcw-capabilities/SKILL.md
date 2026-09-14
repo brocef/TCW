@@ -88,11 +88,9 @@ for you. The project ID must be explicitly listed in this axis's `extends`.
 
 ## Federation (inherit another project's capabilities)
 
-A project can explicitly inherit another registered project's capabilities with
-`tcw capabilities extends <project-id>` (`--rm` to drop). The source must be
-reachable in the registered graph, but a connection alone does not imply
-inheritance. `extends` is a list; legacy alias/path maps fail closed. Inherited
-capabilities use `<project-id>/<path>` and remain read-only in structure.
+A project may inherit another registered project's capabilities. Declaring that
+is the `tcw-configure` skill's `projects.md`. Inherited capabilities use
+`<project-id>/<path>` and remain read-only in structure.
 
 **Capabilities stay inside their own store.** A path is joined onto the store
 root, so a symlink planted inside the store would otherwise carry the write out
@@ -134,7 +132,7 @@ codebase → draft → refine with the user → write) → read [`references/ini
 | drop an override                 | `tcw capabilities reset <path>` — remove the local override, re-inherit upstream (refuses if none)                                |
 | associate a feature              | `tcw capabilities set <path> --field "Feature=<feature-ref>"`                                                                     |
 | link taxonomy (multi-valued)     | `tcw capabilities set <path> --field "Subject=term-a,term-b"`                                                                     |
-| federate another project         | `tcw capabilities extends <project-id>` (`--rm`)                                                                                  |
+| federate another project         | declared with the `tcw-configure` skill's `projects.md`                                                                           |
 | list only local (not inherited)  | `tcw capabilities list --local-only`                                                                                              |
 | check the ledger                 | `tcw capabilities check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                  |
 | find drift                       | `tcw capabilities drift` — inherited-but-unreviewed + local-Missing whose Planning doc is a completed item (exit non-zero if any). The Planning doc is resolved through the node's **configured** work store (`work.path`, in whatever repository); it degrades to silence only when the node has no usable work component. "Completed" is read from the item where one is still in the tree and from its tombstone otherwise, so the verdict is the same in every checkout — but a tombstone backfilled without a resolution says nothing, and that capability is not reported |

@@ -92,14 +92,11 @@ viewers; it is not an editable taxonomy field.
 
 ## Inheritance (federation)
 
-Import another registered project's taxonomy explicitly:
-`tcw taxonomy extends add <project-id>` (`rm <project-id>` drops it). The ID must
-be reachable through the validated project graph; a connection alone does not
-imply inheritance. `extends` is a list and the source project ID is the inherited
+A project may inherit another registered project's taxonomy. Declaring that is
+the `tcw-configure` skill's `projects.md`. The source project ID is the inherited
 namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
 B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning
-project IDs. A source reached through multiple paths appears once. Legacy
-alias/path maps fail closed.
+project IDs. A source reached through multiple paths appears once.
 
 ## Bootstrap (read on demand)
 
@@ -116,6 +113,6 @@ refine with the user → write) → read [`references/init.md`](references/init.
 | link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                                                                         |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
 | locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
-| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `… extends rm <project-id>`                                                                                            |
+| inherit another project's terms | declared with the `tcw-configure` skill's `projects.md`                                                                                                          |
 | validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                                                     |
 | remove a local term             | `tcw taxonomy rm <path>`                                                                                                                                         |

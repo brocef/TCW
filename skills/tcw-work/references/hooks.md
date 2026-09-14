@@ -1,7 +1,7 @@
 # How lifecycle bindings run
 
-What a binding means and how it runs. To declare or change bindings, see the
-`tcw-configure` skill's `work.md`.
+What a binding means and how it runs. To declare or change bindings, see
+the `tcw-configure` skill's `work.md`.
 
 ## Roles, kinds, and conditions
 
