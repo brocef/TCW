@@ -58,7 +58,7 @@ def test_link_claims_and_binds_without_touching_the_body(node, fake):  # noqa: F
     assert after["intake.md"] == before["intake.md"]
     assert after["initial-request.md"] == before["initial-request.md"]
     doc = binding(node, slug)
-    assert doc["ticket"]["key"] == TICKET and doc["claimed-by"]["account-id"] == A
+    assert doc["ticket"]["key"] == TICKET and "claimed-by" not in doc
     assert fake.tickets["10052"].assignee == A
 
 

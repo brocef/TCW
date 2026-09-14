@@ -106,8 +106,7 @@ def write_binding(root: Path, title: str, **overrides) -> str:
     slug = st.create(title).slug
     doc = {"schema": 1, "provider": "jira-cloud", "project": "alpha", "part": "default",
            "ticket": {"id": "10052", "key": TICKET, "url": f"{BASE_URL}/browse/{TICKET}"},
-           "claimed-by": {"account-id": A, "name": "Alice"}, "bound": "2026-09-14",
-           "unlinked": []}
+           "bound": "2026-09-14", "unlinked": []}
     doc.update(overrides)
     st.write_sidecar(slug, "tracker.yaml", yaml.safe_dump(doc, sort_keys=False))
     return slug
@@ -149,7 +148,7 @@ def test_import_claims_the_ticket_and_creates_one_bound_backlog_item(node, fake)
     assert (doc["project"], doc["part"]) == ("alpha", "default")
     assert doc["ticket"] == {"id": "10052", "key": TICKET,
                              "url": f"{BASE_URL}/browse/{TICKET}"}
-    assert doc["claimed-by"] == {"account-id": A, "name": "Alice"}
+    assert "claimed-by" not in doc
     assert doc["unlinked"] == []
     assert "claimed" in err and "In Progress" in err
 

@@ -1711,17 +1711,16 @@ def _intake_text(outcome, description: str, today: str) -> str:
             f"{body}\n")
 
 
-def _binding_for(provider: str, project: str, outcome, part: str, today: str,
-                 unlinked: list) -> str:
-    """The binding document. `provider` and `project` are the values the claim was
-    looked up and made with, passed in rather than read again: tracker settings can
-    come from parent nodes' files, and one changed or broken mid-run would otherwise
-    fail here, after the ticket is already claimed."""
+def _binding_for(provider: str, project: str, ticket_id: str, ticket_key: str,
+                 ticket_url: str, part: str, today: str, unlinked: list) -> str:
+    """The binding document. `provider` and `project` are the values the ticket was
+    looked up with, passed in rather than read again: tracker settings can come from
+    parent nodes' files, and one changed or broken mid-run would otherwise fail here,
+    after the ticket has already been claimed by whichever caller claims."""
     from tcw.tracker.intake import binding_document
     return binding_document(
         provider=provider, project=project, part=part,
-        ticket_id=outcome.issue_id, ticket_key=outcome.key, ticket_url=outcome.url,
-        account_id=outcome.account_id, account_name=outcome.account_name,
+        ticket_id=ticket_id, ticket_key=ticket_key, ticket_url=ticket_url,
         bound=today, unlinked=unlinked)
 
 
@@ -1805,8 +1804,9 @@ def _tracker_import(args: argparse.Namespace) -> int:
         return 1
     try:
         st.write_sidecar(slug, BINDING_SIDECAR,
-                         _binding_for(client.config.provider, project, outcome, part,
-                                      today, []), revision="")
+                         _binding_for(client.config.provider, project,
+                                      outcome.issue_id, outcome.key, outcome.url,
+                                      part, today, []), revision="")
     except _LOCAL_WRITE_ERRORS as e:
         try:
             st.drop(slug)
@@ -1893,7 +1893,8 @@ def _tracker_link(args: argparse.Namespace) -> int:
         return 1
     existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
     today = date.today().isoformat()
-    document = _binding_for(client.config.provider, project, outcome, part, today,
+    document = _binding_for(client.config.provider, project, outcome.issue_id,
+                            outcome.key, outcome.url, part, today,
                             unlinked_history(existing.content if existing else None))
     try:
         st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
