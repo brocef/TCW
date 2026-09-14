@@ -7,3 +7,5 @@ complexity: medium
 tags:
 - skills
 - docs
+blocked_by:
+- slug: 2026-09-14-delete-a-capability-with-tcw-capabilities-rm
