@@ -84,10 +84,9 @@ Suggestions raised in discussion — _open_, not yet agreed by the requester:
   already names its siblings; the router needs only a short list of parts.
 - **`documentation-sync` keeps a one-line pointer** to its setup document once
   that moves, since the skill also serves projects that do not use TCW.
-- **Removing the setup commands breaks names** users may already type or write in
-  their own `CLAUDE.md` or `tcw-config.yaml`. It needs a changelog entry; whether
-  a one-release stub under the old names is worth it is open, weighed against
-  the requester's goal of having only one way to set things up.
+- **Removing the setup commands** gets a changelog entry and **no** stub under the
+  old names — decided by the requester: nobody but the requester uses TCW yet, so
+  there is no one to redirect.
 
 Constraints: none stated beyond the above. No deadline.
 
