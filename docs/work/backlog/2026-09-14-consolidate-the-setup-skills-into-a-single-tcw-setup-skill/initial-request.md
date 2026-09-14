@@ -83,6 +83,20 @@
 >       reference document or a `tcw-commands-`/`tcw-extras-` skill.
 >     - When it is unclear whether something is a command skill or an extra,
 >       ask the requester.
+>
+> **Split after the third spec review (2026-09-14):**
+>
+> 16. **The work is split in three items.**
+>     - `2026-09-14-make-eval-checks-measure-what-the-agent-did-…` takes the eval
+>       harness changes.
+>     - `2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands`
+>       takes the skill restructure: notes 1–6, 8, 10 and 13–15, plus the
+>       round-three answers recorded there.
+>     - **This item keeps notes 2, 5, 9 and 12:** a taxonomy Feature and exactly
+>       one capability per skill, with replaced capabilities deleted. It is
+>       retitled "Give every TCW skill a taxonomy Feature and exactly one
+>       capability", and is blocked by the restructure item and by
+>       `2026-09-14-delete-a-capability-with-tcw-capabilities-rm`.
 
 ## What is being asked for
 
