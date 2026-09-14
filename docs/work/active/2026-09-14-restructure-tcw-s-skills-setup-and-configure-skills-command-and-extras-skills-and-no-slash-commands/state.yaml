@@ -10,3 +10,5 @@ tags:
 - docs
 blocked_by:
 - slug: 2026-09-14-make-eval-checks-measure-what-the-agent-did-working-tree-file-changes-tool-call-routing-and-named-fixture-variants
+owner: brocef@users.noreply.github.com
+started: '2026-09-14T17:52:22.131068Z'
