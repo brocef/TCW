@@ -17,6 +17,25 @@
 > 3. **Eval coverage is rebuilt.** Old eval cases tied to removed skills are
 >    removed and new ones created. *Which* setup and configuration routes get
 >    cases is left as an open question for the spec's reviewers.
+>
+> **Revised again after the first spec review (2026-09-14):**
+>
+> 4. **The configuration skill is named `tcw-configure`**, not `tcw-config`, so
+>    its name never collides with the file `tcw-config.yaml`.
+> 5. **One capability per skill, replacing the existing ones.** Each skill gets a
+>    single capability, and the existing capabilities that describe what a skill
+>    does are folded into it rather than kept beside it — even though that retires
+>    stable capability paths.
+> 6. **All configuration moves into `tcw-configure` now**, including keys
+>    documented elsewhere today (`work.tracker`, `work.retain`,
+>    `work.auto-commit-transitions`, `work.trunk-branch`, `connected-projects`),
+>    not left for a follow-up.
+> 7. **The reviewer's eval recommendation is accepted:** a configuration case
+>    phrased with "set up", a project-initialization case on a fresh repository,
+>    "did not open `tcw-setup`" checks added to cases B4 and B8, and B5 retargeted
+>    to test routing across the axis skills rather than deleted.
+> 8. **A large change is acceptable.** The goal is to clean up and simplify, so a
+>    wide footprint is not a reason to hold back.
 
 ## What is being asked for
 
