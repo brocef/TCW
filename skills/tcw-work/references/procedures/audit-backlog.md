@@ -31,7 +31,8 @@ whether a check can be delegated per-item.
 - **Blocked without a next action:** blockers that are stale or already completed
   (look each one up — `tcw work show <blocker>`), or external blockers naming no
   owner, wait condition, or follow-up.
-- **Capability drift:** `capabilities.yaml` references missing capability files,
+- **Capability drift:** `capabilities.yaml` lists under `new:` or `changed:` a
+  capability that does not exist (a `removed:` entry is expected not to exist),
   carries stale status assumptions, or disagrees with the ledger.
 
 "Wrong node" and "capability drift" look set-wide but are not — each compares one

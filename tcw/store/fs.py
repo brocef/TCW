@@ -2479,66 +2479,68 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return self._capability(path)
 
     def remove(self, identifier: str) -> None:
-        # Canonical spellings only. `get` resolves `routes/` or `./routes` to the
-        # `routes` folder but reports the spelling back as its path, and the
-        # nested check below compares path strings — so a loose spelling would
-        # slip past it and `git rm -rf` would take the nested capabilities too.
-        try:
-            _safe_store_id(identifier, "path")
-        except ValueError:
-            raise ValueError(f"no such capability: {identifier}") from None
         cap = self.get(identifier)
+        # The exact listed spelling only. `get` resolves `routes/`, `./routes`,
+        # or `Routes` on a case-insensitive disk, to the `routes` folder but
+        # echoes the spelling back as the path, so everything below that works
+        # from the path would be working from the wrong one.
+        if cap is not None and cap.origin == "local" and cap.path not in self._local_paths():
+            cap = None
         if cap is None:
             raise ValueError(f"no such capability: {identifier}")
         if cap.origin != "local":
             raise ValueError(f"cannot remove inherited capability '{cap.qualified}' "
                              f"(edit it at its source; to drop a local override use "
                              f"`tcw capabilities reset`)")
-        # Refused, never cascaded: `_rm` deletes the whole folder, and anything
-        # nested under the path lives inside it.
-        nested = [p for p in self._all_meta_dirs() if p.startswith(f"{cap.path}/")]
+        d = self.root / cap.path
+        # Refused, never cascaded: `_rm` deletes the whole folder. Asked of the
+        # folder itself rather than `_all_meta_dirs`, which skips dot-directories
+        # and unreadable nodes that `git rm -rf` would delete all the same.
+        nested = sorted(str(m.parent.relative_to(self.root))
+                        for m in d.rglob("meta.yaml") if m.parent != d)
         if nested:
             raise ValueError(f"cannot remove '{cap.path}': nested under it: "
                              f"{', '.join(nested)} (remove those first)")
-        referrers = self._referrers(cap.path)
+        referrers = self._referrers(d)
         if referrers:
             raise ValueError(f"cannot remove '{cap.path}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those fields first)")
-        self._rm(self.root / cap.path)
+        self._rm(d)
 
-    def _referrers(self, path: str) -> list[str]:
+    def _referrers(self, target: Path) -> list[str]:
         """`<folder> (<field>)` for every other local capability or override whose
-        reference fields resolve to the local capability at `path`.
+        reference fields resolve to the local capability folder `target`.
 
-        Tokens are read as `_check_globals` reads `Roles`/`When`: a list or a
-        comma string, `!` dropped. A token that resolves to nothing, or to more
-        than one thing, refers to nothing here — `check` reports it on its own.
+        Each field is read exactly as `check` reads it (`_ref_problems`,
+        `_check_globals`), so this refuses on precisely the references `check`
+        would report as dangling afterwards. A hit is compared by folder identity,
+        not spelling: `a/b/`, `x/../a/b` and a differently-cased `A/B` all
+        resolve, and `set` accepts each.
         """
+        def tokens(field: str, raw) -> list[str]:
+            if field in ("Superseded by", "Blocked by"):
+                return [str(raw)]
+            ns = "roles" if field == "Roles" else "conditions"
+            toks = raw if isinstance(raw, list) else str(raw).split(",")
+            refs = [str(s).strip().lstrip("!") for s in toks if str(s).strip()]
+            return [r for r in refs if r.startswith(f"{ns}/")]
+
         out = []
         for p in self._all_meta_dirs():
-            if p == path:
+            folder = self.root / p
+            if folder.samefile(target):
                 continue
-            meta = load_yaml(self.root / p / "meta.yaml")
+            meta = load_yaml(folder / "meta.yaml")
             for field in ("Superseded by", "Blocked by", "Roles", "When"):
-                raw = meta.get(field)
-                if raw is None:
+                if field not in meta:
                     continue
-                if isinstance(raw, list):
-                    toks = raw
-                elif field in ("Roles", "When"):
-                    toks = str(raw).split(",")
-                else:
-                    toks = [raw]
-                for tok in toks:
-                    ref = str(tok).strip().lstrip("!")
+                for ref in tokens(field, meta[field]):
                     try:
-                        hit = self.get(ref) if ref else None
+                        hit = self.get(ref)
                     except RefError:
                         continue
-                    # `Path`, not string, equality: `get` reports a loose
-                    # spelling (`a/b/`, `./a//b`) back as the path, and `set`
-                    # accepts one, so a string compare would miss the reference.
-                    if hit is not None and hit.origin == "local" and Path(hit.path) == Path(path):
+                    if (hit is not None and hit.origin == "local"
+                            and (self.root / hit.path).samefile(target)):
                         out.append(f"{p} ({field})")
                         break
         return out

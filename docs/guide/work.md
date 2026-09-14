@@ -295,9 +295,10 @@ tcw work drop some-slug --confirm      # erase a mis-created item, leaving no re
 ```
 
 `complete` **enforces capability reconciliation**: if the item's `capabilities.yaml`
-declares a `new:` capability that still reads `Missing`, or any declared path that
-no longer resolves, the completion is refused (flip it with `tcw capabilities set`,
-mark it `Omitted`, or `--force` past). For a `--worktree` item the check runs after
+declares a `new:` capability that still reads `Missing`, a `new:` or `changed:` path
+that no longer resolves, or a `removed:` path where a local capability still exists,
+the completion is refused (flip it with `tcw capabilities set`,
+mark it `Omitted`, delete it with `tcw capabilities rm`, or `--force` past). For a `--worktree` item the check runs after
 the branch merges back, so a status flip made on the work branch counts.
 
 A **discard is not a shipment**, so none of the shipping gates apply to one: no

@@ -155,18 +155,27 @@ The `reset` docstring and refusal say `tcw capabilities rm` instead of `remove`.
 
 ### The filesystem adapter (`tcw/store/fs.py`)
 
-`FsCapabilitiesStore.remove` keeps its current first two steps and adds two
+`FsCapabilitiesStore.remove` keeps its current first two steps and adds three
 checks before `_rm`:
 
-- **Nested:** every folder `_all_meta_dirs()` returns whose path starts with
-  `<path>/`. That list holds both capabilities and override folders, so an
-  override sitting inside the target's folder is caught too.
+- **Listed spelling:** a local capability is deleted only when the identifier is
+  exactly its listed path. `get` also resolves `routes/`, `./routes`, and `Routes`
+  on a case-insensitive disk, but echoes that spelling back as the path, so every
+  later step would work from the wrong one. Any other spelling is
+  `no such capability`.
+- **Nested:** every `meta.yaml` found inside the target's folder other than its
+  own. Asked of the folder itself, not of `_all_meta_dirs()`, which skips
+  dot-directories and unreadable nodes that `git rm -rf` would delete anyway. It
+  catches capabilities and override folders alike.
 - **Referrers:** for every folder `_all_meta_dirs()` returns other than the
-  target, read its `meta.yaml` and take the tokens of the four reference fields —
-  the single value of `Superseded by` and `Blocked by`; the list or
-  comma-separated tokens of `Roles` and `When`, with a leading `!` dropped, as
-  `_check_globals` reads them. A token refers to the target when `get(token)`
-  resolves to a local capability whose path is the target's path. A token that
+  target, read its `meta.yaml` and take the tokens of the four reference fields
+  exactly as `check` reads them: `str(value)` for `Superseded by` and
+  `Blocked by` (`_ref_problems`); for `Roles` and `When` the list or
+  comma-separated tokens, stripped, `!` dropped, and only those under `roles/` or
+  `conditions/` respectively (`_check_globals`). A token refers to the target
+  when `get(token)` resolves to a local capability **whose folder is the target's
+  folder**, compared as the same file on disk rather than the same spelling:
+  `a/b/`, `x/../a/b` and `A/B` all resolve, and `set` accepts each. A token that
   does not resolve, or is ambiguous, refers to nothing and is skipped.
 
 Override folders are read as well as local capabilities because an override's
@@ -207,11 +216,13 @@ removed:
 The completion gate (`capability_gate`):
 
 - no longer returns early when `new:` and `changed:` are empty but `removed:` is not;
-- for each `removed:` path: a path that resolves is a problem,
+- for each `removed:` path: a **local** capability still resolving at that path
+  is a problem,
   `<path>: declared (removed) but still resolves (delete it with \`tcw capabilities rm\`)`;
-  an ambiguous path is a problem, reported with the resolver's message as for the
-  other lists, because an ambiguous path still names something; a path that
-  resolves to nothing passes.
+  anything else passes. Only a local hit counts because `rm` deletes only local
+  capabilities: once a local `auth/login` is gone, the bare path can fall through
+  to an inherited `auth/login` (or be ambiguous between two), which `rm` refuses,
+  so counting that would leave the item unable to complete.
 
 The epic rollup (`_capability_deltas`) prints `removed <path>` rows alongside
 `new` and `changed`, and its "no entries" message names all three keys.
@@ -237,8 +248,8 @@ The epic rollup (`_capability_deltas`) prints `removed <path>` rows alongside
 5. **The key for a deletion is `removed:`**, matching the existing past-tense
    `changed:` and the "new / changed / removed" wording the skill and the spec
    template already use (`skills/tcw-capabilities/SKILL.md:33`,
-   `tcw/work/templates.py:41`). **The gate requires that the path does not
-   resolve at completion.**
+   `tcw/work/templates.py:41`). **The gate requires that no local capability
+   resolves at that path at completion.**
 
 ## Acceptance criteria
 
@@ -261,7 +272,12 @@ Each is checked by a test in the suite unless it says otherwise.
 7. For each of `Superseded by`, `Blocked by`, `Roles` (including a `!`-prefixed
    token) and `When`, a local capability referencing the target makes `rm` exit 1
    naming the referrer's path and the field, and the target still resolves. The
-   same holds when the reference is held in an override folder.
+   same holds when the reference is held in an override folder, and when the
+   reference is spelled loosely (`a/b/`, `./a//b`, `x/../a/b`). A value `check`
+   does not resolve to the target (`" a/b "`, `!a/b` or a list under
+   `Blocked by`, a `When` token outside `conditions/`) does not block the delete;
+   nor does a sibling path such as `routes-v2`, and a capability nested inside a
+   dot-directory does block it. (Extended in review round 1.)
 8. After the referrer is repointed with `tcw capabilities set`, `rm` of the same
    target succeeds.
 9. `rm ../taxonomy/<term>` (a path escaping the store) exits 1 with
@@ -280,7 +296,9 @@ Each is checked by a test in the suite unless it says otherwise.
     (exit 0).
 14. An active item whose `capabilities.yaml` holds `removed: [auth/login]` while
     `auth/login` still resolves fails `tcw work complete` (exit 1), stderr contains
-    `declared (removed) but still resolves`, and the item stays `active`.
+    `declared (removed) but still resolves`, and the item stays `active`. An
+    inherited capability at the same bare path does not fail it. (Added in review
+    round 1.)
 15. `tcw work reconcile <epic>` on a child task declaring `removed: [a/b]` renders
     `removed a/b` in the rollup.
 16. `grep -rn 'use \`remove\`' skills docs/guide tcw docs/capabilities` finds

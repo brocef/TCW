@@ -187,7 +187,29 @@ def test_remove_refuses_nested_capability(tmp_path):
     assert store(root).get("routes/login") is not None
 
 
-@pytest.mark.parametrize("ref", ["routes/", "./routes", "routes/.", "routes//"])
+def test_remove_refuses_capability_nested_in_a_dot_directory(tmp_path):
+    """`_all_meta_dirs` skips dot-directories, but `git rm -rf` does not."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "routes", id="cap-rou001", Status="Supported")
+    write_cap(root, "routes/.drafts/login", id="cap-log001", Status="Supported")
+    before = tree_hash(root)
+    with pytest.raises(ValueError, match=r"routes/\.drafts/login"):
+        store(root).remove("routes")
+    _assert_nothing_removed(root, before)
+
+
+def test_remove_nested_check_respects_the_path_boundary(tmp_path):
+    """`routes-v2` is a sibling of `routes`, not nested under it."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "routes", id="cap-rou001", Status="Supported")
+    write_cap(root, "routes-v2", id="cap-rv2001", Status="Supported")
+    store(root).remove("routes")
+    assert store(root).get("routes") is None
+    assert store(root).get("routes-v2") is not None
+
+
+@pytest.mark.parametrize("ref", ["routes/", "./routes", "routes/.", "routes//", "Routes",
+                                 "routes/login/.."])
 def test_remove_refuses_non_canonical_path_spelling(tmp_path, ref):
     """`get` resolves these spellings to the `routes` folder but reports the
     spelling back as the path, so the nested check compared against the wrong
@@ -218,6 +240,9 @@ def test_remove_refuses_nested_override_folder(tmp_path):
     # `set` accepts a loose spelling, because `get` resolves it.
     ("Superseded by", "billing/old-refund", "billing/old-refund/"),
     ("Blocked by", "billing/old-refund", "./billing//old-refund"),
+    # `..` through a folder that exists resolves too, on every filesystem.
+    ("Superseded by", "billing/old-refund", "billing/old-refund/../old-refund"),
+    ("Blocked by", "billing/old-refund", "roles/../billing/old-refund"),
     ("Roles", "roles/admin", ["!roles/admin"]),
     ("Roles", "roles/admin", "roles/other, roles/admin"),
     ("When", "conditions/signed-in", "conditions/signed-in"),
@@ -233,6 +258,39 @@ def test_remove_refuses_referenced_target(tmp_path, field, target, value):
     assert f"billing/refund ({field})" in str(e.value)
     _assert_nothing_removed(root, before)
     assert store(root).get(target) is not None
+
+
+@pytest.mark.parametrize("field, value", [
+    ("Superseded by", " roles/admin "),     # check resolves the value as written
+    ("Blocked by", "!roles/admin"),         # `!` negates only in Roles/When
+    ("Blocked by", ["roles/admin"]),        # a list is not a single identifier
+    ("When", "roles/admin"),                # When tokens must be conditions/
+    ("Roles", "conditions/roles/admin"),
+])
+def test_remove_ignores_a_value_check_does_not_resolve_to_the_target(tmp_path, field, value):
+    """`_referrers` reads each field exactly as `check` does, so a value `check`
+    already reports as broken does not also block the delete."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "roles/admin", id="cap-adm001", Status="Supported")
+    write_cap(root, "billing/refund", id="cap-ref001", Status="Supported", **{field: value})
+    store(root).remove("roles/admin")
+    assert store(root).get("roles/admin") is None
+
+
+def test_gate_removed_ignores_an_inherited_capability_at_the_same_path(tmp_path):
+    """After a local `auth/login` is deleted, the bare path falls through to the
+    inherited one, which `rm` refuses — so only a local hit may fail the gate."""
+    from tcw.store.fs import FsWorkStore, init
+    from tcw.work.recursion import capability_gate
+    base, child = federated(tmp_path)
+    init(["work"], child)
+    ws = FsWorkStore.open(child)
+    slug = ws.create("Task", created="2026-01-01").slug
+    (ws.path(slug) / "capabilities.yaml").write_text("removed:\n  - auth/login\n")
+    assert capability_gate(ws, ws.get(slug)) == []
+    write_cap(child, "auth/login", id="cap-loc001", Status="Supported")
+    problems = capability_gate(ws, ws.get(slug))
+    assert len(problems) == 1 and "declared (removed) but still resolves" in problems[0]
 
 
 def test_remove_refuses_reference_held_by_override(tmp_path):
