@@ -2484,14 +2484,59 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             raise ValueError(f"no such capability: {identifier}")
         if cap.origin != "local":
             raise ValueError(f"cannot remove inherited capability '{cap.qualified}' "
-                             f"(edit it at its source)")
+                             f"(edit it at its source; to drop a local override use "
+                             f"`tcw capabilities reset`)")
+        # Refused, never cascaded: `_rm` deletes the whole folder, and anything
+        # nested under the path lives inside it.
+        nested = [p for p in self._all_meta_dirs() if p.startswith(f"{cap.path}/")]
+        if nested:
+            raise ValueError(f"cannot remove '{cap.path}': nested under it: "
+                             f"{', '.join(nested)} (remove those first)")
+        referrers = self._referrers(cap.path)
+        if referrers:
+            raise ValueError(f"cannot remove '{cap.path}': still referenced by "
+                             f"{', '.join(referrers)} (repoint or clear those fields first)")
         self._rm(self.root / cap.path)
+
+    def _referrers(self, path: str) -> list[str]:
+        """`<folder> (<field>)` for every other local capability or override whose
+        reference fields resolve to the local capability at `path`.
+
+        Tokens are read as `_check_globals` reads `Roles`/`When`: a list or a
+        comma string, `!` dropped. A token that resolves to nothing, or to more
+        than one thing, refers to nothing here — `check` reports it on its own.
+        """
+        out = []
+        for p in self._all_meta_dirs():
+            if p == path:
+                continue
+            meta = load_yaml(self.root / p / "meta.yaml")
+            for field in ("Superseded by", "Blocked by", "Roles", "When"):
+                raw = meta.get(field)
+                if raw is None:
+                    continue
+                if isinstance(raw, list):
+                    toks = raw
+                elif field in ("Roles", "When"):
+                    toks = str(raw).split(",")
+                else:
+                    toks = [raw]
+                for tok in toks:
+                    ref = str(tok).strip().lstrip("!")
+                    try:
+                        hit = self.get(ref) if ref else None
+                    except RefError:
+                        continue
+                    if hit is not None and hit.origin == "local" and hit.path == path:
+                        out.append(f"{p} ({field})")
+                        break
+        return out
 
     def reset(self, identifier: str) -> None:
         # A standalone local capability is not an override — `remove` deletes it.
         if self.get_local(identifier) is not None:
             raise ValueError(f"'{identifier}' is a local capability, not an override "
-                             f"(use `remove` to delete it)")
+                             f"(use `tcw capabilities rm` to delete it)")
         cap = self.get(identifier)                     # federated; may raise AmbiguousRef
         if cap is None:
             raise ValueError(f"no such capability: {identifier}")

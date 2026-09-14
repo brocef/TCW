@@ -567,13 +567,27 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def remove(self, identifier: str) -> None:
-        ...
+        """Delete the local capability at `identifier`, writing nothing when
+        refused. Raise `AmbiguousRef` when a bare ref matches multiple extended
+        stores, and `ValueError` when:
+
+        - nothing resolves;
+        - the capability is inherited, overridden locally or not (an override
+          is dropped with `reset`, never with `remove`);
+        - another capability or override is nested under its path;
+        - another local capability or override still references it through
+          `Superseded by`, `Blocked by`, `Roles` or `When`.
+
+        Refusing rather than cascading is the contract: a delete never takes a
+        second capability with it or leaves a reference pointing at nothing.
+        Never mutates an extended store."""
 
     @abstractmethod
     def reset(self, identifier: str) -> None:
         """Drop the local override at `identifier`, re-inheriting the upstream
         capability verbatim. Raise `ValueError` when there is no override (a
-        standalone local capability is not an override — use `remove`; a bare
+        standalone local capability is not an override — use `remove`, which
+        `tcw capabilities rm` drives; a bare
         inherited path has nothing to drop), or `AmbiguousRef` when a bare ref
         matches multiple extended stores. Never mutates an extended store."""
 
