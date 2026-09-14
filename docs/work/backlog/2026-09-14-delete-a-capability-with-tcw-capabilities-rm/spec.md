@@ -182,8 +182,9 @@ store, not this one.
 capability". `_rm` calls `st.remove(args.path)`:
 
 - success: prints `Removed capability <path>`, exits 0;
-- `AmbiguousRef`: `tcw capabilities rm: ambiguous ref '<path>' — qualify it with a project id`, exits 1;
-- `ValueError` or other `RefError`: `tcw capabilities rm: <message>`, exits 1.
+- `ValueError` or `RefError`: `tcw capabilities rm: <message>`, exits 1. An
+  `AmbiguousRef` is a `RefError` whose message already reads
+  `ambiguous ref '<path>' — qualify it with an alias prefix`.
 
 Like `taxonomy rm`, it does not commit. Outside a git repository the store's
 existing `_require_repository` refuses (`tcw/store/fs.py:1690`).

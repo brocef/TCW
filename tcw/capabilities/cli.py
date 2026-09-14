@@ -136,11 +136,7 @@ def _rm(args: argparse.Namespace) -> int:
         return 1
     try:
         st.remove(args.id)
-    except AmbiguousRef:
-        print(f"tcw capabilities rm: ambiguous ref '{args.id}' — qualify it with a project id",
-              file=sys.stderr)
-        return 1
-    except (ValueError, RefError) as e:
+    except (ValueError, RefError) as e:              # AmbiguousRef carries its own message
         print(f"tcw capabilities rm: {e}", file=sys.stderr)
         return 1
     print(f"Removed capability {args.id}")
