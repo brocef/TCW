@@ -3,8 +3,8 @@
 Find planning documents that live outside the TCW work system, migrate them into
 work items, and remove the old documents only after the migration succeeds. This
 is an AI-driven migration workflow, not a `tcw` subcommand — there is no `tcw
-work consolidate-plans`. Claude users can reach it as `/tcw-consolidate-plans`;
-under any harness, this document is the procedure.
+work consolidate-plans`. Ask the `tcw-work` skill for it; under any harness,
+this document is the procedure.
 
 ## The two rules, before any step
 

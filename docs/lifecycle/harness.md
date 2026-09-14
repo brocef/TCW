@@ -15,4 +15,4 @@ TCW ships to **both** Claude Code and Codex, and their plugin standards differ: 
 
 The rule that follows: **anything that must be guaranteed belongs in the `tcw` CLI**, which behaves identically under both harnesses. If a behavior only happens because Claude injected a line of context or fired a hook, a Codex user does not get it. Ask of every mechanism: _what does a Codex agent see here, and can it still finish the job?_ If the answer is no, the requirement is in the wrong layer.
 
-Codex has no slash commands, so anything reachable via `commands/` must also be reachable by invoking the skill directly (`/tcw-audit-work-backlog` and the `tcw-work` skill are the existing pattern).
+This plugin ships no slash commands. Every entry point is a skill, which both harnesses can invoke.

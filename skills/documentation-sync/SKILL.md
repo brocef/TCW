@@ -96,7 +96,7 @@ These workflows are deeper than the core trigger-evaluation loop and live as ref
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`.   |
 | the `tcw-configure` skill's `docs-sync.md`   | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                        |
-| `references/cut-version.md`                  | The user picked a `patch`/`minor`/`major` bump from the completion options below and you're running the version cut — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. |
+| `references/cut-version.md`                  | The user asked to cut a version, or picked a `patch`/`minor`/`major` bump from the completion options below, and you're running the version cut — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. |
 
 ## When to offer version and changelog options
 

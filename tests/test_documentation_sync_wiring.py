@@ -21,13 +21,6 @@ SKILL_FILES = [
 # a project through it lives in the `tcw-configure` skill.
 DOCS_SYNC_SETUP = REPO / "skills" / "tcw-configure" / "references" / "docs-sync.md"
 
-# Claude-only slash commands are thin routers; the procedure they route to must
-# live in the skill so a Codex user reaches it too (AGENTS.md harness rule).
-COMMAND_ROUTES = {
-    REPO / "commands" / "tcw-docs-sync-setup.md": "references/docs-sync.md",
-    REPO / "commands" / "tcw-cut-version.md": "references/cut-version.md",
-}
-
 # Absorption must leave no dangling reference to the source plugin here.
 NO_CEFAILURES_ROOTS = [
     REPO / "AGENTS.md",
@@ -94,17 +87,6 @@ def test_skill_has_no_cut_version_command_ref():
         if ":cut-version" in f.read_text(encoding="utf-8")
     ]
     assert not offenders, f"stray :cut-version command reference: {offenders}"
-
-
-def test_commands_route_into_the_skill():
-    """Each slash command is a router: it must exist and name the skill reference
-    that carries the procedure, so Codex (no slash commands) reaches the same
-    content by invoking the skill directly."""
-    for cmd, ref in COMMAND_ROUTES.items():
-        assert cmd.is_file(), f"missing command: {cmd}"
-        body = cmd.read_text(encoding="utf-8")
-        assert "documentation-sync" in body, f"{cmd} does not name the skill"
-        assert ref in body, f"{cmd} does not route to {ref}"
 
 
 # ── which form the skill recommends ────────────────────────────────────────

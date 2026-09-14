@@ -38,8 +38,8 @@ behind them — the CLI cannot run them, and asking it to is an argparse error:
 
 | Goal                   | How to reach it                                                                                   |
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
-| audit the backlog      | [`audit-backlog.md`](procedures/audit-backlog.md) — any harness · `/tcw-audit-work-backlog` in Claude        |
-| migrate external plans | [`consolidate-plans.md`](procedures/consolidate-plans.md) — any harness · `/tcw-consolidate-plans` in Claude |
+| audit the backlog      | [`audit-backlog.md`](procedures/audit-backlog.md) — any harness · ask the `tcw-work` skill        |
+| migrate external plans | [`consolidate-plans.md`](procedures/consolidate-plans.md) — any harness · ask the `tcw-work` skill |
 
 ## The body surface
 

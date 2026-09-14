@@ -1,8 +1,9 @@
 # Cut a New Version
 
-Read this when the user has chosen a `patch`, `minor`, or `major` bump from this
-skill's completion options (see `SKILL.md` → "When to offer version and changelog
-options"). It covers choosing the bump size and running the version-cut ritual.
+Read this when the user asks to cut a version, or has chosen a `patch`, `minor`,
+or `major` bump from this skill's completion options (see `SKILL.md` → "When to
+offer version and changelog options"). It covers choosing the bump size and
+running the version-cut ritual.
 
 If the user instead chose to keep the current version, **stop** — leave
 version-bearing metadata, tags, and `upcoming.md` file names alone, and just
@@ -49,6 +50,8 @@ Grep for the current version string before you start; projects routinely carry i
 in more places than their docs admit.
 
 ## Step 2: Rotate `upcoming.md` files
+
+Write the release-note and changelog entries into the `upcoming.md` files first. The cut rotates them.
 
 Rename both working files to versioned files, then create fresh empty
 `upcoming.md` files for subsequent work:

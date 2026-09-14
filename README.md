@@ -31,7 +31,7 @@ other's content.
 - [Documentation](#documentation)
 - [Skills — the judgment layer](#skills--the-judgment-layer)
   - [Reading a lifecycle stage](#reading-a-lifecycle-stage)
-  - [Review agents and slash commands](#review-agents-and-slash-commands)
+  - [Review agents and command skills](#review-agents-and-command-skills)
 - [Status](#status)
 - [Further reading](#further-reading)
 
@@ -214,20 +214,20 @@ by installing `tcw-cli` from PyPI with `pipx`, so one installed mid-session
 cannot run until the next one begins. That first session needs network access. It
 installs over an existing `pipx install tcw-cli` rather than beside it, and
 leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
-anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-plugin`** skill
+anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-setup`** skill
 carries the cases where it is not.
 
-In **Codex** (skills only, no slash commands):
+In **Codex**:
 
 ```bash
 codex plugin marketplace add brocef/TCW --ref main
 codex plugin add tcw@tcw
 ```
 
-Codex has no session-start hook, so ask the agent to run the **`tcw-plugin`**
-setup — it runs the same install script Claude runs automatically.
+Codex has no session-start hook, so ask the agent to run the **`tcw-setup`**
+skill — it runs the same install script Claude runs automatically.
 
-The plugin ships the agent skills, slash commands, and read-only review agents
+The plugin ships the agent skills, command skills, and read-only review agents
 listed under [Skills](#skills--the-judgment-layer).
 
 ### As a Python package
@@ -349,7 +349,7 @@ projects. Each component group also has its own `init`: `tcw taxonomy init`,
 `tcw capabilities init`, `tcw work init`.
 
 To bootstrap a taxonomy or capabilities ledger on a project that already has a
-codebase, run `/tcw-taxonomy-init` or `/tcw-capabilities-init` — the assistant
+codebase, ask for the `tcw-setup` skill — the assistant
 studies your code, proposes a first draft, refines it with you, and writes it.
 
 ---
@@ -484,7 +484,8 @@ are listed together at the end.
 | [`tcw-work`](skills/tcw-work/SKILL.md)                     | Plans a request through spec and plan, drives implementation and verification, triages the inbox, runs the lifecycle, decomposes epics, searches the board |
 | [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md)     | The capability-delta planning check, contradiction detection, and the ledger flip at completion                                                            |
 | [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md)             | Declaring vocabulary and features, linking them, and federating shared vocabulary                                                                          |
-| [`tcw-plugin`](skills/tcw-plugin/SKILL.md)                 | Installs the CLI from PyPI, and maps the other skills                                                                                                      |
+| [`tcw-setup`](skills/tcw-setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, sets up a repository, starts a taxonomy or capabilities ledger                                              |
+| [`tcw-configure`](skills/tcw-configure/SKILL.md)           | Changes a project's configuration: lifecycle bindings, Definition of Done, documentation entries, tracker, stores, connected and inherited projects        |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Keeps README, changelogs, release notes, and driving skills moving with the code that changes them                                                         |
 | [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md)       | Finds which lifecycle stage could first have caught a problem, once one has surfaced                                                                       |
 
@@ -508,16 +509,16 @@ It takes the stage id and the work item, so it reaches all seven stages
 including `inbox` and `postmortem`, under Claude and Codex alike. It only reads
 — `tcw work stage gate` is still what refuses.
 
-### Review agents and slash commands
+### Review agents and command skills
 
 Three read-only review agents ship alongside them — `tcw-verifier`,
 `tcw-backlog-auditor`, and `tcw-post-mortem`, which accelerates the skill of the
-same name — plus slash commands for each skill's main procedure
-(`/tcw-plan-work`, `/tcw-drive-work-to-completion`, `/tcw-verify-work`,
-`/tcw-process-inbox`, `/tcw-work-search`, `/tcw-triage-issues`,
-`/tcw-audit-work-backlog`, `/tcw-consolidate-plans`, `/tcw-taxonomy-init`,
-`/tcw-capabilities-init`, `/tcw-docs-sync-setup`, `/tcw-cut-version`,
-`/tcw-post-mortem`).
+same name. Four command skills carry the everyday workflows:
+`tcw-commands-plan-work`, `tcw-commands-drive-work-to-completion`,
+`tcw-commands-verify-work` and `tcw-commands-process-inbox`. The three extras,
+`tcw-extras-autonomous-work`, `tcw-extras-triage-issues` and
+`tcw-extras-report`, are optional. Under Claude and Codex alike, every entry
+point is a skill.
 
 ---
 

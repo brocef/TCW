@@ -613,8 +613,11 @@
   {
    "id": "B5",
    "axis": "B",
-   "skill": "tcw-plugin",
-   "invokes": "tcw-plugin",
+   "skill": "cross-axis",
+   "invokes": [
+    "tcw-taxonomy",
+    "tcw-capabilities"
+   ],
    "arms": [
     "with-skill",
     "no-skill"

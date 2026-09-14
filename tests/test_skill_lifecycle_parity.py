@@ -490,3 +490,48 @@ def test_the_taxonomy_skill_does_not_advertise_setup_or_federation():
     text = f"{front['description']} {front['when_to_use']}".lower()
     found = [w for w in SETUP_TRIGGER_WORDS if w in text]
     assert not found, f"tcw-taxonomy's description or when_to_use says: {found}"
+
+
+# ── removed skills and commands ──────────────────────────────────────────────
+#
+# The plugin ships no slash commands, and these skill and command names were
+# removed or renamed. A live document still naming one sends a reader to
+# something that is not there. Matched as whole names: a preceding or following
+# `-` or word character means the match sits inside a longer name, so
+# `tcw-extras-autonomous-work` does not count as `autonomous-work`.
+
+DELETED_NAMES = (
+    "tcw-plugin", "tcw-taxonomy-init", "tcw-capabilities-init",
+    "tcw-docs-sync-setup",
+    *(f"tcw-work-stage-{s}" for s in ("request", "spec", "plan", "implement",
+                                      "verify")),
+    "autonomous-work", "tcw-triage-issues", "tcw-report",
+    "tcw-plan-work", "tcw-drive-work-to-completion", "tcw-verify-work",
+    "tcw-process-inbox", "tcw-work-search", "tcw-audit-work-backlog",
+    "tcw-consolidate-plans", "tcw-cut-version",
+)
+
+LIVE_ROUTES = ("skills", ".claude-plugin", ".codex-plugin", "README.md",
+               "docs/guide", "docs/lifecycle")
+
+
+def _live_route_files():
+    for root in LIVE_ROUTES:
+        path = REPO / root
+        yield from (sorted(p for p in path.rglob("*") if p.is_file())
+                    if path.is_dir() else [path])
+
+
+@pytest.mark.parametrize("name", DELETED_NAMES)
+def test_no_live_route_names_a_removed_skill_or_command(name):
+    pattern = re.compile(rf"(?<![-\w]){re.escape(name)}(?![-\w])")
+    hits = [str(p.relative_to(REPO)) for p in _live_route_files()
+            if pattern.search(p.read_text(encoding="utf-8", errors="replace"))]
+    assert not hits, f"'{name}' was removed but is still named by: {hits}"
+
+
+def test_the_plugin_ships_no_slash_commands():
+    import json
+    assert not (REPO / "commands").exists(), "commands/ still exists"
+    manifest = json.loads((REPO / ".claude-plugin/plugin.json").read_text())
+    assert "commands" not in manifest, "the Claude manifest still has a commands key"

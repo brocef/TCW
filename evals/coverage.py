@@ -45,17 +45,11 @@ EXCLUSIONS = {
                     "tcw-commands-process-inbox")},
 }
 
-# Not exclusions. `tcw-plugin` is covered by B5, so it does not belong in
-# EXCLUSIONS: putting it there would both double-count it and leave a dead
-# entry. But only half of it is measured, and a directory-level gate cannot
-# express half a skill, so the unmeasured half is recorded here rather than
-# left to look like clean coverage.
+# Not exclusions. A skill a case names counts as covered, but a directory-level
+# gate cannot express that only some of its routes are measured, so the
+# unmeasured routes are recorded here rather than left to look like clean
+# coverage.
 PARTIAL = {
-    "tcw-plugin":
-        "B5 covers the orientation half only. The install/repair half stays "
-        "deliberately unmeasured: simulating a broken `tcw` install inside a "
-        "subagent's environment is unsafe and would measure the simulation. "
-        "The gate counts this skill as covered, which overstates it.",
     "tcw-work-stage":
         "Axis A covers the spec, plan, implement and verify routes. The "
         "`request` route is unmeasured: `request` is the one stage whose job is "
