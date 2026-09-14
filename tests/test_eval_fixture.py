@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from evals import grade
 from evals.seed_fixture import seed
 from tcw.store.base import LIFECYCLE_STEPS
 
@@ -71,6 +72,20 @@ def test_the_mid_flight_item_still_fails_completion_closed(variant, request):
     assert result.returncode != 0, "completion no longer fails closed"
     assert "billing/download-invoice" in result.stderr
     assert "still Missing" in result.stderr
+
+
+@pytest.mark.parametrize("variant", ["control", "customized"])
+def test_a_freshly_seeded_node_shows_no_changes(variant, request):
+    """`files_changed_exactly` compares the working tree with `seeded_head` and
+    counts untracked files. Anything the seeder leaves behind uncommitted, such
+    as `manifest.json`, would otherwise be charged to every agent."""
+    root, manifest = request.getfixturevalue(variant)
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    assert manifest["seeded_head"] == head
+    verdict = grade.p_files_changed_exactly(
+        {"fixture": root, "seeded_head": manifest["seeded_head"]}, paths=[])
+    assert verdict["passed"], verdict["evidence"]
 
 
 @pytest.mark.parametrize("variant", ["control", "customized"])

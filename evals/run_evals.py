@@ -190,6 +190,7 @@ def run_one(case: dict, arm: str, out: Path) -> dict:
         "capped": result.get("num_turns") is not None
                   and result["num_turns"] >= MAX_TURNS[case["axis"]],
         "fixture": str(fixture),
+        "seeded_head": manifest["seeded_head"],
         "transcript": str(transcript),
         "prompt": prompt_for(case, manifest),
         "nonces": manifest["nonces"],

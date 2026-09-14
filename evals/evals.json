@@ -160,7 +160,7 @@
    "args": [
     "paths"
    ],
-   "reads": "`git diff --name-only` against the seeded HEAD lists exactly these paths. Says which files changed, not whether the change was any good."
+   "reads": "the working tree (committed, uncommitted and untracked non-ignored files) differs from the seeded commit in exactly these paths. The seeded commit is `seeded_head` in timing.json; a run recorded without it fails. Says which files changed, not whether the change was any good."
   }
  },
  "cases": [
@@ -764,7 +764,6 @@
      "predicate": "files_changed_exactly",
      "args": {
       "paths": [
-       "src/reports.py",
        "README.md",
        "docs/changelogs/upcoming.md"
       ]
@@ -776,7 +775,7 @@
      "why": "the path list says which files changed, not whether the edit was any good. The 'no others' half of the spec's assertion is mechanical; the 'the right entries' half is only mechanical as far as the filenames."
     }
    ],
-   "note": "The seeder declares exactly README.md and docs/changelogs/upcoming.md, so the path list reconciles. src/reports.py is the source file the case's prompt says was changed."
+   "note": "The seeder declares exactly README.md and docs/changelogs/upcoming.md, so the path list reconciles. src/reports.py is deliberately not listed: the fix the prompt describes is not in the seeded fixture, and the check compares against the seeded commit, so src/reports.py would only appear if the agent edited a file the user says is already fixed."
   }
  ]
 }

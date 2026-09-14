@@ -481,6 +481,22 @@ def render_invoice(account_id: str, line_items: list[dict]) -> str:
         _git(dest, "commit", "-q", "-m", "demo-app: bind lifecycle instructions")
         _assert_customized(dest, manifest["stage_items"], manifest["nonces"])
 
+    return _record(dest, manifest)
+
+
+def _record(dest: Path, manifest: dict) -> dict:
+    """Stamp the seeded commit into the manifest and write it beside the node.
+
+    `files_changed_exactly` compares the working tree with `seeded_head` and
+    counts untracked files as changes, so the manifest, which is written after
+    the last commit, is excluded locally. Otherwise every run would appear to
+    have added it.
+    """
+    manifest["seeded_head"] = subprocess.run(
+        ["git", "-C", str(dest), "rev-parse", "HEAD"], check=True,
+        capture_output=True, text=True).stdout.strip()
+    with (dest / ".git/info/exclude").open("a") as exclude:
+        exclude.write("/manifest.json\n")
     (dest / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
     return manifest
 

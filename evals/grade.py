@@ -336,8 +336,22 @@ def p_git_commit_per_artifact(run, **_):
 
 
 def p_files_changed_exactly(run, paths=(), **_):
+    """What the agent changed since the seed, whether or not it committed.
+
+    `git diff <seeded_head>` compares the working tree with the seeded commit,
+    so it covers committed and uncommitted edits alike. Untracked files git does
+    not ignore are added, because a new file is a change too. A run recorded
+    without `seeded_head` fails rather than falling back to the last commit,
+    which is the misleading answer this replaced.
+    """
+    seeded_head = run.get("seeded_head")
+    if not seeded_head:
+        return _verdict(False, "the run entry has no `seeded_head`, so there is "
+                               "no seeded commit to compare against")
     changed = set(git(run["fixture"], "diff", "--name-only",
-                      "HEAD~1", "HEAD").split())
+                      seeded_head).splitlines())
+    changed |= set(git(run["fixture"], "ls-files", "--others",
+                       "--exclude-standard").splitlines())
     wanted = set(paths)
     return _verdict(changed == wanted,
                     f"changed {sorted(changed)}, expected {sorted(wanted)}")
@@ -365,6 +379,7 @@ def grade_run(run_dir: Path) -> dict:
         "nonces": timing.get("nonces", {}),
         "stage_items": timing.get("stage_items", {}),
         "items": timing.get("items", {}),
+        "seeded_head": timing.get("seeded_head"),
     }
 
     results = []
