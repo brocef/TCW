@@ -428,3 +428,33 @@ def test_a_server_that_never_answers_times_out_rather_than_hanging():
         assert elapsed < 10, f"took {elapsed:.1f}s; the timeout was not honoured"
     finally:
         listener.close()
+
+
+def test_a_server_that_drops_the_connection_is_unavailable_not_a_crash():
+    """A connection closed after the request was sent raises
+    `http.client.RemoteDisconnected`, which is not a `URLError`. Uncaught, it
+    escaped every command as a traceback — and for a claim, a write that may or may
+    not have landed has to reach the caller as "unavailable" so the ticket is read
+    back rather than the command dying."""
+    import threading
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    port = listener.getsockname()[1]
+
+    def accept_read_and_close():
+        connection, _ = listener.accept()
+        connection.recv(65536)
+        connection.close()
+
+    thread = threading.Thread(target=accept_read_and_close, daemon=True)
+    thread.start()
+    try:
+        config = dataclasses.replace(
+            CONFIG, base_url=f"http://127.0.0.1:{port}", timeout_seconds=5)
+        with pytest.raises(jira.TrackerUnavailable, match="connection"):
+            jira.JiraClient(config).apply_transition("10052", "21")
+    finally:
+        thread.join(timeout=5)
+        listener.close()

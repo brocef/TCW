@@ -27,6 +27,7 @@ changes.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
 import socket
@@ -173,6 +174,15 @@ class JiraClient:
             raise TrackerUnavailable(
                 f"the tracker at {self.config.base_url} did not respond within "
                 f"{timeout}s") from error
+        except (ConnectionError, http.client.HTTPException) as error:
+            # A connection dropped after the request was sent is neither a
+            # `URLError` nor a timeout (`http.client.RemoteDisconnected` is both a
+            # `ConnectionResetError` and an `HTTPException`). The request may have
+            # landed, so it is "unavailable" — which a claim answers by reading
+            # the issue back — never an uncaught crash.
+            raise TrackerUnavailable(
+                f"the connection to the tracker at {self.config.base_url} was lost "
+                f"before it answered ({error.__class__.__name__})") from error
 
     def _json(self, method: str, path: str, body: dict | None = None) -> dict:
         _status, _headers, raw = self._request(
