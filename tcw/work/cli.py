@@ -2184,6 +2184,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     g = p.add_subparsers(dest="cmd", required=True,
                          parser_class=_HidesRemovedSpellings)
 
+    # A positional has no flag to hint at its meaning, so every one of them says
+    # what it wants. These three recur; the rest are written where they are added.
+    SLUG_HELP = "the work item's slug; `<project-id>/<slug>` reaches another node"
+    BARE_SLUG_HELP = "a work item slug in this node; a tracker belongs to one node, "\
+                     "so this one is never node-qualified"
+    TICKET_HELP = "a ticket key, e.g. EX-123"
+    ENTRY_HELP = "a raw inbox entry (`tcw work inbox list` prints them)"
+
     pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed/discarded work storage")
     pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
     pi.add_argument("--path", help="filesystem location for the work store")
@@ -2195,17 +2203,17 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ing.add_parser("path", help="print the work inbox folder path").set_defaults(
         func=_inbox_path)
     pins = ing.add_parser("show", help="show one raw inbox entry")
-    pins.add_argument("entry")
+    pins.add_argument("entry", help=ENTRY_HELP)
     pins.set_defaults(func=_inbox_show)
     pina = ing.add_parser("accept", help="accept one raw entry into backlog")
-    pina.add_argument("entry")
+    pina.add_argument("entry", help=ENTRY_HELP)
     pina.add_argument("--title", help="override the derived work-item title")
     pina.set_defaults(func=_inbox_accept)
 
     g.add_parser("nodes", help="list this node's parent + child nodes").set_defaults(func=_nodes)
 
     pr = g.add_parser("reconcile", help="scan child nodes → write the epic rollup")
-    pr.add_argument("slug")
+    pr.add_argument("slug", help="the epic's slug, in this node")
     pr.add_argument("--commit", action="store_true", help="also commit the rollup")
     pr.add_argument("--complete-when-ready", action="store_true",
                     help="auto-complete the epic if all its children are resolved")
@@ -2213,12 +2221,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pdg = g.add_parser("delegate", help="write a request into a child node's inbox/")
     pdg.add_argument("child", help="child node's canonical project id (`tcw work nodes` lists them)")
-    pdg.add_argument("title")
+    pdg.add_argument("title", help="the request's title, as the child node will see it")
     pdg.add_argument("--initiative", help="stamp the request with an initiative slug")
     pdg.set_defaults(func=_delegate)
 
     pes = g.add_parser("escalate", help="write a request into the parent node's inbox/")
-    pes.add_argument("title")
+    pes.add_argument("title", help="the request's title, as the parent node will see it")
     pes.add_argument("--initiative", help="stamp the request with an initiative slug")
     pes.set_defaults(func=_escalate)
 
@@ -2237,8 +2245,6 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     # Every description below states what the command changes in the tracker and
     # what it changes in the work store, in that order, because a command reaching
     # a system outside the repository is the one place a surprise is expensive.
-    SLUG_HELP = "a work item slug in this node"
-    TICKET_HELP = "a ticket key, e.g. EX-123"
     ptr = g.add_parser("tracker",
                        help="read the configured external tracker, and take its tickets")
     ptrs = ptr.add_subparsers(dest="tracker_cmd", required=True)
@@ -2311,7 +2317,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "  tcw work tracker link 2026-09-14-rename-the-widget EX-123\n"
                "  tcw work tracker link 2026-09-14-rename-the-widget EX-123 --part api\n",
     )
-    ptrl.add_argument("slug", help=SLUG_HELP)
+    ptrl.add_argument("slug", help=BARE_SLUG_HELP)
     ptrl.add_argument("ticket", help=TICKET_HELP)
     ptrl.add_argument("--part", help="which of several items for this ticket "
                                      "(default: default)")
@@ -2334,7 +2340,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "  tcw work tracker unlink 2026-09-14-rename-the-widget "
                "--reason 'bound to the wrong ticket'\n",
     )
-    ptru.add_argument("slug", help=SLUG_HELP)
+    ptru.add_argument("slug", help=BARE_SLUG_HELP)
     ptru.add_argument("--reason", required=True, help="why the binding is removed")
     ptru.set_defaults(func=_tracker_unlink)
 
@@ -2345,14 +2351,15 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptsa = ptss.add_parser(
         "add",
         help="record that a slug was a work item here, so references to it resolve")
-    ptsa.add_argument("slug")
+    ptsa.add_argument("slug", help="the slug to record; an item this store no longer "
+                                    "holds, not a current one")
     ptsa.add_argument("--resolution",
                       help="done|wontfix|duplicate|superseded; omit if unknown")
     ptsa.add_argument("--resolved", help="ISO date it was resolved (default: today)")
     ptsa.set_defaults(func=_tombstone_add)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
-    pn.add_argument("title")
+    pn.add_argument("title", help="the item's title")
     pn.add_argument("--priority", type=int, help="integer priority (higher = higher)")
     pn.add_argument("--effort", type=_work_level,
                     help="estimated effort: low|medium|high|very-high (or L/M/H/VH)")
@@ -2378,17 +2385,18 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.set_defaults(func=_list)
 
     psh = g.add_parser("show", help="resolve slug → item; print state + body")
-    psh.add_argument("slug")
+    psh.add_argument("slug", help=SLUG_HELP)
     psh.add_argument("--json", action="store_true",
                      help="emit the item as a versioned JSON document")
     psh.set_defaults(func=_show)
 
     pp = g.add_parser("path", help="print the work store or a work item folder path")
-    pp.add_argument("slug", nargs="?")
+    pp.add_argument("slug", nargs="?",
+                    help="optional; the item whose folder to print, else the store's")
     pp.set_defaults(func=_path)
 
     pst = g.add_parser("start", help="backlog → active")
-    pst.add_argument("slug")
+    pst.add_argument("slug", help=SLUG_HELP)
     pst.add_argument("--force", action="store_true", help="start despite unresolved blockers")
     pst.add_argument("--owner", help="claimant identity (then TCW_WORK_OWNER, Git email/name)")
     pst.add_argument("--take-over", action="store_true", help="replace an existing active claim")
@@ -2397,11 +2405,11 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pst.set_defaults(func=_start)
 
     psb = g.add_parser("submit", help="active → review (implemented, acceptance pending)")
-    psb.add_argument("slug")
+    psb.add_argument("slug", help=SLUG_HELP)
     psb.set_defaults(func=_submit)
 
     prw = g.add_parser("rework", help="review → active (verification rejected the work)")
-    prw.add_argument("slug")
+    prw.add_argument("slug", help=SLUG_HELP)
     prw.set_defaults(func=_rework)
 
     plc = g.add_parser("lifecycle",
@@ -2428,7 +2436,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     # "required for six values of another positional, refused for the seventh".
     ppr = stg.add_parser("prompt",
                          help="print a stage's instructions, running no checks")
-    ppr.add_argument("stage_id", metavar="stage")
+    ppr.add_argument("stage_id", metavar="stage",
+                     help="a lifecycle stage id (`tcw work lifecycle` lists them)")
     ppr.add_argument("slug", nargs="?",
                      help="optional; without one the instructions resolve "
                           "generically, with one they resolve for that item")
@@ -2440,7 +2449,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pbg = stg.add_parser("gate",
                          help="check the stage is legal and run its checks; "
                               "prints no instructions")
-    pbg.add_argument("stage_id", metavar="stage")
+    pbg.add_argument("stage_id", metavar="stage",
+                     help="a lifecycle stage id (`tcw work lifecycle` lists them)")
     pbg.add_argument("slug", nargs="?",
                      help="the work item; omitted for `inbox`, which runs "
                           "before an item exists")
@@ -2457,7 +2467,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         # No `help=`: omitting it keeps the parser out of the choices list
         # entirely, where `help=SUPPRESS` would print a literal "==SUPPRESS==".
         pold = stg.add_parser(_sid)
-        pold.add_argument("rest", nargs="*")
+        pold.add_argument("rest", nargs="*",
+                          help="accepted and ignored; this spelling only reports the "
+                               "command that replaced it")
         pold.add_argument("--no-exec", action="store_true",
                           help=argparse.SUPPRESS)
         pold.set_defaults(func=_stage_removed_form, removed_stage=_sid)
@@ -2465,7 +2477,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pscf = g.add_parser("scaffold",
                         help="write a draft of a lifecycle artifact from its template")
     pscf.add_argument("artifact", help=f"one of: {', '.join(WORK_ARTIFACTS)}")
-    pscf.add_argument("slug")
+    pscf.add_argument("slug", help=SLUG_HELP)
     pscf.add_argument("--force", action="store_true",
                       help="replace a draft that is already there")
     pscf.set_defaults(func=_scaffold)
@@ -2479,7 +2491,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     plc.set_defaults(func=_lifecycle)
 
     pe = g.add_parser("edit", help="change an item's title, estimates, tags, or blocking links")
-    pe.add_argument("slug")
+    pe.add_argument("slug", help=SLUG_HELP)
     pe.add_argument("--title", type=_nonempty, help="set the item title (the slug is unchanged)")
     pe.add_argument("--blocked-by", action="append",
                     help="a slug or external text that blocks this item (repeatable)")
@@ -2500,7 +2512,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.set_defaults(func=_edit)
 
     pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")
-    pc.add_argument("slug")
+    pc.add_argument("slug", help=SLUG_HELP)
     pc.add_argument("--resolution", required=True, choices=sorted(WORK_RESOLUTIONS))
     pc.add_argument("--confirm", action="store_true")
     pc.add_argument("--force", action="store_true", help="complete despite unresolved blockers")
@@ -2510,12 +2522,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pc.set_defaults(func=_complete)
 
     pd = g.add_parser("drop", help="backlog → deleted")
-    pd.add_argument("slug")
+    pd.add_argument("slug", help=SLUG_HELP)
     pd.add_argument("--confirm", action="store_true")
     pd.set_defaults(func=_drop)
 
     pdel = g.add_parser(
         "delete",
         help="finish removing a resolved item this project does not retain")
-    pdel.add_argument("slug")
+    pdel.add_argument("slug", help=SLUG_HELP)
     pdel.set_defaults(func=_delete)

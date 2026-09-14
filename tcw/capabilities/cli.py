@@ -286,38 +286,42 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.set_defaults(func=_list)
 
     ps = g.add_parser("show", help="read a capability by path")
-    ps.add_argument("id", metavar="path")
+    ps.add_argument("id", metavar="path",
+                    help="capability path, e.g. web/login (alias-prefixed if inherited)")
     ps.set_defaults(func=_show)
 
     g.add_parser("path", help="print the capabilities store folder path").set_defaults(func=_path)
 
     pa = g.add_parser("add", help="scaffold a capability folder")
-    pa.add_argument("path", metavar="namespace/path")
-    pa.add_argument("name", nargs="?")
+    pa.add_argument("path", metavar="namespace/path",
+                    help="path for the new capability, namespace folder first")
+    pa.add_argument("name", nargs="?",
+                    help="display name (default: titled from the last path segment)")
     pa.add_argument("-s", "--status", default="Missing")
     pa.set_defaults(func=_add)
 
     pset = g.add_parser("set", help="update a capability's status/fields in place")
-    pset.add_argument("id", metavar="path")
+    pset.add_argument("id", metavar="path",
+                      help="capability path to update; an inherited one gains a local override")
     pset.add_argument("--status", help="shorthand for --field Status=<S>")
     pset.add_argument("--field", action="append", metavar="K=V",
                       help="set a metadata field (repeatable; Subject accepts a,b,c)")
     pset.set_defaults(func=_set)
 
     prst = g.add_parser("reset", help="drop a local override, re-inheriting upstream")
-    prst.add_argument("id", metavar="path")
+    prst.add_argument("id", metavar="path", help="path of the local override to drop")
     prst.set_defaults(func=_reset)
 
     prm = g.add_parser("rm", help="remove a local capability")
-    prm.add_argument("id", metavar="path")
+    prm.add_argument("id", metavar="path", help="path of the local capability to remove")
     prm.set_defaults(func=_rm)
 
     pse = g.add_parser("search", help="search names + bodies")
-    pse.add_argument("query")
+    pse.add_argument("query", help="text matched case-insensitively in names + bodies")
     pse.set_defaults(func=_search)
 
     pe = g.add_parser("extends", help="federate another project's capabilities")
-    pe.add_argument("project_id")
+    pe.add_argument("project_id", help="registered project ID whose capabilities to federate")
     pe.add_argument("--rm", action="store_true", help="remove the project instead")
     pe.set_defaults(func=_extends)
 
