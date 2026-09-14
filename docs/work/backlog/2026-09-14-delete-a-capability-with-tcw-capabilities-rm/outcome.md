@@ -118,6 +118,37 @@ Details and each reviewer's findings are in `refined-outcome.md`.
 | `docs/changelogs/upcoming.md` [Any-Code-Change] | Updated: Added, Changed and Fixed entries. |
 | `skills/<component>/SKILL.md` [Skill-Driven-Component] | `skills/tcw-capabilities/SKILL.md` updated (command list and reserved words, removed-capability planning step, `removed:` schema and gate rule, the stale "use `remove`", a quick-reference row). `skills/tcw-work` references `transitions.md` and `procedures/audit-backlog.md` updated for `removed:`. |
 
+## Verification
+
+The requester handed verification to a review of the implementation diff by
+three reviewers, capped at two rounds of fixes.
+
+- **Code reviewer (`adversarial-code-reviewer`): DONE.** Round 1 found three
+  defects: references spelled with `..` or different letter case, capabilities
+  inside dot-directories, and the gate counting an inherited capability. All three
+  were fixed with tests. Its final check of the round-2 commit found nothing new.
+  Two notes were left unchanged: a capability inside a dot-folder blocks its parent
+  but `rm` cannot reach it, and a symlinked capability folder is refused more often
+  than it needs to be.
+- **Codex: NOT DONE after round 2, on one point, since fixed.** The vanished-folder
+  guard in `_referrers` caught every `OSError`, so a read error that was not a
+  missing folder counted as "not a reference" and the delete went ahead. The
+  requester approved the change on condition of that fix, with no third review
+  round. The guard now catches only `FileNotFoundError`, and it was the only broad
+  catch this change added. Test:
+  `test_remove_does_not_proceed_when_comparing_folders_fails_for_another_reason`,
+  which patches `samefile` to raise `PermissionError`. It failed before the fix
+  with `DID NOT RAISE` (the delete went ahead) and passes after. The error now
+  reaches the user as a traceback, and nothing is deleted; showing file-system
+  errors as one-line messages is a separate change that predates this one.
+- **Local model (`bllm`): no answer.** Every run printed "bllm is temporarily
+  disabled for maintenance". This is filed in the llama inbox.
+- **Requester decisions:** both cautious refusals stay as they are, for referenced
+  capabilities and for nested ones.
+- **Final suite:** bare `pytest` from the worktree root, after this fix:
+  **2861 passed**, no failures (13 min 13 s). The previous pair, on `c193740c`,
+  was 2860 for both `python -m pytest` and bare `pytest`.
+
 ## Status
 
 The implementation did not transition this item; see `refined-outcome.md` for

@@ -2531,7 +2531,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         def same(a: Path) -> bool:
             try:
                 return a.samefile(target)
-            except OSError:        # gone since it was listed or resolved: not the target
+            # Gone since it was listed or resolved: not the target. Only that —
+            # any other error leaves the question open, so it propagates and
+            # the delete stops.
+            except FileNotFoundError:
                 return False
 
         out = []
