@@ -35,7 +35,15 @@ work:
               agents to operate each component through its CLI. Always update the
               matching skill whenever the component it drives changes — its CLI
               surface, model/fields, lifecycle, or guardrails — so the skill never
-              drifts from the tool.
+              drifts from the tool. How to configure a component goes to
+              `tcw-configure`, not to the component's skill.
+        - path: skills/tcw-configure/references/<document>.md
+          trigger: Configuration-Key-Change
+          description: >-
+              How to declare or change each configuration setting. Update the
+              matching document whenever a key in `tcw-config.yaml`, a component
+              config file, `docs/work/dod.yaml`, or a `TCW_PROJECT_<ID>`-style
+              variable is added, removed, or changes meaning.
     lifecycle:
         stages:
             spec:

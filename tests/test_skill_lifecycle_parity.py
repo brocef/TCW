@@ -421,3 +421,56 @@ def test_the_manual_fallback_says_where_the_arguments_come_from():
                for s in sentences), (
         "tcw-work-stage never says to use the stage and item named in the "
         "request in place of `$stage` and `$item`")
+
+
+# ── the setup and configure routers ──────────────────────────────────────────
+#
+# `tcw-setup` and `tcw-configure` route and nothing else: a purpose line, the
+# other skill named, and a table of situations to reference documents. Each
+# must name the other in the same words, because "set up X" can mean either.
+
+# Each routing skill, and the other skill its body must name.
+ROUTING_SKILLS = {"tcw-configure": "tcw-setup"}
+
+routing = pytest.mark.parametrize("skill", sorted(ROUTING_SKILLS))
+
+
+def _routing_body(skill: str) -> str:
+    lines = (REPO / "skills" / skill / "SKILL.md").read_text(
+        encoding="utf-8").splitlines()
+    return "\n".join(lines[lines.index("---", 1) + 1:])
+
+
+@routing
+def test_a_routing_skill_stays_within_the_line_budget(skill):
+    lines = len(_routing_body(skill).splitlines())
+    assert lines <= SKILL_LINE_BUDGET, \
+        f"{skill} body is {lines} lines, budget is {SKILL_LINE_BUDGET}"
+
+
+@routing
+def test_a_routing_skill_links_every_reference_and_every_link_resolves(skill):
+    folder = REPO / "skills" / skill
+    links = re.findall(r"\]\(([^)#\s]+)\)", _routing_body(skill))
+    broken = [link for link in links if not (folder / link).is_file()]
+    assert not broken, f"{skill} links to files that do not exist: {broken}"
+    linked = {(folder / link).resolve() for link in links}
+    unlinked = sorted(p.name for p in (folder / "references").glob("*.md")
+                      if p.resolve() not in linked)
+    assert not unlinked, f"{skill} never links: {unlinked}"
+
+
+@routing
+def test_a_routing_skill_depends_on_no_claude_only_mechanism(skill):
+    """Skill arguments and context injection are Claude-only. A router that
+    needed either would route nowhere under Codex."""
+    body = _routing_body(skill)
+    assert "$ARGUMENTS" not in body
+    assert "!`" not in body
+
+
+@routing
+def test_a_routing_skill_names_the_other_one(skill):
+    other = ROUTING_SKILLS[skill]
+    assert f"the `{other}` skill" in _routing_body(skill), \
+        f"{skill} never names the `{other}` skill"

@@ -2,7 +2,7 @@
  "schema": {
   "note": "The eval test set. Axis A measures whether lifecycle prompt injection reaches the artifact; axis B measures what a plugin skill adds over the shipped CLI prompts alone.",
   "case_fields": {
-   "id": "case identifier, A1-A8 or B1-B10",
+   "id": "case identifier, A1-A8 or B1-B12",
    "axis": "A or B",
    "stage": "axis A only: the lifecycle stage the case works",
    "skill": "axis B only: the skill the case is about; 'cross-axis' where the scenario spans several",
@@ -791,6 +791,48 @@
     }
    ],
    "note": "The seeder declares exactly README.md and docs/changelogs/upcoming.md, so the path list reconciles. src/reports.py is deliberately not listed: the fix the prompt describes is not in the seeded fixture, and the check compares against the seeded commit, so src/reports.py would only appear if the agent edited a file the user says is already fixed."
-  }
+  },
+ {
+  "id": "B11",
+  "axis": "B",
+  "skill": "tcw-configure",
+  "invokes": "tcw-configure",
+  "arms": [
+   "with-skill",
+   "no-skill"
+  ],
+  "prompt": "Set up documentation tracking so README.md is also updated whenever any code in demo-app changes.",
+  "assertions": [
+   {
+    "predicate": "tool_input_contains",
+    "args": {
+     "text": "tcw-configure/references/docs-sync.md"
+    },
+    "text": "the agent opened the tcw-configure skill's docs-sync.md, the document for declaring documentation entries"
+   },
+   {
+    "predicate": "tool_input_absent",
+    "args": {
+     "text": "tcw-setup/references/"
+    },
+    "text": "the agent did not open any tcw-setup document: \"set up\" here names a configuration area in a project that already uses TCW"
+   },
+   {
+    "predicate": "files_changed_exactly",
+    "args": {
+     "paths": [
+      "tcw-config.yaml"
+     ]
+    },
+    "text": "only tcw-config.yaml changed: README.md already exists, so the entry is new and nothing needs creating"
+   },
+   {
+    "predicate": "validate_exit_zero",
+    "args": {},
+    "text": "`tcw validate` is clean, so the new entry parses"
+   }
+  ],
+  "note": "The fixture declares README.md only under Public-API (evals/seed_fixture.py, _declare_documentation). The request adds a second (path, trigger) pair for the same file, under Any-Code-Change or a project-defined trigger, so the agent has no reason to create a file. In the no-skill arm no plugin is loaded, so no skill document can be opened: the contains check is expected to fail there and the absent check passes trivially. That difference is what the case measures."
+ }
  ]
 }

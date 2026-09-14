@@ -99,9 +99,11 @@ def test_this_repos_documentation_entries_parse():
         "docs/release-notes/upcoming.md",
         "docs/changelogs/upcoming.md",
         "skills/<component>/SKILL.md",
+        "skills/tcw-configure/references/<document>.md",
     ]
     assert {e.trigger for e in entries} == {
-        "Public-API", "Any-Code-Change", "Skill-Driven-Component"}
+        "Public-API", "Any-Code-Change", "Skill-Driven-Component",
+        "Configuration-Key-Change"}
 
 
 def test_the_agent_guide_no_longer_carries_the_entry_list():
