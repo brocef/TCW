@@ -5,8 +5,8 @@ taxonomy bootstrap; **do not invoke `superpowers:brainstorming`**.
 
 ## 0. Taxonomy first
 
-Capabilities reference terms (their **Subject**). If `docs/taxonomy/` is empty, point
-the user at `/tcw-taxonomy-init` before seeding capabilities.
+Capabilities reference terms (their **Subject**). If `docs/taxonomy/` is empty, seed it
+first with `taxonomy.md`.
 
 ## 1. Ensure the tree exists
 

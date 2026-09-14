@@ -14,14 +14,9 @@ refine loop below. Bootstrap both taxonomy entry kinds:
 
 ## 2. Inheritance
 
-Ask the user: **"Does this project inherit its taxonomy from other repos?"**
-
-- If yes, collect a list of sibling-repo paths. For each, derive an alias from the
-  repo directory name, confirm it with the user, and run
-  `tcw taxonomy extends add <registered-project-id>`.
-- You may also write other `docs/taxonomy/config.yaml` keys directly if bootstrapping
-  additional adapter config — but `extends` always goes through the command.
-- Run `tcw taxonomy check`.
+Ask whether this project inherits taxonomy from another registered project.
+If it does, declare it with the `tcw-configure` skill's `projects.md`, then
+continue.
 
 ## 3. Deep-dive (draft)
 
