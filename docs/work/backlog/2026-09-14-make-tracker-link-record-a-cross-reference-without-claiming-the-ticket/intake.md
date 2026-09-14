@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `tracker-link-claims-the-ticket-so-an-unstarted-item-cannot-be-linked-without-starting-it.md`
+
+## Inbox body
+
 # `tracker link` claims the ticket, so an item cannot be linked without starting it
 
 `tcw work tracker link <slug> <ticket>` does two things at once: it records the
