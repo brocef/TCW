@@ -1,6 +1,6 @@
 id: cap-bd57b7
 name: Manage external tracker intake
-Status: Missing
+Status: Supported
 Planning doc: 2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item
 Feature: external-work-tracker
 Subject:
