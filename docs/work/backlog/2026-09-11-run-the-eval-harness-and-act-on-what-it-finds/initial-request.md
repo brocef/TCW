@@ -98,3 +98,14 @@ record capped runs separately from failures — the runner already does.
   building the harness, filed rather than fixed because the parent spec's
   non-goals exclude `tcw` changes. It may become relevant if axis A's `skill`
   case behaves oddly.
+
+## Notes
+
+- From `2026-09-14-make-eval-checks-measure-what-the-agent-did-…`:
+  `files_changed_exactly` now compares the working tree with the `seeded_head`
+  the runner records, so a run directory recorded before that change fails it
+  (and B10 no longer lists `src/reports.py`); `tool_input_contains` and
+  `tool_input_absent` read only tool-call inputs; a `bare` fixture and a per-case
+  `fixture` key exist; and the first real run must confirm the transcript shape
+  the tool-input predicates assume — content blocks with `type: tool_use` and an
+  `input` object — because it was only checked against hand-built transcripts.

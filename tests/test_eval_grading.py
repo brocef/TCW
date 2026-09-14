@@ -118,6 +118,63 @@ def test_a_silent_empty_render_fails_the_blocks_read(graded):
         assert heading in blocks["evidence"]
 
 
+# --- tool inputs: what the agent ran or opened ----------------------------
+
+READ_PATH = "/x/skills/tcw-setup/references/project.md"
+RESULT_ONLY = "/x/skills/tcw-configure/references/docs-sync.md"
+TEXT_ONLY = "/x/skills/tcw-setup/references/work.md"
+
+
+def _routing_run() -> dict:
+    """One opened file, one path that only a tool result mentions, and one that
+    only the agent's prose mentions — the `stream-json` shape `load_events`
+    reads."""
+    return {"events": [
+        {"type": "assistant", "message": {"content": [
+            {"type": "text", "text": f"I might need {TEXT_ONLY} later."},
+            {"type": "tool_use", "id": "t1", "name": "Read",
+             "input": {"file_path": READ_PATH}},
+        ]}},
+        {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1",
+             "content": f"# Project setup\n\nSee {RESULT_ONLY} for docs."},
+        ]}},
+    ]}
+
+
+def test_tool_input_contains_finds_an_opened_file():
+    verdict = grade.p_tool_input_contains(_routing_run(), text=READ_PATH)
+    assert verdict["passed"], verdict["evidence"]
+
+
+@pytest.mark.parametrize("mentioned_only", [RESULT_ONLY, TEXT_ONLY])
+def test_a_path_only_mentioned_is_not_an_opened_file(mentioned_only):
+    """The defect these predicates exist for: the whole-transcript read counts a
+    path a loaded skill merely mentions as if the agent had opened it."""
+    run = _routing_run()
+    assert grade.p_transcript_contains(run, text=mentioned_only)["passed"]
+    assert not grade.p_tool_input_contains(run, text=mentioned_only)["passed"]
+    verdict = grade.p_tool_input_absent(run, text=mentioned_only)
+    assert verdict["passed"], verdict["evidence"]
+
+
+def test_tool_input_absent_fails_for_an_opened_file():
+    verdict = grade.p_tool_input_absent(_routing_run(), text=READ_PATH)
+    assert not verdict["passed"]
+    assert READ_PATH in verdict["evidence"]
+
+
+def test_tool_input_absent_fails_when_there_are_no_tool_calls_at_all():
+    """A transcript in a shape the helper does not recognise yields no tool
+    inputs, and "absent" would then pass for everything. No tool calls at all
+    is treated as that, not as a clean result."""
+    run = {"events": [{"type": "assistant", "message": {"content": [
+        {"type": "text", "text": "done"}]}}]}
+    verdict = grade.p_tool_input_absent(run, text=READ_PATH)
+    assert not verdict["passed"]
+    assert "no tool calls found" in verdict["evidence"]
+
+
 # --- grading discipline ---------------------------------------------------
 
 def test_a_pass_always_carries_evidence(graded):
