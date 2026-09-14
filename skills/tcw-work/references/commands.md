@@ -196,12 +196,12 @@ always the identity.
 Reference another object in prose with `[text](tcw://W/<slug>)`, or
 `tcw://W/<project-id>/<slug>` across nodes.
 
-## Slash commands (Claude only)
+## Command skills
 
-`/tcw-process-inbox`, `/tcw-plan-work`, `/tcw-drive-work-to-completion`,
-`/tcw-verify-work`. **Codex has no slash commands**, so every one of these
-workflows is also reachable by invoking the `tcw-work` skill and following the
-stage documents directly. Nothing is only available through a command.
+Four skills carry the everyday workflows: `tcw-commands-process-inbox`,
+`tcw-commands-plan-work`, `tcw-commands-drive-work-to-completion` and
+`tcw-commands-verify-work`. Each works by invoking the skill, under any
+harness, and each follows the stage documents this skill already carries.
 
 # Claims and external work stores
 

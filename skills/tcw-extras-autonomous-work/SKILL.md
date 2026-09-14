@@ -1,11 +1,12 @@
 ---
 name: tcw-extras-autonomous-work
-description: Use when asked to work TCW items autonomously, unattended, or "without asking me" — drives one or more items to completion via tcw-drive-work-to-completion, consulting Codex and an Opus subagent in place of every human checkpoint.
+description: Use when asked to work TCW items autonomously, unattended, or "without asking me" — drives one or more items to completion via the tcw-commands-drive-work-to-completion skill, consulting Codex and an Opus subagent in place of every human checkpoint.
 ---
 
 # Autonomous TCW work
 
-Drive the named items through `/tcw-drive-work-to-completion`, back to back.
+Drive the named items through the `tcw-commands-drive-work-to-completion`
+skill, back to back.
 Wherever the lifecycle would ask the human — a review, an open question, the
 verify decision, a closeout choice — ask **the two advisors** instead and decide
 yourself. Stop only on a hard blocker.

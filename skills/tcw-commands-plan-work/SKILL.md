@@ -8,17 +8,17 @@ metadata:
 license: Apache-2.0
 ---
 
-Use the `tcw-work` skill. This command covers the stage range **`request` →
+Use the `tcw-work` skill. This skill covers the stage range **`request` →
 `plan`**.
 
-Read `skills/tcw-work/SKILL.md`, find the first missing artifact, and run the
+Read the `tcw-work` skill's `SKILL.md`, find the first missing artifact, and run the
 stages from there through `plan.md`, loading **only** each stage's own document:
 
-- `references/lifecycle/stage-request.md` → `initial-request.md`
-- `references/lifecycle/stage-spec.md` → `spec.md`
-- `references/lifecycle/stage-plan.md` → `plan.md`
+- the `tcw-work` skill's `stage-request.md` → `initial-request.md`
+- the `tcw-work` skill's `stage-spec.md` → `spec.md`
+- the `tcw-work` skill's `stage-plan.md` → `plan.md`
 
-For a `type: epic` item, also read `references/epic-deltas.md` — the same three
+For a `type: epic` item, also read the `tcw-work` skill's `epic-deltas.md` — the same three
 stages, with an overview spec and a coordination plan.
 
 Each artifact is a separate checkpoint: write it, inspect the diff, stage
@@ -27,6 +27,4 @@ into one commit, and do not create empty commits for artifacts that were already
 complete. TCW commits status transitions itself; do not commit those by hand.
 
 Stop at `plan.md`. Do not run `tcw work start` or write any code — that is
-`/tcw-drive-work-to-completion`. Ask the user to review the plan first.
-
-$ARGUMENTS
+the `tcw-commands-drive-work-to-completion` skill. Ask the user to review the plan first.

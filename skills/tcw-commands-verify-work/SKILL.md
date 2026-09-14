@@ -8,14 +8,14 @@ metadata:
 license: Apache-2.0
 ---
 
-Use the `tcw-work` skill. This command covers the **`verify` stage** and the
+Use the `tcw-work` skill. This skill covers the **`verify` stage** and the
 `submit` / `rework` transitions.
 
-Read `skills/tcw-work/references/lifecycle/stage-verify.md`.
+Read the `tcw-work` skill's `stage-verify.md`.
 
 Assess the work against `spec.md`'s acceptance criteria — read the diff, run the
 checks, form an opinion. That half is delegable to a read-only subagent
-(`references/procedures/delegation.md`); the decision that follows is not.
+(the `tcw-work` skill's `delegation.md`); the decision that follows is not.
 
 **Present the assessment and stop for the user.** Do not decide on their behalf.
 `tcw work submit <slug>` first if the item is still `active`, so its status
@@ -27,5 +27,3 @@ while that file is present.
 
 Reconcile capabilities before closeout. **REQUIRED SUB-SKILL: Use
 tcw-capabilities.**
-
-$ARGUMENTS
