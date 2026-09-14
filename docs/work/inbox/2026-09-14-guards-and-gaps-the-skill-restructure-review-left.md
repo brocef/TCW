@@ -23,3 +23,9 @@ None is caused by that item's own requirements, and each needs its own decision.
    frontmatter parse are written three times (`tests/test_skill_lifecycle_parity.py`,
    `tests/test_documentation_sync_wiring.py`, `tests/test_plugin_manifests.py`).
    A shared helper would keep the rule for what counts as a skill body in one place.
+6. **B4 and B8 only catch a wrong route into `tcw-setup`.** Each asserts
+   `tool_input_absent` `tcw-setup/references/`, as the spec asked. A B8 run ("Set
+   it up.") that opened a `tcw-configure` document instead passes every mechanized
+   check, although "set it up" there asks for a term, a capability and a work item,
+   not a configuration change. This is a gap in the spec, not a departure from it;
+   adding `tool_input_absent` `tcw-configure/references/` to both cases would close it.
