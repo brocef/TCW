@@ -70,6 +70,10 @@ values; one line of tracker configuration for a new node.
     `tcw validate` reports at that parent.
   - What a node gets when a declared parent is not checked out on this machine.
   - How any future list-valued key under `work.tracker` merges.
+- **Changed during spec review, 2026-09-14:** the requester replaced "every
+  node inherits, `tracker: none` opts out" with opt-in. Only a node whose own
+  file has a `work.tracker` block inherits the keys it does not set, and
+  `tracker: none` is dropped. The reasons are recorded in `spec.md` Notes.
 - Reference material: asked; the requester selected none. The references below
   are the agent's suggestions.
 
