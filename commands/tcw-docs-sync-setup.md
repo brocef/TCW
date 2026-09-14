@@ -4,7 +4,7 @@ description: Declare the project's documentation entries — in tcw-config.yaml 
 
 Use the `documentation-sync` skill.
 
-Read `skills/documentation-sync/references/setup.md` and follow it: ask which
+Read the `tcw-configure` skill's `references/docs-sync.md` and follow it: ask which
 files to track, which trigger applies to each (the base vocabulary is in
 `SKILL.md`'s Trigger Reference; projects may define their own), and what
 description guides updates — then write the section into `CLAUDE.md` **including
