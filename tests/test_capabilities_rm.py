@@ -226,3 +226,61 @@ def test_remove_refuses_reference_held_by_override(tmp_path):
     with pytest.raises(ValueError, match=r"auth/login \(Roles\)"):
         store(child).remove("roles/admin")
     _assert_nothing_removed(child, before)
+
+
+# ── the command ──────────────────────────────────────────────────────────────
+
+def test_cli_rm_removes_and_reports(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = repo(tmp_path, "solo")
+    write_cap(root, "x", id="cap-x00001", Status="Supported")
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "rm", "x"]) == 0
+    assert capsys.readouterr().out.strip() == "Removed capability x"
+    assert main(["capabilities", "show", "x"]) == 1
+
+
+def test_cli_rm_unknown_path(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = repo(tmp_path, "solo")
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "rm", "nope"]) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert "tcw capabilities rm: no such capability: nope" in err
+
+
+def test_cli_rm_ambiguous(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    base_a = repo(tmp_path, "base_a")
+    write_cap(base_a, "auth/login", id="cap-a11111", Status="Supported")
+    base_b = repo(tmp_path, "base_b")
+    write_cap(base_b, "auth/login", id="cap-b22222", Status="Missing")
+    child = repo(tmp_path, "child")
+    connect(child, base_a, base_b)
+    st = FsCapabilitiesStore.open(child)
+    st.extends_add("base-a")
+    st.extends_add("base-b")
+    monkeypatch.chdir(child)
+    assert main(["capabilities", "rm", "auth/login"]) == 1
+    assert "tcw capabilities rm: ambiguous ref 'auth/login'" in capsys.readouterr().err
+
+
+def test_cli_rm_refusal_reports_referrer(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = repo(tmp_path, "solo")
+    write_cap(root, "old", id="cap-old001", Status="Supported")
+    write_cap(root, "other", id="cap-oth001", Status="Supported",
+              **{"Superseded by": "old"})
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "rm", "old"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("tcw capabilities rm: ")
+    assert "other (Superseded by)" in err
+
+
+def test_cli_help_lists_rm(capsys):
+    from tcw.cli import main
+    with pytest.raises(SystemExit):
+        main(["capabilities", "--help"])
+    assert "remove a local capability" in capsys.readouterr().out

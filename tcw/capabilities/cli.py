@@ -9,7 +9,8 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, find_node, git_root
 
 NAME = "capabilities"
-SUBCOMMANDS = {"init", "list", "show", "path", "add", "search", "check", "set", "reset", "extends", "drift"}
+SUBCOMMANDS = {"init", "list", "show", "path", "add", "search", "check", "set", "reset", "rm",
+               "extends", "drift"}
 DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <path>` == `tcw capabilities show <path>`
 
 
@@ -126,6 +127,23 @@ def _reset(args: argparse.Namespace) -> int:
         print(f"tcw capabilities reset: {e}", file=sys.stderr)
         return 1
     print(f"reset {args.id}")
+    return 0
+
+
+def _rm(args: argparse.Namespace) -> int:
+    st = _store()
+    if st is None:
+        return 1
+    try:
+        st.remove(args.id)
+    except AmbiguousRef:
+        print(f"tcw capabilities rm: ambiguous ref '{args.id}' — qualify it with a project id",
+              file=sys.stderr)
+        return 1
+    except (ValueError, RefError) as e:
+        print(f"tcw capabilities rm: {e}", file=sys.stderr)
+        return 1
+    print(f"Removed capability {args.id}")
     return 0
 
 
@@ -293,6 +311,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     prst = g.add_parser("reset", help="drop a local override, re-inheriting upstream")
     prst.add_argument("id", metavar="path")
     prst.set_defaults(func=_reset)
+
+    prm = g.add_parser("rm", help="remove a local capability")
+    prm.add_argument("id", metavar="path")
+    prm.set_defaults(func=_rm)
 
     pse = g.add_parser("search", help="search names + bodies")
     pse.add_argument("query")
