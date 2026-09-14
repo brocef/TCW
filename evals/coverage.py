@@ -37,6 +37,12 @@ EXCLUSIONS = {
         "advisor subagents and a `codex exec` call per checkpoint. A case would "
         "cost a full multi-item run to grade, and would mostly re-measure the "
         "skills it delegates to.",
+    **{name: "Composes `tcw-work` stage documents that axis A measures, and has "
+             "no case of its own yet."
+       for name in ("tcw-commands-plan-work",
+                    "tcw-commands-drive-work-to-completion",
+                    "tcw-commands-verify-work",
+                    "tcw-commands-process-inbox")},
 }
 
 # Not exclusions. `tcw-plugin` is covered by B5, so it does not belong in

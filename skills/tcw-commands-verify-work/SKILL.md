@@ -1,5 +1,11 @@
 ---
+name: tcw-commands-verify-work
 description: Verify a finished TCW work item with the user and record the acceptance decision.
+when_to_use: Use when a user asks to verify, review, accept, or reject a finished TCW work item — assessing it against its spec, stopping for the user's decision, and recording it as refined-outcome.md or rework.md.
+allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+metadata:
+    author: Brian Cefali
+license: Apache-2.0
 ---
 
 Use the `tcw-work` skill. This command covers the **`verify` stage** and the

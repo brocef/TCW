@@ -1,5 +1,11 @@
 ---
+name: tcw-commands-process-inbox
 description: Triage raw entries in the TCW work inbox into tracked work items.
+when_to_use: Use when a user asks to process, triage, or clear the TCW work inbox — turning every raw entry into an accepted work item and running the request stage on its intake.
+allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+metadata:
+    author: Brian Cefali
+license: Apache-2.0
 ---
 
 Use the `tcw-work` skill. This command covers the stage range **`inbox` →

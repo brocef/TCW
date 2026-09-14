@@ -1,5 +1,11 @@
 ---
+name: tcw-commands-drive-work-to-completion
 description: Drive a TCW work item from wherever it is through implementation, stopping for user verification before closeout.
+when_to_use: Use when a user asks to drive, finish, or take a TCW work item to completion from wherever it stands — through implementation and verification, stopping for the user's approval before closeout.
+allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+metadata:
+    author: Brian Cefali
+license: Apache-2.0
 ---
 
 Use the `tcw-work` skill. This command covers **the current stage through

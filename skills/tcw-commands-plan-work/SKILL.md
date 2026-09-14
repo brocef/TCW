@@ -1,5 +1,11 @@
 ---
+name: tcw-commands-plan-work
 description: Plan a TCW work item from an existing item or the user's chat request, producing the lifecycle planning artifacts in the work item folder.
+when_to_use: Use when a user asks to plan a TCW work item, or to turn a chat request into a planned item — running the request, spec and plan stages and stopping once plan.md is written, before any code.
+allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+metadata:
+    author: Brian Cefali
+license: Apache-2.0
 ---
 
 Use the `tcw-work` skill. This command covers the stage range **`request` →
