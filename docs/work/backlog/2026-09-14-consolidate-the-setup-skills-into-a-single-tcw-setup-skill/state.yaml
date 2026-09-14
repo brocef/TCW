@@ -1,9 +1,10 @@
 slug: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill
-title: Consolidate the setup skills into a single tcw-setup skill
+title: 'Separate setting up and configuring TCW from using it: tcw-setup, tcw-configure,
+  and a Feature and capability per skill'
 created: '2026-09-14'
 resolution: null
-effort: medium
-complexity: medium
+effort: very-high
+complexity: high
 tags:
 - skills
 - docs
