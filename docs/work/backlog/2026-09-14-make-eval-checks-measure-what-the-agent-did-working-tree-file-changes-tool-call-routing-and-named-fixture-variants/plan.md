@@ -49,7 +49,7 @@ in `tmp_path`, commits one file, and returns a run dictionary
 **Tests**
 
 Add them to `tests/test_eval_grading.py`, built from in-memory transcripts in the
-`stream-json` shape `evals/grade.py:_events` reads. Use one assistant message with
+`stream-json` shape `evals/grade.py:load_events` reads. Use one assistant message with
 a `{"type": "tool_use", "name": "Read", "input": {"file_path": "/x/skills/tcw-setup/references/project.md"}}`
 block, and one user message with a `tool_result` block whose `content` mentions
 another path. The tests show:
