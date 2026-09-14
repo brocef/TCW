@@ -165,6 +165,39 @@ The reviewer also noted the untested `init.templateDir` case, where a template
 without `info/` would make the exclude write fail. Not acted on: git's default
 template has it, and nothing here sets one.
 
+## Verification round 1
+
+The verifier checked the multi review's findings against the code (Codex and the
+adversarial reviewer both said NOT DONE) and asked for five fixes. Each test
+below was written first and watched fail against the code at `b8ef8ab9`, for the
+reason given. Then each fix was reverted by hand, the test watched go red again,
+and the fix restored.
+
+| # | Fix | Commit | Test, and why it was red |
+| --- | --- | --- | --- |
+| 1 | `_record` also excludes `__pycache__/` and `.pytest_cache/` | `7aa8ba3e` | `test_a_freshly_seeded_node_shows_no_changes[control, customized, bare]` (now covers `bare`): `changed ['.pytest_cache/…', 'src/__pycache__/reports.cpython-314.pyc'], expected []` |
+| 2 | `refuse_bare_inside_a_project()` in `evals/seed_fixture.py`, used by `seed()` and by `run_evals.main()` for every bare arm before the dry run or the run loop; exits 1 | `7aa8ba3e` | `test_a_bare_case_under_a_tcw_project_is_refused_before_anything_runs`: the dry run returned 0 and listed commands. Counterpart `test_a_bare_case_outside_any_tcw_project_passes_the_check` |
+| 3 | `seed()` refuses a `dest` that exists and is not empty, for every variant, before writing | `7aa8ba3e` | `test_a_folder_that_is_not_empty_is_refused[control, customized, bare]`: `bare` did not raise and committed the stray `tcw-config.yaml`; `control`/`customized` raised only later, from `tcw init`'s conflicting-id check, after `git init` and a commit |
+| 4 | the `ls-files` call runs with `-c core.excludesFile=<null device>` | `7aa8ba3e` | `test_the_grading_machine_s_global_ignore_file_is_not_read` (a global config through `GIT_CONFIG_GLOBAL` ignoring `stray.txt`): verdict passed, `stray.txt` hidden |
+| 5 | git output read as bytes, split on `\0`, decoded with `os.fsdecode` | `7aa8ba3e` | `test_a_carriage_return_in_a_file_name_survives`: `changed ['new\nname.txt', …], expected ['new\rname.txt', …]` |
+
+- **Callers of `seed()` checked for non-empty folders.** The test fixtures use
+  `tmp_path_factory.mktemp`, which gives an empty folder, or a path that does
+  not exist yet. `run_one` seeds `<out>/<case>/<arm>/fixture`, which is new
+  unless `--out` is reused, and reuse is now refused, as intended.
+- **git accepts `-c core.excludesFile=/dev/null`.** `git status` ran with it,
+  exit 0, nothing on stderr.
+- **The axis B `--dry-run` output** is still byte-identical to the pre-item
+  capture.
+- **Recorded in the inbox note, not fixed here** (`a7546294`): `run_one` never
+  writes `items` to `timing.json`; and the first paid run should list
+  `git status --porcelain --ignored` for one fixture, to find what `claude -p`
+  writes there.
+- **Rejected by the verifier, so left as is:** backslash or quote search texts
+  against JSON-escaped input; an empty `text` argument passing; submodules.
+- **Tests:** the six eval test files give 111 passed at `7aa8ba3e`.
+- **Changelog:** `882e43a0`.
+
 ## Documentation sync
 
 From `tcw work docs` (source: config).
