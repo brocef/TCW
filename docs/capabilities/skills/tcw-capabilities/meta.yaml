@@ -1,0 +1,8 @@
+id: cap-34b4f9
+name: Offer a skill dedicated to instructing agents how to keep a project's capabilities
+  ledger with tcw capabilities
+Status: Supported
+Feature: tcw-capabilities-skill
+Subject:
+- skill
+Planning doc: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill
