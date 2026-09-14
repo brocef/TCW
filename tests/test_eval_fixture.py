@@ -227,7 +227,7 @@ def test_the_skill_binding_resolves_to_a_pointer_and_not_a_body(customized):
 
 def test_the_generate_script_survives_having_no_work_item(customized):
     """`hook_payload` sets `item` to null when the verb runs without a
-    reference, which every per-stage skill documents. An unguarded script raises
+    reference, which `tcw-work-stage` documents. An unguarded script raises
     there, and a raise produces no stdout at all — which the harness would read
     as failure mode I1 rather than as a broken fixture."""
     root, _ = customized

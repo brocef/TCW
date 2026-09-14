@@ -183,7 +183,7 @@
    "id": "A1",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage-spec",
+   "invokes": "tcw-work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -219,7 +219,7 @@
    "id": "A2",
    "axis": "A",
    "stage": "plan",
-   "invokes": "tcw-work-stage-plan",
+   "invokes": "tcw-work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -255,7 +255,7 @@
    "id": "A3",
    "axis": "A",
    "stage": "implement",
-   "invokes": "tcw-work-stage-implement",
+   "invokes": "tcw-work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -291,7 +291,7 @@
    "id": "A4",
    "axis": "A",
    "stage": "verify",
-   "invokes": "tcw-work-stage-verify",
+   "invokes": "tcw-work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -414,7 +414,7 @@
    "id": "A8",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage-spec",
+   "invokes": "tcw-work-stage",
    "item": "backlog",
    "runner": "codex",
    "arms": [

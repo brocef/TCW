@@ -32,7 +32,7 @@ def main() -> int:
         payload = json.load(sys.stdin)
         # The envelope is {"item": <projection or null>, "hook": {...}} — not the
         # projection itself. `item` is null whenever the verb is called without a
-        # work item reference, which every per-stage skill documents.
+        # work item reference, which `tcw-work-stage` documents.
         item = payload.get("item")
         if isinstance(item, dict):
             slug = item.get("slug")

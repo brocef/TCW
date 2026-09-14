@@ -304,35 +304,19 @@ def test_the_router_routes_to_every_reference_file():
     assert not orphans, f"unreachable from SKILL.md: {orphans}"
 
 
-# ── the composing skills ─────────────────────────────────────────────────────
+# ── the composing skill ──────────────────────────────────────────────────────
 #
-# Six documents compose a stage out of `cat <router>` + `tcw work stage prompt`:
-# the generic `tcw-work-stage`, which takes the stage id as an argument, and one
-# `tcw-work-stage-<stage>` per stage a person actually drives, which bakes it in.
-#
-# Every property below held for one file before the five shipped. Each is now
-# parametrised over all six, because a guard that covers one of six near-identical
-# documents has stopped being a guard.
+# One document composes a stage out of `cat <router>` + `tcw work stage prompt`:
+# `tcw-work-stage`, which takes the stage id and the work item as arguments and
+# reaches every stage. Five per-stage skills that baked the stage in were
+# deleted; the tests below keep their parametrised shape, keyed by None for the
+# generic skill, so a second composing document would slot back in.
 
 STAGE_SKILL = REPO / "skills/tcw-work-stage/SKILL.md"
 
-# Derived from STAGE_IDS, never written out as a second list — a stage added to
-# the lifecycle shows up here rather than being silently skipped. Only the two
-# exclusions are hand-written, and each is excluded for a reason that would have
-# to stop being true before it gets a skill:
-#   inbox      — runs before an item exists and takes no work item reference on
-#                either verb, so a per-stage skill would wrap a zero-argument
-#                command and add nothing.
-#   postmortem — already has `tcw-post-mortem`, with a read-only agent behind it;
-#                a second skill for the stage would compete with it.
-NO_PER_STAGE_SKILL = {"inbox", "postmortem"}
-PER_STAGE_IDS = tuple(s for s in STAGE_IDS if s not in NO_PER_STAGE_SKILL)
-PER_STAGE_SKILLS = {s: REPO / f"skills/tcw-work-stage-{s}/SKILL.md"
-                    for s in PER_STAGE_IDS}
-
 # The generic skill keyed by None: it has no single stage, and every parametrised
 # test below has to say what it does differently for that case anyway.
-COMPOSING_SKILLS = {None: STAGE_SKILL, **PER_STAGE_SKILLS}
+COMPOSING_SKILLS = {None: STAGE_SKILL}
 
 
 def _composing(stage):
@@ -343,39 +327,6 @@ def _composing(stage):
 composing = pytest.mark.parametrize(
     "stage", sorted(COMPOSING_SKILLS, key=lambda s: s or ""),
     ids=lambda s: s or "generic")
-
-
-def test_the_per_stage_skills_are_exactly_the_stages_that_get_one():
-    """Both directions. A stage in `PER_STAGE_IDS` with no file is a skill that
-    was planned and never written; a `skills/tcw-work-stage-*/` directory with no
-    matching stage is one that appeared without the exclusion list being
-    revisited — most likely `postmortem`, whose exclusion is a judgement call
-    someone will eventually want to reverse. Reversing it should mean editing
-    `NO_PER_STAGE_SKILL`, not just adding a folder.
-
-    The glob discriminates on its own: every per-stage skill carries the
-    `tcw-work-stage-` prefix and the generic skill does not match it.
-    """
-    missing = sorted(s for s, p in PER_STAGE_SKILLS.items() if not p.is_file())
-    assert not missing, f"stages with no skill file: {missing}"
-    on_disk = {p.parent.name.removeprefix("tcw-work-stage-")
-               for p in REPO.glob("skills/tcw-work-stage-*/SKILL.md")}
-    assert on_disk == set(PER_STAGE_IDS), (
-        f"skills on disk {sorted(on_disk)} disagree with the stages that get one "
-        f"{sorted(PER_STAGE_IDS)}; excluded deliberately: {sorted(NO_PER_STAGE_SKILL)}")
-
-
-@pytest.mark.parametrize("stage", PER_STAGE_IDS)
-def test_a_per_stage_skill_takes_the_item_alone(stage):
-    """The whole point of splitting the generic skill. `arguments: [stage, item]`
-    made the caller restate a stage they already knew, and forced the item to be
-    supplied positionally after it; `arguments: [item]` leaves one argument, and
-    an omitted one interpolates to the empty string, which the CLI accepts."""
-    front = _composing(stage).read_text().split("---")[1]
-    args = next(l for l in front.splitlines() if l.startswith("arguments:"))
-    assert args.strip() == "arguments: [item]", args
-    assert "$stage" not in _composing(stage).read_text(), (
-        f"tcw-work-stage-{stage} still interpolates a stage argument")
 
 
 @composing
@@ -458,3 +409,15 @@ def test_the_composing_skill_declares_the_commands_it_injects(stage):
     front = body.split("---")[1]
     allowed = next(l for l in front.splitlines() if l.startswith("allowed-tools:"))
     assert "Bash(tcw *)" in allowed and "Bash(cat *)" in allowed, allowed
+
+
+def test_the_manual_fallback_says_where_the_arguments_come_from():
+    """Codex has no skill arguments, so `$stage` and `$item` reach a Codex reader
+    as literal text. With the per-stage skills gone, the fallback block is the
+    only thing telling that reader to take both from the request."""
+    body = STAGE_SKILL.read_text(encoding="utf-8")
+    sentences = re.split(r"(?<=\.)\s+", body)
+    assert any("in place of" in s and "$stage" in s and "$item" in s
+               for s in sentences), (
+        "tcw-work-stage never says to use the stage and item named in the "
+        "request in place of `$stage` and `$item`")

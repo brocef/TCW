@@ -32,10 +32,6 @@ EVALS = Path(__file__).with_name("evals.json")
 SKILL_GLOB = "*/SKILL.md"
 
 EXCLUSIONS = {
-    "tcw-work-stage-request":
-        "`request` is the one stage whose job is asking the user questions, "
-        "which a non-interactive harness cannot do — the skill's own file says "
-        "so. There is no axis A request case to cover it.",
     "autonomous-work":
         "It drives whole work items unattended through other skills, spawning "
         "advisor subagents and a `codex exec` call per checkpoint. A case would "
@@ -54,6 +50,11 @@ PARTIAL = {
         "deliberately unmeasured: simulating a broken `tcw` install inside a "
         "subagent's environment is unsafe and would measure the simulation. "
         "The gate counts this skill as covered, which overstates it.",
+    "tcw-work-stage":
+        "Axis A covers the spec, plan, implement and verify routes. The "
+        "`request` route is unmeasured: `request` is the one stage whose job is "
+        "asking the user questions, which a non-interactive harness cannot do. "
+        "There is no axis A request case to cover it.",
 }
 
 

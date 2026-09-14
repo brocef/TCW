@@ -496,16 +496,12 @@ binary, judgment stays in the skills.
 
 ### Reading a lifecycle stage
 
-Six more skills do one job between them: hand you a stage's own working document
-and the instructions your project resolves for it, as a single read rather than a
-file you open and a command you run separately. They only read — `tcw work stage
-gate` is still what refuses.
-
-[`tcw-work-stage`](skills/tcw-work-stage/SKILL.md) is the general one and takes
-the stage id, so it reaches all seven stages including `inbox` and `postmortem`.
-The other five bake their stage in and ask only for the work item, which is
-optional: `tcw-work-stage-request`, `tcw-work-stage-spec`,
-`tcw-work-stage-plan`, `tcw-work-stage-implement`, `tcw-work-stage-verify`.
+One more skill, [`tcw-work-stage`](skills/tcw-work-stage/SKILL.md), hands you a
+stage's own working document and the instructions your project resolves for it,
+as a single read rather than a file you open and a command you run separately.
+It takes the stage id and the work item, so it reaches all seven stages
+including `inbox` and `postmortem`, under Claude and Codex alike. It only reads
+— `tcw work stage gate` is still what refuses.
 
 ### Review agents and slash commands
 
