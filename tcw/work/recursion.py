@@ -29,7 +29,9 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
 
     Returns human-readable problems (empty = clean). A `new:` capability still
     reading Missing, or any declared path that doesn't resolve, is a problem; a
-    `changed:` capability only fails if it no longer resolves. A work-only node
+    `changed:` capability only fails if it no longer resolves. A `removed:`
+    capability is the reverse: it fails while a local capability still resolves
+    at that path. A work-only node
     (no capabilities tree) passes silently. Lives here (not in the abstract
     `WorkStore`) because it reaches into `FsCapabilitiesStore`; shared by the CLI
     `complete` path and `reconcile --complete-when-ready` so both enforce it."""
@@ -40,7 +42,7 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
         deltas = declared_capabilities(item.capabilities)
     except SidecarError as e:
         return [f"capabilities.yaml is unreadable: {e}"]
-    if not deltas["new"] and not deltas["changed"]:
+    if not any(deltas.values()):
         return []
     caps = FsCapabilitiesStore.open(st.node_root)
 
@@ -65,6 +67,13 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
             problems.append(f"{path}: {cap[1:]}")
         elif cap is None:
             problems.append(f"{path}: declared (changed) but does not resolve")
+    for path in deltas["removed"]:
+        # Local only: `rm` deletes only local capabilities, and once a local one
+        # is gone its bare path may fall through to an inherited capability at
+        # the same path, which `rm` refuses — a dead end if that counted.
+        if caps.get_local(path) is not None:
+            problems.append(f"{path}: declared (removed) but still resolves "
+                            f"(delete it with `tcw capabilities rm`)")
     return problems
 
 
@@ -92,8 +101,8 @@ def _blocker_labels(item: WorkItem) -> str:
 def _capability_deltas(tasks: list[tuple[str, WorkItem]]) -> list[str]:
     """Read-only surface of each task's capabilities.yaml.
 
-    `declared_capabilities` is the ONLY reader of the canonical `new:`/`changed:`
-    mapping here — the same one `capability_gate` uses, so the rollup and the gate
+    `declared_capabilities` is the ONLY reader of the canonical
+    `new:`/`changed:`/`removed:` mapping here — the same one `capability_gate` uses, so the rollup and the gate
     cannot disagree about a sidecar again. They differ only in how they fail: the
     gate lets SidecarError propagate and fails closed, while this is a display
     surface spanning a whole epic, so one child node's broken sidecar degrades to
@@ -113,8 +122,8 @@ def _capability_deltas(tasks: list[tuple[str, WorkItem]]) -> list[str]:
         except SidecarError as e:
             out.append(f"- {rel}/{item.slug}: capabilities.yaml is unreadable: {e} — skipped")
             continue
-        if deltas["new"] or deltas["changed"]:
-            for kind in ("new", "changed"):
+        if any(deltas.values()):
+            for kind in ("new", "changed", "removed"):
                 for path in deltas[kind]:
                     out.append(f"- {rel}/{item.slug}: {kind} {path}")
         elif isinstance(caps, list):
@@ -124,7 +133,7 @@ def _capability_deltas(tasks: list[tuple[str, WorkItem]]) -> list[str]:
                                f"{e.get('from', '?')} → {e.get('to', '?')}")
         elif caps:
             out.append(f"- {rel}/{item.slug}: "
-                       f"capabilities.yaml has no new:/changed: entries — skipped")
+                       f"capabilities.yaml has no new:/changed:/removed: entries — skipped")
     return out
 
 

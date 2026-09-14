@@ -90,8 +90,9 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
 - Unresolved blockers refuse a shipment. `[gated]`
 - An epic refuses while initiative children are open. `[gated]`
 - **Capability reconciliation is enforced**, not merely acknowledged: it fails if
-  a capability the item declared `new:` still reads `Missing`, or a declared path
-  does not resolve. Flip it, mark it `Omitted`, or `--force` with the reason in
+  a capability the item declared `new:` still reads `Missing`, a `new:` or
+  `changed:` path does not resolve, or a `removed:` path still has a local
+  capability. Flip it, mark it `Omitted`, delete it with `tcw capabilities rm`, or `--force` with the reason in
   `outcome.md`. `[gated]` **REQUIRED SUB-SKILL: Use tcw-capabilities.**
 - For a `--worktree` item, the work branch is merged back before teardown, and a
   merge conflict fails closed — resolve and re-run rather than forcing. `[gated]`

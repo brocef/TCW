@@ -287,24 +287,27 @@ class ProjectRegistry(ABC):
 
 def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
     """Canonical read of a work item's ``capabilities.yaml`` into
-    ``{"new": [...], "changed": [...]}`` — the work→capability back-pointers the
-    DoD gate enforces.
+    ``{"new": [...], "changed": [...], "removed": [...]}`` — the work→capability
+    back-pointers the DoD gate enforces.
 
     ``capabilities`` is the already-parsed sidecar object (``WorkItem.capabilities``):
-    a mapping with ``new:``/``changed:`` lists of canonical ``namespace/path``
-    strings. ``added:`` is accepted as a deprecated alias of ``new:``. A trailing
+    a mapping with ``new:``/``changed:``/``removed:`` lists of canonical
+    ``namespace/path`` strings. ``removed:`` names capabilities the item deleted,
+    which cannot sit under ``changed:`` because they no longer resolve.
+    ``added:`` is accepted as a deprecated alias of ``new:``. A trailing
     `` # comment`` on a value is stripped (YAML strips it already; belt and
     suspenders). The reconcile list-form sidecar and any other shape declare
     nothing here. The ``_tcw_parse_error`` sentinel the FS adapter produces on bad
     YAML raises ``SidecarError`` so the gate fails closed rather than reading
     "no deltas".
     """
-    out: dict[str, list[str]] = {"new": [], "changed": []}
+    out: dict[str, list[str]] = {"new": [], "changed": [], "removed": []}
     if not capabilities or not isinstance(capabilities, dict):
         return out
     if "_tcw_parse_error" in capabilities:
         raise SidecarError(str(capabilities["_tcw_parse_error"]))
-    for key, bucket in (("new", "new"), ("added", "new"), ("changed", "changed")):
+    for key, bucket in (("new", "new"), ("added", "new"), ("changed", "changed"),
+                        ("removed", "removed")):
         vals = capabilities.get(key)
         if vals is None:
             continue
@@ -564,13 +567,27 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def remove(self, identifier: str) -> None:
-        ...
+        """Delete the local capability at `identifier`, writing nothing when
+        refused. Raise `AmbiguousRef` when a bare ref matches multiple extended
+        stores, and `ValueError` when:
+
+        - nothing resolves;
+        - the capability is inherited, overridden locally or not (an override
+          is dropped with `reset`, never with `remove`);
+        - another capability or override is nested under its path;
+        - another local capability or override still references it through
+          `Superseded by`, `Blocked by`, `Roles` or `When`.
+
+        Refusing rather than cascading is the contract: a delete never takes a
+        second capability with it or leaves a reference pointing at nothing.
+        Never mutates an extended store."""
 
     @abstractmethod
     def reset(self, identifier: str) -> None:
         """Drop the local override at `identifier`, re-inheriting the upstream
         capability verbatim. Raise `ValueError` when there is no override (a
-        standalone local capability is not an override — use `remove`; a bare
+        standalone local capability is not an override — the `remove` operation,
+        driven by `tcw capabilities rm`, deletes it; a bare
         inherited path has nothing to drop), or `AmbiguousRef` when a bare ref
         matches multiple extended stores. Never mutates an extended store."""
 

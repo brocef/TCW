@@ -565,7 +565,10 @@ def git_stage(node_root: Path, *paths: Path) -> None:
 
 def git_rm(node_root: Path, path: Path) -> None:
     # -f so a term staged-but-not-yet-committed (just `add`ed) can still be removed.
-    _git(["git", "-C", str(node_root), "rm", "-rfq", "--", str(path)], check=True)
+    # --literal-pathspecs: `--` ends options but a path is still a glob to git, so
+    # removing a folder named `a*` would also delete `abc`.
+    _git(["git", "-C", str(node_root), "--literal-pathspecs", "rm", "-rfq", "--", str(path)],
+         check=True)
 
 
 NOT_A_REPOSITORY = "not inside a git repository. Run `git init` first."
@@ -2485,18 +2488,84 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
 
     def remove(self, identifier: str) -> None:
         cap = self.get(identifier)
+        # The exact listed spelling only. `get` resolves `routes/`, `./routes`,
+        # or `Routes` on a case-insensitive disk, to the `routes` folder but
+        # echoes the spelling back as the path, so everything below that works
+        # from the path would be working from the wrong one.
+        if cap is not None and cap.origin == "local" and cap.path not in self._local_paths():
+            cap = None
         if cap is None:
             raise ValueError(f"no such capability: {identifier}")
         if cap.origin != "local":
             raise ValueError(f"cannot remove inherited capability '{cap.qualified}' "
-                             f"(edit it at its source)")
-        self._rm(self.root / cap.path)
+                             f"(edit it at its source; to drop a local override use "
+                             f"`tcw capabilities reset`)")
+        d = self.root / cap.path
+        # Refused, never cascaded: `_rm` deletes the whole folder. Asked of the
+        # folder itself rather than `_all_meta_dirs`, which skips dot-directories
+        # and unreadable nodes that `git rm -rf` would delete all the same.
+        nested = sorted(str(m.parent.relative_to(self.root))
+                        for m in d.rglob("meta.yaml") if m.parent != d)
+        if nested:
+            raise ValueError(f"cannot remove '{cap.path}': nested under it: "
+                             f"{', '.join(nested)} (remove those first)")
+        referrers = self._referrers(d)
+        if referrers:
+            raise ValueError(f"cannot remove '{cap.path}': still referenced by "
+                             f"{', '.join(referrers)} (repoint or clear those fields first)")
+        self._rm(d)
+
+    def _referrers(self, target: Path) -> list[str]:
+        """`<folder> (<field>)` for every other local capability or override whose
+        reference fields resolve to the local capability folder `target`.
+
+        Each field is read exactly as `check` reads it (`_ref_problems`,
+        `_check_globals`), so this refuses on precisely the references `check`
+        would report as dangling afterwards. A hit is compared by folder identity,
+        not spelling: `a/b/`, `x/../a/b` and a differently-cased `A/B` all
+        resolve, and `set` accepts each.
+        """
+        def tokens(field: str, raw) -> list[str]:
+            if field in ("Superseded by", "Blocked by"):
+                return [str(raw)]
+            ns = "roles" if field == "Roles" else "conditions"
+            toks = raw if isinstance(raw, list) else str(raw).split(",")
+            refs = [str(s).strip().lstrip("!") for s in toks if str(s).strip()]
+            return [r for r in refs if r.startswith(f"{ns}/")]
+
+        def same(a: Path) -> bool:
+            try:
+                return a.samefile(target)
+            # Gone since it was listed or resolved: not the target. Only that —
+            # any other error leaves the question open, so it propagates and
+            # the delete stops.
+            except FileNotFoundError:
+                return False
+
+        out = []
+        for p in self._all_meta_dirs():
+            folder = self.root / p
+            if same(folder):
+                continue
+            meta = load_yaml(folder / "meta.yaml")
+            for field in ("Superseded by", "Blocked by", "Roles", "When"):
+                if field not in meta:
+                    continue
+                for ref in tokens(field, meta[field]):
+                    try:
+                        hit = self.get(ref)
+                    except RefError:
+                        continue
+                    if hit is not None and hit.origin == "local" and same(self.root / hit.path):
+                        out.append(f"{p} ({field})")
+                        break
+        return out
 
     def reset(self, identifier: str) -> None:
         # A standalone local capability is not an override — `remove` deletes it.
         if self.get_local(identifier) is not None:
             raise ValueError(f"'{identifier}' is a local capability, not an override "
-                             f"(use `remove` to delete it)")
+                             f"(use `tcw capabilities rm` to delete it)")
         cap = self.get(identifier)                     # federated; may raise AmbiguousRef
         if cap is None:
             raise ValueError(f"no such capability: {identifier}")
