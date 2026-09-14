@@ -16,16 +16,21 @@ category.
 - **Eval harness: a `bare` fixture variant and a per-case `fixture` key.**
   `python evals/seed_fixture.py --bare <dir>` commits the fixture's code files
   to a repository with no TCW set up. A case in `evals/evals.json` can name the
-  variant it runs against in every arm.
+  variant it runs against in every arm. Seeding a bare fixture inside a TCW
+  project raises `ValueError`, because `tcw` searches parent folders for
+  `tcw-config.yaml` and would resolve to the outer project; the runner's default
+  `eval-runs/` inside this checkout is such a place, so run bare cases with
+  `--out` outside it.
 
 ## Changed
 
 - **Eval harness: `files_changed_exactly` compares against the seeded commit.**
   It used to run `git diff --name-only HEAD~1 HEAD`, which measured whether the
   agent committed, and read the seeder's own last commit when the agent made
-  none. It now takes the union of `git diff --name-only <seeded_head>` (the
-  working tree against the seeded commit) and `git ls-files --others
-  --exclude-standard`. `seed()` records `seeded_head` in its manifest, the
+  none. It now takes the union of `git diff --name-only --no-renames
+  <seeded_head>` (the working tree against the seeded commit) and `git ls-files
+  --others --exclude-standard`, and fails with git's error if either command
+  fails. `seed()` records `seeded_head` in its manifest, the
   runner copies it into `timing.json`, and `grade_run` passes it on. **A run
   directory recorded before this change has no `seeded_head` and now fails this
   check**, with evidence saying so, instead of returning the old misleading
