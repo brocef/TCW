@@ -26,7 +26,7 @@ commands any more. If you used the old names, here is where everything went.
 - **Three optional skills were renamed** so their names say they are optional:
   `autonomous-work` is now `tcw-extras-autonomous-work`, `tcw-triage-issues` is
   now `tcw-extras-triage-issues`, and `tcw-report` is now `tcw-extras-report`.
-- **Each skill is now one entry in TCW's own capabilities ledger,** under a new
+- **Each skill now has its own entry in TCW's own capabilities ledger,** under a new
   `skills/` section (for example `skills/tcw-setup`). Nine older entries that
   described those skills were merged into them and no longer exist:
   `plugin/work-lifecycle`, `plugin/report-an-issue-upstream`,
