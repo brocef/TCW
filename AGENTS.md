@@ -105,6 +105,7 @@ words, never that an agent read them.
 
 ```sh
 python evals/seed_fixture.py --customized /tmp/probe   # build one fixture node
+python evals/seed_fixture.py --bare /tmp/probe         # ...or a repo with no TCW yet
 python -m evals.run_evals --axis a --dry-run           # see the arms, spawn nothing
 python -m evals.run_evals --axis a                     # spend money
 python -m evals.grade eval-runs/iteration-1            # read the result
