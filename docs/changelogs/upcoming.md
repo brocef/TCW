@@ -20,7 +20,9 @@ category.
   project raises `ValueError`, because `tcw` searches parent folders for
   `tcw-config.yaml` and would resolve to the outer project; the runner's default
   `eval-runs/` inside this checkout is such a place, so run bare cases with
-  `--out` outside it.
+  `--out` outside it. `run_evals` checks every bare arm's output folder before
+  the dry run or any spawn, and exits 1 naming the case and arm, so a misplaced
+  bare case can no longer stop a paid run partway through.
 
 ## Changed
 
@@ -29,15 +31,21 @@ category.
   agent committed, and read the seeder's own last commit when the agent made
   none. It now takes the union of `git diff --name-only --no-renames
   <seeded_head>` (the working tree against the seeded commit) and `git ls-files
-  --others --exclude-standard`, and fails with git's error if either command
-  fails. `seed()` records `seeded_head` in its manifest, the
+  --others --exclude-standard` (with `core.excludesFile` set to the null device,
+  so the grading machine's global ignore file cannot change the answer), reads
+  git's output as bytes so unusual file names survive, and fails with git's
+  error if either command fails. `seed()` records `seeded_head` in its manifest, the
   runner copies it into `timing.json`, and `grade_run` passes it on. **A run
   directory recorded before this change has no `seeded_head` and now fails this
   check**, with evidence saying so, instead of returning the old misleading
-  answer. The seeder excludes its own untracked `manifest.json` through
-  `.git/info/exclude` so it is not counted as a change. Case B10 no longer
+  answer. The seeder excludes its own untracked `manifest.json`, and the
+  `__pycache__/` and `.pytest_cache/` folders an agent leaves by importing or
+  testing the code, through `.git/info/exclude`, so none is counted as a change. Case B10 no longer
   expects `src/reports.py`, which the seeded fixture never changes.
 - **Eval harness: fixture variants are names.** `seed(dest, variant="control")`
   takes `"customized"`, `"control"` or `"bare"` in place of `customized: bool`,
-  and raises `ValueError` on anything else. `run_evals.variant_for` returns the
-  name rather than a boolean.
+  and raises `ValueError` on anything else. It also raises `ValueError`, before
+  writing anything, when the destination folder exists and is not empty, since
+  whatever was left there would be committed into the seeded commit; reusing an
+  `--out` folder for `run_evals` now fails for that reason.
+  `run_evals.variant_for` returns the name rather than a boolean.
