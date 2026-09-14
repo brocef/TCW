@@ -1,8 +1,22 @@
 # Consolidate the setup skills into a single tcw-setup skill
 
-> Shaped during a brainstorming conversation on 2026-09-14. The one decision left
-> to `spec` is whether configuration changes fit in `tcw-setup` or need a
-> separate `tcw-config` skill.
+> Shaped during a brainstorming conversation on 2026-09-14.
+>
+> **Revised by the requester during `spec` (2026-09-14)** — these override the
+> single-skill shape described below wherever the two disagree:
+>
+> 1. **Two skills, not one.** `tcw-setup` instructs agents how to set up TCW for
+>    a project that does not use it yet. `tcw-config` instructs agents how to
+>    change an existing project's TCW configuration.
+> 2. **A taxonomy Feature for every top-level skill, in this item.** Each skill
+>    shipped in `skills/` gets a Feature (examples given: `TCW Initialization
+>    Skill`, `TCW Configuration Skill`), and capabilities map neatly onto those
+>    Features — e.g. "Offer a skill dedicated to instructing agents how to set up
+>    TCW for a project that does not currently use TCW". This covers all the
+>    skills, not only the setup ones.
+> 3. **Eval coverage is rebuilt.** Old eval cases tied to removed skills are
+>    removed and new ones created. *Which* setup and configuration routes get
+>    cases is left as an open question for the spec's reviewers.
 
 ## What is being asked for
 
