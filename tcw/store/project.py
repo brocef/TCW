@@ -445,7 +445,7 @@ class FsProjectRegistry(ProjectRegistry):
             connected = {}
         unknown = set(connected) - {"parent", "children"}
         if unknown:
-            self._problem(path, f"unknown connected-projects keys: {', '.join(sorted(unknown))}")
+            self._problem(path, f"unknown connected-projects keys: {', '.join(sorted(map(str, unknown)))}")
         children = self._relation(path, connected.get("children"), "children")
         parent = self._relation(path, connected.get("parent"), "parent")
         if len(parent) > 1:

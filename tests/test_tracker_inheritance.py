@@ -50,9 +50,8 @@ def test_nested_mappings_merge_key_by_key_and_the_record_names_each_source(empty
     pkg = {"candidate-query": "component = api", "credentials": {"token-env": "C"}}
     merged, record, whole = merge_tracker_blocks([("pkg", pkg), ("root", root)])
     assert whole is None
-    assert merged["credentials"] == {"email-env": "A", "token-env": "C"}
-    assert merged["candidate-query"] == "component = api"
-    assert merged["base-url"] == COMPLETE["base-url"]
+    assert merged == {**COMPLETE, "candidate-query": "component = api",
+                      "credentials": {"email-env": "A", "token-env": "C"}}
     assert record[("credentials", "token-env")] == "pkg"
     assert record[("credentials", "email-env")] == "root"
 
@@ -668,3 +667,20 @@ def test_validate_repeats_a_parents_bad_value_for_every_child_that_inherits_it(
             f"non-empty string, got int")
     assert f"[repo] {line}" in err
     assert f"[pkg] {line}" in err
+
+
+def test_a_connected_projects_block_with_mixed_key_types_does_not_raise(tmp_path):
+    """The spec promises `tracker_config()` never raises. Opening the project graph
+    raised `TypeError` sorting unknown `connected-projects` keys of mixed types, and
+    this item made `tracker_config()` open the graph. Fixed where the graph loads."""
+    node = _node(tmp_path / "solo", "solo", board=True)
+    cfg = yaml.safe_load((node / SENTINEL).read_text())
+    cfg["connected-projects"] = {5: "bad", "zz": 1}
+    cfg["work"] = {**(cfg.get("work") or {}), "tracker": QUERY_ONLY}
+    (node / SENTINEL).write_text(yaml.safe_dump(cfg, sort_keys=False))
+    problems = FsProjectRegistry.open(node).check()
+    assert [p for p in problems if "unknown connected-projects keys: 5, zz" in p], problems
+    store = _store(node)
+    assert store.tracker_config() is None
+    assert store.tracker_problems()
+    assert all(p.startswith("tcw-config.yaml: ") for p in store.tracker_problems())
