@@ -3,12 +3,13 @@
 > **About this spec**
 >
 > - **The item's title is out of date.** It still says "a single tcw-setup skill".
->   The requester revised the request three times during this stage
->   (`initial-request.md`, revision notes 1–12 at the top). Retitling is a
+>   The requester revised the request several times during this stage
+>   (`initial-request.md`, revision notes 1–14 at the top). Retitling is a
 >   plan-stage task.
 > - **A large change is acceptable**, because the goal is cleanup.
-> - **Reviews so far.** This version answers two multi-review rounds: an
->   adversarial reviewer, Codex, and the local model.
+> - **Reviews so far.** Two multi-review rounds: an adversarial reviewer, Codex,
+>   and the local model. Revision notes 13–14 (deleting the per-stage skills, and
+>   the `tcw-extras-` prefix) came after them and have not been reviewed.
 > - **Dependency.** This item is blocked by
 >   `2026-09-14-delete-a-capability-with-tcw-capabilities-rm`, which must land
 >   first.
@@ -36,18 +37,13 @@ own to lifecycle stages."
   "agent skills" to mean a project's own skills.
 - No term named `skill` exists today.
 
-**Sixteen new Features, one per top-level skill.**
+**Eleven new Features, one per top-level skill.**
 
 - **Slugs.** Each slug is the skill's directory name plus `-skill`, set with `-s`.
   Without `-s`, "TCW Initialization Skill" would get the slug
   `tcw-initialization-skill`.
 - **Vocabulary.** Each Feature names `skill` plus every existing term it operates
   on; `--vocab` can be repeated.
-- **Nesting.** The five per-stage Features nest under `tcw-work-stage-skill`,
-  following "Nest specializations under a parent" (`skills/tcw-taxonomy/SKILL.md:79-80`).
-  The second review confirmed `tcw taxonomy add --parent` accepts a Feature as a
-  parent, and that `show` then prints the expected `kind:` and `vocabulary:`
-  lines.
 - **Related Features.** Where a Feature overlaps an existing one, it gets a
   `relatesTo` link, followed by `tcw taxonomy check`. This is the taxonomy skill's
   documented hand edit (`:116`).
@@ -63,14 +59,9 @@ own to lifecycle stages."
 | `tcw-capabilities` | `tcw-capabilities-skill` | TCW Capabilities Skill | `skill`, `capability` | `capability-feature-association` |
 | `documentation-sync` | `documentation-sync-skill` | TCW Documentation Sync Skill | `skill`, `work-item/lifecycle-stage` | — |
 | `tcw-work-stage` | `tcw-work-stage-skill` | TCW Work Stage Skill | `skill`, `work-item/lifecycle-stage` | `configurable-work-lifecycle` |
-| `tcw-work-stage-request` | `tcw-work-stage-skill/tcw-work-stage-request-skill` | TCW Request Stage Skill | `skill`, `work-item/lifecycle-stage` | — |
-| `tcw-work-stage-spec` | `tcw-work-stage-skill/tcw-work-stage-spec-skill` | TCW Spec Stage Skill | `skill`, `work-item/lifecycle-stage` | — |
-| `tcw-work-stage-plan` | `tcw-work-stage-skill/tcw-work-stage-plan-skill` | TCW Plan Stage Skill | `skill`, `work-item/lifecycle-stage` | — |
-| `tcw-work-stage-implement` | `tcw-work-stage-skill/tcw-work-stage-implement-skill` | TCW Implement Stage Skill | `skill`, `work-item/lifecycle-stage` | — |
-| `tcw-work-stage-verify` | `tcw-work-stage-skill/tcw-work-stage-verify-skill` | TCW Verify Stage Skill | `skill`, `work-item/lifecycle-stage` | — |
-| `tcw-triage-issues` | `tcw-triage-issues-skill` | TCW Issue Triage Skill | `skill`, `work-item/intake` | `work-inbox` |
+| `tcw-extras-triage-issues` | `tcw-extras-triage-issues-skill` | TCW Extras Issue Triage Skill | `skill`, `work-item/intake` | `work-inbox` |
 | `tcw-post-mortem` | `tcw-post-mortem-skill` | TCW Post-Mortem Skill | `skill`, `work-item/lifecycle-stage` | — |
-| `autonomous-work` | `autonomous-work-skill` | TCW Autonomous Work Skill | `skill`, `work-item` | — |
+| `tcw-extras-autonomous-work` | `tcw-extras-autonomous-work-skill` | TCW Extras Autonomous Work Skill | `skill`, `work-item` | — |
 | `tcw-report` | `tcw-report-skill` | TCW Report Skill | `skill` | — |
 
 ### Capabilities
@@ -84,18 +75,14 @@ new:
     - skills/tcw-capabilities
     - skills/documentation-sync
     - skills/tcw-work-stage
-    - skills/tcw-work-stage-request
-    - skills/tcw-work-stage-spec
-    - skills/tcw-work-stage-plan
-    - skills/tcw-work-stage-implement
-    - skills/tcw-work-stage-verify
-    - skills/tcw-triage-issues
+    - skills/tcw-extras-triage-issues
     - skills/tcw-post-mortem
-    - skills/autonomous-work
+    - skills/tcw-extras-autonomous-work
     - skills/tcw-report
 changed:
     - plugin/bootstrap-the-cli
     - work/complete-a-work-item
+    - work/run-a-lifecycle-stage
 # plus the nine deletions below, recorded in whatever form
 # 2026-09-14-delete-a-capability-with-tcw-capabilities-rm defines. A deleted path
 # cannot sit under `changed:`, because the completion gate refuses a path that
@@ -113,7 +100,7 @@ changed:
   name, so the body has to be written into that file.
 - **Fields:** `Feature` is the skill's Feature path, and `Subject` is `skill`.
 - **Status:**
-  - The fourteen skills that already ship are created `Supported`. The completion
+  - The nine skills that already ship are created `Supported`. The completion
     gate fails only a `new:` path still `Missing` (`tcw/work/recursion.py:58-61`),
     and seeding something that ships as `Missing` would put a false status on
     `main`.
@@ -135,7 +122,7 @@ body. That way no commit on `main` is missing either one.
 | `work/audit-work-backlog` | `skills/tcw-work` (`…/procedures/audit-backlog.md`) |
 | `plugin/report-an-issue-upstream` | `skills/tcw-report` |
 | `plugin/run-a-post-mortem` | `skills/tcw-post-mortem` |
-| `plugin/triage-github-issues` | `skills/tcw-triage-issues` |
+| `plugin/triage-github-issues` | `skills/tcw-extras-triage-issues` |
 | `taxonomy/bootstrap-the-taxonomy` | `skills/tcw-setup` |
 | `capabilities/bootstrap-the-capabilities` | `skills/tcw-setup` |
 
@@ -146,13 +133,17 @@ body. That way no commit on `main` is missing either one.
   `tcw-plugin` become `tcw-setup`.
 - **`work/complete-a-work-item`.** Line 20 of its description links
   `tcw://C/plugin/triage-github-issues`; the link becomes
-  `tcw://C/skills/tcw-triage-issues`. `git grep` found no other live reference to
+  `tcw://C/skills/tcw-extras-triage-issues`. `git grep` found no other live reference to
   a deleted path.
+
+- **`work/run-a-lifecycle-stage`.** Its main subject is the two `tcw work stage`
+  verbs, so it stays. Its paragraph introducing the five per-stage skills
+  (`description.md:104-115`) is reworded to say `tcw-work-stage` reaches every
+  stage, and that the stage id is part of the request (D8).
 
 **Not touched:** these capabilities' main subject is CLI or configuration-file
 behavior, or the plugin itself:
 
-- `work/run-a-lifecycle-stage`
 - `work/configure-the-work-lifecycle`
 - `work/declare-which-documents-track-which-changes`
 - `work/read-the-documentation-gate-for-a-change`
@@ -204,6 +195,12 @@ Seven concrete consequences:
 7. **The skills are invisible to the project's own taxonomy.** No term or Feature
    describes a skill, and skill capabilities are scattered across four namespaces;
    `autonomous-work` has none.
+8. **Six skills do one job.** `tcw-work-stage` reaches all seven stages, and five
+   more skills (`tcw-work-stage-request`, `-spec`, `-plan`, `-implement`,
+   `-verify`) repeat it with the stage built in (`README.md:451-461`).
+9. **Personal extras look like core skills.** `autonomous-work` and
+   `tcw-triage-issues` are skills the requester made for their own workflow, but
+   nothing in their names sets them apart from the skills every TCW user needs.
 
 ## Goals
 
@@ -232,11 +229,14 @@ Seven concrete consequences:
    - Every capability whose main subject is a skill is that skill's capability.
 8. **New configuration keys land in `tcw-configure` by rule**, not by someone
    remembering.
+9. **One skill composes lifecycle stages:** `tcw-work-stage`.
+10. **Extras are named `tcw-extras-*`**, so a reader can tell a core skill from an
+    optional one by its name.
 
 ## Non-goals
 
-- Changing what `tcw-report`, `tcw-triage-issues`, `tcw-post-mortem`,
-  `autonomous-work`, or the six `tcw-work-stage*` skills say, beyond pointers.
+- Changing what `tcw-report`, `tcw-post-mortem`, `tcw-work-stage` and the two
+  extras skills say, beyond pointers and the renames in D8.
 - Any change to the `tcw` CLI. The delete command is its own item.
 - Stub commands, or a stub `tcw-plugin`, under the old names.
 - Rewriting history: completed work items, and changelogs and release notes of
@@ -256,8 +256,11 @@ Seven concrete consequences:
 
 ### The skill set after this change
 
-`skills/` goes from **fifteen** skills to **sixteen**: `tcw-plugin` is removed,
-and `tcw-setup` and `tcw-configure` are added. The grouping is for the reader
+`skills/` goes from **fifteen** skills to **eleven**:
+- `tcw-plugin` and the five per-stage skills are removed;
+- `tcw-setup` and `tcw-configure` are added;
+- `autonomous-work` and `tcw-triage-issues` are renamed into `tcw-extras-*`.
+ The grouping is for the reader
 only; it is not a folder structure.
 
 | Group | Skill | Change in this item |
@@ -268,14 +271,16 @@ only; it is not a folder structure.
 | | `tcw-taxonomy` | loses `references/init.md`, its setup and federation triggers, and how to declare `extends` |
 | | `tcw-capabilities` | loses `references/init.md` and how to declare `extends` |
 | | `documentation-sync` | loses `references/setup.md`; description reworded; points to `tcw-configure` |
-| | `tcw-work-stage`, `…-request`, `…-spec`, `…-plan`, `…-implement`, `…-verify` | Feature and capability only |
-| | `tcw-triage-issues`, `tcw-post-mortem`, `autonomous-work` | Feature and capability only |
+| | `tcw-work-stage` | now the only stage skill; Feature and capability |
+| | `tcw-post-mortem` | Feature and capability only |
 | **Reporting to TCW** | `tcw-report` | Feature and capability only |
+| **Extras** | `tcw-extras-autonomous-work` | renamed from `autonomous-work` (D8); Feature and capability |
+| | `tcw-extras-triage-issues` | renamed from `tcw-triage-issues`, command renamed to match (D8); Feature and capability |
 | *(removed)* | ~~`tcw-plugin`~~ | install half → `tcw-setup`; skill map deleted (D5) |
+| *(removed)* | ~~`tcw-work-stage-request`~~, ~~`-spec`~~, ~~`-plan`~~, ~~`-implement`~~, ~~`-verify`~~ | deleted; `tcw-work-stage` covers every stage (D8) |
 
 ```
 skills/
-  autonomous-work/
   documentation-sync/
     SKILL.md
     references/
@@ -283,6 +288,8 @@ skills/
       release-notes-and-changelogs.md
   tcw-capabilities/
     SKILL.md                     # references/ removed
+  tcw-extras-autonomous-work/    # renamed from autonomous-work
+  tcw-extras-triage-issues/      # renamed from tcw-triage-issues
   tcw-configure/                 # new
     SKILL.md                     # routing only
     references/
@@ -304,19 +311,14 @@ skills/
       capabilities.md            # starting a capabilities ledger
   tcw-taxonomy/
     SKILL.md                     # references/ removed
-  tcw-triage-issues/
   tcw-work/
   tcw-work-stage/
-  tcw-work-stage-implement/
-  tcw-work-stage-plan/
-  tcw-work-stage-request/
-  tcw-work-stage-spec/
-  tcw-work-stage-verify/
 ```
 
-`commands/` loses three files and keeps ten: `tcw-audit-work-backlog`,
-`tcw-consolidate-plans`, `tcw-cut-version`, `tcw-drive-work-to-completion`,
-`tcw-plan-work`, `tcw-post-mortem`, `tcw-process-inbox`, `tcw-triage-issues`,
+`commands/` loses three files, renames one, and keeps ten:
+`tcw-audit-work-backlog`, `tcw-consolidate-plans`, `tcw-cut-version`,
+`tcw-drive-work-to-completion`, `tcw-extras-triage-issues` (renamed from
+`tcw-triage-issues`), `tcw-plan-work`, `tcw-post-mortem`, `tcw-process-inbox`,
 `tcw-verify-work`, `tcw-work-search`.
 
 ### D1 — Where the line between the two skills falls
@@ -578,6 +580,15 @@ could fake a routing result.
        id range.
 4. **B4 and B8 each gain `tool_input_absent` `tcw-setup/references/`.** B8 ends
    "Set it up."
+5. **A1–A4 and A8 invoke `tcw-work-stage`** instead of the deleted per-stage skills
+   (`evals/evals.json:171`, `:207`, `:243`, `:279`, `:402`). Their prompts already
+   name the stage ("Work the spec stage for {item}."), so the prompts and
+   assertions are unchanged. `EXCLUSIONS["tcw-work-stage-request"]`
+   (`evals/coverage.py:35-38`) goes, because the skill it excludes no longer
+   exists.
+6. **B7 invokes `tcw-extras-triage-issues`** (`evals/evals.json:653-654`), and
+   `EXCLUSIONS["autonomous-work"]` (`evals/coverage.py:39`) is re-keyed to
+   `tcw-extras-autonomous-work`.
 
 **4. Coverage bookkeeping** (`evals/coverage.py`). `PARTIAL` records what is not
 measured:
@@ -586,7 +597,7 @@ measured:
   - install/repair stays unmeasured, because faking a broken install is unsafe
     (`:53-56`);
   - `taxonomy.md` and `capabilities.md` ask the user questions, the same reason
-    `tcw-work-stage-request` is excluded;
+    `request` is treated as interactive;
   - provisioning needs a remote.
 - `tcw-configure`: only `docs-sync.md` is measured.
 
@@ -595,9 +606,12 @@ The `tcw-plugin` entry goes.
 **5. Lasting guards.**
 
 - A deleted-names test, following `DELETED` at
-  `tests/test_skill_lifecycle_parity.py:47,254`. It rejects `tcw-plugin`,
-  `tcw-taxonomy-init`, `tcw-capabilities-init` and `tcw-docs-sync-setup` under
-  `skills/`, `commands/`, the manifests, and `README.md`.
+  `tests/test_skill_lifecycle_parity.py:47,254`. It rejects, as whole names
+  (so `tcw-extras-autonomous-work` does not match `autonomous-work`):
+  `tcw-plugin`, `tcw-taxonomy-init`, `tcw-capabilities-init`,
+  `tcw-docs-sync-setup`, the five `tcw-work-stage-<stage>` names,
+  `autonomous-work` and `tcw-triage-issues`. It scans `skills/`, `commands/`, the
+  manifests, `README.md` and `docs/guide/`.
 - The router tests in `tests/test_skill_lifecycle_parity.py`, extended to both new
   skills: body at most 60 lines, and every file in the skill's `references/`
   linked from its `SKILL.md`.
@@ -612,19 +626,64 @@ The `tcw-plugin` entry goes.
 | `scripts/session_bootstrap.sh:9`, `:45` | Comments name `tcw-setup` and `install.md`. |
 | `README.md:217`, `:227` | `tcw-plugin` → `tcw-setup`. |
 | `README.md:352` | The two slash commands → asking for the `tcw-setup` skill. |
-| `README.md:430-432` | "Fifteen skills … Nine carry a distinct procedure" → sixteen and ten. |
-| `README.md:440` | The `tcw-plugin` row → rows for `tcw-setup` and `tcw-configure`. |
-| `README.md:470-471` | Drop the three commands. |
+| `README.md:430-432` | "Fifteen skills … Nine carry a distinct procedure; the other six all compose one lifecycle stage" → eleven skills, ten with a distinct procedure and one that composes a lifecycle stage. |
+| `README.md:438-446` | The `tcw-plugin` row → rows for `tcw-setup` and `tcw-configure`; `tcw-triage-issues` and `autonomous-work` rows renamed, under an "Extras" note saying `tcw-extras-*` skills are optional. |
+| `README.md:451-461` | "Reading a lifecycle stage" describes one skill, `tcw-work-stage`. |
+| `README.md:469-471` | Drop the three commands; `/tcw-triage-issues` → `/tcw-extras-triage-issues`. |
+| `docs/guide/work.md:212` | `/tcw-triage-issues` → `/tcw-extras-triage-issues`. |
+| `skills/tcw-work/references/lifecycle/stage-inbox.md:11`, `skills/tcw-work/references/transitions.md:117`, `:157` | `tcw-triage-issues` → `tcw-extras-triage-issues`. |
 | `docs/guide/taxonomy-and-capabilities.md:59` | As `README.md:352`. |
-| `.codex-plugin/plugin.json` `longDescription` | "fifteen skills" → "sixteen skills"; `tcw-plugin` clause → `tcw-setup` and `tcw-configure` clauses. |
+| `.codex-plugin/plugin.json` `longDescription` | "fifteen skills" → "eleven skills"; `tcw-plugin` clause → `tcw-setup` and `tcw-configure` clauses; the per-stage skills' names removed; the two extras renamed. |
 | `tests/test_documentation_sync_wiring.py` | `SKILL_FILES` (`:13-19`) drops `setup.md`. `COMMAND_ROUTES`' `tcw-docs-sync-setup` entry (`:23-26`) goes. The docstring at `:109-115` and the test at `:127-134` read the `tcw-configure` skill's `docs-sync.md`. |
 | `tests/test_documentation_config.py:137` | Docstring names the moved document. |
 | `tests/test_plugin_manifests.py:4` | Docstring names `tcw-setup`. |
-| `evals/*`, `tests/test_eval_*.py`, `tests/test_skill_lifecycle_parity.py` | Per D6. |
+| `evals/*`, `tests/test_eval_*.py`, `tests/test_skill_lifecycle_parity.py` | Per D6 and D8. |
 | `tcw-config.yaml` | Per D4. |
 | `docs/taxonomy/…`, `docs/capabilities/…` | Per **Capability changes**: `tcw taxonomy add`, `tcw capabilities add`, `set` and `rm`, plus body text in `description.md` and `relatesTo` in `meta.yaml`. |
 | `docs/changelogs/upcoming.md`, `docs/release-notes/upcoming.md` | Removed commands and skill, the two new skills, deleted capability paths and their successors, new taxonomy entries, the eval predicate and fixture changes. |
 | Open work items (Risks) | A one-line note on each. |
+
+### D8 — The per-stage skills are deleted, and two skills become extras
+
+**Deleting the per-stage skills** (revision note 13).
+
+- **Delete** `skills/tcw-work-stage-request/`, `-spec/`, `-plan/`, `-implement/`,
+  `-verify/`. `tcw-work-stage` already reaches all seven stages and takes the
+  stage id (`skills/tcw-work-stage/SKILL.md:3-5`), so no capability is lost.
+- **Remove the per-stage machinery from `tests/test_skill_lifecycle_parity.py`**
+  (`:305-375`):
+  - `NO_PER_STAGE_SKILL`, `PER_STAGE_IDS`, `PER_STAGE_SKILLS`;
+  - `test_the_per_stage_skills_are_exactly_the_stages_that_get_one`;
+  - `test_a_per_stage_skill_takes_the_item_alone`.
+
+  The `@composing` tests keep running against the generic skill alone, and the
+  section's comment is rewritten to say one document composes a stage.
+- **Evals:** D6.3 items 5 and 6.
+- **Capability:** `work/run-a-lifecycle-stage`'s paragraph at
+  `description.md:104-115` is reworded (Capability changes).
+- **Not changed:** `tests/test_plugin_manifests.py:76-127` uses
+  `tcw-work-stage-spec` in a synthetic example of the name-prefix problem. It is
+  test data about name matching, not a reference to a shipped skill, so it stays.
+  AC 4 excludes that file.
+
+**The `tcw-extras-` prefix** (revision note 14).
+
+- **A convention, recorded where readers look.** The README skills section says
+  `tcw-extras-*` skills are optional, built for one way of working, and not needed
+  to use TCW.
+- **`autonomous-work` → `tcw-extras-autonomous-work`:**
+  - `git mv skills/autonomous-work skills/tcw-extras-autonomous-work`;
+  - its `name:` field is updated.
+- **`tcw-triage-issues` → `tcw-extras-triage-issues`:**
+  - `git mv` the skill directory and `commands/tcw-triage-issues.md` →
+    `commands/tcw-extras-triage-issues.md`;
+  - update `name:`, the command's references to its skill (`:5`, `:10`), and the
+    skill's references to its own name.
+- **Every other reference is renamed** (D7): the README, `docs/guide/work.md`, two
+  `tcw-work` references, the Codex manifest, `evals/evals.json` B7, and
+  `evals/coverage.py`.
+- **Harness.** Both are reachable by invoking the skill under Claude and Codex
+  alike. The renamed command stays a thin router, as before.
 
 ### Abstraction and harness checks
 
@@ -640,11 +699,10 @@ Checked from the repository root. **`<base>`** means the last commit before this
 item's first implementation commit, which is the commit that last touched this
 item's `plan.md`.
 
-1. `ls skills` lists exactly: `autonomous-work documentation-sync
-   tcw-capabilities tcw-configure tcw-post-mortem tcw-report tcw-setup
-   tcw-taxonomy tcw-triage-issues tcw-work tcw-work-stage
-   tcw-work-stage-implement tcw-work-stage-plan tcw-work-stage-request
-   tcw-work-stage-spec tcw-work-stage-verify`.
+1. `ls skills` lists exactly: `documentation-sync tcw-capabilities tcw-configure
+   tcw-extras-autonomous-work tcw-extras-triage-issues tcw-post-mortem tcw-report
+   tcw-setup tcw-taxonomy tcw-work tcw-work-stage`. `ls commands` includes
+   `tcw-extras-triage-issues.md` and not `tcw-triage-issues.md`.
 2. `ls skills/tcw-setup/references` lists exactly `capabilities.md install.md
    project.md taxonomy.md`. `ls skills/tcw-configure/references` lists exactly
    `docs-sync.md projects.md stores.md tracker.md work.md`.
@@ -657,7 +715,7 @@ item's `plan.md`.
    - `commands/tcw-capabilities-init.md`
    - `commands/tcw-docs-sync-setup.md`
 4. This prints nothing:
-   `git grep -nE 'tcw-plugin|tcw-taxonomy-init|tcw-capabilities-init|tcw-docs-sync-setup' -- . ':!docs/work' ':!docs/changelogs' ':!docs/release-notes' ':!tests/test_skill_lifecycle_parity.py'`
+   `git grep -nP 'tcw-plugin|tcw-taxonomy-init|tcw-capabilities-init|tcw-docs-sync-setup|tcw-work-stage-(request|spec|plan|implement|verify)|(?<![-\w])autonomous-work|tcw-triage-issues' -- . ':!docs/work' ':!docs/changelogs' ':!docs/release-notes' ':!tests/test_skill_lifecycle_parity.py' ':!tests/test_plugin_manifests.py'`
 5. This prints nothing:
    `git grep -nE 'references/(init|setup)\.md|[^/]setup\.md' -- skills commands tests`
 6. For each of `skills/tcw-setup/SKILL.md` and `skills/tcw-configure/SKILL.md`:
@@ -740,7 +798,7 @@ item's `plan.md`.
       every term in that row.
     - `tcw taxonomy check` exits 0.
 16. **Capabilities, at verify.**
-    - For each of the fourteen already-shipping skills `<s>`,
+    - For each of the nine already-shipping skills `<s>`,
       `tcw capabilities show skills/<s>` prints `**Status:** Supported` and a
       `**Feature:**` line equal to its Feature path.
     - `skills/tcw-setup` and `skills/tcw-configure` print `**Status:** Missing`,
@@ -748,7 +806,8 @@ item's `plan.md`.
     - `tcw capabilities show <path>` exits non-zero for each of the nine deleted
       paths.
     - `tcw capabilities show plugin/bootstrap-the-cli` does not print
-      `tcw-plugin`.
+      `tcw-plugin`, and `tcw capabilities show work/run-a-lifecycle-stage` does not
+      print `tcw-work-stage-spec`.
     - `tcw capabilities check` prints `capabilities OK`.
 17. **Capabilities, after `tcw work complete`.** `skills/tcw-setup` and
     `skills/tcw-configure` print `**Status:** Supported`. The completion gate
@@ -756,6 +815,10 @@ item's `plan.md`.
 18. **Evals.**
     - `evals/evals.json` has no case whose `skill` or `invokes` is `tcw-plugin`.
     - B5's `skill` is `cross-axis`.
+    - No case's `invokes` names a `tcw-work-stage-<stage>` skill; A1–A4 and A8
+      invoke `tcw-work-stage`. B7 invokes `tcw-extras-triage-issues`.
+    - `EXCLUSIONS` has no `tcw-work-stage-request` or `autonomous-work` key, and
+      has `tcw-extras-autonomous-work`.
     - One case's `invokes` is `tcw-setup`, and one case's is `tcw-configure`.
     - B4 and B8 each assert `tool_input_absent` `tcw-setup/references/`.
     - `PARTIAL` has keys `tcw-setup` and `tcw-configure`, and not `tcw-plugin`.
@@ -811,6 +874,14 @@ item's `plan.md`.
     it quotes a caveat now at `hooks.md:88`, which stays but moves line.
   - `2026-08-12-separate-the-agent-plugin-from-the-python-cli-source`: its
     `plan.md` names `tcw-plugin` paths.
+- **Revision notes 13–14 are unreviewed.** They came after both review rounds.
+  The deletions and renames are mechanical, and D8 and ACs 1, 4 and 18 check them.
+  But the eval retargeting of A1–A4 and A8 changes what axis A measures: the
+  generic skill with two arguments instead of a per-stage skill with one. The
+  run-the-evals item's note should say so.
+- **Muscle memory.** `/tcw-triage-issues` and the per-stage skill names stop
+  working. That is acceptable, because nobody but the requester uses TCW yet
+  (revision notes 3 and 14).
 - **Size.** Scope is several times the first estimate, and `state.yaml` still says
   `effort: medium`. Re-estimating is a plan-stage task.
 
