@@ -18,7 +18,9 @@ whoever holds it, so I can link one assigned to somebody else, and my item keeps
 status, owner and documents. `tcw work tracker unlink <slug> --reason <text>` removes
 a wrong binding and keeps a record of it with my reason. Both work at any status, so
 I can tie finished work to the ticket that tracked it and repair a wrong binding on
-it; neither ever changes the ticket in Jira.
+it; where finished items are kept out of git, as they are by default, that binding
+stays on my machine. Neither ever changes the ticket in Jira, and importing a ticket
+I have only linked tells me it is not claimed rather than claiming it.
 
 The binding is written by these commands, not by hand, and the web app offers no
 edit for it. It records what is bound to what and when, never who took the ticket.
@@ -29,7 +31,8 @@ Four limits are accepted rather than prevented. On a workflow that offers the cl
 from every status, two people can both claim one ticket. Two runs by the same Jira
 account at the same moment can both create an item. Each node keeps its own
 bindings, so importing one ticket in two nodes gives an item in each. And a ticket
-held by a finished item can be bound to a second, open one without a refusal.
+held by a finished item can be bound to a second item, open or finished, without a
+refusal.
 Keeping the ticket in step with the item's lifecycle — including claiming the ticket
 an item is already linked to, which nothing does yet — and requiring tracked work,
 are separate capabilities that are not yet built.

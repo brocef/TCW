@@ -67,7 +67,8 @@ category.
 - **Tracker-link coverage** — `link` writes nothing to the tracker and leaves
   status and assignee alone; only `tracker.yaml` changes in the item folder;
   binds a ticket another account holds; binds and unlinks at both resolved
-  statuses; refuses an unknown ticket key and an unknown slug. The two tests
+  statuses, the link leaving every other file, the status and the owner as
+  they were; `import` after `link` refuses as linked-but-not-claimed; refuses an unknown ticket key and an unknown slug. The two tests
   pinning the removed refusals are deleted rather than inverted.
 - **Legacy-binding coverage** (`tests/test_tracker_binding.py`) — a document
   written before `claimed-by` was dropped still reads as `Bound`, and `unlink`
@@ -123,13 +124,27 @@ category.
   order. Two consequences: a ticket assigned to another account now binds
   (the assignee check lived in `claim`, row `1b`), and the success line reports
   what was bound and that the ticket is unchanged rather than a claim summary.
-  The local-write failure message drops "claimed X, but". `_tracker_import` is
-  untouched and still claims.
+  The local-write failure message drops "claimed X, but". `_tracker_import`
+  still claims.
+- **`tracker import` on a ticket that is bound here but unassigned** — the
+  state `link` leaves — now refuses saying the ticket is linked but not
+  claimed, instead of "the tracker says it is assigned to nobody", which read
+  as the binding and the tracker disagreeing. Still exit 1; no tracker write.
+- **`tracker` help corrections** — `import`'s refusal list no longer claims a
+  re-run on your own bound ticket refuses (it prints the item) or that a
+  missing claim transition always refuses (not when the ticket is already
+  yours), and adds the omitted refusals; `link` and `unlink` add invalid
+  `--part` and unreadable bindings; `show` says `claimable` ignores the
+  assignee; `--part` states its naming rule.
 - **`link` and `unlink` accept every status**, `completed` and `discarded`
   included. `_unresolved_item` loses its `RESOLVED_STATUSES` branch and is
   renamed `_item_or_reason`; it is now a lookup. `RESOLVED_STATUSES` stays
-  imported for `_work_list` and `_work_delete`. In a node that does not retain
-  resolved items the slug simply is not found, which is the honest answer.
+  imported for `_visible_board_items` and `_work_delete`. The binding is written
+  wherever the item's folder is: under the default gitignore rules for resolved
+  folders it is on disk but never staged, and a resolved item not retained but
+  not yet removed by `tcw work delete` binds like any other. Once removed, the
+  slug is not found. No warning is printed for the unstaged write (a
+  `ponytail:` note in `_item_or_reason` marks it).
 - **`_binding_for` takes `ticket_id`, `ticket_key`, `ticket_url`** instead of a
   `ClaimOutcome`, so a binding can be built from a `TicketRead`. Both call sites
   pass the three values.

@@ -127,8 +127,10 @@ The ticket keeps its status and assignee, so a ticket somebody else holds is
 bindable, and nothing but `tracker.yaml` is written, so the item keeps its status,
 owner and documents. Any status can be linked or unlinked, `completed` and
 `discarded` included, which is how finished work is tied to the ticket that tracked
-it and how a wrong binding on it is repaired. Nothing claims a linked ticket for
-the caller yet: tell them to move it in the tracker themselves when they start.
+it and how a wrong binding on it is repaired. Resolved folders are gitignored by
+default, so such a binding is written to disk but never committed. Nothing claims a
+linked ticket for the caller yet — `import` on one refuses, saying it is linked but
+not claimed — so tell them to move it in the tracker themselves when they start.
 
 **The claim decides from the ticket, never from Jira's reply.** `import`
 reads the ticket, applies the configured claim transition, assigns the ticket to the
@@ -163,7 +165,7 @@ who took the ticket. No credential and no e-mail address.
 when a binding exists, and refuses when the tracker disagrees. A binding that is not
 a readable mapping, or two items holding one ticket and part, makes `import` and
 `link` refuse and name the items; the scan skips resolved items, so a ticket held
-by a finished one can be bound to a second, open one; `tcw validate` reports a binding that is not a
+by a finished one can be bound to a second item, open or finished; `tcw validate` reports a binding that is not a
 mapping, as it does for any record TCW writes.
 
 `import` puts the ticket's description into the item's **intake** with a link to the

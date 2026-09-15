@@ -54,15 +54,18 @@ and your board showed ten pieces of work under way when none were.
 - **You can link a finished item**, and unlink one. That is how work that is
   already done gets tied to the ticket that tracked it, and it means a binding
   pointed at the wrong ticket is repairable wherever you find it — previously
-  both were refused once an item was completed or discarded.
+  both were refused once an item was completed or discarded. Finished items are
+  kept out of git by default, so that binding stays on your machine along with
+  the rest of the item.
 - **The binding no longer records who claimed the ticket**, because nothing is
   claimed. Bindings written before this release still work; the old field is
   ignored.
 
 **One thing to know:** nothing moves a linked ticket for you yet. If you link an
 item and then start work, the ticket stays where it is until you move it in Jira
-yourself. `tracker import` remains the only command that takes a ticket. Claiming
-for an item you already linked is coming separately.
+yourself. `tracker import` remains the only command that takes a ticket, and it
+will not take one you have linked: it says the ticket is linked but not claimed.
+Claiming for an item you already linked is coming separately.
 
 ## Every command now explains its arguments
 

@@ -450,20 +450,25 @@ nobody. On your side nothing but the binding is written, so the item keeps its
 status, its owner and its documents. Any item can be linked, a finished one
 included, which is how work that is already done gets tied to the ticket that
 tracked it; the same goes for `unlink`, so a binding pointed at the wrong ticket is
-repairable wherever you find it. `unlink` keeps a record of what was bound and your
+repairable wherever you find it. A finished item's folder is kept out of git by
+default, so a binding on one stays on your machine along with the rest of that
+item. `unlink` keeps a record of what was bound and your
 reason, and like `link` it never changes the ticket in Jira.
 
 Because `link` does not claim, **nothing moves a linked ticket for you.** When you
-start work on an item you linked, move the ticket in Jira yourself; `import` is
-still the only command that takes one.
+start work on an item you linked, move the ticket in Jira yourself. `import` is
+still the only command that takes a ticket, but not one that is already linked:
+run on a linked ticket, it tells you the ticket is linked but not claimed and
+leaves both alone.
 
 Four limits to know. On a workflow that lets anyone start a ticket from any status,
 two people can both take the same ticket, and TCW does not stop that. Two runs by the
 same Jira account at the same moment can both create an item. Each node keeps its
 own bindings: importing one ticket in two nodes of a workspace, even nodes sharing
 inherited settings, gives two items, one in each. And a ticket held by a finished
-item can be bound to a second, open one with no warning — a discarded item's ticket
-is meant to be available again, and TCW cannot tell that case from the other.
+item can be bound to a second item, open or finished, with no warning — a discarded
+item's ticket is meant to be available again, and TCW cannot tell that case from the
+other.
 
 Two guarantees worth stating plainly. A project with no `tracker` block behaves
 exactly as before, with no new required setting and no network access. And
