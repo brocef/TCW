@@ -18,39 +18,28 @@ otherwise runs the primary checkout's code, not the worktree's.
 The spec's shared contract: one function turns a stored timestamp (a string, a
 `datetime.date` or a `datetime.datetime`; a date alone meaning 12:00 UTC; a full
 ISO 8601 timestamp with an offset or `Z`) into a timezone-aware `datetime`. The
-timestamps item owns it.
+timestamps item owns it, and its plan (committed `a991ee36`) names it exactly:
+**`read_timestamp(value) -> datetime` in the new module `tcw/timestamps.py`**,
+which raises `ValueError` for anything it cannot read (a time with no offset,
+non-date text, `""`, `None`, a `bool`, a number).
 
-1. Find that item: `tcw work show
+1. Check whether `tcw/timestamps.py` exists with `read_timestamp` in it. The
+   timestamps item may already have landed; `tcw work show
    2026-09-15-record-a-time-of-day-and-timezone-offset-in-every-timestamp-tcw-writes`
-   (it may be in `backlog`, `active`, `completed`, or retired to the graveyard,
-   in which case `show` names the commit holding its documents). Read its
-   `spec.md` and `plan.md` for the function's name, module, and what it does
-   with an unreadable value (raise, or return `None`).
+   says where it stands. If its plan has been revised since `a991ee36`, follow
+   the revised name and behavior instead of the ones above.
 2. Then exactly one of:
-   - **The function already exists in the code** (grep for the name its plan
-     gives). Use it; change nothing in this task. Commit nothing.
-   - **Its plan names the function but it is not in the code yet.** Add it
-     under that exact name, in that exact module, with that unreadable-value
-     behavior, plus the tests its plan lists for it (or, if it lists none, the
-     six cases below). Say so in this item's `outcome.md`, so the timestamps
-     item reuses it instead of adding a second one.
-   - **Its plan does not exist or does not name the function.** Add
-     `parse_timestamp(value) -> datetime | None` to `tcw/store/base.py`, near
-     `WORK_LEVELS` (`tcw/store/base.py:852`), returning `None` for anything it
-     cannot read. Record the name and module in this item's `outcome.md`, and
-     tell the user at the end of implementation so the timestamps item's plan
-     can be pointed at it.
-3. Tests (new section `# ── timestamp reading ──` in `tests/test_work.py`,
-   unless the other item's plan names a different file):
-   - `'2026-09-15'` → `2026-09-15T12:00:00+00:00`
-   - `datetime.date(2026, 9, 15)` → the same
-   - `'2026-09-15T14:03:22-07:00'` → that moment, offset kept
-   - `'2026-09-15T21:03:22Z'` → equal to the previous value
-   - a `datetime.datetime` with an offset → returned unchanged
-   - `'not-a-date'`, `''` and `None` → the unreadable behavior (raise or `None`)
+   - **It exists.** Use it; change nothing in this task. Commit nothing.
+   - **It does not exist yet.** Create `tcw/timestamps.py` holding only
+     `read_timestamp`, built exactly as the timestamps plan's Task 2 describes
+     it, with that plan's `read_timestamp` tests (its AC 2-4) in
+     `tests/test_timestamps.py`. Do not add `timestamp_now` or `stored_form`;
+     they belong to the timestamps item. Say so in this item's `outcome.md`, so
+     the timestamps item's Task 2 reduces to checking the function and adding
+     the rest beside it.
 
-**Files:** `tcw/store/base.py` (or the module the other plan names),
-`tests/test_work.py`. **Proves it:** the six tests.
+**Files:** `tcw/timestamps.py`, `tests/test_timestamps.py` (only if created
+here). **Proves it:** those tests.
 
 ## Task 2 — Ordering in the model: `WORK_SORT_KEYS`, `order_by`, `board(sort=…)`
 
@@ -62,8 +51,8 @@ In `tcw/store/base.py`:
    `order_by(items: list[WorkItem], key: str, reverse: bool = False) -> list[WorkItem]`.
    It reads only `WorkItem` fields. Behavior, exactly:
    - A value per item, or "unset":
-     - `created`: the Task 1 function's result; `None` or a raised
-       `ValueError`/`TypeError` means unset.
+     - `created`: `read_timestamp(created)`; a raised `ValueError` means
+       unset.
      - `priority`: the value if it is an `int` and not a `bool`; else unset.
      - `effort`: `WORK_LEVELS.index(effort)` if it is in `WORK_LEVELS`; else
        unset.
