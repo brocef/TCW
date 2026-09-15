@@ -583,7 +583,7 @@ reports, comments, and the known limits are in
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`work`](skills/work/SKILL.md)               | Guides an agent through the whole work lifecycle: triaging the inbox, writing the request, spec and plan, implementing, verifying, completing, splitting large items, and coordinating epics. |
 | [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md) | Once a problem has surfaced (rejected work, a false claim in a spec, something shipped that should not have), finds which lifecycle stage could first have caught it.                         |
-| [`tcw-work-create`](skills/tcw-work-create/SKILL.md) | Turns an idea for a piece of work into a work item, or adds it to the item or inbox entry that already covers it, after checking what is already tracked.                                     |
+| [`work-create`](skills/work-create/SKILL.md) | Turns an idea for a piece of work into a work item, or adds it to the item or inbox entry that already covers it, after checking what is already tracked.                                     |
 
 Most day-to-day work starts from one of the command skills (planning an item,
 driving it to completion, verifying it, processing the inbox) described in
@@ -669,7 +669,7 @@ across the axes.
 | [`tcw-setup`](skills/tcw-setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
 | [`tcw-configure`](skills/tcw-configure/SKILL.md)           | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and offers a version bump when work is done.                                     |
-| [`tcw-work-stage`](skills/tcw-work-stage/SKILL.md)         | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
+| [`work-stage`](skills/work-stage/SKILL.md)         | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
 
 **Command skills: the everyday workflows**
 

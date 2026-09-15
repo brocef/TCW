@@ -7,7 +7,7 @@ only related to it? The answer covers open items **and** the work inbox, whose
 entries are not items and never appear in `tcw work list`.
 
 **It is read-only.** No transition, no `tcw work edit`, no file written. The
-`tcw-work-create` skill decides what to do with the answer.
+`work-create` skill decides what to do with the answer.
 
 ## Candidates
 

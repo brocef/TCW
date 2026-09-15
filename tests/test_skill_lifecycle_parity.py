@@ -307,12 +307,12 @@ def test_the_router_routes_to_every_reference_file():
 # ── the composing skill ──────────────────────────────────────────────────────
 #
 # One document composes a stage out of `cat <router>` + `tcw work stage prompt`:
-# `tcw-work-stage`, which takes the stage id and the work item as arguments and
+# `work-stage`, which takes the stage id and the work item as arguments and
 # reaches every stage. Five per-stage skills that baked the stage in were
 # deleted; the tests below keep their parametrised shape, keyed by None for the
 # generic skill, so a second composing document would slot back in.
 
-STAGE_SKILL = REPO / "skills/tcw-work-stage/SKILL.md"
+STAGE_SKILL = REPO / "skills/work-stage/SKILL.md"
 
 # The generic skill keyed by None: it has no single stage, and every parametrised
 # test below has to say what it does differently for that case anyway.
@@ -419,7 +419,7 @@ def test_the_manual_fallback_says_where_the_arguments_come_from():
     sentences = re.split(r"(?<=\.)\s+", body)
     assert any("in place of" in s and "$stage" in s and "$item" in s
                for s in sentences), (
-        "tcw-work-stage never says to use the stage and item named in the "
+        "work-stage never says to use the stage and item named in the "
         "request in place of `$stage` and `$item`")
 
 

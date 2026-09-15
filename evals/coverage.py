@@ -50,7 +50,7 @@ EXCLUSIONS = {
 # unmeasured routes are recorded here rather than left to look like clean
 # coverage.
 PARTIAL = {
-    "tcw-work-stage":
+    "work-stage":
         "Axis A covers the spec, plan, implement and verify routes. The "
         "`request` route is unmeasured: `request` is the one stage whose job is "
         "asking the user questions, which a non-interactive harness cannot do. "

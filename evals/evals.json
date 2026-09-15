@@ -183,7 +183,7 @@
    "id": "A1",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -219,7 +219,7 @@
    "id": "A2",
    "axis": "A",
    "stage": "plan",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -255,7 +255,7 @@
    "id": "A3",
    "axis": "A",
    "stage": "implement",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -291,7 +291,7 @@
    "id": "A4",
    "axis": "A",
    "stage": "verify",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -332,7 +332,7 @@
    "id": "A5",
    "axis": "A",
    "stage": "postmortem",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "completed",
    "arms": [
     "customized",
@@ -376,7 +376,7 @@
    "id": "A6",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized"
@@ -395,7 +395,7 @@
    "id": "A7",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized"
@@ -414,7 +414,7 @@
    "id": "A8",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "runner": "codex",
    "arms": [
@@ -888,8 +888,8 @@
   {
    "id": "B13",
    "axis": "B",
-   "skill": "tcw-work-create",
-   "invokes": "tcw-work-create",
+   "skill": "work-create",
+   "invokes": "work-create",
    "item": "active",
    "arms": [
     "with-skill",
@@ -900,9 +900,9 @@
     {
      "predicate": "tool_input_contains",
      "args": {
-      "text": "tcw-work-create"
+      "text": "work-create"
      },
-     "text": "the agent invoked the tcw-work-create skill or opened its file for an idea mentioned in passing"
+     "text": "the agent invoked the work-create skill or opened its file for an idea mentioned in passing"
     },
     {
      "predicate": "tool_input_contains",
@@ -928,7 +928,7 @@
      "text": "no item was created: the inbox entry covers the report"
     }
    ],
-   "note": "The fixture seeds docs/work/inbox/slow-login.md in step 9 of seed() (evals/seed_fixture.py), which every non-bare variant runs; its text already says eight seconds for accounts with many invoices, but not the import. What tells runs apart is files_changed_exactly: an agent that ignores the remark changes nothing, and one that creates an item or a second entry changes other paths. tool_input_contains 'tcw-work-create' is also satisfied by a Bash command naming the skill folder, so it is a routing signal, not proof of behavior. In the no-skill arm the first assertion and files_changed_exactly are expected to fail. new_item_count reads items that run_one does not yet write (2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly)."
+   "note": "The fixture seeds docs/work/inbox/slow-login.md in step 9 of seed() (evals/seed_fixture.py), which every non-bare variant runs; its text already says eight seconds for accounts with many invoices, but not the import. What tells runs apart is files_changed_exactly: an agent that ignores the remark changes nothing, and one that creates an item or a second entry changes other paths. tool_input_contains 'work-create' is also satisfied by a Bash command naming the skill folder, so it is a routing signal, not proof of behavior. In the no-skill arm the first assertion and files_changed_exactly are expected to fail. new_item_count reads items that run_one does not yet write (2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly)."
   }
  ]
 }

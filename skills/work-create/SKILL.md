@@ -1,5 +1,5 @@
 ---
-name: tcw-work-create
+name: work-create
 description: "Turns an idea for a piece of work into a tracked TCW work item, or adds it to the item or inbox entry that already covers it, after checking the board and the work inbox and recording blockers, references and origin."
 when_to_use: "Use when you notice in passing, in the middle of other work, something that should outlive this session — a bug found while doing something else, a follow-up or deferred cleanup a task or review leaves behind, a 'we should also…' — or when a user asks to file, track, open or log a work item, or to add something to the backlog. Also when handing such an idea to a subagent. Do not use it for children of an item already being planned (tcw work new --parent), GitHub issues (tcw-extras-triage-issues), triaging the work inbox (work), a bug in TCW itself (tcw-extras-report), or asking which stage should have caught a problem (tcw-post-mortem)."
 allowed-tools: Bash(tcw *), Bash(git *), Bash(grep *), Read, Edit, Write

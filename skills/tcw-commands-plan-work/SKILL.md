@@ -21,7 +21,7 @@ stages from there through `plan.md`, loading **only** each stage's own document:
 For a `type: epic` item, also read the `work` skill's `epic-deltas.md` — the same three
 stages, with an overview spec and a coordination plan.
 
-Planning from a chat request with no existing item: run the `tcw-work-create`
+Planning from a chat request with no existing item: run the `work-create`
 skill first, in interactive mode. The chat request answers its references and
 origin questions. If it reports `already tracked`, `amended` or
 `already in progress`, stop and report that. If it reports `revised`, resume

@@ -190,7 +190,7 @@ SETUP_PROJECT = "/p/skills/tcw-setup/references/project.md"
 CONFIGURE_DOCS = "/p/skills/tcw-configure/references/docs-sync.md"
 TAXONOMY_SKILL = "/p/skills/tcw-taxonomy/SKILL.md"
 WORK_SKILL = "/p/skills/work/SKILL.md"
-CREATE_SKILL = "/p/skills/tcw-work-create/SKILL.md"
+CREATE_SKILL = "/p/skills/work-create/SKILL.md"
 
 CASE_ROUTING = [
     ("B11", "tool_input_contains", SETUP_PROJECT, CONFIGURE_DOCS),
@@ -201,7 +201,7 @@ CASE_ROUTING = [
     ("B8", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
     # B13 carries a second `tool_input_contains` (for the inbox), so its row
     # names which assertion it pins by that assertion's search text.
-    ("B13", "tool_input_contains", WORK_SKILL, CREATE_SKILL, "tcw-work-create"),
+    ("B13", "tool_input_contains", WORK_SKILL, CREATE_SKILL, "work-create"),
 ]
 
 

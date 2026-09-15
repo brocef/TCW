@@ -77,12 +77,11 @@ def _names_missing_from(blob: str, names) -> list[str]:
     """Which of `names` the description does not mention, matching each as a
     **whole token** rather than as a bare substring.
 
-    The distinction is load-bearing and was not before the per-stage skills
-    shipped: `tcw-work-stage` is a substring of `tcw-work-stage-spec`, so a plain
-    `n in blob` finds the generic skill inside every specialised one and reports
-    it present when the description never names it. The whole enumeration guard
-    for that skill would be dead — its name could be deleted from the
-    description with the suite green.
+    The distinction is load-bearing: `work` is a substring of `work-stage` and
+    `work-create`, so a plain `n in blob` finds the shorter skill inside every
+    longer one and reports it present when the description never names it. The
+    whole enumeration guard for that skill would be dead — its name could be
+    deleted from the description with the suite green.
 
     The lookahead is the fix: a trailing `-` or word character means the match
     landed inside a longer name, not on the one being checked.
@@ -113,18 +112,18 @@ def test_the_codex_description_counts_the_skills_it_ships():
 
 
 def test_a_shared_name_prefix_cannot_stand_in_for_the_shorter_name():
-    """The guard above, guarded. `tcw-work-stage` is a prefix of all five
-    `tcw-work-stage-<stage>` skills, so under the substring match this test
-    replaces, dropping the generic skill from the description was invisible:
-    its name was still found, inside its own specialisations.
+    """The guard above, guarded. `work` is a prefix of `work-stage` and
+    `work-create`, so under the substring match this test replaces, dropping the
+    shorter skill from the description was invisible: its name was still found,
+    inside the longer ones.
 
     Asserting on the real description would not catch a revert — it names every
     skill, so both matchers agree on it. This asserts the discrimination
     directly, on a blob that names only the longer skill.
     """
-    blob = "ships fourteen skills, among them tcw-work-stage-spec"
-    assert _names_missing_from(blob, ["tcw-work-stage-spec"]) == []
-    assert _names_missing_from(blob, ["tcw-work-stage"]) == ["tcw-work-stage"]
+    blob = "ships sixteen skills, among them work-stage"
+    assert _names_missing_from(blob, ["work-stage"]) == []
+    assert _names_missing_from(blob, ["work"]) == ["work"]
 
 
 SHIPPED_SKILLS = sorted((REPO / "skills").glob("*/SKILL.md"))

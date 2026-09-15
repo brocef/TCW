@@ -1,5 +1,5 @@
 ---
-name: tcw-work-stage
+name: work-stage
 description: Read a TCW lifecycle stage in one piece — the stage's own working document composed with the instructions this project resolves for it. Use when working a lifecycle stage (inbox, request, spec, plan, implement, verify, postmortem) for a work item, instead of opening the stage document and running the CLI separately.
 when_to_use: Use when about to work a TCW lifecycle stage and you want the stage document and the project's resolved instructions together. Takes the stage id and, for every stage but `inbox`, the work item reference. It reads only — `tcw work stage gate` is still what refuses.
 arguments: [stage, item]
