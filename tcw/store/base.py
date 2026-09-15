@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import copy
 import re
+import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import quote
 
 
 class RefError(Exception):
@@ -1035,6 +1037,10 @@ class TrackerConfig:
     statuses: dict = field(default_factory=dict)
     # Refuse local work no claimed ticket authorizes (`work/require-tracker-backed-work`).
     strict: bool = False
+    # Post a short comment on the ticket for each lifecycle move, with `link` — a URL
+    # template with `{project}` and `{slug}` — appended when set.
+    comments: bool = False
+    link: str = ""
 
 
 # The only `provider` value that parses. A literal in the abstract layer, which is
@@ -1044,7 +1050,9 @@ class TrackerConfig:
 TRACKER_PROVIDERS = ("jira-cloud",)
 
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
-                          "transitions", "statuses", "strict", "timeout-seconds"})
+                          "transitions", "statuses", "strict", "timeout-seconds",
+                          "comments", "link"})
+TRACKER_LINK_PLACEHOLDERS = frozenset({"project", "slug"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # `claim` alone: where a ticket goes for every other move is a *status*, under
 # `statuses`, because only a status can be compared with the ticket to tell a
@@ -1148,6 +1156,13 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
                             f"is true, as one status or one for each of "
                             f"{', '.join(sorted(resolutions))}")
 
+    comments = raw.get("comments", False)
+    if not isinstance(comments, bool):
+        problems.append(f"work.tracker.comments: expected true or false, "
+                        f"got {type(comments).__name__}")
+        comments = False
+    link = _parse_tracker_link(raw.get("link"), problems)
+
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
     claim = nested_str(transitions, "claim", "transitions.claim")
@@ -1176,7 +1191,40 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         timeout_seconds=int(timeout),
         statuses=statuses,
         strict=strict,
+        comments=comments,
+        link=link,
     ), []
+
+
+def _parse_tracker_link(raw: Any, problems: list[str]) -> str:
+    """`work.tracker.link`, appending a problem per defect. Absent is `""`.
+
+    A link with comments off is not a problem: blocks merge key by key, so a child
+    node turning comments off cannot also remove a link its parent set."""
+    if raw is None:
+        return ""
+    where = "work.tracker.link"
+    if not isinstance(raw, str) or not raw.strip().startswith(("https://", "http://")):
+        problems.append(f"{where}: expected a URL starting https:// or http://")
+        return ""
+    try:
+        names = {name for _text, name, _spec, _conv in string.Formatter().parse(raw)
+                 if name is not None}
+    except ValueError as error:
+        problems.append(f"{where}: {error}")
+        return ""
+    unknown = sorted(names - TRACKER_LINK_PLACEHOLDERS)
+    if unknown:
+        problems.append(f"{where}: unknown placeholder "
+                        f"{', '.join('{' + name + '}' for name in unknown)} (use "
+                        f"{{project}} or {{slug}})")
+        return ""
+    return raw.strip()
+
+
+def link_for(template: str, project: str, slug: str) -> str:
+    """`template` with `{project}` and `{slug}` substituted, each percent-encoded."""
+    return template.format(project=quote(project, safe=""), slug=quote(slug, safe=""))
 
 
 def _parse_tracker_statuses(raw: Any, problems: list[str]) -> dict:
