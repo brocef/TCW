@@ -1195,3 +1195,104 @@ def test_the_path_is_walked_rather_than_the_status_mapping_inverted(tmp_path, fa
     outcome = deliver_now(root, slug, move=None, previous=None)
     assert outcome.state == "current", outcome
     assert fake.tickets[TICKET_ID].status == "Done"
+
+
+# ── a ticket linked to work already under way ────────────────────────────────
+
+
+def test_link_records_that_a_ticket_bound_to_started_work_is_behind(node, fake):
+    """Linking is the documented way to tie existing work to a ticket, and existing
+    work is often already under way. Nothing claimed the ticket and nothing moved it,
+    so the binding says so — which is also what makes `sync` able to find the item."""
+    st = FsWorkStore.open(node)
+    slug = st.create("Already under way").slug
+    st.start(slug, owner="a@example.test")
+    assert cli(node, "work", "tracker", "link", slug, KEY)[0] == 0
+    written = record(node, slug)
+    assert written["state"] == "pending" and written["move"] == "start"
+    assert written["since"] == "" and written["claim"] == "owed"
+
+
+def test_link_of_a_backlog_item_records_nothing(node, fake):
+    slug = bound_item(node)                                # links while in backlog
+    assert record(node, slug) is None
+
+
+def ladder_node(tmp_path, monkeypatch, workflow, *, status="To Do", assignee=None):
+    from tracker_fake import FakeJira
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=workflow)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status=status, assignee=assignee)
+    fake_.install(monkeypatch)
+    return make_node(tmp_path, statuses=STATUSES), fake_
+
+
+def late_linked(root, status="active"):
+    """An item already under way, then bound to a ticket — GitHub #42's shape."""
+    st = FsWorkStore.open(root)
+    slug = st.create("Already under way").slug
+    st.start(slug, owner="a@example.test")
+    if status == "review":
+        FsWorkStore.open(root).submit(slug)
+    assert cli(root, "work", "tracker", "link", slug, KEY)[0] == 0
+    return slug
+
+
+def test_a_late_linked_ticket_is_walked_up_to_where_its_item_is(tmp_path, monkeypatch):
+    """No shortcut to Done in this workflow, so catching up takes three transitions:
+    the claim onto In Progress, then In Review, then Done."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
+    slug = late_linked(root)
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "current", outcome
+    assert fake_.tickets[TICKET_ID].status == "Done"
+    assert fake_.applied == ["21", "41", "31"], fake_.applied
+    assert record(root, slug) is None
+
+
+def test_a_walk_that_cannot_finish_leaves_the_ticket_where_it_reached(tmp_path,
+                                                                     monkeypatch):
+    from tracker_fake import BROKEN_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, BROKEN_LADDER)
+    slug = late_linked(root)
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "conflicting", outcome
+    assert fake_.tickets[TICKET_ID].status == "In Review"       # as far as it got
+    written = record(root, slug)
+    assert written["since"] == "In Review"                      # actually observed
+    assert written["claim"] == "done"                           # the claim did land
+
+
+def test_sync_alone_brings_a_late_linked_ticket_forward(tmp_path, monkeypatch):
+    """The repair must be reachable from the command a user runs, not only from a
+    lifecycle move — which is why `link` records that the ticket is behind."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
+    slug = late_linked(root, status="review")
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake_.tickets[TICKET_ID].status == "In Review"
+    assert record(root, slug) is None
+
+
+def test_a_ticket_pushed_back_after_tcw_claimed_it_is_still_drift(tmp_path, monkeypatch):
+    """The catch-up is gated on the claim being owed, not on the ticket being behind:
+    a ticket TCW held and somebody moved back is behind too, and must stay refused."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER,
+                              status="In Progress", assignee=A)
+    slug = bound_item(root)                                   # linked while in backlog
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    fake_.tickets[TICKET_ID].status = "To Do"                 # pushed back by hand
+    fake_.applied.clear()
+    outcome = deliver_now(root, slug, move="submit", previous="active")
+    assert outcome.state == "conflicting", outcome
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "To Do"

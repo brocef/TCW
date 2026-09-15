@@ -45,6 +45,18 @@ never write the email address or the token into `tcw-config.yaml`.
 a ticket, exactly as the tracker spells it. `tcw` cannot tell a wrong name from a
 ticket that simply does not offer it yet, so copy it from the project's workflow.
 
+`transitions` also takes `submit`, `rework`, `complete` and `discard`, all optional.
+Each names the transition that move should use, for a workflow where the target
+status cannot identify one — two transitions ending in `Done`, one for finished work
+and one for abandoned work, is the usual case, and without a name neither `complete`
+nor a discard can sync at all. `discard` takes one name or one per discard resolution
+(`wontfix`, `duplicate`, `superseded`), and unlike `statuses.discarded` under strict
+mode it may be partial: it exists to disambiguate, so name only what is ambiguous.
+A move with no entry keeps deriving its transition from the status. There is no
+`start` key — that move is the claim, and `transitions.claim` names it. A named
+transition the ticket does not offer, or that matches twice, or that leads to a
+status other than the mapped one, is refused rather than ignored.
+
 `statuses` names the tracker **status** (not transition) a bound ticket should be in
 for each local status: `active`, `review`, `completed`, `discarded`. Names match
 ignoring case and extra spaces. Every key is optional and an unmapped status sends

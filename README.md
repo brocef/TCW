@@ -508,6 +508,7 @@ to the transitions.
 | `start`                                 | moves the item                 | also claims a linked ticket, and posts a comment if `comments: true`                                                                           |
 | `submit`, `rework`, `complete`, discard | moves the item                 | also moves a linked ticket to the Jira status mapped under `statuses`, and posts a comment if `comments: true`                                 |
 | the ticket could not follow             | —                              | the item still moves; the command exits 1 and records the ticket as pending or conflicting; `tcw work tracker sync` retries                    |
+| the ticket is behind its item           | —                              | a ticket TCW never claimed — linked to work already under way — is claimed and walked forward through the statuses you mapped                  |
 
 Setting `strict: true` changes several steps, so that no work happens without a
 claimed ticket:
@@ -557,7 +558,7 @@ tcw work complete <slug> --resolution done --confirm
 
 ```sh
 tcw work new "Speed up the checkout page"  # TCW: creates a backlog item.         Jira: unchanged
-tcw work tracker link <slug> ENG-517       # TCW: records the link.               Jira: unchanged; the ticket keeps its assignee
+tcw work tracker link <slug> ENG-517       # TCW: records the link, and that a started item's ticket is behind.  Jira: unchanged
 tcw work start <slug>                      # TCW: backlog → active.               Jira: if unassigned or yours, ENG-517 → In Progress, assigned to you
 ```
 

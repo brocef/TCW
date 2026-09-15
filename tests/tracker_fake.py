@@ -60,6 +60,16 @@ AMBIGUOUS = {
     "In Review": [("31", "Finish", "Done"), ("32", "Abandon", "Done"), *_SAME_NAME],
     "Done": [],
 }
+# A workflow with no shortcut: reaching `Done` means passing through `In Review`, so a
+# ticket several rungs behind its item needs more than one transition to catch up.
+STRICT_LADDER = {
+    "To Do": [("21", "Start Progress", "In Progress")],
+    "In Progress": [("41", "Ready for Review", "In Review")],
+    "In Review": [("31", "Finish", "Done")],
+    "Done": [],
+}
+# The same, with the last rung unreachable: a walk that gets part of the way.
+BROKEN_LADDER = {**STRICT_LADDER, "In Review": []}
 CATEGORY = {"To Do": "new", "In Progress": "indeterminate", "Done": "done",
             "Triage": "new", "In Review": "indeterminate", "Won't Do": "done",
             "Duplicate": "done"}

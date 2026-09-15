@@ -8,10 +8,20 @@ follows first time costs no file change at all. The item's committed status is t
 durable statement of where the ticket should be; the record says it is not there yet.
 
 **TCW never follows the tracker and never pulls a ticket back.** A ticket is moved
-only when it is assigned to the account the credentials authenticate as and sits
-where the item's previous status left it (*expected*). Anything else is reported as
-conflicting. Every decision is taken from what the tracker says, read fresh; the
+only when it is assigned to the account the credentials authenticate as — or
+unassigned and being discarded, the one move a ticket nobody holds authorizes — and
+when it sits where the item's previous status left it, or anywhere on the path from
+there to where the move is going. A ticket *behind* its item, on a binding whose
+claim is still owed, is claimed and walked forward rung by rung instead of refused:
+that is a ticket TCW has never held, which is what a late `link` leaves. One TCW did
+hold and somebody moved back is drift, and stays refused. Anything else is reported
+as conflicting. Every decision is taken from what the tracker says, read fresh; the
 binding is never proof of anything.
+
+Which transition a move applies is derived from the target status — exactly one
+offered transition must lead there — unless the project names one for that move under
+`work.tracker.transitions`, which is what makes a workflow with two routes into one
+status reachable at all.
 
 States: `current` (the ticket is where it should be), `pending` (the tracker could
 not be reached or asked), `conflicting` (it answered, and the answer stops the move),
@@ -51,22 +61,38 @@ _MOVED_FROM = {"start": ("active",), "submit": ("active",), "rework": ("review",
 # The rungs of the ladder, in the order the local lifecycle reaches them. A discard and
 # a completion share the top rung: both are where a ticket stops.
 _RUNG_ORDER = {"active": 0, "review": 1, "completed": 2, "discarded": 2}
+# The move that lands a ticket on each rung above `active`. `active` is absent because
+# the claim is what reaches it, and the claim has its own transition name.
+_MOVE_ONTO = {"review": "submit", "completed": "complete", "discarded": "discard"}
 REASON_LIMIT = 300
 
 
-def ladder(statuses: dict, local_target: str, resolution: str | None) -> tuple[str, ...]:
-    """The mapped statuses a ticket passes through on its way to `local_target`, in
-    local lifecycle order and ending at the target.
+def ladder_steps(statuses: dict, local_target: str,
+                 resolution: str | None) -> tuple[tuple[str, str], ...]:
+    """The ladder as `(tracker status, the local status it stands for)`, in local
+    lifecycle order and ending at `local_target`.
 
     Deduplicated, so two local statuses mapped to one tracker status share a rung —
     which is right: the journey simply has one hop fewer. An unmapped status has no
-    rung and is skipped, and a status mapped to nothing at the top yields `()`.
+    rung and is skipped.
     """
     upto = _RUNG_ORDER[local_target]
-    rungs = [target_status(statuses, name, None)
+    steps = [(target_status(statuses, name, None), name)
              for name, index in (("active", 0), ("review", 1)) if index < upto]
-    rungs.append(target_status(statuses, local_target, resolution))
-    return tuple(dict.fromkeys(filter(None, rungs)))
+    steps.append((target_status(statuses, local_target, resolution), local_target))
+    seen: set[str] = set()
+    out = []
+    for mapped, local in steps:
+        if mapped and _normalize(mapped) not in seen:
+            seen.add(_normalize(mapped))
+            out.append((mapped, local))
+    return tuple(out)
+
+
+def ladder(statuses: dict, local_target: str, resolution: str | None) -> tuple[str, ...]:
+    """`ladder_steps` without the local names."""
+    return tuple(mapped for mapped, _local in ladder_steps(statuses, local_target,
+                                                           resolution))
 
 
 def forward_from(rungs: tuple[str, ...], status: str) -> tuple[str, ...]:
@@ -349,6 +375,41 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             ticket = read_ticket(client, bound.ticket_id)
         except TrackerError as error:
             return finish(classify_error(error), str(error))
+
+        # A ticket TCW has never held can be several rungs below its item — it was
+        # linked to work already under way — and a workflow with no shortcut to the top
+        # cannot be caught up in one transition. Walk the rungs the project itself
+        # mapped, one at a time, re-reading between them because what a workflow offers
+        # depends on where the ticket is. Bounded by the ladder: at most one hop per
+        # rung, each strictly higher, so it ends without a counter. Only a claim that is
+        # owed gets here, which is what keeps a ticket somebody moved *back* out of it.
+        steps = ladder_steps(config.statuses, MOVE_STATUS[move], item.resolution)
+        reached = forward_from(tuple(rung for rung, _local in steps), ticket.status)
+        remaining = steps[len(steps) - len(reached) + 1:] if reached else steps
+        for rung, local_name in remaining:
+            hop = _MOVE_ONTO.get(local_name, move)
+            verdict, detail = assess_move(
+                ticket, target=rung, expected=(ticket.status,), move=hop,
+                named_transition=transition_name(config.move_transitions, hop,
+                                                 item.resolution))
+            if verdict == CURRENT:
+                continue
+            since = ticket.status
+            if verdict != "apply":
+                # Not undone: the ticket is nearer where it belongs than it was, and
+                # every resting place is a mapped rung, so a later sync resumes here.
+                return finish(verdict, detail)
+            try:
+                client.apply_transition(ticket.issue_id, detail.id)
+                ticket = read_ticket(client, bound.ticket_id)
+            except TrackerError as error:
+                since = ticket.status
+                return finish(classify_error(error), str(error))
+        since = ticket.status
+        if _normalize(ticket.status) == _normalize(target):
+            return finish(CURRENT)
+        return finish(CONFLICTING, f"{ticket.key} did not reach '{target}': it is in "
+                                   f"'{ticket.status}'.")
 
     named = transition_name(config.move_transitions, move, item.resolution) if move else ""
     verdict, detail = assess_move(ticket, target=target, expected=expected, move=move,

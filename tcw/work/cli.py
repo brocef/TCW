@@ -2098,6 +2098,12 @@ def _item_or_reason(st, slug: str, label: str):
     return item
 
 
+# The move that leaves an item in each status, for a binding made after the item was
+# already there. `active` is the claim's own move, which is exactly what is owed.
+_LINK_MOVE = {"active": "start", "review": "submit", "completed": "complete",
+              "discarded": "discard"}
+
+
 def _tracker_link(args: argparse.Namespace) -> int:
     """Record that an existing item and a ticket are the same work.
 
@@ -2154,6 +2160,25 @@ def _tracker_link(args: argparse.Namespace) -> int:
     document = _binding_for(client.config.provider, project, ticket.issue_id,
                             ticket.key, ticket.url, part, today,
                             unlinked_history(existing.content if existing else None))
+    # Work that is already under way has a ticket nothing has claimed and nothing has
+    # moved, so the binding says so from the start. Two things need it: the claim is
+    # genuinely owed, and recording that keeps a later failure from stamping
+    # `claim: done` over a claim nobody made; and `sync` only looks at items carrying a
+    # record, so without one the catch-up is unreachable from the command a user runs.
+    # This is a local write — the ticket itself is still untouched.
+    item = st.get(args.slug)
+    if (item is not None and item.status != "backlog"
+            and not st.pending_deletion(args.slug)):
+        from tcw.tracker.intake import with_sync_record
+        from tcw.tracker.sync import _now
+        document = with_sync_record(document, {
+            "state": "pending", "move": _LINK_MOVE[item.status], "since": "",
+            "claim": "owed",
+            # No full stop: `tcw work show` appends "; the claim is still owed" to a
+            # reason, and a sentence ending in one renders as ".;".
+            "reason": (f"{ticket.key} was linked to work already under way, so nothing "
+                       f"has claimed it and it has not followed the item yet"),
+            "at": _now()})
     try:
         st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
     except _LOCAL_WRITE_ERRORS as e:

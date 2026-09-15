@@ -157,7 +157,14 @@ tracker code is imported.
   row reads `ticket: KEY (pending)`; `--json` has `tracker.sync`.
 - **`tcw work tracker sync <slug> | --all`** retries recorded items. It skips an item
   whose `owner` is not this identity (it acts as whoever runs it), and on an item
-  with no record it checks without moving. Exit 1 while any stays unresolved.
+  with no record it checks without moving. Exit 1 while any stays unresolved — and a
+  **named** slug that was skipped is itself exit 1, naming `TCW_WORK_OWNER` and
+  `start --take-over`; a `--all` sweep still exits 0 over other people's items.
+- **Catching a ticket up.** Where TCW has never claimed the ticket — `link` on an item
+  past `backlog` records that, with `claim: owed` — delivery claims it and then walks
+  it forward one mapped status at a time to where the item is. Forward only, and only
+  through statuses `work.tracker.statuses` names. A ticket TCW claimed and someone
+  moved back is drift, not a catch-up.
 - **Parts:** a status move is held while another open item here shares the ticket.
 - **Another site:** a binding whose `ticket.url` is not on `base-url` is never
   written through; `import`/`link` refuse it naming the item.

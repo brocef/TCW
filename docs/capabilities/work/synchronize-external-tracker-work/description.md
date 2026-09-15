@@ -9,27 +9,47 @@ tracker status I map each local status to under `work.tracker.statuses` — `act
 `review`, `completed`, and `discarded`, which may name a status per discard
 resolution. A status I leave unmapped sends nothing.
 
-A ticket is only ever moved when it is assigned to me and still sits where the
-item's previous status put it. If someone else holds it, it is unassigned, it was
-moved on in Jira, or its workflow does not offer exactly one transition to the
-status I mapped, TCW leaves it alone and tells me why. It never follows Jira and
-never pulls a ticket back.
+A ticket is only ever moved when it is assigned to me — or unassigned and being
+discarded, since abandoning work is the one thing a ticket nobody holds authorizes —
+and when TCW can tell which transition to use. Where two transitions lead to the
+status I mapped, I name the one each move should use under `work.tracker.transitions`
+(`submit`, `rework`, `complete`, `discard`, the last taking one name or one per
+resolution); with nothing named, the old rule stands and exactly one transition must
+lead there. If someone else holds the ticket, if it has been moved on past where its
+item is, or if the named transition is not offered or leads elsewhere, TCW leaves it
+alone and tells me why. It never follows Jira and never pulls a ticket back.
+
+A ticket that is *behind* its item is brought forward rather than refused. Where TCW
+has never claimed it — I linked it to work already under way, which `tcw work tracker
+link` records — it claims the ticket and then walks it up through the statuses I
+mapped, one transition at a time, until it is where the item is. Forward only, only
+through statuses I named, and it stops at the first step it cannot make, leaving the
+ticket where it reached. A ticket TCW did claim and someone then moved backwards
+stays drift, and is not walked forward again.
+
+A hand move that takes the ticket part of the way TCW was trying to take it is
+accepted rather than reported as drift: anywhere on the path between where the ticket
+was left and where the move was going counts as in step.
 
 When the ticket did not follow — Jira was down, my credentials are missing, or the
 ticket was in the wrong place — the item still moves and is committed, the command
 exits 1 saying so, and the binding records whether that is pending or conflicting.
 `tcw work show` and `tcw work list` show that state, and `tcw work tracker sync
 <slug>` or `--all` retries it, including a claim that did not succeed at start.
-`sync` acts only on items I started, since it acts as whoever runs it, and a ticket
-that followed first time leaves no record and no file change. A ticket already
+`sync` acts only on items I started, since it acts as whoever runs it; naming one
+somebody else started fails and tells me how to run it as them or take the item over,
+while a `--all` sweep walks past their work and still succeeds. A ticket that followed
+first time leaves no record and no file change. A ticket already
 where it should be is not written to.
 
 Limits I accept: a ticket bound to several parts in this node moves only with the
 last open part, but parts in other nodes or clones are not seen; transitions made
 in `tcw serve`, or a command interrupted between its commit and the tracker call,
 leave no record, so "current" means no undelivered change is recorded, and `sync
-<slug>` checks such an item without moving its ticket; and a binding whose ticket
-link is on a different Jira site from the configured one is never written through.
+<slug>` checks such an item without moving its ticket; a binding whose ticket
+link is on a different Jira site from the configured one is never written through; and
+catching a ticket up stops at any status I have not mapped, so a workflow that forces
+a ticket through one needs that status mapped or that ticket moved by hand.
 
 With `comments: true` under `work.tracker`, each move also posts a short comment on
 the ticket saying what happened to which item — and, with a `link` template, where
