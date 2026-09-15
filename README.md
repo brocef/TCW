@@ -222,7 +222,7 @@ None of them copies another's content.
 Everything is plain files in the repository, so a code change and the
 description of what it changed travel in the same commit and the same pull
 request. A work item's status is the folder it sits in, so there is no separate
-ledger to fall out of step. Each item is addressed by its **slug**, a dated short
+list to fall out of step. Each item is addressed by its **slug**, a dated short
 name such as `2026-09-15-export-invoices-as-pdf`.
 
 **One command-line tool, `tcw`**, does everything:
@@ -395,7 +395,7 @@ behavior, changes to its internals, or changes to how the project itself runs.
   `--force`; there is no separate "blocked" status.
 - **Large items split.** A child item lives inside its parent's folder and moves
   with it. An **epic** groups related items, including items in other
-  repositories, and rolls their status back up.
+  repositories, and reports their combined status.
 - **Completing is checked.** `tcw work complete` prints the project's Definition
   of Done (a list you set in `docs/work/dod.yaml`) and refuses until you confirm
   it, while blockers are unresolved, or while declared capability changes are not
@@ -529,15 +529,10 @@ work:
         base-url: https://yourcompany.atlassian.net
         candidate-query: assignee = currentUser() AND status = "To Do"
         credentials:
-            { email-env: TCW_JIRA_EMAIL, token-env: TCW_JIRA_API_TOKEN }
+            email-env: TCW_JIRA_EMAIL
+            token-env: TCW_JIRA_API_TOKEN
         transitions: { claim: Start Progress }
-        statuses:
-            {
-                active: In Progress,
-                review: In Review,
-                completed: Done,
-                discarded: Won't Do,
-            }
+        statuses: { active: In Progress, review: In Review, completed: Done }
 ```
 
 The credentials entries hold the **names** of environment variables, never the
@@ -559,8 +554,8 @@ tcw work complete <slug> --resolution done --confirm
 
 ```sh
 tcw work new "Speed up the checkout page"  # TCW: creates a backlog item.         Jira: unchanged
-tcw work tracker link <slug> ENG-517       # TCW: records the link.               Jira: unchanged; anyone may hold the ticket
-tcw work start <slug>                      # TCW: backlog → active.               Jira: ENG-517 claimed → In Progress, assigned to you
+tcw work tracker link <slug> ENG-517       # TCW: records the link.               Jira: unchanged; the ticket keeps its assignee
+tcw work start <slug>                      # TCW: backlog → active.               Jira: if unassigned or yours, ENG-517 → In Progress, assigned to you
 ```
 
 **Example 3: the same project with `strict: true`.**
@@ -727,7 +722,8 @@ tcw serve --port 9000  # use a different port
 - **Several projects.** When the project has child projects, their boards are
   shown alongside its own, with items addressed as `<project-id>/<slug>`.
 - **Local only.** The server listens only on `127.0.0.1`. Requests that change
-  anything must come from that address and send JSON, which blocks other websites
+  anything must name a local address (`127.0.0.1`, `localhost` or `::1`) and send
+  JSON, which blocks other websites
   from making changes through your browser, and two people editing the same object
   cannot silently overwrite each other.
 - **If it fails to start**, check `node --version` is at least `v22.12.0`, and

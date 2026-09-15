@@ -61,7 +61,7 @@ work:
 | ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `provider`              | yes      | `jira-cloud`; nothing else is accepted.                                                                                                                |
 | `base-url`              | yes      | Your Jira Cloud site.                                                                                                                                  |
-| `candidate-query`       | yes      | The JQL query `tracker list` runs.                                                                                                                     |
+| `candidate-query`       | yes      | The Jira Query Language (JQL) search that `tracker list` runs.                                                                                         |
 | `credentials.email-env` | yes      | The **name** of the environment variable holding your Jira account's e-mail address.                                                                   |
 | `credentials.token-env` | yes      | The **name** of the environment variable holding your Jira API token.                                                                                  |
 | `transitions.claim`     | yes      | The workflow transition that starts a ticket, spelled exactly as Jira spells it.                                                                       |
@@ -99,6 +99,8 @@ After editing the block, run `tcw validate`, then `tcw work tracker list` to
 confirm the query and the credentials work.
 
 ## Inherited settings
+
+A project's **board** below means its own work store: the work items it keeps.
 
 In a workspace of connected projects that all use one Jira site, the site, the
 credential variable names and the claim transition are usually the same
@@ -193,7 +195,7 @@ note: 'Start Progress' leads to 'In Progress'. A ticket already in that status c
 Whether a workflow is exclusive can only be seen from the status the claim leads
 to. Many Jira workflows allow every status change from every status. On one of
 those, applying the claim twice succeeds, so two people who both take a ticket
-both succeed and neither is told. A ticket already in the landing status shows
+both succeed and neither is told. A ticket already in the status the claim leads to shows
 that plainly:
 
 ```
@@ -434,25 +436,25 @@ statuses:
 
 With it on:
 
-| Command                                             | Under strict mode                                                                                                                                                                    |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tcw work new`, `tcw work inbox accept`             | refused, pointing you at `tcw work tracker import <ticket>`. `new --epic` is allowed: epics only group work and are never gated.                                                     |
-| `tcw work start`                                    | refused for an item with no ticket. For a bound item, the ticket is claimed **first**, and the item starts only if the claim worked.                                                 |
-| `tcw work submit`, `rework`, `complete` as `done`   | the ticket is read first; refused unless it is assigned to you and in the status the item's last move left it in. For a `--worktree` item this is checked before anything is merged. |
-| `tcw work complete` as a discard                    | always allowed.                                                                                                                                                                      |
-| `tcw work drop`                                     | refused for an item that was ever bound. Discard it instead, so the record stays.                                                                                                    |
-| `tcw work tracker import`, and the claim at `start` | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition. The ticket stays claimed for you to release.                               |
-| `tcw serve`                                         | refuses the same changes, since it cannot check a ticket, and names the command to use.                                                                                              |
+| Command                                             | Under strict mode                                                                                                                                                                                                                                                      |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tcw work new`, `tcw work inbox accept`             | refused, pointing you at `tcw work tracker import <ticket>`. `new --epic` is allowed, because an epic only groups work.                                                                                                                                                |
+| `tcw work start`                                    | refused for an item with no ticket. For a bound item, the ticket is claimed **first**, and the item starts only if the claim worked. An epic may start without a ticket, but not with `--worktree`, since code on an epic's own branch would have no ticket behind it. |
+| `tcw work submit`, `rework`, `complete` as `done`   | the ticket is read first; refused unless it is assigned to you and in the status the item's last move left it in. For a `--worktree` item this is checked before anything is merged.                                                                                   |
+| `tcw work complete` as a discard                    | always allowed.                                                                                                                                                                                                                                                        |
+| `tcw work drop`                                     | refused for an item that was ever bound. Discard it instead, so the record stays.                                                                                                                                                                                      |
+| `tcw work tracker import`, and the claim at `start` | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition. The ticket stays claimed for you to release.                                                                                                                 |
+| `tcw serve`                                         | refuses the same changes, since it cannot check a ticket, and names the command to use.                                                                                                                                                                                |
 
 Also under strict mode:
 
 - **Jira must be reachable.** While it cannot be reached, or while an item has a
-  move not yet delivered, gated commands refuse. Run
+  move not yet delivered, the commands in the table above refuse. Run
   `tcw work tracker sync <slug>` first. An owed comment does not cause a refusal.
-- **A tracker block with problems does not turn strict mode off.** Gated commands
+- **A tracker block with problems does not turn strict mode off.** Those commands
   refuse until it is fixed; run `tcw validate`.
 - **There is no way past a refusal.** `--force` and `--take-over` do not bypass it.
-- **Not gated:** `tcw work edit`, writing lifecycle documents, and
+- **Never refused:** `tcw work edit`, writing lifecycle documents, and
   `tracker link` / `unlink`.
 - **Parts handled elsewhere.** A ticket shared by several parts is recognized
   only from the parts' items in this checkout. If the part that held the ticket
