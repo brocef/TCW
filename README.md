@@ -433,9 +433,9 @@ completed, or as discarded if it will not ship.
 ```mermaid
 flowchart LR
     inbox(["inbox entry<br/><i>stage: inbox</i>"]):::outside
-    backlog("backlog<br/><i>stages: request, spec, plan</i>")
-    active("active<br/><i>stage: implement</i>")
-    review("review<br/><i>stages: verify, postmortem</i>")
+    backlog("backlog<br/><i>stages: request, spec, plan</i>"):::status
+    active("active<br/><i>stage: implement</i>"):::status
+    review("review<br/><i>stages: verify, postmortem</i>"):::status
     completed("completed<br/><i>stage: postmortem</i>"):::terminal
     discarded("discarded"):::terminal
     removed(["removed"]):::outside
@@ -453,8 +453,10 @@ flowchart LR
     completed -.->|not retained| removed
     discarded -.->|not retained| removed
 
-    classDef outside stroke-dasharray: 4 3
-    classDef terminal stroke-width:3px
+    classDef status fill:#1d4ed8,stroke:#93c5fd,stroke-width:2px,color:#ffffff
+    classDef terminal fill:#1d4ed8,stroke:#93c5fd,stroke-width:4px,color:#ffffff
+    classDef outside fill:#6b7280,stroke:#d1d5db,stroke-width:2px,stroke-dasharray:5 4,color:#ffffff
+    linkStyle default stroke:#d97706,stroke-width:2px
 ```
 
 The stages, and the document each one writes:
