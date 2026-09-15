@@ -23,14 +23,13 @@ mode. The newest move decides — a comment posted or skipped clears an older on
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
 
 from tcw.store.base import link_for
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, binding_of, read_ticket,
                                 same_site, with_comment_record)
 from tcw.tracker.jira import TrackerError
-from tcw.tracker.sync import CONFLICTING, CURRENT, NONE, PENDING, REASON_LIMIT, Outcome, \
-    classify_error
+from tcw.tracker.sync import (CONFLICTING, CURRENT, NONE, PENDING, REASON_LIMIT, Outcome,
+                              _now, classify_error)
 
 SKIPPED, CLEARED = "skipped", "cleared"
 
@@ -89,7 +88,8 @@ def retry(store, slug: str, client, config) -> Outcome:
         _write(store, slug, None)
         return Outcome(CLEARED, f"the owed comment was removed: {why}.")
     if not same_site(bound.ticket_url, config.base_url):
-        return Outcome(NONE)
+        return Outcome(CONFLICTING, f"{bound.ticket_key}'s binding is not on "
+                                    f"{config.base_url}, so its comment is not sent.")
     return _send(store, slug, client, config, bound, record["move"], record["event"],
                  look_first=True)
 
@@ -145,7 +145,7 @@ def _owe(store, slug: str, move: str, event: str, state: str, reason: str) -> Ou
         return Outcome(state, reason)
     _write(store, slug, {"move": move, "event": event, "state": state,
                          "reason": reason[:REASON_LIMIT],
-                         "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
+                         "at": _now()})
     return Outcome(state, reason, recorded=True)
 
 

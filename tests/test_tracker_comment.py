@@ -45,8 +45,14 @@ def test_a_link_with_comments_off_is_not_a_problem():
     ({"comments": True, "link": "https://x/{slug"}, "work.tracker.link"),
     ({"comments": True, "link": 7}, "work.tracker.link"),
     ({"comments": True, "link": "https://x/{0}"}, "work.tracker.link"),
+    ({"comments": True, "link": "https://x/{slug:d}"}, "work.tracker.link"),
+    ({"comments": True, "link": "https://x/{slug!r}"}, "work.tracker.link"),
+    ({"comments": True, "link": "https://x/{slug:{project}}"}, "work.tracker.link"),
+    ({"comments": True, "link": "https://x/{slug.upper}"}, "work.tracker.link"),
+    ({"comments": True, "link": "https://x/a b/{slug}"}, "work.tracker.link"),
 ], ids=["comments-not-boolean", "unknown-placeholder", "not-http", "open-brace",
-        "not-text", "positional"])
+        "not-text", "positional", "format-spec", "conversion", "nested", "attribute",
+        "space"])
 def test_a_bad_comment_setting_is_a_problem(extra, key):
     config, problems = parsed(**extra)
     assert config is None and any(p.startswith(key) for p in problems), problems
@@ -477,7 +483,8 @@ def test_a_lost_comment_does_not_keep_an_unretained_item(tmp_path, fake):
     fake.fail("POST", "/comment", jira.TrackerUnavailable("dropped"))
     code, _out, err = cli(root, "work", "complete", slug, "--resolution", "done",
                           "--confirm")
-    assert code == 1 and "progress comment" in err
+    assert code == 1 and "progress comment" in err and "cannot be retried" in err
+    assert "tracker sync" not in err
     assert FsWorkStore.open(root).get(slug) is None
 
 
@@ -496,3 +503,46 @@ def test_no_comment_carries_the_token_or_a_lifecycle_document(tmp_path, fake):
     for _code, out, err in outputs:
         assert SENTINEL not in out + err
     assert SENTINEL not in (FsWorkStore.open(root).path(slug) / "tracker.yaml").read_text()
+
+
+def test_a_status_step_that_keeps_failing_carries_its_state_onto_the_comment(
+        tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.down = True
+    assert cli(root, "work", "submit", slug)[0] == 1
+    assert owed(root, slug)["state"] == "pending"
+    fake.down = False
+    claimed_ticket(fake, "In Progress", B)
+    assert cli(root, "work", "tracker", "sync", slug)[0] == 1
+    assert record(root, slug)["state"] == "conflicting"
+    assert owed(root, slug)["state"] == "conflicting"
+    assert owed(root, slug)["reason"] == record(root, slug)["reason"]
+
+
+def test_sync_removes_a_malformed_comment_record_and_one_owed_while_comments_are_off(
+        tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    path = FsWorkStore.open(root).path(slug) / "tracker.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["comment"] = "broken"
+    path.write_text(yaml.safe_dump(data))
+    code, out, _err = cli(root, "work", "tracker", "sync", "--all")
+    assert code == 0 and "cannot be read" in out and owed(root, slug) is None
+    fake.down = True
+    assert cli(root, "work", "submit", slug)[0] == 1
+    set_tracker_key(root, "comments", False)
+    cli(root, "work", "tracker", "sync", slug)                # status still failing
+    assert owed(root, slug) is None and record(root, slug) is not None
+
+
+def test_a_comment_owed_on_a_binding_from_another_site_is_reported(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    publish_now(root, slug, move="submit", status_state="pending")
+    set_tracker_key(root, "base-url", "https://elsewhere.invalid")
+    assert retry_now(root, slug).state == "conflicting"
+    assert owed(root, slug) is not None

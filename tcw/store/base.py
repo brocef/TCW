@@ -1229,15 +1229,24 @@ def _parse_tracker_link(raw: Any, problems: list[str]) -> str:
     if raw is None:
         return ""
     where = "work.tracker.link"
-    if not isinstance(raw, str) or not raw.strip().startswith(("https://", "http://")):
-        problems.append(f"{where}: expected a URL starting https:// or http://")
+    if (not isinstance(raw, str) or not raw.strip().startswith(("https://", "http://"))
+            or any(char.isspace() for char in raw.strip())):
+        problems.append(f"{where}: expected a URL starting https:// or http://, "
+                        f"with no spaces")
         return ""
     try:
-        names = {name for _text, name, _spec, _conv in string.Formatter().parse(raw)
-                 if name is not None}
+        fields = [(name, spec, conversion) for _text, name, spec, conversion
+                  in string.Formatter().parse(raw) if name is not None]
     except ValueError as error:
         problems.append(f"{where}: {error}")
         return ""
+    if any(spec or conversion is not None for _name, spec, conversion in fields):
+        # `{slug:d}` or `{slug!r}` would pass as a placeholder and fail, or render
+        # wrongly, only when a comment is posted.
+        problems.append(f"{where}: a placeholder is only {{project}} or {{slug}}, with "
+                        f"no format or conversion")
+        return ""
+    names = {name for name, _spec, _conversion in fields}
     unknown = sorted(names - TRACKER_LINK_PLACEHOLDERS)
     if unknown:
         problems.append(f"{where}: unknown placeholder "

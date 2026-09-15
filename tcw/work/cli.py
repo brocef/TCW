@@ -958,10 +958,11 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) ->
     if posted.state == SKIPPED:
         print(f"→ {posted.reason}", file=sys.stderr)
     elif posted.state in (PENDING, CONFLICTING) and not code:
+        retry = (f"Run `tcw work tracker sync {bare}`." if posted.recorded else
+                 f"It cannot be retried: {bare} is being removed.")
         print(f"tcw work {verb}: {bare} moved to {item.status} and was committed; {key} "
               f"did not get its progress comment ({posted.state}): "
-              f"{_sentence(posted.reason)} Run `tcw work tracker sync {bare}`.",
-              file=sys.stderr)
+              f"{_sentence(posted.reason)} {retry}", file=sys.stderr)
         code = 2
     return code
 
@@ -2248,7 +2249,8 @@ def _tracker_sync(args: argparse.Namespace) -> int:
                                   previous_status=None, check_only=not usable)
             posted = None
             if comment is not None:
-                if outcome is None or outcome.state in (CURRENT, NONE, HELD):
+                if (outcome is None or outcome.state in (CURRENT, NONE, HELD)
+                        or not client.config.comments):
                     posted = retry(st, slug, client, client.config)
                 else:
                     hold(st, slug, outcome.state, outcome.reason)
