@@ -226,8 +226,8 @@ user.
 
 | Governing match | Interactive | Delegated | Unattended | Outcome |
 | --- | --- | --- | --- | --- |
-| `covers`, and the idea adds nothing the match does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
-| `covers` an item that is `active` or in `review`, with new information | Tell the user the item and the new information; change nothing | Same, returned | Same, reported | `already in progress <ref>` |
+| `covers` an item that is `active` or in `review` (with or without new information) | Tell the user the item and any new information; change nothing | Same, returned | Same, reported | `already in progress <ref>` |
+| `covers` anything else, and the idea adds nothing the match does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
 | `covers` an inbox entry, or a `backlog` item with no `spec.md`, with new information | Append (rule below) | Append | Append | `amended <ref>` |
 | `covers` a `backlog` item that has `spec.md` or `plan.md`, with new information | Ask: revise, or leave as is (leaving still appends to the request) | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` |
 | `partly covers`, and the rest can be separated | Create an item for the rest (step 4), naming the match under References | Same | Same | `created <slug>` |
