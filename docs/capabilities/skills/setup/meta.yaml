@@ -1,0 +1,8 @@
+id: cap-bde2db
+name: Offer a skill dedicated to instructing agents how to set up TCW where it does
+  not work yet
+Status: Supported
+Feature: setup-skill
+Subject:
+- skill
+Planning doc: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill

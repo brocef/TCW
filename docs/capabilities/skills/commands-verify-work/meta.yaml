@@ -1,0 +1,8 @@
+id: cap-a0175e
+name: Offer a skill dedicated to instructing agents how to verify a finished work
+  item and record the decision
+Status: Supported
+Feature: commands-verify-work-skill
+Subject:
+- skill
+Planning doc: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill
