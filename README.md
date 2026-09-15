@@ -13,7 +13,34 @@ and Codex keep all three in step with the code.
 
 ## Contents
 
-<!-- readme-rewrite: unwritten -->
+- [Problem Statement](#problem-statement)
+- [Installation](#installation)
+    - [Plugin](#plugin)
+    - [CLI](#cli)
+    - [Cloud Environment Instructions](#cloud-environment-instructions)
+- [Overview](#overview)
+- [Taxonomy](#taxonomy)
+    - [Overview](#overview-1)
+    - [Usage](#usage)
+- [Capabilities](#capabilities)
+    - [Overview](#overview-2)
+    - [Usage](#usage-1)
+- [Work](#work)
+    - [Overview](#overview-3)
+    - [Lifecycle](#lifecycle)
+    - [Usage](#usage-2)
+- [Skills and Agents](#skills-and-agents)
+- [TCW Local Web App](#tcw-local-web-app)
+- [Documentation](#documentation)
+- [Development](#development)
+    - [Setting up](#setting-up)
+    - [Running the tests](#running-the-tests)
+    - [How work is tracked here](#how-work-is-tracked-here)
+    - [Measuring the skill layer](#measuring-the-skill-layer)
+    - [Releasing](#releasing)
+    - [Reporting problems](#reporting-problems)
+    - [License](#license)
+- [Further Reading](#further-reading)
 
 ## Problem Statement
 
