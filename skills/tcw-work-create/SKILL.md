@@ -2,7 +2,7 @@
 name: tcw-work-create
 description: "Turns an idea for a piece of work into a tracked TCW work item, or adds it to the item or inbox entry that already covers it, after checking the board and the work inbox and recording blockers, references and origin."
 when_to_use: "Use when you notice in passing, in the middle of other work, something that should outlive this session — a bug found while doing something else, a follow-up or deferred cleanup a task or review leaves behind, a 'we should also…' — or when a user asks to file, track, open or log a work item, or to add something to the backlog. Also when handing such an idea to a subagent. Do not use it for children of an item already being planned (tcw work new --parent), GitHub issues (tcw-extras-triage-issues), triaging the work inbox (tcw-work), a bug in TCW itself (tcw-extras-report), or asking which stage should have caught a problem (tcw-post-mortem)."
-allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+allowed-tools: Bash(tcw *), Bash(git *), Bash(grep *), Read, Edit, Write
 metadata:
     author: Brian Cefali
 license: Apache-2.0
@@ -32,16 +32,18 @@ for a user who is present in the parent session.
 **Handing the idea to a subagent** keeps the board search out of your context.
 Its brief carries the idea; where it came from (the item you are working, and
 the task or review that surfaced it); reference material already in the
-conversation; any answer the user has given; and the mode. It reports back
-step 5's single line.
+conversation; any answer the user has given, including on blockers ("none",
+slugs, or "determine automatically"); and the mode. It reports back step 5's
+single line.
 
 ## 0. Use the primary checkout's board
 
 If `git rev-parse --git-dir` and `git rev-parse --git-common-dir` print different
 paths, you are in a linked worktree. The board there is only as current as the
-branch, and anything filed there stays on the branch. Run every `tcw` command
-in steps 2–4 with the working directory set to the primary checkout: the path on
-the first `worktree` line of `git worktree list --porcelain`. This is the same
+branch, and anything filed there stays on the branch. Run every `tcw` and `git`
+command in steps 1–4 with the working directory set to the primary checkout: the
+path on the first `worktree` line of `git worktree list --porcelain`. That
+includes step 1's inbox entry and the strict-mode fallback. This is the same
 rule as `tcw work complete`.
 
 ## 1. Is the idea understandable?
@@ -53,7 +55,8 @@ cannot write that sentence:
 - **Delegated:** return `needs decision: clarify`, with the question to ask.
 - **Unattended:** write a raw entry into the folder `tcw work inbox path` prints.
   Give it a `# <title>` heading, the idea as you have it, and where it came
-  from. Report `deferred to inbox <entry>` and stop.
+  from. Commit it (step 4's commit), report `deferred to inbox <entry>`, and
+  stop.
 
 ## 2. Find overlap
 
@@ -83,17 +86,19 @@ tracked things covering the same work is itself news.
 - **Append only what is new.** Add it under a dated `## Added <YYYY-MM-DD>`
   heading that says where it came from, and never rewrite what is there. For an
   item, append to `initial-request.md` if it exists, otherwise `intake.md`. For
-  an inbox entry that is a folder, append to its main Markdown file. Commit as in
-  step 4.
+  an inbox entry that is a folder, append to the Markdown file that
+  `tcw work inbox show <entry>` prints as its body. Commit as in step 4.
 - **Revise** means re-running `spec`, and `plan` if one exists, after the
   append. Gate each one with `tcw work stage gate`, and commit each artifact
   separately. Hand them to subagents under the `tcw-work` skill's
   `delegation.md` if you can dispatch; otherwise run them yourself. Report
-  `revised` only once both artifacts are written. Inside a
+  `revised` only once every artifact being revised is written: the spec alone
+  when the item has no plan. Inside a
   `tcw-extras-autonomous-work` session, its advisors stand in for "ask", and
   this default applies only where that skill has no rule.
 - **Closed items are never the deciding match.** Name a close one under
-  References. If it was discarded, report its resolution, then carry on.
+  References. If it was discarded, put its resolution in the reason part of
+  your one outcome line.
 
 ## 4. Create
 
@@ -103,9 +108,9 @@ already answers the references and origin questions.
 
 | Question | Accepted answers | Delegated | Unattended default | Recorded as |
 | --- | --- | --- | --- | --- |
-| Known blockers? | Slugs · "no" · a description (search, then confirm with the user) · "determine automatically" (search, and do not confirm) | From the brief; if it is silent, determine automatically and list what you recorded | determine automatically | `--blocked-by <ref>` per blocker, plus a line saying why |
-| Reference material? | Anything given. Material already in the conversation or brief counts | From the brief | Take it from context; if there is none, write "no user to ask; none in context" | `## References`, one line of why it matters each |
-| A bug, or a follow-up to another item? | Yes, naming the item or symptom · no | From the brief's origin | The item being worked when the idea came up | `## Origin`, plus the `bug` tag for a bug |
+| Known blockers? | Slugs · "no" · a description (search, then confirm with the user) · "determine automatically" (search, and do not confirm) | From the brief. If the brief is silent, or describes a blocker you would have to confirm, create nothing and return `needs decision: blockers` with step 2's `blocks` lines as candidates | determine automatically | `--blocked-by <ref>` per blocker, plus a line saying why |
+| Reference material? | Anything given. Material already in the conversation or brief counts | From the brief; if it has none, write "none given in the brief" (`request` asks again later) | Take it from context; if there is none, write "no user to ask; none in context" | `## References`, one line of why it matters each |
+| A bug, or a follow-up to another item? | Yes, naming the item or symptom · no | From the brief's origin; if it has none, write "none given in the brief" | The item being worked when the idea came up | `## Origin`, plus the `bug` tag for a bug |
 
 **Record a blocker only when the idea cannot proceed until that item lands.**
 Sharing a topic, touching the same files, or a preferred order does not count;
@@ -135,11 +140,18 @@ MD
 
 Then commit only what you changed, in the repository that holds the store. A
 store can live in a different Git repository from the code, and a narrow commit
-keeps a working agent's own staged changes out:
+keeps a working agent's own staged changes out. Run `tcw work path` to get the
+store folder, then, with the absolute paths you created or changed (the item
+folder `tcw work path <slug>` prints, or the entry file under
+`tcw work inbox path`):
 
 ```bash
-git -C "$(tcw work path)" commit -- <the item folder or entry you changed>
+git -C <store folder> add -- <absolute paths>
+git -C <store folder> commit -m "<what was filed, and where it came from>" -- <absolute paths>
 ```
+
+Stage first: a new file git has never seen, such as a raw inbox entry, cannot be
+committed by path alone.
 
 A batch of related leftovers, such as one review's findings, may be one item
 or one inbox entry. Treat the batch as one idea.

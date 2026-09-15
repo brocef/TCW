@@ -9,8 +9,10 @@ internal module names.
   tracking in the middle of other work — a bug found in passing, a follow-up a
   review left behind — or you ask it to file something, it first checks your
   board and your work inbox. If the work is already tracked, it adds anything
-  new to that item instead of opening a duplicate; if not, it creates the item
-  with its blockers, reference material and where it came from.
+  new to that item or entry instead of opening a duplicate — or, when someone is
+  already working on it, tells you and changes nothing. If it is not tracked, it
+  creates the item with its blockers, reference material and where it came
+  from.
 - It can run in the background as a helper: it asks you, through the agent you
   are talking to, before revising a planned item, and uses sensible defaults only
   when you have asked the agent to work without checking in.
