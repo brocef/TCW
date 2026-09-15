@@ -637,3 +637,32 @@ def test_an_unreadable_binding_is_refused_not_a_traceback(strict, fake):
     code, _out, err = cli(strict, "work", "submit", slug)
     assert code == 1 and REFUSED in err and "not bound to a readable ticket" in err
     assert status(strict, slug) == "active"
+
+
+def test_a_discard_of_a_ticket_nobody_claimed_is_allowed(strict, fake):
+    slug = bound_item(strict)
+    claimed_ticket(fake, "To Do", None)
+    _code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "wontfix",
+                           "--confirm")
+    assert REFUSED not in err and status(strict, slug) == "discarded"
+
+
+def test_sync_rechecks_an_owed_claim_under_strict_mode(tmp_path, monkeypatch):
+    from test_tracker_sync import record
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=GLOBAL)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.account("b@example.test", B, "Bob")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=False)
+    slug = bound_item(root)
+    claimed_ticket(fake_, "In Progress", B)
+    assert cli(root, "work", "start", slug)[0] == 1          # started; claim owed
+    claimed_ticket(fake_, "To Do", None)                     # Bob let it go
+    set_tracker_key(root, "strict", True)
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1 and "second person could claim it too" in out + err
+    assert record(root, slug)["claim"] == "owed"
