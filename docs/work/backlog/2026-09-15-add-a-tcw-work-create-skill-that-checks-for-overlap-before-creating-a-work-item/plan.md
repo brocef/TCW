@@ -150,7 +150,7 @@ in four sections:
 - **AC 1:**
   `python -c "import yaml; L=open('skills/tcw-work-create/SKILL.md').read().splitlines(); e=L.index('---',1); f=yaml.safe_load('\n'.join(L[1:e])); assert f['name']=='tcw-work-create'; assert len(f['description'])+len(f['when_to_use'])<=1536; assert all(s in f['when_to_use'] for s in ['in passing','work item','tcw-extras-report','tcw-post-mortem']); print('ok')"`
   prints `ok`. It finds the frontmatter the same way
-  `tests/test_skill_lifecycle_parity.py:281` does.
+  `tests/test_skill_lifecycle_parity.py:282` does.
 - **AC 2:** a loop runs one `grep -qF` per AC 2 string and prints any that are
   missing:
   `for s in Interactive Delegated Unattended "git rev-parse --git-common-dir" "git worktree list --porcelain" find-overlap.md "## Added" "## Origin" "## References" "determine automatically" "tcw work inbox path" "tcw work tracker import" created amended revised "already tracked" "already in progress" "deferred to inbox" "needs decision"; do grep -qF -- "$s" skills/tcw-work-create/SKILL.md || echo "MISSING: $s"; done`
