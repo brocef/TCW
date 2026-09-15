@@ -159,7 +159,11 @@ def _tracker_text(value: dict, *, row: bool) -> str:
         return "unreadable" if row else f"tracker.yaml cannot be read ({value['problem']})"
     key, part = value["ticket"]["key"], value["part"]
     if row:
-        return key if part == "default" else f"{key} (part {part})"
+        sync = value.get("sync")
+        notes = [f"part {part}"] if part != "default" else []
+        if sync:
+            notes.append("unreadable sync record" if "problem" in sync else sync["state"])
+        return f"{key} ({', '.join(notes)})" if notes else key
     url = value["ticket"]["url"]
     return f"{key} ({value['provider']}, part {part})" + (f" {url}" if url else "")
 
@@ -198,6 +202,13 @@ def _print_item(item: WorkItem) -> None:
             print(f"blocked_by: {', '.join(labels)}")
     if item.tracker is not None:
         print(f"tracker: {_tracker_text(item.tracker, row=False)}")
+        sync = item.tracker.get("sync")
+        if sync and "problem" in sync:
+            print(f"tracker sync: record cannot be read ({sync['problem']})")
+        elif sync:
+            owed = "; the claim is still owed" if sync["claim"] == "owed" else ""
+            print(f"tracker sync: {sync['state']} after {sync['move']} ({sync['at']}): "
+                  f"{sync['reason']}{owed}")
     body = item.body.strip()
     if body:
         print()
@@ -782,6 +793,70 @@ def _complete_hint(slug: str) -> None:
           f"`tcw work complete {slug} --resolution done --confirm`", file=sys.stderr)
 
 
+def _local_owner(st, explicit: str | None = None) -> str:
+    """This machine's claimant identity: `--owner`, then `TCW_WORK_OWNER`, then the
+    Git email, then the Git name. `""` when none is set."""
+    owner = (explicit or os.environ.get("TCW_WORK_OWNER", "")).strip()
+    if not owner:
+        for key in ("user.email", "user.name"):
+            probe = subprocess.run(["git", "-C", str(st.node_root), "config", "--get", key],
+                                   stdin=subprocess.DEVNULL,
+                                   capture_output=True, text=True)
+            if probe.returncode == 0 and probe.stdout.strip():
+                owner = probe.stdout.strip()
+                break
+    return owner
+
+
+def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) -> int:
+    """Send a transition that has already happened to the item's ticket, if it has one.
+
+    Returns 0 when there is nothing to send or the ticket followed, 1 when it did not.
+    The move itself is never undone. An item without a readable binding, or a node
+    with no tracker configured, returns 0 before `tcw.tracker` is imported, so a
+    project without a tracker loads none of it.
+    """
+    try:
+        item = st.get(bare)
+    except MultipleMatch:
+        return 0
+    value = item.tracker if item is not None else None
+    if not isinstance(value, dict) or "problem" in value:
+        return 0
+    config = st.tracker_config()
+    problems = [] if config is not None else st.tracker_problems()
+    if config is None and not problems:
+        return 0
+    from tcw.tracker.sync import CONFLICTING, HELD, PENDING, deliver, record_unsent
+    key = value["ticket"]["key"]
+    try:
+        if config is None:
+            outcome = record_unsent(st, bare, move=move, reason=(
+                "the tracker configuration has problems: " + "; ".join(problems)
+                + ". Run `tcw validate`."))
+        else:
+            from tcw.tracker.jira import JiraClient
+            outcome = deliver(st, bare, JiraClient(config), config, move=move,
+                              previous_status=previous_status)
+    except _LOCAL_WRITE_ERRORS as e:
+        print(f"tcw work {verb}: {bare} moved to {item.status}, but whether {key} "
+              f"followed could not be recorded: {e}. Run `tcw work tracker sync "
+              f"{bare}`.", file=sys.stderr)
+        return 1
+    if outcome.claimed:
+        print(f"→ {outcome.claimed}", file=sys.stderr)
+    if outcome.state == HELD:
+        print(f"→ {outcome.reason}", file=sys.stderr)
+    if outcome.state not in (PENDING, CONFLICTING):
+        return 0
+    reason = outcome.reason.rstrip()
+    reason += "" if reason.endswith((".", "!", "?")) else "."
+    print(f"tcw work {verb}: {bare} moved to {item.status} and was committed; {key} was "
+          f"not updated in the tracker ({outcome.state}): {reason} Run "
+          f"`tcw work tracker sync {bare}` once that is resolved.", file=sys.stderr)
+    return 1
+
+
 def _start(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "start")
     if resolved is None:
@@ -804,31 +879,29 @@ def _start(args: argparse.Namespace) -> int:
                        st.get(bare), item_path=st.path(bare))):
         print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
         return 1
-    owner = (args.owner or os.environ.get("TCW_WORK_OWNER", "")).strip()
-    if not owner:
-        for key in ("user.email", "user.name"):
-            probe = subprocess.run(["git", "-C", str(st.node_root), "config", "--get", key],
-                                   stdin=subprocess.DEVNULL,
-                                   capture_output=True, text=True)
-            if probe.returncode == 0 and probe.stdout.strip():
-                owner = probe.stdout.strip()
-                break
+    owner = _local_owner(st, args.owner)
     if not owner:
         print("tcw work start: claimant identity required; pass --owner or set TCW_WORK_OWNER",
               file=sys.stderr)
         return 1
+    before = st.get(bare)
+    previous = before.status if before is not None else "backlog"
     try:
         st.start(bare, force=args.force, owner=owner, take_over=args.take_over)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
+        if isinstance(e, TransitionCommitError):      # the item did move
+            _deliver_after(st, bare, "start", "start", previous)
         return 1
     post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))
+    # Before any worktree setup, so a failure there cannot skip the claim.
+    delivered = _deliver_after(st, bare, "start", "start", previous)
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
         _complete_hint(args.slug)
-        return _post_result(post_err, "start", args.slug)
+        return _post_result(post_err, "start", args.slug) or delivered
     node = st.node_root
     ignore_changed = ensure_worktree_ignored(node)
     st.set_field(bare, "worktree", f"{WORKTREES_DIR}/{bare}")
@@ -882,7 +955,7 @@ def _start(args: argparse.Namespace) -> int:
     print(f"started {args.slug} → {loc} (worktree {wt})" if loc
           else f"started {args.slug} → worktree {wt}")
     _complete_hint(args.slug)
-    return _post_result(post_err, "start", args.slug)
+    return _post_result(post_err, "start", args.slug) or delivered
 
 
 def _submit(args: argparse.Namespace) -> int:
@@ -898,15 +971,18 @@ def _submit(args: argparse.Namespace) -> int:
         st.submit(bare)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
+        if isinstance(e, TransitionCommitError):      # the item did move
+            _deliver_after(st, bare, "submit", "submit", "active")
         return 1
     post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review",
                         st.get(bare), item_path=st.path(bare))
+    delivered = _deliver_after(st, bare, "submit", "submit", "active")
     print(f"submitted {args.slug} → review")
     print(f"→ next: verify the work, then either "
           f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
           f"send it back, delete refined-outcome.md and run "
           f"`tcw work rework {args.slug}`", file=sys.stderr)
-    return _post_result(post_err, "submit", args.slug)
+    return _post_result(post_err, "submit", args.slug) or delivered
 
 
 def _rework(args: argparse.Namespace) -> int:
@@ -922,13 +998,16 @@ def _rework(args: argparse.Namespace) -> int:
         st.rework(bare)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
+        if isinstance(e, TransitionCommitError):      # the item did move
+            _deliver_after(st, bare, "rework", "rework", "review")
         return 1
     post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))
+    delivered = _deliver_after(st, bare, "rework", "rework", "review")
     print(f"reworking {args.slug} → active")
     print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
           file=sys.stderr)
-    return _post_result(post_err, "rework", args.slug)
+    return _post_result(post_err, "rework", args.slug) or delivered
 
 
 def _lifecycle_lines(step, bindings_for) -> list[str]:
@@ -1789,7 +1868,8 @@ def _tracker_import(args: argparse.Namespace) -> int:
         project = _project_id(st)
         existing = find_binding(st, project=project,
                                 provider=client.config.provider,
-                                ticket_id=ticket.issue_id, part=part)
+                                ticket_id=ticket.issue_id, part=part,
+                                base_url=client.config.base_url)
         if existing is not None:
             print(existing)
             if ticket.assignee_id == ticket.me_id:
@@ -1918,7 +1998,8 @@ def _tracker_link(args: argparse.Namespace) -> int:
         project = _project_id(st)
         holder = find_binding(st, project=project,
                               provider=client.config.provider,
-                              ticket_id=ticket.issue_id, part=part)
+                              ticket_id=ticket.issue_id, part=part,
+                              base_url=client.config.base_url)
         if holder is not None:
             print(f"tcw work tracker link: {ticket.key} (part {part}) is already bound "
                   f"to {holder}.", file=sys.stderr)
@@ -1980,6 +2061,54 @@ def _tracker_unlink(args: argparse.Namespace) -> int:
     print(f"→ unlinked {args.slug} from {current.ticket_key}. The ticket is unchanged "
           f"in the tracker.", file=sys.stderr)
     return 0
+
+
+def _tracker_sync(args: argparse.Namespace) -> int:
+    """Retry delivery for one bound item, or every item with a sync record."""
+    if bool(args.slug) == bool(args.all):
+        print("tcw work tracker sync: name one slug, or pass --all.", file=sys.stderr)
+        return 1
+    client = _tracker_client("sync")
+    if client is None:
+        return 1
+    from tcw.tracker.intake import Bound, binding_of
+    from tcw.tracker.sync import CURRENT, HELD, NONE, deliver
+    st = _store()
+    if args.all:
+        slugs = [item.slug for item in st.query()
+                 if isinstance(item.tracker, dict) and item.tracker.get("sync")]
+    else:
+        if _item_or_reason(st, args.slug, "sync") is None:
+            return 1
+        if not isinstance(binding_of(st, args.slug)[0], Bound):
+            print(f"tcw work tracker sync: {args.slug} is not bound to a ticket.",
+                  file=sys.stderr)
+            return 1
+        slugs = [args.slug]
+    me = _local_owner(st)
+    code = 0
+    for slug in slugs:
+        item = st.get(slug)
+        if item.owner and item.owner != me:
+            print(f"{slug}: skipped — started by {item.owner}")
+            continue
+        recorded = item.tracker.get("sync")
+        usable = isinstance(recorded, dict) and "problem" not in recorded
+        try:
+            outcome = deliver(st, slug, client, client.config, move=None,
+                              previous_status=None, check_only=not usable)
+        except _LOCAL_WRITE_ERRORS as e:
+            print(f"{slug}: the record could not be written: {e}")
+            code = 1
+            continue
+        if outcome.state in (CURRENT, NONE):
+            print(f"{slug}: current")
+        elif outcome.state == HELD:
+            print(f"{slug}: held — {outcome.reason}")
+        else:
+            print(f"{slug}: {outcome.state} — {outcome.reason}")
+            code = 1
+    return code
 
 
 def _tags_list(args: argparse.Namespace) -> int:
@@ -2116,6 +2245,18 @@ def _complete(args: argparse.Namespace) -> int:
         err = merge_worktree(st.node_root, branch)
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
+            staged = subprocess.run(
+                ["git", "-C", str(st.store_git_root), "diff", "--cached", "--name-only",
+                 "--", str(st.path(bare) / "tracker.yaml")],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()
+            if staged and isinstance(item.tracker, dict) and item.tracker.get("sync"):
+                # A delivery record is staged, never committed, and git will not
+                # merge over a staged file the branch also carries.
+                print(f"tcw work complete: {bare}'s tracker.yaml holds a record of a "
+                      f"ticket move that did not reach the tracker, staged but not "
+                      f"committed. Run `tcw work tracker sync {bare}` to clear it once "
+                      f"the ticket follows, or commit it, then complete again.",
+                      file=sys.stderr)
             return 1
         item = st.get(bare)                           # re-read: the sidecar's declared
                                                       # list may have changed on the branch
@@ -2146,18 +2287,30 @@ def _complete(args: argparse.Namespace) -> int:
                        resolution=args.resolution)):
         print(f"tcw work complete: {err}; {bare} not closed", file=sys.stderr)
         return 1
+    previous = item.status
     try:
         st.complete(bare, args.resolution, dod_ack=checklist, force=args.force)
     except _ERRORS as e:
         print(f"tcw work complete: {e}", file=sys.stderr)
+        if isinstance(e, TransitionCommitError):      # the item did move
+            _deliver_after(st, bare, "complete", transition_id, previous)
         return 1
     resolved_status = "completed" if shipping else "discarded"
     post_err = run_post(policy, transition_id, st.node_root, bare,
                         resolved_status, item, item_path=st.path(bare),
                         resolution=args.resolution)
+    # Before any removal: a record of what did not reach the tracker lives in the
+    # item's folder, and removing the folder would lose it.
+    delivered = _deliver_after(st, bare, "complete", transition_id, previous)
     loc = st.locate(bare)
     delete_code = 0
-    if st.pending_deletion(bare):
+    if delivered and st.pending_deletion(bare):
+        ticket = (st.get(bare).tracker or {}).get("ticket", {}).get("key", "its ticket")
+        print(f"tcw work complete: {bare} was kept rather than removed: {ticket} was not "
+              f"updated, and a record of that cannot be kept in a folder about to be "
+              f"removed. Move {ticket} in the tracker yourself, then run "
+              f"`tcw work delete {bare}`.", file=sys.stderr)
+    elif st.pending_deletion(bare):
         # Never an early return. The completion has already landed and its `post`
         # result, its own report line and the worktree cleanup are all still owed
         # — `merge_worktree` ran further up, so returning here orphaned the
@@ -2179,7 +2332,7 @@ def _complete(args: argparse.Namespace) -> int:
                   f"`git branch -D {branch}` if you're sure.", file=sys.stderr)
         for w in remove_worktree(st.node_root, bare, branch if shipping else None):
             print(f"tcw work complete: {w}", file=sys.stderr)
-    return _post_result(post_err, transition_id, args.slug) or delete_code
+    return _post_result(post_err, transition_id, args.slug) or delete_code or delivered
 
 
 def _drop(args: argparse.Namespace) -> int:
@@ -2391,6 +2544,33 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptru.add_argument("slug", help=BARE_SLUG_HELP)
     ptru.add_argument("--reason", required=True, help="why the binding is removed")
     ptru.set_defaults(func=_tracker_unlink)
+
+    ptrsy = ptrs.add_parser(
+        "sync", help="bring bound items' tickets to where the items' statuses say, "
+                     "retrying what did not reach the tracker",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Retry what a lifecycle command could not send to the tracker.\n\n"
+                    "In the tracker: for an item whose claim is still owed, claims the\n"
+                    "ticket; otherwise moves the ticket to the status work.tracker.statuses\n"
+                    "maps the item's status to — only when it is assigned to you and still\n"
+                    "where the item left it. A ticket moved on by someone else is reported,\n"
+                    "never moved back.\n\n"
+                    "In this node: removes the item's sync record once its ticket is where\n"
+                    "it should be, and updates it when not.",
+        epilog="--all visits every item here with a sync record, finished ones the store\n"
+               "still holds included. An item started by another identity (its owner is\n"
+               "not TCW_WORK_OWNER or, without it, your Git identity) is skipped, because\n"
+               "sync acts as whoever runs it. An item with no record is checked and never\n"
+               "moved.\n\n"
+               "Exits 1 while any item it acted on is pending or conflicting. Refuses when\n"
+               "no tracker is configured, or the slug is not a bound item here.\n\n"
+               "  tcw work tracker sync 2026-09-14-rename-the-widget\n"
+               "  tcw work tracker sync --all\n",
+    )
+    ptrsy.add_argument("slug", nargs="?", help=BARE_SLUG_HELP)
+    ptrsy.add_argument("--all", action="store_true",
+                       help="every item here with a sync record")
+    ptrsy.set_defaults(func=_tracker_sync)
 
     pts = g.add_parser(
         "tombstone",

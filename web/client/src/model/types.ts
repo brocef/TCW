@@ -23,6 +23,18 @@ export type TTrackerBinding =
           part: string
           ticket: { id: string; key: string; url: string }
           bound: string
+          /** What did not reach the tracker, while it has not. */
+          sync:
+              | null
+              | {
+                    state: "pending" | "conflicting"
+                    move: string
+                    since: string
+                    claim: "done" | "owed"
+                    reason: string
+                    at: string
+                }
+              | { problem: string }
       }
     | { problem: string }
 

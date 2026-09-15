@@ -367,6 +367,7 @@ tcw work tracker show ENG-482      # one ticket, and whether it is yours to take
 tcw work tracker import ENG-482    # take the ticket and get a work item for it
 tcw work tracker link <slug> ENG-482       # record that an item and a ticket are the same work
 tcw work tracker unlink <slug> --reason "wrong ticket"
+tcw work tracker sync --all        # retry tickets that did not follow their items
 ```
 
 Configuration goes in the node's `tcw-config.yaml`:
@@ -382,6 +383,11 @@ work:
             token-env: TCW_JIRA_API_TOKEN
         transitions:
             claim: Start Progress
+        statuses: # optional: where a bound ticket goes as its item moves
+            active: In Progress
+            review: In Review
+            completed: Done
+            discarded: Won't Do
         timeout-seconds: 15 # optional
 ```
 
@@ -463,13 +469,33 @@ link. What you see is what the binding records, not what Jira says right now, so
 none of it needs the tracker configured or reachable. A binding file that cannot be
 read is reported in the same places instead of breaking the board.
 
-Because `link` does not claim, **nothing moves a linked ticket for you.** When you
-start work on an item you linked, move the ticket in Jira yourself. `import` is
-still the only command that takes a ticket, but not one that is already linked:
-run on a linked ticket, it tells you the ticket is linked but not claimed and
-leaves both alone.
+**Tickets follow their items.** `link` claims nothing, so `tcw work start` does:
+starting a bound item claims its ticket by the same rules `import` uses. After that,
+`submit`, `rework`, `complete` and discarding move the ticket to the status you map
+the item's new status to under `statuses` (`discarded` can name a status per
+resolution, such as `duplicate: Duplicate`); a status you leave out sends nothing,
+and `active` is required once you map any other. `import` on a ticket that is only
+linked still refuses rather than claiming it.
 
-Four limits to know. On a workflow that lets anyone start a ticket from any status,
+TCW moves a ticket only when it is assigned to you and is still where the item's
+previous status left it. A ticket someone else holds, one moved on in Jira, or one
+whose workflow does not offer a single transition to the mapped status is left
+alone. Your local move always happens and is committed first; when the ticket does
+not follow, the command exits 1, says the item moved, and records why — *pending*
+when Jira could not be reached or your credentials are missing, *conflicting* when
+Jira's answer stopped it. `tcw work show` and `tcw work list` show that state, and
+`tcw work tracker sync <slug>` (or `--all`) retries it once the cause is fixed. `sync`
+acts only on items you started, because it acts as whoever runs it. A ticket that
+followed first time leaves no record and no change in your repository.
+
+Two things are not caught: a move made in `tcw serve`, and a command interrupted
+between its commit and its call to Jira, leave no record, so the board shows them as
+in step; `sync <slug>` checks such an item but will not move its ticket. And a
+binding whose ticket link is on a different Jira site from the one configured is
+never written through — `import` and `link` refuse it and name the item.
+
+Five limits to know. A ticket bound to several parts moves only when the last open
+part here moves; parts in other nodes are not seen. On a workflow that lets anyone start a ticket from any status,
 two people can both take the same ticket, and TCW does not stop that. Two runs by the
 same Jira account at the same moment can both create an item. Each node keeps its
 own bindings: importing one ticket in two nodes of a workspace, even nodes sharing

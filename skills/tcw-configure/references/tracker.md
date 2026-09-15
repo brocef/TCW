@@ -1,8 +1,10 @@
 # Connect an external tracker
 
 A node connects to an external tracker for `tcw work tracker list` and `show`,
-which read tickets, and for `import` and `link`, which claim a ticket through the
-workflow transition named in `transitions.claim`. What those commands do, which
+which read tickets; for `import`, which claims a ticket through the workflow
+transition named in `transitions.claim`, and `link`, which only records a binding;
+and for the lifecycle commands, which claim a bound item's ticket at `start` and
+move it to the statuses under `statuses` as the item moves. What those commands do, which
 file a tracker problem names, and what a malformed block does at runtime is in the
 `tcw-work` skill's `commands.md`. This document is how to set the connection up,
 in one node or shared from a parent node.
@@ -18,13 +20,18 @@ work:
             token-env: TCW_JIRA_API_TOKEN
         transitions:
             claim: Start Progress
+        statuses:
+            active: In Progress
+            review: In Review
+            completed: Done
+            discarded: Won't Do
         timeout-seconds: 15
 ```
 
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.claim`, and optional `timeout-seconds`
-(default 15). All but the last are required once the node's block is merged with
+`credentials.token-env`, `transitions.claim`, and optional `statuses` and
+`timeout-seconds` (default 15). All but the last are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
 parent's. Unknown keys are reported rather than
 ignored, so a config written for a later release complains instead of silently doing
@@ -37,6 +44,26 @@ never write the email address or the token into `tcw-config.yaml`.
 `transitions.claim` is the name of the tracker's workflow transition that starts
 a ticket, exactly as the tracker spells it. `tcw` cannot tell a wrong name from a
 ticket that simply does not offer it yet, so copy it from the project's workflow.
+
+`statuses` names the tracker **status** (not transition) a bound ticket should be in
+for each local status: `active`, `review`, `completed`, `discarded`. Names match
+ignoring case and extra spaces. Every key is optional and an unmapped status sends
+nothing, but **`active` is required once any other key is set**, because each move
+checks the ticket is where the previous status left it. `discarded` may instead map
+discard resolutions to statuses —
+
+```yaml
+        statuses:
+            active: In Progress
+            discarded:
+                wontfix: Won't Do
+                duplicate: Duplicate   # superseded, unmapped, sends nothing
+```
+
+An unknown key, a blank or non-text name, a resolution other than `wontfix`,
+`duplicate` or `superseded`, or a block without `active` is a problem `tcw validate`
+reports, and the whole tracker block then reads as not configured. Like
+`credentials` and `transitions`, `statuses` merges from ancestors key by key.
 
 ## Sharing settings from a parent node
 

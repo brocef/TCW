@@ -82,8 +82,10 @@ named artifact — raw input that quietly changes is not raw input.
 ## Working from an external tracker
 
 `list`, `show` and `link` only read the ticket; `import` claims it and then writes
-the store; `unlink` touches the store alone and needs no tracker configured. No
-other command gains a network dependency because of any of them.
+the store; `unlink` touches the store alone and needs no tracker configured. `sync`
+and the lifecycle commands `start`, `submit`, `rework` and `complete` write to a
+**bound** item's ticket when a tracker is configured — see "Lifecycle
+synchronization". No other command gains a network dependency.
 
 | Goal | Command |
 | ---- | ------- |
@@ -92,6 +94,7 @@ other command gains a network dependency because of any of them.
 | claim a ticket and create a bound backlog item | `tcw work tracker import <ticket> [--part <id>] [--title <title>]` |
 | record that an existing item and a ticket are the same work | `tcw work tracker link <slug> <ticket> [--part <id>]` |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
+| retry tickets that did not follow their items | `tcw work tracker sync <slug>` · `tcw work tracker sync --all` |
 
 **Configured with the `tcw-configure` skill's `tracker.md`**, including settings a
 node merges from its ancestors'. At runtime:
@@ -128,9 +131,41 @@ bindable, and nothing but `tracker.yaml` is written, so the item keeps its statu
 owner and documents. Any status can be linked or unlinked, `completed` and
 `discarded` included, which is how finished work is tied to the ticket that tracked
 it and how a wrong binding on it is repaired. Resolved folders are gitignored by
-default, so such a binding is written to disk but never committed. Nothing claims a
-linked ticket for the caller yet — `import` on one refuses, saying it is linked but
-not claimed — so tell them to move it in the tracker themselves when they start.
+default, so such a binding is written to disk but never committed. `tcw work start`
+claims a linked ticket; `import` on one refuses, saying it is linked but not claimed.
+
+### Lifecycle synchronization
+
+For a **bound** item in a node with a tracker configured, a lifecycle command sends
+its move to the ticket **after** the local move, its commit and `post` hooks:
+`start` claims (same rules as `import`); `submit`, `rework`, `complete` and a
+discard move the ticket to `work.tracker.statuses` for the item's new status
+(nothing when unmapped). No tracker configured, or an unbound item: nothing, and no
+tracker code is imported.
+
+- **Moved only when** assigned to the signed-in account **and** in the status the
+  previous local status maps to (or, with a record, its `since` or its move's
+  target). Otherwise *conflicting*; never follows Jira, never pulls a ticket back.
+  Exactly one offered transition must lead to the target.
+- **Not updated → the item still moved**, exit 1, and `tracker.yaml` gains a `sync`
+  record: `pending` (unreachable, rate limited, no or bad credentials, a tracker
+  block with problems) or `conflicting` (Jira answered: 400/403/404, assignee,
+  drift, no single transition). `claim: owed` means the start's claim never
+  succeeded; every later delivery retries it first. Success removes the record; a
+  first-time success writes nothing.
+- **`show`** prints `tracker sync: <state> after <move> (<at>): <reason>`; the board
+  row reads `ticket: KEY (pending)`; `--json` has `tracker.sync`.
+- **`tcw work tracker sync <slug> | --all`** retries recorded items. It skips an item
+  whose `owner` is not this identity (it acts as whoever runs it), and on an item
+  with no record it checks without moving. Exit 1 while any stays unresolved.
+- **Parts:** a status move is held while another open item here shares the ticket.
+- **Another site:** a binding whose `ticket.url` is not on `base-url` is never
+  written through; `import`/`link` refuse it naming the item.
+- **Not delivered:** moves made in `tcw serve`, and a command interrupted between
+  its commit and the tracker call — no record, so `sync` checks but will not move.
+- **Unretained items:** when delivery fails on an item about to be removed, no
+  record is written and the item is kept; move the ticket by hand, then
+  `tcw work delete`.
 
 **The claim decides from the ticket, never from Jira's reply.** `import`
 reads the ticket, applies the configured claim transition, assigns the ticket to the

@@ -215,6 +215,10 @@ export function TrackerField({ binding }: { binding: TTrackerBinding }) {
                             binding.ticket.key
                         )}
                         {` · ${binding.provider} · part ${binding.part}`}
+                        {binding.sync &&
+                            ("problem" in binding.sync
+                                ? ` · sync record cannot be read: ${binding.sync.problem}`
+                                : ` · ${binding.sync.state}: ${binding.sync.reason}`)}
                     </>
                 )}
             </Text>

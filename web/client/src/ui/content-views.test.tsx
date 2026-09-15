@@ -180,6 +180,7 @@ test("a bound work item shows its ticket as a link, with provider and part", () 
                 url: "https://example.invalid/browse/EX-1",
             },
             bound: "2026-09-14",
+            sync: null,
         })
     )
 
@@ -189,6 +190,30 @@ test("a bound work item shows its ticket as a link, with provider and part", () 
         "https://example.invalid/browse/EX-1"
     )
     expect(screen.getByText(/· jira-cloud · part api/)).toBeVisible()
+})
+
+test("a ticket the tracker has not caught up with says so", () => {
+    render(
+        workDetail({
+            provider: "jira-cloud",
+            project: "probe",
+            part: "default",
+            ticket: { id: "1", key: "EX-1", url: "" },
+            bound: "2026-09-14",
+            sync: {
+                state: "pending",
+                move: "submit",
+                since: "In Progress",
+                claim: "done",
+                reason: "the tracker could not be reached",
+                at: "2026-09-14T10:00:00Z",
+            },
+        })
+    )
+
+    expect(
+        screen.getByText(/· pending: the tracker could not be reached/)
+    ).toBeVisible()
 })
 
 test("an unreadable binding shows why, and an unbound item shows no ticket", () => {

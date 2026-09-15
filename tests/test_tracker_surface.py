@@ -41,7 +41,8 @@ def document(part: str = "default") -> str:
 
 
 BOUND = {"provider": "jira-cloud", "project": "probe", "part": "default",
-         "ticket": {"id": "10001", "key": "EX-1", "url": URL}, "bound": "2026-09-14"}
+         "ticket": {"id": "10001", "key": "EX-1", "url": URL}, "bound": "2026-09-14",
+         "sync": None}
 MISSING = "missing or empty: ticket.key, provider, project, part"
 
 
