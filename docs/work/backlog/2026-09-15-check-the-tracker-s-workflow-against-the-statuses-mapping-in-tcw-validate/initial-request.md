@@ -68,5 +68,5 @@ assignment. It covers each issue type the project uses.
   non-admin token read it at all.
 - `2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items` —
   the same question asked at the moment of a move.
-- `2026-09-15-let-tracker-sync-name-its-transitions-bring-a-late-linked-ticket-forward-and-stop-reading-ordinary-moves-as-drift` —
+- `2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync` —
   named transitions (#40) change what "ambiguous" means for this check.

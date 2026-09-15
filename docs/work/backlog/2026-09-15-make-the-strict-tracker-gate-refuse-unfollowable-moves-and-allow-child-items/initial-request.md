@@ -33,7 +33,7 @@ something it should refuse, or refuse something a team needs:
 
 - `tcw work tracker sync` exiting 0 when it skips a named slug (§2 of the same
   review entry) — tracked in
-  `2026-09-15-let-tracker-sync-name-its-transitions-bring-a-late-linked-ticket-forward-and-stop-reading-ordinary-moves-as-drift`.
+  `2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync`.
 - Durable evidence of a hold — tracked in
   `2026-09-15-record-lasting-evidence-of-a-tracker-hold-on-a-shared-ticket`.
 

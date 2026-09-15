@@ -61,7 +61,7 @@ commands. The maintainer asked for items touching the same feature to be combine
 - **In scope:** §1 and §3 of the entry above; the strict nesting entry below; the
   "epic worktree from before strict mode" note below.
 - **Not in scope here:** §2 of the entry above (`sync` exiting 0 when it skips a
-  named slug) is tracked in `2026-09-15-let-tracker-sync-name-its-transitions-bring-a-late-linked-ticket-forward-and-stop-reading-ordinary-moves-as-drift`.
+  named slug) is tracked in `2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync`.
 - Related: GitHub #44 asks for the same "does the workflow offer a transition" check
   ahead of time, from `tcw validate`; §3 touches the tracker hold item's records.
 

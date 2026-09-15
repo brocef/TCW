@@ -87,4 +87,4 @@ Related items:
 - `2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes` — introduces per-check results and graded exit codes that this check reports through.
 - `2026-09-15-decide-claim-exclusivity-from-a-jira-project-s-workflow-definition` — reads the same Jira workflow definition for claim exclusivity, and records the unanswered prerequisite both share: whether a non-admin token can read that endpoint. It may later become another row of this check.
 - `2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items` — checks the same "does the workflow offer a transition" question at the moment of a move, under strict mode.
-- `2026-09-15-let-tracker-sync-name-its-transitions-bring-a-late-linked-ticket-forward-and-stop-reading-ordinary-moves-as-drift` — GitHub #40's named transitions change what "ambiguous" means for this check.
+- `2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync` — GitHub #40's named transitions change what "ambiguous" means for this check.
