@@ -30,4 +30,15 @@ in `tcw serve`, or a command interrupted between its commit and the tracker call
 leave no record, so "current" means no undelivered change is recorded, and `sync
 <slug>` checks such an item without moving its ticket; and a binding whose ticket
 link is on a different Jira site from the configured one is never written through.
-Progress links and comments on the ticket are a separate piece of work.
+
+With `comments: true` under `work.tracker`, each move also posts a short comment on
+the ticket saying what happened to which item — and, with a `link` template, where
+to follow it — but only when the ticket is assigned to me; no lifecycle document
+is ever copied. A comment that did not post is recorded and sent by `tcw work
+tracker sync`, which first looks for it on the ticket so a post that landed
+without an answer is not repeated. Limits I accept: a later move's comment
+replaces one still owed, and one whose ticket is no longer mine is dropped; two
+runs at once, an edited or deleted comment, or more than 100 newer comments can
+still produce a repeat; comments are not posted for moves made in `tcw serve`; and
+on a Jira Service Management project a comment may be visible to customers, so I
+leave comments off there unless item titles may be seen.
