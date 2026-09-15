@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-14-eval-runs-under-this-checkout-grade-and-behave-wrongly.md`
+
+## Inbox body
+
 # Eval runs under this checkout grade and behave wrongly
 
 Found by the adversarial review of

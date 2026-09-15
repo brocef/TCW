@@ -7,3 +7,5 @@ tags:
 - skills
 - work
 - docs
+blocked_by:
+- slug: 2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly
