@@ -195,7 +195,7 @@ session was itself told to work without asking.
   to the primary checkout. That is the first `worktree` path printed by
   `git worktree list --porcelain`.
 - This follows the precedent that `tcw work complete` runs from the primary
-  checkout (`skills/tcw-work/references/transitions.md:101-106`). A search there
+  checkout (`skills/tcw-work/references/transitions.md:103-108`). A search there
   sees items created on `main` since the branch point. An item filed there is
   visible to every session and survives the work branch being discarded.
 
@@ -219,7 +219,7 @@ sentence saying what should change and why. **If it is not understandable:**
 
 **Picking the governing match** when there are several: `covers` beats
 `partly covers`. Among `covers` matches, the one furthest along wins, in this
-order: active or review, then blocked, then backlog with a spec or plan, then
+order: active or review, then backlog with a spec or plan, then
 backlog without one, then an inbox entry. Name every other `covers` match in the
 report, because two items covering the same work is itself worth telling the
 user.
@@ -228,8 +228,8 @@ user.
 | --- | --- | --- | --- | --- |
 | `covers`, and the idea adds nothing the match does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
 | `covers` an item that is `active` or in `review`, with new information | Tell the user the item and the new information; change nothing | Same, returned | Same, reported | `already in progress <ref>` |
-| `covers` an inbox entry, or a `backlog` or `blocked` item with no `spec.md`, with new information | Append (rule below) | Append | Append | `amended <ref>` |
-| `covers` a `backlog` or `blocked` item that has `spec.md` or `plan.md`, with new information | Ask: revise, or leave as is (leaving still appends to the request) | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` |
+| `covers` an inbox entry, or a `backlog` item with no `spec.md`, with new information | Append (rule below) | Append | Append | `amended <ref>` |
+| `covers` a `backlog` item that has `spec.md` or `plan.md`, with new information | Ask: revise, or leave as is (leaving still appends to the request) | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` |
 | `partly covers`, and the rest can be separated | Create an item for the rest (step 4), naming the match under References | Same | Same | `created <slug>` |
 | `partly covers`, and the rest cannot be separated | Treat it as `covers` with new information | Same | Same | as that row |
 | No match | Create (step 4) | Create | Create | `created <slug>` |
@@ -305,7 +305,7 @@ to link in full (`tests/test_skill_lifecycle_parity.py:294-304`).
 
 - **Input:** a description of one piece of work.
 - **Candidates:**
-  - `tcw work list`, which shows open statuses, `review` and `blocked` included;
+  - `tcw work list`, which shows `backlog`, `active` and `review`;
   - `tcw work inbox list`, then `tcw work inbox show <entry>` for any entry
     whose title is plausible;
   - `tcw work list --all`, for closed items, which can only be references.
@@ -536,7 +536,7 @@ behavior by hand. Criterion 10 names how **worth doing** is judged later.
   - the modes table;
   - step 0 (worktrees);
   - the `already tracked` and `needs decision` outcomes;
-  - the governing-match rule and the `blocked` row;
+  - the governing-match rule;
   - D2 moved inside the skill, and consolidation dropped;
   - B13's assertions;
   - structural criteria split into one grep per string;
@@ -545,6 +545,7 @@ behavior by hand. Criterion 10 names how **worth doing** is judged later.
   The requester decided four points: delegated runs are not unattended, items
   land on the primary checkout's board, consolidation is deferred, and batching
   stays allowed.
+- **Rejected: a row for status `blocked`.** `blocked` is not a status: `tcw work list --status` accepts backlog, active, review, completed and discarded, and `docs/work/blocked/` is an empty leftover folder. A backlog item with blockers is still `backlog`.
 - **The two reviewers disagreed on whether a subagent can dispatch its own
   subagents** under Claude Code. The design does not depend on the answer:
   every delegation has an inline fallback.
