@@ -35,6 +35,9 @@ account at the same moment can both create an item. Each node keeps its own
 bindings, so importing one ticket in two nodes gives an item in each. And a ticket
 held by a finished item can be bound to a second item, open or finished, without a
 refusal.
-Keeping the ticket in step with the item's lifecycle — including claiming the ticket
-an item is already linked to, which nothing does yet — and requiring tracked work,
-are separate capabilities that are not yet built.
+A binding for a ticket id that points at a different Jira site from the configured
+one makes `import` and `link` refuse and name the item, rather than mistaking an
+unrelated ticket on the new site for one already bound.
+Keeping the ticket in step with the item's lifecycle, including claiming a linked
+ticket when I start the item, is `work/synchronize-external-tracker-work`; requiring
+tracked work is a separate capability that is not yet built.

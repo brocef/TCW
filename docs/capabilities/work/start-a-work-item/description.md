@@ -17,3 +17,9 @@ a refusal stops the command, names the repository that already committed, and
 leaves no worktree behind for me to re-run against. The work branch therefore
 carries the code side only: a Git branch cannot contain lifecycle files that live
 in another repository, and the item stays visible through `tcw work path <slug>`.
+
+When the item is bound to a tracker ticket and a tracker is configured, starting it
+also claims that ticket (`work/synchronize-external-tracker-work`). The claim comes
+after the local start and never blocks it: if the ticket is held by someone else or
+Jira cannot be reached, the item is still started, the command exits 1 saying so,
+and the claim is retried by the next lifecycle command or `tcw work tracker sync`.
