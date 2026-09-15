@@ -146,7 +146,13 @@ the `tcw-work-` prefix. `tcw-work-create` is not in `DELETED_NAMES`
 - It ends with the house "not for …" clause:
   - children of a known item → `tcw work new --parent`;
   - GitHub issues → `tcw-extras-triage-issues`;
-  - inbox triage → `tcw-work`.
+  - inbox triage → `tcw-work`;
+  - a bug in TCW itself → `tcw-extras-report` (eval case B6 expects no item);
+  - asking which stage should have caught a problem → `tcw-post-mortem` (B9
+    expects no item).
+
+  These keep the existing routes that also involve a problem someone noticed.
+  `evals/evals.json` pins B6 and B9 to `new_item_count: 0`.
 - `description` plus `when_to_use` stays within the 1,536-character combined cap
   from `docs/work/completed/2026-07-02-bring-plugin-skills-into-full-agentskills-claude-spec-compliance/spec.md:118-120`.
 
@@ -276,9 +282,15 @@ places in Problem 2 each hold a copy of.
   sentence.
 - `evals/evals.json`: a new axis B case, B13, with `invokes: tcw-work-create`.
   This satisfies `tests/test_eval_coverage.py:23-29`.
-  - **Prompt:** a user in the middle of a different task mentions an unrelated
-    defect worth tracking.
-  - **Assertions:** the skill was opened, and exactly one new backlog item exists.
+  - **Prompt:** a user in the middle of the fixture's active item mentions, in
+    passing, that sign-in has become slow for accounts with many invoices. The
+    fixture's inbox already holds that report
+    (`evals/seed_fixture.py:105-108`, `:474-477`).
+  - **Assertions:**
+    - `tool_input_contains` `tcw-work-create`: the skill was invoked or opened;
+    - `new_item_count` 0: the inbox entry covers it, so nothing is created.
+  - A `CASE_ROUTING` row in `tests/test_eval_grading.py` pins the routing
+    assertion: a run that opened only `tcw-work/SKILL.md` fails it.
   - It is a case, not an `EXCLUSIONS` entry, because automatic invocation is the
     skill's reason to exist and this is the instrument that can measure it.
 - The Feature and capability from Capability changes, listed under `new:` in this
@@ -380,6 +392,10 @@ Nothing else about trackers is in scope.
 
 - **Automatic invocation is unproven until the eval harness runs**, and that is
   blocked (Non-goals). The description is a best guess until B13 is run.
+- **The new trigger can pull existing eval cases off their route**: B1
+  (`tcw-work`), B6 and B9. The "not for" clause covers B6 and B9, and B1 creating
+  its item through `tcw-work-create` is a correct route. None of this can be
+  confirmed until the harness runs.
 - **Too much triggering adds noise to the backlog.** An agent may file every
   passing thought. The trigger wording is limited to "should outlive the
   session", and step 1's understandability bar applies. `2026-09-11-refine-the-plugin-skills-and-lifecycle-prompts-against-the-eval-findings`
