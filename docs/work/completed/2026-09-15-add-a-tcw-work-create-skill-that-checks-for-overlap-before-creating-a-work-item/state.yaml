@@ -2,7 +2,7 @@ slug: 2026-09-15-add-a-tcw-work-create-skill-that-checks-for-overlap-before-crea
 title: Add a tcw-work-create skill that checks for overlap before creating a work
   item
 created: '2026-09-15'
-resolution: null
+resolution: done
 tags:
 - skills
 - work
