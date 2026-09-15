@@ -21,3 +21,13 @@ reports it as the item's problem. `tracker link`, `unlink` and `import` go throu
 **Suggested fix:** give `read_sidecar` (or a binding-specific read beside it) the
 same handling as `_read_item`: do not open anything but a regular file, and turn
 read errors into a problem the commands report.
+
+**Two more readers of the same kind** were found by the combined review of the tracker
+epic's children:
+
+- **Strict-mode `drop`.** `ever_bound` (`tcw/tracker/intake.py`) uses
+  `read_sidecar`, which returns nothing for a directory named `tracker.yaml`. So strict
+  `tcw work drop` goes through, although the board shows the item as
+  `ticket: unreadable` and `commands.md` promises the drop is refused.
+- **`tcw work tracker sync <slug>`.** Its single-slug path reads the binding through
+  `binding_of`, and prints a raw traceback on text that is not UTF-8.
