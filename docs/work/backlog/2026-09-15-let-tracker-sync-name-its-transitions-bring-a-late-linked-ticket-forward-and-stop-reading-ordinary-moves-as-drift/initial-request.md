@@ -3,7 +3,7 @@
 ## What is wanted
 
 When a bound item moves, its tracker ticket should follow, in the ordinary
-situations a team adopting the Jira integration actually meets. Today four of them
+situations a team adopting the Jira integration actually meets. Today five of them
 leave the ticket stuck and report it as a conflict someone must repair by hand:
 
 1. **Two transitions lead to the same status** (GitHub #40). Many Jira workflows
