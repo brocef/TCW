@@ -148,6 +148,22 @@ def _split(val: str | None) -> list[str]:
     return [s.strip() for s in (val or "").split(",") if s.strip()]
 
 
+def _tracker_text(value: dict, *, row: bool) -> str:
+    """A binding as `show` prints it, or as a board row's `ticket:` segment.
+
+    From `WorkItem.tracker` alone, so reading a binding needs no tracker configured
+    and loads no tracker code. A row stays one short line: the default part and the
+    reason a binding cannot be read are left to `show`.
+    """
+    if "problem" in value:
+        return "unreadable" if row else f"tracker.yaml cannot be read ({value['problem']})"
+    key, part = value["ticket"]["key"], value["part"]
+    if row:
+        return key if part == "default" else f"{key} (part {part})"
+    url = value["ticket"]["url"]
+    return f"{key} ({value['provider']}, part {part})" + (f" {url}" if url else "")
+
+
 def _print_item(item: WorkItem) -> None:
     print(f"{item.slug}  [{item.status}]")
     print(f"title: {item.title}")
@@ -180,6 +196,8 @@ def _print_item(item: WorkItem) -> None:
                 labels.append(f"external: {b['external']}")
         if labels:
             print(f"blocked_by: {', '.join(labels)}")
+    if item.tracker is not None:
+        print(f"tracker: {_tracker_text(item.tracker, row=False)}")
     body = item.body.strip()
     if body:
         print()
@@ -425,8 +443,11 @@ def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -
     if it.status == "active":
         claim = (f" | owner: {it.owner} | started: {it.started}"
                  if it.owner else " | owner: unclaimed")
+    # Last, so no segment before it moves for a bound item.
+    ticket = (f" | ticket: {_tracker_text(it.tracker, row=True)}"
+              if it.tracker is not None else "")
     print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages or '-'} | "
-          f"{pri} | {it.title}{tag_seg}{ready}{suffix}{claim}")
+          f"{pri} | {it.title}{tag_seg}{ready}{suffix}{claim}{ticket}")
 
 
 def _render_board(st: FsWorkStore, status: str | None, show_all: bool,

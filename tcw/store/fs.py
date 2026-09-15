@@ -39,6 +39,7 @@ from tcw.store.base import (
     BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
+    binding_value, classify_binding, unreadable_binding,
     WORK_STATUSES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
@@ -4218,6 +4219,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 capabilities = {} if parsed is None else parsed
             except yaml.YAMLError as e:
                 capabilities = {"_tcw_parse_error": str(e)}
+        tracker = None
+        binding = d / "tracker.yaml"
+        if binding.exists():
+            # Classified in the model, not by `tcw.tracker.intake.read_binding`: a
+            # board read must not import the tracker package. One item's binding
+            # that cannot be read is reported on that item and never takes the
+            # board down — before bindings were shown, nothing here opened the file.
+            # A binding removed between the check and the read is simply unbound; a
+            # whole folder that vanished is caught by `_item_from_dir`'s own check.
+            try:
+                parsed = yaml.safe_load(binding.read_text(encoding="utf-8"))
+                tracker = binding_value(classify_binding(parsed))
+            except FileNotFoundError:
+                tracker = None
+            except (yaml.YAMLError, OSError, UnicodeDecodeError, RecursionError) as e:
+                tracker = binding_value(unreadable_binding(e))
         return WorkItem(
             slug=d.name,
             title=state.get("title", d.name),
@@ -4239,6 +4256,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             parent=self._parent_slug(d),
             owner=state.get("owner", ""),
             started=state.get("started", ""),
+            tracker=tracker,
         )
 
     @staticmethod

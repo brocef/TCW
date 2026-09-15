@@ -31,6 +31,7 @@ import type {
     CapabilityItem,
     TaxonomyItem,
     TreeNode,
+    TTrackerBinding,
     WorkItem,
 } from "../model/types"
 import { ModifiedAt } from "./modified-at"
@@ -186,6 +187,36 @@ export function Field({ name, value }: { name: string; value: unknown }) {
             </Text>
             <Text as="div" size="2">
                 {String(value ?? "-")}
+            </Text>
+        </Card>
+    )
+}
+/** The item's ticket: a link when the binding records a URL, plain text when not. */
+export function TrackerField({ binding }: { binding: TTrackerBinding }) {
+    return (
+        <Card className="field" size="1">
+            <Text as="div" color="gray" size="1">
+                Ticket
+            </Text>
+            <Text as="div" size="2">
+                {"problem" in binding ? (
+                    `tracker.yaml cannot be read: ${binding.problem}`
+                ) : (
+                    <>
+                        {binding.ticket.url ? (
+                            <a
+                                href={binding.ticket.url}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                {binding.ticket.key}
+                            </a>
+                        ) : (
+                            binding.ticket.key
+                        )}
+                        {` · ${binding.provider} · part ${binding.part}`}
+                    </>
+                )}
             </Text>
         </Card>
     )

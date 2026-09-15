@@ -23,7 +23,9 @@ stays on my machine. Neither ever changes the ticket in Jira, and importing a ti
 I have only linked tells me it is not claimed rather than claiming it.
 
 The binding is written by these commands, not by hand, and the web app offers no
-edit for it. It records what is bound to what and when, never who took the ticket.
+edit for it. I can read it wherever I read the item: `tcw work show` names the
+ticket, provider, part and link, the board row ends with the ticket, `show --json`
+carries it as `tracker`, and the web app's item detail links to the ticket. It records what is bound to what and when, never who took the ticket.
 It is never treated as proof of a claim: importing re-reads the ticket and refuses
 when Jira disagrees.
 

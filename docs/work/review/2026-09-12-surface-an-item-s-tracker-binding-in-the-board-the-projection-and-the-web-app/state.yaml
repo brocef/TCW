@@ -14,7 +14,7 @@ tags:
 initiative: 2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge
 blocked_by:
 - slug: 2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item
-owner: brocef@users.noreply.github.com
-started: '2026-09-15T01:23:04.627573Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app
 branch: work/2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app

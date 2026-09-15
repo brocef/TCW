@@ -11,6 +11,11 @@ the ticket from the tracker and decides from that.
 
 `project` arrives as a plain string. This module does not import the filesystem
 project registry; the caller resolves the node's id and passes it in.
+
+**What a binding classifies as** — `Unbound`, `Malformed` or `Bound` — is decided in
+`tcw/store/base.py` (`classify_binding`), because the store classifies it too, to
+fill `WorkItem.tracker`, and a board read must not import this package. The names
+are re-exported here; `read_binding` adds only the parsing.
 """
 
 from __future__ import annotations
@@ -20,7 +25,8 @@ from dataclasses import dataclass
 
 import yaml
 
-from tcw.store.base import RESOLVED_STATUSES
+from tcw.store.base import (RESOLVED_STATUSES, Bound, Malformed, Unbound,  # noqa: F401
+                            classify_binding, unreadable_binding)
 
 BINDING_SIDECAR = "tracker.yaml"
 DEFAULT_PART = "default"
@@ -39,70 +45,19 @@ class BindingProblem(ValueError):
 # ── reading a binding ────────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True)
-class Unbound:
-    """No `tracker.yaml`, or one whose binding was removed by `unlink`."""
-
-
-@dataclass(frozen=True)
-class Malformed:
-    """A `tracker.yaml` that does not describe a binding it is safe to act on."""
-    reason: str
-
-
-@dataclass(frozen=True)
-class Bound:
-    provider: str
-    project: str
-    part: str
-    ticket_id: str
-    ticket_key: str
-    ticket_url: str
-
-    def key(self) -> tuple[str, str, str, str]:
-        return (self.project, self.provider, self.ticket_id, self.part)
-
-
-def _text(value) -> str:
-    return value if isinstance(value, str) else ""
-
-
 def read_binding(content: str | None) -> Unbound | Malformed | Bound:
     """Classify one item's `tracker.yaml` content (`None` when there is no file).
 
-    The rules, in order: no file is unbound; content that is not a mapping is
-    malformed; a mapping with no `ticket` is unbound, which is what `unlink`
-    leaves; a `ticket` mapping with a non-empty `id` and `key`, beside non-empty
-    `provider`, `project` and `part`, is bound; a `ticket` in any other shape is
-    malformed.
+    No file is unbound, and text that is not YAML is malformed; everything else is
+    `classify_binding`'s rules.
     """
     if content is None:
         return Unbound()
     try:
         data = yaml.safe_load(content)
-    except yaml.YAMLError as error:
-        return Malformed(f"not valid YAML ({error.__class__.__name__})")
-    if not isinstance(data, dict):
-        return Malformed("not a YAML mapping")
-    if "ticket" not in data:
-        return Unbound()
-    ticket = data["ticket"]
-    if not isinstance(ticket, dict):
-        return Malformed("'ticket' is not a mapping")
-    fields = {
-        "ticket.id": _text(ticket.get("id")),
-        "ticket.key": _text(ticket.get("key")),
-        "provider": _text(data.get("provider")),
-        "project": _text(data.get("project")),
-        "part": _text(data.get("part")),
-    }
-    missing = [name for name, value in fields.items() if not value]
-    if missing:
-        return Malformed(f"missing or empty: {', '.join(missing)}")
-    return Bound(provider=fields["provider"], project=fields["project"],
-                 part=fields["part"], ticket_id=fields["ticket.id"],
-                 ticket_key=fields["ticket.key"],
-                 ticket_url=_text(ticket.get("url")))
+    except (yaml.YAMLError, RecursionError) as error:
+        return unreadable_binding(error)
+    return classify_binding(data)
 
 
 def validate_part(value: str | None) -> str:

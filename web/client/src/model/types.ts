@@ -12,6 +12,20 @@ export const WORK_STATUSES = [
 
 export type JsonRecord = Record<string, unknown>
 
+/**
+ * An item's tracker binding, as `tcw work show --json` carries it: what the
+ * binding file records, never what the tracker says now. `null` when unbound.
+ */
+export type TTrackerBinding =
+    | {
+          provider: string
+          project: string
+          part: string
+          ticket: { id: string; key: string; url: string }
+          bound: string
+      }
+    | { problem: string }
+
 export interface WorkItem extends JsonRecord {
     slug: string
     title?: string
@@ -27,6 +41,7 @@ export interface WorkItem extends JsonRecord {
     resolution?: string
     blocked_by?: Array<{ slug?: string; external?: string }>
     body?: string
+    tracker?: TTrackerBinding | null
 }
 
 export interface TMutationResponse extends JsonRecord {

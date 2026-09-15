@@ -133,6 +133,79 @@ test("renders modified subtext in every detail view", () => {
     expect(screen.getAllByText(/^Modified at /)).toHaveLength(3)
 })
 
+function workDetail(tracker: unknown) {
+    return (
+        <ThemeProvider>
+            <DetailView
+                axis="work"
+                detail={
+                    {
+                        item: {
+                            slug: "work",
+                            title: "Work",
+                            status: "backlog",
+                            modified,
+                            tracker,
+                        },
+                        coreRevision: "",
+                        artifacts: [],
+                        planStages: [],
+                        sidecars: [],
+                    } as TDetail
+                }
+                onEdit={() => undefined}
+                onResource={() => undefined}
+                onOpen={() => undefined}
+                onReadArtifact={async (_slug, name) => ({
+                    name,
+                    content: "",
+                    revision: "",
+                })}
+                onDeletePlanStage={() => undefined}
+                onAction={() => undefined}
+            />
+        </ThemeProvider>
+    )
+}
+
+test("a bound work item shows its ticket as a link, with provider and part", () => {
+    render(
+        workDetail({
+            provider: "jira-cloud",
+            project: "probe",
+            part: "api",
+            ticket: {
+                id: "10001",
+                key: "EX-1",
+                url: "https://example.invalid/browse/EX-1",
+            },
+            bound: "2026-09-14",
+        })
+    )
+
+    expect(screen.getByText("Ticket")).toBeVisible()
+    expect(screen.getByRole("link", { name: "EX-1" })).toHaveAttribute(
+        "href",
+        "https://example.invalid/browse/EX-1"
+    )
+    expect(screen.getByText(/· jira-cloud · part api/)).toBeVisible()
+})
+
+test("an unreadable binding shows why, and an unbound item shows no ticket", () => {
+    const { unmount } = render(
+        workDetail({ problem: "missing or empty: ticket.key" })
+    )
+    expect(
+        screen.getByText(
+            "tracker.yaml cannot be read: missing or empty: ticket.key"
+        )
+    ).toBeVisible()
+    unmount()
+
+    render(workDetail(null))
+    expect(screen.queryByText("Ticket")).toBeNull()
+})
+
 test("the complete modal opens in its completion form, not its discard form", async () => {
     // Regression: `shipping` was `resolution === "done"`, so the unset default
     // rendered the discard presentation — titling the dialog "Close Work Item"
