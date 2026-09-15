@@ -268,8 +268,6 @@ and Codex users get identical behavior. No skill or hook carries any part of it.
   because the request's stated purpose is knowing the exact moment, and guessing
   an offset would record a moment nobody knew.
 
-### Questions for the user
-
-- Should `tcw work show` (and perhaps the board) start printing `created` now
-  that it carries a time? This spec leaves displays alone because the request did
-  not ask for it; saying yes adds one line to `show`.
+- Planning asked whether `tcw work show` (and perhaps the board) should start
+  printing `created` now that it carries a time. The requester answered no: the
+  existing columns stay as they are, which is the "No new displays" non-goal.
