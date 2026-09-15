@@ -25,9 +25,7 @@ venv/
 logs/
 .worktrees/
 
-# Resolved work: kept on disk and in history, out of the tracked tree.
-docs/work/completed/*
-!docs/work/completed/.gitkeep
+# Discarded work: kept on disk and in history, out of the tracked tree.
 docs/work/discarded/*
 !docs/work/discarded/.gitkeep
 

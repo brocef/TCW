@@ -1,0 +1,12 @@
+slug: 2026-09-15-make-the-capability-gate-honor-a-configured-ledger
+title: Make the capability gate find a configured ledger and survive an unreadable
+  capabilities.yaml
+created: '2026-09-15'
+resolution: null
+tags:
+- capabilities
+- work
+- store
+- bug
+priority: 45
+effort: medium

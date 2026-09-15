@@ -1,0 +1,11 @@
+slug: 2026-09-15-repair-sentences-references-and-headings-in-the-guides
+title: Repair misplaced sentences, broken references and overloaded headings in the
+  guides
+created: '2026-09-15'
+resolution: null
+blocked_by:
+- slug: 2026-09-15-rewrite-the-readme-to-a-new-outline
+tags:
+- docs
+priority: 20
+effort: medium

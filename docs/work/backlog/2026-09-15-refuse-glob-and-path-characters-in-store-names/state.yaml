@@ -1,0 +1,11 @@
+slug: 2026-09-15-refuse-glob-and-path-characters-in-store-names
+title: Refuse path-shaped and glob-shaped store identifiers before pathlib or git
+  reads them
+created: '2026-09-15'
+resolution: null
+tags:
+- store
+- work
+- bug
+priority: 40
+effort: medium

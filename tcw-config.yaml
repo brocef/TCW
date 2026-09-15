@@ -43,6 +43,8 @@ work:
     description: How to declare or change each configuration setting. Update the matching
       document whenever a key in `tcw-config.yaml`, a component config file, `docs/work/dod.yaml`,
       or a `TCW_PROJECT_<ID>`-style variable is added, removed, or changes meaning.
+  retain:
+    completed: false
   lifecycle:
     stages:
       spec:

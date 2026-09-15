@@ -1,0 +1,10 @@
+slug: 2026-09-15-check-the-tracker-s-workflow-against-the-statuses-mapping-in-tcw-validate
+title: Check the tracker's workflow against the statuses mapping in tcw validate
+created: '2026-09-15'
+resolution: null
+tags:
+- remote
+- work
+- cli
+priority: 45
+effort: high

@@ -56,3 +56,24 @@ Whether bare and reference-style `tcw://` references should also be scanned is
 **deliberately out of scope**: widening the scan finds more dangles, not fewer,
 and would make the reporter's baseline worse rather than better. That is its own
 question.
+
+## Widened at triage (2026-09-15)
+
+While triaging GitHub #44, the maintainer decided that `tcw validate` should report
+each of its checks by name with one of three results — pass, fail, skip — and that
+this item owns that report. It fits this item's second ask: named per-check results
+are what let "dangling cross-reference" and "malformed item" be told apart. Sketch:
+
+```text
+$ tcw validate
+☑︎ YAML correctness validation
+☒ tcw:// link resolution (1)
+  - docs/capabilities/capabilities/reset-an-override/description.md: tcw:// tcw://C/caps/override-inherited → no capability: caps/override-inherited
+☑︎ Project reference resolution
+☒ Jira workflow validation (2)
+  - TCW status "backlog" has no available Jira transitions
+  - TCW "start" move has ambiguous Jira transition
+```
+
+The ballot characters are not required. The Jira workflow row is added by
+`2026-09-15-check-the-tracker-s-workflow-against-the-statuses-mapping-in-tcw-validate`.

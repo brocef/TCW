@@ -1,52 +1,576 @@
+2026-06-19-cross-node-recursion-work-spec-2:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-19-distribute-tcw-as-a-claude-code-codex-plugin-ai-first-single-copy-install:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
 2026-06-19-remote-adapter-jiraworkstore:
   resolution: wontfix
   resolved: '2026-09-15'
 2026-06-19-remote-extends-for-taxonomy:
   resolution: superseded
   resolved: '2026-09-15'
+2026-06-19-skill-layer-capabilities-process-work-spec-3:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
 2026-06-19-tracker-sync-for-capabilities:
   resolution: wontfix
   resolved: '2026-09-15'
-2026-07-22-evaluate-and-refine-the-plugin-skills-with-an-eval-harness:
-  resolution: done
-  resolved: '2026-09-11'
-2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge:
+2026-06-21-deterministic-version-cut-script:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-15'
+2026-06-21-doc-sync-directive-for-skills:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-explicit-lifecycle-transition-cues-for-start-complete-skill-cli:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-list-hides-completed-items-by-default:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-nested-work-items:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-per-component-init-subcommands-mirroring-tcw-init:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-pipe-delimit-the-list-board-output:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-progressive-disclosure-for-tcw-work-tcw-capabilities-skills:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-show-priority-in-the-list-board:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-work-complete-silently-drops-worktree-branch-merge-on-rename-modify-conflict:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-21-work-item-priority:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos-configurable-work-path-atomic-owner-stamp:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-12'
+2026-06-22-node-sentinel-tcw-config-yaml-and-sentinel-based-node-detection:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-22-taxonomy-skill-per-component-init-bootstrap-with-extends-cli:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-22-tcw-work-new-prints-content-md-path-for-quick-editing:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-25-encode-tcw-work-sdlc-lifecycle-in-skill-2:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-27-audit-and-prune-the-work-backlog:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-27-backfill-initial-request-from-content-bodies:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-27-consolidate-external-planning-documents-into-tcw-work:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-27-normalize-initial-requests-from-content-bodies:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-27-show-lifecycle-artifact-stages-in-work-list:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-06-30-taxonomy-vocabulary-and-features:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-01-accept-l-m-h-vh-shorthand-aliases-for-effort-complexity:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-01-aggregate-descendant-node-boards-in-work-list-include-descendants:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-01-local-read-only-web-viewer-tcw-serve:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-01-optional-effort-and-complexity-fields-for-work-items:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-01-transitive-taxonomy-inheritance:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-02-bring-plugin-skills-into-full-agentskills-claude-spec-compliance:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-02-interactive-local-web-editor-for-tcw-objects:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-03-transactional-multi-file-writes-in-the-fs-store:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-28'
+2026-07-04-status-filter-toggle-buttons-in-the-serve-web-ui:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-04-subproject-qualified-slugs-for-descendant-work-items:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-08-child-nodes-walk-hangs-on-node-modules-epic-complete-nodes-reconcile:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-08-web-viewer-resizable-panes-url-routing-descendant-nodes-and-taxonomy-inheritance-fix:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-10-add-tcw-reference-protocol-tcw-validate-and-web-view-link-navigation:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-10-unify-folder-substrate-across-taxonomy-capabilities-work-and-add-capability-federation:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-11-add-tcw-report-skill-for-reporting-issues-and-suggestions:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-12-formalize-the-work-inbox-cli-and-retire-the-inbox-work-status:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-13-commit-each-tcw-work-lifecycle-artifact-stage:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-15-capabilities-set-rejects-inherited-capability-paths-that-show-list-accept:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-15-capability-drift-enforce-the-dod-gate-at-complete-and-distinguish-unreviewed-from-decided-missing:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-15-flag-or-auto-advance-an-epic-as-completable-when-all-child-slices-are-resolved:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-16-drop-or-reset-a-local-capability-override-to-re-inherit-upstream:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-16-hierarchical-tree-view-for-the-web-ui-object-list:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-17-add-tags-to-work-items-for-filtering:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-17-make-web-ui-tree-view-column-scroll-independently:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-17-web-ui-multi-select-dropdown-filter-for-taxonomy-and-work-tags:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-20-clarify-parent-versus-initiative-relations-for-same-node-epics:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-20-fix-delegate-inbox-origin-project-id:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-20-improve-descendant-epic-display-and-tag-workflows:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-20-registered-project-graph-and-stable-project-ids:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-21-live-reference-search-and-object-scoped-save-validation:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-21-multi-file-tcw-implementation-plans:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-21-upgrade-tcw-serve-to-fastify-and-react:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-22-add-theme-preferences-and-migrate-the-web-ui-to-radix-themes:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-22-evaluate-and-refine-the-plugin-skills-with-an-eval-harness:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-11'
+2026-07-22-modularize-and-standardize-the-tcw-web-client:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-23-add-a-discarded-work-status-for-non-done-closures:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-23-blocker-refs-comma-split-mangles-external-text-and-unblocked-by-silently-no-ops:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-23-cross-node-epic-slices-cannot-link-their-parent-epic-tcw-resolves-downward-only:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-23-emit-new-location-when-cli-commands-move-a-tcw-object:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-24-absorb-the-documentation-sync-skill-into-tcw-as-a-core-lifecycle-concern:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-27-add-lifecycle-policy-config-and-the-hook-layer:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-27'
+2026-07-27-add-the-post-mortem-skill-and-its-verify-stage-trigger:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-27'
+2026-07-27-add-the-review-status-and-the-submit-rework-transitions:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-07-27-commit-every-work-transition-trunk-branch-and-dod-cleanup:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-27'
+2026-07-27-redefine-the-tcw-work-lifecycle-explicit-stages-transitions-and-hooks:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-27'
+2026-07-27-restructure-the-tcw-work-skill-into-per-stage-references-and-commands:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-27'
+2026-07-28-audit-the-work-backlog-with-subagents-and-make-the-workflow-reachable-from-codex:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-28'
+2026-07-28-drop-commit-hash-ranges-from-changelog-entries:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-28'
+2026-07-28-fold-the-trial-audit-s-findings-into-five-backlog-items:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-28'
+2026-07-28-make-the-consolidate-plans-workflow-reachable-from-codex:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-28-scan-every-markdown-file-for-phantom-cli-verbs-excluding-archives:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-29-ask-the-requester-for-reference-material-during-the-request-stage:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-29'
+2026-07-29-auto-install-the-tcw-cli-on-sessionstart-via-a-plugin-hook:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-29'
+2026-07-29-close-the-originating-github-issue-when-a-work-item-completes:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-29'
+2026-07-29-make-the-reconcile-rollup-read-the-canonical-capabilities-yaml-schema:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-29-resolve-relative-connected-projects-paths-against-the-main-worktree-root:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-29-triage-github-issues-into-tcw-work-items:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-29'
+2026-07-30-build-taxonomy-list-s-tree-from-real-parentage-instead-of-sorting-path-strings:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-30-fix-non-git-write-paths-work-new-and-init-fail-outside-a-git-repository:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-20'
+2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-20'
+2026-07-30-untrack-completed-and-discarded-work-and-scrub-private-repository-references:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-07-30-validate-capability-subject-and-feature-refs-at-write-time:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-20'
+2026-07-30-validate-taxonomy-vocab-refs-at-write-time-and-define-bare-slug-resolution:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-07-30'
+2026-08-04-make-tcw-validate-recursive-by-default:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-04'
+2026-08-04-show-work-lifecycle-documents-as-editable-tabs-in-the-web-ui:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-05'
+2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-15'
+2026-08-06-gitignore-resolved-work-folders-at-init-by-default:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-06'
+2026-08-10-repair-invalid-playwright-taxonomy-fixture:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-12'
 2026-08-11-accept-comma-separated-tags-on-tcw-work-new:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-11'
+2026-08-11-add-path-commands-for-tcw-storage-folders:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-11'
+2026-08-11-fix-typeerror-when-a-work-claim-loses-the-race-at-find:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-11'
+2026-08-11-harden-effect-transition-against-a-lost-status-transition-race:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-11'
+2026-08-11-install-the-plugin-s-cli-from-pypi-instead-of-its-own-clone:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-12'
+2026-08-11-make-the-tcw-marketplace-syncable-from-the-claude-ai-web-app:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-11'
+2026-08-11-publish-tcw-to-pypi-with-automated-releases:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-11'
+2026-08-11-roll-back-or-reorder-the-pre-move-set-field-writes-on-a-lost-transition:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-13'
+2026-08-12-add-the-stage-entry-verb:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-14'
+2026-08-12-audit-the-backlog-and-upstream-issues-against-the-new-lifecycle:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-18'
+2026-08-12-fix-work-inbox-accept-s-entry-resolution-and-initiative-stamp:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-13'
+2026-08-12-give-lifecycle-hooks-roles-kinds-and-conditions:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-14'
+2026-08-12-honor-the-configured-work-path-at-every-work-store-call-site:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-13'
+2026-08-12-make-the-work-lifecycle-polymorphic-and-cli-driven:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-18'
+2026-08-12-project-a-work-item-as-json:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-14'
+2026-08-12-repoint-the-work-skill-and-docs-at-the-cli:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-18'
+2026-08-12-scaffold-lifecycle-artifacts-from-templates:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-14'
+2026-08-12-ship-built-in-stage-prompts-with-the-cli:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-14'
+2026-08-12-stop-a-claim-loser-from-stealing-the-winner-s-published-item:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-12'
+2026-08-12-teach-the-remaining-readers-to-tell-a-vanished-item-from-an-absent-one:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-13'
+2026-08-12-unify-raw-intake-into-a-single-artifact:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-14'
+2026-08-13-confirm-directory-renames-during-the-worktree-merge-back:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-13'
+2026-08-13-declare-the-cross-node-recursion-capabilities:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-13'
+2026-08-13-report-a-refused-reconcile-commit-as-a-cli-error-not-a-traceback:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-13'
 2026-08-18-close-the-readme-lifecycle-heading-so-it-stops-swallowing-the-rest-of-the-document:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-11'
+2026-08-18-fix-tcw-work-new-hanging-on-inherited-stdin:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-19'
+2026-08-18-migrate-tcw-itself-to-the-1-0-0-lifecycle-and-write-the-consumer-migration-guide:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-18'
+2026-08-18-reconcile-read-artifact-with-the-canonical-presence-rule:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-19'
+2026-08-18-serve-documentation-sync-entries-from-tcw-config-yaml-instead-of-scraping-the-agent-guide:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-19'
+2026-08-19-derive-an-accepted-inbox-item-s-title-from-the-entry-s-h1-and-strip-the-date-prefix:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-20'
+2026-08-19-key-work-documentation-uniqueness-on-path-trigger-so-one-file-can-carry-two-triggers:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-21'
+2026-08-19-name-the-item-s-actual-body-artifact-in-the-builtin-spec-and-plan-stage-prompts:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-19'
+2026-08-19-render-an-unhosted-tcw-reference-as-a-visibly-distinct-non-link-naming-its-project:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-25'
+2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-20'
 2026-08-20-docs-work-claiming-is-created-by-every-start-and-never-removed:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-11'
+2026-08-20-enforce-the-gitignore-trap-at-write-time-not-only-at-init:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-20'
 2026-08-20-load-yaml-reads-a-falsy-yaml-document-as-an-empty-mapping:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
+2026-08-20-the-init-ignore-guard-probes-fixed-path-names-that-a-rule-could-collide-with:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-20'
 2026-08-26-declare-a-component-store-s-home-repository-so-a-fresh-checkout-can-provision-it:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-01'
+2026-08-26-declare-and-provision-the-work-store-s-home-repository:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-31'
+2026-08-26-generalize-the-store-declaration-to-taxonomy-and-capabilities:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-08-31'
 2026-08-26-publish-provisioned-store-writes-to-their-remote:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-01'
 2026-09-01-a-broken-work-path-is-hidden-when-a-repository-is-also-declared:
   resolution: superseded
   resolved: '2026-09-10'
+2026-09-01-a-test-that-passes-on-its-first-run-must-be-falsified-before-it-is-trusted:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
+  resolved: '2026-09-01'
 2026-09-01-separate-lifecycle-stage-information-from-stage-prompts-in-the-tcw-work-skill-references:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-10'
 2026-09-02-answer-capabilities-drift-from-the-tombstone-so-it-reports-the-same-in-every-checkout:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-02'
 2026-09-02-restore-the-ci-test-suite-to-green:
   resolution: done
   resolved: '2026-09-02'
 2026-09-02-split-tcw-work-stage-into-prompt-and-begin-subcommands:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-10'
 2026-09-02-tombstone-resolved-work-items-so-references-to-them-stay-resolvable:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-02'
 2026-09-03-a-partial-graph-lets-the-epic-completion-gate-and-the-node-check-fail-open:
@@ -122,6 +646,7 @@
   resolution: done
   resolved: '2026-09-04'
 2026-09-04-override-where-a-connected-project-lives-on-this-machine:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-09'
 2026-09-04-tcw-validate-reports-a-work-store-on-a-node-that-keeps-no-board:
@@ -134,15 +659,19 @@
   resolution: done
   resolved: '2026-09-04'
 2026-09-09-compose-a-lifecycle-stage-into-one-skill-document:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-10'
 2026-09-09-make-stage-begin-the-gate-alone-and-bookend-the-prompt-with-its-lifecycle-position:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-10'
 2026-09-09-validate-a-slug-before-the-claiming-lookup-globs-with-it:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-11'
 2026-09-10-give-every-lifecycle-stage-its-own-tcw-work-stage-skill:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-10'
 2026-09-10-keep-a-reporter-s-private-project-details-out-of-an-upstream-tcw-report:
@@ -152,41 +681,58 @@
   resolution: done
   resolved: '2026-09-10'
 2026-09-10-resolve-a-work-store-inside-a-project-the-registry-already-located:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-10'
 2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 2026-09-12-configure-an-external-tracker-and-read-its-tickets:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 2026-09-12-refuse-local-work-that-no-claimed-tracker-ticket-authorizes:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-15'
 2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 2026-09-12-synchronize-the-work-lifecycle-outward-to-the-tracker:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 2026-09-14-delete-a-capability-with-tcw-capabilities-rm:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 2026-09-14-inherit-work-tracker-from-parent-nodes-key-by-key:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 ? 2026-09-14-make-eval-checks-measure-what-the-agent-did-working-tree-file-changes-tool-call-routing-and-named-fixture-variants
-: resolution: done
+: location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
+  resolution: done
   resolved: '2026-09-14'
 2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
 2026-09-14-publish-concise-progress-links-and-comments-to-a-bound-tracker-ticket:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-15'
 2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands:
+  location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-09-14'
+2026-09-15-add-a-tcw-work-create-skill-that-checks-for-overlap-before-creating-a-work-item:
+  location: a6f8ba0ab7c5ce459fc34ff48bcd6b74084388ef
+  resolution: done
+  resolved: '2026-09-15'

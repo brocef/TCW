@@ -1,0 +1,11 @@
+slug: 2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items
+title: Make the strict tracker gate refuse unfollowable moves and allow child items
+created: '2026-09-15'
+resolution: null
+tags:
+- remote
+- work
+- cli
+- bug
+priority: 40
+effort: medium

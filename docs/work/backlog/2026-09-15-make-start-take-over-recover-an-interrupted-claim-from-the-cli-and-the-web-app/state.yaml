@@ -1,0 +1,12 @@
+slug: 2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app
+title: Make start --take-over recover an interrupted claim from the CLI and the web
+  app
+created: '2026-09-15'
+resolution: null
+tags:
+- work
+- cli
+- web
+- bug
+priority: 50
+effort: medium

@@ -1,0 +1,8 @@
+slug: 2026-09-15-make-pnpm-prettify-check-pass-on-a-clean-checkout
+title: Make pnpm prettify:check pass on a clean checkout
+created: '2026-09-15'
+resolution: null
+tags:
+- tech-debt
+priority: 15
+effort: medium

@@ -1,0 +1,9 @@
+slug: 2026-09-15-make-tcw-taxonomy-rm-refuse-nested-terms-and-live-references
+title: Make tcw taxonomy rm refuse nested terms and live references
+created: '2026-09-15'
+resolution: null
+tags:
+- taxonomy
+- cli
+priority: 30
+effort: low

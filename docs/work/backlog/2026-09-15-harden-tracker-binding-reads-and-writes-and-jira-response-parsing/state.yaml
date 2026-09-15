@@ -1,0 +1,11 @@
+slug: 2026-09-15-harden-tracker-binding-reads-and-writes-and-jira-response-parsing
+title: Harden tracker binding reads and writes, and Jira response parsing
+created: '2026-09-15'
+resolution: null
+tags:
+- remote
+- store
+- bug
+- tech-debt
+priority: 40
+effort: medium
