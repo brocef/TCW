@@ -39,7 +39,7 @@ from tcw.store.base import (
     BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
-    binding_value, classify_binding,
+    binding_value, classify_binding, unreadable_binding,
     WORK_STATUSES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
@@ -4223,13 +4223,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         binding = d / "tracker.yaml"
         if binding.exists():
             # Classified in the model, not by `tcw.tracker.intake.read_binding`: a
-            # board read must not import the tracker package. The YAML-error reason
-            # is worded exactly as `read_binding` words it.
+            # board read must not import the tracker package. One item's binding
+            # that cannot be read is reported on that item and never takes the
+            # board down — before bindings were shown, nothing here opened the file.
+            # A folder that vanished mid-read still raises, for `_item_from_dir`.
             try:
                 parsed = yaml.safe_load(binding.read_text(encoding="utf-8"))
                 tracker = binding_value(classify_binding(parsed))
-            except yaml.YAMLError as e:
-                tracker = {"problem": f"not valid YAML ({e.__class__.__name__})"}
+            except FileNotFoundError:
+                raise
+            except (yaml.YAMLError, OSError, UnicodeDecodeError, RecursionError) as e:
+                tracker = binding_value(unreadable_binding(e))
         return WorkItem(
             slug=d.name,
             title=state.get("title", d.name),

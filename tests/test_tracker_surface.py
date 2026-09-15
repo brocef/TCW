@@ -120,6 +120,28 @@ def test_a_binding_with_no_url_and_no_bound_date_is_still_bound():
     assert value["ticket"]["url"] == "" and value["bound"] == ""
 
 
+@pytest.mark.parametrize("raw, expected", [
+    ("2026-09-14T10:00:00Z", "2026-09-14T10:00:00+00:00"),
+    ("!!binary aGk=", ""),
+    ("[a, b]", ""),
+    ("7", ""),
+], ids=["datetime", "binary", "list", "int"])
+def test_a_bound_that_is_not_text_or_a_date_is_iso_or_empty(raw, expected):
+    """`str()` would render a datetime with a space, bytes as `b'hi'`, and a list as
+    Python notation — and a YAML anchor chain as gigabytes."""
+    text = document().replace("bound: '2026-09-14'", f"bound: {raw}")
+    assert binding_value(read_binding(text))["bound"] == expected
+
+
+def test_an_anchor_chain_in_bound_is_not_expanded():
+    chain = "a: &a [x, x, x, x, x, x, x, x, x, x]\n" + "".join(
+        f"{chr(98 + i)}: &{chr(98 + i)} [*{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)},"
+        f" *{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)},"
+        f" *{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)}]\n" for i in range(8))
+    text = chain + document().replace("bound: '2026-09-14'", "bound: *i")
+    assert binding_value(read_binding(text))["bound"] == ""
+
+
 def test_an_unlinked_binding_has_no_value():
     text = unlink_document(document(), reason="wrong ticket", today="2026-09-14")
     assert binding_value(read_binding(text)) is None
@@ -184,6 +206,17 @@ def test_show_prints_the_binding_after_every_field_and_before_the_body(node):
     assert lines.index(line) == lines.index("") - 1, out
 
 
+def test_show_puts_the_binding_after_blocked_by(node):
+    st = FsWorkStore.open(node)
+    blocker = item(node, "Blocker", None)
+    slug = item(node, "Bound and blocked", document())
+    st.add_blocker(slug, blocker)
+    code, out, err = run("work", "show", slug)
+    assert code == 0, err
+    lines = out.splitlines()
+    assert lines[-1].startswith("tracker: ") and lines[-2].startswith("blocked_by: "), out
+
+
 def test_show_leaves_out_an_empty_url(node):
     slug = item(node, "No URL", document().replace(f"url: {URL}", "url: ''"))
     assert tracker_lines(slug) == ["tracker: EX-1 (jira-cloud, part default)"]
@@ -203,6 +236,58 @@ def test_list_ends_a_bound_row_with_its_ticket(node):
 def test_list_marks_an_unreadable_binding(node):
     assert row(item(node, "Missing keys", 'ticket: {id: "1"}\n')).endswith(
         " | ticket: unreadable")
+
+
+def test_show_and_list_report_text_that_is_not_yaml(node):
+    slug = item(node, "Not YAML", "ticket: [\n")
+    assert tracker_lines(slug) == [
+        "tracker: tracker.yaml cannot be read (not valid YAML (ParserError))"]
+    assert row(slug).endswith(" | ticket: unreadable")
+    assert show_json(slug)["tracker"] == read_binding_value("ticket: [\n")
+
+
+def read_binding_value(text):
+    return binding_value(read_binding(text))
+
+
+def _assert_board_survives(node, broken: str) -> None:
+    """One unreadable binding is reported on its own item and never takes the board
+    down: `list` still prints the healthy item, and `show` still reads the broken one."""
+    healthy = item(node, "Healthy", document())
+    code, out, err = run("work", "list")
+    assert code == 0, err
+    assert any(line.startswith(healthy + " |") for line in out.splitlines()), out
+    broken_row = [line for line in out.splitlines() if line.startswith(broken + " |")]
+    assert broken_row and broken_row[0].endswith(" | ticket: unreadable"), out
+    assert set(show_json(broken)["tracker"]) == {"problem"}
+
+
+def test_a_binding_that_is_not_utf8_does_not_break_the_board(node):
+    slug = item(node, "Not UTF-8", None)
+    (FsWorkStore.open(node).path(slug) / "tracker.yaml").write_bytes(b"ticket: \xff\xfe\n")
+    _assert_board_survives(node, slug)
+    assert tracker_lines(slug) == [
+        "tracker: tracker.yaml cannot be read (not a readable text file (UnicodeDecodeError))"]
+
+
+def test_a_directory_named_like_a_binding_does_not_break_the_board(node):
+    slug = item(node, "A directory", None)
+    (FsWorkStore.open(node).path(slug) / "tracker.yaml").mkdir()
+    _assert_board_survives(node, slug)
+
+
+def test_a_binding_nested_too_deep_to_parse_does_not_break_the_board(node):
+    _assert_board_survives(node, item(node, "Deep", "ticket: " + "[" * 5000 + "\n"))
+
+
+def test_a_binding_that_cannot_be_opened_does_not_break_the_board(node):
+    slug = item(node, "No permission", document())
+    path = FsWorkStore.open(node).path(slug) / "tracker.yaml"
+    path.chmod(0)
+    try:
+        _assert_board_survives(node, slug)
+    finally:
+        path.chmod(0o644)
 
 
 def test_an_unbound_and_an_unlinked_item_print_nothing_new(node):

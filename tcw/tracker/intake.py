@@ -26,7 +26,7 @@ from dataclasses import dataclass
 import yaml
 
 from tcw.store.base import (RESOLVED_STATUSES, Bound, Malformed, Unbound,  # noqa: F401
-                            classify_binding)
+                            classify_binding, unreadable_binding)
 
 BINDING_SIDECAR = "tracker.yaml"
 DEFAULT_PART = "default"
@@ -56,7 +56,7 @@ def read_binding(content: str | None) -> Unbound | Malformed | Bound:
     try:
         data = yaml.safe_load(content)
     except yaml.YAMLError as error:
-        return Malformed(f"not valid YAML ({error.__class__.__name__})")
+        return unreadable_binding(error)
     return classify_binding(data)
 
 

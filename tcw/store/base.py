@@ -18,7 +18,7 @@ import copy
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -391,12 +391,24 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
     if missing:
         return Malformed(f"missing or empty: {', '.join(missing)}")
     # A date YAML reads unquoted (`bound: 2026-09-14`) is still the date it names.
+    # Anything else is not a date at all, and `str()` of it would be Python notation —
+    # or, for a chain of YAML anchors, a string gigabytes long.
     bound = data.get("bound")
+    if isinstance(bound, (date, datetime)):
+        bound = bound.isoformat()
     return Bound(provider=fields_["provider"], project=fields_["project"],
                  part=fields_["part"], ticket_id=fields_["ticket.id"],
                  ticket_key=fields_["ticket.key"],
                  ticket_url=_binding_text(ticket.get("url")),
-                 bound="" if bound is None else str(bound))
+                 bound=_binding_text(bound))
+
+
+def unreadable_binding(error: Exception) -> Malformed:
+    """The binding a `tracker.yaml` that could not be read or parsed classifies as —
+    worded once, for every reader of one."""
+    what = ("not a readable text file" if isinstance(error, (OSError, UnicodeDecodeError))
+            else "not valid YAML")
+    return Malformed(f"{what} ({error.__class__.__name__})")
 
 
 def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
