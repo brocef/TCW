@@ -1,4 +1,4 @@
-"""`tcw work tracker --help`: what the five subcommands say they do.
+"""`tcw work tracker --help`: what the six subcommands say they do.
 
 These commands reach a system outside the repository and two of them take two
 positionals whose order the command name does not give away, so `--help` is the
@@ -17,7 +17,7 @@ import pytest
 
 from tcw.cli import build_parser
 
-TRACKER_COMMANDS = ("list", "show", "import", "link", "unlink")
+TRACKER_COMMANDS = ("list", "show", "import", "link", "unlink", "sync")
 
 
 def _tracker_group() -> argparse._SubParsersAction:

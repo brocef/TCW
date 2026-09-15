@@ -246,3 +246,24 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     return finish(CONFLICTING, (f"{again.key} did not reach '{target}': it is in "
                                 f"'{again.status}'."))
 
+
+def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
+    """Record that a move was not sent at all — the tracker configuration has
+    problems, so there is no client to send it with. Pending: fixing the
+    configuration and running `sync` sends it. Keeps an existing record's `since`
+    and `claim`, as any later transition does."""
+    bound, revision = binding_of(store, slug)
+    if not isinstance(bound, Bound):
+        return Outcome(NONE)
+    if store.pending_deletion(slug):
+        return Outcome(PENDING, reason)
+    record = bound.sync if bound.sync and "problem" not in bound.sync else None
+    content = store.read_sidecar(slug, BINDING_SIDECAR).content
+    store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, {
+        "state": PENDING, "move": move,
+        "since": record["since"] if record else "",
+        "claim": "owed" if move == "start" or (record and record["claim"] == "owed")
+                 else "done",
+        "reason": reason[:REASON_LIMIT], "at": _now(),
+    }), revision=revision)
+    return Outcome(PENDING, reason, recorded=True)

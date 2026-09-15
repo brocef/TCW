@@ -15,6 +15,7 @@ import contextlib
 import io
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import jsonschema
@@ -86,7 +87,8 @@ def test_unlink_takes_the_record_with_the_binding():
 
 def make_node(tmp_path: Path, *, statuses: dict | None,
               name: str = "alpha", email_env: str = "TCW_A_EMAIL",
-              tracker: bool = True, base_url: str = BASE_URL) -> Path:
+              tracker: bool = True, base_url: str = BASE_URL,
+              retain: dict | None = None) -> Path:
     """A git-backed node. `statuses` has no default; `None` leaves the block out."""
     root = tmp_path / name
     root.mkdir()
@@ -94,6 +96,9 @@ def make_node(tmp_path: Path, *, statuses: dict | None,
     subprocess.run(["git", "-C", str(root), "config", "user.email", "a@example.test"],
                    check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "a"], check=True)
+    if retain is not None:        # before init, so the scaffolding sees it
+        (root / "tcw-config.yaml").write_text(
+            yaml.safe_dump({"id": name, "work": {"retain": retain}}), encoding="utf-8")
     init(["work"], root, project_id=name)
     config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
     if tracker:
@@ -475,3 +480,225 @@ def test_a_binding_on_another_site_sends_nothing(node, fake):
     outcome = deliver_now(node, slug, move="submit", previous="active")
     assert outcome.state == "conflicting" and "elsewhere.invalid" in outcome.reason
     assert fake.requests == []
+
+
+# ── through the lifecycle commands ───────────────────────────────────────────
+
+
+def commits_touching(root: Path, slug: str) -> int:
+    out = subprocess.run(["git", "-C", str(root), "log", "--oneline", "--all", "--",
+                          f"docs/work/*/{slug}"], capture_output=True, text=True).stdout
+    return len(out.splitlines())
+
+
+def test_start_claims_a_linked_ticket(node, fake):
+    slug = bound_item(node)
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 0, err
+    assert status(node, slug) == "active"
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Progress", A)
+    assert f"claimed {KEY}" in err
+    assert record(node, slug) is None
+
+
+def test_start_of_a_ticket_someone_else_holds_starts_locally_and_records_it(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 1
+    assert status(node, slug) == "active"
+    assert fake.writes() == []
+    assert "Bob" in err and f"{slug} moved to active and was committed" in err
+    sync = record(node, slug)
+    assert (sync["state"], sync["move"], sync["claim"]) == ("conflicting", "start", "owed")
+    dirty = subprocess.run(["git", "-C", str(node), "status", "--porcelain", "--",
+                            f"docs/work/backlog/{slug}"], capture_output=True, text=True)
+    assert dirty.stdout == "", "the move out of backlog was not committed"
+
+
+def test_an_owed_claim_is_retried_before_the_next_move(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Progress", B)
+    cli(node, "work", "start", slug)
+    claimed_ticket(fake, "To Do", None)                   # Bob let it go
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 0, err
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Review", A)
+    assert record(node, slug) is None
+
+
+def test_a_move_the_tracker_misses_is_pending_and_sync_finishes_it(node, fake):
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    fake.down = True
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 1
+    assert status(node, slug) == "review"
+    assert "moved to review and was committed" in err and "(pending)" in err
+    assert record(node, slug)["state"] == "pending"
+    fake.down = False
+    commits = commits_touching(node, slug)
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, err
+    assert out.strip() == f"{slug}: current"
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert record(node, slug) is None
+    assert status(node, slug) == "review" and commits_touching(node, slug) == commits
+
+
+def test_a_complete_that_misses_the_tracker_keeps_an_unretained_item(tmp_path, fake):
+    root = make_node(tmp_path, statuses=STATUSES, retain={"completed": False})
+    slug = bound_item(root)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "bind"], check=True)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.down = True
+    code, _out, err = cli(root, "work", "complete", slug, "--resolution", "done",
+                          "--confirm", "--force")
+    assert code == 1
+    assert "was kept rather than removed" in err and f"tcw work delete {slug}" in err
+    assert FsWorkStore.open(root).get(slug) is not None
+    assert record(root, slug) is None
+    fake.down = False
+    code, _out, err = cli(root, "work", "delete", slug)
+    assert code == 0, err
+
+
+VERBS = [("start",), ("submit",), ("rework",), ("complete", "--resolution", "done",
+                                                 "--confirm", "--force")]
+
+
+def test_with_no_tracker_a_bound_item_moves_as_before_and_loads_no_tracker_code(tmp_path):
+    root = make_node(tmp_path, statuses=None, tracker=False)
+    st = FsWorkStore.open(root)
+    slug = st.create("Bound, nothing configured").slug
+    (st.path(slug) / "tracker.yaml").write_text(document(), encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "bind"], check=True)
+    repo = Path(__file__).resolve().parents[1]
+    for verb in VERBS:
+        probe = (f"import sys; sys.path.insert(0, {str(repo)!r})\n"
+                 "import io, contextlib\nfrom tcw.cli import main\n"
+                 "err = io.StringIO()\n"
+                 "with contextlib.redirect_stderr(err), contextlib.redirect_stdout(err):\n"
+                 f"    code = main(['work', {verb[0]!r}, {slug!r}, *{list(verb[1:])!r}])\n"
+                 "print('EXIT', code)\n"
+                 "print('TRACKER', 'tracker' in err.getvalue().lower())\n"
+                 "print('LOADED', ','.join(n for n in sys.modules if n.startswith('tcw.tracker')))\n")
+        if verb[0] == "rework":
+            subprocess.run([sys.executable, "-c", probe.replace("'rework'", "'submit'")],
+                           cwd=root, capture_output=True, text=True, check=True)
+        result = subprocess.run([sys.executable, "-c", probe], cwd=root,
+                                capture_output=True, text=True, timeout=120)
+        assert "EXIT 0" in result.stdout, (verb, result.stdout, result.stderr)
+        assert "TRACKER False" in result.stdout, (verb, result.stdout)
+        assert result.stdout.strip().endswith("LOADED"), (verb, result.stdout)
+
+
+def test_a_tracker_block_with_problems_records_the_move_as_pending(node, fake):
+    slug = bound_item(node)
+    path = node / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["statuses"] = {"review": "In Review"}   # no active
+    fake.requests.clear()
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 1 and status(node, slug) == "active"
+    sync = record(node, slug)
+    assert sync["state"] == "pending" and "tcw validate" in sync["reason"]
+    assert fake.requests == []
+
+
+def test_no_delivery_outcome_prints_or_stores_the_token(node, fake):
+    slug = bound_item(node)
+    outputs = [cli(node, "work", "start", slug)]
+    fake.down = True
+    outputs.append(cli(node, "work", "submit", slug))
+    fake.down = False
+    claimed_ticket(fake, "Done", A)
+    outputs.append(cli(node, "work", "tracker", "sync", slug))
+    for _code, out, err in outputs:
+        assert SENTINEL not in out + err
+    for path in FsWorkStore.open(node).root.rglob("*"):
+        if path.is_file():
+            assert SENTINEL not in path.read_text(encoding="utf-8", errors="replace"), path
+
+
+# ── tcw work tracker sync ────────────────────────────────────────────────────
+
+
+def with_record(root: Path, slug: str, sync) -> None:
+    st = FsWorkStore.open(root)
+    content = yaml.safe_load(binding_text(root, slug))
+    content["sync"] = sync
+    (st.path(slug) / "tracker.yaml").write_text(yaml.safe_dump(content, sort_keys=False),
+                                                encoding="utf-8")
+
+
+def test_sync_all_visits_recorded_items_and_skips_another_owners(node, fake, monkeypatch):
+    second = "20002"
+    fake.ticket(id=second, key="SYNC-2", summary="Another", status="In Review",
+                assignee=A)
+    fake.ticket(id="20003", key="SYNC-3", summary="Theirs", status="In Progress",
+                assignee=B)
+    mine = bound_item(node, "Mine, done")
+    plain = bound_item(node, "No record", ticket="SYNC-2")
+    theirs = bound_item(node, "Theirs", ticket="SYNC-3")
+    st = FsWorkStore.open(node)
+    claimed_ticket(fake, "In Review")
+    st.start(mine, owner="a@example.test")
+    st.submit(mine)
+    st.complete(mine, "done", ["acked"])                  # retained: completed is kept
+    with_record(node, mine, {**RECORD, "move": "complete", "since": "In Review"})
+    st.start(plain, owner="a@example.test")
+    st.start(theirs, owner="b@example.test")
+    with_record(node, theirs, {**RECORD, "since": "In Progress"})
+    fake.requests.clear()
+    code, out, err = cli(node, "work", "tracker", "sync", "--all")
+    lines = sorted(out.strip().splitlines())
+    assert lines == sorted([f"{mine}: current", f"{theirs}: skipped — started by "
+                                                f"b@example.test"]), (out, err)
+    assert code == 0
+    assert fake.tickets[TICKET_ID].status == "Done"
+    assert not [p for _m, p, _a in fake.requests if "20002" in p or "20003" in p]
+
+
+def test_sync_all_exits_one_while_a_move_stays_pending(node, fake):
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    fake.down = True
+    cli(node, "work", "submit", slug)
+    code, out, _err = cli(node, "work", "tracker", "sync", "--all")
+    assert code == 1 and out.startswith(f"{slug}: pending — ")
+
+
+def test_sync_of_an_item_with_no_record_checks_and_never_moves(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Progress")
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)                                       # e.g. from `tcw serve`
+    before = binding_text(node, slug)
+    fake.requests.clear()
+    code, out, _err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 1 and "conflicting" in out
+    assert fake.writes() == [] and binding_text(node, slug) == before
+
+
+def test_sync_needs_exactly_one_of_a_slug_or_all(node, fake):
+    assert cli(node, "work", "tracker", "sync")[0] == 1
+    assert cli(node, "work", "tracker", "sync", "x", "--all")[0] == 1
+
+
+def test_an_unreadable_record_leaves_the_binding_usable(node, fake):
+    slug = bound_item(node)
+    with_record(node, slug, 5)
+    other = FsWorkStore.open(node).create("Another").slug
+    fake.ticket(id="20002", key="SYNC-2", summary="Another")
+    assert cli(node, "work", "tracker", "link", other, "SYNC-2")[0] == 0
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 0, err
+    assert record(node, slug) is None                    # overwritten by the delivery
+    assert cli(node, "work", "tracker", "unlink", slug, "--reason", "done")[0] == 0
