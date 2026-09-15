@@ -40,7 +40,9 @@ category.
   when the ticket did not follow. `complete` delivers before auto-deletion and skips
   the deletion when delivery fails.
 - `tcw work tracker sync [<slug> | --all]`: retries recorded items, skipping items
-  whose `owner` is not the local identity; check-only for an item with no record.
+  whose `owner` is not the local identity; check-only for an item with no record;
+  a `held` item counts as success. When `complete`'s worktree merge fails and the
+  item's `tracker.yaml` is staged, a hint names the record.
 - `tracker.yaml` `sync` record (`state`, `move`, `since`, `claim`, `reason`, `at`),
   written only when a delivery is pending or conflicting and removed once current;
   `Bound.sync`, `WorkItem.tracker.sync` and a closed `oneOf` in `WORK_ITEM_SCHEMA`.
