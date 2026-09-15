@@ -1003,6 +1003,9 @@ class TrackerConfig:
     token_env: str
     claim_transition: str
     timeout_seconds: int = 15
+    # Local status → the tracker status a bound ticket should be in. Only the keys
+    # set; `discarded` is a status name or a mapping of discard resolutions to one.
+    statuses: dict = field(default_factory=dict)
 
 
 # The only `provider` value that parses. A literal in the abstract layer, which is
@@ -1012,12 +1015,15 @@ class TrackerConfig:
 TRACKER_PROVIDERS = ("jira-cloud",)
 
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
-                          "transitions", "timeout-seconds"})
+                          "transitions", "statuses", "timeout-seconds"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
-# `claim` alone. C3 adds submit/rework/terminal mappings and C4 adds `strict`;
-# until then an unknown key here is reported, because silently ignoring a key
-# someone set is silently not doing what they asked.
+# `claim` alone: where a ticket goes for every other move is a *status*, under
+# `statuses`, because only a status can be compared with the ticket to tell a
+# delivered move from an undelivered one. C4 adds `strict`; until then an unknown
+# key is reported, because silently ignoring a key someone set is silently not
+# doing what they asked.
 TRACKER_TRANSITION_KEYS = frozenset({"claim"})
+TRACKER_STATUS_KEYS = ("active", "review", "completed", "discarded")
 
 TRACKER_DEFAULT_TIMEOUT = 15
 
@@ -1093,6 +1099,8 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
             return ""
         return value.strip()
 
+    statuses = _parse_tracker_statuses(raw.get("statuses"), problems)
+
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
     claim = nested_str(transitions, "claim", "transitions.claim")
@@ -1119,7 +1127,59 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         token_env=token_env,
         claim_transition=claim,
         timeout_seconds=int(timeout),
+        statuses=statuses,
     ), []
+
+
+def _parse_tracker_statuses(raw: Any, problems: list[str]) -> dict:
+    """`work.tracker.statuses`, appending a problem per defect. Absent is `{}`."""
+    if raw is None:
+        return {}
+    where = "work.tracker.statuses"
+    if not isinstance(raw, dict):
+        problems.append(f"{where}: expected a mapping, got {type(raw).__name__}")
+        return {}
+
+    def name(value: Any, path: str) -> str:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        problems.append(f"{path}: expected a non-empty tracker status name, "
+                        f"got {type(value).__name__}")
+        return ""
+
+    out: dict = {}
+    for key in sorted(set(raw) - set(TRACKER_STATUS_KEYS), key=str):
+        problems.append(f"{where}.{key}: unknown key")
+    for key in TRACKER_STATUS_KEYS:
+        if key not in raw:
+            continue
+        value = raw[key]
+        if key == "discarded" and isinstance(value, dict):
+            resolutions = WORK_RESOLUTIONS - {"done"}
+            by_resolution = {}
+            for resolution in sorted(value, key=str):
+                path = f"{where}.discarded.{resolution}"
+                if resolution not in resolutions:
+                    problems.append(f"{path}: not a discard resolution (choose from "
+                                    f"{', '.join(sorted(resolutions))})")
+                    continue
+                by_resolution[resolution] = name(value[resolution], path)
+            out[key] = by_resolution
+        else:
+            out[key] = name(value, f"{where}.{key}")
+    # Every move after the claim checks where the ticket was left, and that chain
+    # of expectations starts at `active`.
+    if out and "active" not in raw:
+        problems.append(f"{where}.active: required when any other status is mapped")
+    return out
+
+
+def target_status(statuses: dict, status: str, resolution: str | None) -> str:
+    """The tracker status a ticket should be in for a local `status`, or `""`."""
+    value = statuses.get(status, "")
+    if isinstance(value, dict):
+        return value.get(resolution or "", "")
+    return value
 
 
 TrackerKeyPath = tuple[Any, ...]
