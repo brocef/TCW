@@ -126,12 +126,16 @@ unresolved skill name and spawns nothing.
 
 ## Notes
 
-- **Not verifiable in this repository:** that Claude and Codex actually resolve the
-  renamed skills. Both read the same `SKILL.md` frontmatter and the same directory
-  name, and both were changed together, but nothing here exercises either host. The
-  first real check is invoking `/tcw:work` in a session with the local plugin
-  loaded (`--plugin-dir /home/user/TCW`). Flagged for `verify` rather than implied
-  to be covered.
+- **The host resolution the plan called unverifiable was verified.** A headless
+  `claude -p --plugin-dir /home/user/TCW` session reports in its own `init` event
+  that it loaded `tcw` from the working tree (`source: tcw@inline`, version 2.3.0)
+  and resolved exactly sixteen skills, every one unprefixed: `tcw:work`,
+  `tcw:work-stage`, `tcw:work-create`, `tcw:capabilities`, `tcw:taxonomy`,
+  `tcw:setup`, `tcw:configure`, `tcw:post-mortem`, the four `tcw:commands-*`, the
+  three `tcw:extras-*`, and `tcw:documentation-sync`. No `tcw:tcw-…` address
+  appears. **Codex is still unverified** — nothing here runs it — but it reads the
+  same frontmatter and the same directory names, both of which this proves are
+  consistent.
 - **Driving the lifecycle with the CLI was safe here**, despite `AGENTS.md`'s
   exception. That exception is scoped to editing `tcw/`; this item changed one
   docstring there and nothing else, and no lifecycle binding in `tcw-config.yaml`
