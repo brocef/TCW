@@ -553,19 +553,160 @@ reports, comments, and the known limits are in
 
 #### Skills
 
-<!-- readme-rewrite: unwritten -->
+| Skill                                                | What it does                                                                                                                                                                                  |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`tcw-work`](skills/tcw-work/SKILL.md)               | Guides an agent through the whole work lifecycle: triaging the inbox, writing the request, spec and plan, implementing, verifying, completing, splitting large items, and coordinating epics. |
+| [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md) | Once a problem has surfaced (rejected work, a false claim in a spec, something shipped that should not have), finds which lifecycle stage could first have caught it.                         |
+
+Most day-to-day work starts from one of the command skills (planning an item,
+driving it to completion, verifying it, processing the inbox) described in
+[Skills and Agents](#skills-and-agents).
 
 #### CLI
 
-<!-- readme-rewrite: unwritten -->
+**Board and items**
+
+| Command         | What it does                                                   |
+| --------------- | -------------------------------------------------------------- |
+| `tcw work new`  | creates a backlog item and prints its slug                     |
+| `tcw work list` | shows the board; completed and discarded items only when asked |
+| `tcw work show` | prints an item's status, fields and documents                  |
+| `tcw work path` | prints the work store's folder, or an item's folder            |
+| `tcw work edit` | changes an item's title, estimates, tags or blockers           |
+| `tcw work tags` | lists, adds or removes the project's registered tags           |
+
+**Transitions**
+
+| Command             | What it does                                                                      |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `tcw work start`    | backlog → active                                                                  |
+| `tcw work submit`   | active → review: implemented, waiting for acceptance                              |
+| `tcw work rework`   | review → active: verification rejected the work                                   |
+| `tcw work complete` | closes an item: `--resolution done` → completed, any other resolution → discarded |
+| `tcw work drop`     | deletes a backlog item outright                                                   |
+| `tcw work delete`   | finishes removing a resolved item the project does not keep                       |
+
+**Lifecycle stages**
+
+| Command              | What it does                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `tcw work lifecycle` | prints every stage and transition, with what this project attaches to each                |
+| `tcw work stage`     | `stage gate` checks a stage may run; `stage prompt` prints its instructions               |
+| `tcw work scaffold`  | writes a draft of a stage's document from its template                                    |
+| `tcw work docs`      | prints the project's documentation entries: which documents a change must keep up to date |
+
+**Inbox, and work across projects**
+
+| Command              | What it does                                                      |
+| -------------------- | ----------------------------------------------------------------- |
+| `tcw work inbox`     | `inbox list`, `inbox show` and `inbox accept` raw requests        |
+| `tcw work nodes`     | lists this project's parent and child projects                    |
+| `tcw work delegate`  | writes a request into a child project's inbox                     |
+| `tcw work escalate`  | writes a request into the parent project's inbox                  |
+| `tcw work reconcile` | reads child projects' items and writes an epic's rolled-up status |
+
+**Jira and housekeeping**
+
+| Command              | What it does                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `tcw work tracker`   | `list`, `show`, `import`, `link`, `unlink` and `sync` against Jira; see [Jira integration](#jira-integration) |
+| `tcw work init`      | creates the work store's folders (the same as `tcw init work`)                                                |
+| `tcw work tombstone` | records items resolved before the store kept a record of them, so their slugs are never reused                |
+
+```sh
+tcw work new "Export invoices as PDF"          # → 2026-09-15-export-invoices-as-pdf
+tcw work start 2026-09-15-export-invoices-as-pdf
+tcw work list
+tcw work complete 2026-09-15-export-invoices-as-pdf --resolution done --confirm
+```
+
+Every command has `--help`, and the full reference is
+[The Work component](docs/guide/work.md).
 
 ## Skills and Agents
 
-<!-- readme-rewrite: unwritten -->
+The CLI enforces the rules: which moves are legal, which references must
+resolve, what has to be true before an item completes. What a command cannot
+decide (what a request really asks for, whether a spec is good enough, whether
+the work is finished) is judgment, and the plugin's skills guide an agent through
+it. Skills name `tcw` commands and never reimplement them. Every entry point is a
+skill, so they work the same way under Claude Code and Codex.
+
+The skills for a single axis are listed in that axis's section above. These cut
+across the axes.
+
+**Setting up and configuring**
+
+| Skill                                                      | What it does                                                                                                                                                                                |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`tcw-setup`](skills/tcw-setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
+| [`tcw-configure`](skills/tcw-configure/SKILL.md)           | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
+| [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and offers a version bump when work is done.                                     |
+| [`tcw-work-stage`](skills/tcw-work-stage/SKILL.md)         | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
+
+**Command skills: the everyday workflows**
+
+| Skill                                                                                            | What it does                                                                                                    |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| [`tcw-commands-process-inbox`](skills/tcw-commands-process-inbox/SKILL.md)                       | Turns raw inbox entries into work items and writes each one's request.                                          |
+| [`tcw-commands-plan-work`](skills/tcw-commands-plan-work/SKILL.md)                               | Takes an item, or a request made in chat, through the request, spec and plan stages, and stops before any code. |
+| [`tcw-commands-drive-work-to-completion`](skills/tcw-commands-drive-work-to-completion/SKILL.md) | Takes an item from wherever it is through implementation, and stops for your verification before completing it. |
+| [`tcw-commands-verify-work`](skills/tcw-commands-verify-work/SKILL.md)                           | Checks finished work against its spec with you, and records whether it was accepted or needs rework.            |
+
+**Extras: optional, built for one way of working**
+
+| Skill                                                                      | What it does                                                                                                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking two read-only advisors wherever the lifecycle would ask you.     |
+| [`tcw-extras-triage-issues`](skills/tcw-extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                      |
+| [`tcw-extras-report`](skills/tcw-extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues). |
+
+**Agents.** Three read-only agents ship with the plugin. None of them edits a
+file or moves an item; each reports back to the session that started it.
+
+| Agent                 | What it does                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tcw-verifier`        | For the `verify` stage: reads the change against the item's spec, runs checks, and reports whether each acceptance criterion is met.             |
+| `tcw-backlog-auditor` | Checks one backlog item for problems: already done, out of date, in the wrong project, not actionable, or blocked by something already resolved. |
+| `tcw-post-mortem`     | Reads an item's documents and commit history backwards to find which stage could first have caught a problem.                                    |
 
 ## TCW Local Web App
 
-<!-- readme-rewrite: unwritten -->
+`tcw serve` starts a local web app for browsing and editing all three axes, as an
+alternative to the command line.
+
+```sh
+tcw serve              # http://127.0.0.1:8765/, and opens a browser
+tcw serve --no-open    # start without opening a browser
+tcw serve --port 9000  # use a different port
+```
+
+- **Requirements.** Node.js 22.12 or newer. The web app's files come prebuilt
+  inside the Python package, so it works offline and needs no build step.
+- **What you see.** Tabs for the taxonomy tree, the capabilities list and the work
+  board, with filters, sorting and a text search. The address bar follows the view
+  (`/taxonomy`, `/work/<slug>`, …), so any page can be bookmarked or shared, and
+  any `tcw://` reference in a document is a link to its target.
+- **What you can change.** Create and edit taxonomy entries, capabilities and work
+  items, including an item's request, spec, plan and other documents, in a
+  Markdown editor with a live preview. Saving runs the same validation rules as
+  the CLI and shows any problems.
+- **Lifecycle actions.** The app can `start`, `complete` and `drop` an item;
+  `complete` also covers discarding. For `submit` and `rework`, use the CLI.
+- **It runs no lifecycle hooks.** Checks a project attaches to a transition run
+  from the CLI only, so a move made in the app skips them. Moves made in the app
+  are also not sent to Jira.
+- **Several projects.** When the project has child projects, their boards are
+  shown alongside its own, with items addressed as `<project-id>/<slug>`.
+- **Local only.** The server listens only on `127.0.0.1`. Requests that change
+  anything must come from that address and send JSON, which blocks other websites
+  from making changes through your browser, and two people editing the same object
+  cannot silently overwrite each other.
+- **If it fails to start**, check `node --version` is at least `v22.12.0`, and
+  try `--port` with a free port.
+
+Everything else about the app is in
+[The local web viewer](docs/guide/web-viewer.md).
 
 ## Documentation
 
