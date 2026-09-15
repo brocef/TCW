@@ -3,7 +3,7 @@
 ## Capability changes
 
 - **changed:** `work/view-the-board` — its description gains the sort option:
-  which keys exist, their default direction, `--reverse`, where unset values
+  which keys exist, `--order asc|desc` and each key's default, where unset values
   go, and that a chosen sort replaces the blocker ordering while children stay
   nested. No new capability: choosing the board's order is part of viewing the
   board, not a separate thing a user does.
@@ -58,25 +58,27 @@ Current behavior, from the code:
 
 1. `tcw work list --sort <key>` orders the board by one of four keys:
    `created`, `priority`, `effort`, `title`.
-2. Each key has a default direction chosen so the first row is the one a user
-   most likely wants:
-   - `created` — newest first
-   - `priority` — highest number first (the same direction as today's board)
+2. `--order asc` or `--order desc` chooses the direction explicitly. Ascending
+   means, for each key:
+   - `created` — oldest first
+   - `priority` — lowest number first
    - `effort` — least effort first (`low`, `medium`, `high`, `very-high`)
    - `title` — A to Z, ignoring upper and lower case
-3. `--reverse` flips the chosen direction.
+3. Without `--order`, each key uses the direction whose first row a user most
+   likely wants: `created` and `priority` descending (newest first, highest
+   priority first — the latter matching today's board), `effort` and `title`
+   ascending.
 4. Items with no value for the key (unset priority, unset effort, a missing or
    unreadable `created`) always go last, whichever direction is chosen.
-5. Items that compare equal are ordered by slug, A to Z, and `--reverse` flips
-   that too. A slug is unique within a node, so the order is always fully
-   determined.
+5. Items that compare equal are ordered by slug, A to Z, in either direction. A
+   slug is unique within a node, so the order is always fully determined.
 6. With `--sort`, the blocker ordering is not applied. Child items still print
    nested under their parent (or owning epic, in the `-i` view), and siblings
    are in the chosen order among themselves — including siblings that live in
    different nodes under one owner in the `-i` view.
 7. With no `--sort`, the output of every existing `tcw work list` form is
    exactly what it is today.
-8. `--sort` and `--reverse` combine with `--status`, `--tag` and `--all`, which
+8. `--sort` and `--order` combine with `--status`, `--tag` and `--all`, which
    decide *which* items appear, while the sort decides *their order*.
 9. Sorting by `created` reads each value through the shared timestamp-reading
    function described in Design, so date-only values and full timestamps
@@ -92,8 +94,8 @@ Current behavior, from the code:
   separate change.
 - **More keys** (complexity, status, modified, started) and **sorting by more
   than one key.** The request asks for four keys to start with.
-- **A short flag** such as `-r` for `--reverse`. Easy to add later; not asked
-  for.
+- **Short flags** for `--sort` or `--order`, and a `--reverse` switch. Easy to
+  add later; not asked for.
 - **Sorting other lists** (`tcw work inbox list`, `tcw work tracker list`,
   `tcw capabilities list`, `tcw taxonomy list`). The repository-wide sweep for
   sibling lists found these, and each has its own order; the request names
@@ -108,27 +110,30 @@ Current behavior, from the code:
 
 ### Command-line syntax
 
-`tcw work list --sort {created,priority,effort,title} [--reverse]`
+`tcw work list --sort {created,priority,effort,title} [--order {asc,desc}]`
 
 Why this spelling, from how common tools do it:
 
 - A `--sort <key>` option naming the field is the most widely shared form:
   GNU `ls --sort=time|size|…`, `ps --sort`, `gh search issues --sort`,
   and `kubectl`'s close cousin `--sort-by`.
-- A separate `--reverse` switch is the most common way to flip it:
-  `ls --reverse`/`-r`, `sort --reverse`/`-r`, and jira-cli's `--reverse`.
-  The main alternative, `gh`'s `--order asc|desc`, needs every user to know
-  which way "ascending" runs for each key; `--reverse` only asks them to know
-  what the default looks like.
-- Per-key default directions that put the "most notable" entry first follow
-  `ls` (`--sort=time` is newest first, `--sort=size` is largest first).
+- The requester asked for both ascending and descending to be available, so
+  that no key's default direction has to be guessed. A separate
+  `--order asc|desc` option is how `gh search` spells that, and `asc`/`desc`
+  are the words SQL and Jira's query language (`ORDER BY created DESC`) use.
+  It was chosen over a `--reverse` switch, which only flips a default the user
+  must already know, and over a combined `--sort created:desc`, which argparse
+  cannot check with `choices`.
+- Per-key defaults when `--order` is left off put the "most notable" entry
+  first, as `ls` does (`--sort=time` is newest first, `--sort=size` is largest
+  first).
 
-`--sort` uses argparse `choices`, so an unknown key is refused with the usual
-usage error (exit status 2) that lists the four valid keys. `--reverse` without
-`--sort` is refused the same way (exit status 2, message: `--reverse needs
---sort`), because reversing the blocker-aware default order would print blocked
-items above their blockers, which is the one thing that order promises not to
-do.
+`--sort` and `--order` use argparse `choices`, so an unknown key or direction
+is refused with the usual usage error (exit status 2) that lists the valid
+values. `--order` without `--sort` is refused the same way (exit status 2,
+message: `--order needs --sort`): the default board's order is priority and
+blockers, which has no single direction to choose, and flipping it would print
+blocked items above their blockers.
 
 ### Where the ordering lives
 
@@ -138,16 +143,16 @@ tracker query can order by created date, priority, a mapped effort field or
 summary. So ordering is part of the model, not a filesystem trick.
 
 - A pure function in `tcw/store/base.py`, next to `priority_order` and
-  `topo_order`, takes a list of `WorkItem`s, a key and a reverse flag and
-  returns them in that order. It works on `WorkItem` fields only; it never reads
-  folders or files.
-- `WorkStore.board` gains optional `sort` and `reverse` parameters. With no
+  `topo_order`, takes a list of `WorkItem`s, a key and an optional direction
+  (`asc`, `desc`, or none for the key's default) and returns them in that
+  order. It works on `WorkItem` fields only; it never reads folders or files.
+- `WorkStore.board` gains optional `sort` and `order` parameters. With no
   `sort` it returns exactly what it returns today. With a `sort` it returns
   `query(status)` in the chosen order, without `topo_order`. A future store
   backed by a tracker may override `board` to ask the tracker to do the
   ordering; the filesystem store inherits the concrete method.
-- The valid keys are one tuple constant beside `WORK_LEVELS`, which the CLI's
-  `choices` reads, so the parser and the model cannot disagree.
+- The valid keys and directions are tuple constants beside `WORK_LEVELS`,
+  which the CLI's `choices` read, so the parser and the model cannot disagree.
 
 The CLI passes the options through `_visible_board_items` to `board`. Filters
 keep working on the ordered list, and `_render_board` already preserves order
@@ -158,17 +163,17 @@ interleaved correctly; node sections themselves stay in registered order.
 
 ### Comparing values
 
-- **priority:** the integer. Higher first by default. Unset (`None`) last.
+- **priority:** the integer. Descending by default. Unset (`None`) last.
   A non-integer value from a hand-edited file counts as unset.
-- **effort:** its position in `WORK_LEVELS`. Lower first by default. Unset
+- **effort:** its position in `WORK_LEVELS`. Ascending by default. Unset
   (`""`) or any value not in `WORK_LEVELS` counts as unset.
 - **title:** `title.casefold()` (Python's case-insensitive form of a string).
   An empty title sorts as an empty string, not as unset, since the loader
   already falls back to the slug when a title is missing
-  (`tcw/store/fs.py:4253`).
+  (`tcw/store/fs.py:4253`). Ascending by default.
 - **created:** the timezone-aware moment returned by the shared function below.
-  Newest first by default. A missing, empty or unreadable value counts as unset.
-- **ties:** slug, A to Z, flipped by `--reverse`. Unset items are ordered among
+  Descending by default. A missing, empty or unreadable value counts as unset.
+- **ties:** slug, A to Z, in either direction. Unset items are ordered among
   themselves by slug, A to Z, and stay last.
 
 ### Shared contract with the timestamps item
@@ -188,9 +193,10 @@ must agree on how a stored timestamp is read:
   function, not a second parser. If this item is implemented first, it adds
   that function under the name and module the timestamps item's plan names, so
   the timestamps item reuses it rather than adding another.
-- An unreadable value must not take down the board. Whether the shared function
-  raises or returns nothing for one is its owner's decision; this item treats
-  either as unset.
+- An unreadable value must not take down the board. The timestamps item's spec
+  settles the function as `read_timestamp(value) -> datetime` in
+  `tcw/timestamps.py`, raising `ValueError` for anything it cannot read; this
+  item catches that and treats the value as unset.
 
 **Not blocked on the timestamps item.** Every stored `created` today is a date
 alone, which the contract already covers, so sorting works now; ties within a
@@ -210,7 +216,7 @@ Each is checked against a test store built in the test suite unless it says
 otherwise.
 
 1. `tcw work list --sort created` lists an item created `2026-09-15` above one
-   created `2026-09-09`; with `--reverse`, below it.
+   created `2026-09-09`; so does `--order desc`; with `--order asc`, below it.
 2. Given `created` values `'2026-09-15'` (date alone, read as noon UTC) and
    `'2026-09-15T10:00:00-07:00'` (17:00 UTC), `--sort created` lists the second
    above the first. Given `'2026-09-15T13:00:00+02:00'` (11:00 UTC) instead, it
@@ -219,18 +225,18 @@ otherwise.
    a `datetime.date`) sorts the same as one with the quoted string, and does not
    raise.
 4. An item whose `created` is missing or is `not-a-date` is listed after every
-   item with a readable `created`, both with and without `--reverse`, and the
-   command exits 0.
+   item with a readable `created`, under `--order asc` and `--order desc`
+   alike, and the command exits 0.
 5. `--sort priority` lists priority 50 above 40 above 10, then every item with
-   no priority; with `--reverse`, 10 above 40 above 50, and the unset items are
-   still last.
+   no priority; with `--order asc`, 10 above 40 above 50, and the unset items
+   are still last.
 6. `--sort effort` lists `low`, `medium`, `high`, `very-high`, then unset;
-   `--reverse` lists `very-high` first and unset still last. An item with
+   `--order desc` lists `very-high` first and unset still last. An item with
    `effort: huge` in its `state.yaml` is listed with the unset items.
 7. `--sort title` lists `apple`, `Banana`, `cherry` in that order (upper and
-   lower case ignored); `--reverse` lists `cherry`, `Banana`, `apple`.
+   lower case ignored); `--order desc` lists `cherry`, `Banana`, `apple`.
 8. Two items with equal priority are listed in slug order A to Z under
-   `--sort priority`, and Z to A with `--reverse`.
+   `--sort priority --order asc` and `--sort priority --order desc` alike.
 9. Item B is blocked by item A, and B has the higher priority.
    `tcw work list` (no sort) lists A above B, as today.
    `tcw work list --sort priority` lists B above A.
@@ -244,8 +250,9 @@ otherwise.
     `cli`, in priority order. `--sort title --all` includes completed and
     discarded items, in title order.
 13. `tcw work list --sort size` exits with status 2 and its error names the
-    valid keys. `tcw work list --reverse` exits with status 2 and says
-    `--reverse needs --sort`.
+    valid keys. `tcw work list --sort title --order up` exits with status 2 and
+    names `asc` and `desc`. `tcw work list --order asc` exits with status 2 and
+    says `--order needs --sort`.
 14. With no `--sort`, output is unchanged: the existing `tests/test_work.py`
     board-order tests (`test_topo_order_*`, `test_priority_order_*`) and every
     other existing `tcw work list` test pass without being edited, and
@@ -253,9 +260,10 @@ otherwise.
     `topo_order(priority_order(query(status)))`.
 15. `tcw serve`'s work payload order is unchanged (it calls `board()` with no
     sort).
-16. `tcw work list --help` shows `--sort` with its four keys and `--reverse`.
-17. The `work/view-the-board` capability description states the keys, the
-    default directions, `--reverse`, unset-last and the blocker/nesting rules,
+16. `tcw work list --help` shows `--sort` with its four keys, and `--order` with
+    `asc`, `desc` and each key's default.
+17. The `work/view-the-board` capability description states the keys,
+    `--order` and the defaults, unset-last and the blocker/nesting rules,
     and the item's `capabilities.yaml` lists it under `changed:`.
 
 ## Risks
@@ -264,10 +272,10 @@ otherwise.
   their own way to read `created`, they will drift. The shared contract above
   exists to prevent that; the plan must check the other item's folder at the
   start of implementation.
-- **Confusing directions.** Per-key defaults mean `--sort created` and
+- **Differing defaults.** Without `--order`, `--sort created` and
   `--sort effort` run "opposite" ways. That is deliberate (the first row is the
-  one most likely wanted) and matches `ls`, but it has to be stated in `--help`
-  and the capability, or users will guess wrong.
+  one most likely wanted) and matches `ls`; `--order` removes any doubt, and
+  `--help` states each key's default.
 - **Hiding a blocker relationship.** A chosen sort can list a blocked item above
   its blocker. The row still shows `blocked-by:`, so the information is there;
   only the position changes, which the requester confirmed.
@@ -284,8 +292,8 @@ otherwise.
   (see Problem). This item does not change the annotation; it only reads the
   field defensively. If the timestamps item changes how `created` is loaded,
   the sort still goes through the shared function either way.
-- Questions for the user (defaults are chosen; confirm or override):
-  1. Effort sorts **least effort first** by default, which is the opposite of
-     the "largest first" habit of `ls --sort=size`. Chosen because a board
-     sorted by effort is most often used to find quick items. Keep?
-  2. `created` sorts **newest first** by default. Keep, or oldest first?
+- Planning first proposed a `--reverse` switch and asked the requester to
+  confirm each key's default direction. The requester answered that offering
+  explicit ascending and descending sorts makes the defaults a non-issue, so
+  the design uses `--order asc|desc` and keeps the per-key defaults for when it
+  is left off.
