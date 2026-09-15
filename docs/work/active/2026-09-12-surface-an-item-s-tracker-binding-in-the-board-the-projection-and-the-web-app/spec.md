@@ -241,7 +241,8 @@ bound `2026-09-14`.
 
 Epic criterion 1 asks that, with no tracker configured, every existing command's
 output be byte-identical. **`tcw work show --json` is not**: every item's document
-gains `"tracker": null`. The schema requires every `WorkItem` field, so no route
+gains `"tracker": null`, and so do `tcw serve`'s item payloads and the payload a
+`generate` hook receives (`tcw/work/resolve.py`), which are the same document. The schema requires every `WorkItem` field, so no route
 through a field avoids it, and the version-bump route fails criterion 10. Text
 output of `show` and `list`, and what the web app renders, are unchanged for
 unbound items (criterion 3 above). Recorded here and in the epic so the next reader
