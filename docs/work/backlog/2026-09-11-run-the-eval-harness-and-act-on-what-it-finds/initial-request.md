@@ -5,8 +5,19 @@
 `2026-07-22-evaluate-and-refine-the-plugin-skills-with-an-eval-harness` built the
 instrument and deliberately did not run it. This item is the other half: spend
 the money, read the result, and act on it. Tasks 7 through 12 of that item's plan
-carry the method and are still accurate; read them there rather than restating
-them here.
+carry the method; read them there rather than restating them here, but **not as
+written** — the skill restructure made several of their references and counts
+wrong (see _Corrections from the 2026-09-15 backlog audit_ below).
+
+## Blocked on the harness defects
+
+Blocked by
+[`2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly`](tcw://W/2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly).
+A paid run before that is fixed grades wrongly: the relative fixture path is
+joined onto the run folder twice in `grade.py`, `run_one` never writes `items` to
+`timing.json` so every `item_status` / `new_item_count` assertion reads an empty
+mapping, and the axis B dry run refuses B12 when `--out` is inside this checkout.
+Runs must use `--out` outside the checkout.
 
 ## What is already true, so nobody re-derives it
 
@@ -88,16 +99,32 @@ vocabulary exists to prevent. If it lands, replace B8's `unmechanized` marker.
 
 ## Cost
 
-Thirteen axis A runs and twenty axis B runs, at 30 and 60 turns. The parent item
+Thirteen axis A runs and twenty-four axis B runs (twelve cases, two arms each),
+at 30 and 60 turns. The parent item
 never put a number on this and should have. Agree a ceiling before starting, and
 record capped runs separately from failures — the runner already does.
 
 ## Related
 
-- `docs/work/inbox/skill-binding-names-are-never-validated.md` — found while
-  building the harness, filed rather than fixed because the parent spec's
-  non-goals exclude `tcw` changes. It may become relevant if axis A's `skill`
-  case behaves oddly.
+- [`2026-09-11-validate-a-skill-prompt-binding-names-something-that-exists`](tcw://W/2026-09-11-validate-a-skill-prompt-binding-names-something-that-exists)
+  — found while building the harness (first filed as an inbox note), not fixed
+  because the parent spec's non-goals exclude `tcw` changes. It may become
+  relevant if axis A's `skill` case behaves oddly.
+
+## Corrections from the 2026-09-15 backlog audit
+
+- **Parent plan Task 7** describes a mutation parametrised over "six
+  near-identical files". The five per-stage skills were deleted;
+  `tests/test_skill_lifecycle_parity.py` now has `COMPOSING_SKILLS = {None:
+  STAGE_SKILL}`, one skill. Restate the mutation targets against the current test.
+- **Task 9** names B6's skill as `tcw-report`; it is now `tcw-extras-report`.
+  **Task 10** says B1–B10; there are twelve B cases.
+- **Scope is bundled.** Task 8 (a Codex adapter) is new build work —
+  `evals/run_evals.py` has no Codex path — and so is the general ordering
+  predicate. At spec, set a dollar ceiling and decide whether either moves to its
+  own item, and whether the unexercised `tcw-commands-*` skills are in scope.
+- The heading says "act on what it finds"; the scope is "report" — applying
+  fixes belongs to the refine item.
 
 ## Notes
 
