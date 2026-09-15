@@ -463,7 +463,8 @@ reason, and like `link` it never changes the ticket in Jira.
 
 **Seeing which ticket an item answers.** A bound item says so wherever you read it:
 `tcw work show` adds a `tracker:` line with the ticket, the provider, the part and
-the ticket's link; its row on `tcw work list` ends with the ticket key; `tcw work show
+the ticket's link; its row on `tcw work list` ends with the ticket key, and notes the part and anything
+not yet sent to the ticket; `tcw work show
 --json` carries it as `tracker`; and `tcw serve`'s item page shows the ticket as a
 link. What you see is what the binding records, not what Jira says right now, so
 none of it needs the tracker configured or reachable. A binding file that cannot be

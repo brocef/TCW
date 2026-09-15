@@ -15,4 +15,5 @@ Active board rows show the claimant and UTC start time. Legacy or reworked
 active items without claim metadata are shown as unclaimed. A row for an item bound
 to a tracker ticket ends with that ticket's key, and its part when it is not the
 default, and `pending` or `conflicting` when the ticket has not followed the item's
-last move; or with `unreadable` when its binding file cannot be read.
+last move, and `comment pending` or `comment conflicting` when a progress comment is
+still owed; or with `unreadable` when its binding file cannot be read.

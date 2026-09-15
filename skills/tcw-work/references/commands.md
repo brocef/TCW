@@ -205,7 +205,7 @@ that got as far as claiming leaves the ticket claimed.
 | `complete` with a discard resolution | allowed |
 | `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
 | `tracker import`, strict `start` claim | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed |
-| `tcw serve` create, start, complete `done`, drop, PUT `tracker.yaml` | 409, naming the `tcw work` command |
+| `tcw serve` create (not an epic), start, complete `done`, drop of an ever-bound item, PUT `tracker.yaml` | 409, naming the `tcw work` command |
 
 - **Tracker unreachable, or an undelivered `sync` record:** refused. Run
   `tcw work tracker sync <slug>` first.
@@ -240,16 +240,18 @@ leads to and assigned to this account. A transition's error text is shown on a
   can both create an item. Both are accepted limits, not bugs to work around.
 
 **The binding is `tracker.yaml`**, a sidecar marked `generated`: written by these
-commands, never by hand; the web app offers no edit for it, though its server does
-refuse a write except under strict mode. It records provider,
+commands, never by hand; the web app offers no edit for it, and its server refuses a
+write only under strict mode. It records provider,
 project id, part, the ticket's stable id, key and URL, the date, and an `unlinked`
 history. It names no account: a binding says two things are the same work, never
 who took the ticket. No credential and no e-mail address.
 **Reading a binding needs no tracker command.** `tcw work show` prints a
-`tracker:` line (ticket, provider, part, URL), a board row ends ` | ticket: <key>`,
+`tracker:` line (ticket, provider, part, URL), a board row ends ` | ticket: <key>`
+(followed by `(part …, <sync state>, comment <state>)` when any applies),
 and `show --json` carries `tracker` — `null` when unbound (no file, or unlinked),
 `{"problem": …}` when the file cannot be read, else provider, project, part,
-`ticket` {id, key, url} and `bound`. All three report what the file records, not
+`ticket` {id, key, url}, `bound`, `sync` and `comment` (each `null` unless a
+record is owed). All three report what the file records, not
 what the tracker says, and need no tracker configured.
 **Never treat a binding as proof of a claim** — `import` re-reads the ticket even
 when a binding exists, and refuses when the tracker disagrees. A binding that is not

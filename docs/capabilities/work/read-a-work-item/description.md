@@ -8,7 +8,8 @@ provider, the part and the ticket's link, or saying that its binding file cannot
 read and why. That line reports what the binding records, not what the tracker
 says now, and reading it needs no tracker configured. When the ticket did not follow
 the item's last move, a `tracker sync:` line says whether that is pending or
-conflicting, after which move, when, and why.
+conflicting, after which move, when, and why, and a `tracker comment:` line does
+the same for a progress comment that did not post.
 
 With `--json`, `show` prints the item as a machine-readable document instead of
 the summary: an explicit `schema` version I can check before relying on the
@@ -16,7 +17,8 @@ shape, every field at a documented JSON type, and an `artifacts` map telling me
 which lifecycle documents exist — so a script can ask whether the spec has been
 written without reading the folder. Its `tracker` field is `null` for an item with
 no binding, the ticket's key, id and URL with the provider, project, part and bound
-date and a `sync` record (`null` while the ticket is in step) for a bound one, or
+date, a `sync` record (`null` while the ticket is in step) and a `comment` record
+(`null` unless a progress comment is owed) for a bound one, or
 a `problem` for a binding that cannot be read. It is the same document `tcw serve`'s API
 returns, so what I automate against and what the web app shows cannot drift.
 
