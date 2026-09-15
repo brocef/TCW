@@ -127,25 +127,62 @@ def test_a_shared_name_prefix_cannot_stand_in_for_the_shorter_name():
     assert _names_missing_from(blob, ["tcw-work-stage"]) == ["tcw-work-stage"]
 
 
-@pytest.mark.parametrize("skill", sorted((REPO / "skills").glob("*/SKILL.md")), ids=lambda p: p.parent.name)
+SHIPPED_SKILLS = sorted((REPO / "skills").glob("*/SKILL.md"))
+SHIPPED_AGENTS = sorted((REPO / "agents").glob("*.md"))
+
+
+def _frontmatter(path: Path) -> dict:
+    """The `---`-delimited YAML frontmatter of a SKILL.md or an agent file.
+
+    Parsed as YAML, not scanned line by line. A plain scalar containing ": "
+    is a YAML error, and every one of the five per-stage skills shipped with
+    one on first write — a `when_to_use` reading "runs no gate: `tcw work
+    stage gate` is what refuses". A line-based scan sees the keys and passes;
+    Codex, which actually parses this, refuses to load the skill.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines and lines[0] == "---", f"{path} is missing YAML frontmatter"
+    end = lines.index("---", 1)
+    front = yaml.safe_load("\n".join(lines[1:end]))
+    assert isinstance(front, dict), f"{path} frontmatter is not a YAML mapping"
+    return front
+
+
+@pytest.mark.parametrize("skill", SHIPPED_SKILLS, ids=lambda p: p.parent.name)
 def test_every_skill_has_name_and_description_frontmatter(skill):
     """Codex refuses to load a skill whose SKILL.md lacks `---` frontmatter with
     a name and description; Claude silently tolerates it, so only a test catches
     the drop."""
-    lines = skill.read_text(encoding="utf-8").splitlines()
-    assert lines and lines[0] == "---", f"{skill} is missing YAML frontmatter"
-    end = lines.index("---", 1)
-
-    # Parsed as YAML, not scanned line by line. A plain scalar containing ": "
-    # is a YAML error, and every one of the five per-stage skills shipped with
-    # one on first write — a `when_to_use` reading "runs no gate: `tcw work
-    # stage gate` is what refuses". The line-based scan below sees the keys and
-    # passes; Codex, which actually parses this, refuses to load the skill. The
-    # scan cannot tell those apart, so it is no longer the only check.
-    front = yaml.safe_load("\n".join(lines[1:end]))
-    assert isinstance(front, dict), f"{skill} frontmatter is not a YAML mapping"
-    assert {"name", "description"} <= set(front), (
+    assert {"name", "description"} <= set(_frontmatter(skill)), (
         f"{skill} frontmatter lacks name/description")
+
+
+@pytest.mark.parametrize("skill", SHIPPED_SKILLS, ids=lambda p: p.parent.name)
+def test_skill_frontmatter_name_matches_its_directory(skill):
+    """A skill's declared `name` is the directory it sits in.
+
+    The test above checks `name` is *present*, never that it agrees with the
+    path — which is exactly what lets a directory rename land half-done. Move
+    `skills/<old>/` to `skills/<new>/` and leave `name: <old>` behind and the
+    whole suite stays green, while the two harnesses disagree about what the
+    skill is called.
+    """
+    front = _frontmatter(skill)
+    assert front["name"] == skill.parent.name, (
+        f"{skill} declares name={front['name']!r} but sits in "
+        f"{skill.parent.name!r} — a rename left the frontmatter behind")
+
+
+@pytest.mark.parametrize("agent", SHIPPED_AGENTS, ids=lambda p: p.stem)
+def test_agent_frontmatter_name_matches_its_file(agent):
+    """The same agreement, for the subagents. `agents/` carries no manifest —
+    Claude auto-loads the directory — so the filename and the declared name are
+    the only two statements of an agent's identity, and nothing else compares
+    them."""
+    front = _frontmatter(agent)
+    assert front["name"] == agent.stem, (
+        f"{agent} declares name={front['name']!r} but is filed as "
+        f"{agent.stem!r} — a rename left the frontmatter behind")
 
 
 def test_hooks_manifest_wires_one_executable_session_start_script():
