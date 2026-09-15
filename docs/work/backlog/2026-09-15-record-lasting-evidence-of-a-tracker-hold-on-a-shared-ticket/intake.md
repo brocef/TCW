@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-15-a-tracker-hold-leaves-no-evidence-outside-this-checkout.md`
+
+## Inbox body
+
 # A tracker hold leaves no evidence outside this checkout
 
 Found by the review of `2026-09-12-refuse-local-work-that-no-claimed-tracker-ticket-authorizes`.
@@ -47,3 +53,13 @@ change history.
 An epic started with `--worktree` before `strict: true` was set can still merge its
 branch when it completes, because epics are exempt from the gates. Strict mode only
 refuses starting an epic with a worktree.
+
+## Triage (2026-09-15)
+
+Kept on its own: it is an open design question (what durable evidence of a hold
+looks like, whether it survives a hand move back, and how it survives clones and
+retention), not a fix.
+
+- **Not in scope here:** the "epic worktree from before strict mode" note above is
+  tracked in `2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items`, as is the related case of a held item whose claim is still
+  owed being locked under strict mode.
