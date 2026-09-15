@@ -71,6 +71,14 @@ def validate_part(value: str | None) -> str:
     return value
 
 
+def ever_bound(store, slug: str) -> bool:
+    """Whether `slug` holds a binding sidecar at all — bound, unlinked, or unreadable."""
+    try:
+        return store.read_sidecar(slug, BINDING_SIDECAR) is not None
+    except (OSError, UnicodeDecodeError):
+        return True
+
+
 def binding_of(store, slug: str) -> tuple[Unbound | Malformed | Bound, str | None]:
     """One item's binding, and the revision to write it back with.
 

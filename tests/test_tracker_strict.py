@@ -458,3 +458,63 @@ def test_strict_false_runs_c3s_start_as_before(tmp_path, fake):
     claimed_ticket(fake, "In Progress", B)
     code, _out, err = cli(root, "work", "start", slug)
     assert code == 1 and REFUSED not in err and status(root, slug) == "active"
+
+
+# ── tcw serve ────────────────────────────────────────────────────────────────
+
+
+def test_serve_refuses_what_it_cannot_check_and_changes_nothing(strict, fake):
+    import json
+    import threading
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    from tcw.serve import HOST, TcwServer
+    from test_tracker_sync import document
+
+    st = FsWorkStore.open(strict)
+    slug = bound_item(strict)
+    unlinked = st.create_work("Unlinked", intake="x").item.slug
+    (st.path(unlinked) / "tracker.yaml").write_text("unlinked: {reason: x}\n")
+    epic = st.create_work("An epic", intake="x", type="epic").item.slug
+    fake.requests.clear()
+    httpd = TcwServer((HOST, 0), strict)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+
+    def send(method, path, body=None):
+        request = Request(f"http://{HOST}:{httpd.server_port}{path}", method=method,
+                          data=json.dumps(body).encode() if body is not None else b"",
+                          headers={"Content-Type": "application/json"})
+        try:
+            with urlopen(request) as res:
+                return res.status, res.read().decode()
+        except HTTPError as e:
+            return e.code, e.read().decode()
+
+    try:
+        before = folder_bytes(strict, slug), len(st.query())
+        refused = [
+            send("POST", "/api/work", {"title": "Web work"}),
+            send("POST", f"/api/work/{slug}/actions/start", {}),
+            send("POST", f"/api/work/{slug}/actions/complete",
+                 {"resolution": "done", "dod_ack": []}),
+            send("DELETE", f"/api/work/{slug}"),
+            send("DELETE", f"/api/work/{unlinked}"),
+            send("PUT", f"/api/work/{slug}/sidecars/tracker.yaml",
+                 {"content": document(ticket_key="SYNC-9")}),
+        ]
+        for code, text in refused:
+            assert code == 409 and "strict tracker mode" in text and SENTINEL not in text
+        assert (folder_bytes(strict, slug), len(st.query())) == before
+        assert fake.requests == []
+        assert send("POST", "/api/work", {"title": "Web epic", "type": "epic"})[0] == 201
+        assert send("POST", f"/api/work/{epic}/actions/start", {})[0] == 200
+        code, text = send("POST", f"/api/work/{slug}/actions/complete",
+                          {"resolution": "wontfix", "dod_ack": []})
+        assert code == 200, text
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+    assert status(strict, slug) == "discarded"

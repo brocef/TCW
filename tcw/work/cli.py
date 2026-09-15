@@ -2469,11 +2469,13 @@ def _drop(args: argparse.Namespace) -> int:
               f"record. Re-run with --confirm.", file=sys.stderr)
         print(f"Would delete {args.slug} ({loc})", file=sys.stderr)
         return 1
-    if st.tracker_strict() and st.read_sidecar(bare, "tracker.yaml") is not None:
-        return _strict_says_no("drop", f"{bare} was not dropped",
-                               f"It is, or was, bound to a ticket, and dropping would "
-                               f"erase that record. Discard it instead: `tcw work "
-                               f"complete {bare} --resolution wontfix --confirm`.")
+    if st.tracker_strict():
+        from tcw.tracker.intake import ever_bound
+        if ever_bound(st, bare):
+            return _strict_says_no("drop", f"{bare} was not dropped",
+                                   f"It is, or was, bound to a ticket, and dropping would "
+                                   f"erase that record. Discard it instead: `tcw work "
+                                   f"complete {bare} --resolution wontfix --confirm`.")
     try:
         st.drop(bare)
     except _ERRORS as e:
