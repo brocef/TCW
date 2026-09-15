@@ -54,3 +54,22 @@ before that item and are outside its scope.
    B11's used folder. Moving the "fixture folder must be new or empty" check into
    the same up-front loop for every arm would stop it before anything runs.
    Found by both reviewers in verification round 2 of the eval checks item.
+
+## Widened at triage (2026-09-15)
+
+Two eval harness gaps from the skill restructure review were folded into this item
+rather than opened as their own, because they are defects in the same harness
+(`evals/coverage.py`, `tests/test_eval_coverage.py`, and cases B4 and B8).
+
+## Folded in: from inbox entry `2026-09-14-guards-and-gaps-the-skill-restructure-review-left.md` (Guards and gaps the skill restructure's review left for separate changes)
+
+2. **Nothing checks that `EXCLUSIONS` and `PARTIAL` in `evals/coverage.py` name
+   skills that still ship.** A stale key (say a deleted skill) passes
+   `tests/test_eval_coverage.py`.
+
+6. **B4 and B8 only catch a wrong route into `tcw-setup`.** Each asserts
+   `tool_input_absent` `tcw-setup/references/`, as the spec asked. A B8 run ("Set
+   it up.") that opened a `tcw-configure` document instead passes every mechanized
+   check, although "set it up" there asks for a term, a capability and a work item,
+   not a configuration change. This is a gap in the spec, not a departure from it;
+   adding `tool_input_absent` `tcw-configure/references/` to both cases would close it.
