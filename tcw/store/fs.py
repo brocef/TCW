@@ -4228,13 +4228,26 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # board down — before bindings were shown, nothing here opened the file.
             # A binding removed between the check and the read is simply unbound; a
             # whole folder that vanished is caught by `_item_from_dir`'s own check.
-            try:
-                parsed = yaml.safe_load(binding.read_text(encoding="utf-8"))
-                tracker = binding_value(classify_binding(parsed))
-            except FileNotFoundError:
-                tracker = None
-            except (yaml.YAMLError, OSError, UnicodeDecodeError, RecursionError) as e:
-                tracker = binding_value(unreadable_binding(e))
+            # Anything but a regular file is not opened: a pipe, or a link to a
+            # device, would block or never end the board read.
+            text = None
+            if not binding.is_file():
+                tracker = binding_value(unreadable_binding(
+                    IsADirectoryError("not a regular file")))
+            else:
+                try:
+                    text = binding.read_text(encoding="utf-8")
+                except FileNotFoundError:
+                    tracker = None
+                except (OSError, UnicodeDecodeError) as e:
+                    tracker = binding_value(unreadable_binding(e))
+            if text is not None:
+                try:
+                    parsed = yaml.safe_load(text)
+                except Exception as e:     # also ValueError etc. for e.g. 2026-02-30
+                    tracker = binding_value(unreadable_binding(e))
+                else:
+                    tracker = binding_value(classify_binding(parsed))
         return WorkItem(
             slug=d.name,
             title=state.get("title", d.name),

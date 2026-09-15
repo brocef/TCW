@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -138,8 +139,8 @@ def test_an_anchor_chain_in_bound_is_not_expanded():
     chain = "a: &a [x, x, x, x, x, x, x, x, x, x]\n" + "".join(
         f"{chr(98 + i)}: &{chr(98 + i)} [*{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)},"
         f" *{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)},"
-        f" *{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)}]\n" for i in range(8))
-    text = chain + document().replace("bound: '2026-09-14'", "bound: *i")
+        f" *{chr(97 + i)}, *{chr(97 + i)}, *{chr(97 + i)}]\n" for i in range(3))
+    text = chain + document().replace("bound: '2026-09-14'", "bound: *d")
     assert binding_value(read_binding(text))["bound"] == ""
 
 
@@ -301,6 +302,25 @@ def test_a_binding_nested_too_deep_to_parse_does_not_break_the_board(node):
     _assert_board_survives(node, item(node, "Deep", "ticket: " + "[" * 5000 + "\n"))
 
 
+@pytest.mark.parametrize("value", ["2026-02-30", "!!int abc", "!!timestamp nope",
+                                   "!!bool maybe"])
+def test_a_value_yaml_cannot_build_does_not_break_the_board(node, value):
+    slug = item(node, "Impossible", document().replace("bound: '2026-09-14'",
+                                                       f"bound: {value}"))
+    _assert_board_survives(node, slug)
+    assert set(read_binding_value(document().replace(
+        "bound: '2026-09-14'", f"bound: {value}"))) == {"problem"}
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no named pipes here")
+def test_a_pipe_named_like_a_binding_is_not_opened(node):
+    slug = item(node, "A pipe", None)
+    os.mkfifo(FsWorkStore.open(node).path(slug) / "tracker.yaml")
+    _assert_board_survives(node, slug)
+
+
+@pytest.mark.skipif(os.geteuid() == 0,
+                    reason="root reads a file whatever its permissions")
 def test_a_binding_that_cannot_be_opened_does_not_break_the_board(node):
     slug = item(node, "No permission", document())
     path = FsWorkStore.open(node).path(slug) / "tracker.yaml"

@@ -55,7 +55,8 @@ def read_binding(content: str | None) -> Unbound | Malformed | Bound:
         return Unbound()
     try:
         data = yaml.safe_load(content)
-    except (yaml.YAMLError, RecursionError) as error:
+    except Exception as error:   # YAML errors, nesting too deep, and values YAML
+        # cannot build (`2026-02-30`, `!!int abc`) raise ValueError, KeyError and others
         return unreadable_binding(error)
     return classify_binding(data)
 

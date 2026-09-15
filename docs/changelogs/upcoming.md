@@ -95,3 +95,11 @@ category.
   too deep to parse as malformed instead of raising `RecursionError`.
   `Bound` gains `bound` (excluded from equality). `binding_value` renders the
   `WorkItem.tracker` value.
+
+## Fixed
+
+- A `tracker.yaml` holding a value YAML cannot build (`bound: 2026-02-30`,
+  `!!int abc`, `!!timestamp nope`) no longer stops `tcw work list` and every other
+  board read; it is that item's problem value, and `read_binding` reports it as
+  malformed. A `tracker.yaml` that is not a regular file (a named pipe, a link to a
+  device) is reported without being opened, instead of blocking the board read.
