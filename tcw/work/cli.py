@@ -849,8 +849,10 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) ->
         print(f"→ {outcome.reason}", file=sys.stderr)
     if outcome.state not in (PENDING, CONFLICTING):
         return 0
+    reason = outcome.reason.rstrip()
+    reason += "" if reason.endswith((".", "!", "?")) else "."
     print(f"tcw work {verb}: {bare} moved to {item.status} and was committed; {key} was "
-          f"not updated in the tracker ({outcome.state}): {outcome.reason} Run "
+          f"not updated in the tracker ({outcome.state}): {reason} Run "
           f"`tcw work tracker sync {bare}` once that is resolved.", file=sys.stderr)
     return 1
 
