@@ -464,7 +464,90 @@ whole contract, with whatever the project has attached.
 
 #### Jira integration
 
-<!-- readme-rewrite: unwritten -->
+A project can name the Jira Cloud site its team works from. Tickets can then
+become work items, and a ticket linked to an item follows it through the
+lifecycle. None of the stages change: Jira attaches to how an item is created and
+to the transitions.
+
+| Lifecycle step                          | Without Jira                   | With Jira configured                                                                                                                           |
+| --------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| an item is created                      | `tcw work inbox accept`, `new` | `tcw work tracker import <ticket>` claims the ticket (starts it and assigns it to you), then creates a backlog item whose intake is the ticket |
+| `request`, `spec`, `plan` stages        | unchanged                      | unchanged                                                                                                                                      |
+| at any time                             | —                              | `tcw work tracker link` / `unlink` records or removes the link between an existing item and a ticket; Jira itself is not touched               |
+| `start`                                 | moves the item                 | also claims a linked ticket, and posts a comment if `comments: true`                                                                           |
+| `submit`, `rework`, `complete`, discard | moves the item                 | also moves a linked ticket to the Jira status mapped under `statuses`, and posts a comment if `comments: true`                                 |
+| the ticket could not follow             | —                              | the item still moves; the command exits 1 and records the ticket as pending or conflicting; `tcw work tracker sync` retries                    |
+
+Setting `strict: true` changes several steps, so that no work happens without a
+claimed ticket:
+
+- `tcw work new` (except `--epic`) and `inbox accept` are refused, and point you at
+  `tcw work tracker import`.
+- `start` refuses an item with no ticket. For a linked item it claims the ticket
+  first, and moves the item only if the claim worked.
+- `submit`, `rework` and `complete --resolution done` read the ticket first, and
+  refuse unless it is assigned to you and where the item's last move left it.
+- Discarding is always allowed. `drop` refuses an item that was ever linked, so
+  the record stays.
+- While Jira cannot be reached, those commands refuse, and `tcw serve` refuses
+  the same changes.
+
+A minimal configuration, in the project's `tcw-config.yaml`:
+
+```yaml
+work:
+    tracker:
+        provider: jira-cloud
+        base-url: https://yourcompany.atlassian.net
+        candidate-query: assignee = currentUser() AND status = "To Do"
+        credentials:
+            { email-env: TCW_JIRA_EMAIL, token-env: TCW_JIRA_API_TOKEN }
+        transitions: { claim: Start Progress }
+        statuses:
+            {
+                active: In Progress,
+                review: In Review,
+                completed: Done,
+                discarded: Won't Do,
+            }
+```
+
+The credentials entries hold the **names** of environment variables, never the
+e-mail address or token themselves.
+
+**Example 1: taking a ticket from import to completion.**
+
+```sh
+tcw work tracker list                  # TCW: lists tickets the query selects.   Jira: unchanged
+tcw work tracker import ENG-482         # TCW: creates a backlog item.            Jira: ENG-482 → In Progress, assigned to you
+#   …the request, spec and plan stages run as usual…
+tcw work start <slug>                   # TCW: backlog → active.                  Jira: confirms the claim import made
+tcw work submit <slug>                  # TCW: active → review.                   Jira: ENG-482 → In Review
+tcw work complete <slug> --resolution done --confirm
+                                        # TCW: review → completed.                Jira: ENG-482 → Done
+```
+
+**Example 2: linking an item that already exists.**
+
+```sh
+tcw work new "Speed up the checkout page"  # TCW: creates a backlog item.         Jira: unchanged
+tcw work tracker link <slug> ENG-517       # TCW: records the link.               Jira: unchanged; anyone may hold the ticket
+tcw work start <slug>                      # TCW: backlog → active.               Jira: ENG-517 claimed → In Progress, assigned to you
+```
+
+**Example 3: the same project with `strict: true`.**
+
+```sh
+tcw work new "Speed up the checkout page"
+# tcw work new: refused under strict tracker mode; nothing was created.
+#   Create work from a ticket with `tcw work tracker import <ticket>`.
+tcw work tracker import ENG-517        # the only way to create the item
+tcw work start <slug>                  # claims first; starts only if the claim worked
+```
+
+Configuration, settings shared from a parent project, what `tracker show`
+reports, comments, and the known limits are in
+[Working from Jira](docs/guide/jira.md).
 
 ### Usage
 
