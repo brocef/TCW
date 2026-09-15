@@ -33,9 +33,6 @@ ticket:
     id: "10052"
     key: TCWCLAIM-6
     url: https://example.invalid/browse/TCWCLAIM-6
-claimed-by:
-    account-id: acct-a
-    name: Probe
 bound: "2026-09-14"
 unlinked: []
 """
@@ -207,8 +204,7 @@ def _document(**overrides):
     values = dict(provider="jira-cloud", project="probe", part="default",
                   ticket_id="10052", ticket_key="TCWCLAIM-6",
                   ticket_url="https://example.invalid/browse/TCWCLAIM-6",
-                  account_id="acct-a", account_name="Probe", bound="2026-09-14",
-                  unlinked=[])
+                  bound="2026-09-14", unlinked=[])
     values.update(overrides)
     return intake.binding_document(**values)
 
@@ -226,8 +222,33 @@ def test_unlinking_leaves_an_unbound_document_with_the_reason():
     assert data["schema"] == 1
     [entry] = data["unlinked"]
     assert entry["ticket"]["key"] == "TCWCLAIM-6"
-    assert entry["claimed-by"]["account-id"] == "acct-a"
+    assert "claimed-by" not in entry
     assert (entry["reason"], entry["unlinked-on"]) == ("wrong ticket", "2026-09-15")
+
+
+LEGACY = BINDING.replace('bound: "2026-09-14"\n', '''claimed-by:
+    account-id: acct-a
+    name: Probe
+bound: "2026-09-14"
+''')
+
+
+def test_a_binding_written_before_claiming_was_dropped_still_reads_as_bound():
+    """`claimed-by` used to be written and is not migrated away. An old document
+    keeps every field a binding needs, so the stale key is ignored, not fatal."""
+    assert intake.read_binding(LEGACY) == intake.read_binding(BINDING)
+
+
+def test_unlinking_an_old_binding_leaves_its_stale_claim_behind():
+    """`_BINDING_KEYS` no longer lists `claimed-by`, so `unlink_document` does not
+    move it into the history entry. It stays at the top level rather than crashing
+    the unlink — the accepted cost of shipping no migration."""
+    text = intake.unlink_document(LEGACY, reason="wrong ticket", today="2026-09-15")
+    data = yaml.safe_load(text)
+    assert isinstance(intake.read_binding(text), intake.Unbound)
+    [entry] = data["unlinked"]
+    assert "claimed-by" not in entry
+    assert data["claimed-by"] == {"account-id": "acct-a", "name": "Probe"}
 
 
 def test_history_survives_a_second_binding_and_a_second_unlink():

@@ -1711,17 +1711,16 @@ def _intake_text(outcome, description: str, today: str) -> str:
             f"{body}\n")
 
 
-def _binding_for(provider: str, project: str, outcome, part: str, today: str,
-                 unlinked: list) -> str:
-    """The binding document. `provider` and `project` are the values the claim was
-    looked up and made with, passed in rather than read again: tracker settings can
-    come from parent nodes' files, and one changed or broken mid-run would otherwise
-    fail here, after the ticket is already claimed."""
+def _binding_for(provider: str, project: str, ticket_id: str, ticket_key: str,
+                 ticket_url: str, part: str, today: str, unlinked: list) -> str:
+    """The binding document. `provider` and `project` are the values the ticket was
+    looked up with, passed in rather than read again: tracker settings can come from
+    parent nodes' files, and one changed or broken mid-run would otherwise fail here,
+    after the tracker has already been read (and, for `import`, the ticket claimed)."""
     from tcw.tracker.intake import binding_document
     return binding_document(
         provider=provider, project=project, part=part,
-        ticket_id=outcome.issue_id, ticket_key=outcome.key, ticket_url=outcome.url,
-        account_id=outcome.account_id, account_name=outcome.account_name,
+        ticket_id=ticket_id, ticket_key=ticket_key, ticket_url=ticket_url,
         bound=today, unlinked=unlinked)
 
 
@@ -1730,9 +1729,9 @@ def _claim_summary(outcome) -> str:
     return f"{outcome.key} is in '{outcome.status}', {how}"
 
 
-# The failures a local write can raise after a successful claim. Wider than
+# The failures a local write can raise once the tracker has answered. Wider than
 # `_ERRORS` on purpose: a held Git index lock surfaces as `CalledProcessError`, and
-# the claimed ticket has to be reported whichever way the write failed.
+# `import`'s claimed ticket has to be reported whichever way the write failed.
 _LOCAL_WRITE_ERRORS = (*_ERRORS, StaleRevision, OSError, subprocess.CalledProcessError)
 
 
@@ -1776,7 +1775,15 @@ def _tracker_import(args: argparse.Namespace) -> int:
                 print(f"→ already bound: {ticket.key} (part {part}) is {existing}",
                       file=sys.stderr)
                 return 0
-            holder = ticket.assignee_name or "nobody"
+            if not ticket.assignee_id:
+                # What `link` leaves behind: bound, never claimed. Normal, not drift.
+                print(f"tcw work tracker import: {existing} is already linked to "
+                      f"{ticket.key} (part {part}), but the ticket is not claimed — it "
+                      f"is unassigned in '{ticket.status}'. `import` does not claim a "
+                      f"ticket that is already bound; move and assign it in the "
+                      f"tracker yourself.", file=sys.stderr)
+                return 1
+            holder = ticket.assignee_name
             print(f"tcw work tracker import: {existing} is bound here, but the tracker "
                   f"says {ticket.key} is assigned to {holder} in '{ticket.status}'.",
                   file=sys.stderr)
@@ -1805,8 +1812,9 @@ def _tracker_import(args: argparse.Namespace) -> int:
         return 1
     try:
         st.write_sidecar(slug, BINDING_SIDECAR,
-                         _binding_for(client.config.provider, project, outcome, part,
-                                      today, []), revision="")
+                         _binding_for(client.config.provider, project,
+                                      outcome.issue_id, outcome.key, outcome.url,
+                                      part, today, []), revision="")
     except _LOCAL_WRITE_ERRORS as e:
         try:
             st.drop(slug)
@@ -1827,29 +1835,39 @@ def _tracker_import(args: argparse.Namespace) -> int:
     return 0
 
 
-def _unresolved_item(st, slug: str, label: str):
-    """The item `slug` names in this node, or None after saying why it cannot be
-    bound or unbound. A bare slug only: a tracker configuration and a project id
-    belong to one node."""
+def _item_or_reason(st, slug: str, label: str):
+    """The item `slug` names in this node, or None after saying it is not there. A
+    bare slug only: a tracker configuration and a project id belong to one node.
+
+    Every status is bindable, resolved ones included: finished work can be linked to
+    the ticket that tracked it, and a wrong binding on it can be repaired. Such a
+    binding lives wherever the rest of the resolved item does: where resolved folders
+    are gitignored (the default) it is on disk but never committed. Once a store has
+    removed a resolved item this slug refuses as unknown; before that — a resolved
+    item not retained but not yet deleted — it binds like any other."""
+    # ponytail: no warning when a binding lands in a gitignored resolved folder;
+    # add one in the filesystem adapter if local-only bindings surprise anyone.
     item = st.get(slug)
     if item is None:
         print(f"tcw work tracker {label}: no such work item in this node: {slug}",
               file=sys.stderr)
         return None
-    if item.status in RESOLVED_STATUSES:
-        print(f"tcw work tracker {label}: {slug} is {item.status}; a resolved item's "
-              f"binding is not changed.", file=sys.stderr)
-        return None
     return item
 
 
 def _tracker_link(args: argparse.Namespace) -> int:
-    """Bind an existing unresolved item to a ticket, claiming it by the same rules
-    as `import`. The item's intake and request are not touched."""
+    """Record that an existing item and a ticket are the same work.
+
+    The binding sidecar is the whole effect. The ticket is read — which is what
+    proves the key exists and yields the canonical key, id and URL the binding
+    stores — and is otherwise left exactly as it was: no transition, no assignee
+    change. Nothing in the item but `tracker.yaml` is written either, so its
+    status, owner, intake and request are untouched.
+    """
     from datetime import date
 
     from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, Bound, Malformed,
-                                    binding_of, claim, find_binding, read_ticket,
+                                    binding_of, find_binding, read_ticket,
                                     unlinked_history, validate_part)
     from tcw.tracker.jira import TrackerError
 
@@ -1862,7 +1880,7 @@ def _tracker_link(args: argparse.Namespace) -> int:
         print(f"tcw work tracker link: {e}", file=sys.stderr)
         return 1
     st = _store()
-    if _unresolved_item(st, args.slug, "link") is None:
+    if _item_or_reason(st, args.slug, "link") is None:
         return 1
     current, revision = binding_of(st, args.slug)
     if isinstance(current, Malformed):
@@ -1884,24 +1902,22 @@ def _tracker_link(args: argparse.Namespace) -> int:
             print(f"tcw work tracker link: {ticket.key} (part {part}) is already bound "
                   f"to {holder}.", file=sys.stderr)
             return 1
-        outcome = claim(client, ticket)
     except (TrackerError, BindingProblem, ValueError) as e:
         print(f"tcw work tracker link: {e}", file=sys.stderr)
         return 1
-    if not outcome.claimed:
-        _print_refusal("link", outcome)
-        return 1
     existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
     today = date.today().isoformat()
-    document = _binding_for(client.config.provider, project, outcome, part, today,
+    document = _binding_for(client.config.provider, project, ticket.issue_id,
+                            ticket.key, ticket.url, part, today,
                             unlinked_history(existing.content if existing else None))
     try:
         st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
     except _LOCAL_WRITE_ERRORS as e:
-        print(f"tcw work tracker link: claimed {outcome.key}, but the binding could not "
-              f"be written: {e}. Run this command again.", file=sys.stderr)
+        print(f"tcw work tracker link: the binding could not be written: {e}. "
+              f"Run this command again.", file=sys.stderr)
         return 1
-    print(f"→ {_claim_summary(outcome)}; bound to {args.slug}", file=sys.stderr)
+    print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}). The ticket is "
+          f"unchanged in the tracker.", file=sys.stderr)
     return 0
 
 
@@ -1921,7 +1937,7 @@ def _tracker_unlink(args: argparse.Namespace) -> int:
               "being removed.", file=sys.stderr)
         return 1
     st = _store()
-    if st is None or _unresolved_item(st, args.slug, "unlink") is None:
+    if st is None or _item_or_reason(st, args.slug, "unlink") is None:
         return 1
     current, revision = binding_of(st, args.slug)
     if isinstance(current, Malformed):
@@ -2180,6 +2196,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     g = p.add_subparsers(dest="cmd", required=True,
                          parser_class=_HidesRemovedSpellings)
 
+    # A positional has no flag to hint at its meaning, so every one of them says
+    # what it wants. These three recur; the rest are written where they are added.
+    SLUG_HELP = "the work item's slug; `<project-id>/<slug>` reaches another node"
+    BARE_SLUG_HELP = "a work item slug in this node; a tracker belongs to one node, "\
+                     "so this one is never node-qualified"
+    TICKET_HELP = "a ticket key, e.g. EX-123"
+    ENTRY_HELP = "a raw inbox entry (`tcw work inbox list` prints them)"
+
     pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed/discarded work storage")
     pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
     pi.add_argument("--path", help="filesystem location for the work store")
@@ -2191,17 +2215,17 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ing.add_parser("path", help="print the work inbox folder path").set_defaults(
         func=_inbox_path)
     pins = ing.add_parser("show", help="show one raw inbox entry")
-    pins.add_argument("entry")
+    pins.add_argument("entry", help=ENTRY_HELP)
     pins.set_defaults(func=_inbox_show)
     pina = ing.add_parser("accept", help="accept one raw entry into backlog")
-    pina.add_argument("entry")
+    pina.add_argument("entry", help=ENTRY_HELP)
     pina.add_argument("--title", help="override the derived work-item title")
     pina.set_defaults(func=_inbox_accept)
 
     g.add_parser("nodes", help="list this node's parent + child nodes").set_defaults(func=_nodes)
 
     pr = g.add_parser("reconcile", help="scan child nodes → write the epic rollup")
-    pr.add_argument("slug")
+    pr.add_argument("slug", help="the epic's slug, in this node")
     pr.add_argument("--commit", action="store_true", help="also commit the rollup")
     pr.add_argument("--complete-when-ready", action="store_true",
                     help="auto-complete the epic if all its children are resolved")
@@ -2209,12 +2233,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pdg = g.add_parser("delegate", help="write a request into a child node's inbox/")
     pdg.add_argument("child", help="child node's canonical project id (`tcw work nodes` lists them)")
-    pdg.add_argument("title")
+    pdg.add_argument("title", help="the request's title, as the child node will see it")
     pdg.add_argument("--initiative", help="stamp the request with an initiative slug")
     pdg.set_defaults(func=_delegate)
 
     pes = g.add_parser("escalate", help="write a request into the parent node's inbox/")
-    pes.add_argument("title")
+    pes.add_argument("title", help="the request's title, as the parent node will see it")
     pes.add_argument("--initiative", help="stamp the request with an initiative slug")
     pes.set_defaults(func=_escalate)
 
@@ -2230,30 +2254,120 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                          help="tag(s) to unregister (a value may be a,b,c)")
     ptgr.set_defaults(func=_tags_rm)
 
+    # Every description below states what the command changes in the tracker and
+    # what it changes in the work store, in that order, because a command reaching
+    # a system outside the repository is the one place a surprise is expensive.
     ptr = g.add_parser("tracker",
                        help="read the configured external tracker, and take its tickets")
     ptrs = ptr.add_subparsers(dest="tracker_cmd", required=True)
-    ptrs.add_parser("list", help="list tickets the configured query selects"
-                    ).set_defaults(func=_tracker_list)
-    ptrsh = ptrs.add_parser("show", help="show one ticket and whether it is claimable")
-    ptrsh.add_argument("ticket")
+    ptrs.add_parser(
+        "list", help="list tickets the configured query selects",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Print the tickets work.tracker.candidate-query selects, one per line,\n"
+                    "as KEY | status | assignee | summary.\n\n"
+                    "Reads only: nothing changes in the tracker or in this node.",
+        epilog="Refuses when no tracker is configured for this node.\n\n"
+               "A long result is cut short and says so; narrow the query to see the\n"
+               "rest.\n\n"
+               "  tcw work tracker list\n",
+    ).set_defaults(func=_tracker_list)
+
+    ptrsh = ptrs.add_parser(
+        "show", help="show one ticket and whether it is claimable",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Print one ticket's status, summary and assignee, then whether the\n"
+                    "claim transition is on offer from its status now and whether the\n"
+                    "workflow would keep a second claimant out.\n\n"
+                    "Reads only: nothing changes in the tracker or in this node.",
+        epilog="'claimable' is whether this status offers the claim right now; it does\n"
+               "not look at the assignee, which import also checks. 'workflow' is\n"
+               "whether claiming excludes anyone else. They are reported separately\n"
+               "on purpose.\n\n"
+               "Refuses when no tracker is configured, or when the key does not exist.\n\n"
+               "  tcw work tracker show EX-123\n",
+    )
+    ptrsh.add_argument("ticket", help=TICKET_HELP)
     ptrsh.set_defaults(func=_tracker_show)
-    ptri = ptrs.add_parser("import",
-                           help="claim a ticket and create a backlog item bound to it")
-    ptri.add_argument("ticket")
+
+    ptri = ptrs.add_parser(
+        "import", help="claim a ticket and create a backlog item bound to it",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Claim a ticket, then create a work item for it.\n\n"
+                    "In the tracker: moves the ticket through the configured claim\n"
+                    "transition and assigns it to you.\n\n"
+                    "In this node: creates a backlog item whose intake is the ticket's\n"
+                    "description, and binds the two.\n\n"
+                    "No item is created unless the claim succeeds. A run that fails\n"
+                    "locally is finished by running it again; the error says so when\n"
+                    "it is not.",
+        epilog="Use --part when one ticket is split across several items; each part\n"
+               "is bound separately and the name is yours to choose.\n\n"
+               "Running it again for a ticket and part already bound here, while the\n"
+               "ticket is assigned to you, prints that item rather than a second.\n\n"
+               "Refuses when: no tracker is configured; --part or --title is invalid;\n"
+               "the key does not exist; the ticket is resolved or assigned to somebody\n"
+               "else; the claim transition name matches more than one transition; the\n"
+               "claim transition is not offered and the ticket is not already yours;\n"
+               "the ticket is bound here but not assigned to you (a linked ticket is\n"
+               "never claimed by import); a tracker.yaml on an open item cannot be\n"
+               "read; or the tracker does not show the claim afterwards.\n\n"
+               "  tcw work tracker import EX-123\n"
+               "  tcw work tracker import EX-123 --part api --title 'The API half'\n",
+    )
+    ptri.add_argument("ticket", help=TICKET_HELP)
     ptri.add_argument("--part", help="name one of several items for this ticket "
-                                     "(default: default)")
+                                     "(lowercase letters, digits, hyphens; "
+                                     "default: default)")
     ptri.add_argument("--title", help="the item's title (default: '<KEY> — <summary>')")
     ptri.set_defaults(func=_tracker_import)
-    ptrl = ptrs.add_parser("link", help="claim a ticket and bind an existing item to it")
-    ptrl.add_argument("slug")
-    ptrl.add_argument("ticket")
+
+    ptrl = ptrs.add_parser(
+        "link", help="record that an existing item and a ticket are the same work",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Write down that a work item and a ticket are the same piece of work.\n\n"
+                    "In the tracker: nothing. The ticket keeps its status and whoever holds\n"
+                    "it, and it may be held by anyone. It is read — which is how a key that\n"
+                    "does not exist is refused — and not written to.\n\n"
+                    "In this node: the binding sidecar is the only file written, so the\n"
+                    "item's status, owner, intake and request are left alone.",
+        epilog="Any status can be linked, a finished item included. Where finished\n"
+               "items' folders are gitignored (the default), that binding stays on\n"
+               "this machine and is never committed. Nothing moves the ticket for you\n"
+               "afterwards — do that in the tracker yourself.\n\n"
+               "Use --part when one ticket is split across several items.\n\n"
+               "Refuses when: no tracker is configured; --part is invalid; the slug\n"
+               "is not an item here; the key does not exist; the item is already\n"
+               "bound (unlink it first); another open item already holds this ticket\n"
+               "and part; or a tracker.yaml on this item or any open item cannot be\n"
+               "read.\n\n"
+               "  tcw work tracker link 2026-09-14-rename-the-widget EX-123\n"
+               "  tcw work tracker link 2026-09-14-rename-the-widget EX-123 --part api\n",
+    )
+    ptrl.add_argument("slug", help=BARE_SLUG_HELP)
+    ptrl.add_argument("ticket", help=TICKET_HELP)
     ptrl.add_argument("--part", help="which of several items for this ticket "
-                                     "(default: default)")
+                                     "(lowercase letters, digits, hyphens; "
+                                     "default: default)")
     ptrl.set_defaults(func=_tracker_link)
-    ptru = ptrs.add_parser("unlink", help="remove an item's binding, keeping a record "
-                                          "of it; the ticket is not changed")
-    ptru.add_argument("slug")
+
+    ptru = ptrs.add_parser(
+        "unlink", help="remove an item's binding, keeping a record "
+                       "of it; the ticket is not changed",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Remove an item's binding.\n\n"
+                    "In the tracker: nothing. No call is made and none needs to be\n"
+                    "configured, so a binding can be removed after work.tracker itself is\n"
+                    "gone.\n\n"
+                    "In this node: the sidecar is kept rather than deleted — what was\n"
+                    "bound, when, and why it stopped move into its unlinked history.",
+        epilog="Any status can be unlinked, a finished item included, so a wrong\n"
+               "binding is repairable wherever it is found.\n\n"
+               "Refuses when the slug is not an item here, when its tracker.yaml\n"
+               "cannot be read, when it is not bound, or when --reason is blank.\n\n"
+               "  tcw work tracker unlink 2026-09-14-rename-the-widget \\\n"
+               "      --reason 'bound to the wrong ticket'\n",
+    )
+    ptru.add_argument("slug", help=BARE_SLUG_HELP)
     ptru.add_argument("--reason", required=True, help="why the binding is removed")
     ptru.set_defaults(func=_tracker_unlink)
 
@@ -2264,14 +2378,15 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptsa = ptss.add_parser(
         "add",
         help="record that a slug was a work item here, so references to it resolve")
-    ptsa.add_argument("slug")
+    ptsa.add_argument("slug", help="the slug to record; an item this store no longer "
+                                    "holds, not a current one")
     ptsa.add_argument("--resolution",
                       help="done|wontfix|duplicate|superseded; omit if unknown")
     ptsa.add_argument("--resolved", help="ISO date it was resolved (default: today)")
     ptsa.set_defaults(func=_tombstone_add)
 
     pn = g.add_parser("new", help="create a backlog item; prints its slug")
-    pn.add_argument("title")
+    pn.add_argument("title", help="the item's title")
     pn.add_argument("--priority", type=int, help="integer priority (higher = higher)")
     pn.add_argument("--effort", type=_work_level,
                     help="estimated effort: low|medium|high|very-high (or L/M/H/VH)")
@@ -2297,17 +2412,18 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.set_defaults(func=_list)
 
     psh = g.add_parser("show", help="resolve slug → item; print state + body")
-    psh.add_argument("slug")
+    psh.add_argument("slug", help=SLUG_HELP)
     psh.add_argument("--json", action="store_true",
                      help="emit the item as a versioned JSON document")
     psh.set_defaults(func=_show)
 
     pp = g.add_parser("path", help="print the work store or a work item folder path")
-    pp.add_argument("slug", nargs="?")
+    pp.add_argument("slug", nargs="?",
+                    help="optional; the item whose folder to print, else the store's")
     pp.set_defaults(func=_path)
 
     pst = g.add_parser("start", help="backlog → active")
-    pst.add_argument("slug")
+    pst.add_argument("slug", help=SLUG_HELP)
     pst.add_argument("--force", action="store_true", help="start despite unresolved blockers")
     pst.add_argument("--owner", help="claimant identity (then TCW_WORK_OWNER, Git email/name)")
     pst.add_argument("--take-over", action="store_true", help="replace an existing active claim")
@@ -2316,11 +2432,11 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pst.set_defaults(func=_start)
 
     psb = g.add_parser("submit", help="active → review (implemented, acceptance pending)")
-    psb.add_argument("slug")
+    psb.add_argument("slug", help=SLUG_HELP)
     psb.set_defaults(func=_submit)
 
     prw = g.add_parser("rework", help="review → active (verification rejected the work)")
-    prw.add_argument("slug")
+    prw.add_argument("slug", help=SLUG_HELP)
     prw.set_defaults(func=_rework)
 
     plc = g.add_parser("lifecycle",
@@ -2347,7 +2463,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     # "required for six values of another positional, refused for the seventh".
     ppr = stg.add_parser("prompt",
                          help="print a stage's instructions, running no checks")
-    ppr.add_argument("stage_id", metavar="stage")
+    ppr.add_argument("stage_id", metavar="stage",
+                     help="a lifecycle stage id (`tcw work lifecycle` lists them)")
     ppr.add_argument("slug", nargs="?",
                      help="optional; without one the instructions resolve "
                           "generically, with one they resolve for that item")
@@ -2359,7 +2476,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pbg = stg.add_parser("gate",
                          help="check the stage is legal and run its checks; "
                               "prints no instructions")
-    pbg.add_argument("stage_id", metavar="stage")
+    pbg.add_argument("stage_id", metavar="stage",
+                     help="a lifecycle stage id (`tcw work lifecycle` lists them)")
     pbg.add_argument("slug", nargs="?",
                      help="the work item; omitted for `inbox`, which runs "
                           "before an item exists")
@@ -2376,7 +2494,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         # No `help=`: omitting it keeps the parser out of the choices list
         # entirely, where `help=SUPPRESS` would print a literal "==SUPPRESS==".
         pold = stg.add_parser(_sid)
-        pold.add_argument("rest", nargs="*")
+        pold.add_argument("rest", nargs="*",
+                          help="accepted and ignored; this spelling only reports the "
+                               "command that replaced it")
         pold.add_argument("--no-exec", action="store_true",
                           help=argparse.SUPPRESS)
         pold.set_defaults(func=_stage_removed_form, removed_stage=_sid)
@@ -2384,7 +2504,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pscf = g.add_parser("scaffold",
                         help="write a draft of a lifecycle artifact from its template")
     pscf.add_argument("artifact", help=f"one of: {', '.join(WORK_ARTIFACTS)}")
-    pscf.add_argument("slug")
+    pscf.add_argument("slug", help=SLUG_HELP)
     pscf.add_argument("--force", action="store_true",
                       help="replace a draft that is already there")
     pscf.set_defaults(func=_scaffold)
@@ -2398,7 +2518,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     plc.set_defaults(func=_lifecycle)
 
     pe = g.add_parser("edit", help="change an item's title, estimates, tags, or blocking links")
-    pe.add_argument("slug")
+    pe.add_argument("slug", help=SLUG_HELP)
     pe.add_argument("--title", type=_nonempty, help="set the item title (the slug is unchanged)")
     pe.add_argument("--blocked-by", action="append",
                     help="a slug or external text that blocks this item (repeatable)")
@@ -2419,7 +2539,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.set_defaults(func=_edit)
 
     pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")
-    pc.add_argument("slug")
+    pc.add_argument("slug", help=SLUG_HELP)
     pc.add_argument("--resolution", required=True, choices=sorted(WORK_RESOLUTIONS))
     pc.add_argument("--confirm", action="store_true")
     pc.add_argument("--force", action="store_true", help="complete despite unresolved blockers")
@@ -2429,12 +2549,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pc.set_defaults(func=_complete)
 
     pd = g.add_parser("drop", help="backlog → deleted")
-    pd.add_argument("slug")
+    pd.add_argument("slug", help=SLUG_HELP)
     pd.add_argument("--confirm", action="store_true")
     pd.set_defaults(func=_drop)
 
     pdel = g.add_parser(
         "delete",
         help="finish removing a resolved item this project does not retain")
-    pdel.add_argument("slug")
+    pdel.add_argument("slug", help=SLUG_HELP)
     pdel.set_defaults(func=_delete)

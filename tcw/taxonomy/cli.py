@@ -189,8 +189,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.set_defaults(func=_list)
 
     pa = g.add_parser("add", help="create a vocabulary term or feature")
-    pa.add_argument("name")
-    pa.add_argument("description", nargs="?")
+    pa.add_argument("name", help="display name of the entry (source of the default slug)")
+    pa.add_argument("description", nargs="?",
+                    help="description body (default: read from piped stdin)")
     pa.add_argument("-s", "--slug", help="leaf slug (default: slugified name)")
     pa.add_argument("-p", "--parent", help="parent term path (default: root)")
     pa.add_argument("--kind", choices=("vocabulary", "feature"), default="vocabulary",
@@ -200,17 +201,18 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pa.set_defaults(func=_add)
 
     ps = g.add_parser("show", help="read an entry")
-    ps.add_argument("path")
+    ps.add_argument("path",
+                    help="term path, e.g. event/log-batch (alias-prefixed if inherited)")
     ps.set_defaults(func=_show)
 
     g.add_parser("path", help="print the taxonomy store folder path").set_defaults(func=_path)
 
     pr = g.add_parser("rm", help="remove a local entry")
-    pr.add_argument("path")
+    pr.add_argument("path", help="path of the local term to remove")
     pr.set_defaults(func=_rm)
 
     pse = g.add_parser("search", help="search entry names + descriptions")
-    pse.add_argument("query")
+    pse.add_argument("query", help="text matched case-insensitively in names + descriptions")
     pse.set_defaults(func=_search)
 
     pc = g.add_parser("check", help="validate aliases + references")
@@ -219,8 +221,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe = g.add_parser("extends", help="declare taxonomy inheritance (federation)")
     eg = pe.add_subparsers(dest="ecmd", required=True)
     pea = eg.add_parser("add", help="inherit a registered project's taxonomy")
-    pea.add_argument("project_id")
+    pea.add_argument("project_id", help="registered project ID whose taxonomy to inherit")
     pea.set_defaults(func=_extends_add)
     per = eg.add_parser("rm", help="remove an inherited project")
-    per.add_argument("project_id")
+    per.add_argument("project_id", help="registered project ID to stop inheriting")
     per.set_defaults(func=_extends_rm)

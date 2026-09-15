@@ -132,8 +132,10 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
                  part: str) -> str | None:
     """The slug of the unresolved item bound to this key, or `None`.
 
-    Resolved items are not consulted: a ticket whose item was discarded may be
-    taken again, and a resolved item's binding cannot be repaired from here.
+    Resolved items are not consulted, because a ticket whose item was discarded
+    may be taken again. The cost is that a ticket held by a resolved item can be
+    bound to a second, open item without a refusal — a known limit, kept because
+    consulting them would refuse the discarded case this skip exists for.
     """
     wanted = (project, provider, ticket_id, part)
     matches: list[str] = []
@@ -159,22 +161,25 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
 
 
 def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
-                     ticket_key: str, ticket_url: str, account_id: str,
-                     account_name: str, bound: str, unlinked: list) -> str:
-    """The `tracker.yaml` text for a new binding. No credential goes in it."""
+                     ticket_key: str, ticket_url: str, bound: str,
+                     unlinked: list) -> str:
+    """The `tracker.yaml` text for a new binding. No credential goes in it.
+
+    The document records that an item and a ticket are the same work and nothing
+    more: it names no account, because binding does not claim the ticket.
+    """
     return yaml.safe_dump({
         "schema": 1,
         "provider": provider,
         "project": project,
         "part": part,
         "ticket": {"id": ticket_id, "key": ticket_key, "url": ticket_url},
-        "claimed-by": {"account-id": account_id, "name": account_name},
         "bound": bound,
         "unlinked": list(unlinked),
     }, sort_keys=False, allow_unicode=True)
 
 
-_BINDING_KEYS = ("provider", "project", "part", "ticket", "claimed-by", "bound")
+_BINDING_KEYS = ("provider", "project", "part", "ticket", "bound")
 
 
 def unlinked_history(content: str | None) -> list:

@@ -1,9 +1,11 @@
 """`tcw work tracker link` and `unlink`: bind an existing item, and remove a binding
 while keeping the record of it.
 
-`link` claims by exactly the rules `import` does (`test_tracker_claim.py`); what is
-tested here is what it must not touch. `unlink` is a local repair: it makes no
-tracker call and needs no tracker configured.
+`link` records a cross-reference and nothing else: it reads the ticket to prove it
+exists, then writes the binding, leaving the ticket exactly as it found it. What is
+tested here is that whole list of things it must not touch. Claiming is `import`'s
+alone (`test_tracker_claim.py`). `unlink` is a local repair: it makes no tracker
+call and needs no tracker configured.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import pytest
 import yaml
 
 from tcw.store.fs import FsWorkStore
-from test_tracker_import import (A, BASE_URL, SENTINEL, TICKET, binding, fake,  # noqa: F401
+from test_tracker_import import (SENTINEL, TICKET, binding, fake,  # noqa: F401
                                  make_node, run, write_binding)
 
 SECOND = "TCWCLAIM-7"
@@ -37,6 +39,23 @@ def plain_item(root, title="Existing item") -> str:
     return slug
 
 
+def resolve(root, slug, status: str) -> None:
+    """Drive `slug` into a terminal status. `status` has no default: which one is
+    the axis these tests vary, and a default would hide whichever cell it picked."""
+    st = FsWorkStore.open(root)
+    if status == "completed":
+        st.start(slug)
+        st.complete(slug, "done", ["acked"])
+    elif status == "discarded":
+        st.complete(slug, "wontfix", dod_ack=[], force=True)
+    else:
+        raise ValueError(f"not a resolved status: {status}")
+    assert st.get(slug).status == status
+
+
+RESOLVED = pytest.mark.parametrize("status", ["completed", "discarded"])
+
+
 # ── link ─────────────────────────────────────────────────────────────────────
 
 
@@ -49,17 +68,56 @@ def test_with_no_tracker_link_refuses_naming_the_key(tmp_path, fake):  # noqa: F
     assert snapshot(root, slug) == before
 
 
-def test_link_claims_and_binds_without_touching_the_body(node, fake):  # noqa: F811
+def ticket_state(fake, ticket_id="10052") -> tuple:  # noqa: F811
+    """The two ticket fields a claim would change, and `link` must not."""
+    held = fake.tickets[ticket_id]
+    return held.status, held.assignee
+
+
+def _assert_tracker_untouched(fake, before, ticket_id="10052") -> None:  # noqa: F811
+    """`link` records a cross-reference: nothing is written to the tracker, and the
+    ticket's status and assignee are what they were. Every test that links calls
+    this, so one that skips it is visible in the diff."""
+    assert fake.writes() == []
+    assert ticket_state(fake, ticket_id) == before
+
+
+def local_state(root, slug) -> tuple:
+    """Every other file in the item's folder, and its status and owner."""
+    item = FsWorkStore.open(root).get(slug)
+    files = {n: b for n, b in snapshot(root, slug).items() if n != "tracker.yaml"}
+    return files, item.status, item.owner
+
+
+def _assert_only_the_binding_changed(root, slug, before) -> None:
+    """`tracker.yaml` is the whole of `link`'s local effect: every other file in the
+    item's folder is byte-for-byte what it was, none is removed, and the item's
+    status and owner are unchanged. `before` is `local_state` taken beforehand."""
+    assert local_state(root, slug) == before
+
+
+def test_link_binds_without_touching_the_body(node, fake):  # noqa: F811
     slug = plain_item(node)
-    before = snapshot(node, slug)
+    before, ticket_before = local_state(node, slug), ticket_state(fake)
     code, _out, err = run(node, "link", slug, TICKET)
     assert code == 0, err
-    after = snapshot(node, slug)
-    assert after["intake.md"] == before["intake.md"]
-    assert after["initial-request.md"] == before["initial-request.md"]
     doc = binding(node, slug)
-    assert doc["ticket"]["key"] == TICKET and doc["claimed-by"]["account-id"] == A
-    assert fake.tickets["10052"].assignee == A
+    assert doc["ticket"]["key"] == TICKET and "claimed-by" not in doc
+    _assert_only_the_binding_changed(node, slug, before)
+    _assert_tracker_untouched(fake, ticket_before)
+
+
+def test_link_binds_a_ticket_someone_else_holds(node, fake):  # noqa: F811
+    """Recording a reference takes the ticket from nobody, so who holds it is not
+    `link`'s business. `import` still refuses one (`test_tracker_claim.py`)."""
+    fake.tickets["10052"].assignee = "acct-b"
+    slug = plain_item(node)
+    ticket_before = ticket_state(fake)
+    code, _out, err = run(node, "link", slug, TICKET)
+    assert code == 0, err
+    assert binding(node, slug)["ticket"]["key"] == TICKET
+    _assert_tracker_untouched(fake, ticket_before)
+    assert fake.tickets["10052"].assignee == "acct-b"
 
 
 def _refused_without_change(node, fake, slug, *argv):  # noqa: F811
@@ -76,15 +134,6 @@ def test_link_refuses_an_item_already_bound_and_names_its_ticket(node, fake):  #
     slug = write_binding(node, "Bound item")
     err = _refused_without_change(node, fake, slug, SECOND)
     assert TICKET in err and "unlink" in err
-
-
-def test_link_refuses_a_resolved_item(node, fake):  # noqa: F811
-    st = FsWorkStore.open(node)
-    slug = plain_item(node)
-    st.start(slug)
-    st.complete(slug, "done", ["acked"])
-    err = _refused_without_change(node, fake, slug, TICKET)
-    assert "completed" in err
 
 
 def test_link_refuses_a_key_another_item_holds(node, fake):  # noqa: F811
@@ -111,11 +160,53 @@ def test_link_refuses_a_malformed_binding_on_another_item(node, fake):  # noqa: 
     assert other in err
 
 
-def test_link_refuses_a_ticket_someone_else_holds(node, fake):  # noqa: F811
-    fake.tickets["10052"].assignee = "acct-b"
+def test_link_refuses_an_unknown_ticket(node, fake):  # noqa: F811
+    """The ticket read is what proves the key exists, and it is the one tracker call
+    `link` keeps. A typo must not leave a binding pointing at nothing."""
     slug = plain_item(node)
-    err = _refused_without_change(node, fake, slug, TICKET)
-    assert "Bob" in err
+    _refused_without_change(node, fake, slug, "NOSUCH-1")
+    assert not (FsWorkStore.open(node).path(slug) / "tracker.yaml").exists()
+
+
+@RESOLVED
+def test_link_binds_a_resolved_item(node, fake, status):  # noqa: F811
+    """Finished work can be linked to the ticket that tracked it. Nothing about a
+    binding needs the item to still be open, now that binding does not claim."""
+    slug = plain_item(node)
+    resolve(node, slug, status)
+    before, ticket_before = local_state(node, slug), ticket_state(fake)
+    code, _out, err = run(node, "link", slug, TICKET)
+    assert code == 0, err
+    assert "a resolved item's binding is not changed" not in err
+    assert binding(node, slug)["ticket"]["key"] == TICKET
+    _assert_only_the_binding_changed(node, slug, before)
+    _assert_tracker_untouched(fake, ticket_before)
+
+
+def test_import_after_link_says_the_ticket_is_linked_but_not_claimed(node, fake):  # noqa: F811
+    """Bound but unassigned is what `link` leaves behind, so `import` must not report
+    it as the tracker disagreeing with the binding. It still refuses: claiming a
+    linked ticket is not `import`'s job."""
+    slug = plain_item(node)
+    assert run(node, "link", slug, TICKET)[0] == 0
+    before = local_state(node, slug)
+    code, out, err = run(node, "import", TICKET)
+    assert code == 1
+    assert slug in out and slug in err
+    assert "not claimed" in err and "assigned to nobody" not in err
+    assert fake.writes() == []
+    assert local_state(node, slug) == before
+    assert len([i for i in FsWorkStore.open(node).query()]) == 1
+
+
+def test_link_refuses_a_slug_that_does_not_exist(node, fake):  # noqa: F811
+    """The status guard is gone; the existence check is not. A resolved item a
+    store has already removed is refused the same way."""
+    before = len(fake.writes())
+    code, _out, err = run(node, "link", "2026-01-01-not-a-real-item", TICKET)
+    assert code == 1
+    assert "no such work item in this node" in err
+    assert len(fake.writes()) == before
 
 
 # ── unlink ───────────────────────────────────────────────────────────────────
@@ -137,17 +228,6 @@ def test_unlink_refuses_an_unbound_item(node, fake):  # noqa: F811
     before = snapshot(node, slug)
     code, _out, err = run(node, "unlink", slug, "--reason", "wrong ticket")
     assert code == 1 and "not bound" in err
-    assert snapshot(node, slug) == before
-
-
-def test_unlink_refuses_a_resolved_item(node, fake):  # noqa: F811
-    st = FsWorkStore.open(node)
-    slug = write_binding(node, "Bound item")
-    st.start(slug)
-    st.complete(slug, "done", ["acked"])
-    before = snapshot(node, slug)
-    code, _out, _err = run(node, "unlink", slug, "--reason", "wrong ticket")
-    assert code == 1
     assert snapshot(node, slug) == before
 
 
@@ -185,8 +265,22 @@ def test_no_link_or_unlink_path_prints_or_stores_the_token(node, fake):  # noqa:
     outputs += run(node, "link", slug, TICKET)[1:]
     outputs += run(node, "link", slug, SECOND)[1:]                    # refused: bound
     outputs += run(node, "unlink", slug, "--reason", "wrong")[1:]
-    outputs += run(node, "link", plain_item(node, "Other"), TICKET)[1:]  # already yours
+    outputs += run(node, "link", plain_item(node, "Other"), TICKET)[1:]  # free again
     assert all(SENTINEL not in text for text in outputs)
     for path in FsWorkStore.open(node).root.rglob("*"):
         if path.is_file():
             assert SENTINEL not in path.read_text(encoding="utf-8", errors="replace"), path
+
+
+@RESOLVED
+def test_unlink_removes_a_binding_from_a_resolved_item(node, fake, status):  # noqa: F811
+    """A wrong binding on finished work was unrepairable: `unlink` refused every
+    resolved status, so the only way out was editing the sidecar by hand."""
+    slug = write_binding(node, "Bound item")
+    resolve(node, slug, status)
+    code, _out, err = run(node, "unlink", slug, "--reason", "wrong ticket")
+    assert code == 0, err
+    assert "a resolved item's binding is not changed" not in err
+    doc = binding(node, slug)
+    assert "ticket" not in doc
+    assert [e["reason"] for e in doc["unlinked"]] == ["wrong ticket"]

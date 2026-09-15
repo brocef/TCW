@@ -81,16 +81,16 @@ named artifact — raw input that quietly changes is not raw input.
 
 ## Working from an external tracker
 
-`list` and `show` only read. `import` and `link` change the ticket (a claim) and
-then the store; `unlink` changes only the store. No other command gains a network
-dependency because of any of them.
+`list`, `show` and `link` only read the ticket; `import` claims it and then writes
+the store; `unlink` touches the store alone and needs no tracker configured. No
+other command gains a network dependency because of any of them.
 
 | Goal | Command |
 | ---- | ------- |
 | list tickets the configured query selects | `tcw work tracker list` |
 | one ticket, plus its claimability report | `tcw work tracker show <ticket>` |
 | claim a ticket and create a bound backlog item | `tcw work tracker import <ticket> [--part <id>] [--title <title>]` |
-| claim a ticket for an existing unresolved item | `tcw work tracker link <slug> <ticket> [--part <id>]` |
+| record that an existing item and a ticket are the same work | `tcw work tracker link <slug> <ticket> [--part <id>]` |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 
 **Configured with the `tcw-configure` skill's `tracker.md`**, including settings a
@@ -121,9 +121,20 @@ exclusive workflow a started ticket still reports `not determined`, and a second
 
 ### Claiming and binding
 
-**The claim decides from the ticket, never from Jira's reply.** `import` and `link`
-read the ticket, apply the configured claim transition, assign the ticket to the
-signed-in account only if that transition applied and nobody had it, then read the
+**`link` claims nothing.** It reads the ticket — which is what proves the key
+exists and yields the id, key and URL the binding stores — and writes the binding.
+The ticket keeps its status and assignee, so a ticket somebody else holds is
+bindable, and nothing but `tracker.yaml` is written, so the item keeps its status,
+owner and documents. Any status can be linked or unlinked, `completed` and
+`discarded` included, which is how finished work is tied to the ticket that tracked
+it and how a wrong binding on it is repaired. Resolved folders are gitignored by
+default, so such a binding is written to disk but never committed. Nothing claims a
+linked ticket for the caller yet — `import` on one refuses, saying it is linked but
+not claimed — so tell them to move it in the tracker themselves when they start.
+
+**The claim decides from the ticket, never from Jira's reply.** `import`
+reads the ticket, applies the configured claim transition, assigns the ticket to the
+signed-in account only if that transition applied and nobody had it, then reads the
 ticket again. It counts as claimed only when it is now in the status the claim
 leads to and assigned to this account. A transition's error text is shown on a
 `detail:` line and never used as the reason.
@@ -147,12 +158,14 @@ leads to and assigned to this account. A transition's error text is shown on a
 **The binding is `tracker.yaml`**, a sidecar marked `generated`: written by these
 commands, never by hand; the web app offers no edit for it, though its server does
 not yet refuse a write. It records provider,
-project id, part, the ticket's stable id, key and URL, the claiming account id and
-name, the date, and an `unlinked` history. No credential and no e-mail address.
+project id, part, the ticket's stable id, key and URL, the date, and an `unlinked`
+history. It names no account: a binding says two things are the same work, never
+who took the ticket. No credential and no e-mail address.
 **Never treat a binding as proof of a claim** — `import` re-reads the ticket even
 when a binding exists, and refuses when the tracker disagrees. A binding that is not
 a readable mapping, or two items holding one ticket and part, makes `import` and
-`link` refuse and name the items; `tcw validate` reports a binding that is not a
+`link` refuse and name the items; the scan skips resolved items, so a ticket held
+by a finished one can be bound to a second item, open or finished; `tcw validate` reports a binding that is not a
 mapping, as it does for any record TCW writes.
 
 `import` puts the ticket's description into the item's **intake** with a link to the
