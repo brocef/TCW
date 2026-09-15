@@ -31,3 +31,16 @@ Strict mode refuses while a record exists. Take an active item started as
 
 **Suggested fix:** exit 1 when a slug named on the command line is skipped, and
 mention `TCW_WORK_OWNER` in the strict refusal.
+
+## 3. A held item whose claim is still owed stays locked under strict mode
+
+`deliver` keeps a held item's record while it still owes the claim, which is correct:
+the claim is this item's own. Under strict mode, though, `submit` is refused ("run
+sync"), while `sync` prints `held`, exits 0 and keeps the record, so the item stays
+locked until the other part resolves. This is rare. One option is to let
+`binding_refusal` skip a record while the item is held, which needs the sibling scan
+inside it.
+
+A related case is visible rather than silent. An open item in review holds a submit
+record, is held, and has its record cleared; then the other part is unlinked. The
+item's later `complete` reports a conflict instead of accepting the old `since`.
