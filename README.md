@@ -200,7 +200,7 @@ fi
 ```
 
 **If your work store lives in another repository**, the container holds only the
-repository it cloned, so the board is declared but absent. Run `tcw provision`
+repository it cloned, so its work items are declared but absent. Run `tcw provision`
 after the install — it obtains what the checkout does not have, and does nothing
 on a machine that already holds it. See
 [Working across repositories](docs/guide/multi-repo.md).
@@ -222,7 +222,8 @@ None of them copies another's content.
 Everything is plain files in the repository, so a code change and the
 description of what it changed travel in the same commit and the same pull
 request. A work item's status is the folder it sits in, so there is no separate
-ledger to fall out of step.
+ledger to fall out of step. Each item is addressed by its **slug**, a dated short
+name such as `2026-09-15-export-invoices-as-pdf`.
 
 **One command-line tool, `tcw`**, does everything:
 
