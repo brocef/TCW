@@ -27,6 +27,12 @@ leave the ticket stuck and report it as a conflict someone must repair by hand:
 4. **`tcw work tracker sync <slug>` skips an item owned by someone else and exits 0**
    (combined review, §2). Under strict mode that leaves an item whose record owes a
    claim stuck: `submit` says "run sync", and sync says "skipped" and succeeds.
+5. **Discarding unstarted work leaves its ticket open** (GitHub #41). Every move
+   requires the ticket to be assigned to the caller. A backlog item linked to an
+   unassigned ticket and then discarded is refused, so the ticket stays open with no
+   resolution. Teams whose queue selects unassigned tickets hit this for almost every
+   linked backlog item (115 of 125 in the reporter's case), and the refusal describes an
+   unassigned ticket as if someone else held it.
 
 ## Constraints
 
@@ -36,6 +42,11 @@ leave the ticket stuck and report it as a conflict someone must repair by hand:
   triage: the request permits walking a ticket through more than one transition (for
   example `Start`, then `Submit`) to reach the item's status. How far that goes is
   for the spec.
+- **An unassigned ticket may be moved by a discard only** (decided with the maintainer
+  after triage, choosing the issue's "discard only" option over "assign first"). Every
+  other move keeps today's rule that the ticket must be assigned to the caller, and this
+  revisits the sync spec's agreed "unassigned counts as not assigned" rule for discards
+  alone.
 - A ticket assigned to a **different** account is still not moved.
 - When no transition is named, today's rule (exactly one transition into the target)
   keeps working for projects that rely on it.
@@ -44,8 +55,8 @@ leave the ticket stuck and report it as a conflict someone must repair by hand:
 
 ## Out of scope
 
-- Moving a ticket that is **unassigned** (GitHub #41) — held back at triage for
-  further discussion.
+- Assigning an unassigned ticket to the caller before a move (GitHub #41's other
+  option), and moving an unassigned ticket for anything but a discard.
 - §1 of the lifecycle-sync entry (staged records blocking a worktree merge-back) —
   tracked in `2026-09-15-harden-tracker-binding-reads-and-writes-and-jira-response-parsing`.
 - Checking a workflow ahead of time — GitHub #44, tracked in
@@ -53,11 +64,14 @@ leave the ticket stuck and report it as a conflict someone must repair by hand:
 
 ## Notes
 
-- Merged at triage from GitHub #40 and #42 and two review follow-ups, because all
+- Merged at triage from GitHub #40, #42 and #41 and two review follow-ups, because all
   change how sync decides and reports a move; the maintainer asked for items touching
   the same feature to be combined. Every source is kept verbatim in `intake.md`.
+- Bringing a late-linked ticket forward (part 2) may itself need to claim, and so
+  assign, the ticket; that is the claim's existing behaviour, not the "assign first"
+  option excluded above.
 - Reference material: asked; none provided beyond what `intake.md` cites.
-- GitHub #40 and #42 were filed by the maintainer and stay open until the fix ships
+- GitHub #40, #41 and #42 were filed by the maintainer and stay open until the fix ships
   (see `CLAUDE.md`, "Closing the originating GitHub issue waits for publication").
 
 ## References
