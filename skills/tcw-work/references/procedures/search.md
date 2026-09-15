@@ -62,8 +62,9 @@ One Markdown table, carrying `tcw work list`'s columns:
 | ---- | ------ | ------ | -------- | ----- | ---- | ----- |
 
 `Notes` holds the segments a board row only sometimes prints —
-`ready-to-close`, `blocked-by: <refs>`, and an active item's
-`owner: <identity>` / `started: <timestamp>` — so nothing the board says is lost
+`ready-to-close`, `blocked-by: <refs>`, an active item's
+`owner: <identity>` / `started: <timestamp>`, and a bound item's
+`ticket: <key>` — so nothing the board says is lost
 to the table's fixed shape. Leave it empty otherwise.
 
 **Transcribe the cells from `tcw work list`; never re-derive them.** Stage letters
