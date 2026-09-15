@@ -1,0 +1,9 @@
+slug: 2026-09-15-show-the-tracker-s-untriaged-tickets-on-tcw-work-inbox-list
+title: Show the tracker's untriaged tickets on tcw work inbox list
+created: '2026-09-15'
+resolution: null
+effort: medium
+complexity: medium
+tags:
+- cli
+- work
