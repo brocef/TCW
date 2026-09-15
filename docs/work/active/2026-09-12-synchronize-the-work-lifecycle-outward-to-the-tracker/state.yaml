@@ -13,3 +13,5 @@ initiative: 2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-b
 blocked_by:
 - slug: 2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item
 - slug: 2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket
+owner: brocef@users.noreply.github.com
+started: '2026-09-15T02:37:59.832549Z'
