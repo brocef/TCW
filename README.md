@@ -517,12 +517,15 @@ when every piece of work must come from a ticket you have claimed. Then:
   item is checked before anything is merged.
 - A claim on a workflow that would let a second person claim the same ticket is
   refused, by `start` and by `import`; the ticket is left claimed for you to release.
+- An epic can be created and started, since it only groups work, but not with
+  `--worktree`.
 - Discarding is always allowed. `drop` refuses an item that was ever bound — discard
   it instead, so the record stays.
 - `tcw serve` refuses the same changes, since it cannot check a ticket, and names the
   command to use.
 
-A refusal changes nothing and says what to fix. There is no flag to get past it;
+A refusal changes nothing in your project and says what to fix; a `start` or `import`
+refused after claiming leaves the ticket claimed. There is no flag to get past it;
 `--force` and `--take-over` do not. Strict mode needs Jira: while it cannot be
 reached, gated commands refuse. It also needs `statuses.active`,
 `statuses.completed` and a `statuses.discarded` covering every discard reason, which

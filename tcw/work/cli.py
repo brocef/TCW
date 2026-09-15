@@ -351,10 +351,6 @@ def _strict_refusal(st, bare: str, change: str) -> str | None:
     config = st.tracker_config()
     if config is None:
         return _STRICT_BROKEN
-    value = item.tracker
-    if not isinstance(value, dict) or "problem" in value:
-        return (f"{bare} is not bound to a readable ticket. Link it with "
-                f"`tcw work tracker link {bare} <ticket>` first.")
     from tcw.store.base import target_status
     from tcw.tracker.jira import JiraClient
     from tcw.tracker.sync import MOVE_STATUS, authorize
@@ -372,27 +368,17 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
     config = st.tracker_config()
     if config is None:
         return _strict_says_no("start", f"{bare} was not started", _STRICT_BROKEN), False
-    value = item.tracker
-    if not isinstance(value, dict) or "problem" in value:
-        return _strict_says_no("start", f"{bare} was not started",
-                               f"{bare} is not bound to a readable ticket. Link it with "
-                               f"`tcw work tracker link {bare} <ticket>` first."), False
     if item.status != "backlog" and not (item.status == "active" and args.take_over):
         return None, False                # the store refuses it, and names why
     if not args.force and st.unresolved_blockers(item):
         return None, False                # likewise, before any ticket is taken
-    from tcw.tracker.intake import binding_of, claim, read_ticket, same_site
+    from tcw.tracker.intake import claim, read_ticket
     from tcw.tracker.jira import JiraClient, TrackerError
-    from tcw.tracker.sync import claim_refusal
-    bound, _revision = binding_of(st, bare)
-    key = value["ticket"]["key"]
-    if not same_site(bound.ticket_url, config.base_url):
-        return _strict_says_no("start", f"{bare} was not started",
-                               f"{key}'s binding is not on {config.base_url}."), False
-    if value.get("sync") is not None:
-        return _strict_says_no("start", f"{bare} was not started",
-                               f"{key} has a change that has not reached the tracker. "
-                               f"Run `tcw work tracker sync {bare}` first."), False
+    from tcw.tracker.sync import binding_refusal, claim_refusal
+    bound, refusal = binding_refusal(st, bare, config)
+    if bound is None:
+        return _strict_says_no("start", f"{bare} was not started", refusal), False
+    key = bound.ticket_key
     client = JiraClient(config)
     try:
         outcome = claim(client, read_ticket(client, bound.ticket_id))
@@ -418,7 +404,8 @@ def _new(args: argparse.Namespace) -> int:
     if st.tracker_strict() and not args.epic:
         return _strict_says_no("new", "nothing was created",
                                "Create work from a ticket with "
-                               "`tcw work tracker import <ticket>`.")
+                               "`tcw work tracker import <ticket>`."
+                               if st.tracker_config() is not None else _STRICT_BROKEN)
     try:
         detail = st.create_work(
             args.title,
@@ -493,7 +480,8 @@ def _inbox_accept(args: argparse.Namespace) -> int:
     if st.tracker_strict():
         return _strict_says_no("inbox accept", f"{args.entry} was not accepted",
                                "Create work from a ticket with "
-                               "`tcw work tracker import <ticket>`.")
+                               "`tcw work tracker import <ticket>`."
+                               if st.tracker_config() is not None else _STRICT_BROKEN)
     try:
         item = st.inbox_accept(args.entry, title=args.title)
     except _ERRORS as e:
@@ -977,6 +965,15 @@ def _start(args: argparse.Namespace) -> int:
     before = st.get(bare)
     previous = before.status if before is not None else "backlog"
     strict = (before is not None and before.type != "epic" and st.tracker_strict())
+    if (before is not None and before.type == "epic" and args.worktree
+            and st.tracker_strict()):
+        # Epics are not gated so they can hold children; code written on an epic's
+        # own branch would be merged back with no ticket behind it.
+        return _strict_says_no("start", f"{bare} was not started",
+                               "An epic holds no code of its own under strict mode, so "
+                               "it cannot have a worktree. Start it without "
+                               "--worktree, and do the work in children imported from "
+                               "tickets.")
     claimed = False
     if strict:
         code, claimed = _strict_claim(st, bare, before, args)

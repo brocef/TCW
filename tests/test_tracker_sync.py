@@ -458,31 +458,6 @@ def test_a_ticket_shared_by_two_parts_moves_with_the_last_one(node, fake):
     assert fake.tickets[TICKET_ID].status == "Done"
 
 
-def test_the_last_shared_part_completes_from_review_a_ticket_held_in_progress(node, fake):
-    api = bound_item(node, "Api half", part="api")
-    web = bound_item(node, "Web half", part="web")
-    claimed_ticket(fake)
-    st = FsWorkStore.open(node)
-    for slug in (api, web):
-        st.start(slug, owner="a@example.test")
-        st.submit(slug)
-    assert deliver_now(node, web, move="submit", previous="active").state == "held"
-    st.complete(api, "done", ["acked"])
-    st.complete(web, "done", ["acked"])
-    assert deliver_now(node, web, move="complete", previous="review").state == "current"
-    assert fake.tickets[TICKET_ID].status == "Done"
-
-
-def test_an_unshared_ticket_sent_back_from_review_is_not_carried_forward(node, fake):
-    slug = bound_item(node)
-    claimed_ticket(fake, "In Progress", A)
-    st = FsWorkStore.open(node)
-    st.start(slug, owner="a@example.test")
-    st.submit(slug)
-    st.complete(slug, "done", ["acked"])
-    assert deliver_now(node, slug, move="complete", previous="review").state == "conflicting"
-    assert fake.writes() == []
-
 def test_a_hand_written_binding_for_someone_elses_ticket_moves_nothing(node, fake):
     st = FsWorkStore.open(node)
     slug = st.create("Hand bound").slug

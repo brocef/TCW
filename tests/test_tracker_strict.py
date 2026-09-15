@@ -157,10 +157,13 @@ def test_a_ticket_moved_back_in_the_tracker_authorizes_nothing(strict, fake):
 
 
 def test_a_held_part_in_review_is_authorized_from_active(strict, fake):
-    slug = bound_item(strict)
+    slug = bound_item(strict, part="api")
+    other = bound_item(strict, "Web", part="web")
     started(strict, slug, submitted=True)
-    claimed_ticket(fake, "In Progress", A)          # C3 held it for another part
+    claimed_ticket(fake, "In Progress", A)          # C3 held it for the other part
     assert authorize_now(strict, slug, "Done") is None
+    FsWorkStore.open(strict).drop(other)            # no other part: sent back instead
+    assert "moved in the tracker" in authorize_now(strict, slug, "Done")
 
 
 def test_an_unreachable_tracker_authorizes_nothing(strict, fake):
@@ -263,7 +266,8 @@ def test_an_unbound_item_cannot_start_submit_or_complete_but_can_be_discarded(tm
     busy = st.create("Busy").slug
     st.start(busy, owner="a@example.test")
     set_tracker_key(root, "strict", True)
-    assert cli(root, "work", "start", idle)[0] == 1 and status(root, idle) == "backlog"
+    code, _out, err = cli(root, "work", "start", idle)
+    assert code == 1 and REFUSED in err and status(root, idle) == "backlog"
     for argv in (("submit", busy), ("complete", busy, "--resolution", "done",
                                     "--confirm")):
         code, _out, err = cli(root, "work", *argv)
@@ -425,7 +429,7 @@ def test_two_parts_held_in_progress_can_both_complete(strict, fake):
     assert fake.tickets[TICKET_ID].status == "In Progress"       # held for the other part
     code, _out, err = cli(strict, "work", "complete", api, "--resolution", "done",
                           "--confirm")
-    assert REFUSED not in err, err
+    assert code == 0 and status(strict, api) == "completed", err
     code, _out, err = cli(strict, "work", "complete", web, "--resolution", "done",
                           "--confirm")
     assert code == 0, err
@@ -518,3 +522,109 @@ def test_serve_refuses_what_it_cannot_check_and_changes_nothing(strict, fake):
         httpd.server_close()
         thread.join(timeout=5)
     assert status(strict, slug) == "discarded"
+
+
+# ── a ticket shared by parts, with strict off ────────────────────────────────
+
+
+from test_tracker_sync import deliver_now, make_node as sync_node  # noqa: E402
+
+
+@pytest.fixture()
+def node(tmp_path, fake):
+    return sync_node(tmp_path, statuses=STATUSES)
+
+
+def test_the_last_shared_part_completes_from_review_a_ticket_held_in_progress(node, fake):
+    api = bound_item(node, "Api half", part="api")
+    web = bound_item(node, "Web half", part="web")
+    claimed_ticket(fake)
+    st = FsWorkStore.open(node)
+    for slug in (api, web):
+        st.start(slug, owner="a@example.test")
+        st.submit(slug)
+    assert deliver_now(node, web, move="submit", previous="active").state == "held"
+    st.complete(api, "done", ["acked"])
+    st.complete(web, "done", ["acked"])
+    assert deliver_now(node, web, move="complete", previous="review").state == "current"
+    assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_an_unshared_ticket_sent_back_from_review_is_not_carried_forward(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Progress", A)
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    st.complete(slug, "done", ["acked"])
+    assert deliver_now(node, slug, move="complete", previous="review").state == "conflicting"
+    assert fake.writes() == []
+
+
+def test_a_ticket_taken_again_after_a_discard_is_not_carried_forward(node, fake):
+    first = bound_item(node, "First")
+    st = FsWorkStore.open(node)
+    st.complete(first, "wontfix", ["acked"])
+    again = bound_item(node, "Again")                    # the same part, re-taken
+    claimed_ticket(fake, "In Progress", A)
+    st.start(again, owner="a@example.test")
+    st.submit(again)
+    st.complete(again, "done", ["acked"])
+    assert deliver_now(node, again, move="complete", previous="review").state == "conflicting"
+    assert fake.writes() == []
+
+
+# ── the review's cases ───────────────────────────────────────────────────────
+
+
+def test_complete_is_refused_when_a_reviewer_sent_the_ticket_back(strict, fake):
+    slug = bound_item(strict)
+    assert cli(strict, "work", "start", slug)[0] == 0
+    assert cli(strict, "work", "submit", slug)[0] == 0
+    claimed_ticket(fake, "In Progress", A)
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm")
+    assert code == 1 and REFUSED in err and "moved in the tracker" in err
+    assert status(strict, slug) == "review"
+
+
+def test_take_over_of_an_active_item_claims_first(strict, fake):
+    slug = bound_item(strict)
+    FsWorkStore.open(strict).start(slug, owner="b@example.test")
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(strict, "work", "start", slug, "--take-over")
+    assert code == 1 and REFUSED in err and "Bob" in err
+    assert FsWorkStore.open(strict).get(slug).owner == "b@example.test"
+    assert fake.writes() == []
+
+
+def test_a_broken_strict_block_names_validate(tmp_path, fake):
+    root = strict_node(tmp_path, strict=True)
+    set_tracker_key(root, "timeout-seconds", -1)
+    code, _out, err = cli(root, "work", "new", "x")
+    assert code == 1 and "tcw validate" in err
+
+
+def test_an_epic_cannot_take_a_worktree(strict, fake):
+    commit_all(strict)
+    code, out, _err = cli(strict, "work", "new", "An epic", "--epic")
+    slug = out.strip()
+    code, _out, err = cli(strict, "work", "start", slug, "--worktree")
+    assert code == 1 and REFUSED in err and "--worktree" in err
+    assert status(strict, slug) == "backlog" and not (strict / ".worktrees").exists()
+
+
+def test_strict_survives_problems_that_come_from_an_ancestor(tmp_path):
+    from test_tracker_inheritance import ABSENT, COMPLETE, _chain, _store
+    full = {**COMPLETE, "statuses": STATUSES}
+    nodes = _chain(tmp_path, root_board=False, root="off", repo=ABSENT,
+                   pkg={**full, "strict": True})
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert _store(nodes["pkg"]).tracker_strict() is True
+    nodes = _chain(tmp_path / "b", root_board=False, root={**full, "strict": True,
+                   "colour": "red"}, repo=ABSENT, pkg={"candidate-query": "x"})
+    assert _store(nodes["pkg"]).tracker_config() is None
+    assert _store(nodes["pkg"]).tracker_strict() is True
+    nodes = _chain(tmp_path / "c", root_board=False, root={**full, "strict": True,
+                   "colour": "red"}, repo=ABSENT, pkg={"strict": False})
+    assert _store(nodes["pkg"]).tracker_strict() is False

@@ -10,7 +10,8 @@ ticket first and starts the item only when the claim succeeded. `submit`, `rewor
 and completing an item as `done` first read the ticket and refuse unless it is
 assigned to me and sits where the item's lifecycle left it — for a `worktree` item,
 before anything is merged. A refusal says what did not happen and what to fix, and
-changes no file. Discarding an item is always allowed, so no item is trapped; `drop`
+changes no file; a `start` refused after its claim leaves the ticket claimed. An epic can be created and started, since it only groups work, but not in a worktree.
+Discarding an item is always allowed, so no item is trapped; `drop`
 refuses an item that has ever been bound, since dropping would erase that record, and
 tells me to discard it instead. Epics are not gated.
 

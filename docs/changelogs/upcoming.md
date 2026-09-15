@@ -59,8 +59,10 @@ category.
   `WorkStore.tracker_strict()` (concrete, `False`). Strict requires
   `statuses.active`, `statuses.completed` and `statuses.discarded` as a name or a
   mapping of all three resolutions. `FsWorkStore.tracker_strict()` stays true when
-  the block has problems, so the gates refuse instead of switching off.
-- `tcw/tracker/sync.py`: `authorize(store, slug, client, config, *, target)` —
+  the block has problems, including an ancestor's, so the gates refuse instead of
+  switching off; the nearest block setting `strict` decides.
+- `tcw/tracker/sync.py`: `binding_refusal(store, slug, config)`, the offline binding
+  checks shared by `authorize` and strict `start`; `authorize(store, slug, client, config, *, target)` —
   bound, same site, no `sync` record, ticket read, assigned to the caller, in the
   mapped status of the item's status or an earlier one, or the target.
   `claim_refusal(client, config, ticket_id, outcome)` — refuses a claim that did not
@@ -70,7 +72,8 @@ category.
 - Strict gates in `tcw/work/cli.py`: `new` (not `--epic`) and `inbox accept` refuse;
   `start` claims before the store move (`_strict_claim`, after the store's own
   status and blocker checks); `submit`, `rework`, and `complete` as `done` call
-  `authorize` (`_strict_refusal`), `complete` before the worktree merge-back; `drop`
+  `authorize` (`_strict_refusal`), `complete` before the worktree merge-back; an
+  epic cannot `start --worktree`; `drop`
   refuses when a `tracker.yaml` exists (`ever_bound()` in `tcw/tracker/intake.py`);
   `tracker import` runs `claim_refusal` before creating the item. Discards and epics
   are not gated. Refusals exit 1 and write no `sync` record.
@@ -79,10 +82,11 @@ category.
 
 ## Changed
 
-- `expected_statuses(..., shared=)`: when another item here is bound to the same
-  ticket, every earlier mapped status is expected, so the last part completing from
-  `review` moves a ticket that was held in the `active` status instead of reporting
-  it conflicting.
+- `expected_statuses(..., shared=)`: when an item for another part of the same ticket
+  is here (open or finished), every earlier mapped status is expected, so the last
+  part completing from `review` moves a ticket that was held in the `active` status
+  instead of reporting it conflicting. A finished part that was not retained is not
+  seen. `_sharing()` became `_siblings()`, one scan returning both answers.
 
 - `Unbound`, `Malformed`, `Bound` and binding classification (`classify_binding`,
   over parsed YAML) moved from `tcw/tracker/intake.py` to `tcw/store/base.py`, so the

@@ -172,13 +172,14 @@ tracker code is imported.
 With `work.tracker.strict: true`, a ticket authorizes local work **before** it
 happens. Epics are never gated; discards never refused; no flag bypasses a gate
 (`--force`, `--take-over` included). A refusal exits 1, names what did not happen and
-the fix, and writes nothing — no `sync` record.
+the fix, and writes nothing — no `sync` record — though a refused `start` or `import`
+that got as far as claiming leaves the ticket claimed.
 
 | Command | Under strict |
 | ------- | ------------ |
 | `new` (not `--epic`), `inbox accept` | refused → `tcw work tracker import <ticket>` |
-| `start` | unbound: refused. Bound: claim first (after the store's own status and blocker checks), move only if claimed |
-| `submit`, `rework`, `complete --resolution done` | read the ticket: assigned to you, and in the mapped status of the item's status or an earlier one (or the target); else refused. `complete` checks before the worktree merge |
+| `start` | unbound: refused. Bound: claim first (after the store's own status and blocker checks; the epic-active and repository checks come after it), move only if claimed. An epic cannot start with `--worktree` |
+| `submit`, `rework`, `complete --resolution done` | read the ticket: assigned to you, and in the mapped status of the item's status (or the target), or of an earlier status when an item for another part of the ticket is here; else refused. `complete` checks before the worktree merge |
 | `complete` with a discard resolution | allowed |
 | `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
 | `tracker import`, strict `start` claim | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed |

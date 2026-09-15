@@ -5443,8 +5443,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if config is not None:
             strict = config.strict
         else:
-            strict = (isinstance(merged, dict) and "strict" in merged
-                      and merged["strict"] is not False)
+            # A block with problems does not switch strict mode off: the nearest block
+            # that sets `strict` decides, as it would once merged, even when another
+            # block is not a mapping. A parent this checkout lacks cannot be asked.
+            strict = next((block["strict"] is not False for _label, block in blocks
+                           if isinstance(block, dict) and "strict" in block), False)
         return config, problems, strict
 
     def documentation_problems(self) -> list[str]:
