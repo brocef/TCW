@@ -72,8 +72,8 @@ tracked things covering the same work is itself news.
 
 | The deciding match | Interactive | Delegated | Unattended | Outcome |
 | --- | --- | --- | --- | --- |
-| `covers`, and the idea adds nothing it does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
-| `covers` an `active` or `review` item, with new information | Tell the user the item and the new information. Change nothing | Return the same | Report the same | `already in progress <ref>` |
+| `covers` an `active` or `review` item | Tell the user the item, and any new information. Change nothing | Return the same | Report the same | `already in progress <ref>` |
+| `covers` anything else, and the idea adds nothing it does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
 | `covers` an inbox entry, or a `backlog` item with no `spec.md`, with new information | Append | Append | Append | `amended <ref>` |
 | `covers` a `backlog` item with `spec.md` or `plan.md`, with new information | Append, then ask: revise, or leave as is | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` if left |
 | `partly covers`, and the rest can stand alone | Create an item for the rest (step 4), naming the match under References | Same | Same | `created <slug>` |
