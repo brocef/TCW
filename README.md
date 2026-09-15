@@ -281,8 +281,8 @@ becomes your own `permission`.
 
 #### Skills
 
-| Skill                                          | What it does                                                                                              |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Skill                                  | What it does                                                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | [`taxonomy`](skills/taxonomy/SKILL.md) | Guides an agent through declaring vocabulary and features, linking them, and resolving inherited entries. |
 
 To draft a first taxonomy from an existing codebase, use the `setup` skill
@@ -342,8 +342,8 @@ registered in the taxonomy before a capability names it.
 
 #### Skills
 
-| Skill                                                  | What it does                                                                                                                                                          |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill                                          | What it does                                                                                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`capabilities`](skills/capabilities/SKILL.md) | Guides an agent through checking a planned change against the existing capabilities, catching contradictions, and updating a capability's status when work completes. |
 
 #### CLI
@@ -579,8 +579,8 @@ reports, comments, and the known limits are in
 
 #### Skills
 
-| Skill                                                | What it does                                                                                                                                                                                  |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill                                        | What it does                                                                                                                                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`work`](skills/work/SKILL.md)               | Guides an agent through the whole work lifecycle: triaging the inbox, writing the request, spec and plan, implementing, verifying, completing, splitting large items, and coordinating epics. |
 | [`post-mortem`](skills/post-mortem/SKILL.md) | Once a problem has surfaced (rejected work, a false claim in a spec, something shipped that should not have), finds which lifecycle stage could first have caught it.                         |
 | [`work-create`](skills/work-create/SKILL.md) | Turns an idea for a piece of work into a work item, or adds it to the item or inbox entry that already covers it, after checking what is already tracked.                                     |
@@ -666,15 +666,15 @@ across the axes.
 
 | Skill                                                      | What it does                                                                                                                                                                                |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`setup`](skills/setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
-| [`configure`](skills/configure/SKILL.md)           | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
+| [`setup`](skills/setup/SKILL.md)                           | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
+| [`configure`](skills/configure/SKILL.md)                   | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and offers a version bump when work is done.                                     |
-| [`work-stage`](skills/work-stage/SKILL.md)         | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
+| [`work-stage`](skills/work-stage/SKILL.md)                 | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
 
 **Command skills: the everyday workflows**
 
-| Skill                                                                                            | What it does                                                                                                    |
-| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Skill                                                                                    | What it does                                                                                                    |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | [`commands-process-inbox`](skills/commands-process-inbox/SKILL.md)                       | Turns raw inbox entries into work items and writes each one's request.                                          |
 | [`commands-plan-work`](skills/commands-plan-work/SKILL.md)                               | Takes an item, or a request made in chat, through the request, spec and plan stages, and stops before any code. |
 | [`commands-drive-work-to-completion`](skills/commands-drive-work-to-completion/SKILL.md) | Takes an item from wherever it is through implementation, and stops for your verification before completing it. |
@@ -682,8 +682,8 @@ across the axes.
 
 **Extras: optional, built for one way of working**
 
-| Skill                                                                      | What it does                                                                                                        |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Skill                                                              | What it does                                                                                                        |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | [`extras-autonomous-work`](skills/extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking two read-only advisors wherever the lifecycle would ask you.     |
 | [`extras-triage-issues`](skills/extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                      |
 | [`extras-report`](skills/extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues). |
@@ -691,8 +691,8 @@ across the axes.
 **Agents.** Three read-only agents ship with the plugin. None of them edits a
 file or moves an item; each reports back to the session that started it.
 
-| Agent                 | What it does                                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Agent             | What it does                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `verifier`        | For the `verify` stage: reads the change against the item's spec, runs checks, and reports whether each acceptance criterion is met.             |
 | `backlog-auditor` | Checks one backlog item for problems: already done, out of date, in the wrong project, not actionable, or blocked by something already resolved. |
 | `post-mortem`     | Reads an item's documents and commit history backwards to find which stage could first have caught a problem.                                    |

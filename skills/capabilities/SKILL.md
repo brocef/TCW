@@ -1,6 +1,6 @@
 ---
 name: capabilities
-description: Drives `tcw capabilities` — the Capabilities axis of TCW (what a user can do). Use when a tcw work item has a product (user-facing) delta, or when coordinating capability wording across repos. The taxonomy axis is taxonomy, the work axis is work.
+description: Drives `tcw capabilities` — the Capabilities axis of TCW (what a user can do). Use when a tcw work item has a product (user-facing) delta, or when coordinating capability wording across repos. The taxonomy axis is the `taxonomy` skill, the work axis the `work` skill.
 when_to_use: Use when planning or completing a tcw work item that has a product (user-facing) delta, or when coordinating capability wording across repos — declaring new capabilities, linking them to taxonomy Features, checking a change against the standing ledger, flipping a capability's status as work completes, or relaying canonical product-layer wording.
 allowed-tools: Bash(tcw *), Read, Grep, Glob
 metadata:
