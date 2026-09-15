@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-15-strict-mode-and-sync-follow-ups-from-the-combined-review.md`
+
+## Inbox body
+
 # Strict mode and sync: follow-ups from the combined review
 
 The combined adversarial review of the tracker epic's four children (binding surface,
@@ -44,3 +50,42 @@ inside it.
 A related case is visible rather than silent. An open item in review holds a submit
 record, is held, and has its record cleared; then the other part is unlinked. The
 item's later `complete` reports a conflict instead of accepting the old `since`.
+
+## Triage (2026-09-15)
+
+Merged at triage because every part changes what strict tracker mode
+(`work.tracker.strict`) refuses or lets through — `authorize` and
+`binding_refusal` in `tcw/tracker/sync.py`, and the strict checks in the work
+commands. The maintainer asked for items touching the same feature to be combined.
+
+- **In scope:** §1 and §3 of the entry above; the strict nesting entry below; the
+  "epic worktree from before strict mode" note below.
+- **Not in scope here:** §2 of the entry above (`sync` exiting 0 when it skips a
+  named slug) is tracked in `2026-09-15-let-tracker-sync-name-its-transitions-bring-a-late-linked-ticket-forward-and-stop-reading-ordinary-moves-as-drift`.
+- Related: GitHub #44 asks for the same "does the workflow offer a transition" check
+  ahead of time, from `tcw validate`; §3 touches the tracker hold item's records.
+
+## Folded in: inbox entry `2026-09-15-strict-tracker-mode-cannot-nest-or-group-children.md`
+
+## Strict tracker mode cannot nest or group children
+
+Found while specifying
+`2026-09-12-refuse-local-work-that-no-claimed-tracker-ticket-authorizes` (its Risk 6).
+
+Under `work.tracker.strict: true`, `tcw work new` is refused for everything but an
+epic, so `tcw work new --parent <slug>` and `tcw work new --initiative <epic>` are
+unavailable. `tcw work tracker import` creates items but takes neither option. A
+child for an initiative can still be made by importing and then setting
+`initiative` with `tcw work edit`; nesting under a parent cannot be done at all.
+
+Options: give `tracker import` `--parent` and `--initiative`, or let `new --parent`
+and `new --initiative` through and require `tracker link` before the child starts
+(the start gate already refuses an unbound child).
+
+## Folded in: from inbox entry `hold-entry.md` (A tracker hold leaves no evidence outside this checkout)
+
+### Also: an epic worktree from before strict mode
+
+An epic started with `--worktree` before `strict: true` was set can still merge its
+branch when it completes, because epics are exempt from the gates. Strict mode only
+refuses starting an epic with a worktree.
