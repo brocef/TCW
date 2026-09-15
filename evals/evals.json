@@ -2,7 +2,7 @@
  "schema": {
   "note": "The eval test set. Axis A measures whether lifecycle prompt injection reaches the artifact; axis B measures what a plugin skill adds over the shipped CLI prompts alone.",
   "case_fields": {
-   "id": "case identifier, A1-A8 or B1-B12",
+   "id": "case identifier, A1-A8 or B1-B13",
    "axis": "A or B",
    "stage": "axis A only: the lifecycle stage the case works",
    "skill": "axis B only: the skill the case is about; 'cross-axis' where the scenario spans several",
@@ -884,6 +884,51 @@
     }
    ],
    "note": "Runs on the bare fixture: a git repository with demo-app's code and no tcw-config.yaml. The seeder refuses a bare fixture inside any TCW project (any parent folder holding tcw-config.yaml), and run_evals refuses such a case before running anything, so this case can only run with --out pointing outside this checkout. In the no-skill arm no plugin is loaded, so the contains check is expected to fail there and the absent check passes trivially. project.md says to use the project name the user gave as the ID (the prompt names demo-app) and to ask otherwise; an agent that stops to ask has routed correctly but fails validate_exit_zero, so read the routing checks and the validate check separately when grading."
+  },
+  {
+   "id": "B13",
+   "axis": "B",
+   "skill": "tcw-work-create",
+   "invokes": "tcw-work-create",
+   "item": "active",
+   "arms": [
+    "with-skill",
+    "no-skill"
+   ],
+   "prompt": "I'm partway through {item}. Unrelated, but signing in has been taking about eight seconds for accounts with a lot of invoices, and it started right after Tuesday's invoice import. We'll need to deal with that at some point. Don't work on {item} in this turn.",
+   "assertions": [
+    {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw-work-create"
+     },
+     "text": "the agent invoked the tcw-work-create skill or opened its file for an idea mentioned in passing"
+    },
+    {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "inbox"
+     },
+     "text": "the agent read the work inbox while searching for overlap"
+    },
+    {
+     "predicate": "files_changed_exactly",
+     "args": {
+      "paths": [
+       "docs/work/inbox/slow-login.md"
+      ]
+     },
+     "text": "the new fact (Tuesday's invoice import) reached the inbox entry that already covers the report, and nothing else changed"
+    },
+    {
+     "predicate": "new_item_count",
+     "args": {
+      "count": 0
+     },
+     "text": "no item was created: the inbox entry covers the report"
+    }
+   ],
+   "note": "The fixture seeds docs/work/inbox/slow-login.md in step 9 of seed() (evals/seed_fixture.py), which every non-bare variant runs; its text already says eight seconds for accounts with many invoices, but not the import. What tells runs apart is files_changed_exactly: an agent that ignores the remark changes nothing, and one that creates an item or a second entry changes other paths. tool_input_contains 'tcw-work-create' is also satisfied by a Bash command naming the skill folder, so it is a routing signal, not proof of behavior. In the no-skill arm the first assertion and files_changed_exactly are expected to fail. new_item_count reads items that run_one does not yet write (2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly)."
   }
  ]
 }

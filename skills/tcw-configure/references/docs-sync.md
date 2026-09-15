@@ -45,11 +45,7 @@ After adding the section, create any tracked files — **and their parent direct
 
 ## Deferred follow-up work → track it as work items, not a doc
 
-Some documentation-sync setups elsewhere include a standing `docs/FOLLOWUPS.md` log for code-related work deferred out of a task. **In a TCW project, don't add that file** — deferred follow-up work is tracked as first-class work items instead. When a task leaves code-related TODOs (post-migration cleanups, hardening skipped for scope, test-coverage gaps, deferred refactors), create a backlog item:
-
-```
-tcw work new "<deferred item>"
-```
+Some documentation-sync setups elsewhere include a standing `docs/FOLLOWUPS.md` log for code-related work deferred out of a task. **In a TCW project, don't add that file** — deferred follow-up work is tracked as first-class work items instead. When a task leaves code-related TODOs (post-migration cleanups, hardening skipped for scope, test-coverage gaps, deferred refactors), file them with the `tcw-work-create` skill, so work that is already tracked gets the new information instead of a duplicate.
 
 This keeps deferred work in the same board the rest of the project's work lives in, subject to the same lifecycle, rather than in a parallel markdown log. (Things that depend on a person doing something out-of-band — smoke tests, manual QA, stakeholder sign-off — don't belong in either place; they go in a PR description or a message to the relevant person.)
 

@@ -191,8 +191,9 @@ session was itself told to work without asking.
 
 - Check whether this is a linked worktree: `git rev-parse --git-dir` differs from
   `git rev-parse --git-common-dir`.
-- If it is, run every `tcw` command in steps 2–4 with the working directory set
-  to the primary checkout. That is the first `worktree` path printed by
+- If it is, run every `tcw` and `git` command in steps 1–4 with the working
+  directory set to the primary checkout, including step 1's inbox entry and the
+  strict-mode fallback (rework A–F, 2026-09-15). That is the first `worktree` path printed by
   `git worktree list --porcelain`.
 - This follows the precedent that `tcw work complete` runs from the primary
   checkout (`skills/tcw-work/references/transitions.md:103-108`). A search there
@@ -226,8 +227,8 @@ user.
 
 | Governing match | Interactive | Delegated | Unattended | Outcome |
 | --- | --- | --- | --- | --- |
-| `covers`, and the idea adds nothing the match does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
-| `covers` an item that is `active` or in `review`, with new information | Tell the user the item and the new information; change nothing | Same, returned | Same, reported | `already in progress <ref>` |
+| `covers` an item that is `active` or in `review` (with or without new information) | Tell the user the item and any new information; change nothing | Same, returned | Same, reported | `already in progress <ref>` |
+| `covers` anything else, and the idea adds nothing the match does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
 | `covers` an inbox entry, or a `backlog` item with no `spec.md`, with new information | Append (rule below) | Append | Append | `amended <ref>` |
 | `covers` a `backlog` item that has `spec.md` or `plan.md`, with new information | Ask: revise, or leave as is (leaving still appends to the request) | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` |
 | `partly covers`, and the rest can be separated | Create an item for the rest (step 4), naming the match under References | Same | Same | `created <slug>` |
@@ -240,29 +241,31 @@ user.
     where it came from. Nothing already there is rewritten.
   - An item's body is `initial-request.md` if present, else `intake.md`.
   - An inbox entry that is a folder (`tcw work inbox list` reports its kind) gets
-    the addition in its main Markdown file.
+    the addition in the Markdown file `tcw work inbox show <entry>` prints as its
+    body.
   - Commit it on its own (step 4's commit rule).
 - **Revising** re-runs `spec`, and `plan` if one exists, after the append.
   - Each stage is gated with `tcw work stage gate`, and each artifact is
     committed separately.
   - Dispatch them as delegated stages under `procedures/delegation.md` where the
     current agent can dispatch. Otherwise run them inline. Report `revised` only
-    once both artifacts exist.
+    once every artifact being revised exists: the spec alone when there is no
+    plan.
   - In an unattended run inside an autonomous-work session, the advisors that
     `tcw-extras-autonomous-work` consults stand in for "ask". The unattended
     default applies only where that skill gives no rule of its own.
 - **Closed items** are never governing matches. A close one is named under
-  References. For a discarded one, its resolution is reported, and the run
-  carries on.
+  References. For a discarded one, its resolution goes in the reason part of the
+  single outcome line.
 
 **Step 4 — Create.** Ask only what the brief or conversation has not already
 answered, and ask everything that remains in **one** message:
 
 | Question | Accepted answers | Delegated | Unattended default | Recorded as |
 | --- | --- | --- | --- | --- |
-| Known blockers? | slugs · "no" · a description (search, then confirm) · "determine automatically" (search, no confirmation) | From the brief. If the brief does not say, determine automatically and list what was recorded in the report | Determine automatically | `--blocked-by` per blocker, plus one line per blocker saying why |
-| Reference material? | Anything given; material already in the conversation or brief counts, and a request made in chat counts as its own source | From the brief | From context; if there is none, note "no user to ask; none in context" | `## References`, one line of *why it matters* each |
-| A bug, or a follow-up to another item? | yes, with the item or symptom · no | From the brief's origin | The item being worked when the idea came up is its origin | `## Origin`, plus the `bug` tag for a bug |
+| Known blockers? | slugs · "no" · a description (search, then confirm) · "determine automatically" (search, no confirmation) | From the brief. If the brief is silent, or describes a blocker that would need confirming, nothing is created and the run returns `needs decision: blockers` with step 2's `blocks` lines as candidates | Determine automatically | `--blocked-by` per blocker, plus one line per blocker saying why |
+| Reference material? | Anything given; material already in the conversation or brief counts, and a request made in chat counts as its own source | From the brief; if it has none, "none given in the brief" (`request` asks again) | From context; if there is none, note "no user to ask; none in context" | `## References`, one line of *why it matters* each |
+| A bug, or a follow-up to another item? | yes, with the item or symptom · no | From the brief's origin; if it has none, "none given in the brief" | The item being worked when the idea came up is its origin | `## Origin`, plus the `bug` tag for a bug |
 
 - **A blocker is recorded only when the idea cannot proceed until that item
   lands.** Sharing a topic, touching the same files, or a preferred order does
@@ -275,8 +278,11 @@ answered, and ask everything that remains in **one** message:
   - Writing `initial-request.md` stays the `request` stage's job, which reads
     intake as its input (`tcw/work/prompts/request.md:6-15`).
 - **Tags** come from `tcw work tags list`.
-- **Commit** narrowly, in the repository that holds the store:
-  `git -C <path that tcw work path prints> commit -- <changed paths>`. A store can
+- **Commit** narrowly, in the repository that holds the store: stage first, then
+  commit by path, both with the absolute paths the CLI prints —
+  `git -C <store folder> add -- <paths>` then
+  `git -C <store folder> commit -m "<message>" -- <paths>`. A new file git has
+  never seen, such as a raw inbox entry, cannot be committed by path alone. A store can
   live in a different Git repository from the code
   (`skills/tcw-work/references/commands.md:338-341`), and a narrow commit keeps
   the working agent's own staged changes out.

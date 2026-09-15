@@ -1,0 +1,1 @@
+The TCW plugin skill for turning an idea for a piece of work into a new work item, an amended existing one, or nothing, after checking what is already tracked.
