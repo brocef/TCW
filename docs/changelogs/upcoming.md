@@ -25,6 +25,34 @@ category.
   nested too deep) is reported as that item's problem value rather than failing
   every board read; one removed while it is being read reads as unbound.
 
+- `work.tracker.statuses` (`active`, `review`, `completed`, `discarded` — a status
+  name, or for `discarded` a mapping of `wontfix`/`duplicate`/`superseded` to one).
+  `active` is required once any key is set. Parsed into `TrackerConfig.statuses`;
+  `target_status()` in `tcw/store/base.py`.
+- `tcw/tracker/sync.py`: `deliver()` claims for `start` and otherwise moves a bound
+  ticket to the mapped status only when it is assigned to the caller and in the
+  expected status; `assess_move()` is the pure check for strict mode to reuse;
+  `record_unsent()` for a tracker block with problems. Outcomes `current`, `pending`,
+  `conflicting`, `held`, `none`; 401/429/unreachable are pending, other tracker
+  errors conflicting.
+- `tcw work start|submit|rework|complete` deliver to a bound item's ticket after the
+  move, its commit and `post` hooks (and after a `TransitionCommitError`), and exit 1
+  when the ticket did not follow. `complete` delivers before auto-deletion and skips
+  the deletion when delivery fails.
+- `tcw work tracker sync [<slug> | --all]`: retries recorded items, skipping items
+  whose `owner` is not the local identity; check-only for an item with no record.
+- `tracker.yaml` `sync` record (`state`, `move`, `since`, `claim`, `reason`, `at`),
+  written only when a delivery is pending or conflicting and removed once current;
+  `Bound.sync`, `WorkItem.tracker.sync` and a closed `oneOf` in `WORK_ITEM_SCHEMA`.
+  An unusable record is `{"problem": …}` and does not unbind the item.
+  `with_sync_record()`; `unlink_document()` moves `sync` into the unlinked history.
+- `tcw work show` prints `tracker sync: …`; a board row's ticket segment gains the
+  state; the web Ticket field appends it.
+- `same_site()` in `tcw/tracker/intake.py`; `find_binding(..., base_url=)` raises
+  `BindingProblem` for a same-id binding on another site. `import` and `link` pass it.
+- Tests: `tests/tracker_fake.py` gains a `SYNC` workflow, `down`, and
+  `install_sites()`.
+
 ## Changed
 
 - `Unbound`, `Malformed`, `Bound` and binding classification (`classify_binding`,
