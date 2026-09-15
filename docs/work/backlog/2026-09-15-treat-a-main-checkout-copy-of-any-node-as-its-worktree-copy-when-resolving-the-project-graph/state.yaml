@@ -1,0 +1,9 @@
+slug: 2026-09-15-treat-a-main-checkout-copy-of-any-node-as-its-worktree-copy-when-resolving-the-project-graph
+title: Treat a main-checkout copy of any node as its worktree copy when resolving
+  the project graph
+created: '2026-09-15'
+resolution: null
+tags:
+- store
+- cli
+- bug
