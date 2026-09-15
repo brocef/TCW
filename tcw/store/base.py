@@ -355,6 +355,8 @@ class Bound:
     ticket_url: str
     # When it was bound: shown, never part of what makes two bindings the same one.
     bound: str = field(default="", compare=False)
+    # What did not reach the tracker: None, the record, or {"problem": reason}.
+    sync: dict | None = field(default=None, compare=False)
 
     def key(self) -> tuple[str, str, str, str]:
         return (self.project, self.provider, self.ticket_id, self.part)
@@ -400,7 +402,32 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
                  part=fields_["part"], ticket_id=fields_["ticket.id"],
                  ticket_key=fields_["ticket.key"],
                  ticket_url=_binding_text(ticket.get("url")),
-                 bound=_binding_text(bound))
+                 bound=_binding_text(bound), sync=_sync_record(data.get("sync")))
+
+
+SYNC_STATES = ("pending", "conflicting")
+SYNC_FIELDS = ("state", "move", "since", "claim", "reason", "at")
+
+
+def _sync_record(value: Any) -> dict | None:
+    """A binding's `sync` record, or `{"problem": reason}` for one that cannot be
+    used. **Never makes the binding malformed**: the record is status, not identity,
+    and a hand-broken one must not stop `link`, `unlink` or `import` working."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return {"problem": "'sync' is not a mapping"}
+    record = {name: value.get(name) for name in SYNC_FIELDS}
+    bad = [name for name, item in record.items() if not isinstance(item, str)]
+    if bad:
+        return {"problem": f"'sync' has no text for: {', '.join(bad)}"}
+    if record["state"] not in SYNC_STATES:
+        return {"problem": f"'sync.state' is {record['state']!r}"}
+    if record["move"] not in TRANSITION_IDS:
+        return {"problem": f"'sync.move' is {record['move']!r}"}
+    if record["claim"] not in ("done", "owed"):
+        return {"problem": f"'sync.claim' is {record['claim']!r}"}
+    return record
 
 
 def unreadable_binding(error: Exception) -> Malformed:
@@ -421,7 +448,7 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
                 "part": binding.part,
                 "ticket": {"id": binding.ticket_id, "key": binding.ticket_key,
                            "url": binding.ticket_url},
-                "bound": binding.bound}
+                "bound": binding.bound, "sync": binding.sync}
     return None
 
 

@@ -134,7 +134,7 @@ def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
     }, sort_keys=False, allow_unicode=True)
 
 
-_BINDING_KEYS = ("provider", "project", "part", "ticket", "bound")
+_BINDING_KEYS = ("provider", "project", "part", "ticket", "bound", "sync")
 
 
 def unlinked_history(content: str | None) -> list:
@@ -144,6 +144,16 @@ def unlinked_history(content: str | None) -> list:
     data = yaml.safe_load(content)
     history = data.get("unlinked") if isinstance(data, dict) else None
     return list(history) if isinstance(history, list) else []
+
+
+def with_sync_record(content: str, record: dict | None) -> str:
+    """`content` with its `sync` record set to `record`, or removed for `None`.
+    Every other key keeps its value and its place."""
+    data = yaml.safe_load(content)
+    data.pop("sync", None)
+    if record is not None:
+        data["sync"] = dict(record)
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
 
 def unlink_document(content: str, *, reason: str, today: str) -> str:
