@@ -93,8 +93,7 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
 
 
 def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
-    """Steps 4–7 of a status move, over one ticket read. Pure, so a strict-mode
-    gate can ask it before a mutation. Returns `(state, reason)`, or
+    """Steps 4–7 of a status move, over one ticket read. Pure. Returns `(state, reason)`, or
     `("apply", transition)` when exactly one offered transition leads to `target`."""
     key, where = ticket.key, ticket.status
     if _normalize(where) == _normalize(target):
@@ -173,6 +172,15 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # Held even when this item's claim is owed: the open part will claim and move
         # the ticket, and claiming it here could only lead to closing it early.
         if others:
+            # This item owes the ticket no move while another part holds it, so an
+            # earlier record — unless it still owes the claim — no longer says
+            # anything true, and under strict mode it would lock the item.
+            stale = bound.sync is not None and (record is None or record["claim"] != "owed")
+            if stale and not store.pending_deletion(slug) and (
+                    not check_only or record is None):
+                content = store.read_sidecar(slug, BINDING_SIDECAR).content
+                store.write_sidecar(slug, BINDING_SIDECAR,
+                                    with_sync_record(content, None), revision=revision)
             return Outcome(HELD, f"{bound.ticket_key} not moved: also bound to "
                                  f"{', '.join(others)}.")
 
@@ -184,7 +192,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     def finish(state: str, reason: str = "") -> Outcome:
         # A folder about to be removed takes no write: git must hold all of it for
         # the removal to go ahead, and a staged record — or its removal — would stop it.
-        if check_only and not (state == CURRENT and bound.sync is not None
+        if check_only and not (state in (CURRENT, NONE) and bound.sync is not None
                                and "problem" in bound.sync):
             return Outcome(state, reason)
         if store.pending_deletion(slug):

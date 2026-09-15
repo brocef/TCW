@@ -666,3 +666,29 @@ def test_sync_rechecks_an_owed_claim_under_strict_mode(tmp_path, monkeypatch):
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 1 and "second person could claim it too" in out + err
     assert record(root, slug)["claim"] == "owed"
+
+
+# ── a held item and its record, with strict on ───────────────────────────────
+
+
+def test_a_held_item_drops_its_record_so_strict_mode_does_not_lock_it(strict, fake):
+    api = bound_item(strict, "Api", part="api")
+    assert cli(strict, "work", "start", api)[0] == 0
+    with_record(strict, api, {"state": "pending", "move": "start", "since": "",
+                              "claim": "done", "reason": "down", "at": "2026-09-15T00:00:00Z"})
+    bound_item(strict, "Web", part="web")
+    code, out, _err = cli(strict, "work", "tracker", "sync", api)
+    assert code == 0 and "held" in out
+    assert record(strict, api) is None
+    code, _out, err = cli(strict, "work", "submit", api)
+    assert code == 0, err
+
+
+def test_an_unusable_record_on_an_unmapped_status_is_cleared_by_sync(tmp_path, fake):
+    root = make_node(tmp_path, statuses={"active": "In Progress"})
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    assert cli(root, "work", "submit", slug)[0] == 0           # review is unmapped
+    with_record(root, slug, "not a mapping")
+    code, out, _err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0 and record(root, slug) is None, out
