@@ -1,5 +1,10 @@
 # Separate the Agent Plugin from the Python CLI Source Implementation Plan
 
+> **Do not implement this plan.** Tasks 2, 3 and 6 move and edit `commands/` and
+> `skills/tcw-plugin`, which no longer exist, and Task 5's search misses the eval
+> harness's root-path assumption. See the warning at the top of `spec.md`
+> (2026-09-15 backlog audit); re-plan after the spec is rewritten.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Publish a self-contained, Python-free plugin root while keeping the CLI as the separately installed `tcw-cli` distribution.

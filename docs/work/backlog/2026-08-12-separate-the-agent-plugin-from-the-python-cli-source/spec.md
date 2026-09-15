@@ -1,5 +1,30 @@
 # Separate the agent plugin from the Python CLI source — Specification
 
+> **Out of date — re-run the spec stage before planning or implementing.**
+> Found by the 2026-09-15 backlog audit:
+>
+> - **It names a layout that no longer exists.** The skill restructure removed
+>   `commands/` and `skills/tcw-plugin` (commit 7caff3d0). The goals, acceptance
+>   criteria and the Codex-route constraint must name `skills/tcw-setup`
+>   (`SKILL.md` and `references/install.md`) instead.
+> - **The eval harness assumes the plugin is the repository root.**
+>   `evals/run_evals.py` passes `--plugin-dir` as the repo root and asserts the
+>   loaded plugin path equals it. Moving the plugin breaks every eval run, and the
+>   plan's search pattern cannot find those lines. The "Measuring the skill layer"
+>   section of `AGENTS.md` changes with it.
+> - **A skill links outside the plugin folder.**
+>   `skills/tcw-work/references/lifecycle/default/README.md` links
+>   `../../../../../docs/lifecycle/harness.md`, which would not resolve once the
+>   plugin installs on its own. Add a check that every relative link inside
+>   `plugin/` stays inside `plugin/`, and decide what happens to this one.
+> - **Stale citations.** The bootstrap's `tcw/__init__.py` marker is at lines 72,
+>   81 and 105 of `scripts/session_bootstrap.sh`, not 83–93. The versioning list
+>   also lives in `CLAUDE.md` (a symlink to `AGENTS.md`).
+> - Overlaps `2026-08-18-serve-version-cut-instructions-from-tcw-config-yaml-instead-of-the-agent-guide`
+>   (both change the version-file list) and inbox note
+>   `2026-09-14-guards-and-gaps-the-skill-restructure-review-left.md` items 3–4
+>   (the same `tcw-setup` text).
+
 ## Capability changes
 
 No taxonomy or capability-ledger changes are required. Installation behavior remains: the plugin supplies agent guidance and ensures the separately published `tcw-cli` is available.
