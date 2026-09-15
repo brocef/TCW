@@ -169,7 +169,98 @@ def test_the_schema_refuses_a_problem_with_anything_beside_it(node):
         jsonschema.validate(doc, WORK_ITEM_SCHEMA)
 
 
-# ── serve agrees ─────────────────────────────────────────────────────────────
+# ── show and list ────────────────────────────────────────────────────────────
+
+
+def test_show_prints_the_binding_after_every_field_and_before_the_body(node):
+    st = FsWorkStore.open(node)
+    slug = item(node, "Bound", document())
+    st.write_artifact(slug, "initial-request", "# Request\n\nThe body.\n")
+    code, out, err = run("work", "show", slug)
+    assert code == 0, err
+    lines = out.splitlines()
+    line = f"tracker: EX-1 (jira-cloud, part default) {URL}"
+    assert tracker_lines(slug) == [line]
+    assert lines.index(line) == lines.index("") - 1, out
+
+
+def test_show_leaves_out_an_empty_url(node):
+    slug = item(node, "No URL", document().replace(f"url: {URL}", "url: ''"))
+    assert tracker_lines(slug) == ["tracker: EX-1 (jira-cloud, part default)"]
+
+
+def test_show_reports_an_unreadable_binding(node):
+    slug = item(node, "Missing keys", 'ticket: {id: "1"}\n')
+    assert tracker_lines(slug) == [f"tracker: tracker.yaml cannot be read ({MISSING})"]
+
+
+def test_list_ends_a_bound_row_with_its_ticket(node):
+    assert row(item(node, "Bound", document())).endswith(" | ticket: EX-1")
+    assert row(item(node, "Api part", document("api"))).endswith(
+        " | ticket: EX-1 (part api)")
+
+
+def test_list_marks_an_unreadable_binding(node):
+    assert row(item(node, "Missing keys", 'ticket: {id: "1"}\n')).endswith(
+        " | ticket: unreadable")
+
+
+def test_an_unbound_and_an_unlinked_item_print_nothing_new(node):
+    for slug in (item(node, "Unbound", None),
+                 item(node, "Unlinked", unlink_document(
+                     document(), reason="wrong ticket", today="2026-09-14"))):
+        assert tracker_lines(slug) == []
+        assert "ticket:" not in row(slug)
+
+
+def test_a_bound_row_is_the_unbound_row_plus_the_segment(node):
+    """Every segment before the new one is what the row printed without a binding —
+    including the claim segment of an active item, which stays ahead of it."""
+    st = FsWorkStore.open(node)
+    slug = item(node, "Bound and started", document())
+    st.start(slug, owner="a@b")
+    bound = row(slug)
+    st.write_sidecar(slug, "tracker.yaml",
+                     unlink_document(document(), reason="x", today="2026-09-14"),
+                     revision=st.read_sidecar(slug, "tracker.yaml").revision)
+    assert bound == row(slug) + " | ticket: EX-1"
+    assert " | owner: a@b | started: " in bound
+
+
+# ── nothing tracker-shaped is loaded, and serve agrees ───────────────────────
+
+
+_PROBE = """
+import sys
+sys.path.insert(0, {repo!r})
+import io, contextlib
+from tcw.cli import main
+out = io.StringIO()
+with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+    try:
+        code = main({argv!r})
+    except SystemExit as e:
+        code = e.code or 0
+print("EXIT", code)
+print("TICKET", "EX-1" in out.getvalue())
+print("LOADED", ",".join(sorted(n for n in sys.modules if n.startswith("tcw.tracker"))))
+"""
+
+
+@pytest.mark.parametrize("verb", ["list", "show"])
+def test_reading_a_bound_item_loads_no_tracker_module(node, verb):
+    """In a fresh interpreter, for the reason `test_tracker_absent.py` gives: in this
+    process `tcw.tracker` is already imported, so the question cannot be asked here.
+    `TICKET True` proves the command really did read the binding."""
+    slug = item(node, "Bound", document())
+    argv = ["work", "list"] if verb == "list" else ["work", "show", slug]
+    result = subprocess.run(
+        [sys.executable, "-c", _PROBE.format(repo=str(REPO), argv=argv)],
+        cwd=node, capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stderr
+    assert "EXIT 0" in result.stdout and "TICKET True" in result.stdout, result.stdout
+    loaded = [x for x in result.stdout.splitlines() if x.startswith("LOADED")][0]
+    assert loaded.removeprefix("LOADED").strip() == "", loaded
 
 
 def test_serve_detail_carries_the_same_value_as_show_json(node):
