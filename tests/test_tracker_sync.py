@@ -934,3 +934,32 @@ def test_an_owed_claim_on_a_ticket_already_yours_at_the_target_sends_nothing(tmp
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 0, (out, err)
     assert fake_.writes() == [] and record(root, slug) is None
+
+
+# ── verification gaps ────────────────────────────────────────────────────────
+
+
+def test_the_whole_lifecycle_through_the_commands(node, fake):
+    slug = bound_item(node)
+    for argv, where in ((("start",), "In Progress"), (("submit",), "In Review"),
+                        (("complete", "--resolution", "done", "--confirm"), "Done")):
+        code, _out, err = cli(node, "work", argv[0], slug, *argv[1:])
+        assert code == 0, (argv, err)
+        assert fake.tickets[TICKET_ID].status == where
+    assert record(node, slug) is None
+
+
+@pytest.mark.parametrize("argv", [("start",), ("tracker", "sync")])
+def test_start_and_sync_send_nothing_through_a_binding_on_another_site(node, fake, argv):
+    st = FsWorkStore.open(node)
+    slug = st.create("Other site").slug
+    (st.path(slug) / "tracker.yaml").write_text(
+        document(ticket_url="https://elsewhere.invalid/browse/SYNC-1"), encoding="utf-8")
+    if argv == ("tracker", "sync"):
+        st.start(slug, owner="a@example.test")
+        with_record(node, slug, {**RECORD, "move": "start", "since": ""})
+    code, _out, _err = cli(node, "work", *argv[:-1], argv[-1], slug) if len(argv) > 1 \
+        else cli(node, "work", argv[0], slug)
+    assert code == 1
+    assert fake.requests == []
+    assert record(node, slug)["state"] == "conflicting"
