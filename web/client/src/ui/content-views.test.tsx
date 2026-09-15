@@ -181,6 +181,7 @@ test("a bound work item shows its ticket as a link, with provider and part", () 
             },
             bound: "2026-09-14",
             sync: null,
+            comment: null,
         })
     )
 
@@ -208,6 +209,7 @@ test("a ticket the tracker has not caught up with says so", () => {
                 reason: "the tracker could not be reached",
                 at: "2026-09-14T10:00:00Z",
             },
+            comment: null,
         })
     )
 

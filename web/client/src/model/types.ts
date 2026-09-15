@@ -35,6 +35,17 @@ export type TTrackerBinding =
                     at: string
                 }
               | { problem: string }
+          /** A progress comment that did not post, while it has not. */
+          comment:
+              | null
+              | {
+                    move: string
+                    event: string
+                    state: "pending" | "conflicting"
+                    reason: string
+                    at: string
+                }
+              | { problem: string }
       }
     | { problem: string }
 

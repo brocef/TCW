@@ -359,6 +359,8 @@ class Bound:
     bound: str = field(default="", compare=False)
     # What did not reach the tracker: None, the record, or {"problem": reason}.
     sync: dict | None = field(default=None, compare=False)
+    # A progress comment that did not post, in the same three shapes.
+    comment: dict | None = field(default=None, compare=False)
 
     def key(self) -> tuple[str, str, str, str]:
         return (self.project, self.provider, self.ticket_id, self.part)
@@ -404,7 +406,8 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
                  part=fields_["part"], ticket_id=fields_["ticket.id"],
                  ticket_key=fields_["ticket.key"],
                  ticket_url=_binding_text(ticket.get("url")),
-                 bound=_binding_text(bound), sync=_sync_record(data.get("sync")))
+                 bound=_binding_text(bound), sync=_sync_record(data.get("sync")),
+                 comment=_comment_record(data.get("comment")))
 
 
 SYNC_STATES = ("pending", "conflicting")
@@ -432,6 +435,27 @@ def _sync_record(value: Any) -> dict | None:
     return record
 
 
+COMMENT_FIELDS = ("move", "event", "state", "reason", "at")
+
+
+def _comment_record(value: Any) -> dict | None:
+    """A binding's owed `comment`, or `{"problem": reason}` for one that cannot be
+    used. Like `sync`, never makes the binding malformed."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return {"problem": "'comment' is not a mapping"}
+    record = {name: value.get(name) for name in COMMENT_FIELDS}
+    bad = [name for name, item in record.items() if not isinstance(item, str)]
+    if bad:
+        return {"problem": f"'comment' has no text for: {', '.join(bad)}"}
+    if record["state"] not in SYNC_STATES:
+        return {"problem": f"'comment.state' is {record['state']!r}"}
+    if record["move"] not in TRANSITION_IDS or record["move"] == "auto-delete":
+        return {"problem": f"'comment.move' is {record['move']!r}"}
+    return record
+
+
 def unreadable_binding(error: Exception) -> Malformed:
     """The binding a `tracker.yaml` that could not be read or parsed classifies as —
     worded once, for every reader of one."""
@@ -450,7 +474,8 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
                 "part": binding.part,
                 "ticket": {"id": binding.ticket_id, "key": binding.ticket_key,
                            "url": binding.ticket_url},
-                "bound": binding.bound, "sync": binding.sync}
+                "bound": binding.bound, "sync": binding.sync,
+                "comment": binding.comment}
     return None
 
 
