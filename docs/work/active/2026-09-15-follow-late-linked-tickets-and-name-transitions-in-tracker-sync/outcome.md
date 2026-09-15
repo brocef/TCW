@@ -11,7 +11,8 @@ this tree before it was fixed, and each reproduction is now a test.
 | 2 | `c0a4013` | A discard moves an unassigned ticket; every other move still refuses one. The post-transition read-back and the progress comment follow the same rule. |
 | 3 | `7304aff` | `work.tracker.transitions` accepts `submit`, `rework`, `complete`, `discard`; `discard` may be per-resolution and may be partial. Shape validation only. |
 | 4 + 5 | `7215184` | A named transition is selected and refused when it does not fit; drift is judged against the whole path from `since` to the target, via the ladder. |
-| 6 + 7 + 8 + 9 + 10 | see below | `link` records that a late-linked ticket is behind; the forward walk; the module docstring; documentation; the capability. |
+| 6 + 7 + 8 + 9 + 10 | `41e8f3c` | `link` records that a late-linked ticket is behind; the forward walk; the module docstring; documentation; the capability. |
+| verify fixes | below | Three defects the verify stage found, and two smaller repairs — see the next section. |
 
 ## The test result
 
@@ -86,6 +87,55 @@ biggest improvement over the design as specified.
 appends `"; the claim is still owed"` to a record's reason, so a reason ending in a
 full stop renders as `.;`. The link-time reason drops its full stop. The wart is
 pre-existing for other reasons and is not otherwise touched here.
+
+## What the verify stage found, and what it changed
+
+The `tcw-verifier` agent was run against the 26 acceptance criteria. It found the
+implementation sound on 24 of them and surfaced three real problems, each of which I
+reproduced myself before acting — two were defects in shipped code.
+
+**The catch-up gate was not pinned by any test.** The agent mutated
+`record["claim"] == "owed"` to `in ("owed", "done")` and the whole tracker suite
+stayed green. I reproduced that: under the mutation, a ticket TCW had claimed and a
+person had pushed back to `To Do` was silently walked forward again — precisely what
+criterion 11 forbids, and the item's highest-risk decision. The cause was that
+`test_a_ticket_pushed_back_after_tcw_claimed_it_is_still_drift` never created a
+record, so nothing in it reached the gate; despite its name it duplicated the
+untouched `test_a_ticket_moved_elsewhere_in_the_tracker_is_not_pulled_back`. It is
+renamed to what it actually covers (the record-less case), and
+`test_a_claimed_ticket_moved_back_is_not_walked_forward_again` now pins the gate with
+a `claim: done` record. That new test was mutation-checked: it goes red under the
+mutation above, reporting `current`. The claim in this document that the untouched
+test "covers the negative case for free" was wrong, and is struck.
+
+**A late-linked discard marched the ticket through `In Progress` and `In Review`.**
+Reproduced: `applied == ['21', '41', '51']` on a workflow that offered
+`Drop: To Do → Won't Do` directly — TCW claimed a ticket nobody held, moved it into
+two working statuses, and only then closed it. Three sets of notifications and SLA
+clocks to abandon work. This contradicted this item's own spec (D.3, "A discard has
+no intermediates"), so the code was wrong, not the spec. Two fixes: `ladder_steps`
+gives a discard no rungs below its own, and the owed path does not claim for a
+discard at all — abandoning work is not a statement that you are doing it, and
+claiming would assign the ticket and move it into a working status purely so it could
+be closed. `expected_statuses` for a discard record is now its two ends, as D.3 says.
+
+**A claim landing on an unmapped status walked on from off the ladder.** The `start`
+path already refused this; the catch-up path did not, so it chose each hop by the
+item's own move — naming the wrong `transitions` key in its refusal — and could come
+to rest on an unmapped status, which the spec's abstraction note 4 says must not
+happen. The catch-up path now makes the same check `start` makes. Mutation-checked:
+without the guard the walk applies a second transition and blames the wrong status.
+
+Two smaller things the agent raised were also fixed: `since` after a hop whose
+read-back failed recorded the status *before* the transition, and linking a resolved
+item was an untested path (two tests added; the common case, where the ticket is
+already where the item ended, sends nothing).
+
+One criterion is **not met as written**: criterion 23 permits only criterion 19's
+test removal, and two further tests went — `test_the_transition_keys_c3_adds_are_not_accepted_yet`,
+whose own docstring names this item as what supersedes it, and the comment test
+re-pointed above. Both are justified and declared, but the criterion's wording did not
+anticipate them. Recorded rather than quietly reinterpreted.
 
 ## Autonomous decisions
 

@@ -1281,9 +1281,11 @@ def test_sync_alone_brings_a_late_linked_ticket_forward(tmp_path, monkeypatch):
     assert record(root, slug) is None
 
 
-def test_a_ticket_pushed_back_after_tcw_claimed_it_is_still_drift(tmp_path, monkeypatch):
-    """The catch-up is gated on the claim being owed, not on the ticket being behind:
-    a ticket TCW held and somebody moved back is behind too, and must stay refused."""
+def test_a_ticket_behind_its_item_with_no_record_is_still_drift(tmp_path, monkeypatch):
+    """No record at all — the ordinary bound item whose ticket somebody moved. There
+    is nothing owed, so nothing is caught up. The `claim: done` case, which is what
+    the gate actually turns on, is
+    `test_a_claimed_ticket_moved_back_is_not_walked_forward_again`."""
     from tracker_fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER,
                               status="In Progress", assignee=A)
@@ -1296,3 +1298,106 @@ def test_a_ticket_pushed_back_after_tcw_claimed_it_is_still_drift(tmp_path, monk
     outcome = deliver_now(root, slug, move="submit", previous="active")
     assert outcome.state == "conflicting", outcome
     assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "To Do"
+
+
+def test_a_claimed_ticket_moved_back_is_not_walked_forward_again(tmp_path, monkeypatch):
+    """The catch-up is gated on the claim being *owed*, and this is the case that
+    proves it: a record saying TCW already claimed the ticket, and a ticket somebody
+    then pushed back below where it was left. Walking it forward here would undo a
+    person's deliberate move. Mutating the gate to accept `claim: done` must turn
+    this red — without a record in play, nothing distinguishes the two."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER,
+                              status="In Review", assignee=A)
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    with_record(root, slug, {"state": "pending", "move": "submit",
+                             "since": "In Progress", "claim": "done",
+                             "reason": "the tracker could not be reached",
+                             "at": "2026-09-15T10:00:00Z"})
+    fake_.tickets[TICKET_ID].status = "To Do"          # pushed back, by hand
+    fake_.applied.clear()
+    outcome = deliver_now(root, slug, move=None, previous=None)
+    assert outcome.state == "conflicting", outcome
+    assert fake_.applied == [], fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "To Do"
+
+
+def test_a_discard_goes_straight_to_its_status_without_working_the_ticket_up(
+        tmp_path, monkeypatch):
+    """Abandoning work must not march the ticket through the statuses that mean
+    somebody is doing it. Three sets of notifications and SLA clocks to close a
+    ticket nobody held is the opposite of what a discard says."""
+    workflow = {
+        "To Do": [("21", "Start Progress", "In Progress"), ("51", "Drop", "Won't Do")],
+        "In Progress": [("41", "Ready for Review", "In Review"),
+                        ("51", "Drop", "Won't Do")],
+        "In Review": [("31", "Finish", "Done"), ("51", "Drop", "Won't Do")],
+        "Done": [], "Won't Do": [],
+    }
+    root, fake_ = ladder_node(tmp_path, monkeypatch, workflow)
+    slug = late_linked(root)
+    FsWorkStore.open(root).complete(slug, "wontfix", dod_ack=[], force=True)
+    outcome = deliver_now(root, slug, move="discard", previous="active")
+    assert outcome.state == "current", outcome
+    assert fake_.tickets[TICKET_ID].status == "Won't Do"
+    assert fake_.applied == ["51"], fake_.applied
+
+
+def test_the_window_for_a_discard_record_is_its_two_ends(node, fake):
+    """A discard can start from anywhere, so there is no path between `since` and the
+    discard status to accept — only the two ends."""
+    from tcw.tracker.sync import expected_statuses
+    rec = {"state": "pending", "move": "discard", "since": "In Progress",
+           "claim": "done", "reason": "x", "at": "2026-09-15T00:00:00Z"}
+    assert expected_statuses(STATUSES, None, rec, "wontfix") == ("In Progress",
+                                                                "Won't Do")
+
+
+def test_a_claim_landing_off_the_ladder_stops_the_catch_up(tmp_path, monkeypatch):
+    """The claim is how a ticket gets onto the first rung. If it lands somewhere the
+    project has not mapped, there is no rung to walk on from — and continuing would
+    choose each hop by the item's own move, so a refusal would name the wrong
+    `transitions` key and the record would rest on an unmapped status."""
+    workflow = {"To Do": [("21", "Start Progress", "Triage")],
+                "Triage": [("22", "Begin", "In Progress")],
+                "In Progress": [("31", "Finish", "Done")], "Done": []}
+    root, fake_ = ladder_node(tmp_path, monkeypatch, workflow)
+    slug = late_linked(root)
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "conflicting", outcome
+    assert "'Triage'" in outcome.reason and "'In Progress'" in outcome.reason
+    assert fake_.tickets[TICKET_ID].status == "Triage"
+    assert fake_.applied == ["21"]          # the claim only; no hop from an unmapped rung
+
+
+def test_linking_a_resolved_item_records_its_own_move(tmp_path, fake):
+    """`link` on a finished item is how work already done is tied to the ticket that
+    tracked it. What it records is that item's own move, so the ticket catches up to
+    where the item ended rather than to somewhere it never was."""
+    root = make_node(tmp_path, statuses=STATUSES, retain={"completed": True})
+    st = FsWorkStore.open(root)
+    slug = st.create("Done long ago").slug
+    st.start(slug, owner="a@example.test")
+    st.complete(slug, "done", ["acked"])
+    assert cli(root, "work", "tracker", "link", slug, KEY)[0] == 0
+    written = record(root, slug)
+    assert written["move"] == "complete" and written["claim"] == "owed"
+
+
+def test_a_resolved_items_ticket_already_at_its_status_is_left_alone(tmp_path, fake):
+    """The common case of linking finished work: the ticket is already where the item
+    ended, so nothing is sent and the record clears."""
+    root = make_node(tmp_path, statuses=STATUSES, retain={"completed": True})
+    st = FsWorkStore.open(root)
+    slug = st.create("Done long ago").slug
+    st.start(slug, owner="a@example.test")
+    st.complete(slug, "done", ["acked"])
+    claimed_ticket(fake, "Done", None)
+    assert cli(root, "work", "tracker", "link", slug, KEY)[0] == 0
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.writes() == [] and record(root, slug) is None

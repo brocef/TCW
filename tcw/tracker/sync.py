@@ -76,7 +76,11 @@ def ladder_steps(statuses: dict, local_target: str,
     which is right: the journey simply has one hop fewer. An unmapped status has no
     rung and is skipped.
     """
-    upto = _RUNG_ORDER[local_target]
+    # A discard has no rungs below it. Work can be abandoned from anywhere — which is
+    # why `_MOVED_FROM["discard"]` is empty — and marching a ticket up through the
+    # statuses that mean somebody is doing the work, only to close it, is the opposite
+    # of what a discard says: three sets of notifications and SLA clocks to abandon it.
+    upto = 0 if local_target == "discarded" else _RUNG_ORDER[local_target]
     steps = [(target_status(statuses, name, None), name)
              for name, index in (("active", 0), ("review", 1)) if index < upto]
     steps.append((target_status(statuses, local_target, resolution), local_target))
@@ -342,39 +346,58 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             # claim could only move it back first, on a workflow that offers it.
             owed = False
             return finish(CURRENT)
-        if check_only:
-            return Outcome(CONFLICTING, f"the claim of {bound.ticket_key} is still owed.")
-        try:
-            outcome = claim(client, ticket)
-        except TrackerError as error:
-            return finish(classify_error(error), str(error))
-        if not outcome.claimed:
-            state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
-            detail = f" ({outcome.detail})" if outcome.detail else ""
-            return finish(state, outcome.message + detail)
-        if config.strict:
-            # Under strict mode a claim the workflow cannot make exclusive authorizes
-            # nothing, so it stays owed and nothing moves.
-            refusal = claim_refusal(client, config, bound.ticket_id, outcome)
-            if refusal:
-                return finish(CONFLICTING, refusal)
-        owed = False
-        claimed_message = outcome.message
-        active = target_status(config.statuses, "active", None)
-        if starting:
+        if move == "discard":
+            # A discard claims nothing. Abandoning work is not a statement that you are
+            # doing it, and claiming would assign the ticket and move it into a working
+            # status purely so it could be closed. Nothing is owed afterwards either —
+            # the item is resolved, so no later move will ever want a claim — and
+            # `assess_move` still refuses a ticket somebody else holds.
+            owed = False
+            since = ticket.status
+        else:
+            if check_only:
+                return Outcome(CONFLICTING,
+                               f"the claim of {bound.ticket_key} is still owed.")
+            try:
+                outcome = claim(client, ticket)
+            except TrackerError as error:
+                return finish(classify_error(error), str(error))
+            if not outcome.claimed:
+                state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
+                detail = f" ({outcome.detail})" if outcome.detail else ""
+                return finish(state, outcome.message + detail)
+            if config.strict:
+                # Under strict mode a claim the workflow cannot make exclusive
+                # authorizes nothing, so it stays owed and nothing moves.
+                refusal = claim_refusal(client, config, bound.ticket_id, outcome)
+                if refusal:
+                    return finish(CONFLICTING, refusal)
+            owed = False
+            claimed_message = outcome.message
+            active = target_status(config.statuses, "active", None)
+            if starting:
+                if active and _normalize(outcome.status) != _normalize(active):
+                    return finish(CONFLICTING, (
+                        f"claimed {bound.ticket_key}, but it is in '{outcome.status}', "
+                        f"not '{active}'."))
+                return finish(CURRENT)
             if active and _normalize(outcome.status) != _normalize(active):
+                # The same check `starting` makes, for the same reason: a claim that
+                # landed somewhere else has not put the ticket on the ladder, and
+                # walking on from an unmapped status would pick hops by the item's own
+                # move — naming the wrong `transitions` key in any refusal — and could
+                # come to rest somewhere no later run can reason about.
                 return finish(CONFLICTING, (
                     f"claimed {bound.ticket_key}, but it is in '{outcome.status}', not "
-                    f"'{active}'."))
-            return finish(CURRENT)
-        expected = (active,) if active else ()
-        since = active
-        if not target:
-            return finish(NONE)
-        try:
-            ticket = read_ticket(client, bound.ticket_id)
-        except TrackerError as error:
-            return finish(classify_error(error), str(error))
+                    f"'{active}', so it was not brought forward from there."))
+            expected = (active,) if active else ()
+            since = active
+            if not target:
+                return finish(NONE)
+            try:
+                ticket = read_ticket(client, bound.ticket_id)
+            except TrackerError as error:
+                return finish(classify_error(error), str(error))
 
         # A ticket TCW has never held can be several rungs below its item — it was
         # linked to work already under way — and a workflow with no shortcut to the top
@@ -401,9 +424,17 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 return finish(verdict, detail)
             try:
                 client.apply_transition(ticket.issue_id, detail.id)
+            except TrackerError as error:
+                since = ticket.status          # nothing moved
+                return finish(classify_error(error), str(error))
+            try:
                 ticket = read_ticket(client, bound.ticket_id)
             except TrackerError as error:
-                since = ticket.status
+                # The hop was applied, so the ticket is on `rung` even though the read
+                # that would have confirmed it failed. Recording where it actually is
+                # beats recording where it was: `since` is what the next run measures
+                # its window from.
+                since = rung
                 return finish(classify_error(error), str(error))
         since = ticket.status
         if _normalize(ticket.status) == _normalize(target):
