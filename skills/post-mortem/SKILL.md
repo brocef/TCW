@@ -1,5 +1,5 @@
 ---
-name: tcw-post-mortem
+name: post-mortem
 description: Use when a TCW work item surfaced a problem worth understanding — verification rejected the work, a spec claim turned out false, or something shipped that should not have. Finds which lifecycle stage could first have caught it.
 ---
 
