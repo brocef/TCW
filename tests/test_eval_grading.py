@@ -121,9 +121,9 @@ def test_a_silent_empty_render_fails_the_blocks_read(graded):
 
 # --- tool inputs: what the agent ran or opened ----------------------------
 
-READ_PATH = "/x/skills/tcw-setup/references/project.md"
-RESULT_ONLY = "/x/skills/tcw-configure/references/docs-sync.md"
-TEXT_ONLY = "/x/skills/tcw-setup/references/work.md"
+READ_PATH = "/x/skills/setup/references/project.md"
+RESULT_ONLY = "/x/skills/configure/references/docs-sync.md"
+TEXT_ONLY = "/x/skills/setup/references/work.md"
 
 
 def _routing_run() -> dict:
@@ -186,8 +186,8 @@ def test_tool_input_absent_fails_when_there_are_no_tool_calls_at_all():
 EVALS = json.loads((Path(grade.__file__).parent / "evals.json")
                    .read_text(encoding="utf-8"))
 
-SETUP_PROJECT = "/p/skills/tcw-setup/references/project.md"
-CONFIGURE_DOCS = "/p/skills/tcw-configure/references/docs-sync.md"
+SETUP_PROJECT = "/p/skills/setup/references/project.md"
+CONFIGURE_DOCS = "/p/skills/configure/references/docs-sync.md"
 TAXONOMY_SKILL = "/p/skills/taxonomy/SKILL.md"
 WORK_SKILL = "/p/skills/work/SKILL.md"
 CREATE_SKILL = "/p/skills/work-create/SKILL.md"

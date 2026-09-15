@@ -55,10 +55,10 @@ PARTIAL = {
         "`request` route is unmeasured: `request` is the one stage whose job is "
         "asking the user questions, which a non-interactive harness cannot do. "
         "There is no axis A request case to cover it.",
-    "tcw-configure":
+    "configure":
         "B11 measures the documentation-entries route only. `work.md`, "
         "`tracker.md`, `stores.md` and `projects.md` are unmeasured.",
-    "tcw-setup":
+    "setup":
         "B12 measures the new-repository route (`project.md`) only. "
         "Install and repair stay unmeasured: faking a broken `tcw` install "
         "inside a subagent's environment is unsafe and would measure the "

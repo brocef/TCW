@@ -425,12 +425,12 @@ def test_the_manual_fallback_says_where_the_arguments_come_from():
 
 # ── the setup and configure routers ──────────────────────────────────────────
 #
-# `tcw-setup` and `tcw-configure` route and nothing else: a purpose line, the
+# `setup` and `configure` route and nothing else: a purpose line, the
 # other skill named, and a table of situations to reference documents. Each
 # must name the other in the same words, because "set up X" can mean either.
 
 # Each routing skill, and the other skill its body must name.
-ROUTING_SKILLS = {"tcw-configure": "tcw-setup", "tcw-setup": "tcw-configure"}
+ROUTING_SKILLS = {"configure": "setup", "setup": "configure"}
 
 routing = pytest.mark.parametrize("skill", sorted(ROUTING_SKILLS))
 
@@ -477,7 +477,7 @@ def test_a_routing_skill_names_the_other_one(skill):
 
 
 # Words that pull a setup or configuration request toward a usage skill. Setting
-# up belongs to `tcw-setup` and configuring to `tcw-configure`, so a usage
+# up belongs to `setup` and configuring to `configure`, so a usage
 # skill's `description` and `when_to_use` must not advertise either.
 SETUP_TRIGGER_WORDS = ("bootstrap", "seed", "federat")
 

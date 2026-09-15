@@ -15,7 +15,7 @@ refine loop below. Bootstrap both taxonomy entry kinds:
 ## 2. Inheritance
 
 Ask whether this project inherits taxonomy from another registered project.
-If it does, declare it with the `tcw-configure` skill's `projects.md`, then
+If it does, declare it with the `configure` skill's `projects.md`, then
 continue.
 
 ## 3. Deep-dive (draft)

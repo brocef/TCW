@@ -96,7 +96,7 @@ synchronization". No other command gains a network dependency.
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 | retry tickets that did not follow their items | `tcw work tracker sync <slug>` · `tcw work tracker sync --all` |
 
-**Configured with the `tcw-configure` skill's `tracker.md`**, including settings a
+**Configured with the `configure` skill's `tracker.md`**, including settings a
 node merges from its ancestors'. At runtime:
 
 - **A problem names the file its value came from.** `tcw-config.yaml: …` is the
@@ -305,7 +305,7 @@ with the owning node.
 A store may also declare the repository it comes from, which `tcw provision`
 fetches. Resolution prefers a store that is **already here**: the declaration
 answers only when the local one is absent. Declaring a store's location or its
-repository is the `tcw-configure` skill's `stores.md`.
+repository is the `configure` skill's `stores.md`.
 
 **"Already here" includes another repository on this disk.** Before fetching,
 resolution asks the project registry whether some project it has located is a
@@ -320,7 +320,7 @@ fetched publishes.
 A connected project can declare a repository the same way, and
 `TCW_PROJECT_<ID>`, a per-machine environment variable, can say where a project
 is on this machine, ahead of every declaration. Declaring either is the
-`tcw-configure` skill's `projects.md`.
+`configure` skill's `projects.md`.
 
 `tcw provision` obtains the missing stores and connected projects. `--component`
 scopes the component pass; connected projects are obtained after it and

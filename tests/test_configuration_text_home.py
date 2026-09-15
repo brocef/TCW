@@ -1,6 +1,6 @@
-"""Declaring a setting is `tcw-configure`'s text, and it must match the CLI.
+"""Declaring a setting is `configure`'s text, and it must match the CLI.
 
-`skills/tcw-configure/references/` is where every "how to declare or change a
+`skills/configure/references/` is where every "how to declare or change a
 setting" lives; the usage skills keep only what a setting does at runtime. This
 guards the one place a later change already put declaring text back into
 `work` (tracker inheritance, v2.1.3), and left `tracker.md` saying every
@@ -13,9 +13,9 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-TRACKER = REPO / "skills/tcw-configure/references/tracker.md"
+TRACKER = REPO / "skills/configure/references/tracker.md"
 COMMANDS = REPO / "skills/work/references/commands.md"
-ROUTER = REPO / "skills/tcw-configure/SKILL.md"
+ROUTER = REPO / "skills/configure/SKILL.md"
 
 # The declaring rules for tracker inheritance, as `tracker.md` states them. Each
 # must be in `tracker.md` and in no form in `work`'s `commands.md`.

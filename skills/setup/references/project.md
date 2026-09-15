@@ -15,7 +15,7 @@ Look for `tcw-config.yaml` in the current folder or any folder above it, and run
   but not here.** The project uses TCW and this machine lacks part of it. Go to
   "A project that is set up elsewhere".
 - **`tcw validate` prints `validate OK`.** TCW already works here. To change how
-  it behaves, use the `tcw-configure` skill instead.
+  it behaves, use the `configure` skill instead.
 
 ## A new project
 
@@ -38,7 +38,7 @@ Look for `tcw-config.yaml` in the current folder or any folder above it, and run
 3. **A component can be added later** with its own command: `tcw taxonomy init`,
    `tcw capabilities init` or `tcw work init`.
 4. **Stores somewhere other than `docs/<component>`**, including in another
-   repository: see the `tcw-configure` skill's `stores.md` before running
+   repository: see the `configure` skill's `stores.md` before running
    `tcw init`, because it covers the path flags `tcw init` takes.
 
 Nothing `tcw init` writes is committed for you. Show the user the new files and
@@ -64,7 +64,7 @@ missing here.** That creates a second, empty store beside the real one.
 
 If `tcw provision` is about to fetch a copy of a project that is already on this
 machine under a different folder layout, stop: the fix is the `TCW_PROJECT_<ID>`
-variable, described in the `tcw-configure` skill's `projects.md`.
+variable, described in the `configure` skill's `projects.md`.
 
 ## Finish
 
@@ -74,4 +74,4 @@ variable, described in the `tcw-configure` skill's `projects.md`.
    capabilities ledger, `capabilities.md`, after the taxonomy.
 3. To change configuration from here — documentation entries, lifecycle
    bindings, the Definition of Done, a tracker, store locations, or connected
-   and inherited projects — use the `tcw-configure` skill.
+   and inherited projects — use the `configure` skill.

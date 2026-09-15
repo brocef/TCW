@@ -9,7 +9,7 @@ the first line of code, and `complete` the moment work is verified. Keep status
 in step as you go; do not batch the moves at the end.
 
 **TCW commits every transition itself** (`work.auto-commit-transitions`, default
-true, set with the `tcw-configure` skill), scoped to the item's own folders so unrelated edits are never swept in.
+true, set with the `configure` skill), scoped to the item's own folders so unrelated edits are never swept in.
 Do not commit a status move by hand. If a commit is refused, the item still
 moved and the tool says so — commit it yourself, do not re-run the transition.
 
@@ -21,7 +21,7 @@ files on disk. Nothing else changes: the item still moves, still lists, still
 reads. A node whose `.gitignore` lacks those rules gets a plain tracked rename.
 
 **`work.retain` decides whether the item survives the transition** (set with the
-`tcw-configure` skill). Default true
+`configure` skill). Default true
 for both resolved statuses, so nothing changes unless a node says otherwise.
 Where a status is set `false`, a resolving transition writes *two* commits — the
 item lands in its resolved folder and is committed, then the folder is removed —

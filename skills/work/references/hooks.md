@@ -1,7 +1,7 @@
 # How lifecycle bindings run
 
 What a binding means and how it runs. To declare or change bindings, see
-the `tcw-configure` skill's `work.md`.
+the `configure` skill's `work.md`.
 
 ## Roles, kinds, and conditions
 
@@ -18,7 +18,7 @@ instructions, and is the weakest kind.
 
 Any binding may carry `when: {tags: […], not_tags: […], type: …}` — keys ANDed, a
 list meaning any-of. Three keys by decision; anything harder is a `generate:`
-script. What a bare stage list means is in the `tcw-configure` skill's `work.md`.
+script. What a bare stage list means is in the `configure` skill's `work.md`.
 
 ## The three verbs
 

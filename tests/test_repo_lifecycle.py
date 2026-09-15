@@ -100,7 +100,7 @@ def test_this_repos_documentation_entries_parse():
         "docs/release-notes/upcoming.md",
         "docs/changelogs/upcoming.md",
         "skills/<component>/SKILL.md",
-        "skills/tcw-configure/references/<document>.md",
+        "skills/configure/references/<document>.md",
     ]
     assert {e.trigger for e in entries} == {
         "Public-API", "Tracker-Change", "Any-Code-Change", "Skill-Driven-Component",

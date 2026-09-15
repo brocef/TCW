@@ -92,14 +92,14 @@ viewers; it is not an editable taxonomy field.
 ## Inheritance (federation)
 
 A project may inherit another registered project's taxonomy. Declaring that is
-the `tcw-configure` skill's `projects.md`. The source project ID is the inherited
+the `configure` skill's `projects.md`. The source project ID is the inherited
 namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
 B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning
 project IDs. A source reached through multiple paths appears once.
 
 ## Starting a taxonomy
 
-To seed a new taxonomy from an existing codebase, use the `tcw-setup` skill.
+To seed a new taxonomy from an existing codebase, use the `setup` skill.
 
 ## Quick reference
 
@@ -111,6 +111,6 @@ To seed a new taxonomy from an existing codebase, use the `tcw-setup` skill.
 | link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                                                                         |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
 | locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
-| inherit another project's terms | declared with the `tcw-configure` skill's `projects.md`                                                                                                          |
+| inherit another project's terms | declared with the `configure` skill's `projects.md`                                                                                                          |
 | validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                                                     |
 | remove a local term             | `tcw taxonomy rm <path>`                                                                                                                                         |

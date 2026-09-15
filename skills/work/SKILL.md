@@ -51,7 +51,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
   itself; do not commit those by hand.
 - **`tcw work stage gate <id> <slug>`, then `prompt`** at every stage entry —
   `gate` refuses, `prompt` carries the methodology, the stage document only what
-  the CLI cannot. Bindings → [`hooks.md`](references/hooks.md) · declaring them: the `tcw-configure` skill · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
+  the CLI cannot. Bindings → [`hooks.md`](references/hooks.md) · declaring them: the `configure` skill · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
 - For a small change, ask whether to compress planning detail — but keep the item
   the durable source of truth and write whatever is needed to resume or review.
 

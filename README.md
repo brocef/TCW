@@ -76,7 +76,7 @@ by installing `tcw-cli` from PyPI with `pipx`, so one installed mid-session
 cannot run until the next one begins. That first session needs network access. It
 installs over an existing `pipx install tcw-cli` rather than beside it, and
 leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
-anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-setup`** skill
+anyway, `pipx install tcw-cli` is the whole fix — the **`setup`** skill
 carries the cases where it is not.
 
 In **Codex**:
@@ -86,7 +86,7 @@ codex plugin marketplace add brocef/TCW --ref main
 codex plugin add tcw@tcw
 ```
 
-Codex has no session-start hook, so ask the agent to run the **`tcw-setup`**
+Codex has no session-start hook, so ask the agent to run the **`setup`**
 skill — it runs the same install script Claude runs automatically.
 
 The plugin ships the skills and read-only review agents described in
@@ -285,7 +285,7 @@ becomes your own `permission`.
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | [`taxonomy`](skills/taxonomy/SKILL.md) | Guides an agent through declaring vocabulary and features, linking them, and resolving inherited entries. |
 
-To draft a first taxonomy from an existing codebase, use the `tcw-setup` skill
+To draft a first taxonomy from an existing codebase, use the `setup` skill
 described in [Skills and Agents](#skills-and-agents).
 
 #### CLI
@@ -666,8 +666,8 @@ across the axes.
 
 | Skill                                                      | What it does                                                                                                                                                                                |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-setup`](skills/tcw-setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
-| [`tcw-configure`](skills/tcw-configure/SKILL.md)           | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
+| [`setup`](skills/setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
+| [`configure`](skills/configure/SKILL.md)           | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and offers a version bump when work is done.                                     |
 | [`work-stage`](skills/work-stage/SKILL.md)         | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
 

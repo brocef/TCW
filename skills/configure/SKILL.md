@@ -1,6 +1,6 @@
 ---
-name: tcw-configure
-description: Changes how a project that already uses TCW is configured. Use when a user wants to set up or change lifecycle bindings (skills or commands run at a stage or transition), hook limits, the Definition of Done, documentation entries that track which documents a change must update, an external tracker, where a store lives, connected projects, or inherited taxonomy or capabilities. Getting TCW working in the first place is tcw-setup.
+name: configure
+description: Changes how a project that already uses TCW is configured. Use when a user wants to set up or change lifecycle bindings (skills or commands run at a stage or transition), hook limits, the Definition of Done, documentation entries that track which documents a change must update, an external tracker, where a store lives, connected projects, or inherited taxonomy or capabilities. Getting TCW working in the first place is setup.
 when_to_use: Use when a working TCW project should behave differently — setting up or changing work.lifecycle bindings, docs/work/dod.yaml, work.documentation entries, work.tracker, work.retain, work.auto-commit-transitions, work.trunk-branch, work.publish-transitions, a store's path or repository, connected-projects, TCW_PROJECT_<ID>, or taxonomy and capabilities extends. Also when a request says "set up" but names one of those areas.
 allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write, Grep, Glob
 metadata:
@@ -14,7 +14,7 @@ This skill changes the configuration of a project where TCW already works: what
 `tcw-config.yaml`, a component's own config file, `dod.yaml` and a per-machine
 environment variable say. Getting TCW working where it does not work yet — a
 new repository, a new machine, a missing or broken `tcw` — is
-the `tcw-setup` skill.
+the `setup` skill.
 
 Find the user's request in the table and open that document. Each one says what
 the setting does, shows its shape, and names the check to run.
