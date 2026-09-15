@@ -726,7 +726,7 @@ expired.
 
 - **claimable** — does this ticket, right now, offer the transition configured as
   the claim?
-- **exclusive** — would the workflow refuse a *second* person who tried to claim
+- **exclusive** — would the workflow refuse a _second_ person who tried to claim
   the same ticket?
 
 ```
@@ -754,7 +754,7 @@ note: 'In Progress' is still offered from 'In Progress', the status it leads to,
 
 A ticket that has not been started reports `not determined`, because a ticket nobody
 has taken cannot show what happens to the second person who tries. So does a started
-ticket on a workflow that *is* exclusive: the claim is no longer offered there, so the
+ticket on a workflow that _is_ exclusive: the claim is no longer offered there, so the
 ticket cannot say where the claim led, and running `show` on it again will not settle
 the question. Only making a claim, or reading the workflow definition, does. Making a
 workflow exclusive is a Jira administration change.
