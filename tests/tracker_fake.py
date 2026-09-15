@@ -36,9 +36,22 @@ DIRECTED = {
 GLOBAL = {status: [("11", "Back to To Do", "To Do"),
                    ("21", "Start Progress", "In Progress"),
                    ("31", "Finish", "Done")]
-          for status in ("To Do", "In Progress", "Done")}
+          for status in ("To Do", "In Progress", "In Review", "Done", "Won't Do",
+                         "Duplicate")}
+# The lifecycle-synchronization workflow: directed, with a review status and two
+# discard statuses reachable from every open status.
+_DISCARDS = [("51", "Won't Do", "Won't Do"), ("52", "Mark Duplicate", "Duplicate")]
+SYNC = {
+    "To Do": [("21", "Start Progress", "In Progress"), *_DISCARDS],
+    "In Progress": [("41", "Ready for Review", "In Review"),
+                    ("31", "Finish", "Done"), *_DISCARDS],
+    "In Review": [("42", "Back to Progress", "In Progress"),
+                  ("31", "Finish", "Done"), *_DISCARDS],
+    "Done": [], "Won't Do": [], "Duplicate": [],
+}
 CATEGORY = {"To Do": "new", "In Progress": "indeterminate", "Done": "done",
-            "Triage": "new"}
+            "Triage": "new", "In Review": "indeterminate", "Won't Do": "done",
+            "Duplicate": "done"}
 
 
 @dataclass
@@ -69,6 +82,8 @@ class FakeJira:
     tickets: dict = field(default_factory=dict)       # id → Ticket
     requests: list = field(default_factory=list)      # (method, path, account id)
     hooks: list = field(default_factory=list)
+    down: bool = False                                # every request unreachable
+    site: str | None = None                           # the base URL it answers for
 
     # -- setup --
 
@@ -115,6 +130,9 @@ class FakeJira:
         return self.workflow.get(ticket.status, [])
 
     def answer(self, client, method: str, path: str, body):
+        if self.down:
+            raise jira.TrackerUnavailable(f"the tracker at {client.config.base_url} "
+                                          f"could not be reached (fake: down)")
         email = os.environ.get(client.config.email_env, "")
         me = self.accounts.get(email)
         if me is None:
@@ -175,3 +193,22 @@ class FakeJira:
     @staticmethod
     def _json(payload: dict):
         return (200, {}, json.dumps(payload).encode("utf-8"))
+
+
+def install_sites(monkeypatch, *fakes: FakeJira) -> None:
+    """Route each request to the fake whose `site` is the calling client's base URL.
+
+    `FakeJira.install` replaces `JiraClient._request` for the whole class, so two
+    fakes installed that way overwrite each other and neither looks at the URL. A
+    test about bindings from two Jira sites needs both, and needs a request to the
+    wrong site to fail loudly rather than be answered.
+    """
+    by_site = {fake.site: fake for fake in fakes}
+
+    def request(client, method, path, body=None, *, timeout=None):
+        fake = by_site.get(client.config.base_url)
+        if fake is None:
+            raise AssertionError(f"no fake answers for {client.config.base_url}")
+        return fake.answer(client, method, path, body)
+
+    monkeypatch.setattr(jira.JiraClient, "_request", request)
