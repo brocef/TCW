@@ -62,6 +62,21 @@ Two of those defaults were settled explicitly:
 - **The idea is too unclear to file:** drop it into the work inbox as a raw
   entry, so a later triage with a user present decides what it means.
 
+## Decisions made after the spec's multi review (2026-09-15)
+
+- **A subagent with a user in the parent session is not unattended.** Only a
+  session told to work without asking uses the defaults. A subagent returns a
+  decision request (for example "needs decision: revise <slug>") for the parent
+  to put to the user.
+- **Inside an implementation worktree, items are searched, created and amended
+  on the primary checkout's board**, not on the work branch.
+- **Consolidation is deferred.** The shared overlap procedure is used only by
+  the new skill. The backlog audit, issue triage, plan migration and the inbox
+  stage are left as they are.
+- **Batching stays allowed.** A set of related leftovers, such as one review's
+  findings, may still be filed as one inbox entry or one item. It does not have
+  to be one run per finding.
+
 ## Consolidation the requester wants considered
 
 This overlaps existing procedures, and they should be unified where that
