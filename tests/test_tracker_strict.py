@@ -139,7 +139,7 @@ def test_a_claimed_ticket_where_the_item_left_it_authorizes(strict, fake):
 
 
 @pytest.mark.parametrize("assignee, words", [(B, "assigned to Bob"),
-                                             (None, "assigned to nobody")])
+                                             (None, "is unassigned")])
 def test_a_ticket_not_assigned_to_you_authorizes_nothing_even_at_the_target(
         strict, fake, assignee, words):
     slug = bound_item(strict)
@@ -322,7 +322,7 @@ def test_a_hand_written_binding_for_an_unclaimed_ticket_refuses_submit(strict, f
     (st.path(slug) / "tracker.yaml").write_text(document(), encoding="utf-8")
     st.start(slug, owner="a@example.test")
     code, _out, err = cli(strict, "work", "submit", slug)
-    assert code == 1 and "nobody" in err
+    assert code == 1 and "is unassigned" in err
 
 
 def test_a_ticket_moved_back_refuses_submit(strict, fake):

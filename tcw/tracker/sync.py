@@ -37,6 +37,11 @@ CURRENT, PENDING, CONFLICTING, HELD, NONE = (
 # The local status each move leaves an item in.
 MOVE_STATUS = {"start": "active", "submit": "review", "rework": "active",
                "complete": "completed", "discard": "discarded"}
+# The moves that may act on a ticket nobody holds. Abandoning work is the one thing
+# an unassigned ticket authorizes: every other move is somebody saying they are doing
+# the work, which is a claim, and a claim assigns. Widening this set would let TCW
+# march a ticket through a workflow on behalf of a person who never took it.
+MOVES_ALLOWING_UNASSIGNED = frozenset({"discard"})
 # Where to look for the status a ticket was left in, from an item's previous status.
 _EARLIER = {"active": ("active",), "review": ("review", "active")}
 # The same, from a recorded move whose `since` is unknown: where that move started.
@@ -92,16 +97,26 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
     return mapped if shared else mapped[:1]
 
 
-def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
+def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | None = None):
     """Steps 4–7 of a status move, over one ticket read. Pure. Returns `(state, reason)`, or
-    `("apply", transition)` when exactly one offered transition leads to `target`."""
+    `("apply", transition)` when exactly one offered transition leads to `target`.
+
+    `move` is the lifecycle move being served, which decides whether a ticket nobody
+    holds may be acted on (`MOVES_ALLOWING_UNASSIGNED`).
+    """
     key, where = ticket.key, ticket.status
     if _normalize(where) == _normalize(target):
         return CURRENT, ""
     if ticket.assignee_id != ticket.me_id:
-        holder = ticket.assignee_name if ticket.assignee_id else "nobody"
-        return CONFLICTING, (f"{key} is assigned to {holder}, not to you, so it was not "
-                             f"moved from '{where}' to '{target}'.")
+        if ticket.assignee_id:
+            return CONFLICTING, (f"{key} is assigned to {ticket.assignee_name}, not to "
+                                 f"you, so it was not moved from '{where}' to "
+                                 f"'{target}'.")
+        if move not in MOVES_ALLOWING_UNASSIGNED:
+            return CONFLICTING, (f"{key} is unassigned, so it was not moved from "
+                                 f"'{where}' to '{target}'. Take it first — `tcw work "
+                                 f"start` claims a bound ticket — or assign it to "
+                                 f"yourself in the tracker.")
     if expected:
         if _normalize(where) not in {_normalize(status) for status in expected}:
             wanted = " or ".join(f"'{status}'" for status in expected)
@@ -273,7 +288,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         except TrackerError as error:
             return finish(classify_error(error), str(error))
 
-    verdict, detail = assess_move(ticket, target=target, expected=expected)
+    verdict, detail = assess_move(ticket, target=target, expected=expected, move=move)
     if verdict != "apply":
         return finish(verdict, detail)
     if check_only:
@@ -289,7 +304,12 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         again = read_ticket(client, bound.ticket_id)
     except TrackerError as error:
         return finish(classify_error(failure or error), str(failure or error))
-    if _normalize(again.status) == _normalize(target) and again.assignee_id == again.me_id:
+    # The assignment clause is relaxed for finished work exactly as the owed
+    # short-circuit above relaxes it: a discard may move a ticket nobody holds, and
+    # moving it assigns nothing, so demanding the ticket be ours afterwards would
+    # turn that success into "did not reach 'Won't Do': it is in 'Won't Do'".
+    if _normalize(again.status) == _normalize(target) and (
+            local in RESOLVED_STATUSES or again.assignee_id == again.me_id):
         return finish(CURRENT)
     if failure is not None:
         return finish(classify_error(failure), str(failure))
@@ -382,8 +402,9 @@ def authorize(store, slug: str, client, config, *, target: str) -> str | None:
                            shared=shared), target))))
     where = " or ".join(f"'{status}'" for status in allowed) or "its mapped status"
     if ticket.assignee_id != ticket.me_id:
-        holder = ticket.assignee_name if ticket.assignee_id else "nobody"
-        return (f"{key} is assigned to {holder}, not to you. Assign it to yourself in "
+        whose = (f"is assigned to {ticket.assignee_name}, not to you"
+                 if ticket.assignee_id else "is unassigned")
+        return (f"{key} {whose}. Assign it to yourself in "
                 f"the tracker and put it in {where}, then run this again; discarding "
                 f"the item is always allowed.")
     if _normalize(ticket.status) not in {_normalize(status) for status in allowed}:

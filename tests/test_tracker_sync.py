@@ -377,8 +377,13 @@ def test_a_hand_move_to_the_recorded_target_is_accepted(node, fake):
     assert record(node, slug) is None
 
 
-@pytest.mark.parametrize("assignee", [B, None], ids=["someone-else", "nobody"])
-@pytest.mark.parametrize("move", ["submit", "rework", "complete", "discard"])
+# `(nobody, discard)` is deliberately absent: an unassigned ticket is the one case a
+# discard may move, so that pairing lives in
+# `test_an_unassigned_ticket_is_closed_by_a_discard` below.
+@pytest.mark.parametrize("assignee, move", [
+    *[(B, move) for move in ("submit", "rework", "complete", "discard")],
+    *[(None, move) for move in ("submit", "rework", "complete")]],
+    ids=lambda v: {B: "someone-else", None: "nobody"}.get(v, v))
 def test_a_ticket_not_assigned_to_you_is_never_moved(node, fake, assignee, move):
     slug = bound_item(node)
     st = FsWorkStore.open(node)
@@ -399,7 +404,43 @@ def test_a_ticket_not_assigned_to_you_is_never_moved(node, fake, assignee, move)
         st.complete(slug, "wontfix", dod_ack=[], force=True)
         claimed_ticket(fake, "In Progress", assignee)
     outcome = deliver_now(node, slug, move=move, previous=previous)
-    assert outcome.state == "conflicting" and "not to you" in outcome.reason
+    # Whose it is decides the wording: a ticket somebody holds names them, one nobody
+    # holds says so and points at claiming it rather than implying a holder.
+    assert outcome.state == "conflicting"
+    assert ("not to you" if assignee else "is unassigned") in outcome.reason
+    assert fake.writes() == []
+
+
+def test_an_unassigned_ticket_is_closed_by_a_discard(node, fake):
+    """GitHub #41. A queue that hands out unassigned tickets links almost every
+    backlog item to one; refusing the discard leaves each ticket open for ever."""
+    slug = bound_item(node)
+    claimed_ticket(fake, "To Do", None)
+    FsWorkStore.open(node).complete(slug, "wontfix", dod_ack=[], force=True)
+    outcome = deliver_now(node, slug, move="discard", previous=None)
+    assert outcome.state == "current", outcome
+    assert fake.tickets[TICKET_ID].status == "Won't Do"
+    assert record(node, slug) is None
+
+
+def test_an_unassigned_ticket_is_not_moved_by_anything_but_a_discard(node, fake):
+    slug = bound_item(node)
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    claimed_ticket(fake, "In Progress", None)
+    outcome = deliver_now(node, slug, move="submit", previous="active")
+    assert outcome.state == "conflicting"
+    assert "unassigned" in outcome.reason and "nobody, not to you" not in outcome.reason
+    assert fake.writes() == []
+
+
+def test_a_discard_still_refuses_a_ticket_someone_else_holds(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "To Do", B)
+    FsWorkStore.open(node).complete(slug, "wontfix", dod_ack=[], force=True)
+    outcome = deliver_now(node, slug, move="discard", previous=None)
+    assert outcome.state == "conflicting" and "Bob" in outcome.reason
     assert fake.writes() == []
 
 
