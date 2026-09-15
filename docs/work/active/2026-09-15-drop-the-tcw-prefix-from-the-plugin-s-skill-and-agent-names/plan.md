@@ -4,7 +4,7 @@ Thirteen tasks: one guard that can land first, eight rename tasks, one store tas
 one pair of guards that can only land last, and a documentation block.
 
 The shape is set by which guards are green when. **8b** (a name matches its directory)
-passes on the tree today — all fifteen skills already agree — so it lands **first** and
+passes on the tree today — all sixteen skills already agree — so it lands **first** and
 is a real net under every rename that follows. **8c** (a name does not repeat the
 plugin id) and **8a** (the old names appear in no live route) are both false until the
 renames are done, so they land **last**. The middle is mechanical and each task is one
@@ -97,24 +97,27 @@ name, including the seven stage documents and the `default/` set under
 and `skills/tcw-work/references` as module constants.
 
 Per **What every rename task does**, with one extra care: match `tcw-work` as a whole
-name. `tcw-work-stage` (task 3) and `tcw-work-skill` (task 10) both begin with it and
-must not be rewritten here.
+name. `tcw-work-stage` and `tcw-work-create` (both task 3), and `tcw-work-skill` and
+`tcw-work-create-skill` (task 10), all begin with it and must not be rewritten here.
 
 **Proves** part of criteria 1, 2, 8, 9, 12.
 
 ---
 
-## Task 3 — `tcw-work-stage` → `work-stage`
+## Task 3 — the two `tcw-work-*` skills
 
-**Renames** `skills/tcw-work-stage/` → `skills/work-stage/`
-**Modifies** its frontmatter, and every live file naming `tcw-work-stage`
+**Renames** `skills/tcw-work-stage/` → `skills/work-stage/`,
+`skills/tcw-work-create/` → `skills/work-create/`
+**Modifies** both frontmatters, and every live file naming either
 
 Reaches `tests/test_skill_lifecycle_parity.py:315` (`STAGE_SKILL`), `:352`, `:422`;
 `evals/coverage.py:53` (a `PARTIAL` key); `evals/evals.json`, where eight cases carry
 `"invokes": "tcw-work-stage"`; and `evals/assets/gen_requirement.py:35`.
 
 Separate from task 2 because the whole-name rule makes them independent, and because
-`PARTIAL`'s key is a different kind of reference from a path constant.
+`PARTIAL`'s key is a different kind of reference from a path constant. The two travel
+together here because both are the names task 2 must not eat, so renaming them in one
+step is what makes that boundary visible in a single diff.
 
 **Proves** part of criteria 1, 2, 8, 9, 12, 13, 14.
 
@@ -243,8 +246,8 @@ After this task no `tcw:tcw-…` address exists anywhere in the plugin.
 
 ## Task 10 — the taxonomy Features and the capability entries
 
-**Creates** `docs/taxonomy/<new>-skill/` ×14, `docs/capabilities/skills/<new>/` ×14
-**Removes** `docs/taxonomy/tcw-*-skill/` ×14, `docs/capabilities/skills/tcw-*/` ×14
+**Creates** `docs/taxonomy/<new>-skill/` ×15, `docs/capabilities/skills/<new>/` ×15
+**Removes** `docs/taxonomy/tcw-*-skill/` ×15, `docs/capabilities/skills/tcw-*/` ×15
 **Modifies** nothing by hand that a command can write
 
 Driven entirely through `tcw taxonomy` and `tcw capabilities`. Three passes, in this
@@ -252,7 +255,7 @@ order — the order is what keeps `check` green, because a Feature removed while
 capability still points at it leaves `tcw taxonomy check` failing after a command that
 reported success.
 
-**Pass A — add the 14 new Features.** For each old Feature under `docs/taxonomy/`:
+**Pass A — add the 15 new Features.** For each old Feature under `docs/taxonomy/`:
 
 ```
 tcw taxonomy add "<display name from old meta.yaml>" --kind feature \
@@ -267,7 +270,7 @@ into the new one by hand (e.g. `work-skill` keeps `relatesTo: [work-inbox]`); th
 `tcw-taxonomy` skill names hand-editing `relatesTo` as the route for that field, since
 no command writes it. Run `tcw taxonomy check` at the end of the pass.
 
-**Pass B — move the 14 capabilities.** For each, in this order:
+**Pass B — move the 15 capabilities.** For each, in this order:
 
 ```
 tcw capabilities add skills/<new> "<name from old meta.yaml>"
@@ -284,20 +287,25 @@ so it is authored directly; that is the one file here edited by hand, and the
 prohibition does not cover it. `skills/documentation-sync` is not touched.
 Run `tcw capabilities check` at the end of the pass.
 
-**Pass C — remove the 14 old Features.** `tcw taxonomy rm <old-slug>` each, then
+**Pass C — remove the 15 old Features.** `tcw taxonomy rm <old-slug>` each, then
 `tcw taxonomy check`. Run `check` after **each** removal, not once at the end:
 `tcw taxonomy rm` only warns on a dangling `relatesTo`
 (`docs/work/inbox/tcw-taxonomy-rm-deletes-nested-terms-without-a-word.md`), so running
 it per removal is what makes a mistake attributable to the command that caused it. All
-14 are flat top-level entries, verified with `find docs/taxonomy -maxdepth 2 -type d`,
+15 are flat top-level entries, verified with `find docs/taxonomy -maxdepth 2 -type d`,
 so the same command's silent nested-delete cannot bite.
+
+**Order within pass C.** `tcw-work-create-skill`'s `relatesTo` names `tcw-work-skill`,
+so removing `tcw-work-skill` while the old `tcw-work-create-skill` still exists leaves a
+dangling reference the command only warns about. Remove `tcw-work-create-skill` first;
+it is the one pair among the fifteen where removal order matters.
 
 **Proves** criteria 5, 6, 7, and the ledger half of the Capability changes section.
 
 **Verification the suite cannot do.** No test asserts the content of the taxonomy or
 the ledger, so this task is checked by command output and by eye:
-`tcw taxonomy list | grep -- -skill` shows 15 entries, none prefixed;
-`tcw capabilities list | grep '^\[Supported\]\s*skills/'` shows 15, none prefixed; and
+`tcw taxonomy list | grep -- -skill` shows 16 entries, none prefixed;
+`tcw capabilities list | grep '^\[Supported\]\s*skills/'` shows 16, none prefixed; and
 `tcw capabilities show skills/work` reproduces the old entry's name, status, subject
 and planning-doc value with a `Feature: work-skill`. Diff the old and new
 `description.md` for one entry to confirm nothing but the skill names changed.
@@ -308,8 +316,9 @@ and planning-doc value with a `Feature: work-skill`. Diff the old and new
 
 **Modifies** `tests/test_skill_lifecycle_parity.py`, `tests/test_plugin_manifests.py`
 
-**8a.** Append the 17 old names to `DELETED_NAMES` (`:503`) — `tcw-work`,
-`tcw-work-stage`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-setup`, `tcw-configure`,
+**8a.** Append the 18 old names to `DELETED_NAMES` (`:503`) — `tcw-work`,
+`tcw-work-stage`, `tcw-work-create`, `tcw-capabilities`, `tcw-taxonomy`, `tcw-setup`,
+`tcw-configure`,
 `tcw-post-mortem`, the four `tcw-commands-*`, the three `tcw-extras-*`, and
 `tcw-backlog-auditor`, `tcw-verifier` (the agents; `tcw-post-mortem` covers both, and
 is listed once). Extend `LIVE_ROUTES` (`:514`) with `"agents"` and `"tcw-config.yaml"`.
@@ -336,7 +345,7 @@ record what each failure said in `outcome.md`.
 
 Then run the two checks the suite does not cover:
 `python -m evals.run_evals --axis a --dry-run` resolves every arm with no unresolved
-skill name (criterion 14), and a one-time grep for the 17 old names across the tree —
+skill name (criterion 14), and a one-time grep for the 18 old names across the tree —
 excluding the rule-7 paths and the `DELETED_NAMES` tuple itself — returns nothing
 (the grep half of criterion 9).
 
@@ -379,12 +388,12 @@ entries. All five fire.
   `commands-*` and `extras-*` correctly now the `tcw-` is gone.
 - **`docs/release-notes/upcoming.md` — Public-API.** The breaking change, in plain
   language: what the names were, what they are, and that the old ones stop resolving.
-  Give the full old → new mapping for all 17 (criterion 16) — this is the only place a
+  Give the full old → new mapping for all 18 (criterion 16) — this is the only place a
   user whose muscle memory has stopped working will look. Mention that projects naming
   TCW skills in their own `AGENTS.md` prose will want to update it, and that nothing in
   a `tcw-config.yaml` breaks, since no lifecycle `skill:` binding named one.
 - **`docs/changelogs/upcoming.md` — Any-Code-Change.** Technical, grouped. *Changed*:
-  the 14 skill names, the 3 agent names, the 14 taxonomy Feature slugs, the 14
+  the 15 skill names, the 3 agent names, the 15 taxonomy Feature slugs, the 15
   capability paths, and `tcw-config.yaml`'s `Configuration-Key-Change` entry path.
   *Added*: the three guards. Name the regenerated capability ids as a consequence.
 - **`skills/<component>/SKILL.md` — Skill-Driven-Component.** No component's CLI
@@ -431,6 +440,12 @@ What the suite cannot check, gathered so none of it is left to the end:
 
 ## Notes
 
+- **Corrected at `implement`.** This plan was written against fifteen shipped skills.
+  `skills/tcw-work-create` landed after it, so there are sixteen shipped and fifteen to
+  rename, and eighteen old names rather than seventeen. It is folded into task 3 beside
+  `tcw-work-stage` — both are the names task 2's whole-name rule must leave alone, so one
+  diff shows that boundary holding. Task 10 grew a pass-C ordering note for the same
+  reason: it is the only Feature whose `relatesTo` names another renamed Feature.
 - **Follow-up to file at completion, per the spec's Notes:** `tcw capabilities mv` /
   `tcw taxonomy mv`. Task 10 is the second time a rename has had to be done as
   `add` + `rm`, and it is the only task in this plan with no test coverage and a

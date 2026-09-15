@@ -2,7 +2,7 @@
 
 ## Capability changes
 
-**Changed — 14.** Every capability under `skills/` except `skills/documentation-sync`
+**Changed — 15.** Every capability under `skills/` except `skills/documentation-sync`
 is renamed to its path minus the `tcw-` prefix, and its body is reworded where it
 names the skill:
 
@@ -10,6 +10,7 @@ names the skill:
 | ----- | ----- |
 | `skills/tcw-work` | `skills/work` |
 | `skills/tcw-work-stage` | `skills/work-stage` |
+| `skills/tcw-work-create` | `skills/work-create` |
 | `skills/tcw-capabilities` | `skills/capabilities` |
 | `skills/tcw-taxonomy` | `skills/taxonomy` |
 | `skills/tcw-setup` | `skills/setup` |
@@ -31,9 +32,9 @@ rm, search, extends, check, drift`), so each is re-created and the old one remov
 see **Design 4**, and **Risks** for what that costs.
 
 `skills/documentation-sync` (`cap-301436`) is unchanged: it already carries no prefix
-and is the shape the other fourteen are moving to.
+and is the shape the other fifteen are moving to.
 
-The 14 matching taxonomy Features are renamed alongside them (**Design 3**). Taxonomy
+The 15 matching taxonomy Features are renamed alongside them (**Design 3**). Taxonomy
 entries are not capabilities and are listed here only because the two move together.
 
 The three subagents have no capability in the ledger — `tcw capabilities list` returns
@@ -44,7 +45,7 @@ a change with no ledger delta. That gap is pre-existing and is left alone (**Non
 
 Every skill this plugin ships is addressed through the plugin's own namespace, and
 then repeats it. `skills/tcw-work/SKILL.md:2` declares `name: tcw-work`, so Claude
-invokes it as `/tcw:tcw-work` and Codex as `$tcw:tcw-work`. Fourteen of the fifteen
+invokes it as `/tcw:tcw-work` and Codex as `$tcw:tcw-work`. Fifteen of the sixteen
 shipped skills are like this; the fifteenth, `skills/documentation-sync/SKILL.md:2`,
 declares `name: documentation-sync` and is invoked as `/tcw:documentation-sync`.
 
@@ -67,15 +68,15 @@ redundant for a second reason — every entry in TCW's taxonomy and ledger is TC
 - a Feature per skill, `docs/taxonomy/tcw-work-skill/` through
   `docs/taxonomy/tcw-extras-report-skill/`, which `docs/capabilities/skills/tcw-work/meta.yaml:5`
   points at as `Feature: tcw-work-skill`;
-- a capability per skill, the fifteen folders under `docs/capabilities/skills/`.
+- a capability per skill, the sixteen folders under `docs/capabilities/skills/`.
 
 Both already show the intended shape once. `docs/taxonomy/documentation-sync-skill/meta.yaml:1`
 reads `name: TCW Documentation Sync Skill` over the slug `documentation-sync-skill` —
 the display name identifies the project, the slug does not repeat it. The other
-fourteen Features carry the prefix in the slug as well
+fifteen Features carry the prefix in the slug as well
 (`docs/taxonomy/tcw-commands-plan-work-skill/meta.yaml:1`, `name: TCW Plan Work Command Skill`).
 So the fix is not a new convention; it is applying the one `documentation-sync`
-already follows to the other fourteen.
+already follows to the other fifteen.
 
 Nothing about this is load-bearing in the CLI. Skill names reach `tcw` only as opaque
 `skill:` binding refs (`tcw/store/base.py:961`, `BINDING_KINDS`; resolved at
@@ -91,7 +92,7 @@ What it is not free of is references. Roughly 100 live files name a skill, among
 - `tcw-config.yaml:40`, whose documentation entry `path` is literally
   `skills/tcw-configure/references/<document>.md` — a **configured path**, not prose,
   and the one place the rename changes configuration rather than text;
-- `.codex-plugin/plugin.json`, whose `longDescription` enumerates all fifteen skills
+- `.codex-plugin/plugin.json`, whose `longDescription` enumerates all sixteen skills
   by name in prose, guarded by `tests/test_plugin_manifests.py:93`, which reads the
   names from the `skills/` directory and asserts the description both counts and names
   every one of them;
@@ -130,7 +131,7 @@ the frontmatter behind passes the whole suite today.
   declined; they group the families in a listing.
 - **`documentation-sync` does not change** — it is already the target shape.
 - **No compatibility alias for the old names.** Neither harness offers a skill-alias
-  mechanism, so an alias would mean shipping fourteen stub skills that exist to be
+  mechanism, so an alias would mean shipping fifteen stub skills that exist to be
   wrong; the old names simply stop resolving. See **Risks**.
 - **No `mv` / rename verb is added to `tcw capabilities` or `tcw taxonomy`.** Adding
   one is a CLI surface change with its own storage-abstraction question, and it is
@@ -138,7 +139,7 @@ the frontmatter behind passes the whole suite today.
 - **`tcw taxonomy rm`'s behavior is not changed.** It deletes nested terms silently and
   only warns on dangling `relatesTo` (already filed as
   `docs/work/inbox/tcw-taxonomy-rm-deletes-nested-terms-without-a-word.md`). This spec
-  works within it — the fourteen skill Features are flat, not nested — rather than
+  works within it — the fifteen skill Features are flat, not nested — rather than
   fixing it.
 - **No capability is created for the three subagents.** They have none today; adding
   them is a ledger-completeness question, not this rename.
@@ -154,11 +155,12 @@ Seven rules. Each says what changes and what must not.
 
 ### 1. Skills
 
-The 14 prefixed directories under `skills/` are renamed to the directory name minus
+The 15 prefixed directories under `skills/` are renamed to the directory name minus
 the leading `tcw-`, and each `SKILL.md`'s frontmatter `name:` is set to the new
 directory name. `skills/documentation-sync/` is untouched.
 
 `skills/tcw-work` → `skills/work`, `tcw-work-stage` → `work-stage`,
+`tcw-work-create` → `work-create`,
 `tcw-capabilities` → `capabilities`, `tcw-taxonomy` → `taxonomy`, `tcw-setup` →
 `setup`, `tcw-configure` → `configure`, `tcw-post-mortem` → `post-mortem`, the four
 `tcw-commands-*` → `commands-*`, the three `tcw-extras-*` → `extras-*`.
@@ -179,7 +181,7 @@ carries no `agents` key and Claude auto-loads `agents/`, which
 
 ### 3. Taxonomy Features
 
-The 14 prefixed Feature slugs lose the prefix: `tcw-work-skill` → `work-skill`,
+The 15 prefixed Feature slugs lose the prefix: `tcw-work-skill` → `work-skill`,
 … , `tcw-extras-report-skill` → `extras-report-skill`. **Display names are not
 touched**: `name: TCW Work Skill` stays, matching `documentation-sync-skill`, which
 already pairs a "TCW …" display name with an unprefixed slug.
@@ -194,12 +196,12 @@ tcw taxonomy rm <old-slug>                                                      
 
 `relatesTo` and `vocabulary` are carried over verbatim (e.g. `work-skill` keeps
 `relatesTo: [work-inbox]` and `vocabulary: [skill, work-item, work-item/transition]`).
-All 14 are flat top-level entries, so `tcw taxonomy rm`'s silent-nested-delete
+All 15 are flat top-level entries, so `tcw taxonomy rm`'s silent-nested-delete
 behavior cannot bite.
 
 ### 4. Capabilities
 
-The 14 prefixed capability paths under `skills/` lose the prefix. Same absence of a
+The 15 prefixed capability paths under `skills/` lose the prefix. Same absence of a
 rename verb, so per entry:
 
 ```
@@ -225,7 +227,7 @@ failing after a command that reported success.
 ### 5. Live references follow
 
 Every reference in a live file is updated to the new name. This covers, at minimum:
-the 15 `SKILL.md` bodies and everything under `skills/*/references/`; `README.md`;
+the 16 `SKILL.md` bodies and everything under `skills/*/references/`; `README.md`;
 `docs/guide/work.md` and `docs/guide/taxonomy-and-capabilities.md`;
 `docs/lifecycle/implementation.md`; `.codex-plugin/plugin.json`'s `longDescription`;
 `tcw-config.yaml` — both its `path: skills/tcw-configure/references/<document>.md`
@@ -240,12 +242,16 @@ A blind `s/tcw-//g` would corrupt the repository. These 14 tokens share the pref
 are **not** names being renamed. Counted as whole words over the tree, excluding
 `.git/`, `eval-runs/`, `tcw_cli.egg-info/` and every `work/` board directory (this
 item's own artifacts name several of them, so the board would make the baseline move
-under its own feet):
+under its own feet). "Whole word" here is a regex word boundary on each side, which
+treats `-` as a boundary — so `tcw-ref` is counted inside `data-tcw-ref` and
+`tcw-storage-folders` inside `cli/locate-tcw-storage-folders`. That is a looser test
+than the substitution rule below uses, and deliberately so: it over-counts rather than
+missing an occurrence the rename might have eaten:
 
 | token | count | what it is | where it lives |
 | ----- | ----: | ---------- | -------------- |
-| `tcw-config` | 441 | `tcw-config.yaml`, the per-node configuration file | everywhere |
-| `tcw-cli` | 95 | the PyPI distribution name | `scripts/`, `README.md`, `pyproject.toml` |
+| `tcw-config` | 443 | `tcw-config.yaml`, the per-node configuration file | everywhere |
+| `tcw-cli` | 100 | the PyPI distribution name | `scripts/`, `README.md`, `pyproject.toml` |
 | `tcw-unhosted` | 14 | web state class | `web/client/src/`, `tcw/serve/dist/` |
 | `tcw-inert` | 11 | web state class | `web/client/src/`, `tcw/serve/dist/` |
 | `tcw-event` | 9 | tracker progress event kind | `tcw/tracker/progress.py`, `tests/`, `skills/work/references/commands.md` |
@@ -266,7 +272,7 @@ are recorded (see rule 8).
 Note that `tcw/serve/dist/` is committed build output carrying several of the web
 identifiers. It is regenerated, never hand-edited, and nothing in this item touches it.
 
-Renames are applied per known name — 14 skills and 3 agents, each substituted by its
+Renames are applied per known name — 15 skills and 3 agents, each substituted by its
 full old name — never by stripping the prefix wherever it appears.
 
 ### 7. Historical records are not rewritten
@@ -284,14 +290,14 @@ which is the precedent.
 Three changes, two new assertions and one extension of a guard that already exists
 for precisely this.
 
-**8a — the existing retired-name guard learns the 17 names.**
+**8a — the existing retired-name guard learns the 18 names.**
 `tests/test_skill_lifecycle_parity.py:503` holds `DELETED_NAMES`, a tuple of skill and
 command names that were removed or renamed, and `:526`'s
 `test_no_live_route_names_a_removed_skill_or_command` asserts no file under
 `LIVE_ROUTES` still names one — "a live document still naming one sends a reader to
 something that is not there". That is this item's rule 5, already built and already
 green for the previous restructure's casualties (`tcw-plan-work`, `tcw-triage-issues`,
-`tcw-report`, …). The 14 old skill names and 3 old agent names are appended to it.
+`tcw-report`, …). The 15 old skill names and 3 old agent names are appended to it.
 
 Its whole-name matching already handles the one collision that matters: the pattern
 `(?<![-\w])tcw-work(?![-\w])` does not fire inside `tcw-work-stage`, so both can be
@@ -352,7 +358,7 @@ without them; renaming the files does not change that.
 
 ## Acceptance criteria
 
-1. `ls skills/` lists exactly 15 directories and none begins with `tcw-`.
+1. `ls skills/` lists exactly 16 directories and none begins with `tcw-`.
 2. For every `skills/*/SKILL.md`, the frontmatter `name` equals the parent directory
    name; `skills/documentation-sync/SKILL.md` still reads `name: documentation-sync`.
 3. `ls agents/` lists exactly 3 files — `backlog-auditor.md`, `verifier.md`,
@@ -360,21 +366,21 @@ without them; renaming the files does not change that.
 4. Design 8's guards are mutation-checked, each shown red for the right reason:
    8b fails when a skill directory is renamed without its frontmatter; 8c fails when
    any shipped skill or agent name is given a `tcw-` prefix; 8a fails when a live-route
-   file is made to name one of the 17 old names. Demonstrated, not asserted.
-5. `tcw taxonomy list` shows exactly 15 Features whose slug ends `-skill`, none
+   file is made to name one of the 18 old names. Demonstrated, not asserted.
+5. `tcw taxonomy list` shows exactly 16 Features whose slug ends `-skill`, none
    beginning `tcw-`, one per shipped skill; each keeps its `TCW …` display name, its
    `relatesTo`, and its `vocabulary` list from before the rename.
-6. `tcw capabilities list` shows exactly 15 paths under `skills/`, none beginning
+6. `tcw capabilities list` shows exactly 16 paths under `skills/`, none beginning
    `skills/tcw-`, one per shipped skill; each is `Supported`, carries `Subject: skill`,
    its original `Planning doc` value, and a `Feature` naming its renamed Feature.
 7. `tcw taxonomy check`, `tcw capabilities check` and `tcw validate` each exit 0.
    (All three print OK on the tree today.)
-8. `python -m pytest` is green, at no fewer than the 3360 passed / 2 skipped measured
+8. `python -m pytest` is green, at no fewer than the 3367 passed / 2 skipped measured
    on this tree before the change.
 9. No live file names a renamed skill or agent by its old name. Two checks, because
    the guard's reach is narrower than the tree: `test_no_live_route_names_a_removed_skill_or_command`
-   passes with all 17 names in `DELETED_NAMES` and `agents/` + `tcw-config.yaml` in
-   `LIVE_ROUTES`; and a one-time grep for the 17 names over everything else, excluding
+   passes with all 18 names in `DELETED_NAMES` and `agents/` + `tcw-config.yaml` in
+   `LIVE_ROUTES`; and a one-time grep for the 18 names over everything else, excluding
    the paths rule 7 protects and the `DELETED_NAMES` tuple itself, returns nothing.
 10. Every token in rule 6's table occurs exactly as often after the change as its
     count there, measured the same way (whole-word, excluding `.git/`, `eval-runs/`,
@@ -384,8 +390,8 @@ without them; renaming the files does not change that.
     `docs/changelogs/v*.md`, `docs/release-notes/v*.md`, `docs/plan/`,
     `docs/migration-guide-0.21.X-to-1.0.0.md`, or `docs/work/` outside this item's own
     folder.
-12. `.codex-plugin/plugin.json`'s description still says "fifteen skills" and names all
-    fifteen by their new names — i.e. `tests/test_plugin_manifests.py:93` passes
+12. `.codex-plugin/plugin.json`'s description still says "sixteen skills" and names all
+    sixteen by their new names — i.e. `tests/test_plugin_manifests.py:93` passes
     without being weakened.
 13. `evals/coverage.py`'s `EXCLUSIONS` and `PARTIAL` keys all name shipped skills, and
     `tests/test_eval_coverage.py` passes (it is what reports a skill with no eval case).
@@ -396,7 +402,7 @@ without them; renaming the files does not change that.
     `skills/<component>/SKILL.md`, and — because `tcw-config.yaml:40`'s configured
     `path` value itself changes — `skills/configure/references/<document>.md`.
 16. `docs/release-notes/upcoming.md` states the rename as a breaking change and gives
-    the old-name → new-name mapping for all 17 names, so a user whose muscle memory
+    the old-name → new-name mapping for all 18 names, so a user whose muscle memory
     stops working can find it.
 
 ### Coverage
@@ -420,7 +426,7 @@ Rules are the Design's eight. `n/a` cells give the line that makes them so.
 | 13 | keys compared to `skills/` glob (`evals/coverage.py:78`) | n/a | n/a | n/a | `evals/coverage.py:34,52` | n/a | n/a | n/a |
 | 14 | arms name skills | n/a | n/a | n/a | `evals/evals.json` | n/a | n/a | n/a |
 | 15 | `skills/<component>/SKILL.md` trigger | n/a — no agent documentation entry (`tcw-config.yaml:14-46`) | n/a | n/a | `Configuration-Key-Change` fires on `tcw-config.yaml:40` | n/a | `upcoming.md` is current, not history (rule 7) | n/a |
-| 16 | all 14 in the mapping | all 3 in the mapping | n/a — not user-invoked | n/a — not user-invoked | release note is itself a reference | n/a | n/a | n/a |
+| 16 | all 15 in the mapping | all 3 in the mapping | n/a — not user-invoked | n/a — not user-invoked | release note is itself a reference | n/a | n/a | n/a |
 
 ## Risks
 
@@ -464,18 +470,27 @@ Rules are the Design's eight. `n/a` cells give the line that makes them so.
   This item is the second time a rename has had to be done as `add` + `rm` (the first
   being the skill restructure recorded in `Planning doc:
   2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill`, which is why
-  every one of the fifteen skill capabilities carries that pointer). It passes the
+  fifteen of the sixteen skill capabilities carry that pointer, `skills/tcw-work-create`
+  being the one added since). It passes the
   abstraction litmus test — re-keying an entry is something a tracker-backed store can
   do — so it belongs in the model, and it would have made rules 3 and 4 two commands
   instead of a procedure. It is not folded in here because it changes the CLI surface
   and needs its own spec, and because this rename does not block on it.
+- **Re-measured at `implement`, and the counts moved.** This spec was written against
+  fifteen shipped skills; `skills/tcw-work-create` landed afterwards, making sixteen
+  shipped and fifteen to rename, so every count above reads one higher than it did and
+  the renamed-name total is eighteen rather than seventeen. `tcw-work-create` also joins
+  `tcw-work-stage` as a name beginning with `tcw-work`, which the whole-name
+  substitution rule already covers. Rule 6's `tcw-config` and `tcw-cli` counts rose to
+  443 and 100 with the v2.3.0 release notes, and criterion 8's suite baseline is 3367,
+  not 3360 — both verified before any edit in this item.
 - **Assumption, unverified:** that Claude and Codex both key a plugin skill on the
   directory name with the frontmatter `name` required to agree, rather than resolving
-  on frontmatter alone. The repository is consistent with either reading — all fifteen
+  on frontmatter alone. The repository is consistent with either reading — all sixteen
   skills currently agree — so the rename changes both, which is correct under both
   readings. Design 8's first assertion turns the assumption into a pinned invariant
   regardless of which is true.
-- The 14 taxonomy Features are flat, top-level entries (`docs/taxonomy/tcw-*-skill/`
+- The 15 taxonomy Features are flat, top-level entries (`docs/taxonomy/tcw-*-skill/`
   with no children), checked against `find docs/taxonomy -maxdepth 2 -type d`. That is
   what makes `tcw taxonomy rm`'s silent nested-delete irrelevant here; it would not be
   if a Feature ever gained children.
