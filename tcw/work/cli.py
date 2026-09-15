@@ -159,7 +159,11 @@ def _tracker_text(value: dict, *, row: bool) -> str:
         return "unreadable" if row else f"tracker.yaml cannot be read ({value['problem']})"
     key, part = value["ticket"]["key"], value["part"]
     if row:
-        return key if part == "default" else f"{key} (part {part})"
+        sync = value.get("sync")
+        notes = [f"part {part}"] if part != "default" else []
+        if sync:
+            notes.append("unreadable sync record" if "problem" in sync else sync["state"])
+        return f"{key} ({', '.join(notes)})" if notes else key
     url = value["ticket"]["url"]
     return f"{key} ({value['provider']}, part {part})" + (f" {url}" if url else "")
 
@@ -198,6 +202,13 @@ def _print_item(item: WorkItem) -> None:
             print(f"blocked_by: {', '.join(labels)}")
     if item.tracker is not None:
         print(f"tracker: {_tracker_text(item.tracker, row=False)}")
+        sync = item.tracker.get("sync")
+        if sync and "problem" in sync:
+            print(f"tracker sync: record cannot be read ({sync['problem']})")
+        elif sync:
+            owed = "; the claim is still owed" if sync["claim"] == "owed" else ""
+            print(f"tracker sync: {sync['state']} after {sync['move']} ({sync['at']}): "
+                  f"{sync['reason']}{owed}")
     body = item.body.strip()
     if body:
         print()

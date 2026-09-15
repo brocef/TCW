@@ -702,3 +702,47 @@ def test_an_unreadable_record_leaves_the_binding_usable(node, fake):
     assert code == 0, err
     assert record(node, slug) is None                    # overwritten by the delivery
     assert cli(node, "work", "tracker", "unlink", slug, "--reason", "done")[0] == 0
+
+
+# ── what show, list and the JSON document say ───────────────────────────────
+
+
+def board_row(root: Path, slug: str) -> str:
+    code, out, err = cli(root, "work", "list", "--all")
+    assert code == 0, err
+    [line] = [x for x in out.splitlines() if x.startswith(slug + " |")]
+    return line
+
+
+def show_lines(root: Path, slug: str) -> list[str]:
+    code, out, err = cli(root, "work", "show", slug)
+    assert code == 0, err
+    return [x for x in out.splitlines() if x.startswith("tracker")]
+
+
+def test_show_and_list_state_a_record(node, fake):
+    slug = bound_item(node)
+    assert show_lines(node, slug) == [f"tracker: {KEY} (jira-cloud, part default) "
+                                      f"{BASE_URL}/browse/{KEY}"]
+    assert board_row(node, slug).endswith(f"| ticket: {KEY}")
+    with_record(node, slug, RECORD)
+    assert show_lines(node, slug)[1] == (
+        "tracker sync: pending after submit (2026-09-14T10:00:00Z): the tracker could "
+        "not be reached")
+    assert board_row(node, slug).endswith(f"| ticket: {KEY} (pending)")
+    with_record(node, slug, {**RECORD, "state": "conflicting", "claim": "owed"})
+    assert show_lines(node, slug)[1].endswith("; the claim is still owed")
+
+
+def test_a_part_and_a_state_share_the_brackets(node, fake):
+    slug = bound_item(node, part="api")
+    with_record(node, slug, {**RECORD, "state": "conflicting"})
+    assert board_row(node, slug).endswith(f"| ticket: {KEY} (part api, conflicting)")
+
+
+def test_an_unreadable_record_is_named_where_the_item_is_read(node, fake):
+    slug = bound_item(node)
+    with_record(node, slug, 5)
+    assert show_lines(node, slug)[1] == ("tracker sync: record cannot be read "
+                                         "('sync' is not a mapping)")
+    assert board_row(node, slug).endswith(f"| ticket: {KEY} (unreadable sync record)")
