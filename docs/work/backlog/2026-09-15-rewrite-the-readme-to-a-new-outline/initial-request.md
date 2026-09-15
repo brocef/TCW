@@ -93,6 +93,21 @@ These answer questions the outline left open, and amend it where noted.
    `docs/lifecycle/implementation.md`, `docs/plan/`, `docs/releasing.md`) are
    referred to from the Development section instead.
 
+### Added during the spec stage (2026-09-15)
+
+7. **The README summarizes `tcw serve` and links to `docs/guide/web-viewer.md`**
+   for the detail, rather than copying all of it. This narrows the outline's
+   "cover everything about the `tcw serve` local server", so the two documents
+   cannot drift apart as full copies.
+8. **`skill-cefailures` is removed from this repository.** The requester no
+   longer uses it. Its entry comes out of `.claude/settings.json`, and
+   Development says only that the `tcw` plugin is enabled for this repository.
+   This replaces the outline note about mentioning both plugins.
+9. **`docs/guide/jira.md` gets its own documentation entry** in
+   `tcw-config.yaml`, so that a future tracker change is flagged to update it.
+   The Jira section of `docs/guide/work.md` went out of date because no such
+   entry existed.
+
 ## Out of scope
 
 - Keeping any current section the outline does not name (decision 1).
