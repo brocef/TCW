@@ -321,3 +321,178 @@ def test_comments_off_publishes_nothing(tmp_path, fake):
     fake.requests.clear()
     assert publish_now(root, slug, move="submit").state == "none"
     assert fake.requests == []
+
+
+# ── through the commands ─────────────────────────────────────────────────────
+
+
+import json  # noqa: E402
+import subprocess  # noqa: E402
+
+
+def commit(root):
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "setup", "--allow-empty"],
+                   check=True)
+
+
+def first_lines(fake):
+    return [text.splitlines()[0] for _a, text in texts(fake)]
+
+
+def test_comments_off_the_whole_lifecycle_sends_no_comment(tmp_path, fake):
+    root = make_node(tmp_path, statuses=STATUSES)
+    slug = bound_item(root)
+    for argv in (("start", slug), ("submit", slug), ("rework", slug), ("submit", slug),
+                 ("complete", slug, "--resolution", "done", "--confirm")):
+        assert cli(root, "work", *argv)[0] == 0, argv
+    assert not any("/comment" in path for _m, path, _a in fake.requests)
+
+
+def test_the_whole_lifecycle_posts_five_comments(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root, "Checkout page")
+    for argv in (("start", slug), ("submit", slug), ("rework", slug), ("submit", slug),
+                 ("complete", slug, "--resolution", "done", "--confirm")):
+        code, _out, err = cli(root, "work", *argv)
+        assert code == 0, (argv, err)
+    assert first_lines(fake) == [
+        'TCW: "Checkout page" started.', 'TCW: "Checkout page" went to review.',
+        'TCW: "Checkout page" went back to work.', 'TCW: "Checkout page" went to review.',
+        'TCW: "Checkout page" was completed.']
+    assert {author for author, _t in texts(fake)} == {A}
+    assert len({text.splitlines()[-1] for _a, text in texts(fake)}) == 5
+    assert "comment" not in yaml.safe_load(
+        FsWorkStore.open(root).read_sidecar(slug, "tracker.yaml").content)
+
+
+def test_a_discard_of_an_unclaimed_ticket_with_no_discard_status_posts_nothing(
+        tmp_path, fake):
+    root = make_node(tmp_path, statuses={"active": "In Progress"})
+    set_tracker_key(root, "comments", True)
+    slug = bound_item(root)
+    code, _out, err = cli(root, "work", "complete", slug, "--resolution", "wontfix",
+                          "--confirm")
+    assert code == 0, err
+    assert texts(fake) == [] and owed(root, slug) is None
+    assert "no progress comment" in err
+
+
+def test_a_held_part_still_posts_its_comment(tmp_path, fake):
+    root = comments_node(tmp_path)
+    api = bound_item(root, "Api", part="api")
+    bound_item(root, "Web", part="web")
+    assert cli(root, "work", "start", api)[0] == 0
+    code, _out, err = cli(root, "work", "submit", api)
+    assert code == 0 and "also bound to" in err, err
+    assert first_lines(fake)[-1] == 'TCW: "Api" (part api) went to review.'
+
+
+def test_a_comment_that_did_not_post_is_owed_and_synced_after_the_ticket_moved_on(
+        tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.fail("POST", "/comment", jira.TrackerUnavailable("comment post dropped"))
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and "did not get its progress comment (pending)" in err
+    assert f"tcw work tracker sync {slug}" in err
+    assert status(root, slug) == "review" and fake.tickets[TICKET_ID].status == "In Review"
+    _code, out, _err = cli(root, "work", "show", slug)
+    assert "tracker comment: pending after submit" in out
+    document_ = json.loads(cli(root, "work", "show", slug, "--json")[1])
+    jsonschema.validate(document_, WORK_ITEM_SCHEMA)
+    assert document_["tracker"]["comment"]["state"] == "pending"
+    assert document_["tracker"]["sync"] is None
+    assert "comment pending" in cli(root, "work", "list")[1]
+    fake.tickets[TICKET_ID].status = "Done"                  # moved on by hand
+    code, out, err = cli(root, "work", "tracker", "sync", "--all")
+    assert code == 0, (out, err)
+    assert first_lines(fake) == ['TCW: "Bound item" started.',
+                                 'TCW: "Bound item" went to review.']
+    assert owed(root, slug) is None
+
+
+def test_a_tracker_that_is_down_owes_both_and_sync_sends_both(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.down = True
+    assert cli(root, "work", "submit", slug)[0] == 1
+    assert record(root, slug)["state"] == "pending" and owed(root, slug)["state"] == "pending"
+    fake.down = False
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert first_lines(fake)[-1] == 'TCW: "Bound item" went to review.'
+    assert record(root, slug) is None and owed(root, slug) is None
+
+
+def test_a_reassigned_ticket_owes_both_until_it_comes_back(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    claimed_ticket(fake, "In Progress", B)
+    assert cli(root, "work", "submit", slug)[0] == 1
+    assert owed(root, slug)["state"] == "conflicting" and len(texts(fake)) == 1
+    code, _out, _err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1 and owed(root, slug)["state"] == "conflicting"
+    claimed_ticket(fake, "In Progress", A)
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review" and len(texts(fake)) == 2
+    assert record(root, slug) is None and owed(root, slug) is None
+
+
+def test_sync_drops_an_owed_comment_once_comments_are_off(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.fail("POST", "/comment", jira.TrackerUnavailable("dropped"))
+    assert cli(root, "work", "submit", slug)[0] == 1
+    set_tracker_key(root, "comments", False)
+    code, out, _err = cli(root, "work", "tracker", "sync", "--all")
+    assert code == 0 and "comments are turned off" in out
+    assert owed(root, slug) is None and len(texts(fake)) == 1
+
+
+def test_strict_mode_does_not_refuse_over_an_owed_comment(tmp_path, fake):
+    root = comments_node(tmp_path)
+    set_tracker_key(root, "strict", True)
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.fail("POST", "/comment", jira.TrackerUnavailable("dropped"))
+    assert cli(root, "work", "submit", slug)[0] == 1
+    assert owed(root, slug) is not None and record(root, slug) is None
+    code, _out, err = cli(root, "work", "rework", slug)
+    assert code == 0, err
+
+
+def test_a_lost_comment_does_not_keep_an_unretained_item(tmp_path, fake):
+    root = make_node(tmp_path, statuses=STATUSES, retain={"completed": False})
+    set_tracker_key(root, "comments", True)
+    slug = bound_item(root)
+    commit(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.fail("POST", "/comment", jira.TrackerUnavailable("dropped"))
+    code, _out, err = cli(root, "work", "complete", slug, "--resolution", "done",
+                          "--confirm")
+    assert code == 1 and "progress comment" in err
+    assert FsWorkStore.open(root).get(slug) is None
+
+
+def test_no_comment_carries_the_token_or_a_lifecycle_document(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    folder = FsWorkStore.open(root).path(slug)
+    for name in ("spec.md", "plan.md", "outcome.md"):
+        (folder / name).write_text(f"# x\n\nSECRET-PHRASE-{name}\n")
+    outputs = [cli(root, "work", "start", slug)]
+    fake.fail("POST", "/comment", jira.TrackerUnavailable("dropped"))
+    outputs.append(cli(root, "work", "submit", slug))
+    outputs.append(cli(root, "work", "tracker", "sync", slug))
+    bodies = json.dumps([doc for _a, doc in fake.tickets[TICKET_ID].comments])
+    assert "SECRET-PHRASE" not in bodies and SENTINEL not in bodies
+    for _code, out, err in outputs:
+        assert SENTINEL not in out + err
+    assert SENTINEL not in (FsWorkStore.open(root).path(slug) / "tracker.yaml").read_text()
