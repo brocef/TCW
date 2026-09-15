@@ -10,11 +10,11 @@ plan predicted would change nothing changed two things.
 | --- | --- | --- |
 | 1 | `7aaf66ae` | The loader contract in `tests/test_environment_hardness.py`, red |
 | 2 | `b94ab11f` | `load_yaml` returns a mapping or raises `yaml.YAMLError` |
-| 3 | TBD | Classified all 30 call sites; `main()` gained a `yaml.YAMLError` handler |
-| 4 | TBD | `validate` parses directly and shape-checks the names TCW owns |
-| 5 | TBD | The rule stated on `WorkStore.check` in `tcw/store/base.py` |
+| 3 | `edfe5733` | Classified all 30 call sites; `main()` gained a `yaml.YAMLError` handler |
+| 4 | `edfe5733` | `validate` parses directly and shape-checks the names TCW owns |
+| 5 | `edfe5733` | The rule stated on `WorkStore.check` in `tcw/store/base.py` |
 | 6 | — | End-to-end by hand; no diff |
-| — | TBD | Changelog, release note, validation guide |
+| — | `9e8b7e08` | Changelog, release note, validation guide |
 
 ## Acceptance criteria
 
