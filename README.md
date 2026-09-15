@@ -496,13 +496,37 @@ never written through — `import` and `link` refuse it and name the item.
 
 Five limits to know. A ticket bound to several parts moves only when the last open
 part here moves; parts in other nodes are not seen. On a workflow that lets anyone start a ticket from any status,
-two people can both take the same ticket, and TCW does not stop that. Two runs by the
+two people can both take the same ticket, and TCW does not stop that outside strict
+mode (below). Two runs by the
 same Jira account at the same moment can both create an item. Each node keeps its
 own bindings: importing one ticket in two nodes of a workspace, even nodes sharing
 inherited settings, gives two items, one in each. And a ticket held by a finished
 item can be bound to a second item, open or finished, with no warning — a discarded
 item's ticket is meant to be available again, and TCW cannot tell that case from the
 other.
+
+**Strict mode: no work without a ticket.** Set `strict: true` in the `tracker` block
+when every piece of work must come from a ticket you have claimed. Then:
+
+- `tcw work new` and `tcw work inbox accept` refuse and point you at
+  `tcw work tracker import <ticket>`. `new --epic` is allowed; epics are never gated.
+- `tcw work start` refuses an item with no ticket. For a bound item it claims the
+  ticket *first*, and starts the item only if the claim worked.
+- `submit`, `rework` and completing as `done` read the ticket first and refuse unless
+  it is assigned to you and is where the item's last step left it. A `--worktree`
+  item is checked before anything is merged.
+- A claim on a workflow that would let a second person claim the same ticket is
+  refused, by `start` and by `import`; the ticket is left claimed for you to release.
+- Discarding is always allowed. `drop` refuses an item that was ever bound — discard
+  it instead, so the record stays.
+- `tcw serve` refuses the same changes, since it cannot check a ticket, and names the
+  command to use.
+
+A refusal changes nothing and says what to fix. There is no flag to get past it;
+`--force` and `--take-over` do not. Strict mode needs Jira: while it cannot be
+reached, gated commands refuse. It also needs `statuses.active`,
+`statuses.completed` and a `statuses.discarded` covering every discard reason, which
+`tcw validate` checks. To turn it off, set `strict: false` or remove the key.
 
 Two guarantees worth stating plainly. A project with no `tracker` block behaves
 exactly as before, with no new required setting and no network access. And

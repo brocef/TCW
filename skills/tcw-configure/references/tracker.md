@@ -30,8 +30,8 @@ work:
 
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.claim`, and optional `statuses` and
-`timeout-seconds` (default 15). All but the last are required once the node's block is merged with
+`credentials.token-env`, `transitions.claim`, and optional `statuses`, `strict` and
+`timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
 parent's. Unknown keys are reported rather than
 ignored, so a config written for a later release complains instead of silently doing
@@ -64,6 +64,23 @@ An unknown key, a blank or non-text name, a resolution other than `wontfix`,
 `duplicate` or `superseded`, or a block without `active` is a problem `tcw validate`
 reports, and the whole tracker block then reads as not configured. Like
 `credentials` and `transitions`, `statuses` merges from ancestors key by key.
+
+`strict: true` makes a claimed ticket required for local work (what it refuses is in
+`commands.md`, "Strict mode"). It must be a boolean, and it needs `statuses.active`,
+`statuses.completed`, and `statuses.discarded` as one status name or a mapping of all
+three of `wontfix`, `duplicate` and `superseded` — otherwise `tcw validate` reports
+the missing key. A block with problems does **not** turn strict mode off: gated
+commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
+removing the key; it merges from ancestors like any other key.
+
+```yaml
+        strict: true
+        statuses:
+            active: In Progress
+            review: In Review
+            completed: Done
+            discarded: Won't Do
+```
 
 ## Sharing settings from a parent node
 
