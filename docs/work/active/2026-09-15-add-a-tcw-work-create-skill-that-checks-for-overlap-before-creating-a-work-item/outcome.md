@@ -135,7 +135,7 @@ and stopped before its first write.
 2. **Mutation check 1 was wrong as written.** Changing only B13's text makes
    the new selector find no assertion, which fails for a different reason.
    Checking the wrong-route property needs the row's selector changed too.
-3. **The skill body is 156 lines**, over the plan's "under 150". Nothing enforces
+3. **The skill body is 156 lines (168 after the rework)**, over the plan's "under 150". Nothing enforces
    it. The rest is the seven-row, four-mode table and the body template; cutting
    either would remove content an agent needs.
 4. **The plan described the routing row as a 4-tuple with a fourth field that
@@ -177,3 +177,58 @@ and stopped before its first write.
 - `bllm` was unavailable (disabled for maintenance) during the spec review. Not
   reported to the llama inbox, because it was a deliberate maintenance state,
   not a fault.
+
+## Rework pass (after `rework.md`, 2026-09-15)
+
+The first pass was rejected at verify. `rework.md` lists six findings, A–F. All
+six are fixed in `ec821671` (the skill and the release note), and spec D1 now
+matches (`ab6e4c3b`).
+
+- **A — staged commits.**
+  - Step 4's commit is now `git -C <store folder> add -- <absolute paths>`,
+    then `git -C <store folder> commit -m "…" -- <absolute paths>`.
+  - The old command also had no `-m`, which would have opened an editor. The
+    verifier did not name that gap; the fix covers it.
+  - Step 1's inbox entry now commits too.
+- **B — step 0's reach.** Every `tcw` and `git` command in steps 1–4 runs from
+  the primary checkout. That now names step 1's inbox entry and the strict-mode
+  fallback.
+- **C — delegated blockers.** A delegated run whose brief is silent, or
+  describes a blocker that would need confirming, creates nothing. It returns
+  `needs decision: blockers`, with step 2's `blocks` lines as candidates. The
+  brief gained a blockers field.
+- **D — smaller gaps.**
+  - Delegated references and origin fall back to "none given in the brief".
+  - `revised` is reported once every revised artifact exists, which may be the
+    spec alone.
+  - A discarded match's resolution goes in the reason part of the outcome line.
+  - A folder entry's file is the one `tcw work inbox show` prints as its body.
+- **E — permissions.** `Bash(grep *)` added to `allowed-tools`, and no
+  `$(...)` substitution remains in the skill (`grep -c '\$('` prints 0).
+- **F — release note.** It now says that when someone is already working on
+  the matching item, the skill tells you and changes nothing.
+
+### Write-path check (the rework's new by-hand run)
+
+This ran in a freshly seeded eval fixture outside the checkout
+(`python evals/seed_fixture.py <scratch>/fixture2`), with the store at
+`<fixture>/docs/work`. It followed the fixed step 4 commit text exactly.
+`git status --porcelain` printed nothing after each step.
+
+- **(g) Created item.** `tcw work new "Paginate the invoice list" --tag cli`,
+  with the body piped in, then the two-line add/commit on `tcw work path <slug>`.
+  Committed as `ac06366`.
+- **(h) Raw inbox entry.** `export-times-out.md` was written under
+  `tcw work inbox path`, then add/commit. Committed as `db0947f`. This is the
+  case that failed before the fix.
+- **(i) Append to a tracked entry.** A `## Added 2026-09-15` section was
+  appended to `slow-login.md`, then add/commit. Committed as `6653818`.
+  `tcw work inbox show slow-login` prints the added section.
+
+### Re-checked
+
+- **AC 1:** the Python check prints `AC1 ok`.
+- **AC 2:** no string missing.
+- **Targeted tests:** 192 passed.
+- **`tcw capabilities check`:** `capabilities OK`.
+- **Bare `pytest` at `ab6e4c3b`:** **3368 passed** (12m37s).
