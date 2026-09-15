@@ -15,9 +15,11 @@ this tree before it was fixed, and each reproduction is now a test.
 
 ## The test result
 
-`pytest tests/` — **3401 passed, 2 skipped**, from a baseline of 3367 passed, 2
-skipped. 34 tests added, one removed and three re-pointed (below). No test was
-skipped, disabled or deleted to get green.
+`pytest tests/` — **3394 passed, 2 skipped** in 8m25s, from a baseline of 3367
+passed, 2 skipped on the plan commit. A net +27: tests were added, one was deleted
+because this item supersedes it, and one parametrisation lost a case to a test of
+its own (all listed below). No test was skipped, disabled or quarantined to get
+green, and the two skips are the pre-existing ones.
 
 Verified by hand as well, driving the real CLI against the fake rather than reading
 an `Outcome` object — the plan's Verification section asked for this, and it is what
