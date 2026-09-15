@@ -160,6 +160,15 @@ def test_link_refuses_a_malformed_binding_on_another_item(node, fake):  # noqa: 
     assert other in err
 
 
+def test_link_refuses_an_invalid_part(node, fake):  # noqa: F811
+    """`--part` is validated before the store is opened or the tracker is called,
+    so a bad one costs nothing and is refused naming the value."""
+    slug = plain_item(node)
+    err = _refused_without_change(node, fake, slug, TICKET, "--part", "Not A Part")
+    assert "Not A Part" in err
+    assert fake.requests == []
+
+
 def test_link_refuses_an_unknown_ticket(node, fake):  # noqa: F811
     """The ticket read is what proves the key exists, and it is the one tracker call
     `link` keeps. A typo must not leave a binding pointing at nothing."""
