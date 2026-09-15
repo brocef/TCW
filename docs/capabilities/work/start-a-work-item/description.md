@@ -23,3 +23,6 @@ also claims that ticket (`work/synchronize-external-tracker-work`). The claim co
 after the local start and never blocks it: if the ticket is held by someone else or
 Jira cannot be reached, the item is still started, the command exits 1 saying so,
 and the claim is retried by the next lifecycle command or `tcw work tracker sync`.
+Under `work.tracker.strict: true` the order reverses: an item with no ticket is not
+started, and a bound item's ticket is claimed first, the item starting only when the
+claim succeeded (`work/require-tracker-backed-work`).

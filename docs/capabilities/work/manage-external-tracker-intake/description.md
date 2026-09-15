@@ -30,7 +30,8 @@ It is never treated as proof of a claim: importing re-reads the ticket and refus
 when Jira disagrees.
 
 Four limits are accepted rather than prevented. On a workflow that offers the claim
-from every status, two people can both claim one ticket. Two runs by the same Jira
+from every status, two people can both claim one ticket (under `work.tracker.strict:
+true`, `import` refuses to create an item for such a claim). Two runs by the same Jira
 account at the same moment can both create an item. Each node keeps its own
 bindings, so importing one ticket in two nodes gives an item in each. And a ticket
 held by a finished item can be bound to a second item, open or finished, without a
@@ -40,4 +41,4 @@ one makes `import` and `link` refuse and name the item, rather than mistaking an
 unrelated ticket on the new site for one already bound.
 Keeping the ticket in step with the item's lifecycle, including claiming a linked
 ticket when I start the item, is `work/synchronize-external-tracker-work`; requiring
-tracked work is a separate capability that is not yet built.
+tracked work is `work/require-tracker-backed-work`.

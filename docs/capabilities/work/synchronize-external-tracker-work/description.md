@@ -1,6 +1,7 @@
 As a developer whose work items are bound to Jira tickets, I can move an item
 through its lifecycle and have its ticket follow, without the tracker ever undoing
-or blocking what I did locally.
+or blocking what I did locally — unless I turn on `work.tracker.strict`, where the
+ticket authorizes local changes before they happen (`work/require-tracker-backed-work`).
 
 `tcw work start` claims a bound item's ticket, by the same rules `tcw work tracker
 import` uses. `submit`, `rework`, `complete` and discarding move the ticket to the
