@@ -148,6 +148,9 @@
 2026-09-12-configure-an-external-tracker-and-read-its-tickets:
   resolution: done
   resolved: '2026-09-14'
+2026-09-12-refuse-local-work-that-no-claimed-tracker-ticket-authorizes:
+  resolution: done
+  resolved: '2026-09-15'
 2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app:
   resolution: done
   resolved: '2026-09-14'
