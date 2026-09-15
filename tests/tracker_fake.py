@@ -62,6 +62,7 @@ class Ticket:
     status: str = "To Do"
     assignee: str | None = None           # account id
     description: str | None = "The ticket's product text."
+    comments: list = field(default_factory=list)      # (author account id, document)
 
 
 @dataclass
@@ -168,6 +169,16 @@ class FakeJira:
                     ticket.status = to
                     return (204, {}, b"")
             raise jira._for_status(400, {}, f"Action {wanted} is invalid", path)
+        if match := re.fullmatch(r"/rest/api/3/issue/([^/?]+)/comment", path):
+            self._find(match[1]).comments.append((me[0], body["body"]))
+            return self._json({"id": str(len(self._find(match[1]).comments))})
+        if match := re.fullmatch(
+                r"/rest/api/3/issue/([^/?]+)/comment\?orderBy=-created&maxResults=(\d+)",
+                path):
+            newest = list(reversed(self._find(match[1]).comments))[:int(match[2])]
+            return self._json({"comments": [
+                {"author": {"accountId": author}, "body": document}
+                for author, document in newest]})
         if match := re.fullmatch(r"/rest/api/3/issue/([^/?]+)/assignee", path):
             self._find(match[1]).assignee = body["accountId"]
             return (204, {}, b"")

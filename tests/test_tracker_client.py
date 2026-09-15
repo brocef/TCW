@@ -216,6 +216,29 @@ def test_a_missing_or_unexpected_description_is_empty(monkeypatch, value):
     assert _client(monkeypatch, rec).description("10052") == ""
 
 
+def test_add_comment_posts_a_document(monkeypatch):
+    rec = Recorder()
+    doc = {"type": "doc", "version": 1, "content": []}
+    _client(monkeypatch, rec).add_comment("10052", doc)
+    assert (rec.last["method"], rec.last["path"], rec.last["body"]) == (
+        "POST", "/rest/api/3/issue/10052/comment", {"body": doc})
+
+
+def test_recent_comments_are_newest_first_with_their_text(monkeypatch):
+    path = "/rest/api/3/issue/10052/comment?orderBy=-created&maxResults=100"
+    body = {"type": "doc", "version": 1, "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": "TCW: "},
+                                          {"type": "text", "text": "done."}]},
+        {"type": "paragraph", "content": [{"type": "text", "text": "tcw-event: x-1"}]}]}
+    rec = Recorder({path: (200, {}, json.dumps({"comments": [
+        {"author": {"accountId": "acct-a"}, "body": body},
+        {"author": None, "body": "not a document"},
+    ]}).encode())})
+    assert _client(monkeypatch, rec).recent_comments("10052") == [
+        ("acct-a", "TCW: done.\ntcw-event: x-1"), ("", "")]
+    assert (rec.last["method"], rec.last["path"]) == ("GET", path)
+
+
 # ── the timeout, on every operation ──────────────────────────────────────────
 
 
@@ -227,6 +250,8 @@ OPERATIONS = [
     ("apply_transition", ("10052", "21")),
     ("assign", ("10052", "acct-a")),
     ("description", ("10052",)),
+    ("add_comment", ("10052", {"type": "doc", "version": 1, "content": []})),
+    ("recent_comments", ("10052",)),
 ]
 
 

@@ -505,6 +505,24 @@ item can be bound to a second item, open or finished, with no warning — a disc
 item's ticket is meant to be available again, and TCW cannot tell that case from the
 other.
 
+**Comments on the ticket.** Set `comments: true` in the `tracker` block and each
+move also leaves a short comment on the ticket, such as
+`TCW: "Checkout page" (part api) went to review.`, for anyone who follows the work
+in Jira rather than in the repository. A `link` template adds a link, for example
+`link: https://tcw.example.com/work/{slug}` for a team that hosts `tcw serve`; the
+only placeholders are `{project}` and `{slug}`. Nothing from `spec.md`, `plan.md` or
+the other lifecycle documents is ever copied. A comment is posted only while the
+ticket is assigned to you, and a ticket held by someone else gets none. When a
+comment cannot be posted, the command exits 1, `show` prints a `tracker comment:`
+line, and `tcw work tracker sync` sends it later. Before resending, it looks for the
+comment on the ticket, so a post that landed without an answer is not repeated.
+Limits: a newer move's comment replaces one still waiting; two runs at once, or an
+edited or deleted comment, can still give a repeat; moves in `tcw serve` post
+nothing. On a Jira Service Management project a comment may be visible to
+customers, so leave comments off there unless item titles may be seen. Every copy
+of `tcw` on the project must understand these keys before you set them: an older
+one treats the whole `tracker` block as broken.
+
 **Strict mode: no work without a ticket.** Set `strict: true` in the `tracker` block
 when every piece of work must come from a ticket you have claimed. Then:
 

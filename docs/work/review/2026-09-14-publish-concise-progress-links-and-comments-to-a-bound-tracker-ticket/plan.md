@@ -87,9 +87,10 @@ task leaves the suite green.
 
 **Files:** `tcw/work/cli.py`, `tests/test_tracker_comment.py`.
 
-- `_deliver_after` returns `(status_failed, comment_failed)`. Every caller
-  treats either as exit 1. `_complete`'s auto-delete looks at `status_failed`
-  only, and prints the comment failure.
+- `_deliver_after` returns 0, 1 when the status step failed, or 2 when only the
+  comment did. Every caller exits `min(delivered, 1)`, and `_complete`'s auto-delete
+  keeps the item only on 1. (Changed while implementing: the plan first said a
+  tuple, but every caller already used the value as an exit code.)
 - `_tracker_sync`: `--all` selects items with `sync` or `comment`.
   - An item with a `sync` record runs `deliver` as now, then `retry` when the
     status step ends `current`, `none` or `held`. While the status step is still

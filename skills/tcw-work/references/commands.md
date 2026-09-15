@@ -167,6 +167,28 @@ tracker code is imported.
   record is written and the item is kept; move the ticket by hand, then
   `tcw work delete`.
 
+### Progress comments
+
+With `work.tracker.comments: true`, after the status step each lifecycle move posts
+one comment: `TCW: "<title>" (part <part>) <started | went to review | went back to
+work | was completed | was discarded as <resolution>>.`, the `link` template's URL
+when set, and a `tcw-event: <move>-<hex>` line. No lifecycle document is copied.
+
+- **Status step pending/conflicting:** the comment is owed with it (`comment` record
+  in `tracker.yaml`, beside `sync`), whoever holds the ticket.
+- **Otherwise:** posted only when the ticket is assigned to the signed-in account;
+  not → no comment, a `→` line, and any older owed comment is dropped.
+- **Post failed:** exit 1, `comment` record (`move`, `event`, `state`, `reason`,
+  `at`). One at a time; a later move's comment replaces it. An item about to be
+  auto-deleted takes no record and is still removed.
+- **`sync`:** an item with only a `comment` record skips the status step. Before
+  posting, it looks for the event among the account's newest 100 comments and
+  clears the record when found. It drops the record when comments are off, when the
+  record is unreadable, or when the ticket is no longer the account's.
+- **`show`** prints `tracker comment: <state> after <move> (<at>): <reason>`; the row
+  reads `ticket: KEY (comment pending)`; `--json` has `tracker.comment`.
+- **Strict mode** does not refuse over an owed comment. `tcw serve` moves post none.
+
 ### Strict mode
 
 With `work.tracker.strict: true`, a ticket authorizes local work **before** it

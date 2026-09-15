@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import copy
 import re
+import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import quote
 
 
 class RefError(Exception):
@@ -357,6 +359,8 @@ class Bound:
     bound: str = field(default="", compare=False)
     # What did not reach the tracker: None, the record, or {"problem": reason}.
     sync: dict | None = field(default=None, compare=False)
+    # A progress comment that did not post, in the same three shapes.
+    comment: dict | None = field(default=None, compare=False)
 
     def key(self) -> tuple[str, str, str, str]:
         return (self.project, self.provider, self.ticket_id, self.part)
@@ -402,7 +406,8 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
                  part=fields_["part"], ticket_id=fields_["ticket.id"],
                  ticket_key=fields_["ticket.key"],
                  ticket_url=_binding_text(ticket.get("url")),
-                 bound=_binding_text(bound), sync=_sync_record(data.get("sync")))
+                 bound=_binding_text(bound), sync=_sync_record(data.get("sync")),
+                 comment=_comment_record(data.get("comment")))
 
 
 SYNC_STATES = ("pending", "conflicting")
@@ -430,6 +435,27 @@ def _sync_record(value: Any) -> dict | None:
     return record
 
 
+COMMENT_FIELDS = ("move", "event", "state", "reason", "at")
+
+
+def _comment_record(value: Any) -> dict | None:
+    """A binding's owed `comment`, or `{"problem": reason}` for one that cannot be
+    used. Like `sync`, never makes the binding malformed."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return {"problem": "'comment' is not a mapping"}
+    record = {name: value.get(name) for name in COMMENT_FIELDS}
+    bad = [name for name, item in record.items() if not isinstance(item, str)]
+    if bad:
+        return {"problem": f"'comment' has no text for: {', '.join(bad)}"}
+    if record["state"] not in SYNC_STATES:
+        return {"problem": f"'comment.state' is {record['state']!r}"}
+    if record["move"] not in TRANSITION_IDS or record["move"] == "auto-delete":
+        return {"problem": f"'comment.move' is {record['move']!r}"}
+    return record
+
+
 def unreadable_binding(error: Exception) -> Malformed:
     """The binding a `tracker.yaml` that could not be read or parsed classifies as —
     worded once, for every reader of one."""
@@ -448,7 +474,8 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
                 "part": binding.part,
                 "ticket": {"id": binding.ticket_id, "key": binding.ticket_key,
                            "url": binding.ticket_url},
-                "bound": binding.bound, "sync": binding.sync}
+                "bound": binding.bound, "sync": binding.sync,
+                "comment": binding.comment}
     return None
 
 
@@ -1035,6 +1062,10 @@ class TrackerConfig:
     statuses: dict = field(default_factory=dict)
     # Refuse local work no claimed ticket authorizes (`work/require-tracker-backed-work`).
     strict: bool = False
+    # Post a short comment on the ticket for each lifecycle move, with `link` — a URL
+    # template with `{project}` and `{slug}` — appended when set.
+    comments: bool = False
+    link: str = ""
 
 
 # The only `provider` value that parses. A literal in the abstract layer, which is
@@ -1044,7 +1075,9 @@ class TrackerConfig:
 TRACKER_PROVIDERS = ("jira-cloud",)
 
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
-                          "transitions", "statuses", "strict", "timeout-seconds"})
+                          "transitions", "statuses", "strict", "timeout-seconds",
+                          "comments", "link"})
+TRACKER_LINK_PLACEHOLDERS = frozenset({"project", "slug"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # `claim` alone: where a ticket goes for every other move is a *status*, under
 # `statuses`, because only a status can be compared with the ticket to tell a
@@ -1148,6 +1181,13 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
                             f"is true, as one status or one for each of "
                             f"{', '.join(sorted(resolutions))}")
 
+    comments = raw.get("comments", False)
+    if not isinstance(comments, bool):
+        problems.append(f"work.tracker.comments: expected true or false, "
+                        f"got {type(comments).__name__}")
+        comments = False
+    link = _parse_tracker_link(raw.get("link"), problems)
+
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
     claim = nested_str(transitions, "claim", "transitions.claim")
@@ -1176,7 +1216,49 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         timeout_seconds=int(timeout),
         statuses=statuses,
         strict=strict,
+        comments=comments,
+        link=link,
     ), []
+
+
+def _parse_tracker_link(raw: Any, problems: list[str]) -> str:
+    """`work.tracker.link`, appending a problem per defect. Absent is `""`.
+
+    A link with comments off is not a problem: blocks merge key by key, so a child
+    node turning comments off cannot also remove a link its parent set."""
+    if raw is None:
+        return ""
+    where = "work.tracker.link"
+    if (not isinstance(raw, str) or not raw.strip().startswith(("https://", "http://"))
+            or any(char.isspace() for char in raw.strip())):
+        problems.append(f"{where}: expected a URL starting https:// or http://, "
+                        f"with no spaces")
+        return ""
+    try:
+        fields = [(name, spec, conversion) for _text, name, spec, conversion
+                  in string.Formatter().parse(raw) if name is not None]
+    except ValueError as error:
+        problems.append(f"{where}: {error}")
+        return ""
+    if any(spec or conversion is not None for _name, spec, conversion in fields):
+        # `{slug:d}` or `{slug!r}` would pass as a placeholder and fail, or render
+        # wrongly, only when a comment is posted.
+        problems.append(f"{where}: a placeholder is only {{project}} or {{slug}}, with "
+                        f"no format or conversion")
+        return ""
+    names = {name for name, _spec, _conversion in fields}
+    unknown = sorted(names - TRACKER_LINK_PLACEHOLDERS)
+    if unknown:
+        problems.append(f"{where}: unknown placeholder "
+                        f"{', '.join('{' + name + '}' for name in unknown)} (use "
+                        f"{{project}} or {{slug}})")
+        return ""
+    return raw.strip()
+
+
+def link_for(template: str, project: str, slug: str) -> str:
+    """`template` with `{project}` and `{slug}` substituted, each percent-encoded."""
+    return template.format(project=quote(project, safe=""), slug=quote(slug, safe=""))
 
 
 def _parse_tracker_statuses(raw: Any, problems: list[str]) -> dict:

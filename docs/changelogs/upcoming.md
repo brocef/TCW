@@ -79,6 +79,31 @@ category.
   are not gated. Refusals exit 1 and write no `sync` record.
 - `tcw serve`: `_strict_refuses()` answers 409 for create (not epic), start,
   complete with `done`, drop of an ever-bound item, and a PUT of `tracker.yaml`.
+- `work.tracker.comments` (boolean, default false) and `work.tracker.link` (http(s)
+  URL template; placeholders `{project}`, `{slug}` only): `TrackerConfig.comments`,
+  `TrackerConfig.link`, `TRACKER_LINK_PLACEHOLDERS`, `link_for()` (percent-encodes).
+  A `link` with comments off is not a problem, so an inheriting child can turn
+  comments off.
+- `JiraClient.add_comment(issue_id, document)` (`POST /rest/api/3/issue/{id}/comment`)
+  and `JiraClient.recent_comments(issue_id)` (`orderBy=-created&maxResults=100`,
+  `(author account id, text)` pairs); `_document_text()`. The fake tracker stores
+  comments.
+- `tracker.yaml` `comment` record (`move`, `event`, `state`, `reason`, `at`), apart
+  from `sync`: `Bound.comment`, `WorkItem.tracker.comment`, a required nullable
+  `comment` in `WORK_ITEM_SCHEMA`, `with_comment_record()`, carried into `unlinked`.
+  `TTrackerBinding` in the web client gains it.
+- `tcw/tracker/progress.py`: `publish()` after `deliver()` — owes the comment when
+  the status step is pending/conflicting; otherwise reads the ticket and posts only
+  when it is the caller's, skipping (and clearing an older owed comment) when not;
+  `retry()` looks for the owed `tcw-event:` among the caller's newest comments before
+  posting, and clears a record when comments are off, the record is unreadable, or
+  the ticket is no longer the caller's; `hold()`. Event ids are `<move>-<8 hex>`.
+- `_deliver_after` returns 2 when only the comment failed: exit 1, but auto-deletion
+  still removes the item. `tcw work tracker sync --all` also visits items with a
+  `comment` record; an item with only that record skips the status step. A malformed
+  `sync` record beside an owed comment still takes the check-only path, so the
+  comment waits with it. `show` prints `tracker comment: …`; a row notes
+  `comment <state>`; the worktree merge hint names a staged comment record.
 
 ## Changed
 

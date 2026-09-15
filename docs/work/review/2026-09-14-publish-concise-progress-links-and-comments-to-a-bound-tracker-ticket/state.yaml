@@ -10,7 +10,7 @@ tags:
 initiative: 2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge
 blocked_by:
 - slug: 2026-09-12-synchronize-the-work-lifecycle-outward-to-the-tracker
-owner: brocef@users.noreply.github.com
-started: '2026-09-15T13:57:39.432402Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-14-publish-concise-progress-links-and-comments-to-a-bound-tracker-ticket
 branch: work/2026-09-14-publish-concise-progress-links-and-comments-to-a-bound-tracker-ticket
