@@ -455,6 +455,14 @@ default, so a binding on one stays on your machine along with the rest of that
 item. `unlink` keeps a record of what was bound and your
 reason, and like `link` it never changes the ticket in Jira.
 
+**Seeing which ticket an item answers.** A bound item says so wherever you read it:
+`tcw work show` adds a `tracker:` line with the ticket, the provider, the part and
+the ticket's link; its row on `tcw work list` ends with the ticket key; `tcw work show
+--json` carries it as `tracker`; and `tcw serve`'s item page shows the ticket as a
+link. What you see is what the binding records, not what Jira says right now, so
+none of it needs the tracker configured or reachable. A binding file that cannot be
+read is reported in the same places instead of breaking the board.
+
 Because `link` does not claim, **nothing moves a linked ticket for you.** When you
 start work on an item you linked, move the ticket in Jira yourself. `import` is
 still the only command that takes a ticket, but not one that is already linked:

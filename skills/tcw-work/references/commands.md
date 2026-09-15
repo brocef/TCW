@@ -161,6 +161,12 @@ not yet refuse a write. It records provider,
 project id, part, the ticket's stable id, key and URL, the date, and an `unlinked`
 history. It names no account: a binding says two things are the same work, never
 who took the ticket. No credential and no e-mail address.
+**Reading a binding needs no tracker command.** `tcw work show` prints a
+`tracker:` line (ticket, provider, part, URL), a board row ends ` | ticket: <key>`,
+and `show --json` carries `tracker` — `null` when unbound (no file, or unlinked),
+`{"problem": …}` when the file cannot be read, else provider, project, part,
+`ticket` {id, key, url} and `bound`. All three report what the file records, not
+what the tracker says, and need no tracker configured.
 **Never treat a binding as proof of a claim** — `import` re-reads the ticket even
 when a binding exists, and refuses when the tracker disagrees. A binding that is not
 a readable mapping, or two items holding one ticket and part, makes `import` and
