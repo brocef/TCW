@@ -102,3 +102,114 @@ def test_a_broken_block_does_not_switch_strict_off(tmp_path, fake, strict, probl
     st = FsWorkStore.open(root)
     assert (st.tracker_config() is None) is (problem or strict == "yes")
     assert st.tracker_strict() is expected
+
+
+# ── authorize and claim_refusal, directly ────────────────────────────────────
+
+
+def client_for(root: Path):
+    from tcw.tracker.jira import JiraClient
+    st = FsWorkStore.open(root)
+    return st, JiraClient(st.tracker_config()), st.tracker_config()
+
+
+def authorize_now(root: Path, slug: str, target: str):
+    from tcw.tracker.sync import authorize
+    st, client, config = client_for(root)
+    return authorize(st, slug, client, config, target=target)
+
+
+@pytest.fixture()
+def strict(tmp_path, fake):
+    return strict_node(tmp_path, strict=True)
+
+
+def started(root: Path, slug: str, *, submitted: bool = False) -> None:
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    if submitted:
+        st.submit(slug)
+
+
+def test_a_claimed_ticket_where_the_item_left_it_authorizes(strict, fake):
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", A)
+    started(strict, slug)
+    assert authorize_now(strict, slug, "In Review") is None
+
+
+@pytest.mark.parametrize("assignee, words", [(B, "assigned to Bob"),
+                                             (None, "assigned to nobody")])
+def test_a_ticket_not_assigned_to_you_authorizes_nothing_even_at_the_target(
+        strict, fake, assignee, words):
+    slug = bound_item(strict)
+    started(strict, slug)
+    claimed_ticket(fake, "In Review", assignee)
+    reason = authorize_now(strict, slug, "In Review")
+    assert reason and words in reason
+
+
+def test_a_ticket_moved_back_in_the_tracker_authorizes_nothing(strict, fake):
+    slug = bound_item(strict)
+    started(strict, slug)
+    claimed_ticket(fake, "To Do", A)
+    assert "moved in the tracker" in authorize_now(strict, slug, "In Review")
+
+
+def test_a_held_part_in_review_is_authorized_from_active(strict, fake):
+    slug = bound_item(strict)
+    started(strict, slug, submitted=True)
+    claimed_ticket(fake, "In Progress", A)          # C3 held it for another part
+    assert authorize_now(strict, slug, "Done") is None
+
+
+def test_an_unreachable_tracker_authorizes_nothing(strict, fake):
+    slug = bound_item(strict)
+    started(strict, slug)
+    fake.down = True
+    assert "unknown" in authorize_now(strict, slug, "In Review")
+
+
+def test_an_undelivered_change_must_be_synced_first(strict, fake):
+    from test_tracker_sync import RECORD
+    slug = bound_item(strict)
+    started(strict, slug)
+    claimed_ticket(fake, "In Progress", A)
+    with_record(strict, slug, RECORD)
+    assert "tcw work tracker sync" in authorize_now(strict, slug, "In Review")
+
+
+def test_a_claim_on_a_workflow_that_offers_it_everywhere_is_refused(tmp_path, monkeypatch):
+    from tcw.tracker.intake import claim, read_ticket
+    from tcw.tracker.sync import claim_refusal
+    from tracker_fake import GLOBAL, FakeJira
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    fake_ = FakeJira(workflow=GLOBAL)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=True)
+    _st, client, config = client_for(root)
+    outcome = claim(client, read_ticket(client, TICKET_ID))
+    assert outcome.claimed
+    reason = claim_refusal(client, config, TICKET_ID, outcome)
+    assert reason and "second person could claim it too" in reason
+
+
+def test_a_claim_on_the_directed_workflow_is_not_refused(strict, fake):
+    from tcw.tracker.intake import claim, read_ticket
+    from tcw.tracker.sync import claim_refusal
+    _st, client, config = client_for(strict)
+    outcome = claim(client, read_ticket(client, TICKET_ID))
+    assert outcome.claimed and claim_refusal(client, config, TICKET_ID, outcome) is None
+
+
+def test_a_claim_row_1e_from_the_wrong_status_is_refused(strict, fake):
+    from tcw.tracker.intake import claim, read_ticket
+    from tcw.tracker.sync import claim_refusal
+    claimed_ticket(fake, "In Review", A)
+    _st, client, config = client_for(strict)
+    outcome = claim(client, read_ticket(client, TICKET_ID))
+    assert outcome.claimed and outcome.row == "1e"
+    assert "not a claim" in claim_refusal(client, config, TICKET_ID, outcome)

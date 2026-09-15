@@ -292,3 +292,79 @@ def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
         "reason": reason[:REASON_LIMIT], "at": _now(),
     }), revision=revision)
     return Outcome(PENDING, reason, recorded=True)
+
+
+# ── strict mode ──────────────────────────────────────────────────────────────
+#
+# `deliver` never refuses: it runs after a move. These run before one, for
+# `work.tracker.strict`, and never write — a refused change moved nothing, so there
+# is nothing for a `sync` record to say.
+
+
+def authorize(store, slug: str, client, config, *, target: str) -> str | None:
+    """`None` when the ticket bound to `slug` authorizes a change leading to the
+    tracker status `target` (empty when that status is unmapped); otherwise why not.
+
+    Assignment is checked before any status comparison, including "already at the
+    target": a ticket someone else holds authorizes nothing, wherever it is.
+    """
+    item = store.get(slug)
+    bound, _revision = binding_of(store, slug)
+    if not isinstance(bound, Bound):
+        return "it is not bound to a ticket."
+    key = bound.ticket_key
+    if not same_site(bound.ticket_url, config.base_url):
+        return (f"{key}'s binding points at {bound.ticket_url or 'no recorded URL'}, "
+                f"which is not on {config.base_url}.")
+    if bound.sync is not None:
+        what = bound.sync.get("state", "an unreadable record")
+        return (f"{key} has a change that has not reached the tracker ({what}). Run "
+                f"`tcw work tracker sync {slug}` first; if that cannot clear it, fix "
+                f"the ticket in the tracker, or unlink the item and discard it.")
+    try:
+        ticket = read_ticket(client, bound.ticket_id)
+    except TrackerError as error:
+        return (f"the tracker could not answer ({error}), so whether this change is "
+                f"authorized is unknown. Run it again once the tracker answers.")
+    # The mapped status of the item's status or of any earlier one: a part in review
+    # whose ticket C3 held in the active status, because another part shares it, is
+    # where it should be.
+    allowed = tuple(dict.fromkeys(filter(None, (
+        *(target_status(config.statuses, earlier, None)
+          for earlier in _EARLIER.get(item.status, ())), target))))
+    where = " or ".join(f"'{status}'" for status in allowed) or "its mapped status"
+    if ticket.assignee_id != ticket.me_id:
+        holder = ticket.assignee_name if ticket.assignee_id else "nobody"
+        return (f"{key} is assigned to {holder}, not to you. Assign it to yourself in "
+                f"the tracker and put it in {where}, then run this again; discarding "
+                f"the item is always allowed.")
+    if _normalize(ticket.status) not in {_normalize(status) for status in allowed}:
+        return (f"{key} is in '{ticket.status}', not {where}; it was moved in the "
+                f"tracker. Put it back there, then run this again; discarding the item "
+                f"is always allowed.")
+    return None
+
+
+def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:
+    """`None` when a successful claim authorizes work under strict mode; otherwise why
+    not. Asked right after the claim, when the ticket is where the claim leads and so
+    shows whether the workflow would let a second claimant claim it too."""
+    from tcw.tracker.claim import NOT_EXCLUSIVE, assess
+    active = target_status(config.statuses, "active", None)
+    key = outcome.key
+    if active and _normalize(outcome.status) != _normalize(active):
+        return (f"{key} is assigned to you but is in '{outcome.status}', not '{active}', "
+                f"so this is not a claim of it.")
+    try:
+        offered = client.transitions(ticket_id)
+    except TrackerError as error:
+        return (f"{key} was claimed, but whether its workflow can refuse a second "
+                f"claimant could not be read ({error}). TCW leaves the ticket claimed; "
+                f"run this again once the tracker answers.")
+    verdict = assess(config.claim_transition, current_status=outcome.status,
+                     offered=offered, landing_status=active or outcome.status)
+    if verdict.exclusivity == NOT_EXCLUSIVE:
+        return (f"{key} was claimed, but its workflow still offers "
+                f"'{config.claim_transition}' from '{outcome.status}', so a second person "
+                f"could claim it too. TCW leaves the ticket claimed.")
+    return None
