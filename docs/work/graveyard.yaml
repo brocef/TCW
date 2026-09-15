@@ -157,6 +157,9 @@
 ? 2026-09-14-make-eval-checks-measure-what-the-agent-did-working-tree-file-changes-tool-call-routing-and-named-fixture-variants
 : resolution: done
   resolved: '2026-09-14'
+2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket:
+  resolution: done
+  resolved: '2026-09-14'
 2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands:
   resolution: done
   resolved: '2026-09-14'
