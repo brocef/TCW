@@ -82,7 +82,7 @@ Options: give `tracker import` `--parent` and `--initiative`, or let `new --pare
 and `new --initiative` through and require `tracker link` before the child starts
 (the start gate already refuses an unbound child).
 
-## Folded in: from inbox entry `hold-entry.md` (A tracker hold leaves no evidence outside this checkout)
+## Folded in: from inbox entry `2026-09-15-a-tracker-hold-leaves-no-evidence-outside-this-checkout.md` (A tracker hold leaves no evidence outside this checkout)
 
 ### Also: an epic worktree from before strict mode
 
