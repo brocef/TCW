@@ -96,6 +96,30 @@ _BLOCKER = {
 }
 
 _STR = {"type": "string"}
+
+# `WorkItem.tracker`: exactly the three shapes `binding_value` produces, each
+# closed, so a script can rely on `.tracker.ticket.key` meaning what it says.
+_TRACKER = {"oneOf": [
+    {"type": "null"},
+    {"type": "object",
+     "additionalProperties": False,
+     "properties": {
+         "provider": {"type": "string"},
+         "project": {"type": "string"},
+         "part": {"type": "string"},
+         "ticket": {"type": "object",
+                    "additionalProperties": False,
+                    "properties": {name: {"type": "string"}
+                                   for name in ("id", "key", "url")},
+                    "required": ["id", "key", "url"]},
+         "bound": {"type": "string"},
+     },
+     "required": ["provider", "project", "part", "ticket", "bound"]},
+    {"type": "object",
+     "additionalProperties": False,
+     "properties": {"problem": {"type": "string"}},
+     "required": ["problem"]},
+]}
 _STR_OR_NULL = {"type": ["string", "null"]}
 _INT_OR_NULL = {"type": ["integer", "null"]}
 
@@ -128,6 +152,7 @@ WORK_ITEM_SCHEMA: dict[str, Any] = {
         "parent": _STR,
         "owner": _STR,
         "started": _STR,
+        "tracker": _TRACKER,
         "artifacts": {
             "type": "object",
             "additionalProperties": False,

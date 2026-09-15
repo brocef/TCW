@@ -39,6 +39,7 @@ from tcw.store.base import (
     BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
+    binding_value, classify_binding,
     WORK_STATUSES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
@@ -4218,6 +4219,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 capabilities = {} if parsed is None else parsed
             except yaml.YAMLError as e:
                 capabilities = {"_tcw_parse_error": str(e)}
+        tracker = None
+        binding = d / "tracker.yaml"
+        if binding.exists():
+            # Classified in the model, not by `tcw.tracker.intake.read_binding`: a
+            # board read must not import the tracker package. The YAML-error reason
+            # is worded exactly as `read_binding` words it.
+            try:
+                parsed = yaml.safe_load(binding.read_text(encoding="utf-8"))
+                tracker = binding_value(classify_binding(parsed))
+            except yaml.YAMLError as e:
+                tracker = {"problem": f"not valid YAML ({e.__class__.__name__})"}
         return WorkItem(
             slug=d.name,
             title=state.get("title", d.name),
@@ -4239,6 +4251,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             parent=self._parent_slug(d),
             owner=state.get("owner", ""),
             started=state.get("started", ""),
+            tracker=tracker,
         )
 
     @staticmethod

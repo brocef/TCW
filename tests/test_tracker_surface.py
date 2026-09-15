@@ -129,3 +129,60 @@ def test_an_unlinked_binding_has_no_value():
 def test_a_malformed_binding_becomes_a_problem():
     assert binding_value(read_binding('ticket: {id: "1"}\n')) == {"problem": MISSING}
     assert set(binding_value(read_binding("ticket: [\n"))) == {"problem"}
+
+
+# ── show --json and the schema ───────────────────────────────────────────────
+
+
+def test_json_carries_the_bound_value(node):
+    assert show_json(item(node, "Bound", document()))["tracker"] == BOUND
+
+
+def test_json_is_null_for_an_unbound_and_an_unlinked_item(node):
+    unbound = item(node, "Unbound", None)
+    unlinked = item(node, "Unlinked", unlink_document(
+        document(), reason="wrong ticket", today="2026-09-14"))
+    assert show_json(unbound)["tracker"] is None
+    assert show_json(unlinked)["tracker"] is None
+
+
+def test_json_names_the_problem_with_an_unreadable_binding(node):
+    assert show_json(item(node, "Missing keys", 'ticket: {id: "1"}\n'))["tracker"] \
+        == {"problem": MISSING}
+    assert set(show_json(item(node, "Not YAML", "ticket: [\n"))["tracker"]) \
+        == {"problem"}
+
+
+@pytest.mark.parametrize("where", ["tracker", "ticket"])
+def test_the_schema_refuses_an_extra_key(node, where):
+    doc = show_json(item(node, "Bound", document()))
+    target = doc["tracker"] if where == "tracker" else doc["tracker"]["ticket"]
+    target["claimed-by"] = "someone"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(doc, WORK_ITEM_SCHEMA)
+
+
+def test_the_schema_refuses_a_problem_with_anything_beside_it(node):
+    doc = show_json(item(node, "Bound", document()))
+    doc["tracker"] = {"problem": "x", "ticket": BOUND["ticket"]}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(doc, WORK_ITEM_SCHEMA)
+
+
+# ── serve agrees ─────────────────────────────────────────────────────────────
+
+
+def test_serve_detail_carries_the_same_value_as_show_json(node):
+    from tcw.serve import HOST, TcwServer
+    slug = item(node, "Bound", document())
+    httpd = TcwServer((HOST, 0), node)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://{HOST}:{httpd.server_port}/api/work/{slug}") as res:
+            payload = json.loads(res.read())
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+    assert payload["item"]["tracker"] == show_json(slug)["tracker"] == BOUND

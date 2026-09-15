@@ -2264,6 +2264,10 @@ class WorkItem:
     parent: str = ""                # slug of the parent item; "" == top-level (node relation)
     owner: str = ""                 # claimant identity; empty for legacy/unclaimed active work
     started: str = ""               # UTC claim timestamp
+    # The tracker binding, as `binding_value` renders it: None when unbound,
+    # {"problem": reason} when unreadable, else provider/project/part/ticket/bound.
+    # What the binding records — never evidence that a ticket was claimed.
+    tracker: dict | None = None
 
 
 @dataclass(frozen=True)
