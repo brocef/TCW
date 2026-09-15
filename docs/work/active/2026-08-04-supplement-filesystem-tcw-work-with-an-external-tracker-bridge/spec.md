@@ -18,8 +18,14 @@ capability is removed.
 | `work/synchronize-external-tracker-work` | new, seeded `Missing` | C3 |
 | `work/require-tracker-backed-work` | new, seeded `Missing` | C4 |
 | `work/read-a-work-item` | changed | C5 |
-| `work/open-a-work-item` | changed | C5 |
-| `work/manage-external-tracker-intake` | changed again | C6 |
+| `work/view-the-board` | changed | C5 |
+| `work/manage-external-tracker-intake` | changed again | C6, and again by C5 |
+
+**Corrected 2026-09-14 by C5's spec.** This table first named
+`work/open-a-work-item` for C5. That capability describes `tcw work new`, which C5
+does not touch; `tcw work list` is `work/view-the-board`. C5 also changes
+`work/manage-external-tracker-intake`, whose text describes where the binding can
+and cannot be edited.
 
 The request named two capabilities. This spec names four, because the request's
 `work/synchronize-external-tracker-work` bundled two things the decomposition
@@ -355,6 +361,13 @@ moves to C3, which owns the state and should surface what it creates.
 - The web app displays the binding and does not mutate it. Note that C2, not C5,
   is where this is won or lost — see Risk 1.
 
+**Settled by C5's own spec on 2026-09-14:** a `WorkItem.tracker` field, no
+`SCHEMA_VERSION` bump, with the binding's classification moved into the model so
+the store can populate the field without loading `tcw.tracker`. Every `--json`
+document gains `"tracker": null` for an unbound item, which is an exception to
+criterion 1 stated in C5's spec. C5 runs before C3 so that C3 extends an identity
+that already prints.
+
 Blocked by: C2. Genuinely independent of C3 and C4 now that the sync-state
 indicator has moved to C3, and it must not be chained to them — a false blocker
 is a lie the tool enforces.
@@ -486,7 +499,7 @@ writes no code.
 
 | # | C1 | C2 | C3 | C4 | C5 | C6 |
 | - | -- | -- | -- | -- | -- | -- |
-| 1 | yes | yes | yes | yes | yes | yes, with one exception — see below |
+| 1 | yes | yes | yes | yes | yes, except `--json` gains `"tracker": null` — see C5's spec | yes, with one exception — see below |
 | 2 | n/a — no claim exists until C2 | yes | n/a | n/a | n/a | n/a — `import`'s claim is untouched |
 | 3 | n/a — the idempotency key is C2's | yes | n/a | n/a | n/a | n/a — as 2 |
 | 4 | n/a | yes | n/a | n/a | n/a | n/a — as 2 |
