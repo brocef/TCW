@@ -213,3 +213,71 @@ Strict mode refuses while a record exists. Take an active item started as
 
 **Suggested fix:** exit 1 when a slug named on the command line is skipped, and
 mention `TCW_WORK_OWNER` in the strict refusal.
+
+## Folded in after triage discussion (2026-09-15)
+
+GitHub #41 was held back at triage and then accepted into this item by the maintainer,
+with its scope fixed to the issue's "discard only" option: a discard may move an
+unassigned ticket; every other move keeps today's assignment check.
+
+## Origin: GitHub issue #41
+
+GitHub issue [#41](https://github.com/brocef/TCW/issues/41), filed 2026-09-15 by @brocef:
+**A status move refuses an unassigned ticket, so discarding unstarted work leaves its ticket open**
+
+> ### Motivation
+>
+> Every status move checks that the ticket is assigned to the signed-in account before moving it. For work that was started with `tcw work start`, that is right: the claim assigned the ticket. But a common shape never goes through a claim: a backlog item is bound to an unassigned ticket, and then the work is dropped. The discard is refused in Jira, so the ticket stays open, even though the workflow allows the transition and nobody else holds the ticket.
+>
+> This is easy to hit when adopting the integration. A team queue usually selects `assignee IS EMPTY` tickets, as ours does, and binding a backlog of existing items leaves every ticket unassigned until someone starts it. In our first real use, 115 of 125 bound tickets were unassigned, so discarding any of those items leaves a stale open ticket.
+>
+> Environment: tcw 2.2.0, macOS 26.6.2, pip into a pyenv-managed Python 3.14, Jira Cloud company-managed project.
+>
+> Steps (workflow: To Do → In Progress → In Review → Done, plus `Cancel` from every open status to `Won't Do`; no conditions or validators on any transition):
+>
+> ```yaml
+> work:
+>     tracker:
+>         provider: jira-cloud
+>         base-url: https://example.atlassian.net
+>         candidate-query: project = EX AND status = "To Do" AND (assignee = currentUser() OR assignee IS EMPTY)
+>         credentials:
+>             email-env: EX_JIRA_EMAIL
+>             token-env: EX_JIRA_TOKEN
+>         transitions:
+>             claim: Start
+>         statuses:
+>             active: In Progress
+>             review: In Review
+>             completed: Done
+>             discarded: Won't Do
+>         comments: true
+> ```
+>
+> 1. `tcw work new "Example item"` and `tcw work tracker link <slug> EX-3`, where EX-3 is in To Do with no assignee
+> 2. `tcw work complete <slug> --resolution wontfix --confirm`
+>
+> The item is discarded and committed. The command exits 1 with:
+>
+> ```text
+> tcw work complete: <slug> moved to discarded and was committed; EX-3 was not updated in the tracker (conflicting): EX-3 is assigned to nobody, not to you, so it was not moved from 'To Do' to 'Won't Do'. Run `tcw work tracker sync <slug>` once that is resolved.
+> ```
+>
+> The ticket stays in To Do with no resolution. The only way through is to assign the ticket to yourself in Jira and then run `tcw work tracker sync <slug>`, which then moves it to Won't Do and posts the owed comment. For comparison, the same discard after `tcw work start` (which assigns the ticket) moves it to Won't Do straight away.
+>
+> ### Description
+>
+> Treat an unassigned ticket as movable by the account running the command, at least for a discard, instead of as held by someone else. Two ways this could work:
+>
+> - **Discard only.** A discard may move an unassigned ticket, since closing work nobody started takes nothing from anyone. Other moves keep today's check, because they only happen after `start` has claimed the ticket anyway.
+> - **Assign first, as the claim does.** When a move finds the ticket unassigned, assign it to the caller and then transition it, as `import` and `start` already do for the claim. This could sit behind a setting such as `work.tracker.take-unassigned: true` for teams that want unassigned tickets left alone.
+>
+> Either way, a ticket assigned to a *different* account should still be refused, as now.
+>
+> This concerns the **work** axis (tracker sync).
+>
+> ### Benefits
+>
+> - Dropping backlog work closes its ticket, with no stale open tickets left behind.
+> - Teams can bind an existing backlog without assigning every ticket to one person first, which also keeps the shared "unassigned and ready" queue meaningful.
+> - The refusal message no longer describes an unassigned ticket as if another person held it.
