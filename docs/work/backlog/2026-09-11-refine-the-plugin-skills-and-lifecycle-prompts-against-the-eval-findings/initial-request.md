@@ -17,8 +17,8 @@ exactly this reason, and that judgement is recorded in its `refined-outcome.md`.
 The parent plan's task 12 carries the routing. Its two rules, and the caveat that
 matters more than either:
 
-- **A nonce that never arrives** points at the injection layer — the six
-  composing skills, the resolver, or the binding schema — and earns a pytest
+- **A nonce that never arrives** points at the injection layer — the composing
+  skill, the resolver, or the binding schema — and earns a pytest
   guard rather than a wording change.
 - **A nonce that arrives and is ignored** points at prose, in `bookend` or in the
   stage routers. The agent read it and did not act.
@@ -40,13 +40,17 @@ entirely the wrong layer.
 2. Deletion is a legitimate outcome where a transcript shows wasted work.
 3. Prefer "do X because Y causes Z" over an all-caps MUST.
 
-## The composing skill is six files, not one
+## The composing skill is one file
 
-`skills/tcw-work-stage/SKILL.md` plus five near-identical `tcw-work-stage-*`
-files. An injection-layer fix applied to one leaves five unfixed, and the parity
-guards in `tests/test_skill_lifecycle_parity.py` are parametrised over all six —
-so a partial fix turns the suite red rather than shipping quietly. That is the
-good outcome; do not work around it by narrowing the guard.
+`skills/tcw-work-stage/SKILL.md`. It was six files when this item was filed; the
+skill restructure deleted the five per-stage copies, and the parity guard in
+`tests/test_skill_lifecycle_parity.py` is now keyed to the one skill
+(`COMPOSING_SKILLS = {None: STAGE_SKILL}`). `skills/documentation-sync` also
+calls `tcw work stage prompt`, so check it when changing how the prompt is
+reached. Do not work around a red parity guard by narrowing it.
+
+The parent plan's task 12 still says "the six composing skills"; that wording is
+out of date. (Corrected by the 2026-09-15 backlog audit.)
 
 ## Documentation and versioning
 
