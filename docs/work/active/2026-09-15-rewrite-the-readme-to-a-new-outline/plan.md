@@ -324,6 +324,14 @@ What the checker and suite cannot establish:
 
 ## Notes
 
+- **Corrected during implementation.** The plan said no file under `tests/`
+  would change. Task 11's new documentation entry broke
+  `tests/test_repo_lifecycle.py::test_this_repos_documentation_entries_parse`,
+  which pins this repository's exact list of entries and triggers. Its expected
+  list gained `docs/guide/jira.md` and `Tracker-Change` (commit `5848e410`). The
+  test still checks what it was written for: that the entries are declared in
+  config and parse.
+
 - `tcw/store/fs.py:4964` says the README describes a retention backfill
   migration. The current README does not (only `README.md:543` names
   `work.retain`), so that comment is already out of date. This item edits no
