@@ -16,11 +16,21 @@ this tree before it was fixed, and each reproduction is now a test.
 
 ## The test result
 
-`pytest tests/` — **3394 passed, 2 skipped** in 8m25s, from a baseline of 3367
-passed, 2 skipped on the plan commit. A net +27: tests were added, one was deleted
-because this item supersedes it, and one parametrisation lost a case to a test of
-its own (all listed below). No test was skipped, disabled or quarantined to get
-green, and the two skips are the pre-existing ones.
+`pytest tests/` — **3400 passed, 2 skipped** in 8m07s, measured on the finished tree.
+The baseline on the plan commit was 3367 passed, 2 skipped, which I re-derived
+independently by collecting a `git archive` of that commit (3120 items, plus the 249
+from `test_documented_cli_surface.py`, which cannot collect outside a git repo) — it
+lands on 3369 exactly, which is what makes the delta trustworthy. Net **+33 items**.
+Tests were added; one was deleted because this item supersedes it; one parametrisation
+lost a case to a test of its own; three were re-pointed. All of those are listed below.
+No test was skipped, disabled or quarantined to get green, and the two skips are the
+pre-existing ones.
+
+An intermediate run reported 3394 passed before the verify-stage fixes below added
+more tests. This document twice carried a figure I had not yet measured — first a
+prediction written before any run finished, then a count taken before the last three
+tests existed. Both are corrected here, and the habit is the finding: a number in this
+section is only ever a reading.
 
 Verified by hand as well, driving the real CLI against the fake rather than reading
 an `Outcome` object — the plan's Verification section asked for this, and it is what
