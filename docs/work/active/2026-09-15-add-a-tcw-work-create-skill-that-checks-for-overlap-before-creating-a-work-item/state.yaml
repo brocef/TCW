@@ -8,3 +8,5 @@ tags:
 - work
 owner: brocef@users.noreply.github.com
 started: '2026-09-15T18:39:03.768567Z'
+worktree: .worktrees/2026-09-15-add-a-tcw-work-create-skill-that-checks-for-overlap-before-creating-a-work-item
+branch: work/2026-09-15-add-a-tcw-work-create-skill-that-checks-for-overlap-before-creating-a-work-item
