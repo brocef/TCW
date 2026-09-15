@@ -282,6 +282,36 @@ class JiraClient:
         value = (payload.get("fields") or {}).get("description")
         return value if isinstance(value, str) else ""
 
+    def add_comment(self, issue_id: str, document: dict) -> None:
+        """Add a comment, given as a Jira document. The v3 document, not v2's wiki
+        markup, in which square brackets are link syntax and text would not read
+        back as written."""
+        self._json("POST", f"/rest/api/3/issue/{issue_id}/comment", {"body": document})
+
+    def recent_comments(self, issue_id: str) -> list[tuple[str, str]]:
+        """The newest page of comments, newest first, as `(author account id, text)`.
+        The text is the document's text nodes joined, a line per block."""
+        payload = self._json(
+            "GET", f"/rest/api/3/issue/{issue_id}/comment?orderBy=-created&maxResults=100")
+        out = []
+        for raw in payload.get("comments") or []:
+            author = raw.get("author") if isinstance(raw.get("author"), dict) else {}
+            out.append((str(author.get("accountId", "")), _document_text(raw.get("body"))))
+        return out
+
+
+def _document_text(node) -> str:
+    """The text of a Jira document: text nodes joined, one line per top-level block."""
+    def walk(value) -> str:
+        if not isinstance(value, dict):
+            return ""
+        if value.get("type") == "text":
+            return str(value.get("text", ""))
+        return "".join(walk(child) for child in value.get("content") or [])
+    if not isinstance(node, dict):
+        return ""
+    return "\n".join(walk(block) for block in node.get("content") or [])
+
 
 def _for_status(status: int, headers: dict, detail: str, path: str) -> TrackerError:
     """Map an HTTP status onto a cause.
