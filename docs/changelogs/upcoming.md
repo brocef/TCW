@@ -8,7 +8,8 @@ category.
 - `WorkItem.tracker`: the item's tracker binding, filled by `FsWorkStore` from
   `tracker.yaml`. `None` when unbound (no file, or no `ticket` key after `unlink`),
   `{"problem": reason}` when unreadable, else `{provider, project, part,
-  ticket: {id, key, url}, bound}`, all strings.
+  ticket: {id, key, url}, bound, sync, comment}`; `sync` and `comment` are the
+  records described below, `null` when none is owed.
 - `WORK_ITEM_SCHEMA` declares `tracker` as a closed `oneOf` of those three shapes.
   `SCHEMA_VERSION` stays 1, per the projection's rule that an added field is not an
   incompatible change; a consumer validating against a saved copy of the earlier
@@ -31,7 +32,7 @@ category.
   `target_status()` in `tcw/store/base.py`.
 - `tcw/tracker/sync.py`: `deliver()` claims for `start` and otherwise moves a bound
   ticket to the mapped status only when it is assigned to the caller and in the
-  expected status; `assess_move()` is the pure check for strict mode to reuse;
+  expected status; `assess_move()` is that check as a pure function;
   `record_unsent()` for a tracker block with problems. Outcomes `current`, `pending`,
   `conflicting`, `held`, `none`; 401/429/unreachable are pending, other tracker
   errors conflicting.
@@ -39,6 +40,13 @@ category.
   move, its commit and `post` hooks (and after a `TransitionCommitError`), and exit 1
   when the ticket did not follow. `complete` delivers before auto-deletion and skips
   the deletion when delivery fails.
+- `expected_statuses(..., shared=)`: when an item for another part of the same ticket
+  is here (open or finished), every earlier mapped status is expected, so the last
+  part completing from `review` moves a ticket that was held in the `active` status.
+  A finished part that was not retained is not seen. `_siblings()` answers both
+  "held" and "shared" in one scan. A held item's earlier `sync` record (claim done),
+  and an unusable record on an item with nothing mapped, are removed by the next
+  delivery or `sync`, so strict mode is not left refusing over them.
 - `tcw work tracker sync [<slug> | --all]`: retries recorded items, skipping items
   whose `owner` is not the local identity; check-only for an item with no record;
   a `held` item counts as success. When `complete`'s worktree merge fails and the
@@ -106,12 +114,6 @@ category.
   `comment <state>`; the worktree merge hint names a staged comment record.
 
 ## Changed
-
-- `expected_statuses(..., shared=)`: when an item for another part of the same ticket
-  is here (open or finished), every earlier mapped status is expected, so the last
-  part completing from `review` moves a ticket that was held in the `active` status
-  instead of reporting it conflicting. A finished part that was not retained is not
-  seen. `_sharing()` became `_siblings()`, one scan returning both answers.
 
 - `Unbound`, `Malformed`, `Bound` and binding classification (`classify_binding`,
   over parsed YAML) moved from `tcw/tracker/intake.py` to `tcw/store/base.py`, so the
