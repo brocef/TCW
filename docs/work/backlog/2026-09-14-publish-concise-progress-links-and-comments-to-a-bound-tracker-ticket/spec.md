@@ -166,7 +166,7 @@ A new optional key in `tracker.yaml`, beside `sync` and separate from it:
 ```yaml
 comment:
   move: submit
-  event: submit-20260915T101500Z
+  event: submit-3f9a1c2e
   state: pending        # or conflicting
   reason: <why it did not post>
   at: <UTC time>
@@ -221,7 +221,11 @@ unlinked history with the rest (`_BINDING_KEYS`, `intake.py:180`).
   - **With only a `comment` record:** the status step is skipped. Today's
     check-only path would call a ticket someone has since moved on "conflicting"
     for ever (`sync.py:268-271`). The comment is posted when a fresh read shows the
-    ticket is assigned to the account; otherwise it stays owed as `conflicting`.
+    ticket is assigned to the account. Otherwise the owed comment is removed with a
+    printed line, by § 2's rule, since it could never clear. That happens, for
+    example, when a workflow reassigns a finished ticket to its reporter.
+  - **When the status step is still `pending` or `conflicting`,** the comment
+    record takes that state and reason too.
   - Exit 1 while either stays owed. The owner rule is unchanged.
 - **`show`** prints `tracker comment: <state> after <move> (<at>): <reason>`. A
   board row's ticket segment gains `comment <state>` when one is owed.
@@ -248,7 +252,7 @@ storage, the two endpoints and comment authors, and each criterion gets a named 
    `tests/test_tracker_strict.py` passes unedited, and a bound item's full lifecycle
    makes no comment request.
 2. With `comments: true`, take a bound item through `start`, `submit`, `rework`,
-   `submit` and `complete --resolution done`, all within the same second. The ticket
+   `submit` and `complete --resolution done`. The ticket
    then has five comments, in order, by the authenticated account. Each names the
    item's title and the move, the five `tcw-event:` ids are distinct, and no
    `tracker.yaml` is left with a `comment` key.
@@ -315,8 +319,11 @@ The final paragraph of `work/synchronize-external-tracker-work`, replacing
 > is ever copied. A comment that did not post is recorded and sent by `tcw work
 > tracker sync`, which first looks for it on the ticket so a post that landed
 > without an answer is not repeated. Limits I accept: a later move's comment
-> replaces one still owed, two runs at once or a deleted comment can still produce a
-> repeat, and comments are not posted for moves made in `tcw serve`.
+> replaces one still owed, and one whose ticket is no longer mine is dropped; two
+> runs at once, an edited or deleted comment, or more than 100 newer comments can
+> still produce a repeat; comments are not posted for moves made in `tcw serve`; and
+> on a Jira Service Management project a comment may be visible to customers, so I
+> leave comments off there unless item titles may be seen.
 
 ## Risks
 
@@ -330,6 +337,8 @@ The final paragraph of `work/synchronize-external-tracker-work`, replacing
    or edited, or more than 100 comments since the lost post can each produce a
    second comment. "Not twice" holds for TCW's own sequential retries. This is
    stated in the capability.
+   A failed second read of the ticket in § 2 is recorded with the state
+   `classify_error` gives it.
 3. **Coalescing drops notes.** If `submit`'s comment is owed and `rework` happens
    before `sync`, only the rework comment is sent. Accepted, as § 4 explains.
 4. **A crash between the commit and the post** leaves no record, as for status
