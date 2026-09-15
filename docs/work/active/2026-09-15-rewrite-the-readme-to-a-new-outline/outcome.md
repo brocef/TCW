@@ -24,7 +24,7 @@ its worktree, starting from `10b4d34b` (the `start` commit).
 | —    | Inbox entry for three defects found along the way                          | `f33e3c96` |
 | —    | Plan corrected to record the missed test                                   | `3873aa1a` |
 
-`README.md` went from 660 lines to 846.
+`README.md` went from 660 lines to 845.
 
 ## Test and check results
 
