@@ -103,7 +103,9 @@ The request's seven goals are adopted unchanged, with one restatement.
 3. An assigned ticket can be imported into one or more repository-local TCW
    items without losing its product prose or its origin.
 4. Tracker status and concise progress links stay current as the TCW lifecycle
-   advances.
+   advances. **Split 2026-09-14:** C3 delivers status; progress links and comments
+   are C7, a child of this epic, so the goal is not complete until C7 is built or
+   deliberately discarded.
 5. A project may refuse local work that no assigned, claimed ticket authorizes.
 6. Jira Cloud works. **Restated:** the request asked for a provider-neutral
    contract with Jira as the first of several providers. This initiative builds
@@ -304,9 +306,24 @@ Blocked by: C1.
   linked and then started leaves its ticket where it was. That gap was accepted
   knowingly.
 
+**Settled by C3's own spec on 2026-09-14**, departing from this boundary's wording
+in three places, each argued there:
+
+- The mapping targets a tracker **status** per local status
+  (`work.tracker.statuses`), not a transition name per move, because only a status
+  can be compared with a ticket to tell "already delivered" from "never delivered".
+  The moves still key on `TRANSITION_IDS`.
+- There is no event log and no event id. The committed local status says where the
+  ticket should be; a `sync` record in the binding exists only while the ticket is
+  not there, so a delivery that succeeds first time writes nothing.
+- `start` claims **after** the local move and records a failed claim as pending or
+  conflicting, rather than refusing the start — identity rule 4 above, with
+  refusal left to C4's strict mode. The claim is retried before any later delivery.
+- Progress links and comments are split into C7.
+
 Blocked by: C2 and C6. Order matters rather than merely being tidy: C3
 teaching `start` to claim while `link` still claims would claim the same ticket
-twice.
+twice. C5 shipped first, so C3 extends C5's indicator.
 
 ### C4 — Refuse work no ticket authorizes
 
@@ -401,11 +418,24 @@ sentences of its body describe `link` as claiming.
 Blocked by: nothing. C2 is complete, so a blocker naming it would be satisfied
 the moment it was written.
 
+### C7 — Publish progress links and comments
+
+**Added 2026-09-14, split from C3.** Short progress links or comments on a bound
+ticket as the lifecycle advances, without copying technical artifacts outward:
+what is stable enough to link to (TCW pushes no branches, and
+`work.repository.url` is optional), when to publish, and how a comment is kept from
+being posted twice (criterion 6). Item
+`2026-09-14-publish-concise-progress-links-and-comments-to-a-bound-tracker-ticket`.
+It is an `--initiative` child so that goal 4 cannot be closed by omission.
+
+Blocked by: C3.
+
 ### Ordering summary
 
 ```
 C1 ──> C2 ──> C3 ──> C4
-        │     └────> (C5 blocked by C2 only)
+        │      └───> C7
+        ├────> C5 (shipped before C3)
         └────> C6 ──> C3
 ```
 
