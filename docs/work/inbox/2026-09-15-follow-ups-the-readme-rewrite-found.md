@@ -10,7 +10,7 @@ item's scope, and each is small.
 Found during `2026-09-15-rewrite-the-readme-to-a-new-outline`, which edited no
 source code. Verified at that item's work branch.
 
-1. **`tcw validate` fails in a fresh checkout of this repository.**
+1. **Resolved on `main` before this entry was triaged; no action needed.** `docs/work/graveyard.yaml` now records the slug below, and `tcw validate` passes in a fresh worktree. Kept for the record. **`tcw validate` failed in a fresh checkout of this repository.**
    `docs/work/backlog/2026-09-09-distinguish-a-blank-artifact-from-an-absent-one-in-the-web-ui/initial-request.md`
    links `tcw://W/2026-08-18-reconcile-read-artifact-with-the-canonical-presence-rule`.
    That item is completed, and completed folders are gitignored, so the link
