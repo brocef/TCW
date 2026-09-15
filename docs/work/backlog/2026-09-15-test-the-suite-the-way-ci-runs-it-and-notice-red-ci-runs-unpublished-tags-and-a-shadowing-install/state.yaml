@@ -1,0 +1,7 @@
+slug: 2026-09-15-test-the-suite-the-way-ci-runs-it-and-notice-red-ci-runs-unpublished-tags-and-a-shadowing-install
+title: Test the suite the way CI runs it, and notice red CI runs, unpublished tags
+  and a shadowing install
+created: '2026-09-15'
+resolution: null
+tags:
+- tech-debt
