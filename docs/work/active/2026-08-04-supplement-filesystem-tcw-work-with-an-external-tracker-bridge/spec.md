@@ -189,6 +189,10 @@ The rules, binding on C2, C4 and C5:
    strict mode because the ticket is not assigned to them. That refusal is
    correct and must name both facts: the item is theirs locally, the ticket is
    not.
+   **Strict-mode exception, decided by C4's spec on 2026-09-15:** under strict mode
+   `start` claims the ticket before the local move and refuses the move when the
+   claim does not succeed, so the second developer gets neither claim. Outside strict
+   mode this rule stands as C3 built it.
 5. Criterion 2's "names the current assignee" means the **tracker** assignee.
 
 This is a decision, not a preference, and a child that needs to depart from it
@@ -349,8 +353,14 @@ twice. C5 shipped first, so C3 extends C5's indicator.
   (`tcw-config.yaml:65`), and a `pre` failure means the store is not touched
   (`tcw/work/hooks.py:115`), so a network call there makes completing an item
   depend on Jira being reachable.
-- Drift blocks a strict-mode mutation: the conflict is recorded and reported, and
-  local artifacts are preserved for explicit reconciliation.
+  **Parked by C4's spec on 2026-09-15.** The permission question could not be
+  settled (no Jira access in the run), so the workflow-definition read is its own
+  backlog item, `2026-09-15-decide-claim-exclusivity-from-a-jira-project-s-workflow-definition`,
+  deliberately not a child of this epic. C4 instead refuses, under strict mode, a
+  claim whose ticket still offers the claim transition from its destination.
+- Drift blocks a strict-mode mutation: the conflict is reported (C4's spec changed
+  "recorded" to "reported": a refused change moved nothing, so C3's record does not
+  apply), and local artifacts are preserved for explicit reconciliation.
 - No bypass flag. Changing strictness is a reviewable `tcw-config.yaml` edit.
 
 Blocked by: C3, because the drift check is C3's.
@@ -496,10 +506,13 @@ own code; these are the ones that only make sense across children.
    whole work store plus captured output for it.
 9. `tcw validate` exits non-zero on a strict tracker configuration missing a
    required claim or terminal mapping, names the missing key, and still lets
-   `tcw work list` and `tcw work show` run. It also exits non-zero when the
-   configured claim transition is available from the state it lands in, and the
-   message says the workflow cannot exclude a second claimant. Checked against a
-   project using Jira's default simplified workflow, which fails this check.
+   `tcw work list` and `tcw work show` run. **Second half restated 2026-09-15 by
+   C4's spec:** under strict mode, a claim whose ticket still offers the claim
+   transition from the status the claim led to is refused, and the message says the
+   workflow cannot exclude a second claimant. Checked against the fake tracker's
+   `GLOBAL` workflow, which behaves as Jira's default simplified workflow does. This
+   is a runtime refusal, not a `tcw validate` failure: that check needs the network,
+   and `tcw validate` must not make a call.
 10. `tcw work show --json` validates against `WORK_ITEM_SCHEMA` for a bound item
     and for an unbound one, and `test_the_schema_declares_exactly_the_model_plus_two`
     passes without being edited to allow an undeclared property.
