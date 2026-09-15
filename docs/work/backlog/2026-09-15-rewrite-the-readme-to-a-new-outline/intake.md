@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-14-rewrite-the-readme-to-a-new-outline.md`
+
+## Inbox body
+
 # Rewrite the README to a new outline
 
 ## Desired outcome
