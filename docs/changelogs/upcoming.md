@@ -19,6 +19,8 @@ category.
   `docs/work/inbox/slow-login.md`, and create no item.
 - Taxonomy Feature `tcw-work-create-skill` and capability
   `skills/tcw-work-create`.
+- `docs/guide/jira.md`: Jira integration guide, checked against the tracker
+  code, tracked in `work.documentation` under a `Tracker-Change` trigger.
 
 ## Changed
 
@@ -29,3 +31,8 @@ category.
 - `tests/test_eval_grading.py`: a `CASE_ROUTING` row may name the assertion it
   pins by its search text, for a case with two assertions of the same predicate.
 - The Codex manifest describes sixteen skills.
+- `README.md` restructured to a new outline (foreword, problem statement,
+  installation, one section per axis, work lifecycle diagram, Jira, web app,
+  contributor setup). It is also the PyPI long description.
+- `docs/guide/work.md`'s tracker section now points at the Jira guide instead of
+  duplicating it.

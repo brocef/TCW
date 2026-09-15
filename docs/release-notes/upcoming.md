@@ -18,3 +18,14 @@ internal module names.
   when you have asked the agent to work without checking in.
 - Work noticed inside a separate worktree still lands on your main board, where
   every session can see it.
+
+## A rewritten README and a Jira guide
+
+- **The README has a new outline.** It explains what TCW is and the problem it
+  solves, how to install it, each of the three axes with its skills and
+  commands, the work lifecycle (with a diagram), the local web app, and how to
+  contribute.
+- **New Jira guide** (`docs/guide/jira.md`). It covers linking work items to
+  Jira tickets, what each lifecycle command does to a linked ticket, and every
+  tracker setting. It replaces the out-of-date tracker section of the work
+  guide.
