@@ -133,3 +133,191 @@ def test_unlink_carries_an_owed_comment_into_the_history():
     data = yaml.safe_load(text)
     assert "comment" not in data and data["unlinked"][-1]["comment"] == OWED
     assert binding_value(read_binding(text)) is None
+
+
+# ── publishing, directly ─────────────────────────────────────────────────────
+
+
+from tcw.tracker import jira  # noqa: E402
+
+
+def comments_node(tmp_path, **tracker):
+    root = make_node(tmp_path, statuses=STATUSES)
+    set_tracker_key(root, "comments", True)
+    for key, value in tracker.items():
+        set_tracker_key(root, key, value)
+    return root
+
+
+def publish_now(root, slug, *, move, status_state="current"):
+    from tcw.tracker.progress import publish
+    st = FsWorkStore.open(root)
+    config = st.tracker_config()
+    return publish(st, slug, jira.JiraClient(config), config, move=move,
+                   status_state=status_state)
+
+
+def retry_now(root, slug):
+    from tcw.tracker.progress import retry
+    st = FsWorkStore.open(root)
+    config = st.tracker_config()
+    return retry(st, slug, jira.JiraClient(config), config)
+
+
+def texts(fake):
+    return [(author, jira._document_text(doc)) for author, doc in
+            fake.tickets[TICKET_ID].comments]
+
+
+def owed(root, slug):
+    return FsWorkStore.open(root).get(slug).tracker["comment"]
+
+
+def test_a_move_posts_one_comment_naming_the_item_and_the_move(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root, "Checkout page")
+    claimed_ticket(fake)
+    assert publish_now(root, slug, move="submit").state == "current"
+    [(author, text)] = texts(fake)
+    lines = text.splitlines()
+    assert author == A and lines[0] == 'TCW: "Checkout page" went to review.'
+    assert lines[-1].startswith("tcw-event: submit-") and len(lines) == 2
+    assert owed(root, slug) is None
+
+
+def test_every_move_has_its_words_and_its_own_event(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root, "Checkout page")
+    claimed_ticket(fake)
+    for move in ("start", "submit", "rework", "submit", "complete"):
+        publish_now(root, slug, move=move)
+    lines = [text.splitlines() for _author, text in texts(fake)]
+    assert [line[0] for line in lines] == [
+        'TCW: "Checkout page" started.', 'TCW: "Checkout page" went to review.',
+        'TCW: "Checkout page" went back to work.', 'TCW: "Checkout page" went to review.',
+        'TCW: "Checkout page" was completed.']
+    assert len({line[-1] for line in lines}) == 5
+
+
+def test_a_discard_names_its_resolution_and_a_part_is_named(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root, "Api", part="api")
+    claimed_ticket(fake)
+    FsWorkStore.open(root).complete(slug, "wontfix", ["acked"])
+    publish_now(root, slug, move="discard")
+    assert texts(fake)[0][1].splitlines()[0] == (
+        'TCW: "Api" (part api) was discarded as wontfix.')
+
+
+def test_the_link_is_substituted_and_carried_as_a_link(tmp_path, fake):
+    root = comments_node(tmp_path, link="https://example.test/w/{project}/{slug}")
+    slug = bound_item(root)
+    claimed_ticket(fake)
+    publish_now(root, slug, move="start")
+    url = f"https://example.test/w/alpha/{slug}"
+    assert texts(fake)[0][1].splitlines()[1] == url
+    [(_author, doc)] = fake.tickets[TICKET_ID].comments
+    marks = [node.get("marks") for block in doc["content"]
+             for node in block["content"] if node.get("marks")]
+    assert marks == [[{"type": "link", "attrs": {"href": url}}]]
+
+
+@pytest.mark.parametrize("assignee", [B, None])
+def test_a_ticket_that_is_not_yours_gets_no_comment_and_no_record(tmp_path, fake,
+                                                                  assignee):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Progress", assignee)
+    outcome = publish_now(root, slug, move="submit")
+    assert outcome.state == "skipped" and fake.tickets[TICKET_ID].comments == []
+    assert owed(root, slug) is None
+
+
+@pytest.mark.parametrize("state", ["pending", "conflicting"])
+def test_a_status_that_did_not_follow_owes_the_comment(tmp_path, fake, state):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    outcome = publish_now(root, slug, move="submit", status_state=state)
+    assert outcome.recorded and fake.writes() == []
+    record_ = owed(root, slug)
+    assert (record_["state"], record_["move"]) == (state, "submit")
+    assert record_["event"].startswith("submit-")
+
+
+def test_a_failed_post_is_owed_and_a_retry_posts_it_once(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    claimed_ticket(fake)
+    fake.fail("POST", "/comment", jira.TrackerUnavailable("down"))
+    assert publish_now(root, slug, move="submit").state == "pending"
+    assert owed(root, slug)["state"] == "pending" and texts(fake) == []
+    assert retry_now(root, slug).state == "current"
+    assert len(texts(fake)) == 1 and owed(root, slug) is None
+
+
+def test_a_post_that_landed_without_an_answer_is_not_repeated(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    claimed_ticket(fake)
+    fake.fail("POST", "/comment", jira.TrackerUnavailable("lost"), apply_first=True)
+    publish_now(root, slug, move="submit")
+    event = owed(root, slug)["event"]
+    assert retry_now(root, slug).state == "current"
+    assert [text.splitlines()[-1] for _a, text in texts(fake)] == [f"tcw-event: {event}"]
+    assert owed(root, slug) is None
+
+
+def test_the_marker_in_another_accounts_comment_does_not_count(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    claimed_ticket(fake)
+    publish_now(root, slug, move="submit", status_state="pending")
+    event = owed(root, slug)["event"]
+    fake.tickets[TICKET_ID].comments.append((B, {"type": "doc", "version": 1, "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": f"tcw-event: {event}"}]}]}))
+    retry_now(root, slug)
+    assert [author for author, _text in texts(fake)] == [B, A]
+
+
+def test_a_retry_on_a_ticket_no_longer_yours_drops_the_comment(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    publish_now(root, slug, move="complete", status_state="pending")
+    claimed_ticket(fake, "Done", B)
+    assert retry_now(root, slug).state == "skipped"
+    assert owed(root, slug) is None and texts(fake) == []
+
+
+def test_a_later_posted_move_replaces_an_owed_comment(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    claimed_ticket(fake)
+    publish_now(root, slug, move="submit", status_state="pending")
+    publish_now(root, slug, move="rework")
+    assert owed(root, slug) is None
+    assert [text.splitlines()[0] for _a, text in texts(fake)] == [
+        'TCW: "Bound item" went back to work.']
+
+
+def test_comments_turned_off_or_a_broken_record_are_cleared(tmp_path, fake):
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    publish_now(root, slug, move="submit", status_state="pending")
+    set_tracker_key(root, "comments", False)
+    assert retry_now(root, slug).state == "cleared" and owed(root, slug) is None
+    set_tracker_key(root, "comments", True)
+    path = FsWorkStore.open(root).path(slug) / "tracker.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["comment"] = "broken"
+    path.write_text(yaml.safe_dump(data))
+    assert retry_now(root, slug).state == "cleared" and owed(root, slug) is None
+    assert fake.writes() == []
+
+
+def test_comments_off_publishes_nothing(tmp_path, fake):
+    root = make_node(tmp_path, statuses=STATUSES)
+    slug = bound_item(root)
+    claimed_ticket(fake)
+    fake.requests.clear()
+    assert publish_now(root, slug, move="submit").state == "none"
+    assert fake.requests == []
