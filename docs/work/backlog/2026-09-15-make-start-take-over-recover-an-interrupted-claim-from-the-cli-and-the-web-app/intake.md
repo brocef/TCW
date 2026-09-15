@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-11-take-over-cannot-recover-a-claim-from-the-cli.md`
+
+## Inbox body
+
 # `tcw work start --take-over` cannot recover an interrupted claim
 
 ## Desired outcome
