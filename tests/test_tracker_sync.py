@@ -25,7 +25,7 @@ from tcw.store.base import classify_binding
 from tcw.store.fs import FsWorkStore, init
 from tcw.tracker.intake import binding_document, unlink_document, with_sync_record
 from tcw.work.projection import WORK_ITEM_SCHEMA
-from tracker_fake import BASE_URL, GLOBAL, SYNC, FakeJira, install_sites
+from tracker_fake import BASE_URL, SYNC, FakeJira, install_sites
 
 SENTINEL = "sentinel-token-do-not-print"
 A, B = "acct-a", "acct-b"
@@ -230,3 +230,248 @@ def test_import_refuses_a_same_id_ticket_from_another_site(tmp_path, two_sites):
     assert old_slug in err and SITE_B in err
     assert "already bound" not in err
     assert new.writes() == []
+
+
+# ── delivery rules, called directly ──────────────────────────────────────────
+
+
+def deliver_now(root: Path, slug: str, *, move: str | None, previous: str | None,
+                check_only: bool = False):
+    from tcw.tracker.jira import JiraClient
+    from tcw.tracker.sync import deliver
+    st = FsWorkStore.open(root)
+    config = st.tracker_config()
+    return deliver(st, slug, JiraClient(config), config, move=move,
+                   previous_status=previous, check_only=check_only)
+
+
+def claimed_ticket(fake, status: str = "In Progress", assignee: str | None = A):
+    held = fake.tickets[TICKET_ID]
+    held.status, held.assignee = status, assignee
+    return held
+
+
+def moved_to(root: Path, slug: str, local: str, resolution: str = "") -> None:
+    """Move the item locally through the store, which delivers nothing: to `review`
+    by starting and submitting, or to `discarded` with `resolution`."""
+    st = FsWorkStore.open(root)
+    if local == "review":
+        st.start(slug, owner="a@example.test")
+        st.submit(slug)
+    else:
+        st.complete(slug, resolution, dod_ack=[], force=True)
+    assert st.get(slug).status == local
+
+
+@pytest.fixture()
+def node(tmp_path, fake):
+    return make_node(tmp_path, statuses=STATUSES)
+
+
+def test_submit_moves_a_claimed_ticket_and_writes_nothing(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake)
+    moved_to(node, slug, "review")
+    before = binding_text(node, slug)
+    outcome = deliver_now(node, slug, move="submit", previous="active")
+    assert outcome.state == "current", outcome
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert binding_text(node, slug) == before
+
+
+def test_a_ticket_already_at_the_target_is_not_written_to(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Review")
+    moved_to(node, slug, "review")
+    assert deliver_now(node, slug, move="submit", previous="active").state == "current"
+    assert fake.writes() == []
+
+
+def test_complete_from_review_with_review_unmapped_checks_against_active(tmp_path, fake):
+    root = make_node(tmp_path, statuses={"active": "In Progress", "completed": "Done"})
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Progress")
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    st.complete(slug, "done", ["acked"])
+    assert deliver_now(root, slug, move="complete", previous="review").state == "current"
+    assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_discard_uses_the_mapping_for_its_resolution(tmp_path, fake):
+    root = make_node(tmp_path, statuses={"active": "In Progress",
+                                         "discarded": {"duplicate": "Duplicate"}})
+    one = bound_item(root, "Duplicate one")
+    claimed_ticket(fake)
+    FsWorkStore.open(root).start(one, owner="a@example.test")
+    moved_to(root, one, "discarded", "duplicate")
+    assert deliver_now(root, one, move="discard", previous="active").state == "current"
+    assert fake.tickets[TICKET_ID].status == "Duplicate"
+
+
+def test_a_discard_with_no_mapping_for_its_resolution_sends_nothing(tmp_path, fake):
+    root = make_node(tmp_path, statuses={"active": "In Progress",
+                                         "discarded": {"duplicate": "Duplicate"}})
+    slug = bound_item(root)
+    claimed_ticket(fake)
+    FsWorkStore.open(root).start(slug, owner="a@example.test")
+    moved_to(root, slug, "discarded", "wontfix")
+    assert deliver_now(root, slug, move="discard", previous="active").state == "none"
+    assert fake.writes() == []
+
+
+def test_rework_moves_the_ticket_back_to_progress(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Review")
+    moved_to(node, slug, "review")
+    FsWorkStore.open(node).rework(slug)
+    assert deliver_now(node, slug, move="rework", previous="review").state == "current"
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+
+
+# Every status offers every move, as Jira's default simplified workflow does
+# (`jira-claim-experiment.md`): the transition to the target is always there, so
+# only the drift check can stop a reopened ticket being dragged forward.
+EVERYWHERE = {status: [("21", "Start Progress", "In Progress"),
+                       ("41", "Ready for Review", "In Review"),
+                       ("31", "Finish", "Done")]
+              for status in ("To Do", "In Progress", "In Review", "Done")}
+
+
+@pytest.mark.parametrize("workflow", ["SYNC", "EVERYWHERE"])
+def test_a_ticket_moved_elsewhere_in_the_tracker_is_not_pulled_back(tmp_path, monkeypatch,
+                                                                     workflow):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    fake_ = FakeJira(workflow={"SYNC": SYNC, "EVERYWHERE": EVERYWHERE}[workflow])
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="To Do", assignee=A)
+    fake_.install(monkeypatch)
+    root = make_node(tmp_path, statuses=STATUSES)
+    slug = bound_item(root)
+    FsWorkStore.open(root).start(slug, owner="a@example.test")
+    FsWorkStore.open(root).submit(slug)
+    outcome = deliver_now(root, slug, move="submit", previous="active")
+    assert outcome.state == "conflicting" and "moved in the tracker" in outcome.reason
+    assert fake_.writes() == []
+    assert record(root, slug)["state"] == "conflicting"
+
+
+def test_a_hand_move_to_the_recorded_target_is_accepted(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake)
+    moved_to(node, slug, "review")
+    fake.down = True
+    assert deliver_now(node, slug, move="submit", previous="active").state == "pending"
+    fake.down = False
+    fake.tickets[TICKET_ID].status = "In Review"        # moved by hand, where TCW meant
+    FsWorkStore.open(node).complete(slug, "done", ["acked"])
+    assert deliver_now(node, slug, move="complete", previous="review").state == "current"
+    assert fake.tickets[TICKET_ID].status == "Done"
+    assert record(node, slug) is None
+
+
+@pytest.mark.parametrize("assignee", [B, None], ids=["someone-else", "nobody"])
+@pytest.mark.parametrize("move", ["submit", "rework", "complete", "discard"])
+def test_a_ticket_not_assigned_to_you_is_never_moved(node, fake, assignee, move):
+    slug = bound_item(node)
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="a@example.test")
+    previous = "active"
+    if move == "submit":
+        st.submit(slug)
+        claimed_ticket(fake, "In Progress", assignee)
+    elif move == "rework":
+        st.submit(slug)
+        st.rework(slug)
+        previous = "review"
+        claimed_ticket(fake, "In Review", assignee)
+    elif move == "complete":
+        st.complete(slug, "done", ["acked"])
+        claimed_ticket(fake, "In Progress", assignee)
+    else:
+        st.complete(slug, "wontfix", dod_ack=[], force=True)
+        claimed_ticket(fake, "In Progress", assignee)
+    outcome = deliver_now(node, slug, move=move, previous=previous)
+    assert outcome.state == "conflicting" and "not to you" in outcome.reason
+    assert fake.writes() == []
+
+
+def test_no_transition_or_two_to_the_target_is_conflicting(tmp_path, monkeypatch):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    for offered, expect in (
+            ([("31", "Finish", "Done")], "offers no transition"),
+            ([("41", "Review", "In Review"), ("43", "Peer Review", "In Review")],
+             "ids 41, 43")):
+        fake_ = FakeJira(workflow={"In Progress": offered, "In Review": [], "Done": []})
+        fake_.account("a@example.test", A, "Alice")
+        fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="In Progress", assignee=A)
+        fake_.install(monkeypatch)
+        (tmp_path / expect.split()[0]).mkdir()
+        root = make_node(tmp_path / expect.split()[0], statuses=STATUSES)
+        slug = bound_item(root)
+        st = FsWorkStore.open(root)
+        st.start(slug, owner="a@example.test")
+        st.submit(slug)
+        outcome = deliver_now(root, slug, move="submit", previous="active")
+        assert outcome.state == "conflicting" and expect in outcome.reason, outcome
+        assert fake_.writes() == []
+
+
+@pytest.mark.parametrize("error, state", [
+    ("400", "conflicting"), ("503", "pending"), ("no-credentials", "pending")])
+def test_errors_are_pending_or_conflicting_by_what_the_tracker_said(node, fake, monkeypatch,
+                                                                    error, state):
+    from tcw.tracker import jira
+    slug = bound_item(node)
+    claimed_ticket(fake)
+    moved_to(node, slug, "review")
+    if error == "no-credentials":
+        monkeypatch.delenv("TCW_A_EMAIL")
+    else:
+        fake.fail("POST", "/transitions", jira._for_status(int(error), {}, "no", "x"))
+    outcome = deliver_now(node, slug, move="submit", previous="active")
+    assert outcome.state == state, outcome
+    assert record(node, slug)["state"] == state
+
+
+def test_a_ticket_shared_by_two_parts_moves_with_the_last_one(node, fake):
+    api = bound_item(node, "Api half", part="api")
+    web = bound_item(node, "Web half", part="web")
+    claimed_ticket(fake)
+    st = FsWorkStore.open(node)
+    for slug in (api, web):
+        st.start(slug, owner="a@example.test")
+    st.complete(api, "done", ["acked"])
+    outcome = deliver_now(node, api, move="complete", previous="active")
+    assert outcome.state == "held" and web in outcome.reason
+    assert fake.writes() == []
+    st.complete(web, "done", ["acked"])
+    assert deliver_now(node, web, move="complete", previous="active").state == "current"
+    assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_hand_written_binding_for_someone_elses_ticket_moves_nothing(node, fake):
+    st = FsWorkStore.open(node)
+    slug = st.create("Hand bound").slug
+    (st.path(slug) / "tracker.yaml").write_text(document(), encoding="utf-8")
+    claimed_ticket(fake, "In Progress", B)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    assert deliver_now(node, slug, move="submit", previous="active").state == "conflicting"
+    assert fake.writes() == []
+
+
+def test_a_binding_on_another_site_sends_nothing(node, fake):
+    st = FsWorkStore.open(node)
+    slug = st.create("Other site").slug
+    (st.path(slug) / "tracker.yaml").write_text(
+        document(ticket_url="https://elsewhere.invalid/browse/SYNC-1"), encoding="utf-8")
+    claimed_ticket(fake)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    outcome = deliver_now(node, slug, move="submit", previous="active")
+    assert outcome.state == "conflicting" and "elsewhere.invalid" in outcome.reason
+    assert fake.requests == []
