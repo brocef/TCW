@@ -3,10 +3,15 @@
 
 | node | slug | status | blocked-by |
 |---|---|---|---|
+| . | 2026-09-12-configure-an-external-tracker-and-read-its-tickets | completed | - |
+| . | 2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item | completed | 2026-09-12-configure-an-external-tracker-and-read-its-tickets |
 | . | 2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app | backlog | 2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item |
-| . | 2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket | backlog | - |
+| . | 2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket | completed | - |
 | . | 2026-09-12-synchronize-the-work-lifecycle-outward-to-the-tracker | backlog | 2026-09-12-claim-an-external-tracker-ticket-and-bind-it-to-a-work-item, 2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket |
 | . | 2026-09-12-refuse-local-work-that-no-claimed-tracker-ticket-authorizes | backlog | 2026-09-12-synchronize-the-work-lifecycle-outward-to-the-tracker |
 
-**Next:** 2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app, 2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket
+**Capability deltas:**
+- ./2026-09-14-make-tracker-link-record-a-cross-reference-without-claiming-the-ticket: changed work/manage-external-tracker-intake
+
+**Next:** 2026-09-12-surface-an-item-s-tracker-binding-in-the-board-the-projection-and-the-web-app, 2026-09-12-synchronize-the-work-lifecycle-outward-to-the-tracker
 <!-- /tcw:rollup -->
