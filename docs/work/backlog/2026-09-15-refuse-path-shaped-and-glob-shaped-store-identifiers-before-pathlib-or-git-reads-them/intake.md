@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-11-an-absolute-slug-crashes-the-claim-lookup.md`
+
+## Inbox body
+
 # A slug beginning with `/` crashes the claim lookup instead of being refused
 
 ## Desired outcome
@@ -56,3 +62,40 @@ work.
   — its spec's Problem section explains why `_safe_store_id` does not address
   pattern syntax, with the inputs that pass through it unchanged. Read that
   before proposing it here, so the reasoning is inherited rather than re-argued.
+
+## Triage (2026-09-15)
+
+Merged at triage because both entries are about a store identifier (a slug or a
+component path) being handed to something that reads it as more than a name —
+`Path.glob` in the claim lookup, and git pathspecs in the store's git helpers — and
+both name `_safe_store_id` in `tcw/store/fs.py` as one possible place to settle it.
+The maintainer asked for items touching the same feature to be combined.
+
+## Folded in: inbox entry `store-git-calls-read-a-path-as-a-glob-pattern.md`
+
+## Store git calls read a path as a glob pattern
+
+Git treats every path it is given as a pattern (a "pathspec"), even after `--`.
+`--` only stops a path being read as an option. So a store folder whose name
+holds `*`, `?` or `[` matches other folders too.
+
+Nothing stops such a name: `_safe_store_id` (`tcw/store/fs.py`) rejects `..`,
+`.`, empty segments, backslashes and NUL, but not glob characters, so
+`tcw capabilities add 'a*'` creates a folder named `a*`.
+
+`2026-09-14-delete-a-capability-with-tcw-capabilities-rm` found this in `git_rm`:
+removing the capability `a*` also deleted the capability `abc`. It fixed `git_rm`
+by passing `--literal-pathspecs`, which also fixes `tcw taxonomy rm` and the work
+store's deletes, since they share it.
+
+The other store git calls that take paths were left as they are:
+
+- `git add -- <paths>` in the staging helper and in `git_mv`: a glob-named path
+  would stage more than the write touched.
+- `git mv -- <src> <dst>` in `git_mv`.
+- `git ls-files --error-unmatch -- <source>` in the intake move.
+
+None of these deletes anything, which is why they were not changed with the delete
+fix. The likely fix is the same flag on each, or refusing glob characters in
+`_safe_store_id`; the second changes which names `add` accepts, so it is a decision
+about the model, not only the adapter.
