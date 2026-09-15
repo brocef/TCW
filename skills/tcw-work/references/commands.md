@@ -167,6 +167,33 @@ tracker code is imported.
   record is written and the item is kept; move the ticket by hand, then
   `tcw work delete`.
 
+### Strict mode
+
+With `work.tracker.strict: true`, a ticket authorizes local work **before** it
+happens. Epics are never gated; discards never refused; no flag bypasses a gate
+(`--force`, `--take-over` included). A refusal exits 1, names what did not happen and
+the fix, and writes nothing — no `sync` record — though a refused `start` or `import`
+that got as far as claiming leaves the ticket claimed.
+
+| Command | Under strict |
+| ------- | ------------ |
+| `new` (not `--epic`), `inbox accept` | refused → `tcw work tracker import <ticket>` |
+| `start` | unbound: refused. Bound: claim first (after the store's own status and blocker checks; the epic-active and repository checks come after it), move only if claimed. An epic cannot start with `--worktree` |
+| `submit`, `rework`, `complete --resolution done` | read the ticket: assigned to you, and in the mapped status of the item's status (or the target), or of an earlier status when an item for another part of the ticket is here; else refused. `complete` checks before the worktree merge |
+| `complete` with a discard resolution | allowed |
+| `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
+| `tracker import`, strict `start` claim | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed |
+| `tcw serve` create, start, complete `done`, drop, PUT `tracker.yaml` | 409, naming the `tcw work` command |
+
+- **Tracker unreachable, or an undelivered `sync` record:** refused. Run
+  `tcw work tracker sync <slug>` first.
+- **A tracker block with problems:** refused, not switched off; run `tcw validate`.
+- **Not gated:** `edit`, artifact writes, `tracker link`/`unlink`.
+- **Parts held elsewhere:** the earlier-status allowance needs another part's item
+  *in this checkout*. A part completed in another clone, or removed by `work.retain`,
+  is not seen, so the last part is refused; move the ticket to the status named, or
+  discard.
+
 **The claim decides from the ticket, never from Jira's reply.** `import`
 reads the ticket, applies the configured claim transition, assigns the ticket to the
 signed-in account only if that transition applied and nobody had it, then reads the
@@ -192,7 +219,7 @@ leads to and assigned to this account. A transition's error text is shown on a
 
 **The binding is `tracker.yaml`**, a sidecar marked `generated`: written by these
 commands, never by hand; the web app offers no edit for it, though its server does
-not yet refuse a write. It records provider,
+refuse a write except under strict mode. It records provider,
 project id, part, the ticket's stable id, key and URL, the date, and an `unlinked`
 history. It names no account: a binding says two things are the same work, never
 who took the ticket. No credential and no e-mail address.

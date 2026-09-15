@@ -55,7 +55,38 @@ category.
 - Tests: `tests/tracker_fake.py` gains a `SYNC` workflow, `down`, and
   `install_sites()`.
 
+- `work.tracker.strict` (boolean, default false): `TrackerConfig.strict`,
+  `WorkStore.tracker_strict()` (concrete, `False`). Strict requires
+  `statuses.active`, `statuses.completed` and `statuses.discarded` as a name or a
+  mapping of all three resolutions. `FsWorkStore.tracker_strict()` stays true when
+  the block has problems, including an ancestor's, so the gates refuse instead of
+  switching off; the nearest block setting `strict` decides.
+- `tcw/tracker/sync.py`: `binding_refusal(store, slug, config)`, the offline binding
+  checks shared by `authorize` and strict `start`; `authorize(store, slug, client, config, *, target)` —
+  bound, same site, no `sync` record, ticket read, assigned to the caller, in the
+  mapped status of the item's status or an earlier one, or the target.
+  `claim_refusal(client, config, ticket_id, outcome)` — refuses a claim that did not
+  land in `statuses.active`, or whose ticket still offers the claim transition
+  (`assess()` → `NOT_EXCLUSIVE`). Under strict, `deliver()` runs it after an owed
+  claim.
+- Strict gates in `tcw/work/cli.py`: `new` (not `--epic`) and `inbox accept` refuse;
+  `start` claims before the store move (`_strict_claim`, after the store's own
+  status and blocker checks); `submit`, `rework`, and `complete` as `done` call
+  `authorize` (`_strict_refusal`), `complete` before the worktree merge-back; an
+  epic cannot `start --worktree`; `drop`
+  refuses when a `tracker.yaml` exists (`ever_bound()` in `tcw/tracker/intake.py`);
+  `tracker import` runs `claim_refusal` before creating the item. Discards and epics
+  are not gated. Refusals exit 1 and write no `sync` record.
+- `tcw serve`: `_strict_refuses()` answers 409 for create (not epic), start,
+  complete with `done`, drop of an ever-bound item, and a PUT of `tracker.yaml`.
+
 ## Changed
+
+- `expected_statuses(..., shared=)`: when an item for another part of the same ticket
+  is here (open or finished), every earlier mapped status is expected, so the last
+  part completing from `review` moves a ticket that was held in the `active` status
+  instead of reporting it conflicting. A finished part that was not retained is not
+  seen. `_sharing()` became `_siblings()`, one scan returning both answers.
 
 - `Unbound`, `Malformed`, `Bound` and binding classification (`classify_binding`,
   over parsed YAML) moved from `tcw/tracker/intake.py` to `tcw/store/base.py`, so the
@@ -64,3 +95,11 @@ category.
   too deep to parse as malformed instead of raising `RecursionError`.
   `Bound` gains `bound` (excluded from equality). `binding_value` renders the
   `WorkItem.tracker` value.
+
+## Fixed
+
+- A `tracker.yaml` holding a value YAML cannot build (`bound: 2026-02-30`,
+  `!!int abc`, `!!timestamp nope`) no longer stops `tcw work list` and every other
+  board read; it is that item's problem value, and `read_binding` reports it as
+  malformed. A `tracker.yaml` that is not a regular file (a named pipe, a link to a
+  device) is reported without being opened, instead of blocking the board read.

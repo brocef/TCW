@@ -5,6 +5,13 @@ internal module names.
 
 ## Added
 
+- **Strict tracker mode.** Setting `strict: true` in a project's tracker settings
+  means no work happens without a Jira ticket you have claimed. New items come only
+  from `tcw work tracker import`; starting an item claims its ticket first; submitting,
+  reworking and completing check the ticket is still yours and where the item left
+  it; and the web app sends you to the command line for those steps. When something
+  is refused, nothing changes and the message says what to fix. Discarding an item is
+  always allowed. Strict mode needs Jira to be reachable.
 - **Tickets follow their work items.** Starting an item linked to a Jira ticket now
   takes that ticket for you, and submitting, reworking, completing or discarding the
   item moves the ticket to the status you choose for each step in `tcw-config.yaml`.

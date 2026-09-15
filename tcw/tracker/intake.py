@@ -55,7 +55,8 @@ def read_binding(content: str | None) -> Unbound | Malformed | Bound:
         return Unbound()
     try:
         data = yaml.safe_load(content)
-    except (yaml.YAMLError, RecursionError) as error:
+    except Exception as error:   # YAML errors, nesting too deep, and values YAML
+        # cannot build (`2026-02-30`, `!!int abc`) raise ValueError, KeyError and others
         return unreadable_binding(error)
     return classify_binding(data)
 
@@ -69,6 +70,14 @@ def validate_part(value: str | None) -> str:
             f"part {value!r} is not a valid part name: use lowercase letters, digits "
             f"and hyphens, starting with a letter or digit")
     return value
+
+
+def ever_bound(store, slug: str) -> bool:
+    """Whether `slug` holds a binding sidecar at all — bound, unlinked, or unreadable."""
+    try:
+        return store.read_sidecar(slug, BINDING_SIDECAR) is not None
+    except (OSError, UnicodeDecodeError):
+        return True
 
 
 def binding_of(store, slug: str) -> tuple[Unbound | Malformed | Bound, str | None]:

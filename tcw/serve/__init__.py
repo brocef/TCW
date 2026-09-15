@@ -212,6 +212,35 @@ def _transition_ok(work, slug: str, run):
         return work.get(slug)
 
 
+def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None) -> str | None:
+    """Why strict tracker mode refuses a web app change, or `None`.
+
+    The web app runs no tracker code, so it cannot claim or check a ticket; under
+    strict mode each change that needs one is sent to the `tcw work` command that
+    does. Epics and discards are not gated, as on the command line.
+    """
+    if not work.tracker_strict():
+        return None
+    body = body or {}
+    item = work.get(slug) if slug else None
+    epic = (body.get("type") == "epic") if action == "create" else (
+        item is not None and item.type == "epic")
+    from tcw.tracker.intake import ever_bound
+    lead = "refused under strict tracker mode, which the web app cannot check; "
+    if action == "create" and not epic:
+        return lead + "create work from a ticket with `tcw work tracker import <ticket>`."
+    if action == "start" and not epic:
+        return lead + f"use `tcw work start {slug}`, which claims the ticket."
+    if action == "complete" and not epic and body.get("resolution") == "done":
+        return lead + f"use `tcw work complete {slug}`, which checks the ticket."
+    if action == "drop" and ever_bound(work, slug):
+        return lead + (f"{slug} is, or was, bound to a ticket. Discard it instead: "
+                       f"`tcw work complete {slug} --resolution wontfix --confirm`.")
+    if action == "tracker.yaml":
+        return lead + "use `tcw work tracker link` or `tcw work tracker unlink`."
+    return None
+
+
 def _map_store_error(e: Exception) -> tuple[int, bytes]:
     """Map store-level exceptions to HTTP status codes and JSON error bodies.
 
@@ -809,6 +838,9 @@ class TcwHandler(BaseHTTPRequestHandler):
 
         # ── POST /api/work — create work item ──
         if path == "/api/work":
+            if refusal := _strict_refuses(work, "create", body=body):
+                self._send_err(HTTPStatus.CONFLICT, refusal)
+                return
             try:
                 title = body.get("title", "")
                 if not title:
@@ -864,6 +896,9 @@ class TcwHandler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
                 return
             work, slug = resolved
+            if refusal := _strict_refuses(work, action, slug, body):
+                self._send_err(HTTPStatus.CONFLICT, refusal)
+                return
             if action == "start":
                 force = bool(body.get("force", False))
                 try:
@@ -1299,6 +1334,9 @@ class TcwHandler(BaseHTTPRequestHandler):
             if content is None:
                 self._send_err(HTTPStatus.BAD_REQUEST, "content is required")
                 return
+            if name == "tracker.yaml" and (refusal := _strict_refuses(work, name, slug)):
+                self._send_err(HTTPStatus.CONFLICT, refusal)
+                return
             media_type = body.get("mediaType")
             revision = body.get("revision")
             try:
@@ -1363,6 +1401,9 @@ class TcwHandler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
                 return
             work, slug = resolved
+            if refusal := _strict_refuses(work, "drop", slug):
+                self._send_err(HTTPStatus.CONFLICT, refusal)
+                return
             try:
                 work.drop(slug)
                 self._send(HTTPStatus.NO_CONTENT)

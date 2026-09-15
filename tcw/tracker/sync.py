@@ -63,13 +63,15 @@ def classify_error(error: TrackerError) -> str:
 
 
 def expected_statuses(statuses: dict, previous_status: str | None, record: dict | None,
-                      resolution: str | None) -> tuple[str, ...]:
+                      resolution: str | None, *, shared: bool = False) -> tuple[str, ...]:
     """Where the ticket may be before this move without it counting as drift.
 
     With a record: its `since`, or the target of its move — a person who moved the
     ticket by hand to where TCW meant to put it is not punished. Otherwise the
     mapped status of the previous local status, falling back to earlier ones. Empty
-    when unknown (a move out of `backlog`).
+    when unknown (a move out of `backlog`). With `shared` — an item for another part of
+    the same ticket is here — every earlier mapped status is expected: a move this
+    item made while that part was open was held, so the ticket can still be behind.
     """
     if record is not None:
         if record["since"]:
@@ -85,11 +87,9 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
                 return ()
         moved_to = target_status(statuses, MOVE_STATUS[record["move"]], resolution)
         return tuple(dict.fromkeys(filter(None, (*since, moved_to))))
-    for earlier in _EARLIER.get(previous_status or "", ()):
-        status = target_status(statuses, earlier, None)
-        if status:
-            return (status,)
-    return ()
+    mapped = tuple(filter(None, (target_status(statuses, earlier, None)
+                                 for earlier in _EARLIER.get(previous_status or "", ()))))
+    return mapped if shared else mapped[:1]
 
 
 def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
@@ -107,7 +107,10 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
         if _normalize(where) not in {_normalize(status) for status in expected}:
             wanted = " or ".join(f"'{status}'" for status in expected)
             return CONFLICTING, (f"{key} is in '{where}', not {wanted}; it was moved in "
-                                 f"the tracker, and TCW does not move it back.")
+                                 f"the tracker, or TCW held it there for another part "
+                                 f"of the ticket whose item is not in this checkout. "
+                                 f"TCW does not move it back: put it in {wanted}, or "
+                                 f"move it on by hand.")
     elif ticket.category == "done":
         return CONFLICTING, f"{key} is already resolved ('{where}'), so it was not moved."
     leads = [t for t in ticket.offered if _normalize(t.to_status) == _normalize(target)]
@@ -126,18 +129,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _sharing(store, slug: str, bound: Bound) -> list[str]:
-    """Other open items in this store bound to the same ticket."""
-    out = []
+def _siblings(store, slug: str, bound: Bound) -> tuple[list[str], bool]:
+    """Other items here bound to the same ticket: the open ones, which hold this item's
+    status moves, and whether any — open or finished — is for another part, which
+    may have held this item's earlier moves. A second item for the same part is a
+    re-take of the ticket, not a part that held it."""
+    held, shared = [], False
     for item in store.query():
         value = item.tracker
-        if (item.slug == slug or item.status in RESOLVED_STATUSES
-                or not isinstance(value, dict) or "problem" in value):
+        if item.slug == slug or not isinstance(value, dict) or "problem" in value:
             continue
         if ((value["project"], value["provider"], value["ticket"]["id"])
-                == (bound.project, bound.provider, bound.ticket_id)):
-            out.append(item.slug)
-    return out
+                != (bound.project, bound.provider, bound.ticket_id)):
+            continue
+        if item.status not in RESOLVED_STATUSES:
+            held.append(item.slug)
+        shared = shared or value["part"] != bound.part
+    return held, shared
 
 
 def deliver(store, slug: str, client, config, *, move: str | None,
@@ -160,16 +168,16 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     owed = starting or (record is not None and record["claim"] == "owed")
     move = move or (record["move"] if record else None)
 
+    others, shared = _siblings(store, slug, bound)
     if not starting:
         # Held even when this item's claim is owed: the open part will claim and move
         # the ticket, and claiming it here could only lead to closing it early.
-        others = _sharing(store, slug, bound)
         if others:
             return Outcome(HELD, f"{bound.ticket_key} not moved: also bound to "
                                  f"{', '.join(others)}.")
 
     expected = expected_statuses(config.statuses, previous_status, record,
-                                 item.resolution)
+                                 item.resolution, shared=shared)
     since = record["since"] if record else (expected[0] if expected else "")
     claimed_message = ""
 
@@ -230,6 +238,12 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
             detail = f" ({outcome.detail})" if outcome.detail else ""
             return finish(state, outcome.message + detail)
+        if config.strict:
+            # Under strict mode a claim the workflow cannot make exclusive authorizes
+            # nothing, so it stays owed and nothing moves.
+            refusal = claim_refusal(client, config, bound.ticket_id, outcome)
+            if refusal:
+                return finish(CONFLICTING, refusal)
         owed = False
         claimed_message = outcome.message
         active = target_status(config.statuses, "active", None)
@@ -292,3 +306,94 @@ def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
         "reason": reason[:REASON_LIMIT], "at": _now(),
     }), revision=revision)
     return Outcome(PENDING, reason, recorded=True)
+
+
+# ── strict mode ──────────────────────────────────────────────────────────────
+#
+# `deliver` never refuses: it runs after a move. These run before one, for
+# `work.tracker.strict`, and never write — a refused change moved nothing, so there
+# is nothing for a `sync` record to say.
+
+
+def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]:
+    """The checks strict mode makes on `slug`'s binding before reading its ticket:
+    `(bound, None)`, or `(None, why not)`. Nothing here asks the tracker."""
+    try:
+        bound, _revision = binding_of(store, slug)
+    except (OSError, UnicodeDecodeError):
+        bound = None
+    if not isinstance(bound, Bound):
+        return None, (f"{slug} is not bound to a readable ticket. Link it with "
+                      f"`tcw work tracker link {slug} <ticket>` first.")
+    key = bound.ticket_key
+    if not same_site(bound.ticket_url, config.base_url):
+        return None, (f"{key}'s binding points at {bound.ticket_url or 'no recorded URL'}, "
+                      f"which is not on {config.base_url}.")
+    if bound.sync is not None:
+        what = bound.sync.get("state", "an unreadable record")
+        return None, (f"{key} has a change that has not reached the tracker ({what}). Run "
+                      f"`tcw work tracker sync {slug}` first; if that cannot clear it, "
+                      f"fix the ticket in the tracker, or unlink the item and discard it.")
+    return bound, None
+
+
+def authorize(store, slug: str, client, config, *, target: str) -> str | None:
+    """`None` when the ticket bound to `slug` authorizes a change leading to the
+    tracker status `target` (empty when that status is unmapped); otherwise why not.
+
+    Assignment is checked before any status comparison, including "already at the
+    target": a ticket someone else holds authorizes nothing, wherever it is.
+    """
+    bound, refusal = binding_refusal(store, slug, config)
+    if bound is None:
+        return refusal
+    key = bound.ticket_key
+    try:
+        ticket = read_ticket(client, bound.ticket_id)
+    except TrackerError as error:
+        return (f"the tracker could not answer ({error}), so whether this change is "
+                f"authorized is unknown. Run it again once the tracker answers.")
+    # Where `deliver` would expect the ticket before moving it on, or already the
+    # target. For an item sharing the ticket with another part that includes earlier
+    # statuses, since that part may have held this one's moves.
+    _held, shared = _siblings(store, slug, bound)
+    allowed = tuple(dict.fromkeys(filter(None, (
+        *expected_statuses(config.statuses, store.get(slug).status, None, None,
+                           shared=shared), target))))
+    where = " or ".join(f"'{status}'" for status in allowed) or "its mapped status"
+    if ticket.assignee_id != ticket.me_id:
+        holder = ticket.assignee_name if ticket.assignee_id else "nobody"
+        return (f"{key} is assigned to {holder}, not to you. Assign it to yourself in "
+                f"the tracker and put it in {where}, then run this again; discarding "
+                f"the item is always allowed.")
+    if _normalize(ticket.status) not in {_normalize(status) for status in allowed}:
+        return (f"{key} is in '{ticket.status}', not {where}. Either it was moved in the "
+                f"tracker, or TCW held it there for another part of the ticket whose item "
+                f"is not in this checkout. Put it in {where}, then run this again; "
+                f"discarding the item is always allowed.")
+    return None
+
+
+def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:
+    """`None` when a successful claim authorizes work under strict mode; otherwise why
+    not. Asked right after the claim, when the ticket is where the claim leads and so
+    shows whether the workflow would let a second claimant claim it too."""
+    from tcw.tracker.claim import NOT_EXCLUSIVE, assess
+    active = target_status(config.statuses, "active", None)
+    key = outcome.key
+    if active and _normalize(outcome.status) != _normalize(active):
+        return (f"{key} is assigned to you but is in '{outcome.status}', not '{active}', "
+                f"so this is not a claim of it.")
+    try:
+        offered = client.transitions(ticket_id)
+    except TrackerError as error:
+        return (f"{key} was claimed, but whether its workflow can refuse a second "
+                f"claimant could not be read ({error}). TCW leaves the ticket claimed; "
+                f"run this again once the tracker answers.")
+    verdict = assess(config.claim_transition, current_status=outcome.status,
+                     offered=offered, landing_status=active or outcome.status)
+    if verdict.exclusivity == NOT_EXCLUSIVE:
+        return (f"{key} was claimed, but its workflow still offers "
+                f"'{config.claim_transition}' from '{outcome.status}', so a second person "
+                f"could claim it too. TCW leaves the ticket claimed.")
+    return None

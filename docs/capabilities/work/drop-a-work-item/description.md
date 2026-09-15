@@ -8,3 +8,7 @@ This is deliberately narrow. To close an item I _decided_ not to do, I complete
 it with a `wontfix`, `duplicate`, or `superseded` resolution, which files it
 under `discarded/` and keeps the decision on record. Drop is for mistakes;
 discard is for decisions.
+
+Under `work.tracker.strict: true`, drop refuses an item that is or was bound to a
+tracker ticket, since the binding is the record strict mode relies on, and tells me
+to discard it instead.
