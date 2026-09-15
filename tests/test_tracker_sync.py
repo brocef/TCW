@@ -1033,3 +1033,165 @@ def test_start_and_sync_send_nothing_through_a_binding_on_another_site(node, fak
     assert code == 1
     assert fake.requests == []
     assert record(node, slug)["state"] == "conflicting"
+
+
+# ── naming the transition a move uses ────────────────────────────────────────
+
+
+def ambiguous_node(tmp_path, monkeypatch, **transitions):
+    """A workflow whose `In Progress` offers two transitions into `Done` — one for
+    finished work and one for abandoned work, which is GitHub #40's shape."""
+    from tracker_fake import AMBIGUOUS, FakeJira
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=AMBIGUOUS)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="In Progress", assignee=A)
+    fake_.install(monkeypatch)
+    root = make_node(tmp_path, statuses={**STATUSES, "discarded": "Done"})
+    for move, value in transitions.items():
+        set_transition(root, move, value)
+    return root, fake_
+
+
+def applied_ids(fake_):
+    return fake_.applied
+
+
+def set_transition(root, move: str, value) -> None:
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["transitions"][move] = value
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+
+def test_a_named_transition_resolves_a_workflow_with_two_routes_to_one_status(
+        tmp_path, monkeypatch):
+    root, fake_ = ambiguous_node(tmp_path, monkeypatch, complete="Finish")
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.complete(slug, "done", ["acked"])
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "current", outcome
+    assert fake_.tickets[TICKET_ID].status == "Done"
+    assert applied_ids(fake_) == ["31"], applied_ids(fake_)
+    assert record(root, slug) is None
+
+
+def test_a_discard_transition_may_be_named_per_resolution(tmp_path, monkeypatch):
+    root, fake_ = ambiguous_node(tmp_path, monkeypatch,
+                                 discard={"wontfix": "Abandon"})
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.complete(slug, "wontfix", dod_ack=[], force=True)
+    outcome = deliver_now(root, slug, move="discard", previous="active")
+    assert outcome.state == "current", outcome
+    assert fake_.tickets[TICKET_ID].status == "Done"
+    assert applied_ids(fake_) == ["32"], applied_ids(fake_)
+
+
+def test_without_a_name_two_routes_to_one_status_are_still_refused(tmp_path,
+                                                                  monkeypatch):
+    """The request's explicit constraint: the derived rule keeps working for every
+    project relying on it, and only a configured name changes the answer."""
+    root, fake_ = ambiguous_node(tmp_path, monkeypatch)
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.complete(slug, "done", ["acked"])
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "conflicting" and "more than one transition" in outcome.reason
+    assert fake_.writes() == []
+
+
+def test_a_named_transition_the_ticket_does_not_offer_is_refused_not_ignored(
+        tmp_path, monkeypatch):
+    """Falling back to the derived rule would make a typo'd name invisible for ever."""
+    root, fake_ = ambiguous_node(tmp_path, monkeypatch, complete="Finnish")
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.complete(slug, "done", ["acked"])
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "conflicting" and "Finnish" in outcome.reason
+    assert fake_.writes() == []
+
+
+def test_a_named_transition_leading_elsewhere_is_refused_before_it_is_applied(
+        tmp_path, monkeypatch):
+    """A transition landing somewhere other than the mapped status yields a ticket
+    that never reads as delivered, so every later move would report drift."""
+    root, fake_ = ambiguous_node(tmp_path, monkeypatch, submit="Finish")
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    outcome = deliver_now(root, slug, move="submit", previous="active")
+    assert outcome.state == "conflicting"
+    assert "'Finish'" in outcome.reason and "'Done'" in outcome.reason
+    assert fake_.writes() == []
+
+
+def test_a_name_matching_two_transitions_is_refused(tmp_path, monkeypatch):
+    root, fake_ = ambiguous_node(tmp_path, monkeypatch, complete="Same Name")
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.complete(slug, "done", ["acked"])
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "conflicting"
+    # Naming the configured transition is what proves the named path refused this,
+    # rather than the derived rule refusing two routes to Done as it would anyway.
+    assert "'Same Name' matches more than one" in outcome.reason
+    assert fake_.writes() == []
+
+
+# ── drift is judged against the path, not two points ─────────────────────────
+
+
+def test_a_hand_move_to_a_status_between_the_record_and_its_target_is_accepted(node, fake):
+    """Two failed moves leave a record aiming at Done from In Progress. A person who
+    moves the ticket to In Review has done part of what TCW failed to do, not moved
+    it away, so TCW finishes the journey rather than calling it drift."""
+    slug = bound_item(node)
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="a@example.test")
+    claimed_ticket(fake, "In Progress", A)
+    st.submit(slug)
+    fake.down = True
+    assert deliver_now(node, slug, move="submit", previous="active").state == "pending"
+    st = FsWorkStore.open(node)
+    st.complete(slug, "done", ["acked"])
+    assert deliver_now(node, slug, move="complete", previous="review").state == "pending"
+    fake.down = False
+    assert record(node, slug)["since"] == "In Progress"
+    claimed_ticket(fake, "In Review", A)                  # moved by hand, part way
+    outcome = deliver_now(node, slug, move=None, previous=None)
+    assert outcome.state == "current", outcome
+    assert fake.tickets[TICKET_ID].status == "Done"
+    assert record(node, slug) is None
+
+
+def test_the_path_is_walked_rather_than_the_status_mapping_inverted(tmp_path, fake):
+    """`completed` and `discarded` mapped to one name — GitHub #40's own config —
+    means a status cannot be inverted to a single rung, so the window has to come
+    from walking the path toward the target."""
+    root = make_node(tmp_path, statuses={**STATUSES, "discarded": "Done"})
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    claimed_ticket(fake, "In Progress", A)
+    st.submit(slug)
+    fake.down = True
+    assert deliver_now(root, slug, move="submit", previous="active").state == "pending"
+    st = FsWorkStore.open(root)
+    st.complete(slug, "done", ["acked"])
+    assert deliver_now(root, slug, move="complete", previous="review").state == "pending"
+    fake.down = False
+    claimed_ticket(fake, "In Review", A)
+    outcome = deliver_now(root, slug, move=None, previous=None)
+    assert outcome.state == "current", outcome
+    assert fake.tickets[TICKET_ID].status == "Done"

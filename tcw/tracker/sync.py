@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from tcw.store.base import RESOLVED_STATUSES, target_status
+from tcw.store.base import RESOLVED_STATUSES, target_status, transition_name
 from tcw.tracker.claim import _normalize
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, binding_of, claim, read_ticket,
                                 same_site, with_sync_record)
@@ -48,7 +48,37 @@ _EARLIER = {"active": ("active",), "review": ("review", "active")}
 # A discard can start from `backlog`, where nothing is known, so it has none.
 _MOVED_FROM = {"start": ("active",), "submit": ("active",), "rework": ("review",),
                "complete": ("review", "active"), "discard": ()}
+# The rungs of the ladder, in the order the local lifecycle reaches them. A discard and
+# a completion share the top rung: both are where a ticket stops.
+_RUNG_ORDER = {"active": 0, "review": 1, "completed": 2, "discarded": 2}
 REASON_LIMIT = 300
+
+
+def ladder(statuses: dict, local_target: str, resolution: str | None) -> tuple[str, ...]:
+    """The mapped statuses a ticket passes through on its way to `local_target`, in
+    local lifecycle order and ending at the target.
+
+    Deduplicated, so two local statuses mapped to one tracker status share a rung —
+    which is right: the journey simply has one hop fewer. An unmapped status has no
+    rung and is skipped, and a status mapped to nothing at the top yields `()`.
+    """
+    upto = _RUNG_ORDER[local_target]
+    rungs = [target_status(statuses, name, None)
+             for name, index in (("active", 0), ("review", 1)) if index < upto]
+    rungs.append(target_status(statuses, local_target, resolution))
+    return tuple(dict.fromkeys(filter(None, rungs)))
+
+
+def forward_from(rungs: tuple[str, ...], status: str) -> tuple[str, ...]:
+    """The rungs from `status` onward, inclusive — or `()` when it is not on `rungs`.
+
+    Direction is the whole point: a ticket somebody moved *back* is below where it
+    was left, so it never appears in the path forward from there and is still drift.
+    """
+    for index, rung in enumerate(rungs):
+        if _normalize(rung) == _normalize(status):
+            return rungs[index:]
+    return ()
 
 
 @dataclass(frozen=True)
@@ -90,19 +120,29 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
                                         for earlier in _MOVED_FROM[record["move"]])))[:1]
             if not since:
                 return ()
-        moved_to = target_status(statuses, MOVE_STATUS[record["move"]], resolution)
+        local_target = MOVE_STATUS[record["move"]]
+        # Every rung from where the ticket was left up to where the move was taking it.
+        # A person who moved it part of the way did by hand what TCW failed to do; only
+        # the two ends used to be accepted, so an ordinary intermediate read as drift.
+        onward = forward_from(ladder(statuses, local_target, resolution), since[0])
+        if onward:
+            return onward
+        moved_to = target_status(statuses, local_target, resolution)
         return tuple(dict.fromkeys(filter(None, (*since, moved_to))))
     mapped = tuple(filter(None, (target_status(statuses, earlier, None)
                                  for earlier in _EARLIER.get(previous_status or "", ()))))
     return mapped if shared else mapped[:1]
 
 
-def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | None = None):
+def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | None = None,
+                named_transition: str = ""):
     """Steps 4–7 of a status move, over one ticket read. Pure. Returns `(state, reason)`, or
-    `("apply", transition)` when exactly one offered transition leads to `target`.
+    `("apply", transition)` when one transition to apply can be identified.
 
     `move` is the lifecycle move being served, which decides whether a ticket nobody
-    holds may be acted on (`MOVES_ALLOWING_UNASSIGNED`).
+    holds may be acted on (`MOVES_ALLOWING_UNASSIGNED`). `named_transition` is what the
+    project configured for that move, if anything; without one the transition is derived
+    from the target status, which is the only rule that existed before.
     """
     key, where = ticket.key, ticket.status
     if _normalize(where) == _normalize(target):
@@ -127,6 +167,28 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
                                  f"move it on by hand.")
     elif ticket.category == "done":
         return CONFLICTING, f"{key} is already resolved ('{where}'), so it was not moved."
+    if named_transition:
+        named = [t for t in ticket.offered
+                 if _normalize(t.name) == _normalize(named_transition)]
+        if not named:
+            offers = ", ".join(f"'{t.name}' to '{t.to_status}'" for t in ticket.offered)
+            return CONFLICTING, (f"{key} in '{where}' offers no transition named "
+                                 f"'{named_transition}'. It offers: {offers or 'nothing'}."
+                                 f" Fix work.tracker.transitions.{move}, or remove it to "
+                                 f"let TCW find the transition itself.")
+        if len(named) > 1:
+            ids = ", ".join(sorted(t.id for t in named))
+            return CONFLICTING, (f"'{named_transition}' matches more than one transition "
+                                 f"offered by {key} (ids {ids}); TCW will not guess which.")
+        # Refused rather than applied: the mapped status is how a delivered move is told
+        # from an undelivered one, so a transition landing anywhere else leaves a ticket
+        # that never reads as delivered — and applying it cannot be undone.
+        if _normalize(named[0].to_status) != _normalize(target):
+            return CONFLICTING, (f"{key}'s transition '{named_transition}' leads to "
+                                 f"'{named[0].to_status}', not '{target}', so nothing was "
+                                 f"sent. Check work.tracker.transitions.{move} against "
+                                 f"work.tracker.statuses.")
+        return "apply", named[0]
     leads = [t for t in ticket.offered if _normalize(t.to_status) == _normalize(target)]
     if not leads:
         offers = ", ".join(f"'{t.name}' to '{t.to_status}'" for t in ticket.offered)
@@ -288,7 +350,9 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         except TrackerError as error:
             return finish(classify_error(error), str(error))
 
-    verdict, detail = assess_move(ticket, target=target, expected=expected, move=move)
+    named = transition_name(config.move_transitions, move, item.resolution) if move else ""
+    verdict, detail = assess_move(ticket, target=target, expected=expected, move=move,
+                                  named_transition=named)
     if verdict != "apply":
         return finish(verdict, detail)
     if check_only:
