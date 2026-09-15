@@ -21,12 +21,16 @@ category.
   segment.
 - Web app: a `Ticket` field on the work item detail (`TrackerField`), linking the
   ticket key to its URL.
+- A `tracker.yaml` that cannot be read (not UTF-8, a directory, no permission,
+  nested too deep) is reported as that item's problem value rather than failing
+  every board read; one removed while it is being read reads as unbound.
 
 ## Changed
 
 - `Unbound`, `Malformed`, `Bound` and binding classification (`classify_binding`,
   over parsed YAML) moved from `tcw/tracker/intake.py` to `tcw/store/base.py`, so the
   store classifies a binding without importing `tcw.tracker`. `tcw.tracker.intake`
-  re-exports the three classes; `read_binding(content)` is unchanged in behaviour.
+  re-exports the three classes; `read_binding(content)` now also reports YAML nested
+  too deep to parse as malformed instead of raising `RecursionError`.
   `Bound` gains `bound` (excluded from equality). `binding_value` renders the
   `WorkItem.tracker` value.
