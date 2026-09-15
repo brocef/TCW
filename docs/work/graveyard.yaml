@@ -4,6 +4,9 @@
 2026-06-19-remote-extends-for-taxonomy:
   resolution: superseded
   resolved: '2026-09-15'
+2026-06-19-tracker-sync-for-capabilities:
+  resolution: wontfix
+  resolved: '2026-09-15'
 2026-07-22-evaluate-and-refine-the-plugin-skills-with-an-eval-harness:
   resolution: done
   resolved: '2026-09-11'
