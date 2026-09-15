@@ -1,5 +1,0 @@
-new:
-    - cli/run-from-a-git-worktree
-changed:
-    - cli/host-multiple-projects-in-one-repo
-    - work/complete-a-work-item

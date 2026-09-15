@@ -1,3 +1,0 @@
-# Capability deltas this work item lands (work->capability back-pointers).
-new:
-  - web/editing#edit-tcw-content-in-a-local-web-app

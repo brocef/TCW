@@ -1,4 +1,0 @@
-# Capability deltas this work item lands (work→capability back-pointers).
-# No new capability; the browse experience gains hierarchical tree navigation.
-changed:
-  - web   # left-column object picker is now a collapsible hierarchy tree, not a flat list

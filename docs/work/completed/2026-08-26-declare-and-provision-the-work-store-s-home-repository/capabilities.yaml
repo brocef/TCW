@@ -1,7 +1,0 @@
-new:
-    - work/declare-the-work-stores-home-repository
-    - cli/provision-declared-stores
-changed:
-    - work/configure-the-work-store-location
-    - cli/locate-tcw-storage-folders
-    - cli/validate-a-node

@@ -1,4 +1,0 @@
-changed:
-  - cli/point-tcw-at-a-project-i-already-have
-  - cli/validate-a-node
-  - cli/provision-declared-stores

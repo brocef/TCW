@@ -1,7 +1,0 @@
-changed:
-    - work/require-tracker-backed-work
-    - work/open-a-work-item
-    - work/start-a-work-item
-    - work/drop-a-work-item
-    - work/manage-external-tracker-intake
-    - work/synchronize-external-tracker-work

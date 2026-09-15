@@ -1,3 +1,0 @@
-changed:
-    - work/keep-resolved-work-out-of-git          # an ignored non-resolved destination now warns
-    - work/configure-the-work-store-location      # a rule arriving after init is no longer invisible

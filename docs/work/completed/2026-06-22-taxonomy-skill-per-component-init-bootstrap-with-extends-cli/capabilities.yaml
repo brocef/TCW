@@ -1,6 +1,0 @@
-# Capability deltas this work item lands (work→capability back-pointers).
-new:
-  - taxonomy#bootstrap-the-taxonomy          # "Bootstrap the taxonomy" — Missing → Supported at complete
-  - capabilities#bootstrap-the-capabilities  # "Bootstrap the capabilities" — Missing → Supported at complete
-changed:
-  - taxonomy#federate-shared-vocabulary      # now declarable via `tcw taxonomy extends add` (stays Partial)

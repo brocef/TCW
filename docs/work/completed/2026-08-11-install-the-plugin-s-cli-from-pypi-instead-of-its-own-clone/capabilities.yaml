@@ -1,4 +1,0 @@
-changed:
-    - plugin/bootstrap-the-cli
-    - cli/install-from-pypi
-    - plugin/diagnose-the-install
