@@ -82,18 +82,23 @@ def _assert_tracker_untouched(fake, before, ticket_id="10052") -> None:  # noqa:
     assert ticket_state(fake, ticket_id) == before
 
 
+def local_state(root, slug) -> tuple:
+    """Every other file in the item's folder, and its status and owner."""
+    item = FsWorkStore.open(root).get(slug)
+    files = {n: b for n, b in snapshot(root, slug).items() if n != "tracker.yaml"}
+    return files, item.status, item.owner
+
+
 def _assert_only_the_binding_changed(root, slug, before) -> None:
     """`tracker.yaml` is the whole of `link`'s local effect: every other file in the
-    item's folder is byte-for-byte what it was, and none is removed."""
-    after = snapshot(root, slug)
-    assert {n: b for n, b in after.items() if n != "tracker.yaml"} == before
-    item = FsWorkStore.open(root).get(slug)
-    assert (item.status, item.owner) == ("backlog", "")
+    item's folder is byte-for-byte what it was, none is removed, and the item's
+    status and owner are unchanged. `before` is `local_state` taken beforehand."""
+    assert local_state(root, slug) == before
 
 
 def test_link_binds_without_touching_the_body(node, fake):  # noqa: F811
     slug = plain_item(node)
-    before, ticket_before = snapshot(node, slug), ticket_state(fake)
+    before, ticket_before = local_state(node, slug), ticket_state(fake)
     code, _out, err = run(node, "link", slug, TICKET)
     assert code == 0, err
     doc = binding(node, slug)
@@ -169,17 +174,34 @@ def test_link_binds_a_resolved_item(node, fake, status):  # noqa: F811
     binding needs the item to still be open, now that binding does not claim."""
     slug = plain_item(node)
     resolve(node, slug, status)
-    ticket_before = ticket_state(fake)
+    before, ticket_before = local_state(node, slug), ticket_state(fake)
     code, _out, err = run(node, "link", slug, TICKET)
     assert code == 0, err
     assert "a resolved item's binding is not changed" not in err
     assert binding(node, slug)["ticket"]["key"] == TICKET
+    _assert_only_the_binding_changed(node, slug, before)
     _assert_tracker_untouched(fake, ticket_before)
 
 
+def test_import_after_link_says_the_ticket_is_linked_but_not_claimed(node, fake):  # noqa: F811
+    """Bound but unassigned is what `link` leaves behind, so `import` must not report
+    it as the tracker disagreeing with the binding. It still refuses: claiming a
+    linked ticket is not `import`'s job."""
+    slug = plain_item(node)
+    assert run(node, "link", slug, TICKET)[0] == 0
+    before = local_state(node, slug)
+    code, out, err = run(node, "import", TICKET)
+    assert code == 1
+    assert slug in out and slug in err
+    assert "not claimed" in err and "assigned to nobody" not in err
+    assert fake.writes() == []
+    assert local_state(node, slug) == before
+    assert len([i for i in FsWorkStore.open(node).query()]) == 1
+
+
 def test_link_refuses_a_slug_that_does_not_exist(node, fake):  # noqa: F811
-    """The status guard is gone; the existence check is not. In a node that does
-    not retain resolved items this is also what a completed slug now hits."""
+    """The status guard is gone; the existence check is not. A resolved item a
+    store has already removed is refused the same way."""
     before = len(fake.writes())
     code, _out, err = run(node, "link", "2026-01-01-not-a-real-item", TICKET)
     assert code == 1
@@ -243,7 +265,7 @@ def test_no_link_or_unlink_path_prints_or_stores_the_token(node, fake):  # noqa:
     outputs += run(node, "link", slug, TICKET)[1:]
     outputs += run(node, "link", slug, SECOND)[1:]                    # refused: bound
     outputs += run(node, "unlink", slug, "--reason", "wrong")[1:]
-    outputs += run(node, "link", plain_item(node, "Other"), TICKET)[1:]  # already yours
+    outputs += run(node, "link", plain_item(node, "Other"), TICKET)[1:]  # free again
     assert all(SENTINEL not in text for text in outputs)
     for path in FsWorkStore.open(node).root.rglob("*"):
         if path.is_file():

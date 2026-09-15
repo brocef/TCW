@@ -1716,7 +1716,7 @@ def _binding_for(provider: str, project: str, ticket_id: str, ticket_key: str,
     """The binding document. `provider` and `project` are the values the ticket was
     looked up with, passed in rather than read again: tracker settings can come from
     parent nodes' files, and one changed or broken mid-run would otherwise fail here,
-    after the ticket has already been claimed by whichever caller claims."""
+    after the tracker has already been read (and, for `import`, the ticket claimed)."""
     from tcw.tracker.intake import binding_document
     return binding_document(
         provider=provider, project=project, part=part,
@@ -1729,9 +1729,9 @@ def _claim_summary(outcome) -> str:
     return f"{outcome.key} is in '{outcome.status}', {how}"
 
 
-# The failures a local write can raise after a successful claim. Wider than
+# The failures a local write can raise once the tracker has answered. Wider than
 # `_ERRORS` on purpose: a held Git index lock surfaces as `CalledProcessError`, and
-# the claimed ticket has to be reported whichever way the write failed.
+# `import`'s claimed ticket has to be reported whichever way the write failed.
 _LOCAL_WRITE_ERRORS = (*_ERRORS, StaleRevision, OSError, subprocess.CalledProcessError)
 
 
@@ -1775,7 +1775,15 @@ def _tracker_import(args: argparse.Namespace) -> int:
                 print(f"→ already bound: {ticket.key} (part {part}) is {existing}",
                       file=sys.stderr)
                 return 0
-            holder = ticket.assignee_name or "nobody"
+            if not ticket.assignee_id:
+                # What `link` leaves behind: bound, never claimed. Normal, not drift.
+                print(f"tcw work tracker import: {existing} is already linked to "
+                      f"{ticket.key} (part {part}), but the ticket is not claimed — it "
+                      f"is unassigned in '{ticket.status}'. `import` does not claim a "
+                      f"ticket that is already bound; move and assign it in the "
+                      f"tracker yourself.", file=sys.stderr)
+                return 1
+            holder = ticket.assignee_name
             print(f"tcw work tracker import: {existing} is bound here, but the tracker "
                   f"says {ticket.key} is assigned to {holder} in '{ticket.status}'.",
                   file=sys.stderr)
@@ -1832,9 +1840,13 @@ def _item_or_reason(st, slug: str, label: str):
     bare slug only: a tracker configuration and a project id belong to one node.
 
     Every status is bindable, resolved ones included: finished work can be linked to
-    the ticket that tracked it, and a wrong binding on it can be repaired. In a node
-    that does not retain resolved items there is no folder to find, so such a slug
-    refuses here as an unknown one — the honest limit of a store that dropped it."""
+    the ticket that tracked it, and a wrong binding on it can be repaired. Such a
+    binding lives wherever the rest of the resolved item does: where resolved folders
+    are gitignored (the default) it is on disk but never committed. Once a store has
+    removed a resolved item this slug refuses as unknown; before that — a resolved
+    item not retained but not yet deleted — it binds like any other."""
+    # ponytail: no warning when a binding lands in a gitignored resolved folder;
+    # add one in the filesystem adapter if local-only bindings surprise anyone.
     item = st.get(slug)
     if item is None:
         print(f"tcw work tracker {label}: no such work item in this node: {slug}",
@@ -2263,12 +2275,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptrsh = ptrs.add_parser(
         "show", help="show one ticket and whether it is claimable",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Print one ticket's status, summary and assignee, then whether it can\n"
-                    "be claimed now and whether the workflow would keep a second claimant\n"
-                    "out.\n\n"
+        description="Print one ticket's status, summary and assignee, then whether the\n"
+                    "claim transition is on offer from its status now and whether the\n"
+                    "workflow would keep a second claimant out.\n\n"
                     "Reads only: nothing changes in the tracker or in this node.",
-        epilog="'claimable' is this ticket right now; 'workflow' is whether claiming\n"
-               "excludes anyone else. They are reported separately on purpose.\n\n"
+        epilog="'claimable' is whether this status offers the claim right now; it does\n"
+               "not look at the assignee, which import also checks. 'workflow' is\n"
+               "whether claiming excludes anyone else. They are reported separately\n"
+               "on purpose.\n\n"
                "Refuses when no tracker is configured, or when the key does not exist.\n\n"
                "  tcw work tracker show EX-123\n",
     )
@@ -2283,19 +2297,27 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     "transition and assigns it to you.\n\n"
                     "In this node: creates a backlog item whose intake is the ticket's\n"
                     "description, and binds the two.\n\n"
-                    "No item is created unless the claim succeeds, so a run that fails\n"
-                    "locally is finished by running it again.",
+                    "No item is created unless the claim succeeds. A run that fails\n"
+                    "locally is finished by running it again; the error says so when\n"
+                    "it is not.",
         epilog="Use --part when one ticket is split across several items; each part\n"
                "is bound separately and the name is yours to choose.\n\n"
-               "Refuses when: no tracker is configured; the key does not exist; the\n"
-               "ticket is assigned to somebody else; the workflow does not offer the\n"
-               "claim transition; or the ticket and part are already bound here.\n\n"
+               "Running it again for a ticket and part already bound here, while the\n"
+               "ticket is assigned to you, prints that item rather than a second.\n\n"
+               "Refuses when: no tracker is configured; --part or --title is invalid;\n"
+               "the key does not exist; the ticket is resolved or assigned to somebody\n"
+               "else; the claim transition name matches more than one transition; the\n"
+               "claim transition is not offered and the ticket is not already yours;\n"
+               "the ticket is bound here but not assigned to you (a linked ticket is\n"
+               "never claimed by import); a tracker.yaml on an open item cannot be\n"
+               "read; or the tracker does not show the claim afterwards.\n\n"
                "  tcw work tracker import EX-123\n"
                "  tcw work tracker import EX-123 --part api --title 'The API half'\n",
     )
     ptri.add_argument("ticket", help=TICKET_HELP)
     ptri.add_argument("--part", help="name one of several items for this ticket "
-                                     "(default: default)")
+                                     "(lowercase letters, digits, hyphens; "
+                                     "default: default)")
     ptri.add_argument("--title", help="the item's title (default: '<KEY> — <summary>')")
     ptri.set_defaults(func=_tracker_import)
 
@@ -2308,19 +2330,24 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     "does not exist is refused — and not written to.\n\n"
                     "In this node: the binding sidecar is the only file written, so the\n"
                     "item's status, owner, intake and request are left alone.",
-        epilog="Any status can be linked, a finished item included. Nothing moves the\n"
-               "ticket for you afterwards — do that in the tracker yourself.\n\n"
+        epilog="Any status can be linked, a finished item included. Where finished\n"
+               "items' folders are gitignored (the default), that binding stays on\n"
+               "this machine and is never committed. Nothing moves the ticket for you\n"
+               "afterwards — do that in the tracker yourself.\n\n"
                "Use --part when one ticket is split across several items.\n\n"
-               "Refuses when: no tracker is configured; the slug is not an item here;\n"
-               "the key does not exist; the item is already bound (unlink it first);\n"
-               "or another item already holds this ticket and part.\n\n"
+               "Refuses when: no tracker is configured; --part is invalid; the slug\n"
+               "is not an item here; the key does not exist; the item is already\n"
+               "bound (unlink it first); another open item already holds this ticket\n"
+               "and part; or a tracker.yaml on this item or any open item cannot be\n"
+               "read.\n\n"
                "  tcw work tracker link 2026-09-14-rename-the-widget EX-123\n"
                "  tcw work tracker link 2026-09-14-rename-the-widget EX-123 --part api\n",
     )
     ptrl.add_argument("slug", help=BARE_SLUG_HELP)
     ptrl.add_argument("ticket", help=TICKET_HELP)
     ptrl.add_argument("--part", help="which of several items for this ticket "
-                                     "(default: default)")
+                                     "(lowercase letters, digits, hyphens; "
+                                     "default: default)")
     ptrl.set_defaults(func=_tracker_link)
 
     ptru = ptrs.add_parser(
@@ -2335,10 +2362,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     "bound, when, and why it stopped move into its unlinked history.",
         epilog="Any status can be unlinked, a finished item included, so a wrong\n"
                "binding is repairable wherever it is found.\n\n"
-               "Refuses when the slug is not an item here, when it is not bound, or\n"
-               "when --reason is blank.\n\n"
-               "  tcw work tracker unlink 2026-09-14-rename-the-widget "
-               "--reason 'bound to the wrong ticket'\n",
+               "Refuses when the slug is not an item here, when its tracker.yaml\n"
+               "cannot be read, when it is not bound, or when --reason is blank.\n\n"
+               "  tcw work tracker unlink 2026-09-14-rename-the-widget \\\n"
+               "      --reason 'bound to the wrong ticket'\n",
     )
     ptru.add_argument("slug", help=BARE_SLUG_HELP)
     ptru.add_argument("--reason", required=True, help="why the binding is removed")
