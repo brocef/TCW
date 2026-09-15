@@ -8,13 +8,13 @@ no task for.
 
 | Commit    | Task | What                                                                                                 |
 | --------- | ---- | ---------------------------------------------------------------------------------------------------- |
-| `79236a2` | 1    | `claimed-by` out of the binding document; `_binding_for` retyped to three ticket values              |
-| `2a3cd97` | 2    | `link` stops claiming                                                                                |
-| `dd9b790` | 3    | `link` and `unlink` accept resolved items; `_unresolved_item` → `_item_or_reason`                    |
-| `4d745cd` | 4    | `description=` / `epilog=` / positional `help=` on the five `tracker` parsers, and their tests       |
-| `9a9a610` | 5    | `help=` on every positional CLI-wide, and the walking test                                           |
-| `4fea5cb` | 8    | README, release notes, changelog, `skills/tcw-work/references/commands.md`                           |
-| `a7719c9` | —    | The capability body and the item's `capabilities.yaml`                                               |
+| `b450324` | 1    | `claimed-by` out of the binding document; `_binding_for` retyped to three ticket values              |
+| `6e5727f` | 2    | `link` stops claiming                                                                                |
+| `7e5faa3` | 3    | `link` and `unlink` accept resolved items; `_unresolved_item` → `_item_or_reason`                    |
+| `70d4d80` | 4    | `description=` / `epilog=` / positional `help=` on the five `tracker` parsers, and their tests       |
+| `34d9cfe` | 5    | `help=` on every positional CLI-wide, and the walking test                                           |
+| `f5fef3e` | 8    | README, release notes, changelog, `skills/tcw-work/references/commands.md`                           |
+| `9690cb5` | —    | The capability body and the item's `capabilities.yaml`                                               |
 
 Task 6 (full-suite green) is not a commit; it is the gate each of the others
 passed. Task 7 was already done — see below.
@@ -61,7 +61,7 @@ were rendered and read. That pass found a real defect the tests could not — se
   `work/manage-external-tracker-intake` stop being true and that the delta is
   recorded at implementation. Task 8 lists only the four documentation entries,
   so the capability body and the item's `capabilities.yaml` would have been
-  missed by working the plan alone. Both are in `a7719c9`.
+  missed by working the plan alone. Both are in `9690cb5`.
 
 - **Criterion 3 was stronger than the plan's edit for it.** The plan says to
   replace one assertion in the renamed body test. The criterion says a
@@ -117,3 +117,42 @@ were rendered and read. That pass found a real defect the tests could not — se
   the `tcw` CLI once `tcw/` is being changed. The rest of the CLI use here was
   read-only (`validate`, `capabilities check`, `--help`) or against code this
   change does not touch.
+
+## Review fixes
+
+A multi review before merge (an adversarial reviewer and Codex; the local model
+was down for maintenance) found no defect in the core change but several things
+this item introduced. Fixed on the same branch:
+
+- **`import` after `link` read as the tracker disagreeing with the binding.**
+  Bound-but-unassigned is exactly what `link` leaves, and `import` answered it
+  with "the tracker says … is assigned to nobody". It now says the ticket is
+  linked but not claimed and tells the caller to move it in the tracker. Still a
+  refusal; claiming a linked ticket stays with the sync item.
+  `test_import_after_link_says_the_ticket_is_linked_but_not_claimed`.
+- **`import`'s help stated two false refusals** — a re-run on your own bound
+  ticket prints the item, and a missing claim transition succeeds when the ticket
+  is already yours — and every epilog omitted refusals (invalid `--part`,
+  unreadable bindings). `show` implied `claimable` considers the assignee; it
+  does not.
+- **The spec's reasoning about resolved items was wrong.** It said this repository
+  keeps no resolved items, so `link` would refuse a completed slug as unknown.
+  This repository sets no `work.retain`; it keeps them on disk and only
+  gitignores them, as `tcw work init` does in every node, the test fixture
+  included. So a binding on a finished item is written but never staged. The
+  simplest behaviour was chosen deliberately: document it (README, capability,
+  skill reference, release note, help, docstring) rather than warn or refuse, and
+  revisit later — a `ponytail:` note in `_item_or_reason` marks the spot, and an
+  inbox entry tracks it. The same docstring no longer claims a resolved item
+  pending deletion under `work.retain: false` refuses; it binds.
+- **The spec's "nobody is on this version" was also wrong** — 2.1.2 shipped
+  `claimed-by`. No code consequence: old documents still read, and the release
+  note already says the old field is ignored.
+- **The resolved-item link test now checks the whole local state** (every other
+  file, status, owner), not only the binding, via `local_state`.
+- **This file's commit table named pre-rebase hashes**; corrected.
+- Stale comments on `_binding_for`, `_LOCAL_WRITE_ERRORS` and a test; the
+  changelog's `_work_list` is `_visible_board_items`.
+
+The item stays in `review`: the fixes were made while `tcw/` was being edited,
+so the lifecycle was not driven from the CLI, and acceptance is still pending.
