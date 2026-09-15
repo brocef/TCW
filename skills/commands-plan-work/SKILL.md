@@ -1,5 +1,5 @@
 ---
-name: tcw-commands-plan-work
+name: commands-plan-work
 description: Plan a TCW work item from an existing item or the user's chat request, producing the lifecycle planning artifacts in the work item folder.
 when_to_use: Use when a user asks to plan a TCW work item, or to turn a chat request into a planned item — running the request, spec and plan stages and stopping once plan.md is written, before any code.
 allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
@@ -33,4 +33,4 @@ into one commit, and do not create empty commits for artifacts that were already
 complete. TCW commits status transitions itself; do not commit those by hand.
 
 Stop at `plan.md`. Do not run `tcw work start` or write any code — that is
-the `tcw-commands-drive-work-to-completion` skill. Ask the user to review the plan first.
+the `commands-drive-work-to-completion` skill. Ask the user to review the plan first.

@@ -1,5 +1,5 @@
 ---
-name: tcw-commands-process-inbox
+name: commands-process-inbox
 description: Triage raw entries in the TCW work inbox into tracked work items.
 when_to_use: Use when a user asks to process, triage, or clear the TCW work inbox — turning every raw entry into an accepted work item and running the request stage on its intake.
 allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
@@ -22,4 +22,4 @@ produce `initial-request.md` — asking the user whatever is unclear, since that
 is what the stage exists for.
 
 Commit each item as you create it. Do not carry an entry into `spec`; that is
-the `tcw-commands-plan-work` skill.
+the `commands-plan-work` skill.

@@ -39,10 +39,10 @@ EXCLUSIONS = {
         "skills it delegates to.",
     **{name: "Composes `work` stage documents that axis A measures, and has "
              "no case of its own yet."
-       for name in ("tcw-commands-plan-work",
-                    "tcw-commands-drive-work-to-completion",
-                    "tcw-commands-verify-work",
-                    "tcw-commands-process-inbox")},
+       for name in ("commands-plan-work",
+                    "commands-drive-work-to-completion",
+                    "commands-verify-work",
+                    "commands-process-inbox")},
 }
 
 # Not exclusions. A skill a case names counts as covered, but a directory-level
