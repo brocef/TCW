@@ -54,8 +54,8 @@ sink and the most valuable delegation.
 
 A custom agent earns its place only when it needs a different tool set or model
 than the default; otherwise the stage document is already the brief. That test
-passes three times, all read-only: `tcw-verifier` for the `verify` stage's
-assessment, `post-mortem` for `postmortem`, and `tcw-backlog-auditor` for the
+passes three times, all read-only: `verifier` for the `verify` stage's
+assessment, `post-mortem` for `postmortem`, and `backlog-auditor` for the
 per-item half of [`audit-backlog.md`](audit-backlog.md).
 
 A read-only tool set is the strongest reason to define one — but be precise about

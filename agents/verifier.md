@@ -1,5 +1,5 @@
 ---
-name: tcw-verifier
+name: verifier
 description: Read-only assessment for the TCW `verify` stage — reads the diff against a work item's spec, runs checks, and reports whether the acceptance criteria are met. Never edits, never transitions, never decides.
 tools: Read, Glob, Grep, Bash
 ---

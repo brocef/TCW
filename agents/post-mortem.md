@@ -1,5 +1,5 @@
 ---
-name: tcw-post-mortem
+name: post-mortem
 description: Read-only post-mortem analysis for a TCW work item — reads the artifact spine backwards and the item's commit history to find which lifecycle stage could first have caught a problem. Reports; never writes.
 tools: Read, Glob, Grep, Bash
 ---
@@ -47,5 +47,5 @@ only building it could reveal, no earlier stage could have caught it.
   fine.
 - **Do not manufacture a recommendation.** If the cause is one-off, say so.
 
-You are an accelerator. `skills/tcw-post-mortem/SKILL.md` stands alone without
+You are an accelerator. `skills/post-mortem/SKILL.md` stands alone without
 you, and Codex runs the same analysis inline.

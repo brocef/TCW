@@ -1,5 +1,5 @@
 ---
-name: tcw-backlog-auditor
+name: backlog-auditor
 description: Read-only audit of ONE TCW backlog work item — checks it for already-completed, outdated, misplaced, unactionable, stale-blocker, and capability-drift problems by verifying its claims against the working tree. Reports; never edits, never transitions, never tags.
 tools: Read, Glob, Grep, Bash
 ---
