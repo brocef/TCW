@@ -710,38 +710,108 @@ Everything else about the app is in
 
 ## Documentation
 
-<!-- readme-rewrite: unwritten -->
+| Document                                                             | Covers                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Configuration](docs/guide/configuration.md)                         | `tcw-config.yaml`: what runs at each stage and transition, prompts, document templates, and documentation entries                                                                                                                                                                                                                                                                 |
+| [The Work component](docs/guide/work.md)                             | The lifecycle, every `tcw work` command, tags, the Definition of Done, splitting items, and epics across repositories                                                                                                                                                                                                                                                             |
+| [Working from Jira](docs/guide/jira.md)                              | Connecting a Jira Cloud site: configuration, taking and linking tickets, tickets following their items, and strict mode                                                                                                                                                                                                                                                           |
+| [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md) | Declaring vocabulary, features and capabilities, and inheriting both from other projects                                                                                                                                                                                                                                                                                          |
+| [Working across repositories](docs/guide/multi-repo.md)              | Connecting projects, keeping a store in another repository, and fetching what a checkout does not have                                                                                                                                                                                                                                                                            |
+| [The local web viewer](docs/guide/web-viewer.md)                     | Everything about `tcw serve`                                                                                                                                                                                                                                                                                                                                                      |
+| [Linking and validation](docs/guide/linking-and-validation.md)       | `tcw://` references between objects, and `tcw validate` as a CI check                                                                                                                                                                                                                                                                                                             |
+| [The abstraction rules](docs/lifecycle/abstraction.md)               | Why every operation must work for a store that is not a filesystem, in full                                                                                                                                                                                                                                                                                                       |
+| [Release notes](docs/release-notes/)                                 | What changed for users in each version                                                                                                                                                                                                                                                                                                                                            |
+| Migration guides                                                     | Upgrading across a breaking release: [0.10 → 0.11](docs/migration-guide-0.10.X-to-0.11.0.md), [0.12 → 0.13](docs/migration-guide-0.12.X-to-0.13.0.md), [0.14 → 0.15](docs/migration-guide-0.14.X-to-0.15.0.md), [0.15 → 0.16](docs/migration-guide-0.15.X-to-0.16.0.md), [0.21 → 1.0](docs/migration-guide-0.21.X-to-1.0.0.md), [1.x → 2.0](docs/migration-guide-1.X-to-2.0.0.md) |
+| [Inbox request template](docs/work-inbox-template.md)                | A starting shape for a raw request dropped into a work inbox                                                                                                                                                                                                                                                                                                                      |
+
+Every command group also has `--help`, and a `check` that validates its tree.
 
 ## Development
 
+This section is for working on TCW itself.
+
 ### Setting up
 
-<!-- readme-rewrite: unwritten -->
+```sh
+git clone https://github.com/brocef/TCW.git
+cd TCW
+pip install -e '.[dev]'     # or: scripts/remote_session_setup.sh --force
+```
+
+`scripts/remote_session_setup.sh` installs this checkout with its development
+dependencies and installs the `tcw` plugin from the checkout. In a Claude Code
+remote session it runs by itself: `.claude/settings.json` wires it to
+`SessionStart`, and also enables the `tcw` plugin for this repository. It is safe
+to run repeatedly and prints only when something failed. It is contributor
+tooling, not the install path for users (that is `scripts/session_bootstrap.sh`,
+which installs the released `tcw-cli`).
+
+`tcw work start --worktree` puts an item's edits in a separate git worktree, but
+the editable install still runs the main checkout's code. How to point it at the
+worktree, and back again, is in
+[`AGENTS.md`](AGENTS.md#working-in-a---worktree-branch).
 
 ### Running the tests
 
-<!-- readme-rewrite: unwritten -->
+```sh
+pytest                  # the Python suite; what CI runs (.github/workflows/test.yml)
+pnpm typecheck          # formatting check, then TypeScript
+pnpm lint               # ESLint over the web app
+pnpm test               # web app unit tests
+pnpm test:e2e           # Playwright end-to-end tests of the web app
+pnpm build              # rebuild the committed web assets
+pnpm prettify           # format source and documentation
+pnpm prettify:check     # check formatting without changing files
+```
+
+The `pnpm` commands need Node.js 22.12 or newer and `pnpm install` first. Python
+tests build their own throwaway git repositories and never read this
+repository's board.
 
 ### How work is tracked here
 
-<!-- readme-rewrite: unwritten -->
+TCW tracks its own development with `tcw work`: every change is a work item under
+`docs/work/`, and `tcw work list` shows what is in progress. The working rules for
+contributors, human or agent, are in [`AGENTS.md`](AGENTS.md). This repository
+attaches its own rules to lifecycle stages:
+[`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) at `spec` and
+`plan`, and [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md)
+and [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) at `implement`.
+
+Older design history lives in [`docs/plan/`](docs/plan/) (the original designs
+for each component) and [`docs/superpowers/`](docs/superpowers/); the developer
+changelog for each version is in [`docs/changelogs/`](docs/changelogs/).
 
 ### Measuring the skill layer
 
-<!-- readme-rewrite: unwritten -->
+[`evals/`](evals/) holds a harness that measures whether this project's lifecycle
+instructions actually reach an agent, and what the plugin's skills add. The test
+suite cannot answer that: it can prove a skill file says the right words, but not
+that an agent read them. Running it starts real agent sessions and costs money;
+`python -m evals.run_evals --axis a --dry-run` shows what it would run.
 
 ### Releasing
 
-<!-- readme-rewrite: unwritten -->
+`python scripts/cut_version.py <patch|minor|major|X.Y.Z>` bumps the version in all
+five files that carry it, turns the `upcoming.md` changelog and release notes into
+that version's files, commits and tags. Pushing the tag publishes the release to
+PyPI. Details, including the one-time PyPI setup, are in
+[`docs/releasing.md`](docs/releasing.md).
 
 ### Reporting problems
 
-<!-- readme-rewrite: unwritten -->
+File bugs and suggestions on
+[GitHub issues](https://github.com/brocef/TCW/issues). With the plugin installed,
+the `tcw-extras-report` skill gives you a ready-to-fill template.
 
 ### License
 
-<!-- readme-rewrite: unwritten -->
+Apache License 2.0; see [`LICENSE`](LICENSE).
 
 ## Further Reading
 
-<!-- readme-rewrite: unwritten -->
+- [`AGENTS.md`](AGENTS.md): the working rules for contributing. Read it first.
+- [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md): the rule that
+  keeps TCW's model independent of the filesystem, in full.
+- [`docs/plan/`](docs/plan/): the original design documents for each component.
+- `tcw work list`: what is being changed in this repository right now.
