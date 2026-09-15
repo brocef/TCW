@@ -116,7 +116,7 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   `capabilities reconciled`, `reviewed`, `version offered`) rather than extending
   them — omit one and it is gone, with no error.
 - **If the item came from a GitHub issue**, closing it out means saying so on the
-  issue and closing it — read `tcw-extras-triage-issues` §8. `tcw work show <slug>` →
+  issue and closing it — read `extras-triage-issues` §8. `tcw work show <slug>` →
   the item's body → `## Origin` is where the issue URL lives; on an item filed
   from an issue that body is its `intake.md`, not a request. Nothing is posted
   without the user approving the exact text.
@@ -156,7 +156,7 @@ its own.
   deciding work is unwanted is not authority to destroy an unmerged branch.
 - **No Definition-of-Done checklist is printed at all** — `complete` computes it
   only when shipping. So if the item came from a GitHub issue, _nothing prompts
-  you_: this line is the only prompt there is. Read `tcw-extras-triage-issues` §8 and
+  you_: this line is the only prompt there is. Read `extras-triage-issues` §8 and
   answer the issue. `wontfix` and `duplicate` close it; **`superseded` closes it
   only if the superseding item absorbed the ask** — if it deferred the ask
   instead, reply and leave the issue open, because closing it would tell the

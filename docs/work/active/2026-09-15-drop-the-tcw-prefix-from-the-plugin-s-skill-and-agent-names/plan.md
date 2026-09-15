@@ -50,9 +50,17 @@ and the bodies under `docs/capabilities/**`.
 **One deliberate intermediate staleness.** A capability body at
 `docs/capabilities/skills/tcw-work/description.md` is rewritten by step 3 while the
 folder it sits in is still called `tcw-work` — the folder is task 10's to rename. No
-test reads those bodies for skill names and `tcw capabilities check` validates refs
-rather than prose, so the boundary stays green; it is called out here so a reviewer
-reads it as sequencing rather than as a miss.
+test reads those bodies for skill names, so the boundary stays green; it is called out
+here so a reviewer reads it as sequencing rather than as a miss.
+
+**But a `tcw://` capability ref inside a body is not prose, and step 3 must not touch
+one.** `docs/capabilities/work/complete-a-work-item/description.md` links
+`tcw://C/skills/tcw-extras-triage-issues`. `tcw validate` resolves that ref against the
+ledger, so rewriting the skill name inside it points it at a capability that does not
+exist until task 10 moves the folder — and validate goes red on the task that did the
+rewriting. Found this way at task 8. A ref names a **capability path**, which is task
+10's to change; the substitution leaves every `tcw://` target alone, and task 10
+re-points this one when it moves the entry.
 
 ---
 

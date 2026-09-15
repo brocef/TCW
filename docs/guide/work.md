@@ -209,7 +209,7 @@ from every completion, with no error. And it is printed only when the resolution
 is `done`: discarding an item (`wontfix`, `duplicate`, `superseded`) prints no
 checklist at all, so a line meant to cover those closures has nowhere to land.
 
-If the item came from a GitHub issue — the `tcw-extras-triage-issues` skill records it — closing
+If the item came from a GitHub issue — the `extras-triage-issues` skill records it — closing
 the item out means answering that issue and usually closing it too. A checklist
 line is the natural place to be reminded.
 

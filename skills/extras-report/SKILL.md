@@ -1,5 +1,5 @@
 ---
-name: tcw-extras-report
+name: extras-report
 description: Teaches a TCW user how to report a bug, issue, or suggestion back to the TCW project by filing a GitHub issue on the TCW repository, and hands them a ready-to-fill skeleton for each kind of report. Use when a user hits a `tcw` bug, wants to request a feature, or has feedback on TCW itself — not for tracking the user's own project work (that is work).
 when_to_use: Use when a user wants to report a problem with the `tcw` CLI or the TCW plugin/skills, request a feature, or send a suggestion upstream to the TCW project — i.e. feedback about TCW itself, filed as a GitHub issue. Do not use it for the user's own project work items (that is work).
 allowed-tools: Bash(tcw *), Read

@@ -498,7 +498,7 @@ def test_the_taxonomy_skill_does_not_advertise_setup_or_federation():
 # removed or renamed. A live document still naming one sends a reader to
 # something that is not there. Matched as whole names: a preceding or following
 # `-` or word character means the match sits inside a longer name, so
-# `tcw-extras-autonomous-work` does not count as `autonomous-work`.
+# `extras-autonomous-work` does not count as `autonomous-work`.
 
 DELETED_NAMES = (
     "tcw-plugin", "tcw-taxonomy-init", "tcw-capabilities-init",
