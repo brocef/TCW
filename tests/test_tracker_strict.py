@@ -692,3 +692,23 @@ def test_an_unusable_record_on_an_unmapped_status_is_cleared_by_sync(tmp_path, f
     with_record(root, slug, "not a mapping")
     code, out, _err = cli(root, "work", "tracker", "sync", slug)
     assert code == 0 and record(root, slug) is None, out
+
+
+def test_a_finished_held_item_keeps_the_record_that_can_still_deliver_its_move(
+        tmp_path, fake):
+    from test_tracker_sync import RECORD
+    root = make_node(tmp_path, statuses=STATUSES)
+    api = bound_item(root, "Api", part="api")
+    claimed_ticket(fake, "In Review")
+    st = FsWorkStore.open(root)
+    st.start(api, owner="a@example.test")
+    st.submit(api)
+    st.complete(api, "done", ["acked"])
+    with_record(root, api, {**RECORD, "move": "complete", "since": "In Review"})
+    web = bound_item(root, "Web", part="web")
+    assert "held" in cli(root, "work", "tracker", "sync", api)[1]
+    assert record(root, api) is not None
+    assert cli(root, "work", "tracker", "unlink", web, "--reason", "wrong part")[0] == 0
+    code, out, err = cli(root, "work", "tracker", "sync", "--all")
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "Done"

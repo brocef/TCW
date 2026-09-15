@@ -44,7 +44,7 @@ category.
   is here (open or finished), every earlier mapped status is expected, so the last
   part completing from `review` moves a ticket that was held in the `active` status.
   A finished part that was not retained is not seen. `_siblings()` answers both
-  "held" and "shared" in one scan. A held item's earlier `sync` record (claim done),
+  "held" and "shared" in one scan. A held open item's earlier `sync` record (claim done),
   and an unusable record on an item with nothing mapped, are removed by the next
   delivery or `sync`, so strict mode is not left refusing over them.
 - `tcw work tracker sync [<slug> | --all]`: retries recorded items, skipping items

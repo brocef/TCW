@@ -172,10 +172,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # Held even when this item's claim is owed: the open part will claim and move
         # the ticket, and claiming it here could only lead to closing it early.
         if others:
-            # This item owes the ticket no move while another part holds it, so an
+            # An open item owes the ticket no move while another part holds it, so an
             # earlier record — unless it still owes the claim — no longer says
-            # anything true, and under strict mode it would lock the item.
-            stale = bound.sync is not None and (record is None or record["claim"] != "owed")
+            # anything true, and under strict mode it would lock the item. A finished
+            # item's record is kept: if the other part goes away, it is the only thing
+            # left that can still deliver this item's move.
+            stale = (bound.sync is not None and local not in RESOLVED_STATUSES
+                     and (record is None or record["claim"] != "owed"))
             if stale and not store.pending_deletion(slug) and (
                     not check_only or record is None):
                 content = store.read_sidecar(slug, BINDING_SIDECAR).content
