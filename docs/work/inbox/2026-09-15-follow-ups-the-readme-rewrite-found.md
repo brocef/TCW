@@ -34,7 +34,16 @@ source code. Verified at that item's work branch.
    comment at the document that does describe it (`docs/guide/work.md`,
    "What happens to resolved work"), or reword it.
 
+4. **`tcw work tracker link --help` contradicts the code.** Its epilog says
+   "Nothing moves the ticket for you afterwards — do that in the tracker
+   yourself." But `tcw work start` claims a linked ticket, and later lifecycle
+   moves send the ticket to the mapped statuses (`tcw/tracker/sync.py:166-167`,
+   the `start` path in `tcw/work/cli.py`). `README.md` and `docs/guide/jira.md`
+   describe the code correctly; the help text is what drifted. Found by the
+   verifier; the rewrite's sweep of `link` descriptions covered documents and
+   skills, not CLI help.
+
 ## Constraints
 
-Item 3 edits `tcw/`, so under this repository's rules it is recorded here rather
-than done in a documentation-only item.
+Items 3 and 4 edit `tcw/`, so under this repository's rules they are recorded
+here rather than done in a documentation-only item.
