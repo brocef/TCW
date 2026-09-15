@@ -63,13 +63,15 @@ def classify_error(error: TrackerError) -> str:
 
 
 def expected_statuses(statuses: dict, previous_status: str | None, record: dict | None,
-                      resolution: str | None) -> tuple[str, ...]:
+                      resolution: str | None, *, shared: bool = False) -> tuple[str, ...]:
     """Where the ticket may be before this move without it counting as drift.
 
     With a record: its `since`, or the target of its move — a person who moved the
     ticket by hand to where TCW meant to put it is not punished. Otherwise the
     mapped status of the previous local status, falling back to earlier ones. Empty
-    when unknown (a move out of `backlog`).
+    when unknown (a move out of `backlog`). With `shared` — another item here is bound
+    to the same ticket — every earlier mapped status is expected: a move this item
+    made while the other part was open was held, so the ticket can still be behind.
     """
     if record is not None:
         if record["since"]:
@@ -85,11 +87,9 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
                 return ()
         moved_to = target_status(statuses, MOVE_STATUS[record["move"]], resolution)
         return tuple(dict.fromkeys(filter(None, (*since, moved_to))))
-    for earlier in _EARLIER.get(previous_status or "", ()):
-        status = target_status(statuses, earlier, None)
-        if status:
-            return (status,)
-    return ()
+    mapped = tuple(filter(None, (target_status(statuses, earlier, None)
+                                 for earlier in _EARLIER.get(previous_status or "", ()))))
+    return mapped if shared else mapped[:1]
 
 
 def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
@@ -126,12 +126,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _sharing(store, slug: str, bound: Bound) -> list[str]:
-    """Other open items in this store bound to the same ticket."""
+def _sharing(store, slug: str, bound: Bound, *, open_only: bool = True) -> list[str]:
+    """Other items in this store bound to the same ticket — open ones only, unless
+    `open_only` is false."""
     out = []
     for item in store.query():
         value = item.tracker
-        if (item.slug == slug or item.status in RESOLVED_STATUSES
+        if (item.slug == slug or (open_only and item.status in RESOLVED_STATUSES)
                 or not isinstance(value, dict) or "problem" in value):
             continue
         if ((value["project"], value["provider"], value["ticket"]["id"])
@@ -168,8 +169,9 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             return Outcome(HELD, f"{bound.ticket_key} not moved: also bound to "
                                  f"{', '.join(others)}.")
 
-    expected = expected_statuses(config.statuses, previous_status, record,
-                                 item.resolution)
+    expected = expected_statuses(
+        config.statuses, previous_status, record, item.resolution,
+        shared=bool(_sharing(store, slug, bound, open_only=False)))
     since = record["since"] if record else (expected[0] if expected else "")
     claimed_message = ""
 
@@ -230,6 +232,12 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
             detail = f" ({outcome.detail})" if outcome.detail else ""
             return finish(state, outcome.message + detail)
+        if config.strict:
+            # Under strict mode a claim the workflow cannot make exclusive authorizes
+            # nothing, so it stays owed and nothing moves.
+            refusal = claim_refusal(client, config, bound.ticket_id, outcome)
+            if refusal:
+                return finish(CONFLICTING, refusal)
         owed = False
         claimed_message = outcome.message
         active = target_status(config.statuses, "active", None)

@@ -329,10 +329,96 @@ def _provided(value):
     return value if value is not None else _UNSET
 
 
+def _strict_says_no(verb: str, what: str, reason: str) -> int:
+    """Print a strict-mode refusal, which always leads with what did not happen."""
+    print(f"tcw work {verb}: refused under strict tracker mode; {what}. {reason}",
+          file=sys.stderr)
+    return 1
+
+
+_STRICT_BROKEN = ("The tracker configuration has problems, and strict mode refuses "
+                  "until it is fixed. Run `tcw validate`.")
+
+
+def _strict_refusal(st, bare: str, change: str) -> str | None:
+    """Why strict tracker mode refuses `change` (a lifecycle move) of `bare`, or
+    `None`. Loads no tracker code unless the node is strict; epics are not gated."""
+    if not st.tracker_strict():
+        return None
+    item = st.get(bare)
+    if item is None or item.type == "epic":
+        return None
+    config = st.tracker_config()
+    if config is None:
+        return _STRICT_BROKEN
+    value = item.tracker
+    if not isinstance(value, dict) or "problem" in value:
+        return (f"{bare} is not bound to a readable ticket. Link it with "
+                f"`tcw work tracker link {bare} <ticket>` first.")
+    from tcw.store.base import target_status
+    from tcw.tracker.jira import JiraClient
+    from tcw.tracker.sync import MOVE_STATUS, authorize
+    target = target_status(config.statuses, MOVE_STATUS[change], None)
+    return authorize(st, bare, JiraClient(config), config, target=target)
+
+
+def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
+    """Under strict mode, claim a bound item's ticket before `start` moves it.
+
+    Returns `(exit code of a refusal already printed, or None to go ahead, whether
+    the ticket was claimed)`. The checks the store would certainly refuse run first, so a start that
+    cannot happen does not take a ticket.
+    """
+    config = st.tracker_config()
+    if config is None:
+        return _strict_says_no("start", f"{bare} was not started", _STRICT_BROKEN), False
+    value = item.tracker
+    if not isinstance(value, dict) or "problem" in value:
+        return _strict_says_no("start", f"{bare} was not started",
+                               f"{bare} is not bound to a readable ticket. Link it with "
+                               f"`tcw work tracker link {bare} <ticket>` first."), False
+    if item.status != "backlog" and not (item.status == "active" and args.take_over):
+        return None, False                # the store refuses it, and names why
+    if not args.force and st.unresolved_blockers(item):
+        return None, False                # likewise, before any ticket is taken
+    from tcw.tracker.intake import binding_of, claim, read_ticket, same_site
+    from tcw.tracker.jira import JiraClient, TrackerError
+    from tcw.tracker.sync import claim_refusal
+    bound, _revision = binding_of(st, bare)
+    key = value["ticket"]["key"]
+    if not same_site(bound.ticket_url, config.base_url):
+        return _strict_says_no("start", f"{bare} was not started",
+                               f"{key}'s binding is not on {config.base_url}."), False
+    if value.get("sync") is not None:
+        return _strict_says_no("start", f"{bare} was not started",
+                               f"{key} has a change that has not reached the tracker. "
+                               f"Run `tcw work tracker sync {bare}` first."), False
+    client = JiraClient(config)
+    try:
+        outcome = claim(client, read_ticket(client, bound.ticket_id))
+    except TrackerError as error:
+        return _strict_says_no("start", f"{bare} was not started",
+                               f"The tracker could not answer ({error}), so {key} may "
+                               f"or may not have been claimed. Run it again once the "
+                               f"tracker answers."), False
+    if not outcome.claimed:
+        detail = f" ({outcome.detail})" if outcome.detail else ""
+        return _strict_says_no("start", f"{bare} was not started",
+                               outcome.message + detail), False
+    refusal = claim_refusal(client, config, bound.ticket_id, outcome)
+    if refusal:
+        return _strict_says_no("start", f"{bare} was not started", refusal), True
+    return None, True
+
+
 def _new(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
+    if st.tracker_strict() and not args.epic:
+        return _strict_says_no("new", "nothing was created",
+                               "Create work from a ticket with "
+                               "`tcw work tracker import <ticket>`.")
     try:
         detail = st.create_work(
             args.title,
@@ -404,6 +490,10 @@ def _inbox_accept(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
+    if st.tracker_strict():
+        return _strict_says_no("inbox accept", f"{args.entry} was not accepted",
+                               "Create work from a ticket with "
+                               "`tcw work tracker import <ticket>`.")
     try:
         item = st.inbox_accept(args.entry, title=args.title)
     except _ERRORS as e:
@@ -886,10 +976,20 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     before = st.get(bare)
     previous = before.status if before is not None else "backlog"
+    strict = (before is not None and before.type != "epic" and st.tracker_strict())
+    claimed = False
+    if strict:
+        code, claimed = _strict_claim(st, bare, before, args)
+        if code is not None:
+            return code
     try:
         st.start(bare, force=args.force, owner=owner, take_over=args.take_over)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
+        if claimed and not isinstance(e, TransitionCommitError):
+            print(f"tcw work start: under strict tracker mode the ticket was claimed "
+                  f"before the start was refused, and is left claimed. Run "
+                  f"`tcw work start {bare}` again once that is fixed.", file=sys.stderr)
         if isinstance(e, TransitionCommitError):      # the item did move
             _deliver_after(st, bare, "start", "start", previous)
         return 1
@@ -967,6 +1067,8 @@ def _submit(args: argparse.Namespace) -> int:
                        st.get(bare), item_path=st.path(bare))):
         print(f"tcw work submit: {err}; {bare} not moved", file=sys.stderr)
         return 1
+    if reason := _strict_refusal(st, bare, "submit"):
+        return _strict_says_no("submit", f"{bare} was not changed", reason)
     try:
         st.submit(bare)
     except _ERRORS as e:
@@ -994,6 +1096,8 @@ def _rework(args: argparse.Namespace) -> int:
                        st.get(bare), item_path=st.path(bare))):
         print(f"tcw work rework: {err}; {bare} not moved", file=sys.stderr)
         return 1
+    if reason := _strict_refusal(st, bare, "rework"):
+        return _strict_says_no("rework", f"{bare} was not changed", reason)
     try:
         st.rework(bare)
     except _ERRORS as e:
@@ -1896,6 +2000,10 @@ def _tracker_import(args: argparse.Namespace) -> int:
     if not outcome.claimed:
         _print_refusal("import", outcome)
         return 1
+    if client.config.strict:
+        from tcw.tracker.sync import claim_refusal
+        if refusal := claim_refusal(client, client.config, outcome.issue_id, outcome):
+            return _strict_says_no("tracker import", "no item was created", refusal)
     try:
         description = client.description(outcome.issue_id)
     except TrackerError as e:
@@ -2241,6 +2349,11 @@ def _complete(args: argparse.Namespace) -> int:
         print(f"tcw work complete: --already-integrated applies to an item started "
               f"with --worktree; {args.slug} has none.", file=sys.stderr)
         return 1
+    # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
+    # the item, its branch and its worktree exactly as they were. Discards are never
+    # refused — abandoning work authorizes none.
+    if shipping and (reason := _strict_refusal(st, bare, "complete")):
+        return _strict_says_no("complete", f"{bare} was not changed", reason)
     if shipping and has_worktree and branch and not args.already_integrated:
         err = merge_worktree(st.node_root, branch)
         if err:
@@ -2356,6 +2469,11 @@ def _drop(args: argparse.Namespace) -> int:
               f"record. Re-run with --confirm.", file=sys.stderr)
         print(f"Would delete {args.slug} ({loc})", file=sys.stderr)
         return 1
+    if st.tracker_strict() and st.read_sidecar(bare, "tracker.yaml") is not None:
+        return _strict_says_no("drop", f"{bare} was not dropped",
+                               f"It is, or was, bound to a ticket, and dropping would "
+                               f"erase that record. Discard it instead: `tcw work "
+                               f"complete {bare} --resolution wontfix --confirm`.")
     try:
         st.drop(bare)
     except _ERRORS as e:

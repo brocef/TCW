@@ -213,3 +213,248 @@ def test_a_claim_row_1e_from_the_wrong_status_is_refused(strict, fake):
     outcome = claim(client, read_ticket(client, TICKET_ID))
     assert outcome.claimed and outcome.row == "1e"
     assert "not a claim" in claim_refusal(client, config, TICKET_ID, outcome)
+
+
+# ── the command gates ────────────────────────────────────────────────────────
+
+
+import subprocess  # noqa: E402
+
+from tracker_fake import GLOBAL, SYNC, FakeJira  # noqa: E402
+
+REFUSED = "refused under strict tracker mode"
+
+
+def folder_bytes(root: Path, slug: str) -> dict:
+    folder = FsWorkStore.open(root).path(slug)
+    return {p.name: p.read_bytes() for p in folder.iterdir() if p.is_file()}
+
+
+def commit_all(root: Path) -> None:
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "setup", "--allow-empty"],
+                   check=True)
+
+
+def test_new_and_inbox_accept_are_refused(strict, fake):
+    code, out, err = cli(strict, "work", "new", "Unbound work")
+    assert code == 1 and REFUSED in err and "tcw work tracker import" in err
+    assert out == "" and FsWorkStore.open(strict).query() == []
+    inbox = FsWorkStore.open(strict).root / "inbox"
+    inbox.mkdir(exist_ok=True)
+    (inbox / "a-request.md").write_text("# A request\n", encoding="utf-8")
+    code, _out, err = cli(strict, "work", "inbox", "accept", "a-request.md")
+    assert code == 1 and REFUSED in err
+    assert FsWorkStore.open(strict).query() == []
+
+
+def test_a_broken_strict_block_still_refuses_new(tmp_path, fake):
+    root = strict_node(tmp_path, strict=True)
+    set_tracker_key(root, "timeout-seconds", -1)
+    code, _out, err = cli(root, "work", "new", "x")
+    assert code == 1 and REFUSED in err
+
+
+def test_an_unbound_item_cannot_start_submit_or_complete_but_can_be_discarded(tmp_path,
+                                                                             fake):
+    root = make_node(tmp_path, statuses=STATUSES)
+    st = FsWorkStore.open(root)
+    idle = st.create("Idle").slug
+    busy = st.create("Busy").slug
+    st.start(busy, owner="a@example.test")
+    set_tracker_key(root, "strict", True)
+    assert cli(root, "work", "start", idle)[0] == 1 and status(root, idle) == "backlog"
+    for argv in (("submit", busy), ("complete", busy, "--resolution", "done",
+                                    "--confirm")):
+        code, _out, err = cli(root, "work", *argv)
+        assert code == 1 and REFUSED in err, argv
+    assert status(root, busy) == "active"
+    code, _out, err = cli(root, "work", "complete", idle, "--resolution", "wontfix",
+                          "--confirm")
+    assert code == 0, err
+    assert status(root, idle) == "discarded"
+
+
+def test_start_claims_an_unassigned_ticket(strict, fake):
+    slug = bound_item(strict)
+    code, _out, err = cli(strict, "work", "start", slug)
+    assert code == 0, err
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee, status(strict, slug)) == ("In Progress", A,
+                                                                   "active")
+
+
+@pytest.mark.parametrize("flags", [(), ("--force",), ("--take-over",)])
+def test_start_of_someone_elses_ticket_is_refused_and_moves_nothing(strict, fake, flags):
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(strict, "work", "start", slug, *flags)
+    assert code == 1 and REFUSED in err and "Bob" in err
+    assert fake.writes() == [] and status(strict, slug) == "backlog"
+
+
+def test_a_reassigned_ticket_refuses_submit_and_changes_no_file(strict, fake):
+    slug = bound_item(strict)
+    assert cli(strict, "work", "start", slug)[0] == 0
+    claimed_ticket(fake, "In Progress", B)
+    before = folder_bytes(strict, slug)
+    code, _out, err = cli(strict, "work", "submit", slug)
+    assert code == 1 and REFUSED in err and "Bob" in err
+    assert status(strict, slug) == "active" and folder_bytes(strict, slug) == before
+
+
+def test_a_reassigned_ticket_refuses_rework(strict, fake):
+    slug = bound_item(strict)
+    assert cli(strict, "work", "start", slug)[0] == 0
+    assert cli(strict, "work", "submit", slug)[0] == 0
+    claimed_ticket(fake, "In Review", B)
+    code, _out, err = cli(strict, "work", "rework", slug)
+    assert code == 1 and REFUSED in err and status(strict, slug) == "review"
+
+def test_a_hand_written_binding_for_an_unclaimed_ticket_refuses_submit(strict, fake):
+    from test_tracker_sync import document
+    st = FsWorkStore.open(strict)
+    slug = st.create_work("Hand bound", intake="x").item.slug
+    (st.path(slug) / "tracker.yaml").write_text(document(), encoding="utf-8")
+    st.start(slug, owner="a@example.test")
+    code, _out, err = cli(strict, "work", "submit", slug)
+    assert code == 1 and "nobody" in err
+
+
+def test_a_ticket_moved_back_refuses_submit(strict, fake):
+    slug = bound_item(strict)
+    assert cli(strict, "work", "start", slug)[0] == 0
+    claimed_ticket(fake, "To Do", A)
+    code, _out, err = cli(strict, "work", "submit", slug)
+    assert code == 1 and "moved in the tracker" in err
+
+
+def test_an_unreachable_tracker_refuses_submit(strict, fake):
+    slug = bound_item(strict)
+    assert cli(strict, "work", "start", slug)[0] == 0
+    fake.down = True
+    code, _out, err = cli(strict, "work", "submit", slug)
+    assert code == 1 and f"{slug} was not changed" in err and "unknown" in err
+    assert status(strict, slug) == "active"
+
+
+def test_a_workflow_that_cannot_exclude_refuses_import_and_start(tmp_path, monkeypatch):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=GLOBAL)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
+    fake_.ticket(id="20002", key="SYNC-2", summary="u")
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=True)
+    code, out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 1 and out == "" and "second person could claim it too" in err
+    assert FsWorkStore.open(root).query() == []
+    slug = FsWorkStore.open(root).create("Linked").slug
+    set_tracker_key(root, "strict", False)
+    assert cli(root, "work", "tracker", "link", slug, "SYNC-2")[0] == 0
+    set_tracker_key(root, "strict", True)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1 and "second person could claim it too" in err
+    assert status(root, slug) == "backlog"
+
+
+def test_drop_refuses_an_item_that_was_ever_bound(strict, fake):
+    bound = bound_item(strict, "Bound")
+    unlinked = bound_item(strict, "Unlinked", ticket=KEY, part="other")
+    assert cli(strict, "work", "tracker", "unlink", unlinked, "--reason", "x")[0] == 0
+    for slug in (bound, unlinked):
+        code, _out, err = cli(strict, "work", "drop", slug, "--confirm")
+        assert code == 1 and REFUSED in err
+        assert FsWorkStore.open(strict).get(slug) is not None
+    set_tracker_key(strict, "strict", False)
+    plain = FsWorkStore.open(strict).create("Plain").slug
+    set_tracker_key(strict, "strict", True)
+    assert cli(strict, "work", "drop", plain, "--confirm")[0] == 0
+
+
+def test_discards_are_never_refused(strict, fake):
+    idle = bound_item(strict, "Idle")
+    held = bound_item(strict, "Held", part="other")
+    assert cli(strict, "work", "start", held)[0] == 0
+    claimed_ticket(fake, "In Progress", B)
+    for slug in (idle, held):
+        _code, _out, err = cli(strict, "work", "complete", slug, "--resolution",
+                               "wontfix", "--confirm")
+        assert REFUSED not in err
+        assert status(strict, slug) == "discarded"
+
+
+def test_complete_is_refused_before_the_worktree_merge(strict, fake):
+    slug = bound_item(strict)
+    commit_all(strict)
+    assert cli(strict, "work", "start", slug, "--worktree")[0] == 0
+    tree = strict / ".worktrees" / slug
+    (tree / "code.txt").write_text("change\n")
+    subprocess.run(["git", "-C", str(tree), "add", "code.txt"], check=True)
+    subprocess.run(["git", "-C", str(tree), "commit", "-qm", "code"], check=True)
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm")
+    assert code == 1 and REFUSED in err
+    assert tree.exists() and not (strict / "code.txt").exists()
+
+
+def test_start_claims_nothing_for_a_start_the_store_would_refuse(strict, fake):
+    blocker = bound_item(strict, "Blocker", part="blocker")
+    slug = bound_item(strict, "Blocked")
+    FsWorkStore.open(strict).add_blocker(slug, blocker)
+    code, _out, _err = cli(strict, "work", "start", slug)
+    assert code == 1 and fake.writes() == [] and status(strict, slug) == "backlog"
+
+
+def test_start_refuses_a_ticket_already_yours_in_review(strict, fake):
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Review", A)
+    code, _out, err = cli(strict, "work", "start", slug)
+    assert code == 1 and "not a claim" in err and status(strict, slug) == "backlog"
+
+
+def test_two_parts_held_in_progress_can_both_complete(strict, fake):
+    api = bound_item(strict, "Api", part="api")
+    web = bound_item(strict, "Web", part="web")
+    for slug in (api, web):
+        assert cli(strict, "work", "start", slug)[0] == 0
+        assert cli(strict, "work", "submit", slug)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Progress"       # held for the other part
+    code, _out, err = cli(strict, "work", "complete", api, "--resolution", "done",
+                          "--confirm")
+    assert REFUSED not in err, err
+    code, _out, err = cli(strict, "work", "complete", web, "--resolution", "done",
+                          "--confirm")
+    assert code == 0, err
+    assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_an_epic_is_not_gated(strict, fake):
+    code, out, err = cli(strict, "work", "new", "An epic", "--epic")
+    assert code == 0, err
+    slug = out.strip()
+    assert cli(strict, "work", "start", slug)[0] == 0
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm", "--force")
+    assert code == 0, err
+
+
+def test_no_refusal_prints_the_token(strict, fake):
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", B)
+    outputs = [cli(strict, "work", "start", slug), cli(strict, "work", "new", "x")]
+    fake.down = True
+    outputs.append(cli(strict, "work", "start", slug))
+    for _code, out, err in outputs:
+        assert SENTINEL not in out + err
+
+
+def test_strict_false_runs_c3s_start_as_before(tmp_path, fake):
+    root = strict_node(tmp_path, strict=False)
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1 and REFUSED not in err and status(root, slug) == "active"
