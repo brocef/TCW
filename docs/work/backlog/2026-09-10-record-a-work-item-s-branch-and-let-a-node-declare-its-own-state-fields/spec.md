@@ -1,5 +1,34 @@
 # Spec — Record the branch a work item is being implemented on
 
+> **Out of date — re-run the spec stage before planning or implementing.**
+> Found by the 2026-09-15 backlog audit:
+>
+> - **D1–D3 change the wrong method.** They change `WorkStore.start` in
+>   `tcw/store/base.py`, but `FsWorkStore.start` in `tcw/store/fs.py` overrides it
+>   and never calls it. It writes `owner` and `started` straight into the claim's
+>   `state.yaml` (at the main claim and at the interrupted-claim takeover) and via
+>   one `_set_fields_at` call (at the active-item takeover). So the design would
+>   not change `tcw work start`. The "two-write tear" it fixes exists only in the
+>   base-class default, which no shipped store uses.
+> - **Criteria 5, 7 and 12 do not hold for the filesystem store.** Criterion 7
+>   counts `set_fields` calls the fs path never makes. Criterion 5 expects
+>   `started` to stay empty without an owner, but the fs store writes it
+>   regardless. Criterion 12 (empty repository) needs a decision, because the
+>   claim state is written before the transition commit.
+> - **The tracker bridge shipped since.** `_start` now runs a strict claim before
+>   `st.start` and a delivery step after it, and the board row has a `ticket`
+>   segment kept last on purpose. Say where `branch` goes relative to it. The
+>   request's claim that the tracker "syncs branches" is not true (nothing under
+>   `tcw/tracker` mentions a branch).
+> - **Coverage row 6's reason is wrong.** Nothing stops `--take-over --worktree`
+>   before the worktree block; the cell is n/a only because that criterion passes
+>   no `--worktree`.
+> - **Almost every `file:line` anchor is stale** after about 500 commits. Cite
+>   symbols by name.
+> - Two inbox notes edit the same claim code and would conflict if worked at the
+>   same time: `2026-09-11-take-over-cannot-recover-a-claim-from-the-cli.md` and
+>   `2026-09-11-an-absolute-slug-crashes-the-claim-lookup.md`.
+
 ## Capability changes
 
 No new capabilities. Three existing entries change and are recorded in this

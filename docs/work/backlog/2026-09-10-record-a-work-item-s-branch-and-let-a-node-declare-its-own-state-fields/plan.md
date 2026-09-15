@@ -1,5 +1,10 @@
 # Plan — Record the branch a work item is being implemented on
 
+> **Do not implement this plan.** Task 3 modifies only `tcw/store/base.py`, but
+> `FsWorkStore.start` overrides the method it changes, so the behaviour change
+> would never reach `tcw work start`. See the warning at the top of `spec.md`
+> (2026-09-15 backlog audit); re-plan after the spec is rewritten.
+
 Seven tasks. Tasks 1-2 add the two store operations and leave every existing
 test green on their own. Task 3 is the behaviour change and the riskiest one, so
 it lands after its infrastructure exists and after the golden fixtures that
