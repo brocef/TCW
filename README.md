@@ -431,6 +431,7 @@ verification, from which `rework` can send it back; and `complete` finishes it a
 completed, or as discarded if it will not ship.
 
 ```mermaid
+%%{init: {"themeVariables": {"edgeLabelBackground": "#b45309", "textColor": "#ffffff"}}}%%
 flowchart LR
     inbox(["inbox entry<br/><i>stage: inbox</i>"]):::outside
     backlog("backlog<br/><i>stages: request, spec, plan</i>"):::status
