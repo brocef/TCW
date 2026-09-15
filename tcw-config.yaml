@@ -15,9 +15,15 @@ work:
   documentation:
   - path: README.md
     trigger: Public-API
-    description: Public-facing overview and `tcw` CLI usage (install, commands, quickstart);
-      plain, high-readability. Update when the public CLI surface or user-facing behavior
-      changes.
+    description: 'Public-facing overview: what TCW is, installation, each axis and its
+      skills and CLI, the work lifecycle and Jira, the local web app, and contributor
+      setup; plain, high-readability. Update when the public CLI surface or user-facing
+      behavior changes.'
+  - path: docs/guide/jira.md
+    trigger: Tracker-Change
+    description: User-facing guide to the Jira integration; plain language. Update whenever
+      a `tcw work tracker` command's behavior, what a lifecycle command does to a bound
+      ticket, or a `work.tracker` key changes.
   - path: docs/release-notes/upcoming.md
     trigger: Public-API
     description: User-facing release notes for the next version; plain language, no
