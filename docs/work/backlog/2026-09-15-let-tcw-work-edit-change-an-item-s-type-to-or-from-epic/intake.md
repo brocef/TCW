@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `no-cli-verb-promotes-an-existing-item-to-an-epic.md`
+
+## Inbox body
+
 # No CLI verb promotes an existing work item to an epic
 
 `tcw work new --epic` is the only way to set `type: epic`. An item that was
