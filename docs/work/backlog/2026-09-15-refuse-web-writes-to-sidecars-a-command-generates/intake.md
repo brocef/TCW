@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-14-serve-accepts-writes-to-generated-sidecars.md`
+
+## Inbox body
+
 # The web server accepts writes to sidecars that a command generates
 
 ## Desired outcome
