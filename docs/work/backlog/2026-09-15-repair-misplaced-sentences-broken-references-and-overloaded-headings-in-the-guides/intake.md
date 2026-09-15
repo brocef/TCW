@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-11-prose-defects-the-heading-sweep-found.md`
+
+## Inbox body
+
 # Defects the heading sweep found that no heading can fix
 
 ## Desired outcome
@@ -126,3 +132,20 @@ since shifted by the heading insertions.
   something, and lists under *Inspected and deliberately left alone* the
   sections it judged sound. Its `outcome.md` records why the sweep needed three
   review rounds.
+
+## Triage (2026-09-15)
+
+Parts 1 to 6 of the entry above are one item: all are edits to `docs/guide/` (and
+one sentence of `README.md`), and the maintainer asked for items touching the same
+feature to be combined. The entry's own advice to split was weighed against that.
+
+- **Not in scope here:** part 7 (`pnpm prettify:check`) is tracked in `2026-09-15-make-pnpm-prettify-check-pass-on-a-clean-checkout`.
+- **Already handled elsewhere:** the `README.md` "ship alongside them" reference in
+  part 5 disappears with `2026-09-15-rewrite-the-readme-to-a-new-outline`, which replaces the README.
+- **Blocked by `2026-09-15-rewrite-the-readme-to-a-new-outline`:** that item requires `docs/guide/web-viewer.md` to stay
+  byte-identical (parts 3 and 4 edit it), rewrites `docs/guide/work.md`'s tracker
+  section (parts 5 and 6 edit that file), and gives contributor tooling a home in the
+  README's Development section, which is the destination part 4 lacked.
+- Checked at triage: the `web-viewer.md` anchor is the only broken anchor across
+  `README.md` and `docs/guide/`; every other defect in parts 1 to 6 is still present.
+- Part 6 took three review rounds last time; agree a stopping point before starting.
