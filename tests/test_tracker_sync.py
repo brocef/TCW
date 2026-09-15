@@ -746,3 +746,144 @@ def test_an_unreadable_record_is_named_where_the_item_is_read(node, fake):
     assert show_lines(node, slug)[1] == ("tracker sync: record cannot be read "
                                          "('sync' is not a mapping)")
     assert board_row(node, slug).endswith(f"| ticket: {KEY} (unreadable sync record)")
+
+
+# ── review findings ──────────────────────────────────────────────────────────
+
+
+def test_an_owed_claim_does_not_skip_the_hold_on_a_shared_ticket(node, fake):
+    api = bound_item(node, "Api half", part="api")
+    web = bound_item(node, "Web half", part="web")
+    claimed_ticket(fake, "In Progress", B)
+    for slug in (api, web):
+        assert cli(node, "work", "start", slug)[0] == 1        # Bob holds it
+    claimed_ticket(fake, "To Do", None)                        # Bob lets go
+    code, _out, err = cli(node, "work", "complete", api, "--resolution", "done",
+                          "--confirm", "--force")
+    assert code == 0, err
+    assert fake.tickets[TICKET_ID].status != "Done"
+    assert web in err
+
+
+def test_a_move_recorded_before_the_configuration_was_fixed_is_delivered(node, fake):
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    path = node / "tcw-config.yaml"
+    good = path.read_text(encoding="utf-8")
+    broken = yaml.safe_load(good)
+    broken["work"]["tracker"]["statuses"] = {"review": "In Review"}
+    path.write_text(yaml.safe_dump(broken), encoding="utf-8")
+    assert cli(node, "work", "submit", slug)[0] == 1
+    assert record(node, slug)["since"] == ""
+    path.write_text(good, encoding="utf-8")
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review"
+
+
+def test_a_discard_of_an_imported_item_recorded_while_down_is_delivered(node, fake):
+    code, out, err = cli(node, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    slug = out.strip()
+    fake.down = True
+    assert cli(node, "work", "complete", slug, "--resolution", "wontfix",
+               "--confirm")[0] == 1
+    fake.down = False
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "Won't Do"
+
+
+def test_an_owed_claim_on_a_ticket_already_at_the_target_is_current(node, fake):
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Progress", B)
+    assert cli(node, "work", "start", slug)[0] == 1
+    claimed_ticket(fake, "Done", B)                            # Bob finished it
+    FsWorkStore.open(node).complete(slug, "done", ["acked"])
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0 and out.strip() == f"{slug}: current", (out, err)
+    assert fake.writes() == [] and record(node, slug) is None
+
+
+def test_abandoning_an_item_whose_claim_is_owed_does_not_claim_the_ticket(tmp_path, fake):
+    root = make_node(tmp_path, statuses={"active": "In Progress",
+                                         "discarded": {"duplicate": "Duplicate"}})
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Progress", B)
+    assert cli(root, "work", "start", slug)[0] == 1
+    claimed_ticket(fake, "To Do", None)
+    fake.requests.clear()
+    code, _out, err = cli(root, "work", "complete", slug, "--resolution", "wontfix",
+                          "--confirm")
+    assert code == 0, err
+    assert fake.writes() == []
+    assert record(root, slug) is None
+
+
+def test_clearing_a_record_does_not_block_removing_an_unretained_item(tmp_path, fake):
+    root = make_node(tmp_path, statuses=STATUSES, retain={"completed": False})
+    slug = bound_item(root)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "bind"], check=True)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake.down = True
+    assert cli(root, "work", "submit", slug)[0] == 1
+    fake.down = False
+    code, _out, err = cli(root, "work", "complete", slug, "--resolution", "done",
+                          "--confirm")
+    assert code == 0, err
+    assert FsWorkStore.open(root).get(slug) is None
+
+
+def test_a_record_naming_auto_delete_is_unusable_not_a_crash(node, fake):
+    slug = bound_item(node)
+    with_record(node, slug, {**RECORD, "move": "auto-delete"})
+    assert set(record(node, slug)) == {"problem"}
+    code, out, _err = cli(node, "work", "tracker", "sync", slug)
+    assert code in (0, 1) and out.startswith(f"{slug}: ")
+
+
+def test_sync_reports_a_held_item_without_failing(node, fake):
+    api = bound_item(node, "Api half", part="api")
+    web = bound_item(node, "Web half", part="web")
+    claimed_ticket(fake)
+    st = FsWorkStore.open(node)
+    for slug in (api, web):
+        st.start(slug, owner="a@example.test")
+    st.submit(api)
+    with_record(node, api, RECORD)
+    code, out, err = cli(node, "work", "tracker", "sync", api)
+    assert code == 0 and out.startswith(f"{api}: held — "), (out, err)
+
+
+def test_a_move_whose_commit_was_refused_is_still_delivered(node, fake):
+    slug = bound_item(node)
+    subprocess.run(["git", "-C", str(node), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(node), "commit", "-qm", "bind"], check=True)
+    assert cli(node, "work", "start", slug)[0] == 0
+    hook = node / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 1
+    assert status(node, slug) == "review"
+    assert fake.tickets[TICKET_ID].status == "In Review", err
+
+
+def test_complete_of_a_worktree_item_names_a_staged_record(node, fake):
+    slug = bound_item(node)
+    subprocess.run(["git", "-C", str(node), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(node), "commit", "-qm", "bind"], check=True)
+    code, _out, err = cli(node, "work", "start", slug, "--worktree")
+    assert code == 0, err
+    tree = node / ".worktrees" / slug
+    (tree / "code.txt").write_text("the change\n")
+    subprocess.run(["git", "-C", str(tree), "add", "code.txt"], check=True)
+    subprocess.run(["git", "-C", str(tree), "commit", "-qm", "code"], check=True)
+    fake.down = True
+    assert cli(node, "work", "submit", slug)[0] == 1
+    fake.down = False
+    code, _out, err = cli(node, "work", "complete", slug, "--resolution", "done",
+                          "--confirm")
+    assert code == 1
+    assert "tracker.yaml" in err and "tcw work tracker sync" in err

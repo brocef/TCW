@@ -2070,7 +2070,7 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     if client is None:
         return 1
     from tcw.tracker.intake import Bound, binding_of
-    from tcw.tracker.sync import CURRENT, NONE, deliver
+    from tcw.tracker.sync import CURRENT, HELD, NONE, deliver
     st = _store()
     if args.all:
         slugs = [item.slug for item in st.query()
@@ -2101,6 +2101,8 @@ def _tracker_sync(args: argparse.Namespace) -> int:
             continue
         if outcome.state in (CURRENT, NONE):
             print(f"{slug}: current")
+        elif outcome.state == HELD:
+            print(f"{slug}: held — {outcome.reason}")
         else:
             print(f"{slug}: {outcome.state} — {outcome.reason}")
             code = 1
@@ -2241,6 +2243,14 @@ def _complete(args: argparse.Namespace) -> int:
         err = merge_worktree(st.node_root, branch)
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
+            if isinstance(item.tracker, dict) and item.tracker.get("sync"):
+                # A delivery record is staged, never committed, and git will not
+                # merge over a staged file the branch also carries.
+                print(f"tcw work complete: {bare}'s tracker.yaml holds a record of a "
+                      f"ticket move that did not reach the tracker, staged but not "
+                      f"committed. Run `tcw work tracker sync {bare}` to clear it once "
+                      f"the ticket follows, or commit it, then complete again.",
+                      file=sys.stderr)
             return 1
         item = st.get(bare)                           # re-read: the sidecar's declared
                                                       # list may have changed on the branch
@@ -2543,7 +2553,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     "it should be, and updates it when not.",
         epilog="--all visits every item here with a sync record, finished ones the store\n"
                "still holds included. An item started by another identity (its owner is\n"
-               "not --owner, TCW_WORK_OWNER or your Git identity) is skipped, because\n"
+               "not TCW_WORK_OWNER or, without it, your Git identity) is skipped, because\n"
                "sync acts as whoever runs it. An item with no record is checked and never\n"
                "moved.\n\n"
                "Exits 1 while any item it acted on is pending or conflicting. Refuses when\n"

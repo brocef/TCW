@@ -423,7 +423,7 @@ def _sync_record(value: Any) -> dict | None:
         return {"problem": f"'sync' has no text for: {', '.join(bad)}"}
     if record["state"] not in SYNC_STATES:
         return {"problem": f"'sync.state' is {record['state']!r}"}
-    if record["move"] not in TRANSITION_IDS:
+    if record["move"] not in TRANSITION_IDS or record["move"] == "auto-delete":
         return {"problem": f"'sync.move' is {record['move']!r}"}
     if record["claim"] not in ("done", "owed"):
         return {"problem": f"'sync.claim' is {record['claim']!r}"}

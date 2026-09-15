@@ -37,11 +37,12 @@ CURRENT, PENDING, CONFLICTING, HELD, NONE = (
 # The local status each move leaves an item in.
 MOVE_STATUS = {"start": "active", "submit": "review", "rework": "active",
                "complete": "completed", "discard": "discarded"}
-# The move a record names when `sync` writes one for an item without a move of its own.
-MOVE_STATUS_MOVE = {status: move for move, status in MOVE_STATUS.items()
-                    if move != "rework"}
 # Where to look for the status a ticket was left in, from an item's previous status.
 _EARLIER = {"active": ("active",), "review": ("review", "active")}
+# The same, from a recorded move whose `since` is unknown: where that move started.
+# A discard can start from `backlog`, where nothing is known, so it has none.
+_MOVED_FROM = {"start": ("active",), "submit": ("active",), "rework": ("review",),
+               "complete": ("review", "active"), "discard": ()}
 REASON_LIMIT = 300
 
 
@@ -71,11 +72,17 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
     when unknown (a move out of `backlog`).
     """
     if record is not None:
-        found = (record["since"],
-                 target_status(statuses, MOVE_STATUS[record["move"]], resolution))
-        found = tuple(status for status in found if status)
-        if found:
-            return found
+        if record["since"]:
+            since: tuple[str, ...] = (record["since"],)
+        else:
+            # Unknown when the record was written (the tracker block was broken, or
+            # the move left `backlog`): where the recorded move started from.
+            since = tuple(filter(None, (target_status(statuses, earlier, None)
+                                        for earlier in _MOVED_FROM[record["move"]])))
+            if not since:
+                return ()
+        moved_to = target_status(statuses, MOVE_STATUS[record["move"]], resolution)
+        return tuple(dict.fromkeys(filter(None, (*since, moved_to))))
     for earlier in _EARLIER.get(previous_status or "", ()):
         status = target_status(statuses, earlier, None)
         if status:
@@ -151,7 +158,9 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     owed = starting or (record is not None and record["claim"] == "owed")
     move = move or (record["move"] if record else None)
 
-    if not starting and not owed:
+    if not starting:
+        # Held even when this item's claim is owed: the open part will claim and move
+        # the ticket, and claiming it here could only lead to closing it early.
         others = _sharing(store, slug, bound)
         if others:
             return Outcome(HELD, f"{bound.ticket_key} not moved: also bound to "
@@ -163,15 +172,18 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     claimed_message = ""
 
     def finish(state: str, reason: str = "") -> Outcome:
-        if check_only:
+        # A folder about to be removed takes no write: git must hold all of it for
+        # the removal to go ahead, and a staged record — or its removal — would stop it.
+        if check_only and not (state == CURRENT and bound.sync is not None
+                               and "problem" in bound.sync):
             return Outcome(state, reason)
+        if store.pending_deletion(slug):
+            return Outcome(state, reason, claimed=claimed_message)
         if state in (PENDING, CONFLICTING):
-            if store.pending_deletion(slug):
-                return Outcome(state, reason, claimed=claimed_message)
             content = store.read_sidecar(slug, BINDING_SIDECAR).content
             store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, {
-                "state": state, "move": move or MOVE_STATUS_MOVE.get(local, "start"),
-                "since": since, "claim": "owed" if owed else "done",
+                "state": state, "move": move, "since": since,
+                "claim": "owed" if owed else "done",
                 "reason": reason[:REASON_LIMIT], "at": _now(),
             }), revision=revision)
             return Outcome(state, reason, recorded=True, claimed=claimed_message)
@@ -186,7 +198,10 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             f"{bound.ticket_key}'s binding points at "
             f"{bound.ticket_url or 'no recorded URL'}, which is not on {config.base_url}; "
             f"nothing was sent. Unlink and link it again if the site changed."))
-    if not owed and not target:
+    if not target and not starting:
+        # Nothing is owed to the tracker for this status — not even a claim, which
+        # for work just abandoned would take a ticket only to leave it held.
+        owed = False
         return finish(NONE)
 
     try:
@@ -195,6 +210,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         return finish(classify_error(error), str(error))
 
     if owed:
+        if (local in RESOLVED_STATUSES and target
+                and _normalize(ticket.status) == _normalize(target)):
+            # The item is finished and somebody already closed the ticket the same
+            # way: nothing is left to claim for. An open item still needs the claim,
+            # whoever has the ticket in the right status.
+            owed = False
+            return finish(CURRENT)
         if check_only:
             return Outcome(CONFLICTING, f"the claim of {bound.ticket_key} is still owed.")
         try:
