@@ -5,3 +5,5 @@ resolution: null
 tags:
 - tech-debt
 - skills
+priority: 20
+effort: medium

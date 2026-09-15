@@ -5,3 +5,5 @@ resolution: null
 tags:
 - taxonomy
 - cli
+priority: 30
+effort: low

@@ -8,3 +8,5 @@ tags:
 - cli
 - web
 - bug
+priority: 50
+effort: medium

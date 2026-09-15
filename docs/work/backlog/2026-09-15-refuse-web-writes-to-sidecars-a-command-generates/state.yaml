@@ -5,3 +5,5 @@ resolution: null
 tags:
 - web
 - bug
+priority: 25
+effort: low

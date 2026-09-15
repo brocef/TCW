@@ -7,3 +7,5 @@ blocked_by:
 - slug: 2026-09-15-rewrite-the-readme-to-a-new-outline
 tags:
 - docs
+priority: 20
+effort: medium

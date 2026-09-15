@@ -5,3 +5,5 @@ resolution: null
 tags:
 - work
 - cli
+priority: 25
+effort: low
