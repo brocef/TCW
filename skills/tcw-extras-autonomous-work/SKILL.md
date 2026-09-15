@@ -50,7 +50,7 @@ not let the run wait on the subagent alone.
 | Verify assessment           | The `tcw-verifier` agent, **plus** your own hands-on exercise of whatever the project actually produces.                |
 | Verify decision             | Yours. Green → `tcw work submit`. Red → rework and loop; the same criterion failing three loops is a hard blocker.       |
 | Hands-on QA                 | Drive the real thing yourself, however this project is run — see the `run` skill, or whatever the repo's own guidance says. Agent reports and green suites are testimony, not evidence. |
-| Capability reconciliation   | The `tcw-capabilities` sub-skill, unchanged.                                                                            |
+| Capability reconciliation   | The `capabilities` sub-skill, unchanged.                                                                            |
 | Version choice              | Never cut one. Accumulate into `upcoming.md` and move on.                                                               |
 | Closeout route              | `tcw work complete`, then merge the feature branch into main **locally**. Never `git push`.                             |
 

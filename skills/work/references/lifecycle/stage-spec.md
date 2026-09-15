@@ -20,7 +20,7 @@ boundaries and their ordering constraints — see
 ## Steps
 
 1. On a product delta, the ledger check the prompt requires is discharged by a
-   sub-skill. **REQUIRED SUB-SKILL: Use tcw-capabilities.** — agent `[judgment]`
+   sub-skill. **REQUIRED SUB-SKILL: Use capabilities.** — agent `[judgment]`
 2. **Delegable.** `Inputs` above is the subagent's context brief and `Produce`
    its return contract; the coordinating session re-reads the artifact and
    checks the required sections before moving on. See

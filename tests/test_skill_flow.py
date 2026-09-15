@@ -1,5 +1,5 @@
 """The Spec 3 lifecycle handshake end-to-end, via the CLI — the worked dry-run
-the work / tcw-capabilities skills prescribe, captured as a regression."""
+the work / capabilities skills prescribe, captured as a regression."""
 
 import subprocess
 from pathlib import Path

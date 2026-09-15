@@ -1,6 +1,6 @@
 ---
-name: tcw-taxonomy
-description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features. The capabilities axis is tcw-capabilities, the work axis is work.
+name: taxonomy
+description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features. The capabilities axis is capabilities, the work axis is work.
 when_to_use: Use when planning or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, or linking related entries.
 allowed-tools: Bash(tcw *), Read, Grep, Glob
 metadata:
@@ -25,7 +25,7 @@ one-directional — **taxonomy never points back** at capabilities or work.
 
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
-local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use tcw-capabilities**.
+local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use capabilities**.
 **The taxonomy tree is not necessarily `docs/taxonomy`.** `taxonomy.path` in
 `tcw-config.yaml` can put it anywhere, and a `taxonomy.repository` block can put
 it in another Git repository entirely, fetched here by `tcw provision`. So never

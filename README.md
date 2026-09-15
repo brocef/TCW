@@ -283,7 +283,7 @@ becomes your own `permission`.
 
 | Skill                                          | What it does                                                                                              |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md) | Guides an agent through declaring vocabulary and features, linking them, and resolving inherited entries. |
+| [`taxonomy`](skills/taxonomy/SKILL.md) | Guides an agent through declaring vocabulary and features, linking them, and resolving inherited entries. |
 
 To draft a first taxonomy from an existing codebase, use the `tcw-setup` skill
 described in [Skills and Agents](#skills-and-agents).
@@ -344,7 +344,7 @@ registered in the taxonomy before a capability names it.
 
 | Skill                                                  | What it does                                                                                                                                                          |
 | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md) | Guides an agent through checking a planned change against the existing capabilities, catching contradictions, and updating a capability's status when work completes. |
+| [`capabilities`](skills/capabilities/SKILL.md) | Guides an agent through checking a planned change against the existing capabilities, catching contradictions, and updating a capability's status when work completes. |
 
 #### CLI
 

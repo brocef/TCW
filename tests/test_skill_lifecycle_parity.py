@@ -484,12 +484,12 @@ SETUP_TRIGGER_WORDS = ("bootstrap", "seed", "federat")
 
 def test_the_taxonomy_skill_does_not_advertise_setup_or_federation():
     import yaml
-    lines = (REPO / "skills/tcw-taxonomy/SKILL.md").read_text(
+    lines = (REPO / "skills/taxonomy/SKILL.md").read_text(
         encoding="utf-8").splitlines()
     front = yaml.safe_load("\n".join(lines[1:lines.index("---", 1)]))
     text = f"{front['description']} {front['when_to_use']}".lower()
     found = [w for w in SETUP_TRIGGER_WORDS if w in text]
-    assert not found, f"tcw-taxonomy's description or when_to_use says: {found}"
+    assert not found, f"taxonomy's description or when_to_use says: {found}"
 
 
 # ── removed skills and commands ──────────────────────────────────────────────

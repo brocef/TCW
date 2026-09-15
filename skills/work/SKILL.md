@@ -16,7 +16,7 @@ exists, and never compose store paths — see [`commands.md`](references/command
 
 Work is the last layer in `Vocabulary → Features → Capabilities → Work`; an item
 may change any earlier one. For a product delta, check those layers in order
-first. **REQUIRED SUB-SKILL: Use tcw-capabilities.**
+first. **REQUIRED SUB-SKILL: Use capabilities.**
 
 ## Two ladders
 

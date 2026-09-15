@@ -4,7 +4,7 @@ Three settings join a project to others: `connected-projects` in
 `tcw-config.yaml` says which projects it is connected to, `TCW_PROJECT_<ID>` says
 where one of them is on this machine, and `extends` says whose taxonomy or
 capabilities it inherits. What an inherited term or capability looks like once
-it resolves is in the `tcw-taxonomy` and `tcw-capabilities` skills.
+it resolves is in the `taxonomy` and `capabilities` skills.
 
 ## `connected-projects`
 

@@ -188,7 +188,7 @@ EVALS = json.loads((Path(grade.__file__).parent / "evals.json")
 
 SETUP_PROJECT = "/p/skills/tcw-setup/references/project.md"
 CONFIGURE_DOCS = "/p/skills/tcw-configure/references/docs-sync.md"
-TAXONOMY_SKILL = "/p/skills/tcw-taxonomy/SKILL.md"
+TAXONOMY_SKILL = "/p/skills/taxonomy/SKILL.md"
 WORK_SKILL = "/p/skills/work/SKILL.md"
 CREATE_SKILL = "/p/skills/work-create/SKILL.md"
 

@@ -25,7 +25,7 @@ to produce with `tcw work stage prompt verify <slug>`.
 2. **Presenting the assessment and stopping for the decision** is the half no
    subagent can take and no command enforces. — user `[judgment]`
 3. Capability reconciliation before closeout is discharged by a sub-skill.
-   **REQUIRED SUB-SKILL: Use tcw-capabilities.** — agent `[judgment]`
+   **REQUIRED SUB-SKILL: Use capabilities.** — agent `[judgment]`
 4. `tcw work submit` and `tcw work rework` are `[gated]`, not conventions.
    — agent `[gated]`
 5. The version cut the prompt says to offer: the menu is major / minor / patch,

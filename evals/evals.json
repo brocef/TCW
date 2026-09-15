@@ -522,8 +522,8 @@
   {
    "id": "B3",
    "axis": "B",
-   "skill": "tcw-capabilities",
-   "invokes": "tcw-capabilities",
+   "skill": "capabilities",
+   "invokes": "capabilities",
    "item": "active",
    "arms": [
     "with-skill",
@@ -564,8 +564,8 @@
   {
    "id": "B4",
    "axis": "B",
-   "skill": "tcw-taxonomy",
-   "invokes": "tcw-taxonomy",
+   "skill": "taxonomy",
+   "invokes": "taxonomy",
    "arms": [
     "with-skill",
     "no-skill"
@@ -615,8 +615,8 @@
    "axis": "B",
    "skill": "cross-axis",
    "invokes": [
-    "tcw-taxonomy",
-    "tcw-capabilities"
+    "taxonomy",
+    "capabilities"
    ],
    "arms": [
     "with-skill",
@@ -707,8 +707,8 @@
    "axis": "B",
    "skill": "cross-axis",
    "invokes": [
-    "tcw-taxonomy",
-    "tcw-capabilities",
+    "taxonomy",
+    "capabilities",
     "work"
    ],
    "arms": [

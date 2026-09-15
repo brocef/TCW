@@ -71,7 +71,7 @@ def _declares_a_missing_capability(doc: Path) -> bool:
     """Whether `doc` is the body of a capability the ledger marks `Missing`.
 
     A capability seeded `Missing` at a work item's `plan` stage describes what a
-    user *will* be able to do — `skills/tcw-capabilities/SKILL.md` prescribes
+    user *will* be able to do — `skills/capabilities/SKILL.md` prescribes
     exactly that (`tcw capabilities add … --status Missing`), and for any
     capability that adds a CLI verb the body necessarily names a verb that does
     not exist yet. Without this carve-out the documented planning workflow cannot
