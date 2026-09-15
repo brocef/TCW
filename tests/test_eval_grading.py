@@ -189,6 +189,8 @@ EVALS = json.loads((Path(grade.__file__).parent / "evals.json")
 SETUP_PROJECT = "/p/skills/tcw-setup/references/project.md"
 CONFIGURE_DOCS = "/p/skills/tcw-configure/references/docs-sync.md"
 TAXONOMY_SKILL = "/p/skills/tcw-taxonomy/SKILL.md"
+WORK_SKILL = "/p/skills/tcw-work/SKILL.md"
+CREATE_SKILL = "/p/skills/tcw-work-create/SKILL.md"
 
 CASE_ROUTING = [
     ("B11", "tool_input_contains", SETUP_PROJECT, CONFIGURE_DOCS),
@@ -197,12 +199,16 @@ CASE_ROUTING = [
     ("B12", "tool_input_absent", CONFIGURE_DOCS, SETUP_PROJECT),
     ("B4", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
     ("B8", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
+    # B13 carries a second `tool_input_contains` (for the inbox), so its row
+    # names which assertion it pins by that assertion's search text.
+    ("B13", "tool_input_contains", WORK_SKILL, CREATE_SKILL, "tcw-work-create"),
 ]
 
 
-def _case_routing_assertion(case_id, predicate):
+def _case_routing_assertion(case_id, predicate, text=None):
     case = next(c for c in EVALS["cases"] if c["id"] == case_id)
-    found = [a for a in case["assertions"] if a.get("predicate") == predicate]
+    found = [a for a in case["assertions"] if a.get("predicate") == predicate
+             and (text is None or a["args"].get("text") == text)]
     assert len(found) == 1, f"{case_id} has {len(found)} {predicate} assertions"
     return found[0]
 
@@ -213,11 +219,12 @@ def _run_that_reads(path):
          "input": {"file_path": path}}]}}]}
 
 
-@pytest.mark.parametrize("case_id, predicate, wrong, right", CASE_ROUTING,
-                         ids=[f"{c}-{p}" for c, p, _, _ in CASE_ROUTING])
+@pytest.mark.parametrize("case_id, predicate, wrong, right, text",
+                         [(*row, None)[:5] for row in CASE_ROUTING],
+                         ids=[f"{row[0]}-{row[1]}" for row in CASE_ROUTING])
 def test_a_case_routing_assertion_fails_the_wrong_route(case_id, predicate,
-                                                        wrong, right):
-    assertion = _case_routing_assertion(case_id, predicate)
+                                                        wrong, right, text):
+    assertion = _case_routing_assertion(case_id, predicate, text)
     fn = grade.PREDICATES[predicate]
     failed = fn(_run_that_reads(wrong), **assertion["args"])
     assert not failed["passed"], (
