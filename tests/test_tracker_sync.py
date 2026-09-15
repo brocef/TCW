@@ -25,7 +25,7 @@ from tcw.store.base import classify_binding
 from tcw.store.fs import FsWorkStore, init
 from tcw.tracker.intake import binding_document, unlink_document, with_sync_record
 from tcw.work.projection import WORK_ITEM_SCHEMA
-from tracker_fake import BASE_URL, GLOBAL, SYNC, FakeJira
+from tracker_fake import BASE_URL, GLOBAL, SYNC, FakeJira, install_sites
 
 SENTINEL = "sentinel-token-do-not-print"
 A, B = "acct-a", "acct-b"
@@ -86,7 +86,7 @@ def test_unlink_takes_the_record_with_the_binding():
 
 def make_node(tmp_path: Path, *, statuses: dict | None,
               name: str = "alpha", email_env: str = "TCW_A_EMAIL",
-              tracker: bool = True) -> Path:
+              tracker: bool = True, base_url: str = BASE_URL) -> Path:
     """A git-backed node. `statuses` has no default; `None` leaves the block out."""
     root = tmp_path / name
     root.mkdir()
@@ -98,7 +98,7 @@ def make_node(tmp_path: Path, *, statuses: dict | None,
     config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
     if tracker:
         block = {
-            "provider": "jira-cloud", "base-url": BASE_URL,
+            "provider": "jira-cloud", "base-url": base_url,
             "candidate-query": "assignee = currentUser()",
             "credentials": {"email-env": email_env, "token-env": "TCW_PROBE_TOKEN"},
             "transitions": {"claim": "Start Progress"},
@@ -180,3 +180,53 @@ def test_the_json_document_validates_with_a_record_a_problem_and_none(tmp_path, 
         jsonschema.validate(json.loads(out), WORK_ITEM_SCHEMA)
 
 
+# ── a binding from another site ──────────────────────────────────────────────
+
+
+SITE_A, SITE_B = "https://a.invalid", "https://b.invalid"
+
+
+def set_base_url(root: Path, url: str) -> None:
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["base-url"] = url
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+
+@pytest.fixture()
+def two_sites(monkeypatch):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    old, new = FakeJira(workflow=SYNC, site=SITE_A), FakeJira(workflow=SYNC, site=SITE_B)
+    for fake_ in (old, new):
+        fake_.account("a@example.test", A, "Alice")
+    old.ticket(id="10052", key="OLD-6", summary="On the old site")
+    new.ticket(id="10052", key="NEW-9", summary="On the new site", assignee=A)
+    install_sites(monkeypatch, old, new)
+    return old, new
+
+
+def test_same_site_compares_scheme_host_and_browse_path():
+    from tcw.tracker.intake import same_site
+    assert same_site("https://A.invalid/browse/X-1", "https://a.invalid")
+    assert same_site("https://a.invalid/jira/browse/X-1", "https://a.invalid/jira")
+    assert not same_site("https://b.invalid/browse/X-1", "https://a.invalid")
+    assert not same_site("http://a.invalid/browse/X-1", "https://a.invalid")
+    assert not same_site("https://a.invalid/other/X-1", "https://a.invalid")
+    assert not same_site("", "https://a.invalid")
+    assert not same_site("browse/X-1", "https://a.invalid")
+
+
+def test_import_refuses_a_same_id_ticket_from_another_site(tmp_path, two_sites):
+    old, new = two_sites
+    root = make_node(tmp_path, statuses=None, base_url=SITE_A)
+    code, out, err = cli(root, "work", "tracker", "import", "OLD-6")
+    assert code == 0, err
+    old_slug = out.strip()
+    set_base_url(root, SITE_B)
+    code, out, err = cli(root, "work", "tracker", "import", "NEW-9")
+    assert code == 1
+    assert old_slug in err and SITE_B in err
+    assert "already bound" not in err
+    assert new.writes() == []

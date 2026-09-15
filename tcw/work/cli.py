@@ -1789,7 +1789,8 @@ def _tracker_import(args: argparse.Namespace) -> int:
         project = _project_id(st)
         existing = find_binding(st, project=project,
                                 provider=client.config.provider,
-                                ticket_id=ticket.issue_id, part=part)
+                                ticket_id=ticket.issue_id, part=part,
+                                base_url=client.config.base_url)
         if existing is not None:
             print(existing)
             if ticket.assignee_id == ticket.me_id:
@@ -1918,7 +1919,8 @@ def _tracker_link(args: argparse.Namespace) -> int:
         project = _project_id(st)
         holder = find_binding(st, project=project,
                               provider=client.config.provider,
-                              ticket_id=ticket.issue_id, part=part)
+                              ticket_id=ticket.issue_id, part=part,
+                              base_url=client.config.base_url)
         if holder is not None:
             print(f"tcw work tracker link: {ticket.key} (part {part}) is already bound "
                   f"to {holder}.", file=sys.stderr)

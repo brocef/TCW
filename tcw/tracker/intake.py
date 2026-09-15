@@ -83,14 +83,40 @@ def binding_of(store, slug: str) -> tuple[Unbound | Malformed | Bound, str | Non
     return read_binding(resource.content), resource.revision
 
 
+def same_site(ticket_url: str, base_url: str) -> bool:
+    """Whether a binding's ticket URL is on the configured Jira site.
+
+    A binding does not record its site except through `ticket.url`, and ticket ids
+    are numbered per site, so a binding made before `base-url` changed can name a
+    ticket id that belongs to an unrelated ticket now. Same scheme and host,
+    ignoring case, and a path under the site's own path followed by `/browse/`. An
+    empty or unparseable URL is not on any site.
+    """
+    from urllib.parse import urlsplit
+    try:
+        ticket, site = urlsplit(ticket_url), urlsplit(base_url)
+    except ValueError:
+        return False
+    if not ticket.scheme or not ticket.netloc:
+        return False
+    return (ticket.scheme.lower() == site.scheme.lower()
+            and ticket.netloc.lower() == site.netloc.lower()
+            and ticket.path.startswith(site.path.rstrip("/") + "/browse/"))
+
+
 def find_binding(store, *, project: str, provider: str, ticket_id: str,
-                 part: str) -> str | None:
+                 part: str, base_url: str | None = None) -> str | None:
     """The slug of the unresolved item bound to this key, or `None`.
 
     Resolved items are not consulted, because a ticket whose item was discarded
     may be taken again. The cost is that a ticket held by a resolved item can be
     bound to a second, open item without a refusal — a known limit, kept because
     consulting them would refuse the discarded case this skip exists for.
+
+    With `base_url`, a binding for the same ticket id whose URL is on another site
+    refuses rather than counting as a match or a miss: the id may name a different
+    ticket there. The site is deliberately not part of the key, or every binding
+    would look new after a site rename and imports would create duplicates.
     """
     wanted = (project, provider, ticket_id, part)
     matches: list[str] = []
@@ -103,6 +129,14 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
                 f"{item.slug} has a {BINDING_SIDECAR} that cannot be read "
                 f"({binding.reason}), so it cannot be told whether this ticket is "
                 f"already bound. Repair or unlink that binding first.")
+        if (base_url is not None and isinstance(binding, Bound)
+                and binding.key()[:3] == wanted[:3]
+                and not same_site(binding.ticket_url, base_url)):
+            raise BindingProblem(
+                f"{item.slug} is bound to ticket id {ticket_id} at "
+                f"{binding.ticket_url or 'an unrecorded URL'}, which is not on "
+                f"{base_url}. The same id may be a different ticket there. Unlink "
+                f"{item.slug} if its binding is stale, or restore the site.")
         if isinstance(binding, Bound) and binding.key() == wanted:
             matches.append(item.slug)
     if len(matches) > 1:
