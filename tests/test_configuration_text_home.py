@@ -3,7 +3,7 @@
 `skills/tcw-configure/references/` is where every "how to declare or change a
 setting" lives; the usage skills keep only what a setting does at runtime. This
 guards the one place a later change already put declaring text back into
-`tcw-work` (tracker inheritance, v2.1.3), and left `tracker.md` saying every
+`work` (tracker inheritance, v2.1.3), and left `tracker.md` saying every
 key is required in a node's own block, which inheritance made untrue.
 
 Text is compared with whitespace collapsed, so a sentence still matches after
@@ -14,11 +14,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TRACKER = REPO / "skills/tcw-configure/references/tracker.md"
-COMMANDS = REPO / "skills/tcw-work/references/commands.md"
+COMMANDS = REPO / "skills/work/references/commands.md"
 ROUTER = REPO / "skills/tcw-configure/SKILL.md"
 
 # The declaring rules for tracker inheritance, as `tracker.md` states them. Each
-# must be in `tracker.md` and in no form in `tcw-work`'s `commands.md`.
+# must be in `tracker.md` and in no form in `work`'s `commands.md`.
 DECLARING_RULES = (
     "tracker: {}",                      # a node with no tracker
     "same file as `base-url`",          # where credentials must come from

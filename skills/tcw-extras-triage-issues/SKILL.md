@@ -1,7 +1,7 @@
 ---
 name: tcw-extras-triage-issues
 description: Triages the GitHub issues on **your own project's** repo and turns the ones worth acting on into `tcw work` items. Use when a user wants to check their project's GitHub issues, work through the issue backlog, or convert issues into tracked work. Most issues should not become work items, so triage decides first and every issue gets an offered reply. To file an issue *upstream to the TCW project* instead, that is tcw-extras-report.
-when_to_use: Use when a user asks to check, sweep, triage, or work through the GitHub issues on their own project — turning the worthwhile ones into tcw work items, closing duplicates and non-starters, and asking reporters for missing detail. Do not use it to file a report about TCW itself (that is tcw-extras-report), or to triage a docs/work/inbox entry (that is tcw-work).
+when_to_use: Use when a user asks to check, sweep, triage, or work through the GitHub issues on their own project — turning the worthwhile ones into tcw work items, closing duplicates and non-starters, and asking reporters for missing detail. Do not use it to file a report about TCW itself (that is tcw-extras-report), or to triage a docs/work/inbox entry (that is work).
 allowed-tools: Bash(tcw *), Bash(gh auth status), Bash(gh repo view *), Bash(gh issue list *), Bash(gh issue view *), Bash(gh issue comment *), Bash(gh issue close *), Bash(grep *), Bash(git *), Read, Write, Edit, Grep, Glob
 metadata:
     author: Brian Cefali
@@ -19,7 +19,7 @@ model to reason from, and it is not an analogy — it is the same shape. Like a
 `docs/work/inbox/` entry, an issue is a raw drop that gets **accepted or
 rejected**, and it was **written by someone other than the person triaging it**.
 
-So the judgment already exists: `tcw-work/references/lifecycle/stage-inbox.md` holds it —
+So the judgment already exists: `work/references/lifecycle/stage-inbox.md` holds it —
 retitle to a change rather than a symptom, split one drop into several items,
 never invent scope, choose tags from `tcw work tags list`. **Read that document
 before accepting anything, and do not restate it here.** This skill is only the
@@ -172,7 +172,7 @@ Commit the item. **Do not write `initial-request.md` here.** That file is the
 `request` stage's own artifact, and an item carrying one it never produced reads
 as a stage that ran. `tcw work list` shows `i` for an item holding raw intake and
 `R` once the request exists, and that distinction is the whole point. Run the
-`request` stage (`tcw-work/references/lifecycle/stage-request.md`) when the item is picked
+`request` stage (`work/references/lifecycle/stage-request.md`) when the item is picked
 up, to shape the reporter's words into a request.
 
 ## 6. Reply to the reporter
@@ -220,7 +220,7 @@ happens later, when the item that came out of it closes.
 
 You get here from `tcw work complete`, whose Definition-of-Done checklist can
 carry a line naming the originating issue (see
-`tcw-work/references/transitions.md`). Find the issue:
+`work/references/transitions.md`). Find the issue:
 
 ```bash
 tcw work show <slug>      # → the item's body, whichever artifact it is; read its ## Origin

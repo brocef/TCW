@@ -17,7 +17,7 @@ both before producing anything.
 
 ## How to work it
 
-!`cat "${CLAUDE_PLUGIN_ROOT}/skills/tcw-work/references/lifecycle/stage-$stage.md" || true`
+!`cat "${CLAUDE_PLUGIN_ROOT}/skills/work/references/lifecycle/stage-$stage.md" || true`
 
 ## What this project asks for
 
@@ -43,7 +43,7 @@ not run the injected commands. Nothing is lost — run them yourself. Use the
 stage and work item named in the request in place of `$stage` and `$item`.
 
 ```sh
-cat <plugin>/skills/tcw-work/references/lifecycle/stage-$stage.md
+cat <plugin>/skills/work/references/lifecycle/stage-$stage.md
 tcw work stage gate $stage $item        # may it run?
 tcw work stage prompt $stage $item      # what does it ask for?
 ```

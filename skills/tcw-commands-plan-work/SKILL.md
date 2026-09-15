@@ -8,17 +8,17 @@ metadata:
 license: Apache-2.0
 ---
 
-Use the `tcw-work` skill. This skill covers the stage range **`request` →
+Use the `work` skill. This skill covers the stage range **`request` →
 `plan`**.
 
-Read the `tcw-work` skill's `SKILL.md`, find the first missing artifact, and run the
+Read the `work` skill's `SKILL.md`, find the first missing artifact, and run the
 stages from there through `plan.md`, loading **only** each stage's own document:
 
-- the `tcw-work` skill's `stage-request.md` → `initial-request.md`
-- the `tcw-work` skill's `stage-spec.md` → `spec.md`
-- the `tcw-work` skill's `stage-plan.md` → `plan.md`
+- the `work` skill's `stage-request.md` → `initial-request.md`
+- the `work` skill's `stage-spec.md` → `spec.md`
+- the `work` skill's `stage-plan.md` → `plan.md`
 
-For a `type: epic` item, also read the `tcw-work` skill's `epic-deltas.md` — the same three
+For a `type: epic` item, also read the `work` skill's `epic-deltas.md` — the same three
 stages, with an overview spec and a coordination plan.
 
 Planning from a chat request with no existing item: run the `tcw-work-create`

@@ -3,7 +3,7 @@
 The defect this catches shipped three times undetected: `tcw work
 audit-work-backlog`, `tcw work consolidate-plans --apply --delete`, and `tcw work
 edit --pr` were all documented in `README.md` and the agent-facing
-`skills/tcw-work/references/commands.md` without ever existing. Two of them were
+`skills/work/references/commands.md` without ever existing. Two of them were
 AI-driven workflows that live as slash commands, written up as if they were CLI
 subcommands; the third was pure invention.
 
@@ -264,7 +264,7 @@ DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage gate",
 
 @pytest.mark.parametrize("verb", DOCUMENTED_VERBS)
 @pytest.mark.parametrize(
-    "doc", ("docs/guide/work.md", "skills/tcw-work/references/commands.md")
+    "doc", ("docs/guide/work.md", "skills/work/references/commands.md")
 )
 def test_a_shipped_verb_is_findable_in_the_docs(verb, doc):
     assert verb in (REPO / doc).read_text(encoding="utf-8"), \

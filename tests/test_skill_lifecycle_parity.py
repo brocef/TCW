@@ -1,4 +1,4 @@
-"""The `tcw-work` skill must agree with `LIFECYCLE_STEPS`.
+"""The `work` skill must agree with `LIFECYCLE_STEPS`.
 
 This is the guard the lifecycle epic exists to install. The two documents it
 replaces — `task-lifecycle.md` and `epic-lifecycle.md` — were ~85% identical and
@@ -23,8 +23,8 @@ from tcw.store.base import LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID
 from tcw.work.resolve import load_builtins
 
 REPO = Path(__file__).resolve().parents[1]
-SKILL = REPO / "skills/tcw-work/SKILL.md"
-REFS = REPO / "skills/tcw-work/references"
+SKILL = REPO / "skills/work/SKILL.md"
+REFS = REPO / "skills/work/references"
 
 STAGE_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "stage")
 TRANSITION_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "transition")

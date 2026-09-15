@@ -3,7 +3,7 @@
 `tcw validate` only resolves `tcw://` markdown links, so it can't catch a stale
 `skill-cefailures` reference or a missing skill file. This is that guard: the
 skill's files exist, no `skill-cefailures` reference survives the absorption, and
-the tcw-work lifecycle actually invokes the skill (positive check — an absence
+the work lifecycle actually invokes the skill (positive check — an absence
 grep alone would stay green if a rewire were skipped).
 """
 from pathlib import Path
@@ -34,8 +34,8 @@ NO_CEFAILURES_ROOTS = [
 # trigger expected to fire, and `implement` evaluates them before the work is
 # reported complete. Retargeted from the retired task/epic lifecycle documents.
 LIFECYCLE_REFS = [
-    REPO / "skills" / "tcw-work" / "references" / "lifecycle" / "stage-plan.md",
-    REPO / "skills" / "tcw-work" / "references" / "lifecycle" / "stage-implement.md",
+    REPO / "skills" / "work" / "references" / "lifecycle" / "stage-plan.md",
+    REPO / "skills" / "work" / "references" / "lifecycle" / "stage-implement.md",
 ]
 
 

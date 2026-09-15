@@ -440,8 +440,8 @@
   {
    "id": "B1",
    "axis": "B",
-   "skill": "tcw-work",
-   "invokes": "tcw-work",
+   "skill": "work",
+   "invokes": "work",
    "arms": [
     "with-skill",
     "no-skill"
@@ -485,8 +485,8 @@
   {
    "id": "B2",
    "axis": "B",
-   "skill": "tcw-work",
-   "invokes": "tcw-work",
+   "skill": "work",
+   "invokes": "work",
    "arms": [
     "with-skill",
     "no-skill"
@@ -709,7 +709,7 @@
    "invokes": [
     "tcw-taxonomy",
     "tcw-capabilities",
-    "tcw-work"
+    "work"
    ],
    "arms": [
     "with-skill",

@@ -1,6 +1,6 @@
 ---
 name: tcw-taxonomy
-description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features. The capabilities axis is tcw-capabilities, the work axis is tcw-work.
+description: Drives `tcw taxonomy` — the Taxonomy axis of TCW (the registered Vocabulary + Feature registry). Use when declaring or maintaining a project's registered language and features. The capabilities axis is tcw-capabilities, the work axis is work.
 when_to_use: Use when planning or maintaining a project's registered language and feature registry — declaring Vocabulary terms, declaring Features that operate on vocabulary, or linking related entries.
 allowed-tools: Bash(tcw *), Read, Grep, Glob
 metadata:

@@ -33,7 +33,7 @@ work:
     description: Developer changelog for the next version; technical, grouped (Added/Changed/Fixed/Removed/Internal).
   - path: skills/<component>/SKILL.md
     trigger: Skill-Driven-Component
-    description: The driving skills (`tcw-work`, `tcw-capabilities`, …) that teach
+    description: The driving skills (`work`, `tcw-capabilities`, …) that teach
       agents to operate each component through its CLI. Always update the matching
       skill whenever the component it drives changes — its CLI surface, model/fields,
       lifecycle, or guardrails — so the skill never drifts from the tool. How to configure

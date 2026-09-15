@@ -34,7 +34,7 @@ the setting does, shows its shape, and names the check to run.
 
 Two settings are not here. The project `id` is written once by `tcw init` and is
 not changed afterwards. Tags are registered with `tcw work tags add` while
-filing work, which the `tcw-work` skill covers.
+filing work, which the `work` skill covers.
 
 After any change, run `tcw validate`. The document you opened says which
 mistakes it reports and which it cannot see.

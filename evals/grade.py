@@ -60,7 +60,7 @@ BLOCK_HEADINGS = ("## How to work it", "## What this project asks for")
 # well-behaved run as fallback-sourced, because running the gate first is the
 # behaviour case A7 exists to reward.
 FALLBACK_COMMANDS = ("tcw work stage prompt",
-                     "skills/tcw-work/references/lifecycle/stage-")
+                     "skills/work/references/lifecycle/stage-")
 
 INJECTED = "injected"
 FALLBACK = "fallback"

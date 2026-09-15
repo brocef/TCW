@@ -19,7 +19,7 @@ malformed shapes, blank or duplicated references, a kind used in a position that
 does not allow it, and a malformed `when:`.
 
 Which kinds each position allows, how several bindings combine, and what `when:`
-can test are in the table under "Roles, kinds, and conditions" in the `tcw-work`
+can test are in the table under "Roles, kinds, and conditions" in the `work`
 skill's `hooks.md`. That document also says how bindings run. Run
 `tcw work lifecycle` to see what a node has bound once you have changed it.
 
@@ -48,7 +48,7 @@ work:
 
 The first matching entry wins, so `builtin: true`, TCW's own template, goes
 last as the fallback. Which kinds an `artifacts` entry may use is in the same
-table in the `tcw-work` skill's `hooks.md`.
+table in the `work` skill's `hooks.md`.
 
 ## Hook limits: `timeout` and `output-cap`
 
@@ -103,7 +103,7 @@ To set a project's own checklist, write `dod.yaml` at the root of the work store
 ## How transitions commit and where they land
 
 All four keys below live under `work` in `tcw-config.yaml`. What each one does
-while items move is described in the `tcw-work` skill's `transitions.md` and
+while items move is described in the `work` skill's `transitions.md` and
 `commands.md`; this is how to set them.
 
 ```yaml

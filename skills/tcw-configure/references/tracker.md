@@ -6,7 +6,7 @@ transition named in `transitions.claim`, and `link`, which only records a bindin
 and for the lifecycle commands, which claim a bound item's ticket at `start` and
 move it to the statuses under `statuses` as the item moves. What those commands do, which
 file a tracker problem names, and what a malformed block does at runtime is in the
-`tcw-work` skill's `commands.md`. This document is how to set the connection up,
+`work` skill's `commands.md`. This document is how to set the connection up,
 in one node or shared from a parent node.
 
 ```yaml
