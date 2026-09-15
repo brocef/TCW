@@ -1,73 +1,68 @@
 id: tcw
 work:
-    tags:
-        - bug
-        - capabilities
-        - cli
-        - docs
-        - remote
-        - skills
-        - taxonomy
-        - tech-debt
-        - web
-        - work
-    documentation:
-        - path: README.md
-          trigger: Public-API
-          description: >-
-              Public-facing overview and `tcw` CLI usage (install, commands,
-              quickstart); plain, high-readability. Update when the public CLI
-              surface or user-facing behavior changes.
-        - path: docs/release-notes/upcoming.md
-          trigger: Public-API
-          description: >-
-              User-facing release notes for the next version; plain language, no
-              jargon or internal module names.
-        - path: docs/changelogs/upcoming.md
-          trigger: Any-Code-Change
-          description: >-
-              Developer changelog for the next version; technical, grouped
-              (Added/Changed/Fixed/Removed/Internal).
-        - path: skills/<component>/SKILL.md
-          trigger: Skill-Driven-Component
-          description: >-
-              The driving skills (`tcw-work`, `tcw-capabilities`, …) that teach
-              agents to operate each component through its CLI. Always update the
-              matching skill whenever the component it drives changes — its CLI
-              surface, model/fields, lifecycle, or guardrails — so the skill never
-              drifts from the tool. How to configure a component goes to
-              `tcw-configure`, not to the component's skill.
-        - path: skills/tcw-configure/references/<document>.md
-          trigger: Configuration-Key-Change
-          description: >-
-              How to declare or change each configuration setting. Update the
-              matching document whenever a key in `tcw-config.yaml`, a component
-              config file, `docs/work/dod.yaml`, or a `TCW_PROJECT_<ID>`-style
-              variable is added, removed, or changes meaning.
-    lifecycle:
-        stages:
-            spec:
-                prompt:
-                    - builtin: true
-                    - file: docs/lifecycle/abstraction.md
-                    - file: docs/lifecycle/harness.md
-            plan:
-                pre:
-                    - command: "python scripts/require_artifact.py spec"
-                prompt:
-                    - builtin: true
-                    - file: docs/lifecycle/abstraction.md
-            implement:
-                prompt:
-                    - builtin: true
-                    - file: docs/lifecycle/implementation.md
-                    - file: docs/lifecycle/harness.md
-        artifacts:
-            spec:
-                - file: docs/lifecycle/templates/spec-bug.md
-                  when: { tags: [bug] }
-                - file: docs/lifecycle/templates/spec.md
-        transitions:
-            complete:
-                pre:
-                    - command: "tcw validate"
+  tags:
+  - bug
+  - capabilities
+  - cli
+  - docs
+  - remote
+  - skills
+  - store
+  - taxonomy
+  - tech-debt
+  - web
+  - work
+  documentation:
+  - path: README.md
+    trigger: Public-API
+    description: Public-facing overview and `tcw` CLI usage (install, commands, quickstart);
+      plain, high-readability. Update when the public CLI surface or user-facing behavior
+      changes.
+  - path: docs/release-notes/upcoming.md
+    trigger: Public-API
+    description: User-facing release notes for the next version; plain language, no
+      jargon or internal module names.
+  - path: docs/changelogs/upcoming.md
+    trigger: Any-Code-Change
+    description: Developer changelog for the next version; technical, grouped (Added/Changed/Fixed/Removed/Internal).
+  - path: skills/<component>/SKILL.md
+    trigger: Skill-Driven-Component
+    description: The driving skills (`tcw-work`, `tcw-capabilities`, …) that teach
+      agents to operate each component through its CLI. Always update the matching
+      skill whenever the component it drives changes — its CLI surface, model/fields,
+      lifecycle, or guardrails — so the skill never drifts from the tool. How to configure
+      a component goes to `tcw-configure`, not to the component's skill.
+  - path: skills/tcw-configure/references/<document>.md
+    trigger: Configuration-Key-Change
+    description: How to declare or change each configuration setting. Update the matching
+      document whenever a key in `tcw-config.yaml`, a component config file, `docs/work/dod.yaml`,
+      or a `TCW_PROJECT_<ID>`-style variable is added, removed, or changes meaning.
+  lifecycle:
+    stages:
+      spec:
+        prompt:
+        - builtin: true
+        - file: docs/lifecycle/abstraction.md
+        - file: docs/lifecycle/harness.md
+      plan:
+        pre:
+        - command: python scripts/require_artifact.py spec
+        prompt:
+        - builtin: true
+        - file: docs/lifecycle/abstraction.md
+      implement:
+        prompt:
+        - builtin: true
+        - file: docs/lifecycle/implementation.md
+        - file: docs/lifecycle/harness.md
+    artifacts:
+      spec:
+      - file: docs/lifecycle/templates/spec-bug.md
+        when:
+          tags:
+          - bug
+      - file: docs/lifecycle/templates/spec.md
+    transitions:
+      complete:
+        pre:
+        - command: tcw validate
