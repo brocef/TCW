@@ -172,6 +172,26 @@ def test_skill_frontmatter_name_matches_its_directory(skill):
         f"{skill.parent.name!r} — a rename left the frontmatter behind")
 
 
+def test_no_shipped_name_repeats_the_plugin_id():
+    """A skill or agent name does not repeat the namespace that already qualifies
+    it. Claude invokes a skill as `/<plugin>:<skill>` and Codex as
+    `$<plugin>:<skill>`, so a `tcw-` prefix on the skill's own name produced
+    `/tcw:tcw-work` — four characters and a stutter distinguishing nothing.
+
+    Stated as the general rule, read from the manifest rather than hardcoded, so
+    it keeps holding if the plugin is ever renamed and it refuses the prefix
+    creeping back one skill at a time.
+    """
+    plugin_id = _load(CLAUDE_PLUGIN)["name"]
+    stutter = f"{plugin_id}-"
+    offenders = sorted(
+        [s.parent.name for s in SHIPPED_SKILLS if s.parent.name.startswith(stutter)]
+        + [a.stem for a in SHIPPED_AGENTS if a.stem.startswith(stutter)])
+    assert not offenders, (
+        f"these repeat the plugin id {plugin_id!r}, which the namespace already "
+        f"supplies: {offenders}")
+
+
 @pytest.mark.parametrize("agent", SHIPPED_AGENTS, ids=lambda p: p.stem)
 def test_agent_frontmatter_name_matches_its_file(agent):
     """The same agreement, for the subagents. `agents/` carries no manifest —

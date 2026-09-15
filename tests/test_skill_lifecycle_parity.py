@@ -509,10 +509,26 @@ DELETED_NAMES = (
     "tcw-plan-work", "tcw-drive-work-to-completion", "tcw-verify-work",
     "tcw-process-inbox", "tcw-work-search", "tcw-audit-work-backlog",
     "tcw-consolidate-plans", "tcw-cut-version",
+    # The plugin id was dropped from every shipped skill and agent name: the
+    # namespace already supplies it, so `/tcw:tcw-work` stuttered. `tcw-work`
+    # and `tcw-work-stage` can both be listed because the match is on whole
+    # names -- the pattern for the shorter does not fire inside the longer.
+    # `tcw-post-mortem` named both a skill and an agent, so it appears once.
+    "tcw-work", "tcw-work-stage", "tcw-work-create", "tcw-capabilities",
+    "tcw-taxonomy", "tcw-setup", "tcw-configure", "tcw-post-mortem",
+    "tcw-commands-plan-work", "tcw-commands-drive-work-to-completion",
+    "tcw-commands-verify-work", "tcw-commands-process-inbox",
+    "tcw-extras-autonomous-work", "tcw-extras-triage-issues",
+    "tcw-extras-report", "tcw-backlog-auditor", "tcw-verifier",
 )
 
-LIVE_ROUTES = ("skills", ".claude-plugin", ".codex-plugin", "README.md",
-               "docs/guide", "docs/lifecycle")
+# `agents/` and `tcw-config.yaml` are here because both are shipped surfaces that
+# name skills: the agents route to the skills they accelerate, and the config's
+# documentation entries carry a `skills/<name>/references/` path. Neither `evals/`
+# nor `tests/` belongs -- both legitimately quote retired names, this tuple among
+# them, so including them would make the guard fight itself.
+LIVE_ROUTES = ("skills", "agents", ".claude-plugin", ".codex-plugin", "README.md",
+               "docs/guide", "docs/lifecycle", "tcw-config.yaml")
 
 
 def _live_route_files():
