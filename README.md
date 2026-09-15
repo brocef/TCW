@@ -349,15 +349,118 @@ More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).
 
 ### Overview
 
-<!-- readme-rewrite: unwritten -->
+The work axis tracks every change being made to the project: new product
+behavior, changes to its internals, or changes to how the project itself runs.
+
+- **A work item is a folder**, `docs/work/<status>/<slug>/`, holding the
+  documents written for it as it moves along. **Its status is the folder it is
+  in**: moving an item is a `git mv`, and `ls docs/work/active/` is the board of
+  what is in progress. By default, every status change commits itself.
+- **Requests start in an inbox.** A raw request dropped into `docs/work/inbox/`,
+  by a person or by another project, becomes a work item when it is accepted.
+  A Jira ticket can instead become an item directly (see
+  [Jira integration](#jira-integration)).
+- **Tags** come from a list the project registers (`tcw work tags`), so a typo
+  never quietly creates a new tag.
+- **Blockers** are recorded on an item (`tcw work edit --blocked-by`). An item
+  with an unresolved blocker cannot start, or be completed as done, without
+  `--force`; there is no separate "blocked" status.
+- **Large items split.** A child item lives inside its parent's folder and moves
+  with it. An **epic** groups related items, including items in other
+  repositories, and rolls their status back up.
+- **Completing is checked.** `tcw work complete` prints the project's Definition
+  of Done (a list you set in `docs/work/dod.yaml`) and refuses until you confirm
+  it, while blockers are unresolved, or while declared capability changes are not
+  yet made.
+- **Code can be isolated.** `tcw work start --worktree` gives the item its own git
+  branch and worktree, and `complete` merges it back.
+
+The full reference, including every command's options, is
+[The Work component](docs/guide/work.md).
 
 #### Relationship to Capabilities and Taxonomy
 
-<!-- readme-rewrite: unwritten -->
+A work item that changes what a user can do says so in a `capabilities.yaml` file
+in its folder, listing capability paths under `new:`, `changed:` and `removed:`.
+That is the pointer from work to capabilities. `tcw work complete` refuses while
+a capability listed as `new:` is still `Missing`, a listed path does not exist,
+or a `removed:` capability is still there. So the capabilities list always
+describes what has actually shipped.
+
+Work reaches taxonomy through those capabilities: a new capability names the
+vocabulary and feature it involves, and those entries must exist first. The
+planning skills check both, in that order (vocabulary, then features, then
+capabilities, then the work itself), before a change is designed.
 
 ### Lifecycle
 
-<!-- readme-rewrite: unwritten -->
+TCW's lifecycle has two separate parts. **Stages** produce documents: `request`
+writes `initial-request.md`, `spec` writes `spec.md`, and so on. **Transitions**
+move an item from one status to another. Nothing is both. In words: an inbox
+entry is accepted into the backlog, where the request, spec and plan are written;
+`start` moves it to active for implementation; `submit` moves it to review for
+verification, from which `rework` can send it back; and `complete` finishes it as
+completed, or as discarded if it will not ship.
+
+```mermaid
+flowchart LR
+    inbox(["inbox entry<br/><i>stage: inbox</i>"]):::outside
+    backlog("backlog<br/><i>stages: request, spec, plan</i>")
+    active("active<br/><i>stage: implement</i>")
+    review("review<br/><i>stages: verify, postmortem</i>")
+    completed("completed<br/><i>stage: postmortem</i>"):::terminal
+    discarded("discarded"):::terminal
+    removed(["removed"]):::outside
+
+    inbox -->|inbox accept| backlog
+    backlog -->|start| active
+    active -->|submit| review
+    review -.->|rework| active
+    active -->|complete| completed
+    review -->|complete| completed
+    backlog -->|discard| discarded
+    active -->|discard| discarded
+    review -->|discard| discarded
+    backlog -.->|drop| removed
+    completed -.->|not retained| removed
+    discarded -.->|not retained| removed
+
+    classDef outside stroke-dasharray: 4 3
+    classDef terminal stroke-width:3px
+```
+
+The stages, and the document each one writes:
+
+| Stage        | Runs while the item is | Writes                                                            |
+| ------------ | ---------------------- | ----------------------------------------------------------------- |
+| `inbox`      | not yet an item        | nothing; it creates the item, keeping the raw text as `intake.md` |
+| `request`    | backlog                | `initial-request.md`: what is asked for, and why                  |
+| `spec`       | backlog                | `spec.md`: what to build, with acceptance criteria                |
+| `plan`       | backlog                | `plan.md`: how to build it, as ordered tasks                      |
+| `implement`  | active                 | `outcome.md`: what was built, and what the plan got wrong         |
+| `verify`     | review (or active)     | `refined-outcome.md` if accepted, `rework.md` if not              |
+| `postmortem` | review or completed    | `post-mortem.md`: which stage could first have caught a problem   |
+
+The transitions, and what each one checks before it moves an item:
+
+| Transition   | Command                                                                          | Moves                                 | Refuses when                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `start`      | `tcw work start <slug>`                                                          | backlog → active                      | a blocker is unresolved; the item belongs to an epic that is not active                                                                   |
+| `submit`     | `tcw work submit <slug>`                                                         | active → review                       | never                                                                                                                                     |
+| `rework`     | `tcw work rework <slug>`                                                         | review → active                       | `refined-outcome.md` is present (it says the work was accepted)                                                                           |
+| `complete`   | `tcw work complete <slug> --resolution done --confirm`                           | review or active → completed          | a blocker is unresolved; an epic has open children; declared capabilities are not reconciled; a worktree merge-back fails; no `--confirm` |
+| discard      | `tcw work complete <slug> --resolution wontfix\|duplicate\|superseded --confirm` | backlog, active or review → discarded | no `--confirm`                                                                                                                            |
+| `drop`       | `tcw work drop <slug> --confirm`                                                 | backlog → removed                     | the item is not in backlog; no `--confirm`                                                                                                |
+| not retained | happens during `complete` or discard                                             | completed or discarded → removed      | only happens when `work.retain` says that status is not kept; `tcw work delete` finishes one that was interrupted                         |
+
+`review` means implemented but not yet accepted: an item in review still blocks
+the items that depend on it. `rework` is the only move backwards, and nothing ever
+leaves `completed` or `discarded`.
+
+A project can attach its own instructions and checks to any stage or transition,
+such as a design rule read at `spec` or `tcw validate` run before `complete`. See
+[Configuration](docs/guide/configuration.md). `tcw work lifecycle` prints the
+whole contract, with whatever the project has attached.
 
 #### Jira integration
 
