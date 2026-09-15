@@ -1057,6 +1057,10 @@ class TrackerConfig:
     token_env: str
     claim_transition: str
     timeout_seconds: int = 15
+    # Move → the tracker transition to use for it, for a workflow where more than one
+    # transition leads to the mapped status. Only the moves named; `discard` may be one
+    # name or one per discard resolution. Empty means "work it out from the status".
+    move_transitions: dict = field(default_factory=dict)
     # Local status → the tracker status a bound ticket should be in. Only the keys
     # set; `discarded` is a status name or a mapping of discard resolutions to one.
     statuses: dict = field(default_factory=dict)
@@ -1079,11 +1083,17 @@ TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credential
                           "comments", "link"})
 TRACKER_LINK_PLACEHOLDERS = frozenset({"project", "slug"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
-# `claim` alone: where a ticket goes for every other move is a *status*, under
-# `statuses`, because only a status can be compared with the ticket to tell a
-# delivered move from an undelivered one. An unknown key is reported, because
-# silently ignoring a key someone set is silently not doing what they asked.
-TRACKER_TRANSITION_KEYS = frozenset({"claim"})
+# Where a ticket goes for a move is a *status*, under `statuses`, because only a status
+# can be compared with the ticket to tell a delivered move from an undelivered one.
+# These name *how* it gets there, and are needed only where the status cannot say: a
+# workflow offering two transitions into one status — a "finished" and an "abandoned"
+# route both landing in `Done` is the common shape — is otherwise unreachable, since
+# TCW will not guess which. A move with no name here keeps the status-derived rule.
+# An unknown key is reported, because silently ignoring a key someone set is silently
+# not doing what they asked.
+TRACKER_TRANSITION_KEYS = frozenset({"claim", "submit", "rework", "complete", "discard"})
+# `start` is absent deliberately: it is the claim, and `transitions.claim` names it.
+TRACKER_MOVE_TRANSITION_KEYS = ("submit", "rework", "complete", "discard")
 TRACKER_STATUS_KEYS = ("active", "review", "completed", "discarded")
 
 TRACKER_DEFAULT_TIMEOUT = 15
@@ -1191,6 +1201,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
     claim = nested_str(transitions, "claim", "transitions.claim")
+    move_transitions = _parse_tracker_transitions(transitions, problems)
 
     timeout: Any = raw.get("timeout-seconds", TRACKER_DEFAULT_TIMEOUT)
     # `bool` before `int`, because a bool *is* an int and `timeout-seconds: true`
@@ -1214,6 +1225,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         token_env=token_env,
         claim_transition=claim,
         timeout_seconds=int(timeout),
+        move_transitions=move_transitions,
         statuses=statuses,
         strict=strict,
         comments=comments,
@@ -1302,6 +1314,53 @@ def _parse_tracker_statuses(raw: Any, problems: list[str]) -> dict:
     if out and "active" not in raw:
         problems.append(f"{where}.active: required when any other status is mapped")
     return out
+
+
+def _parse_tracker_transitions(raw: dict, problems: list[str]) -> dict:
+    """The per-move keys of `work.tracker.transitions`, appending a problem per defect.
+
+    `claim` is parsed separately, because it is required and the others are not.
+    Absent is `{}`, which leaves every move on the status-derived rule.
+    """
+    where = "work.tracker.transitions"
+
+    def name(value: Any, path: str) -> str:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        problems.append(f"{path}: expected a non-empty tracker transition name, "
+                        f"got {type(value).__name__}")
+        return ""
+
+    out: dict = {}
+    for key in TRACKER_MOVE_TRANSITION_KEYS:
+        if key not in raw:
+            continue
+        value = raw[key]
+        if key == "discard" and isinstance(value, dict):
+            # A partial mapping is fine, unlike `statuses.discarded` under strict mode:
+            # this block exists to disambiguate, so naming only the ambiguous
+            # resolution has to be enough. An unnamed one keeps the derived rule.
+            resolutions = WORK_RESOLUTIONS - {"done"}
+            by_resolution = {}
+            for resolution in sorted(value, key=str):
+                path = f"{where}.discard.{resolution}"
+                if resolution not in resolutions:
+                    problems.append(f"{path}: not a discard resolution (choose from "
+                                    f"{', '.join(sorted(resolutions))})")
+                    continue
+                by_resolution[resolution] = name(value[resolution], path)
+            out[key] = by_resolution
+        else:
+            out[key] = name(value, f"{where}.{key}")
+    return out
+
+
+def transition_name(transitions: dict, move: str, resolution: str | None) -> str:
+    """The tracker transition named for `move`, or `""` to derive it from the status."""
+    value = transitions.get(move, "")
+    if isinstance(value, dict):
+        return value.get(resolution or "", "")
+    return value
 
 
 def target_status(statuses: dict, status: str, resolution: str | None) -> str:
