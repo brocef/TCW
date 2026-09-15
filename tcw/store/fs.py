@@ -4226,12 +4226,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # board read must not import the tracker package. One item's binding
             # that cannot be read is reported on that item and never takes the
             # board down — before bindings were shown, nothing here opened the file.
-            # A folder that vanished mid-read still raises, for `_item_from_dir`.
+            # A binding removed between the check and the read is simply unbound; a
+            # whole folder that vanished is caught by `_item_from_dir`'s own check.
             try:
                 parsed = yaml.safe_load(binding.read_text(encoding="utf-8"))
                 tracker = binding_value(classify_binding(parsed))
             except FileNotFoundError:
-                raise
+                tracker = None
             except (yaml.YAMLError, OSError, UnicodeDecodeError, RecursionError) as e:
                 tracker = binding_value(unreadable_binding(e))
         return WorkItem(

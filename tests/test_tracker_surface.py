@@ -142,6 +142,26 @@ def test_an_anchor_chain_in_bound_is_not_expanded():
     assert binding_value(read_binding(text))["bound"] == ""
 
 
+def test_a_binding_nested_too_deep_is_malformed_for_the_tracker_commands_too():
+    assert set(read_binding_value("ticket: " + "[" * 5000 + "\n")) == {"problem"}
+
+
+def test_a_binding_removed_while_the_item_is_read_leaves_the_item_on_the_board(
+        node, monkeypatch):
+    slug = item(node, "Vanishing binding", document())
+    path = FsWorkStore.open(node).path(slug) / "tracker.yaml"
+    real = pathlib.Path.read_text
+
+    def vanish(self, *args, **kwargs):
+        if self == path:
+            path.unlink()
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", vanish)
+    board = {it.slug: it for it in FsWorkStore.open(node).query()}
+    assert slug in board and board[slug].tracker is None
+
+
 def test_an_unlinked_binding_has_no_value():
     text = unlink_document(document(), reason="wrong ticket", today="2026-09-14")
     assert binding_value(read_binding(text)) is None

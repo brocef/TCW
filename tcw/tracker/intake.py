@@ -55,7 +55,7 @@ def read_binding(content: str | None) -> Unbound | Malformed | Bound:
         return Unbound()
     try:
         data = yaml.safe_load(content)
-    except yaml.YAMLError as error:
+    except (yaml.YAMLError, RecursionError) as error:
         return unreadable_binding(error)
     return classify_binding(data)
 
