@@ -36,6 +36,7 @@ import {
     Modal,
     SelectInput,
     TextInput,
+    TrackerField,
 } from "./shared-components"
 import type {
     TClientData as Data,
@@ -372,6 +373,7 @@ export function DetailView({
                     {item.initiative && (
                         <Field name="Initiative" value={item.initiative} />
                     )}
+                    {item.tracker && <TrackerField binding={item.tracker} />}
                 </Fields>
                 <WorkDocumentTabs
                     key={`${item.slug}:${payload.coreRevision}:${payload.artifacts
