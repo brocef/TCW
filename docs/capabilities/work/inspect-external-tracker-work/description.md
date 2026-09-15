@@ -29,4 +29,5 @@ TCW does not tell me my claim transition's name is wrong, because a ticket not
 offering it may simply not have reached that point yet or may already be claimed.
 Claiming a ticket and binding it to a work item is a separate capability,
 `work/manage-external-tracker-intake`; keeping the ticket in step with a work item
-and requiring tracked work are separate capabilities that are not yet built.
+is `work/synchronize-external-tracker-work`, and requiring tracked work is
+`work/require-tracker-backed-work`.
