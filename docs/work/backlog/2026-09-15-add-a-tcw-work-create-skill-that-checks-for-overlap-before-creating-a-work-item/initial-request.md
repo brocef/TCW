@@ -55,6 +55,12 @@ Tell the user the new item's slug.
 
 An agent working unattended must be able to run the whole procedure, using
 "determine automatically" and equivalent defaults in place of every question.
+Two of those defaults were settled explicitly:
+
+- **The matching item already has a spec or plan:** revise it automatically —
+  dispatch the revision subagent without asking.
+- **The idea is too unclear to file:** drop it into the work inbox as a raw
+  entry, so a later triage with a user present decides what it means.
 
 ## Consolidation the requester wants considered
 
