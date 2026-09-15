@@ -5379,13 +5379,19 @@ class FsWorkStore(FsTreeStore, WorkStore):
         `documentation`: a malformed key must not break `tcw work list`."""
         return self._resolved_tracker()[0]
 
+    def tracker_strict(self) -> bool:
+        """The parsed `strict`, or — when the block has problems and so parses to no
+        configuration — whether the merged block sets `strict` to anything but
+        `false`."""
+        return self._resolved_tracker()[2]
+
     def tracker_problems(self) -> list[str]:
         """Tracker-configuration problems, each prefixed with the file it came from.
         Shares `_resolved_tracker` with `tracker_config`, so the two surfaces can
         never disagree about what is legal."""
         return self._resolved_tracker()[1]
 
-    def _resolved_tracker(self) -> "tuple[TrackerConfig | None, list[str]]":
+    def _resolved_tracker(self) -> "tuple[TrackerConfig | None, list[str], bool]":
         """This node's `work.tracker`, merged over its ancestors' when it opts in.
 
         Opt-in: only a node whose own block is a non-empty mapping consults its
@@ -5400,7 +5406,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         own = self._work_config().get("tracker")
         if own is None or own == {}:
-            return None, []
+            return None, [], False
         blocks: list[tuple[str, object]] = [(SENTINEL, own)]
         unreachable: str | None = None
         if isinstance(own, dict):
@@ -5434,7 +5440,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"{SENTINEL}: work.tracker: declared parent '{unreachable}' is not "
                 f"available in this checkout, so any tracker settings it holds were "
                 f"not read (run tcw provision)")
-        return config, problems
+        if config is not None:
+            strict = config.strict
+        else:
+            strict = (isinstance(merged, dict) and "strict" in merged
+                      and merged["strict"] is not False)
+        return config, problems, strict
 
     def documentation_problems(self) -> list[str]:
         """Documentation-entry problems, prefixed with the file they came from —

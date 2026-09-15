@@ -1033,6 +1033,8 @@ class TrackerConfig:
     # Local status → the tracker status a bound ticket should be in. Only the keys
     # set; `discarded` is a status name or a mapping of discard resolutions to one.
     statuses: dict = field(default_factory=dict)
+    # Refuse local work no claimed ticket authorizes (`work/require-tracker-backed-work`).
+    strict: bool = False
 
 
 # The only `provider` value that parses. A literal in the abstract layer, which is
@@ -1042,13 +1044,12 @@ class TrackerConfig:
 TRACKER_PROVIDERS = ("jira-cloud",)
 
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
-                          "transitions", "statuses", "timeout-seconds"})
+                          "transitions", "statuses", "strict", "timeout-seconds"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # `claim` alone: where a ticket goes for every other move is a *status*, under
 # `statuses`, because only a status can be compared with the ticket to tell a
-# delivered move from an undelivered one. C4 adds `strict`; until then an unknown
-# key is reported, because silently ignoring a key someone set is silently not
-# doing what they asked.
+# delivered move from an undelivered one. An unknown key is reported, because
+# silently ignoring a key someone set is silently not doing what they asked.
 TRACKER_TRANSITION_KEYS = frozenset({"claim"})
 TRACKER_STATUS_KEYS = ("active", "review", "completed", "discarded")
 
@@ -1127,6 +1128,25 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         return value.strip()
 
     statuses = _parse_tracker_statuses(raw.get("statuses"), problems)
+    strict = raw.get("strict", False)
+    if not isinstance(strict, bool):
+        problems.append(f"work.tracker.strict: expected true or false, "
+                        f"got {type(strict).__name__}")
+        strict = False
+    if strict:
+        # Strict mode gates completing and discarding against these, so a missing
+        # one would be a gate that can never pass or never check.
+        for key in ("active", "completed"):
+            if not statuses.get(key):
+                problems.append(f"work.tracker.statuses.{key}: required when "
+                                f"strict is true")
+        discarded = statuses.get("discarded")
+        resolutions = WORK_RESOLUTIONS - {"done"}
+        if not discarded or (isinstance(discarded, dict)
+                             and set(discarded) != resolutions):
+            problems.append(f"work.tracker.statuses.discarded: required when strict "
+                            f"is true, as one status or one for each of "
+                            f"{', '.join(sorted(resolutions))}")
 
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
@@ -1155,6 +1175,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         claim_transition=claim,
         timeout_seconds=int(timeout),
         statuses=statuses,
+        strict=strict,
     ), []
 
 
@@ -2620,6 +2641,13 @@ class WorkStore(ABC):
         correctly by omission, and no existing adapter has to change.
         """
         return None
+
+    def tracker_strict(self) -> bool:
+        """Whether the node asks for strict tracker mode — including when its tracker
+        block has problems, so that a typo elsewhere in the block cannot quietly
+        switch the gates off. `False` by default: a store with no tracker is never
+        strict."""
+        return False
 
     def tracker_problems(self) -> list[str]:
         """Complaints about how the tracker is configured, for `tcw validate`.

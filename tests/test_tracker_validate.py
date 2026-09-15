@@ -84,12 +84,14 @@ def test_a_bad_provider_is_reported_with_its_value(node):
     assert any("github" in p for p in validate(root))
 
 
-def test_strict_is_reported_as_unknown(node):
-    """C4 owns `strict`. Until then a user who sets it is told, rather than
-    believing their work is gated when it is not."""
+def test_a_boolean_strict_is_accepted(node):
+    """`strict` arrived with the gates that honour it
+    (`tests/test_tracker_strict.py`), so it is no longer an unknown key. Strict mode
+    requires statuses, so a block turning it on sets them."""
     root, set_tracker = node
-    set_tracker({**VALID_TRACKER, "strict": True})
-    assert any("strict" in p for p in validate(root))
+    set_tracker({**VALID_TRACKER, "strict": True, "statuses": {
+        "active": "In Progress", "completed": "Done", "discarded": "Won't Do"}})
+    assert [p for p in validate(root) if "tracker" in p] == []
 
 
 def test_a_problem_names_the_config_file(node):
