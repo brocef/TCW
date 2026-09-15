@@ -1,0 +1,14 @@
+slug: 2026-09-12-configure-an-external-tracker-and-read-its-tickets
+title: Configure an external tracker and read its tickets
+created: '2026-09-12'
+resolution: done
+priority: 70
+effort: high
+complexity: high
+tags:
+- remote
+- work
+- cli
+initiative: 2026-08-04-supplement-filesystem-tcw-work-with-an-external-tracker-bridge
+owner: ''
+started: ''

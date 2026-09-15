@@ -1,0 +1,28 @@
+new:
+    - skills/tcw-setup
+    - skills/tcw-configure
+    - skills/tcw-work
+    - skills/tcw-taxonomy
+    - skills/tcw-capabilities
+    - skills/documentation-sync
+    - skills/tcw-work-stage
+    - skills/tcw-post-mortem
+    - skills/tcw-commands-plan-work
+    - skills/tcw-commands-drive-work-to-completion
+    - skills/tcw-commands-verify-work
+    - skills/tcw-commands-process-inbox
+    - skills/tcw-extras-autonomous-work
+    - skills/tcw-extras-triage-issues
+    - skills/tcw-extras-report
+changed:
+    - work/complete-a-work-item
+removed:
+    - plugin/work-lifecycle
+    - work/consolidate-plans
+    - work/search-the-work-items
+    - work/audit-work-backlog
+    - plugin/report-an-issue-upstream
+    - plugin/run-a-post-mortem
+    - plugin/triage-github-issues
+    - taxonomy/bootstrap-the-taxonomy
+    - capabilities/bootstrap-the-capabilities

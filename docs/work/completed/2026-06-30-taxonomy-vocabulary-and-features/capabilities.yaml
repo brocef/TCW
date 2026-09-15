@@ -1,0 +1,7 @@
+changed:
+  - taxonomy#add-a-term
+  - taxonomy#browse-the-term-forest
+  - taxonomy#read-a-term
+  - taxonomy#validate-the-taxonomy
+  - capabilities#validate-capabilities
+

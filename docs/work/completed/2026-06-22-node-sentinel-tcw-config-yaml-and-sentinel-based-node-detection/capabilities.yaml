@@ -1,0 +1,5 @@
+# Capability deltas this work item lands (work→capability back-pointers).
+added:
+  - cli/host-multiple-projects-in-one-repo#host-multiple-projects-in-one-repo  # Missing → Supported at completion
+changed:
+  - cli#scaffold-the-doc-trees   # tcw init now targets cwd + writes the tcw-config.yaml sentinel

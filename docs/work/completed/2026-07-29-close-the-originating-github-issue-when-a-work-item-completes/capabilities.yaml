@@ -1,0 +1,5 @@
+new:
+    - work/customize-the-definition-of-done
+changed:
+    - work/complete-a-work-item
+    - plugin/triage-github-issues

@@ -1,0 +1,3 @@
+changed:
+    - work/consolidate-plans # body: works under either harness; the deletion gates
+    - work/drop-a-work-item # --confirm now required (task 4)

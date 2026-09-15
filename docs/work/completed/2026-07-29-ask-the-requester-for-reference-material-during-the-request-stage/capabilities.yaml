@@ -1,0 +1,2 @@
+changed:
+    - plugin/work-lifecycle # the request stage now asks the requester for reference material

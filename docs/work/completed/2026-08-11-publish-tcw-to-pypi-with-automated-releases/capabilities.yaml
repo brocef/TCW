@@ -1,0 +1,5 @@
+new:
+    - cli/install-from-pypi # seeded Missing at spec; flip to Supported at complete
+changed:
+    - plugin/bootstrap-the-cli # editable-install detection keys on the distribution name
+    - plugin/diagnose-the-install # /tcw-doctor must report the tcw-cli distribution

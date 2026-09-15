@@ -1,0 +1,5 @@
+new:
+    - capabilities/remove-a-capability
+changed:
+    - capabilities/reset-an-override
+    - work/complete-a-work-item

@@ -1,0 +1,3 @@
+# Capability deltas this work item lands (work→capability back-pointers).
+changed:
+  - work#view-the-board   # list row now includes a priority column

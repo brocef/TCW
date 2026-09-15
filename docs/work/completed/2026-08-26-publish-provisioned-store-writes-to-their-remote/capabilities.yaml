@@ -1,0 +1,5 @@
+new:
+    - work/publish-store-writes-to-the-remote
+changed:
+    - work/declare-the-work-stores-home-repository
+    - cli/provision-declared-stores

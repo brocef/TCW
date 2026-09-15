@@ -1,0 +1,3 @@
+changed:
+  - work/complete-a-work-item   # completable epic completes from backlog + auto-complete
+  - work/view-the-board         # list annotates a completable epic as ready-to-close
