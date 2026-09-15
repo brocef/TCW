@@ -88,8 +88,9 @@ def retry(store, slug: str, client, config) -> Outcome:
         _write(store, slug, None)
         return Outcome(CLEARED, f"the owed comment was removed: {why}.")
     if not same_site(bound.ticket_url, config.base_url):
-        return Outcome(CONFLICTING, f"{bound.ticket_key}'s binding is not on "
-                                    f"{config.base_url}, so its comment is not sent.")
+        return _owe(store, slug, record["move"], record["event"], CONFLICTING,
+                    f"{bound.ticket_key}'s binding is not on {config.base_url}, so its "
+                    f"comment is not sent.")
     return _send(store, slug, client, config, bound, record["move"], record["event"],
                  look_first=True)
 

@@ -545,4 +545,6 @@ def test_a_comment_owed_on_a_binding_from_another_site_is_reported(tmp_path, fak
     publish_now(root, slug, move="submit", status_state="pending")
     set_tracker_key(root, "base-url", "https://elsewhere.invalid")
     assert retry_now(root, slug).state == "conflicting"
-    assert owed(root, slug) is not None
+    assert owed(root, slug)["state"] == "conflicting"
+    assert "elsewhere.invalid" in owed(root, slug)["reason"]
+    assert cli(root, "work", "tracker", "sync", slug)[0] == 1
