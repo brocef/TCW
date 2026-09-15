@@ -519,6 +519,10 @@ when every piece of work must come from a ticket you have claimed. Then:
   refused, by `start` and by `import`; the ticket is left claimed for you to release.
 - An epic can be created and started, since it only groups work, but not with
   `--worktree`.
+- A ticket shared by several parts is recognised only from the parts' items in
+  this checkout. If the part that held the ticket back was completed elsewhere, or
+  was not kept (`work.retain`), the last part's `complete` is refused; put the
+  ticket in the status the message names, or discard.
 - Discarding is always allowed. `drop` refuses an item that was ever bound — discard
   it instead, so the record stays.
 - `tcw serve` refuses the same changes, since it cannot check a ticket, and names the

@@ -107,7 +107,10 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
         if _normalize(where) not in {_normalize(status) for status in expected}:
             wanted = " or ".join(f"'{status}'" for status in expected)
             return CONFLICTING, (f"{key} is in '{where}', not {wanted}; it was moved in "
-                                 f"the tracker, and TCW does not move it back.")
+                                 f"the tracker, or TCW held it there for another part "
+                                 f"of the ticket whose item is not in this checkout. "
+                                 f"TCW does not move it back: put it in {wanted}, or "
+                                 f"move it on by hand.")
     elif ticket.category == "done":
         return CONFLICTING, f"{key} is already resolved ('{where}'), so it was not moved."
     leads = [t for t in ticket.offered if _normalize(t.to_status) == _normalize(target)]
@@ -315,7 +318,10 @@ def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
 def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]:
     """The checks strict mode makes on `slug`'s binding before reading its ticket:
     `(bound, None)`, or `(None, why not)`. Nothing here asks the tracker."""
-    bound, _revision = binding_of(store, slug)
+    try:
+        bound, _revision = binding_of(store, slug)
+    except (OSError, UnicodeDecodeError):
+        bound = None
     if not isinstance(bound, Bound):
         return None, (f"{slug} is not bound to a readable ticket. Link it with "
                       f"`tcw work tracker link {slug} <ticket>` first.")
@@ -361,9 +367,10 @@ def authorize(store, slug: str, client, config, *, target: str) -> str | None:
                 f"the tracker and put it in {where}, then run this again; discarding "
                 f"the item is always allowed.")
     if _normalize(ticket.status) not in {_normalize(status) for status in allowed}:
-        return (f"{key} is in '{ticket.status}', not {where}; it was moved in the "
-                f"tracker. Put it back there, then run this again; discarding the item "
-                f"is always allowed.")
+        return (f"{key} is in '{ticket.status}', not {where}. Either it was moved in the "
+                f"tracker, or TCW held it there for another part of the ticket whose item "
+                f"is not in this checkout. Put it in {where}, then run this again; "
+                f"discarding the item is always allowed.")
     return None
 
 

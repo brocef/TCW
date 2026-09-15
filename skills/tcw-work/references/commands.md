@@ -189,6 +189,10 @@ that got as far as claiming leaves the ticket claimed.
   `tcw work tracker sync <slug>` first.
 - **A tracker block with problems:** refused, not switched off; run `tcw validate`.
 - **Not gated:** `edit`, artifact writes, `tracker link`/`unlink`.
+- **Parts held elsewhere:** the earlier-status allowance needs another part's item
+  *in this checkout*. A part completed in another clone, or removed by `work.retain`,
+  is not seen, so the last part is refused; move the ticket to the status named, or
+  discard.
 
 **The claim decides from the ticket, never from Jira's reply.** `import`
 reads the ticket, applies the configured claim transition, assigns the ticket to the

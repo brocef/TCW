@@ -628,3 +628,12 @@ def test_strict_survives_problems_that_come_from_an_ancestor(tmp_path):
     nodes = _chain(tmp_path / "c", root_board=False, root={**full, "strict": True,
                    "colour": "red"}, repo=ABSENT, pkg={"strict": False})
     assert _store(nodes["pkg"]).tracker_strict() is False
+
+
+def test_an_unreadable_binding_is_refused_not_a_traceback(strict, fake):
+    slug = bound_item(strict)
+    assert cli(strict, "work", "start", slug)[0] == 0
+    (FsWorkStore.open(strict).path(slug) / "tracker.yaml").write_bytes(b"ticket: \xff\n")
+    code, _out, err = cli(strict, "work", "submit", slug)
+    assert code == 1 and REFUSED in err and "not bound to a readable ticket" in err
+    assert status(strict, slug) == "active"
