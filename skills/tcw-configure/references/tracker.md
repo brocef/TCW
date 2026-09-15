@@ -30,8 +30,8 @@ work:
 
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.claim`, and optional `statuses`, `strict` and
-`timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
+`credentials.token-env`, `transitions.claim`, and optional `statuses`, `strict`,
+`comments`, `link` and `timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
 parent's. Unknown keys are reported rather than
 ignored, so a config written for a later release complains instead of silently doing
@@ -81,6 +81,32 @@ removing the key; it merges from ancestors like any other key.
             completed: Done
             discarded: Won't Do
 ```
+
+`comments: true` posts a short progress comment on a bound ticket for each lifecycle
+move (what is posted, and when, is in `commands.md`, "Progress comments"). It must
+be a boolean and defaults to `false`, so mapping `statuses` alone never starts
+commenting. `link` adds a URL to each comment. It must start `https://` or
+`http://`, and its only placeholders are `{project}` (the TCW project id) and
+`{slug}`, each percent-encoded. Any other placeholder is a problem `tcw validate`
+reports. A `link` with comments off does nothing and is not a problem, so a child
+node can set `comments: false` under a parent that sets both.
+
+```yaml
+        comments: true
+        link: https://tcw.example.com/work/{slug}
+```
+
+- **Use a link that survives a move.** A team hosting `tcw serve` can link each
+  item's page, as above. A link into a Git host's file tree breaks at the next move,
+  because the item's folder is named by its status. The web app serves a child
+  project's items under its path, not its id, so `{project}` does not rebuild that
+  path; write the path into the template instead. An item removed by `work.retain`
+  leaves a dead link.
+- **Jira Service Management:** a comment may be visible to customers. Leave
+  `comments` off there unless item titles may be seen.
+- **Upgrade every copy of `tcw` first.** An older copy reports `comments` and `link`
+  as unknown keys and treats the whole tracker block as broken. Its moves are then
+  recorded as pending, and under strict mode it refuses gated commands.
 
 ## Sharing settings from a parent node
 

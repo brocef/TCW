@@ -5,6 +5,14 @@ internal module names.
 
 ## Added
 
+- **Progress comments on tickets.** With `comments: true` in a project's tracker
+  settings, starting, submitting, reworking, completing or discarding a linked item
+  also leaves a one-line comment on its Jira ticket, with an optional link you
+  choose. No lifecycle documents are copied, a comment is posted only while the
+  ticket is yours, and one that could not be posted is sent later by
+  `tcw work tracker sync` without repeating itself. Upgrade every copy of `tcw` on a
+  project before turning this on: older copies treat the new settings as a broken
+  tracker block.
 - **Strict tracker mode.** Setting `strict: true` in a project's tracker settings
   means no work happens without a Jira ticket you have claimed. New items come only
   from `tcw work tracker import`; starting an item claims its ticket first; submitting,
