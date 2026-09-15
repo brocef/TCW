@@ -325,6 +325,94 @@ def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
     return out
 
 
+# ── a work item's tracker binding ────────────────────────────────────────────
+#
+# Classified here, over the already-parsed `tracker.yaml`, for the reason
+# `declared_capabilities` is: every store populates `WorkItem.tracker` and has to
+# classify a binding the same way, and the filesystem adapter must not import
+# `tcw.tracker` to do it — a board read loads no tracker code. The tracker commands
+# reach these through `tcw.tracker.intake`, which parses the text and re-exports them.
+
+
+@dataclass(frozen=True)
+class Unbound:
+    """No `tracker.yaml`, or one whose binding was removed by `unlink`."""
+
+
+@dataclass(frozen=True)
+class Malformed:
+    """A `tracker.yaml` that does not describe a binding it is safe to act on."""
+    reason: str
+
+
+@dataclass(frozen=True)
+class Bound:
+    provider: str
+    project: str
+    part: str
+    ticket_id: str
+    ticket_key: str
+    ticket_url: str
+    # When it was bound: shown, never part of what makes two bindings the same one.
+    bound: str = field(default="", compare=False)
+
+    def key(self) -> tuple[str, str, str, str]:
+        return (self.project, self.provider, self.ticket_id, self.part)
+
+
+def _binding_text(value) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def classify_binding(data: Any) -> Unbound | Malformed | Bound:
+    """Classify one item's parsed `tracker.yaml`.
+
+    The rules, in order: content that is not a mapping is malformed; a mapping with
+    no `ticket` is unbound, which is what `unlink` leaves; a `ticket` mapping with a
+    non-empty `id` and `key`, beside non-empty `provider`, `project` and `part`, is
+    bound; a `ticket` in any other shape is malformed. `ticket.url` and `bound` are
+    carried when present and never required.
+    """
+    if not isinstance(data, dict):
+        return Malformed("not a YAML mapping")
+    if "ticket" not in data:
+        return Unbound()
+    ticket = data["ticket"]
+    if not isinstance(ticket, dict):
+        return Malformed("'ticket' is not a mapping")
+    fields_ = {
+        "ticket.id": _binding_text(ticket.get("id")),
+        "ticket.key": _binding_text(ticket.get("key")),
+        "provider": _binding_text(data.get("provider")),
+        "project": _binding_text(data.get("project")),
+        "part": _binding_text(data.get("part")),
+    }
+    missing = [name for name, value in fields_.items() if not value]
+    if missing:
+        return Malformed(f"missing or empty: {', '.join(missing)}")
+    # A date YAML reads unquoted (`bound: 2026-09-14`) is still the date it names.
+    bound = data.get("bound")
+    return Bound(provider=fields_["provider"], project=fields_["project"],
+                 part=fields_["part"], ticket_id=fields_["ticket.id"],
+                 ticket_key=fields_["ticket.key"],
+                 ticket_url=_binding_text(ticket.get("url")),
+                 bound="" if bound is None else str(bound))
+
+
+def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
+    """The JSON-native `WorkItem.tracker` for a classified binding: `None` when
+    unbound, `{"problem": reason}` when malformed, otherwise the binding's facts."""
+    if isinstance(binding, Malformed):
+        return {"problem": binding.reason}
+    if isinstance(binding, Bound):
+        return {"provider": binding.provider, "project": binding.project,
+                "part": binding.part,
+                "ticket": {"id": binding.ticket_id, "key": binding.ticket_key,
+                           "url": binding.ticket_url},
+                "bound": binding.bound}
+    return None
+
+
 # Sentinel to distinguish "field not provided" from "set to None" in
 # partial-update operations.  Omitted → unchanged; None → clear nullable.
 _UNSET = object()
