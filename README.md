@@ -185,43 +185,165 @@ in: append `claude plugin marketplace add brocef/TCW` and
 
 ## Overview
 
-<!-- readme-rewrite: unwritten -->
+TCW describes a project along three axes. **Taxonomy** is the project's
+vocabulary and its features. **Capabilities** are the things a user can do,
+each with a status. **Work** is the set of changes being made, each moving through
+a lifecycle. The three link by one-directional pointers: a capability names the
+taxonomy entries it involves, and a work item names the capabilities it changes.
+None of them copies another's content.
+
+Everything is plain files in the repository, so a code change and the
+description of what it changed travel in the same commit and the same pull
+request. A work item's status is the folder it sits in, so there is no separate
+ledger to fall out of step.
+
+**One command-line tool, `tcw`**, does everything:
+
+| Command            | What it does                                                                  |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `tcw init`         | marks a directory as a TCW project and creates the folders for each axis      |
+| `tcw provision`    | fetches a work store this project declares but this machine does not have     |
+| `tcw validate`     | checks every file, reference and link across the project and its sub-projects |
+| `tcw serve`        | starts a local web app for browsing and editing all three axes                |
+| `tcw taxonomy`     | the vocabulary and features                                                   |
+| `tcw capabilities` | what a user can do                                                            |
+| `tcw work`         | the changes, and the lifecycle each one follows                               |
+
+A repository adopts TCW with one command, run inside a git repository:
+
+```sh
+tcw init --id my-project                # all three axes
+tcw init --id my-project taxonomy work  # …or only some of them
+```
+
+That writes a `tcw-config.yaml` holding the project's ID and creates the folders
+under `docs/`. A project can adopt the work axis alone and add the others later.
+`tcw validate` exits non-zero on any problem, so it works as a check in CI.
+
+**The CLI enforces the rules; the agent plugin supplies the judgment.** Legal
+status changes, references that must resolve, and the checks before an item can
+be completed are enforced by `tcw` itself. Deciding what a request means, writing
+a spec, or judging whether work is finished is what the plugin's skills guide an
+agent through. See [Skills and Agents](#skills-and-agents).
+
+**Many repositories, one model.** Projects are identified by ID, never by path.
+A project can connect to others, inherit their taxonomy and capabilities, and
+address their work items as `<project-id>/<slug>`. A checkout holding only some of
+the connected repositories still works: the absent ones drop out rather than
+breaking your commands. See [Working across repositories](docs/guide/multi-repo.md).
 
 ## Taxonomy
 
 ### Overview
 
-<!-- readme-rewrite: unwritten -->
+A taxonomy entry has one of two kinds. **Vocabulary** entries are the project's
+basic language: `Invoice`, `Customer`, `Permission`. **Feature** entries are the
+user- or application-facing parts that operate on that vocabulary, and each names
+the vocabulary entries it involves. A feature can only name vocabulary that
+already exists, so vocabulary is registered first.
+
+Entries form a tree, and an entry's path is its address: `admin/permission` and
+`billing/permission` are two different entries.
+
+A project can **inherit** another project's taxonomy. Inherited entries keep the
+other project's ID as a prefix, so an inherited `acme/permission` never quietly
+becomes your own `permission`.
 
 ### Usage
 
 #### Skills
 
-<!-- readme-rewrite: unwritten -->
+| Skill                                          | What it does                                                                                              |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md) | Guides an agent through declaring vocabulary and features, linking them, and resolving inherited entries. |
+
+To draft a first taxonomy from an existing codebase, use the `tcw-setup` skill
+described in [Skills and Agents](#skills-and-agents).
 
 #### CLI
 
-<!-- readme-rewrite: unwritten -->
+| Command                | What it does                                                          |
+| ---------------------- | --------------------------------------------------------------------- |
+| `tcw taxonomy init`    | creates `docs/taxonomy/` (the same as `tcw init taxonomy`)            |
+| `tcw taxonomy list`    | shows every entry as a tree, marked by kind and by where it came from |
+| `tcw taxonomy add`     | creates a vocabulary entry or a feature                               |
+| `tcw taxonomy show`    | prints one entry                                                      |
+| `tcw taxonomy path`    | prints the folder the taxonomy is stored in                           |
+| `tcw taxonomy rm`      | removes a local entry                                                 |
+| `tcw taxonomy search`  | searches entry names and descriptions                                 |
+| `tcw taxonomy check`   | checks that every reference and inherited project resolves            |
+| `tcw taxonomy extends` | adds or removes a project whose taxonomy this one inherits            |
+
+```sh
+tcw taxonomy add Invoice "A bill issued to a customer."   # vocabulary by default
+tcw taxonomy add Admin "Running the service."
+tcw taxonomy add Permission -p admin                      # → admin/permission
+tcw taxonomy add "PDF Export" --kind feature --vocab invoice
+tcw taxonomy list
+tcw taxonomy extends add acme-shared                      # inherit another project
+```
+
+More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).
 
 ## Capabilities
 
 ### Overview
 
-<!-- readme-rewrite: unwritten -->
+A capability is one thing a user can do, such as "Download an invoice as PDF".
+Each is addressed by a path (`billing/invoices`), gets a stable ID when created,
+and carries a **status**: `Supported`, `Partial`, `Missing`, `Blocked` or
+`Omitted`. The status is what makes the list useful: it says what the product
+actually does today, and completing a work item is how a capability moves from
+`Missing` to `Supported`.
+
+Capabilities can be **inherited** from another project. A web frontend and a
+mobile app that drive the same server declare their shared capabilities once, and
+each **overrides** only what differs, for example marking one `Omitted` or adding
+to its description. An override can be undone to go back to the inherited
+version.
 
 #### Relationship to Taxonomy
 
-<!-- readme-rewrite: unwritten -->
+A capability points at taxonomy, never the other way. Its `Subject` field names
+the vocabulary entries it involves (any number of them), and its `Feature` field
+names the taxonomy feature that delivers it. TCW checks that both resolve, and
+refuses to save a capability whose references do not, so a feature is
+registered in the taxonomy before a capability names it.
 
 ### Usage
 
 #### Skills
 
-<!-- readme-rewrite: unwritten -->
+| Skill                                                  | What it does                                                                                                                                                          |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md) | Guides an agent through checking a planned change against the existing capabilities, catching contradictions, and updating a capability's status when work completes. |
 
 #### CLI
 
-<!-- readme-rewrite: unwritten -->
+| Command                    | What it does                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| `tcw capabilities init`    | creates `docs/capabilities/` (the same as `tcw init capabilities`)                          |
+| `tcw capabilities list`    | lists capabilities, marked by status and by where they came from                            |
+| `tcw capabilities show`    | prints one capability                                                                       |
+| `tcw capabilities path`    | prints the folder capabilities are stored in                                                |
+| `tcw capabilities add`     | creates a capability                                                                        |
+| `tcw capabilities set`     | changes a capability's status or fields; on an inherited one, writes an override            |
+| `tcw capabilities reset`   | removes a local override, going back to the inherited version                               |
+| `tcw capabilities rm`      | removes a local capability                                                                  |
+| `tcw capabilities search`  | searches names and descriptions                                                             |
+| `tcw capabilities extends` | adds or removes a project whose capabilities this one inherits                              |
+| `tcw capabilities check`   | checks paths, fields, taxonomy references and inheritance                                   |
+| `tcw capabilities drift`   | reports inherited capabilities nobody has reviewed, and shipped work still marked `Missing` |
+
+```sh
+tcw capabilities add billing/invoices "Download an invoice as PDF"
+tcw capabilities set billing/invoices --field "Subject=invoice" --field "Feature=pdf-export"
+tcw capabilities list --status Missing
+tcw capabilities set billing/invoices --status Supported
+tcw capabilities extends web-frontend                    # inherit another project
+```
+
+More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).
 
 ## Work
 
