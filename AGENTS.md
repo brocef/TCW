@@ -30,11 +30,13 @@ The bindings are in `tcw-config.yaml`; `tcw work lifecycle` lists them.
 is being changed in the working tree.** The CLI you would be driving is the thing
 under modification, so its behavior is in flux: results are unreliable and it can
 hang (`tcw work new` once blocked inside a capture script). As soon as a session
-starts editing `tcw/`, switch to recording work as plain Markdown documents in
-`docs/work/inbox/`, and say so rather than silently alternating between the two.
-Do **not** hand-move item folders between status directories to compensate — that
-is the filesystem shortcut the prime directive refuses. Leave a stale status in
-place and file an inbox note about it.
+starts editing `tcw/`, drive the work system by editing its files directly, and say
+so rather than silently alternating between the two. Everything in `docs/work/` is
+plain files and can be maintained by hand: add an inbox entry or an item folder,
+write its artifacts, edit `state.yaml`, rename a folder to change a slug, or move it
+to another status directory. A hand edit runs none of the lifecycle's gates or
+hooks — no `pre` checks, Definition of Done, commits or tracker sync — so do what
+those would have done yourself, and update every reference to a slug you rename.
 
 **Closing the originating GitHub issue waits for publication.** `docs/work/dod.yaml`
 lists _"originating GitHub issue answered and closed, if the item came from one"_
