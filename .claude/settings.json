@@ -1,7 +1,6 @@
 {
     "enabledPlugins": {
-        "tcw@tcw": true,
-        "skill-cefailures@skill-cefailures": true
+        "tcw@tcw": true
     },
     "hooks": {
         "SessionStart": [
