@@ -342,9 +342,18 @@ def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]
                       f"which is not on {config.base_url}.")
     if bound.sync is not None:
         what = bound.sync.get("state", "an unreadable record")
+        # `sync` acts as whoever runs it and skips an item somebody else started, so
+        # pointing at it without naming the owner sends the caller into a loop: the
+        # refusal says run sync, and sync says skipped. `owner` is a field on the item,
+        # not an identity this layer resolves — that stays in the CLI.
+        item = store.get(slug)
+        owner = item.owner if item is not None else ""
+        whose = (f" It was started by {owner}, so run it as them: "
+                 f"`TCW_WORK_OWNER={owner} tcw work tracker sync {slug}`." if owner else "")
         return None, (f"{key} has a change that has not reached the tracker ({what}). Run "
-                      f"`tcw work tracker sync {slug}` first; if that cannot clear it, "
-                      f"fix the ticket in the tracker, or unlink the item and discard it.")
+                      f"`tcw work tracker sync {slug}` first;{whose} if that cannot clear "
+                      f"it, fix the ticket in the tracker, or unlink the item and discard "
+                      f"it.")
     return bound, None
 
 

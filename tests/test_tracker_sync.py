@@ -687,6 +687,35 @@ def test_sync_of_an_item_with_no_record_checks_and_never_moves(node, fake):
     assert fake.writes() == [] and binding_text(node, slug) == before
 
 
+def test_sync_of_a_named_slug_someone_else_started_exits_one(node, fake):
+    """A named slug is a user asking about one item: skipping it is not success.
+
+    Under strict mode `binding_refusal` sends the user here while a record exists,
+    so a silent exit 0 leaves the item stuck with nothing reporting a failure.
+    """
+    slug = bound_item(node)
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="b@example.test")
+    with_record(node, slug, {**RECORD, "move": "start", "since": "", "claim": "owed"})
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 1, (out, err)
+    assert "skipped" in out and "b@example.test" in out
+    assert "pending" in out and "TCW_WORK_OWNER" in out
+    assert record(node, slug) is not None
+
+
+def test_the_strict_refusal_names_the_owner_to_sync_as(node, fake):
+    from tcw.tracker.sync import binding_refusal
+    slug = bound_item(node)
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="b@example.test")
+    with_record(node, slug, {**RECORD, "move": "start", "since": "", "claim": "owed"})
+    st = FsWorkStore.open(node)
+    bound, refusal = binding_refusal(st, slug, st.tracker_config())
+    assert bound is None and refusal is not None
+    assert "TCW_WORK_OWNER" in refusal and "b@example.test" in refusal
+
+
 def test_sync_needs_exactly_one_of_a_slug_or_all(node, fake):
     assert cli(node, "work", "tracker", "sync")[0] == 1
     assert cli(node, "work", "tracker", "sync", "x", "--all")[0] == 1

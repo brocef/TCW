@@ -2234,7 +2234,20 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     for slug in slugs:
         item = st.get(slug)
         if item.owner and item.owner != me:
-            print(f"{slug}: skipped — started by {item.owner}")
+            if args.all:
+                # A sweep legitimately walks past other people's work.
+                print(f"{slug}: skipped — started by {item.owner}")
+                continue
+            # A named slug is somebody asking about one item. Skipping it and exiting 0
+            # says the item is fine when its change is still owed — and strict mode
+            # sends users here, so the silent success is what leaves them stuck.
+            owed = item.tracker.get("sync") or {}
+            state = owed.get("state") or ("an unreadable record" if owed else "")
+            still = f" — {state}, still owed" if state else ""
+            print(f"{slug}: skipped{still} — started by {item.owner}. Run it as them "
+                  f"(`TCW_WORK_OWNER={item.owner} tcw work tracker sync {slug}`), or take "
+                  f"the item over with `tcw work start {slug} --take-over`.")
+            code = 1
             continue
         recorded = item.tracker.get("sync")
         comment = item.tracker.get("comment")
