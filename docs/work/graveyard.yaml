@@ -10,6 +10,9 @@
 2026-08-20-docs-work-claiming-is-created-by-every-start-and-never-removed:
   resolution: done
   resolved: '2026-09-11'
+2026-08-20-load-yaml-reads-a-falsy-yaml-document-as-an-empty-mapping:
+  resolution: done
+  resolved: '2026-09-14'
 2026-08-26-declare-a-component-store-s-home-repository-so-a-fresh-checkout-can-provision-it:
   resolution: done
   resolved: '2026-09-01'
