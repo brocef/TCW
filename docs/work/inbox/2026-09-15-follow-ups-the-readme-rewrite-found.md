@@ -2,7 +2,7 @@
 
 ## Desired outcome
 
-Three defects found while rewriting the README are fixed. None was in that
+The open defects found while rewriting the README are fixed. None was in that
 item's scope, and each is small.
 
 ## Context
