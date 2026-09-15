@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `tcw-taxonomy-rm-deletes-nested-terms-without-a-word.md`
+
+## Inbox body
+
 # tcw taxonomy rm deletes nested terms without a word
 
 `tcw taxonomy rm <path>` deletes the term's whole folder. `FsTaxonomyStore.remove`
