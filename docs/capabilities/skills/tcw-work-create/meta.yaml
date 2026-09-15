@@ -1,0 +1,8 @@
+id: cap-43570a
+name: Offer a skill dedicated to instructing agents how to turn an idea into a work
+  item without duplicating tracked work
+Status: Supported
+Feature: tcw-work-create-skill
+Subject:
+- skill
+Planning doc: 2026-09-15-add-a-tcw-work-create-skill-that-checks-for-overlap-before-creating-a-work-item
