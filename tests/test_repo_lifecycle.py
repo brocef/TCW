@@ -96,13 +96,14 @@ def test_this_repos_documentation_entries_parse():
     assert problems == []
     assert [e.path for e in entries] == [
         "README.md",
+        "docs/guide/jira.md",
         "docs/release-notes/upcoming.md",
         "docs/changelogs/upcoming.md",
         "skills/<component>/SKILL.md",
         "skills/tcw-configure/references/<document>.md",
     ]
     assert {e.trigger for e in entries} == {
-        "Public-API", "Any-Code-Change", "Skill-Driven-Component",
+        "Public-API", "Tracker-Change", "Any-Code-Change", "Skill-Driven-Component",
         "Configuration-Key-Change"}
 
 
