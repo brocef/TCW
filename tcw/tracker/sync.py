@@ -77,8 +77,10 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
         else:
             # Unknown when the record was written (the tracker block was broken, or
             # the move left `backlog`): where the recorded move started from.
+            # Only the nearest mapped one: accepting both review and active would let a
+            # ticket someone sent back to active be carried forward.
             since = tuple(filter(None, (target_status(statuses, earlier, None)
-                                        for earlier in _MOVED_FROM[record["move"]])))
+                                        for earlier in _MOVED_FROM[record["move"]])))[:1]
             if not since:
                 return ()
         moved_to = target_status(statuses, MOVE_STATUS[record["move"]], resolution)
@@ -198,9 +200,10 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             f"{bound.ticket_key}'s binding points at "
             f"{bound.ticket_url or 'no recorded URL'}, which is not on {config.base_url}; "
             f"nothing was sent. Unlink and link it again if the site changed."))
-    if not target and not starting:
-        # Nothing is owed to the tracker for this status — not even a claim, which
-        # for work just abandoned would take a ticket only to leave it held.
+    if not target and (not owed or local in RESOLVED_STATUSES):
+        # Nothing is owed to the tracker for this status. For finished work that
+        # includes a claim, which would take a ticket only to leave it held; open work
+        # with no mapping still owes its claim, below.
         owed = False
         return finish(NONE)
 
@@ -210,11 +213,11 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         return finish(classify_error(error), str(error))
 
     if owed:
-        if (local in RESOLVED_STATUSES and target
-                and _normalize(ticket.status) == _normalize(target)):
-            # The item is finished and somebody already closed the ticket the same
-            # way: nothing is left to claim for. An open item still needs the claim,
-            # whoever has the ticket in the right status.
+        at_target = bool(target) and _normalize(ticket.status) == _normalize(target)
+        if at_target and (local in RESOLVED_STATUSES or ticket.assignee_id == ticket.me_id):
+            # Already where it goes, and either the item is finished (nothing is left
+            # to claim for) or the ticket is already this account's. Retrying the
+            # claim could only move it back first, on a workflow that offers it.
             owed = False
             return finish(CURRENT)
         if check_only:

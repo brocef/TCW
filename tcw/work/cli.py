@@ -2245,7 +2245,11 @@ def _complete(args: argparse.Namespace) -> int:
         err = merge_worktree(st.node_root, branch)
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
-            if isinstance(item.tracker, dict) and item.tracker.get("sync"):
+            staged = subprocess.run(
+                ["git", "-C", str(st.store_git_root), "diff", "--cached", "--name-only",
+                 "--", str(st.path(bare) / "tracker.yaml")],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()
+            if staged and isinstance(item.tracker, dict) and item.tracker.get("sync"):
                 # A delivery record is staged, never committed, and git will not
                 # merge over a staged file the branch also carries.
                 print(f"tcw work complete: {bare}'s tracker.yaml holds a record of a "

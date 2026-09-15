@@ -887,3 +887,50 @@ def test_complete_of_a_worktree_item_names_a_staged_record(node, fake):
                           "--confirm")
     assert code == 1
     assert "tracker.yaml" in err and "tcw work tracker sync" in err
+
+
+# ── review round two ─────────────────────────────────────────────────────────
+
+
+def test_an_empty_since_on_complete_accepts_only_the_nearest_mapped_status(node, fake):
+    from tcw.tracker.sync import expected_statuses
+    record_ = {**RECORD, "move": "complete", "since": ""}
+    assert expected_statuses(STATUSES, None, record_, "done") == ("In Review", "Done")
+    no_review = {k: v for k, v in STATUSES.items() if k != "review"}
+    assert expected_statuses(no_review, None, record_, "done") == ("In Progress", "Done")
+
+
+def test_open_work_with_no_mapping_keeps_its_owed_claim(tmp_path, fake):
+    root = make_node(tmp_path, statuses={"active": "In Progress", "completed": "Done"})
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Progress", B)
+    assert cli(root, "work", "start", slug)[0] == 1
+    assert cli(root, "work", "submit", slug)[0] == 1       # review unmapped; Bob still has it
+    assert record(root, slug)["claim"] == "owed"
+    claimed_ticket(fake, "To Do", None)
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].assignee == A and record(root, slug) is None
+
+
+def test_an_owed_claim_on_a_ticket_already_yours_at_the_target_sends_nothing(tmp_path,
+                                                                             monkeypatch):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow={s: [("21", "Start Progress", "In Progress"),
+                                   ("41", "Ready for Review", "In Review")]
+                               for s in ("To Do", "In Progress", "In Review")})
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="In Review", assignee=A)
+    fake_.install(monkeypatch)
+    root = make_node(tmp_path, statuses=STATUSES)
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    st.submit(slug)
+    with_record(root, slug, {**RECORD, "move": "start", "since": "", "claim": "owed"})
+    fake_.requests.clear()
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake_.writes() == [] and record(root, slug) is None
