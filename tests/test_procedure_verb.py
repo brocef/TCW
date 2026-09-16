@@ -147,8 +147,18 @@ def test_no_exec_runs_nothing_and_prints_nothing(tmp_path):
     assert "blob — skipped (condition)" in r.stderr
 
 
-def test_outside_a_work_node_it_refuses(tmp_path):
+def test_outside_a_work_node_it_prints_tcws_default(tmp_path):
+    """A skill such as documentation-sync runs in projects that are not TCW
+    nodes. There is no project configuration to compose, so the answer is
+    TCW's own text — not a refusal a skill would have to paper over."""
     r = _run(tmp_path, "search")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.rstrip() == _default("search")
+    assert "no tcw work node here" not in r.stderr
+
+
+def test_outside_a_work_node_a_work_item_still_refuses(tmp_path):
+    r = _run(tmp_path, "search", "2026-01-01-anything")
     assert r.returncode == 1 and r.stdout == ""
     assert "no tcw work node here" in r.stderr
 

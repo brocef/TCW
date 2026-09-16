@@ -1570,6 +1570,16 @@ def _procedure_prompt(args: argparse.Namespace) -> int:
         return 1
     item, bare = None, ""
     if args.slug is None:
+        try:
+            outside = find_node(NAME) is None
+        except StoreNotProvisioned:
+            outside = False  # a node whose store is elsewhere: `_store` says so
+        if outside:
+            # No project, so no project configuration to compose: TCW's own text.
+            # Skills that also run outside TCW projects (documentation-sync) rely
+            # on this rather than on a fallback that would hide a real failure.
+            print(load_builtins().procedures[args.procedure_id].rstrip())
+            return 0
         st = _store()
         if st is None:
             return 1
