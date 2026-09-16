@@ -287,7 +287,7 @@ Reference another object in prose with `[text](tcw://W/<slug>)`, or
 Four skills carry the everyday workflows: `tcw-commands-process-inbox`,
 `tcw-commands-plan-work`, `tcw-commands-drive-work-to-completion` and
 `tcw-commands-verify-work`. Each works by invoking the skill, under any
-harness, and each follows the stage documents this skill already carries.
+harness, and each invokes the `tcw-work-stage` skill for the stage it runs.
 
 # Claims and external work stores
 

@@ -3,7 +3,7 @@
 An **epic** (`type: epic`) is a coordination item. It implements nothing itself;
 child tasks do the work and point back with `initiative: <epic-slug>`.
 
-Everything in the stage documents applies unchanged. Only these differ — and this
+Everything each stage asks for (read it with the `tcw-work-stage` skill) applies unchanged. Only these differ — and this
 file stays a delta list on purpose, because the two full lifecycle documents it
 replaces were ~85% identical and had already drifted apart.
 
