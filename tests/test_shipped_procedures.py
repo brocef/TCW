@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parent.parent
 # removes its row here in the same commit. Until then this is what stops the
 # shipped default and the skill drifting apart.
 SOURCES = {
-    "autonomous-work": "skills/tcw-extras-autonomous-work/SKILL.md",
+    "unattended-work": "skills/tcw-extras-autonomous-work/SKILL.md",
     "triage-issues": "skills/tcw-extras-triage-issues/SKILL.md",
     "documentation-sync": "skills/documentation-sync/SKILL.md",
     "post-mortem": "skills/tcw-post-mortem/SKILL.md",

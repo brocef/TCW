@@ -936,7 +936,7 @@ STAGE_IDS = ("inbox", "request", "spec", "plan", "implement", "verify", "postmor
 # deliberately **not** skill names: skills get renamed, and a project's
 # configuration must not break when one is. A project replaces a procedure's
 # text; it cannot add a procedure.
-PROCEDURE_IDS = ("autonomous-work", "triage-issues", "documentation-sync",
+PROCEDURE_IDS = ("unattended-work", "triage-issues", "documentation-sync",
                  "post-mortem", "create-work", "audit-backlog",
                  "consolidate-plans", "decompose", "delegation", "search")
 
