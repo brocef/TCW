@@ -12,21 +12,21 @@ After completing code changes, get the project's documentation entries and evalu
 - `"config"` — the entries are declared in `tcw-config.yaml` under `work.documentation`, validated by `tcw validate`, and the `entries` array is authoritative. Use it and read no Markdown.
 - `"agent-guide"` — the project has declared nothing, so fall back to the legacy convention: a `## Documentation Sync` section in the project's `CLAUDE.md` / `AGENTS.md`, holding a bullet list of `- path [Trigger] — description`.
 
-Outside a TCW node the command does not exist; use the legacy convention directly. If neither is present, ask the user whether to add entries — read the `tcw-configure` skill's `docs-sync.md` to walk them through it.
+Outside a TCW node the command does not exist; use the legacy convention directly. If neither is present, ask the user whether to add entries — read the `configure` skill's `docs-sync.md` to walk them through it.
 
-This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `tcw-work` lifecycle invokes it at three points:
+This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `work` lifecycle invokes it at three points:
 
 | Lifecycle point        | What this skill does                                                                                                                                                                                       | Reference                                                     |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `tcw-work` → `references/lifecycle/stage-plan.md` step 1      |
-| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `tcw-work` → `references/lifecycle/stage-implement.md` step 3 |
-| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `tcw-work` → `references/lifecycle/stage-verify.md` step 5    |
+| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `work` → `references/lifecycle/stage-plan.md` step 1      |
+| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `work` → `references/lifecycle/stage-implement.md` step 3 |
+| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `work` → `references/lifecycle/stage-verify.md` step 5    |
 
 One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
 ## The Documentation Sync Section — the fallback form
 
-This is the **fallback**, not the recommended form. In a TCW node, declare the entries in `tcw-config.yaml` under `work.documentation` instead: `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `implement` put them in front of the agent directly, so the gate does not depend on anyone remembering to open a file and parse prose. The `tcw-configure` skill's `docs-sync.md` walks through both forms.
+This is the **fallback**, not the recommended form. In a TCW node, declare the entries in `tcw-config.yaml` under `work.documentation` instead: `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `implement` put them in front of the agent directly, so the gate does not depend on anyone remembering to open a file and parse prose. The `configure` skill's `docs-sync.md` walks through both forms.
 
 Use the section below when the project is **not** a TCW node, or when the user prefers Markdown. Project owners add it to their `CLAUDE.md`:
 
@@ -62,7 +62,7 @@ Each entry has three parts:
 
 **Partition rule for `Public-API` and `Public-{Name}-API`:** When a project declares both, the named entries carve their areas out of the generic `Public-API`. A CLI flag change fires `Public-CLI-API` only, not both. If no named entry covers the change, fall back to `Public-API`.
 
-**Projects may define additional named triggers.** The four triggers above are a base vocabulary, not a closed set. A project can add its own bracketed trigger, defined by the entry's description, when none of the four fit. Read the definition where it's used and apply it literally. TCW's own entries, for example, define `[Skill-Driven-Component]` — "always update the matching driving skill (`tcw-work`, `tcw-capabilities`, …) whenever the component it drives changes: its CLI surface, model/fields, lifecycle, or guardrails" — a trigger that doesn't fit the `Public-{Name}-API` shape. Treat any such project-defined trigger as authoritative for that project.
+**Projects may define additional named triggers.** The four triggers above are a base vocabulary, not a closed set. A project can add its own bracketed trigger, defined by the entry's description, when none of the four fit. Read the definition where it's used and apply it literally. TCW's own entries, for example, define `[Skill-Driven-Component]` — "always update the matching driving skill (`work`, `capabilities`, …) whenever the component it drives changes: its CLI surface, model/fields, lifecycle, or guardrails" — a trigger that doesn't fit the `Public-{Name}-API` shape. Treat any such project-defined trigger as authoritative for that project.
 
 **Public-surface judgment call:** A symbol may be technically exported (e.g., re-exported by a barrel file) but have no documented public consumer — no mention in README, no entry in changelogs, no external callers visible. Renaming such a symbol is a fuzzy case: it triggers `Public-API` literally, but the user-facing impact is zero. **Ask the user** before treating these as Public-API rather than auto-updating public docs for a change nobody outside the codebase will notice.
 
@@ -95,7 +95,7 @@ These workflows are deeper than the core trigger-evaluation loop and live as ref
 | Reference                                    | Load when                                                                                                                                                                                                        |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`.   |
-| the `tcw-configure` skill's `docs-sync.md`   | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                        |
+| the `configure` skill's `docs-sync.md`   | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                        |
 | `references/cut-version.md`                  | The user asked to cut a version, or picked a `patch`/`minor`/`major` bump from the completion options below, and you're running the version cut — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. |
 
 ## When to offer version and changelog options

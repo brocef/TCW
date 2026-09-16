@@ -1475,8 +1475,8 @@ def _stage_prompt(args: argparse.Namespace) -> int:
     return _stage_tail(args, step, st, item, bare, args.slug)
 
 
-VALIDATE_ERROR = ("**Skill Invocation Error: The tcw-work-stage skill must be invoked "
-                  "with one to two arguments: `tcw-work-stage stage-id [work-slug]`**")
+VALIDATE_ERROR = ("**Skill Invocation Error: The work-stage skill must be invoked "
+                  "with one to two arguments: `work-stage stage-id [work-slug]`**")
 VALIDATE_NOTICE = ("Your AI agent harness does not support dynamic context injection. "
                    "You will need to manually run all commands with !`command` to "
                    "interpret this skill.")
@@ -1528,7 +1528,7 @@ def _stage_invocation_problem(words: list[str]) -> str | None:
 def _stage_validate(args: argparse.Namespace) -> int:
     """`tcw work stage validate [words…]` — would `prompt` accept these arguments?
 
-    Injected as the first line of the `tcw-work-stage` skill, so everything goes
+    Injected as the first line of the `work-stage` skill, so everything goes
     to stdout (Claude merges the streams anyway, and the skill line discards
     stderr so an older `tcw` without this verb injects nothing). Valid prints
     nothing under Claude Code; invalid prints a Markdown usage error and exits 1,
@@ -3077,7 +3077,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pbg.set_defaults(func=_stage)
 
     pvl = stg.add_parser("validate",
-                         help="check a tcw-work-stage skill invocation's arguments; "
+                         help="check a work-stage skill invocation's arguments; "
                               "prints nothing when they are valid")
     pvl.add_argument("words", nargs="*",
                      help="the skill's arguments as typed: a stage id and, "

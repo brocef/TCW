@@ -36,7 +36,7 @@ exists, so there is nothing to resolve a stage against: `tcw work stage gate
 inbox` and `tcw work stage prompt inbox` each take nothing after them, and naming
 an item is reported as the mistake it is rather than guessed at.
 
-**`validate` exists for the `tcw-work-stage` skill**, which runs it before
+**`validate` exists for the `work-stage` skill**, which runs it before
 anything else as the skill loads. The arguments are valid exactly when `prompt`
 would accept them: a known stage id, no work item for `inbox`, and otherwise an
 optional reference that resolves to one item. Like `prompt`, it does not judge
@@ -107,7 +107,7 @@ about a descendant's item from the enclosing project — including on `prompt`,
 where it reads that node's `prompt:` bindings rather than the one I am standing
 in.
 
-**Under Claude I can take both halves in one read.** The `tcw-work-stage` skill
+**Under Claude I can take both halves in one read.** The `work-stage` skill
 puts the stage's own working document and the instructions `prompt` resolves for
 it into a single document, so I am not opening a file and running a command and
 joining them in my head. It is an ergonomic over the two commands and nothing
@@ -116,7 +116,7 @@ so itself, in the header every resolved prompt carries. A Codex user, who gets n
 context injection, runs the two commands and reads the same header, which is why
 that reminder lives in the CLI's output and not in the skill.
 
-**And I can ask for any stage by name.** `tcw-work-stage` takes the stage id and
+**And I can ask for any stage by name.** `work-stage` takes the stage id and
 the work item reference, so it reaches every stage — `inbox` and `postmortem`
 included — under Claude and Codex alike. I name the stage and the item in the
 request. Under Claude they are passed to the skill as arguments; under Codex,

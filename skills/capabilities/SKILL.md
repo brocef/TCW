@@ -1,0 +1,140 @@
+---
+name: capabilities
+description: Drives `tcw capabilities` — the Capabilities axis of TCW (what a user can do). Use when a tcw work item has a product (user-facing) delta, or when coordinating capability wording across repos. The taxonomy axis is the `taxonomy` skill, the work axis the `work` skill.
+when_to_use: Use when planning or completing a tcw work item that has a product (user-facing) delta, or when coordinating capability wording across repos — declaring new capabilities, linking them to taxonomy Features, checking a change against the standing ledger, flipping a capability's status as work completes, or relaying canonical product-layer wording.
+allowed-tools: Bash(tcw *), Read, Grep, Glob
+metadata:
+    author: Brian Cefali
+license: Apache-2.0
+---
+
+# The capabilities process
+
+The standing ledger (`docs/capabilities/`) describes _what a user can currently do_. It is the third layer in the TCW chain: `Vocabulary -> Features -> Capabilities -> Work`. This skill keeps it true as work lands. Drive `tcw capabilities`: read with `list`/`show`/`search`, validate with `check`, write status/fields with `set`, delete with `rm`, and locate the absolute resolved filesystem store with `path`. Never hand-edit capability metadata when `set` applies, and never delete a capability folder by hand. Because `path` and `rm` are reserved as commands, read a capability literally named either with explicit `tcw capabilities show <name>`.
+
+`Capability.modified` is read-only, adapter-provided presentation metadata for
+viewers; it is not an editable capability field.
+
+**The ledger is not necessarily `docs/capabilities/`.** `capabilities.path` can
+put it elsewhere and a `capabilities.repository` block can put it in another Git
+repository, fetched here by `tcw provision` — so never compose a store path from
+the node root; ask `tcw capabilities path`. A command needing a declared-but-
+unprovisioned ledger fails, names the remote, and tells you to run
+`tcw provision`; running `tcw init` instead would scaffold a second, empty ledger
+beside the real one. Inheritance is unaffected: `extends` resolves against your
+project, not against wherever the tree sits.
+
+Each capability is a **path-addressed folder** (`docs/capabilities/<path>/` = `meta.yaml` + `description.md`) carrying an opaque stable `id`. Address a capability by its path (e.g. `auth/login`), never a `#heading`. Capabilities may carry `Subject` (a **multi-valued** loose taxonomy pointer — a list of slugs) and `Feature` (a strong pointer to a taxonomy feature). The taxonomy axis is **REQUIRED SUB-SKILL: Use the `taxonomy` skill** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use the `work` skill**.
+
+> **Web editing:** Capabilities can also be created and edited through the local `tcw serve` web app; check failures are surfaced in the UI.
+
+## The `## Capability changes` planning check (at `tcw work new`)
+
+When a work item has a product delta, name each new / changed / removed capability and record it:
+
+- **New capability:** `tcw capabilities add <namespace/path> "<Capability name>" --status Missing` (creates the folder, mints a stable `id`, seeds `Status: Missing`), then `tcw capabilities set <namespace/path> --field "Planning doc=<work-slug>"` — the capability→work forward pointer.
+- **Changed existing capability:** record it under `changed:` in the work item's `capabilities.yaml` (the work→capability back-pointer).
+- **Removed capability:** copy its exact path from `tcw capabilities list`, record it under `removed:` in `capabilities.yaml`, and delete it with `tcw capabilities rm <path>` when the work lands. `rm` deletes one local capability and refuses — deleting nothing — an inherited one, one with capabilities nested under it, and one another capability still references through `Superseded by`, `Blocked by`, `Roles` or `When`; the message names what to repoint or remove first. A behavior folded into another capability is removed, not marked `Omitted` (that means "we deliberately don't have this").
+
+**Canonical `capabilities.yaml` schema** — the completion gate reads it, so keep it in this shape: a mapping with `new:`, `changed:` and/or `removed:`, each a list of path-addressed capability paths (`namespace/path`, the form `show` resolves — no `#`):
+
+```yaml
+new:
+    - auth/login # seeded Missing at planning; must be flipped by complete
+changed:
+    - billing/refund
+removed:
+    - billing/legacy-export # deleted with tcw capabilities rm
+```
+
+(`added:` is read as `new:` for back-compat, but write `new:`.) The gate blocks `complete` if a `new:` path still reads `Missing`, a `new:` or `changed:` path doesn't resolve, or a `removed:` path still resolves. It cannot tell a deleted path from a mistyped one, which is why the path is copied from `list`.
+
+## Contradiction-detection (at the moment of change)
+
+Before recording or altering a capability, check it against the standing ledger: `tcw capabilities search <term>` / `tcw capabilities show <id>` for an existing capability the change would contradict (a new capability that conflicts with a `Supported` one; a status that disagrees with reality). Run `tcw capabilities check` (non-zero ⇒ structural problems to fix first). Whether two capabilities _semantically_ contradict is judgment — surface candidates to the human; never silently overwrite.
+
+When a capability describes behavior around a registered taxonomy feature, set
+`Feature=<feature-ref>` in addition to any useful `Subject=<taxonomy-ref>`.
+`tcw capabilities check` verifies that `Feature` resolves to a taxonomy entry
+whose kind is `Feature`, and **`set` verifies it too** — a write carrying a
+reference that does not resolve is refused, in the same words, and writes
+nothing. That covers all six reference-bearing fields (`Subject`, `Feature`,
+`Superseded by`, `Blocked by`, `Roles`, `When`), so **ordering is now
+load-bearing**: register the taxonomy Feature before the capability naming it,
+and a `roles/…` capability before the capability listing it. Only the
+references a write supplies are checked, so a capability already holding a bad
+one is still repairable with `--status Omitted`.
+
+If no suitable Feature exists, do not invent an unregistered string in the
+capability. Use `taxonomy` to add or clarify the Feature first, then link it
+from the capability.
+
+A capability's `description.md` body may also cross-reference other objects in
+prose with `[text](tcw://C/<path>)` links (or `T`/`W`, and a `<project-id>/`-prefixed
+namespace for federated objects) — additive to the structured `Subject`/`Feature`
+pointers, not a replacement. `tcw validate` resolves these node-wide and the
+`tcw serve` viewer makes them clickable.
+
+## The ledger flip (at `tcw work complete`)
+
+As the item's final pre-freeze step, apply each declared delta so the ledger describes the present:
+
+- `tcw capabilities set <path> --status Supported` (Missing → Supported)
+- scope/body edits; `tcw capabilities set <path> --status Omitted` (Supported → Omitted)
+
+Address the capability by any path `show` accepts, including
+`set <project-id>/auth/login --status Supported`; the local override is written
+for you. The project ID must be explicitly listed in this axis's `extends`.
+
+## Federation (inherit another project's capabilities)
+
+A project may inherit another registered project's capabilities. Declaring that
+is the `configure` skill's `projects.md`. Inherited capabilities use
+`<project-id>/<path>` and remain read-only in structure.
+
+**Capabilities stay inside their own store.** A path is joined onto the store
+root, so a symlink planted inside the store would otherwise carry the write out
+of it. Every lookup, listing, write target and validation resolves first and
+refuses a path landing outside — including the files inside a capability
+folder, so one whose `meta.yaml`, `description.md` or a listed attachment is a
+symlink out is not read. Such a capability does not resolve, does not appear in
+`list`, and cannot be written to. `extends` is the supported way to reference
+another project's capabilities.
+
+- **override metadata** — `set` materializes a local delta whose `overrides`
+  pointer uses `<project-id>/<id>`; a YAML null clears an inherited field;
+- **compose the body** — a `description.md` in that override folder replaces the upstream body; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera"). The override body is a _delta_: an empty one means "no delta", so **clearing an override's body re-inherits the upstream body** rather than blanking it (that fallback is what makes append-only overrides work). To say "we deliberately don't have this", use `Status: Omitted`, not an empty body.
+
+To **drop an override** and re-inherit the upstream entry verbatim, `tcw capabilities reset <path>` — it removes only the local override folder (never the upstream node), and refuses clearly when there is no override (a standalone local capability → delete it with `tcw capabilities rm`; a path that already inherits verbatim → nothing to drop). Whole-override only; to revert a single inherited field, `set <path> --field K=<value>` instead.
+
+`tcw capabilities check` validates override targets (dangling / ambiguous / must-be-inherited), attachment lists, and federation cycles.
+
+## Product-layer coordination (orchestrator-relay)
+
+A per-node agent does **not** read the orchestrator's `docs/capabilities/`. To get canonical product-layer wording, escalate over the inbox channel: `tcw work escalate "capability wording: <name>"`. The orchestrator replies (delegates back) with canonical wording and flips the **product-layer** entry when the **epic** completes; a **task** completing flips the **leaf** entry.
+
+The protocol is **non-blocking** — never wait on a reply. If canonical wording isn't available when needed, fall back to in-repo evidence and mark the entry `TODO: confirm wording`.
+
+## Starting a capabilities ledger
+
+To seed a new capabilities ledger from an existing codebase, use the `setup` skill.
+
+## Quick reference
+
+| Goal                             | Command                                                                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| declare a new capability         | `tcw capabilities add <ns/path> "<Name>" --status Missing`                                                                        |
+| record the planning back-pointer | `tcw capabilities set <ns/path> --field "Planning doc=<slug>"`                                                                    |
+| flip status at completion        | `tcw capabilities set <path> --status Supported` (local or inherited)                                                             |
+| flip an inherited entry          | `tcw capabilities set <project-id>/<path> --status <S>`                                                                           |
+| delete a local capability        | `tcw capabilities rm <path>` — refuses inherited, nested-under, or still-referenced; list it under `removed:` in the item's `capabilities.yaml` |
+| drop an override                 | `tcw capabilities reset <path>` — remove the local override, re-inherit upstream (refuses if none)                                |
+| associate a feature              | `tcw capabilities set <path> --field "Feature=<feature-ref>"`                                                                     |
+| link taxonomy (multi-valued)     | `tcw capabilities set <path> --field "Subject=term-a,term-b"`                                                                     |
+| federate another project         | declared with the `configure` skill's `projects.md`                                                                           |
+| list only local (not inherited)  | `tcw capabilities list --local-only`                                                                                              |
+| check the ledger                 | `tcw capabilities check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                  |
+| find drift                       | `tcw capabilities drift` — inherited-but-unreviewed + local-Missing whose Planning doc is a completed item (exit non-zero if any). The Planning doc is resolved through the node's **configured** work store (`work.path`, in whatever repository); it degrades to silence only when the node has no usable work component. "Completed" is read from the item where one is still in the tree and from its tombstone otherwise, so the verdict is the same in every checkout — but a tombstone backfilled without a resolution says nothing, and that capability is not reported |
+| find / read                      | `tcw capabilities search <term>` · `tcw capabilities show <path>`                                                                 |
+| locate the filesystem store      | `tcw capabilities path` — prints only the absolute, resolved store folder                                                         |
+| ask the orchestrator for wording | `tcw work escalate "capability wording: <name>"`                                                                                  |

@@ -1,0 +1,3 @@
+As a user or agent, I ask the `commands-plan-work` skill to plan a request into a work item, either for an item that already exists or from a request I make in chat. The agent runs the `request`, `spec` and `plan` stages from the first lifecycle artifact that is missing, records each artifact in the work item folder as its own commit, and stops once `plan.md` is written, before any code, so I can review the plan.
+
+While writing up the request it asks me what reference material applies — documentation, links, prior work, files in the repository — and records it with my request, so the stage that writes the specification starts from my sources instead of finding them again.

@@ -76,7 +76,7 @@ by installing `tcw-cli` from PyPI with `pipx`, so one installed mid-session
 cannot run until the next one begins. That first session needs network access. It
 installs over an existing `pipx install tcw-cli` rather than beside it, and
 leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
-anyway, `pipx install tcw-cli` is the whole fix — the **`tcw-setup`** skill
+anyway, `pipx install tcw-cli` is the whole fix — the **`setup`** skill
 carries the cases where it is not.
 
 In **Codex**:
@@ -86,7 +86,7 @@ codex plugin marketplace add brocef/TCW --ref main
 codex plugin add tcw@tcw
 ```
 
-Codex has no session-start hook, so ask the agent to run the **`tcw-setup`**
+Codex has no session-start hook, so ask the agent to run the **`setup`**
 skill — it runs the same install script Claude runs automatically.
 
 The plugin ships the skills and read-only review agents described in
@@ -281,11 +281,11 @@ becomes your own `permission`.
 
 #### Skills
 
-| Skill                                          | What it does                                                                                              |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| [`tcw-taxonomy`](skills/tcw-taxonomy/SKILL.md) | Guides an agent through declaring vocabulary and features, linking them, and resolving inherited entries. |
+| Skill                                  | What it does                                                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [`taxonomy`](skills/taxonomy/SKILL.md) | Guides an agent through declaring vocabulary and features, linking them, and resolving inherited entries. |
 
-To draft a first taxonomy from an existing codebase, use the `tcw-setup` skill
+To draft a first taxonomy from an existing codebase, use the `setup` skill
 described in [Skills and Agents](#skills-and-agents).
 
 #### CLI
@@ -342,9 +342,9 @@ registered in the taxonomy before a capability names it.
 
 #### Skills
 
-| Skill                                                  | What it does                                                                                                                                                          |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-capabilities`](skills/tcw-capabilities/SKILL.md) | Guides an agent through checking a planned change against the existing capabilities, catching contradictions, and updating a capability's status when work completes. |
+| Skill                                          | What it does                                                                                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`capabilities`](skills/capabilities/SKILL.md) | Guides an agent through checking a planned change against the existing capabilities, catching contradictions, and updating a capability's status when work completes. |
 
 #### CLI
 
@@ -580,11 +580,11 @@ reports, comments, and the known limits are in
 
 #### Skills
 
-| Skill                                                | What it does                                                                                                                                                                                  |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-work`](skills/tcw-work/SKILL.md)               | Guides an agent through the whole work lifecycle: triaging the inbox, writing the request, spec and plan, implementing, verifying, completing, splitting large items, and coordinating epics. |
-| [`tcw-post-mortem`](skills/tcw-post-mortem/SKILL.md) | Once a problem has surfaced (rejected work, a false claim in a spec, something shipped that should not have), finds which lifecycle stage could first have caught it.                         |
-| [`tcw-work-create`](skills/tcw-work-create/SKILL.md) | Turns an idea for a piece of work into a work item, or adds it to the item or inbox entry that already covers it, after checking what is already tracked.                                     |
+| Skill                                        | What it does                                                                                                                                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`work`](skills/work/SKILL.md)               | Guides an agent through the whole work lifecycle: triaging the inbox, writing the request, spec and plan, implementing, verifying, completing, splitting large items, and coordinating epics. |
+| [`post-mortem`](skills/post-mortem/SKILL.md) | Once a problem has surfaced (rejected work, a false claim in a spec, something shipped that should not have), finds which lifecycle stage could first have caught it.                         |
+| [`work-create`](skills/work-create/SKILL.md) | Turns an idea for a piece of work into a work item, or adds it to the item or inbox entry that already covers it, after checking what is already tracked.                                     |
 
 Most day-to-day work starts from one of the command skills (planning an item,
 driving it to completion, verifying it, processing the inbox) described in
@@ -619,7 +619,7 @@ driving it to completion, verifying it, processing the inbox) described in
 | Command              | What it does                                                                                                                                           |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `tcw work lifecycle` | prints every stage and transition, with what this project attaches to each                                                                             |
-| `tcw work stage`     | `stage gate` checks a stage may run; `stage prompt` prints its instructions; `stage validate` checks the arguments given to the `tcw-work-stage` skill |
+| `tcw work stage`     | `stage gate` checks a stage may run; `stage prompt` prints its instructions; `stage validate` checks the arguments given to the `work-stage` skill |
 | `tcw work scaffold`  | writes a draft of a stage's document from its template                                                                                                 |
 | `tcw work docs`      | prints the project's documentation entries: which documents a change must keep up to date                                                              |
 
@@ -667,36 +667,36 @@ across the axes.
 
 | Skill                                                      | What it does                                                                                                                                                                                |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-setup`](skills/tcw-setup/SKILL.md)                   | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
-| [`tcw-configure`](skills/tcw-configure/SKILL.md)           | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
+| [`setup`](skills/setup/SKILL.md)                           | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
+| [`configure`](skills/configure/SKILL.md)                   | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
 | [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and offers a version bump when work is done.                                     |
-| [`tcw-work-stage`](skills/tcw-work-stage/SKILL.md)         | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
+| [`work-stage`](skills/work-stage/SKILL.md)                 | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
 
 **Command skills: the everyday workflows**
 
-| Skill                                                                                            | What it does                                                                                                    |
-| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| [`tcw-commands-process-inbox`](skills/tcw-commands-process-inbox/SKILL.md)                       | Turns raw inbox entries into work items and writes each one's request.                                          |
-| [`tcw-commands-plan-work`](skills/tcw-commands-plan-work/SKILL.md)                               | Takes an item, or a request made in chat, through the request, spec and plan stages, and stops before any code. |
-| [`tcw-commands-drive-work-to-completion`](skills/tcw-commands-drive-work-to-completion/SKILL.md) | Takes an item from wherever it is through implementation, and stops for your verification before completing it. |
-| [`tcw-commands-verify-work`](skills/tcw-commands-verify-work/SKILL.md)                           | Checks finished work against its spec with you, and records whether it was accepted or needs rework.            |
+| Skill                                                                                    | What it does                                                                                                    |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [`commands-process-inbox`](skills/commands-process-inbox/SKILL.md)                       | Turns raw inbox entries into work items and writes each one's request.                                          |
+| [`commands-plan-work`](skills/commands-plan-work/SKILL.md)                               | Takes an item, or a request made in chat, through the request, spec and plan stages, and stops before any code. |
+| [`commands-drive-work-to-completion`](skills/commands-drive-work-to-completion/SKILL.md) | Takes an item from wherever it is through implementation, and stops for your verification before completing it. |
+| [`commands-verify-work`](skills/commands-verify-work/SKILL.md)                           | Checks finished work against its spec with you, and records whether it was accepted or needs rework.            |
 
 **Extras: optional, built for one way of working**
 
-| Skill                                                                      | What it does                                                                                                        |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking two read-only advisors wherever the lifecycle would ask you.     |
-| [`tcw-extras-triage-issues`](skills/tcw-extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                      |
-| [`tcw-extras-report`](skills/tcw-extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues). |
+| Skill                                                              | What it does                                                                                                        |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| [`extras-autonomous-work`](skills/extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking two read-only advisors wherever the lifecycle would ask you.     |
+| [`extras-triage-issues`](skills/extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                      |
+| [`extras-report`](skills/extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues). |
 
 **Agents.** Three read-only agents ship with the plugin. None of them edits a
 file or moves an item; each reports back to the session that started it.
 
-| Agent                 | What it does                                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tcw-verifier`        | For the `verify` stage: reads the change against the item's spec, runs checks, and reports whether each acceptance criterion is met.             |
-| `tcw-backlog-auditor` | Checks one backlog item for problems: already done, out of date, in the wrong project, not actionable, or blocked by something already resolved. |
-| `tcw-post-mortem`     | Reads an item's documents and commit history backwards to find which stage could first have caught a problem.                                    |
+| Agent             | What it does                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `verifier`        | For the `verify` stage: reads the change against the item's spec, runs checks, and reports whether each acceptance criterion is met.             |
+| `backlog-auditor` | Checks one backlog item for problems: already done, out of date, in the wrong project, not actionable, or blocked by something already resolved. |
+| `post-mortem`     | Reads an item's documents and commit history backwards to find which stage could first have caught a problem.                                    |
 
 ## TCW Local Web App
 
@@ -831,7 +831,7 @@ PyPI. Details, including the one-time PyPI setup, are in
 
 File bugs and suggestions on
 [GitHub issues](https://github.com/brocef/TCW/issues). With the plugin installed,
-the `tcw-extras-report` skill gives you a ready-to-fill template.
+the `extras-report` skill gives you a ready-to-fill template.
 
 ### License
 
