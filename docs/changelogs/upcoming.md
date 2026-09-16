@@ -94,10 +94,7 @@ category.
   summary" fallback, and `allowed-tools` / `compatibility` frontmatter
   describing the default (`Bash(tcw *)`, `Bash(codex *)`, `Bash(git merge *)`,
   `Agent`, `SendMessage`). "the two advisors" → "the advisors" and "both
-  call" → "all of them call". `tests/test_shipped_procedures.py` treats a
-  source containing `tcw work procedure prompt <id>` as converted and asserts
-  none of the default's paragraphs remain in it; new
-  `tests/test_unattended_work_skill.py`.
+  call" → "all of them call". New `tests/test_unattended_work_skill.py`.
 - `skills/tcw-extras-triage-issues/SKILL.md` and `skills/tcw-post-mortem/SKILL.md`
   compose their procedure: each keeps a fixed body and injects
   `tcw work procedure prompt triage-issues` (no item) or
@@ -111,10 +108,7 @@ category.
   `allowed-tools: Bash(tcw *)`; triage's `compatibility:` scopes the `gh`
   requirement to the default procedure. `agents/tcw-post-mortem.md` runs
   `tcw work procedure prompt post-mortem <slug>` instead of restating the
-  investigation. `tests/test_shipped_procedures.py`: `Composes` marks a
-  `SOURCES` row whose skill injects its procedure (checked for the injection,
-  the fallback, and no surviving default paragraph), plus a test that the agent
-  reads the procedure.
+  investigation; a test checks the agent reads the procedure.
 - `skills/tcw-work/references/procedures/{audit-backlog,consolidate-plans,decompose,delegation,search}.md`
   now tell the reader to run `tcw work procedure prompt <id>` and keep only
   what a project's text must not remove: delegation's stage/transition rules,
@@ -133,10 +127,18 @@ category.
   moved above the injection); for `documentation-sync`, `tcw work docs --json`
   and its sources, the lifecycle-point table and the Markdown fallback entry
   form. `tcw/work/procedures/create-work.md` and `documentation-sync.md` lose
-  exactly those parts. `documentation-sync` gains
-  `allowed-tools: Bash(tcw *), Bash(cat *)`, and its injection falls back to
-  `cat ${CLAUDE_PLUGIN_ROOT}/tcw/work/procedures/documentation-sync.md` when the
-  verb fails (not a TCW node, or no CLI). Its two `references/` are unchanged.
+  exactly those parts. `documentation-sync` gains `allowed-tools: Bash(tcw *)`;
+  its fallback block says to read TCW's default file only when the `tcw` CLI is
+  not installed, and to report a failing command rather than read it. Its two
+  `references/` are unchanged.
+- `tcw work procedure prompt <id>` without a slug, outside a TCW node, prints
+  TCW's shipped default and exits 0 instead of refusing with "no tcw work node
+  here"; with a slug it still refuses. A node whose store is declared but not
+  provisioned still refuses.
+- `skills/tcw-work/references/lifecycle/stage-verify.md` reaches the version cut
+  through `tcw work procedure prompt documentation-sync` instead of naming
+  `documentation-sync`'s `references/cut-version.md` directly, so a project's
+  replacement is followed.
 
 ## Fixed
 
@@ -158,12 +160,11 @@ category.
   injected command. New `tests/test_harness.py` and
   `tests/test_stage_validate.py`. `tests/test_eval_grading.py` checks that the
   grader's block headings appear in the stage skill.
-- `tests/test_shipped_procedures.py`: `CONVERTED` names ids whose source
-  document points at the command; for those the drift test asserts the command
-  is named and no paragraph is shared between source and default. New
-  `test_the_backlog_auditor_reads_the_procedure`.
-- `tests/test_shipped_procedures.py`: `create-work` and `documentation-sync`
-  move from `SOURCES` to a new `CONVERTED` map; the drift test runs over
-  `SOURCES` only, and `test_a_converted_skill_reads_its_procedure` checks each
-  converted skill injects its procedure, names it in its fallback block, and
-  holds no copy of the default.
+- `tests/test_shipped_procedures.py`: every converted source keeps its
+  `SOURCES` row wrapped in `Composes`. For those, `test_each_default_is_todays_text`
+  checks that a skill injects `tcw work procedure prompt <id>` and names it in
+  its "Document command summary", or that a reference document names it, and
+  that no paragraph of the default (whitespace-normalized, 40 characters or
+  more, headings excluded) survives in the source. New
+  `test_the_backlog_auditor_reads_the_procedure` and
+  `test_the_post_mortem_agent_reads_the_procedure`.

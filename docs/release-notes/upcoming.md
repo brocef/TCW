@@ -15,7 +15,9 @@ internal module names.
   exactly what TCW ships today.
 - New setting: `work.procedures` in `tcw-config.yaml`, beside
   `work.lifecycle`. `tcw validate` checks it.
-- The skills themselves do not read from the command yet; that comes next.
+- Run outside a TCW project, the command prints TCW's own text, so skills that
+  also work in other repositories (such as documentation-sync) still get their
+  instructions.
 - **The unattended-work skill no longer insists on particular advisors.** It
   now takes its advisors, its code review, how it closes an item out and
   whether it cuts a version from your project's `unattended-work` procedure.
