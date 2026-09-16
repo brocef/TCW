@@ -280,16 +280,17 @@ git by default, so a binding on one stays on your machine along with the rest of
 that item.
 
 **Linking an item that is already under way leaves its ticket alone unless you
-ask.** If the ticket is not in the status the item maps to, or is not assigned to
-you, `link` warns you and the binding notes that its status was not synced. While the
+ask.** If the ticket is not in the status the item maps to, `link` warns you and the
+binding notes that its status was not synced. While the
 ticket stays out of step like that, later moves of the item do not bring it along:
 each one says the ticket was linked without its status synced, moves nothing, and
 does not count as a failure. Under strict mode those moves are refused, with the same
 explanation. Everything else is reported as it always was — a ticket somebody else
-holds, or a transition name the ticket does not offer, is still a conflict — and once
+holds, one nobody has claimed, or a transition name the ticket does not offer, is
+still a conflict — and once
 the ticket is in step, by your hand or otherwise, it is an ordinary linked ticket and
-follows its item from then on. A ticket already in step and assigned to you when you
-link it is an ordinary linked ticket from the start.
+follows its item from then on. A ticket already in step when you link it is an
+ordinary linked ticket from the start.
 
 **`tracker link <slug> <KEY> --sync-status`** asks for the ticket to be brought up
 to date as part of linking. TCW claims the ticket if it has to, then moves it to the

@@ -2177,16 +2177,17 @@ def _item_or_reason(st, slug: str, label: str):
     return item
 
 
-def _started_by_someone_else(item, me: str) -> str | None:
+def _started_by_someone_else(item, me: str, command: str) -> str | None:
     """Why this identity should not act on `item`'s ticket, or `None`.
 
     Tracker delivery acts as whoever runs it, so delivering for an item somebody else
     started would claim or move their ticket under the wrong account. `me` is
-    `_local_owner`, passed in so a sweep reads Git's configuration once."""
+    `_local_owner`, passed in so a sweep reads Git's configuration once; `command` is
+    the one to run again as the owner."""
     if not item.owner or item.owner == me:
         return None
     return (f"started by {item.owner}. Run it as them (`TCW_WORK_OWNER={item.owner} "
-            f"tcw work tracker sync {item.slug}`), or take the item over with "
+            f"{command}`), or take the item over with "
             f"`tcw work start {item.slug} --take-over`.")
 
 
@@ -2259,19 +2260,20 @@ def _tracker_link(args: argparse.Namespace) -> int:
     under_way = (item is not None and item.status != "backlog"
                  and not st.pending_deletion(args.slug))
     sync_status = under_way and args.sync_status
-    if sync_status and (someone_else := _started_by_someone_else(item, _local_owner(st))):
+    if sync_status and (someone_else := _started_by_someone_else(
+            item, _local_owner(st),
+            f"tcw work tracker link {args.slug} {args.ticket} --sync-status")):
         print(f"tcw work tracker link: {args.slug} was not linked: --sync-status acts as "
               f"you, and it was {someone_else}", file=sys.stderr)
         return 1
     target = (target_status(client.config.statuses, item.status, item.resolution)
               if under_way else "")
     out_of_step = bool(target) and _normalize(ticket.status) != _normalize(target)
-    not_yours = (under_way and item.status not in ("completed", "discarded")
-                 and ticket.assignee_id != ticket.me_id)
-    # The note is only worth keeping while it explains something: a ticket already in
-    # step and already yours is an ordinary bound ticket, and a later refusal on it —
-    # somebody moving it back — is real drift that must not be explained away.
-    unsynced = under_way and not sync_status and (out_of_step or not_yours)
+    # The note is about status alone, and only worth keeping while it explains
+    # something: a ticket already in step is an ordinary bound ticket, and a later
+    # refusal on it — an assignment, or somebody moving it back — is a real conflict
+    # that must not be explained away.
+    unsynced = under_way and not sync_status and out_of_step
     existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
     today = date.today().isoformat()
     document = _binding_for(client.config.provider, project, ticket.issue_id,
@@ -2302,11 +2304,8 @@ def _tracker_link(args: argparse.Namespace) -> int:
                    "is being removed, so nothing can be recorded for it")
             print(f"→ --sync-status did nothing: {args.slug} {why}.", file=sys.stderr)
         elif unsynced:
-            if out_of_step:
-                what = (f"is in '{ticket.status}', but {args.slug} is {item.status}, "
-                        f"which maps to '{target}'")
-            else:
-                what = "is not assigned to you"
+            what = (f"is in '{ticket.status}', but {args.slug} is {item.status}, which "
+                    f"maps to '{target}'")
             print(f"warning: {ticket.key} {what}. Its status was not synced, and while "
                   f"it is out of step later moves will not bring it along. "
                   f"{unsynced_hint(args.slug, ticket.key)}", file=sys.stderr)
@@ -2410,7 +2409,8 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     code = 0
     for slug in slugs:
         item = st.get(slug)
-        if someone_else := _started_by_someone_else(item, me):
+        if someone_else := _started_by_someone_else(item, me,
+                                                    f"tcw work tracker sync {slug}"):
             if args.all:
                 # A sweep legitimately walks past other people's work.
                 print(f"{slug}: skipped — started by {item.owner}")
@@ -2885,8 +2885,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "items' folders are gitignored (the default), that binding stays on\n"
                "this machine and is never committed.\n\n"
                "Linking an item already past backlog leaves the ticket where it is and\n"
-               "warns when it is out of step with the item or not yours; while it\n"
-               "stays out of step, later moves do not bring it along. Pass\n"
+               "warns when its status is out of step with the item; while it stays\n"
+               "out of step, later moves do not bring it along. Pass\n"
                "--sync-status to claim it and move it to where the item is — straight\n"
                "there when the workflow allows, otherwise forward through the\n"
                "statuses mapped in work.tracker.statuses. It never moves a ticket\n"

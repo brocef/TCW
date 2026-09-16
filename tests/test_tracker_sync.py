@@ -1316,6 +1316,8 @@ def test_sync_status_walks_a_ticket_up_where_there_is_no_shortcut(tmp_path, monk
     assert fake_.tickets[TICKET_ID].status == "Done"
     assert fake_.applied == ["21", "41", "31"], fake_.applied
     assert record(root, slug) is None
+    # Permission to walk ends once the ticket is in step.
+    assert "catch-up" not in yaml.safe_load(binding_text(root, slug))
 
 
 def test_sync_status_takes_a_shortcut_when_the_workflow_offers_one(tmp_path, monkeypatch):
@@ -1635,13 +1637,21 @@ def test_a_plain_link_in_step_and_yours_leaves_no_note_so_drift_is_reported(
     assert record(root, slug)["state"] == "conflicting"
 
 
+def plain_linked_out_of_step(tmp_path, monkeypatch):
+    """An active item plain-linked while its unassigned ticket is still To Do."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC)
+    slug = under_way(root, "active")
+    assert cli(root, "work", "tracker", "link", slug, KEY)[0] == 0
+    assert yaml.safe_load(binding_text(root, slug))["status-synced"] is False
+    return root, fake_, slug
+
+
 def test_a_misnamed_transition_stays_a_conflict_while_the_note_stands(tmp_path,
                                                                       monkeypatch):
-    """A ticket in step but not yours keeps the note; once it is assigned to you, a
+    """The note stands, but the ticket has since been put in step and taken: a
     transition the project misnamed is a real conflict, not something the note hides."""
-    root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=None)
-    assert yaml.safe_load(binding_text(root, slug))["status-synced"] is False
-    fake_.tickets[TICKET_ID].assignee = A
+    root, fake_, slug = plain_linked_out_of_step(tmp_path, monkeypatch)
+    fake_.tickets[TICKET_ID].status, fake_.tickets[TICKET_ID].assignee = "In Progress", A
     set_transition(root, "submit", "Ready For Reveiw")
     code, _out, err = cli(root, "work", "submit", slug)
     assert code == 1 and "offers no transition named" in err, err
@@ -1651,7 +1661,7 @@ def test_sync_clears_the_note_once_the_ticket_is_where_its_item_says(tmp_path,
                                                                      monkeypatch):
     """Checking writes nothing else, but a note that is no longer true is removed —
     otherwise a ticket put right by hand would stay explained away for good."""
-    root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=None)
+    root, fake_, slug = plain_linked_out_of_step(tmp_path, monkeypatch)
     FsWorkStore.open(root).submit(slug)                        # delivers nothing
     fake_.tickets[TICKET_ID].status, fake_.tickets[TICKET_ID].assignee = "In Review", A
     code, out, err = cli(root, "work", "tracker", "sync", slug)
@@ -1681,7 +1691,11 @@ def test_sync_status_refuses_an_item_somebody_else_started(tmp_path, monkeypatch
     slug = st.create("Theirs").slug
     st.start(slug, owner="b@example.test")
     code, _out, err = sync_link(root, slug)
-    assert code == 1 and "b@example.test" in err, err
+    assert code == 1, err
+    # The command to run as them is the link that was refused, not a sync of a binding
+    # that does not exist.
+    assert (f"TCW_WORK_OWNER=b@example.test tcw work tracker link {slug} {KEY} "
+            f"--sync-status") in err, err
     assert fake_.writes() == []
     assert FsWorkStore.open(root).read_sidecar(slug, "tracker.yaml") is None
 
@@ -1710,3 +1724,73 @@ def test_an_owed_claim_without_sync_status_is_followed_by_one_transition_only(
     assert code == 1
     assert fake_.applied == ["21"], fake_.applied
     assert fake_.tickets[TICKET_ID].status == "In Progress"
+
+
+def test_an_unclaimed_ticket_in_step_after_a_plain_link_is_an_ordinary_conflict(
+        tmp_path, monkeypatch):
+    """The note is about status alone. A ticket already in step but unassigned gets
+    none, so a move reports the assignment and records it — the same whether or not
+    `sync` ran first."""
+    root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=None)
+    assert "status-synced" not in yaml.safe_load(binding_text(root, slug))
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and "unassigned" in err and "linked without" not in err, err
+    assert record(root, slug)["state"] == "conflicting"
+
+
+def test_a_held_check_removes_an_unreadable_record(tmp_path, monkeypatch):
+    """Checking writes nothing, except to remove what nothing will deliver."""
+    root, fake_, slug = plain_linked_out_of_step(tmp_path, monkeypatch)
+    with_record(root, slug, 5)
+    assert "problem" in record(root, slug)
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0 and out.startswith(f"{slug}: held — "), (out, err)
+    assert record(root, slug) is None
+
+
+def test_skipping_the_claim_still_refuses_a_resolved_ticket(tmp_path, monkeypatch):
+    """A `start` whose claim did not arrive, an item completed since, and a ticket of
+    yours already closed as Won't Do. `claim` would have refused it; carrying on
+    without a claim must too, rather than change its resolution."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, {
+        "To Do": [("21", "Start Progress", "In Progress")],
+        "Won't Do": [("31", "Finish", "Done")], "Done": []})
+    slug = bound_item(root)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])    # delivers nothing
+    fake_.tickets[TICKET_ID].status, fake_.tickets[TICKET_ID].assignee = "Won't Do", A
+    code, _out, _err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "Won't Do"
+
+
+def test_strict_mode_still_asks_whether_an_assignment_is_exclusive_without_a_claim(
+        tmp_path, monkeypatch):
+    """Already yours and in progress, so no claim transition is applied — but under
+    strict mode a workflow offering the claim again from there authorizes nothing, and
+    that check must not be skipped with the transition."""
+    from tracker_fake import GLOBAL
+    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Progress",
+                              assignee=A)
+    slug = under_way(root, "review")
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["strict"] = True
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    code, _out, err = sync_link(root, slug)
+    assert code == 1 and "second person" in err, err
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Progress"
+
+
+def test_an_unclaimed_ticket_put_in_step_after_a_plain_link_is_an_ordinary_conflict(
+        tmp_path, monkeypatch):
+    """The note stands, but the ticket has since been put in step by hand and nobody
+    has taken it. The status no longer needs explaining; the assignment is a real
+    conflict and is recorded as one."""
+    root, fake_, slug = plain_linked_out_of_step(tmp_path, monkeypatch)
+    fake_.tickets[TICKET_ID].status = "In Progress"
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and "unassigned" in err and "linked without" not in err, err
+    assert record(root, slug)["state"] == "conflicting"

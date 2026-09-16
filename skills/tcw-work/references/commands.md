@@ -163,11 +163,11 @@ tracker code is imported.
   `TCW_WORK_OWNER` and `start --take-over`; a `--all` sweep still exits 0 over other
   people's items.
 - **Catching a ticket up is opt-in.** A plain `link` on an item past `backlog` changes
-  nothing in the tracker. When the ticket's status does not match or it is not yours,
-  it warns and notes `status-synced: false` on the binding; while the ticket stays out
-  of step (or unclaimed), later moves report it `held` — linked without its status
-  synced — and move nothing, and strict mode refuses them with the same explanation.
-  Another holder or a misnamed transition is still `conflicting`. The note clears once
+  nothing in the tracker. When the ticket's status does not match the item's, it warns
+  and notes `status-synced: false` on the binding; while the ticket's status stays out
+  of step, later moves report it `held` — linked without its status synced — and move
+  nothing, and strict mode refuses them with the same explanation. Another holder, an
+  unclaimed ticket in step, or a misnamed transition is still `conflicting`. The note clears once
   a delivery or `sync` finds the ticket in step. **`link <slug> <KEY>
   --sync-status`** records the claim as owed (and `catch-up: true`) and delivers it at
   once: claim — skipped for a ticket already yours on a mapped status, refused for one past

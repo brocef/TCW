@@ -16,7 +16,8 @@ category.
   transition straight to the item's mapped status when offered, otherwise one per
   mapped status, re-reading between hops, and writes `catch-up: true` on the binding.
   Forward-only: no claim transition is applied to a ticket already past `active`
-  (one assigned to the caller carries on from where it is; any other is refused), a
+  (one assigned to the caller carries on from where it is — refused if resolved, and
+  under strict mode only when the claim would be exclusive; any other is refused), a
   ticket past its item is refused, and a resolved ticket is never moved. Refused for
   an item somebody else started. What does not arrive stays recorded for `tracker
   sync`, which resumes a walk the claim finished but a later hop did not, and aims at
@@ -26,12 +27,12 @@ category.
 - A shared rung in the ladder (two local statuses mapped to one tracker status) is
   named for the higher local status, so its hop uses that move's named transition.
 - A plain `link` of an item past `backlog` changes nothing in the tracker. When the
-  ticket's status differs from the item's mapped one, or an open item's ticket is not
-  assigned to the caller, it warns and writes `status-synced: false` on the binding
-  (not part of `--json`). While that note stands, a move refused only because the
-  ticket is out of its window or unclaimed is `held` with the `--sync-status` repair
-  instead of `conflicting`, and records nothing; another holder and transition-name
-  refusals stay `conflicting`. Strict mode's refusal names the same repair. The note
+  ticket's status differs from the item's mapped one, it warns and writes
+  `status-synced: false` on the binding (not part of `--json`). While that note
+  stands, a move refused only because the ticket's status is out of its window is
+  `held` with the `--sync-status` repair instead of `conflicting`, and records
+  nothing; another holder, an unclaimed ticket and transition-name refusals stay
+  `conflicting`. Strict mode's refusal names the same repair. The note
   clears once a delivery — or a checking `sync` — finds the ticket where its item says.
 - **`tcw work stage validate [words…]`** (`tcw/work/cli.py`): reports whether a
   `tcw-work-stage` invocation's arguments are ones `tcw work stage prompt` would

@@ -352,13 +352,12 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         return Outcome(state, reason, claimed=claimed_message)
 
     def unsynced_and_out_of_step(ticket) -> bool:
-        # Only the refusals a never-synced link explains: the ticket is out of the
-        # window, or nobody has claimed it. One somebody else holds, or a transition
-        # the project misnamed, is a real conflict and stays one.
+        # Only the refusal a never-synced link explains: the ticket's status is out of
+        # the window. One somebody else holds, or a transition the project misnamed, is
+        # a real conflict and stays one; so is an unclaimed ticket once it is in step.
         if not bound.status_synced and ticket.assignee_id in ("", None, ticket.me_id):
             window = {_normalize(status) for status in expected or (target,)}
-            return (_normalize(ticket.status) not in window
-                    or (not ticket.assignee_id and move not in MOVES_ALLOWING_UNASSIGNED))
+            return _normalize(ticket.status) not in window
         return False
 
     def unsynced(ticket) -> Outcome:
@@ -490,6 +489,24 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                     f"{ticket.key} is in '{ticket.status}' and {whose}. Claiming it from "
                     f"there could move it back, so nothing was sent. Assign it to yourself "
                     f"in the tracker, then run `tcw work tracker sync {slug}`."))
+            if ticket.category == "done":
+                # `claim` refuses a resolved ticket, and skipping it must not lose
+                # that: with the window set to where the ticket is, `assess_move`
+                # would not look, and a closed ticket could change resolution.
+                return finish(CONFLICTING, (
+                    f"{ticket.key} is already resolved ('{ticket.status}'), so it was "
+                    f"not moved."))
+            if config.strict:
+                # The same question a claim answers under strict mode: does the
+                # assignment authorize work, on a workflow that could let a second
+                # person claim it too? Skipping the transition does not skip that.
+                from tcw.tracker.intake import ClaimOutcome
+                refusal = claim_refusal(client, config, bound.ticket_id, ClaimOutcome(
+                    row="1e", claimed=True, message="", issue_id=ticket.issue_id,
+                    key=ticket.key, url=ticket.url, summary=ticket.summary,
+                    status=ticket.status))
+                if refusal:
+                    return finish(CONFLICTING, refusal)
             # Already yours and on the ladder: that is what a claim would have left, so
             # none is made, and delivery carries on from where the ticket is.
             owed = False
