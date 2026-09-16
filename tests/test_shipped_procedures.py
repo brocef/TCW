@@ -81,6 +81,19 @@ def test_each_default_is_todays_text(pid):
         f"tcw/work/procedures/{pid}.md differs from {SOURCES[pid]}"
 
 
+def test_the_backlog_auditor_reads_the_procedure():
+    """The agent is dispatched per item by the audit procedure. A copy of the
+    checks in it would audit against TCW's list after a project replaced it."""
+    text = (REPO / "agents/tcw-backlog-auditor.md").read_text(encoding="utf-8")
+    assert "tcw work procedure prompt audit-backlog" in text
+    tools = next(line for line in text.splitlines() if line.startswith("tools:"))
+    assert "Bash" in tools, "the agent cannot run the command without Bash"
+    copied = [c for c in ("Already completed", "Outdated", "Wrong repository",
+                          "Unactionable", "Blocked without a next action",
+                          "Capability drift") if c.lower() in text.lower()]
+    assert not copied, f"agents/tcw-backlog-auditor.md still names: {copied}"
+
+
 def _fail_procedures(monkeypatch, error):
     """Make only the procedure files unreadable, so stage prompts loading first
     cannot be what raises."""
