@@ -11,3 +11,5 @@ blocked_by:
 - slug: 2026-09-16-compose-a-procedure-s-instructions-from-project-bindings-the-way-a-stage-s-are-composed
 owner: brocef@users.noreply.github.com
 started: '2026-09-16T21:16:18.572354Z'
+worktree: .worktrees/2026-09-16-compose-the-five-tcw-work-procedure-documents-from-project-bindings
+branch: work/2026-09-16-compose-the-five-tcw-work-procedure-documents-from-project-bindings
