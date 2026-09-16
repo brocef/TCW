@@ -6,6 +6,7 @@ allowed-tools: Bash(tcw *), Read
 metadata:
     author: Brian Cefali
 license: Apache-2.0
+dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
 
 # Reporting an issue or suggestion to TCW

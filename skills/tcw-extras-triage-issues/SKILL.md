@@ -7,6 +7,7 @@ metadata:
     author: Brian Cefali
 compatibility: Requires the GitHub CLI (`gh`), authenticated, on a project with a GitHub remote.
 license: Apache-2.0
+dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
 
 # Triaging GitHub issues into work items

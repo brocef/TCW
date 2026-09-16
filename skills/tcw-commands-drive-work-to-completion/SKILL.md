@@ -6,6 +6,7 @@ allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
 metadata:
     author: Brian Cefali
 license: Apache-2.0
+dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
 
 Use the `tcw-work` skill. This skill covers **the current stage through

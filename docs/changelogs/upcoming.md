@@ -18,6 +18,22 @@ category.
   nearest `claude`/`codex` ancestor's harness, else `other` when
   `CODEX_THREAD_ID`, `CODEX_SANDBOX` or `CODEX_SESSION_ID` is set, else
   `claude`.
+- **`skills/README.md`**: the two rules deciding whether a project may replace
+  what a shipped skill says — Rule 2 (a document with no procedure of its own
+  has nothing to override), checked first, then Rule 1 (TCW owns the shape of
+  what is produced, the project owns the conduct) — why a project cannot add a
+  procedure id of its own, and a verdict with a reason for every `SKILL.md`,
+  every file under a skill's `references/`, and every `agents/*.md`.
+- **`dynamic_skill: true|false`** in the frontmatter of all sixteen
+  `skills/*/SKILL.md`, as a top-level key with a trailing comment pointing at
+  `../README.md`. Read by people only; neither harness acts on it. `true` for
+  `tcw-extras-autonomous-work`, `tcw-extras-triage-issues`,
+  `documentation-sync`, `tcw-post-mortem`, `tcw-work-create` and
+  `tcw-work-stage`; `false` for the rest. No skill body changed.
+- **`tests/test_dynamic_skill_marker.py`**: fails when a shipped skill,
+  reference document or agent has no verdict row (or more than one), when a row
+  names no shipped file, when a skill lacks `dynamic_skill` or its comment, or
+  when the value disagrees with the row's verdict.
 
 ## Changed
 
