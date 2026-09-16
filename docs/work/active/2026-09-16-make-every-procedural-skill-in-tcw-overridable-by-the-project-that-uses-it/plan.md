@@ -29,9 +29,9 @@ land in any order. Shared files are named in task 7.
 | 1 rules + marker | a new rules document under `skills/`; the `dynamic_skill` key in all 16 `skills/*/SKILL.md` frontmatters; its test |
 | 2 mechanism | `tcw/store/base.py`, `tcw/work/resolve.py`, `tcw/work/cli.py`, `tcw/work/procedures/*`, `skills/tcw-configure/references/work.md`, `skills/tcw-work/SKILL.md`, `skills/tcw-work/references/commands.md` |
 | 3 exemplar | `skills/tcw-extras-autonomous-work/SKILL.md` |
-| 4 procedures | `skills/tcw-work/references/procedures/*.md` |
+| 4 procedures | `skills/tcw-work/references/procedures/*.md`, `agents/tcw-backlog-auditor.md` |
 | 5 triage + postmortem | `skills/tcw-extras-triage-issues/SKILL.md`, `skills/tcw-post-mortem/SKILL.md`, `agents/tcw-post-mortem.md` |
-| 6 docsync + create | `skills/documentation-sync/**`, `skills/tcw-work-create/**` |
+| 6 docsync + create | `skills/documentation-sync/**`, `skills/tcw-work-create/**` except `references/find-overlap.md` |
 
 Child 1 touches every `SKILL.md` frontmatter, which is why it edits frontmatter
 only — never a body — and why children 3–6 must not add or change the marker
@@ -232,6 +232,14 @@ What the suite cannot check, and who checks it.
 
 ## Notes
 
+- **Corrected on 2026-09-16 after child 1 was accepted** (its verdicts are in
+  `skills/README.md`). The ownership table first gave
+  `agents/tcw-backlog-auditor.md` to no child, although it restates
+  `audit-backlog.md`'s per-item checks and would silently bypass a project's
+  replacement once child 4 lands — child 4 now owns it, as child 5 owns
+  `agents/tcw-post-mortem.md`. And child 6 no longer converts
+  `skills/tcw-work-create/references/find-overlap.md`, which child 1 classified
+  fixed under Rule 1 because it defines the board's overlap relations.
 - The six `tcw work new` bodies are written out in each task above rather than
   left to the dispatching session, so a child opened weeks from now carries the
   same scope this plan agreed.

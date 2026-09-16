@@ -14,6 +14,11 @@ Blocked by children 1 and 2. Spec this against what child 2 actually shipped.
 
 ## Constraints
 
+- **`skills/tcw-work-create/references/find-overlap.md` is not converted.**
+  Child 1 classified it fixed under Rule 1 (`skills/README.md`): it defines the
+  search for existing work and its four overlap relations, a board rule a
+  project must not be able to replace. It does not travel with its skill.
+  Added 2026-09-16 after child 1 was accepted.
 - **The board invariants in `tcw-work-create` stay in the fixed part** — one
   outcome per idea, the overlap search before creating. An override that can
   disable them turns a rule into a suggestion.

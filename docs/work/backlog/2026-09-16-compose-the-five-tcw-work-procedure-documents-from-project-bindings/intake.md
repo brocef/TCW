@@ -18,7 +18,13 @@ own treatment.
 
 ## Constraints
 
-- Only files under `skills/tcw-work/references/procedures/` belong to this child.
+- Only files under `skills/tcw-work/references/procedures/` belong to this child, plus `agents/tcw-backlog-auditor.md`.
+- **`agents/tcw-backlog-auditor.md` restates `audit-backlog.md`'s per-item
+  checks.** Once that procedure can be replaced, the agent must stop carrying its
+  own copy of the default, or a project's replacement is silently skipped
+  whenever the agent is dispatched. The agent stays fixed (verdict "fixed
+  (accelerator)" in `skills/README.md`); only the copied checks move out. Added
+  2026-09-16 after child 1 was accepted.
 - A project that configures nothing reads exactly today's text.
 
 ## Acceptance criteria carried from the epic
