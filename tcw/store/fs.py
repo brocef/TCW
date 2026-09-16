@@ -46,7 +46,7 @@ from tcw.store.base import (
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
-    parse_documentation_entries, parse_lifecycle_policy,
+    parse_documentation_entries, parse_lifecycle_policy, parse_procedures,
     parse_connected_entry, parse_repository_declaration, parse_retention,
     parse_tracker_config, TrackerConfig, attribute_tracker_problems,
     merge_tracker_blocks, tracker_credentials_problem,
@@ -5378,6 +5378,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         so they can never disagree about what is legal.
         """
         policy, _problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        policy.procedures, _problems = parse_procedures(self._work_config().get("procedures"))
         return policy
 
     def documentation(self) -> list[DocEntry]:
@@ -5491,8 +5492,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return [f"{SENTINEL}: {p}" for p in problems]
 
     def lifecycle_problems(self) -> list[str]:
-        """Policy problems, prefixed with the file they came from — for `check`."""
+        """Policy problems — `work.lifecycle` and its sibling `work.procedures` —
+        prefixed with the file they came from, for `check`."""
         policy, problems = parse_lifecycle_policy(self._work_config().get("lifecycle"))
+        policy.procedures, procedure_problems = parse_procedures(
+            self._work_config().get("procedures"))
+        problems += procedure_problems
         problems += self._file_binding_problems(policy)
         return [f"{SENTINEL}: {p}" for p in problems]
 
@@ -5532,6 +5537,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         for name, bindings in policy.artifacts.items():
             for i, b in enumerate(bindings):
                 check(b, f"work.lifecycle.artifacts.{name}[{i}]")
+        for pid, bindings in policy.procedures.items():
+            for i, b in enumerate(bindings):
+                check(b, f"work.procedures.{pid}[{i}]")
         return problems
 
     def trunk_branch(self) -> str | None:
