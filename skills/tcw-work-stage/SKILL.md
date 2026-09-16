@@ -9,6 +9,12 @@ metadata:
 license: Apache-2.0
 ---
 
+## Skill invocation validation (Claude-only injection)
+
+Under any harness other than Claude Code, run `tcw work stage validate` with this skill's arguments before reading on.
+
+!`tcw work stage validate $ARGUMENTS 2>/dev/null || true`
+
 # The `$stage` stage
 
 Two blocks follow: **how to work this stage**, then **what this project asks

@@ -355,6 +355,23 @@ def test_the_composing_skill_reads_a_router_that_exists(stage):
         assert target.is_file(), f"{stage_id}: {target} does not exist"
 
 
+VALIDATE_LINE = "!`tcw work stage validate $ARGUMENTS 2>/dev/null || true`"
+
+
+def test_the_composing_skill_validates_its_arguments_first():
+    """A missing or wrong stage or item otherwise renders as two error fragments
+    mid-document with nothing saying what the invocation should have been. The
+    check has to be the first injected command, ahead of the heading, so its
+    usage error is the first thing the agent reads."""
+    lines = STAGE_SKILL.read_text(encoding="utf-8").splitlines()
+    body = lines[lines.index("---", 1) + 1:]
+    injected = [i for i, line in enumerate(body) if line.startswith("!`")]
+    assert injected and body[injected[0]] == VALIDATE_LINE, (
+        f"the first injected command is not {VALIDATE_LINE}")
+    heading = next(i for i, line in enumerate(body) if line.startswith("# The"))
+    assert injected[0] < heading, "the validation line comes after the heading"
+
+
 @composing
 def test_the_composing_skill_names_the_gate_in_its_own_prose(stage):
     """The whole hazard of composing a stage out of `prompt`: it resolves the
