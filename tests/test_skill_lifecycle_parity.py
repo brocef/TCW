@@ -285,21 +285,46 @@ def test_the_router_stays_within_its_line_budget():
         f"SKILL.md body is {lines} lines, budget is {SKILL_LINE_BUDGET} — extract, don't grow"
 
 
+LIFECYCLE_REFS = REFS / "lifecycle"
+
+
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
-def test_the_router_routes_to_every_stage_document(stage_id):
-    assert f"stage-{stage_id}.md" in SKILL.read_text(encoding="utf-8"), \
-        f"SKILL.md never routes to stage-{stage_id}.md"
+def test_nothing_in_tcw_work_names_a_stage_document(stage_id):
+    """An agent that opens a stage document directly never sees the project's
+    own instructions for that stage, which only `tcw work stage prompt` resolves.
+    The `tcw-work-stage` skill delivers both together, so `tcw-work` names that
+    skill and never a path an agent could open instead."""
+    documents = [SKILL, *(p for p in REFS.rglob("*.md")
+                          if not p.is_relative_to(LIFECYCLE_REFS))]
+    for doc in documents:
+        text = doc.read_text(encoding="utf-8")
+        for needle in (f"stage-{stage_id}.md", "references/lifecycle/",
+                       "lifecycle/stage-"):
+            assert needle not in text, \
+                f"{doc.relative_to(REPO)} names {needle}"
+
+
+def test_the_router_names_the_stage_skill_in_bold():
+    bold = re.findall(r"\*\*(.+?)\*\*", SKILL.read_text(encoding="utf-8"),
+                      flags=re.DOTALL)
+    assert any("tcw-work-stage" in b and "<stage>" in b and "<slug>" in b
+               for b in bold), \
+        "SKILL.md has no emphasized note sending an agent to tcw-work-stage"
 
 
 def test_the_router_routes_to_every_reference_file():
     """An unreachable reference file is dead weight that still costs a reader
-    the time to wonder whether it matters."""
+    the time to wonder whether it matters.
+
+    `references/lifecycle/` is exempt: its stage documents are reached through
+    the `tcw-work-stage` skill, whose router path
+    `test_the_composing_skill_reads_a_router_that_exists` resolves."""
     text = SKILL.read_text(encoding="utf-8")
-    # Matched by path relative to `references/`, not bare name: a link written
-    # `references/lifecycle/stage-spec.md` has to count as reaching the file,
-    # and two files in different folders may legitimately share a name.
+    # Matched by path relative to `references/`, not bare name: two files in
+    # different folders may legitimately share a name.
     orphans = [rel for rel in sorted(p.relative_to(REFS).as_posix()
-                                     for p in REFS.rglob("*.md"))
+                                     for p in REFS.rglob("*.md")
+                                     if not p.is_relative_to(LIFECYCLE_REFS))
                if rel not in text]
     assert not orphans, f"unreachable from SKILL.md: {orphans}"
 
