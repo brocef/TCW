@@ -148,10 +148,11 @@ would make those procedures wrong.
 ### Limiting
 
 10. Each command in scope takes `--limit <n>`, capping how many rows it prints
-    **per section**, not across the output as a whole. `--limit 0` means no
-    limit. The commands in scope are exactly: `tcw work list`,
-    `tcw work inbox list`, `tcw taxonomy list`, `tcw capabilities list`,
-    `tcw taxonomy search`, `tcw capabilities search`.
+    **per section**, not across the output as a whole. `--limit -1` means no
+    limit, and `--limit 0` prints the heading and no rows. The commands in
+    scope are exactly: `tcw work list`, `tcw work inbox list`,
+    `tcw taxonomy list`, `tcw capabilities list`, `tcw taxonomy search`,
+    `tcw capabilities search`.
 11. The default is **20 rows per section** when `--limit` is not given.
 12. Every section in scope is introduced by a heading carrying its counts:
     `(<emitted> of <total>)` when the section was shortened, `(<total>)` when
@@ -165,8 +166,9 @@ would make those procedures wrong.
 15. The limit keeps the **first** rows in the order the command was going to
     print them, so `--sort` decides which rows survive a limit, and a
     `--limit` alone keeps today's order's first rows.
-16. A negative `--limit`, or a non-integer, is refused with argparse's usual
-    usage error (exit status 2).
+16. `--limit` accepts `-1` (no limit), `0` (counts only) and any positive
+    count. Anything below `-1`, and any non-integer, is refused with
+    argparse's usual usage error (exit status 2).
 17. Nothing is ever silently short: a section that printed every row says so
     through its heading count, and one that did not is followed by the note.
 
@@ -193,7 +195,7 @@ would make those procedures wrong.
   `tcw-config.yaml` key, no environment variable, no `tcw validate` shape check.
   A project cannot record a standing preference.
 - **Paging, or an offset.** There is no `--offset`, no "next page", and no way
-  to ask for rows 21–40. `--limit 0` is how a user sees the rest.
+  to ask for rows 21–40. `--limit -1` is how a user sees the rest.
 - **Sorting in `tcw serve` or the web app.** The web client already sorts its
   work tree itself, by name or last-modified time, and does not use the
   server's order (`sortWorkTree`, `web/client/src/model/tree.ts:105-145`).
@@ -245,12 +247,16 @@ blocked items above their blockers.
 
 **`--limit`** is spelled the way `gh` spells it (`gh issue list --limit`), and
 takes a plain count rather than `head`'s `-n`, which is a short flag this item
-does not add. `--limit 0` for "no limit" is chosen over a separate `--all`
-switch because `tcw work list --all` already means something else — include
-completed and discarded items — and a second `--all`-shaped spelling on the same
-command would be read as that one. It is `type=int` with `choices` unavailable
-for an open range, so a negative value is refused by a small argparse type that
-raises `ArgumentTypeError`, giving the same exit status 2 as a bad `--sort`.
+does not add. **`-1` is the no-limit sentinel**, chosen over `0` because `0`
+has a plain meaning of its own — print no rows — which the sentinel would
+otherwise swallow. So `--limit 0` prints the heading and nothing else, which is
+how a user asks for the counts alone, and `--limit -1` prints everything. A
+separate `--all` switch was rejected for "no limit": `tcw work list --all`
+already means something else — include completed and discarded items — and a
+second `--all`-shaped spelling on the same command would be read as that one.
+`choices` cannot express an open range, so a small argparse type accepts `-1`
+and any integer `>= 0` and raises `ArgumentTypeError` otherwise, giving the
+same exit status 2 as a bad `--sort`.
 
 ### The section, and what a heading says
 
@@ -363,7 +369,7 @@ them.
 A default limit changes what an agent following TCW's own instructions sees, and
 those instructions draw conclusions from absence. Specifically:
 `skills/work-create/references/find-overlap.md:14-17`, whose candidate search
-must pass `--limit 0` so `no overlap` keeps meaning what it says, and
+must pass `--limit -1` so `no overlap` keeps meaning what it says, and
 `skills/work/references/commands.md:6,8`, whose command forms gain the option.
 
 ### Shared contract with the timestamps item
@@ -477,8 +483,9 @@ otherwise.
 16. With 5 items and `--limit 10`, it prints 5 rows, its heading reads
     `# board (5)` — one number, not `5 of 5` — and stderr contains no
     `additional rows` note.
-17. `--limit 0` prints all 25 rows, its heading reads `# board (25)`, and
-    stderr contains no note.
+17. `--limit -1` prints all 25 rows, its heading reads `# board (25)`, and
+    stderr contains no note. `--limit 0` prints the heading `# board (0 of 25)`
+    and no rows, with `and 25 additional rows` on stderr.
 18. With 25 items and no `--limit`, 20 rows print and the heading reads
     `# board (20 of 25)`, pinning the default.
 19. In the `-i` view with two nodes holding 25 items each and `--limit 10`,
@@ -496,9 +503,10 @@ otherwise.
 23. `tcw capabilities list --limit 2` and `tcw capabilities search <q> --limit 2`
     each print 2 rows under a counted heading, with the note on stderr.
 24. `tcw taxonomy search <q> --limit 2` does the same.
-25. `tcw work list --limit -1` and `--limit abc` each exit with status 2.
+25. `tcw work list --limit -2` and `--limit abc` each exit with status 2,
+    while `--limit -1` and `--limit 0` are accepted.
 26. Rows themselves are byte-identical to today's: for every command in scope,
-    a run with `--limit 0` produces stdout equal to today's output with the
+    a run with `--limit -1` produces stdout equal to today's output with the
     heading line prepended and nothing else changed.
 27. `tests/test_work.py:1757` (`test_list_without_flag_has_no_node_headers`)
     passes **unedited** — the flat board's heading is `# board`, so `# .` is
@@ -508,7 +516,7 @@ otherwise.
 29. `--help` for each command in scope shows `--limit` and states the default;
     `tcw work list --help` also shows `--sort` with its four keys and `--order`
     with `asc`, `desc` and each key's default.
-30. `skills/work-create/references/find-overlap.md` passes `--limit 0` on every
+30. `skills/work-create/references/find-overlap.md` passes `--limit -1` on every
     command in its candidate search, so an agent following it still sees the
     whole board.
 31. The six capability descriptions named under **Capability changes** state
@@ -530,7 +538,10 @@ otherwise.
   `out.index("# .\n")`, which the appended counts break. Implementation must
   sweep every exact-stdout assertion over a command in scope rather than fixing
   the two named here. AC26 bounds what may change; AC27 names the one that must
-  not.
+  not. **The requester was shown this cost and chose it**: the alternative —
+  suppressing the heading under `--limit -1` so today's output is reproduced
+  byte for byte — was rejected because it makes the output's shape depend on the
+  flag and hides the counts exactly when someone asked to see everything.
 - **This collides with the sibling inbox item.**
   `2026-09-15-show-the-tracker-s-untriaged-tickets-on-tcw-work-inbox-list`
   gives `tcw work inbox list` its own two sections (`raw intake:` /
@@ -565,12 +576,18 @@ otherwise.
 
 ## Notes
 
-- **Considered and rejected: printing the heading only when a section is
-  shortened.** It would keep every existing exact-stdout test passing. It was
-  rejected because the output shape would then depend on the data, which is
-  worse for the agents that read these lists than a heading they can always
-  skip — and the requester asked for the count in the heading, not for a count
-  when there happens to be one.
+- **Considered and rejected: printing the heading only sometimes.** Two forms
+  of this were put to the requester — only when a section is shortened, and only
+  when a limit is in force — and both were rejected for the same reason: the
+  output's shape would depend on the data or on the flag, which is worse for the
+  agents that read these lists than a heading they can always skip. The
+  requester asked for the count in the heading, not for a count when there
+  happens to be one.
+- **The sentinel is `-1` because `0` is not free.** `--limit 0` has an obvious
+  reading — print no rows — and a sentinel that swallowed it would be the kind
+  of overload a reader has to memorize. Keeping them distinct also gives the
+  counts-only invocation for free, which is the cheapest way to ask "how much is
+  there?" without paging through it.
 - **Considered and rejected: `--limit` on the store.** See Design § Where the
   limiting lives. The deciding argument is that the heading needs the total
   anyway.

@@ -193,9 +193,11 @@ is green at this commit boundary.
 
 ```python
 DEFAULT_ROW_LIMIT = 20
+NO_ROW_LIMIT = -1        # the sentinel; 0 is a real limit meaning "counts only"
 
 def limit_rows(rows: list[str], limit: int) -> tuple[list[str], int]:
-    """(kept, withheld). `limit` <= 0 means no limit; withheld is then 0."""
+    """(kept, withheld). `limit == NO_ROW_LIMIT` (-1) means no limit, and
+       withheld is then 0. `limit == 0` keeps nothing and withholds all."""
 
 def section_heading(label: str, emitted: int, total: int) -> str:
     """'# <label> (<total>)' when emitted == total,
@@ -212,26 +214,31 @@ identically, and a second copy is how they drift. Neither touches a store.
 
 ```python
 def row_limit(value: str) -> int:
-    """argparse `type=`: a non-negative int, else `argparse.ArgumentTypeError`."""
+    """argparse `type=`: `NO_ROW_LIMIT` or any int >= 0. Anything below -1, and
+       any non-integer, raises `argparse.ArgumentTypeError`."""
 
 def add_limit_argument(parser) -> None:
     """Adds `--limit` with `type=row_limit`, `default=DEFAULT_ROW_LIMIT`, and
-       help 'print at most N rows per section (default: 20; 0 = no limit)'."""
+       help 'print at most N rows per section (default: 20; -1 for no limit,
+       0 for counts only)'."""
 ```
 
 Tests in a new `tests/test_listing.py`:
 
 - `limit_rows(["a","b","c"], 2) == (["a","b"], 1)`;
   `limit_rows(["a","b"], 5) == (["a","b"], 0)`;
-  `limit_rows(["a","b"], 0) == (["a","b"], 0)`;
+  `limit_rows(["a","b"], NO_ROW_LIMIT) == (["a","b"], 0)`;
+  `limit_rows(["a","b"], 0) == ([], 2)` — the one that pins `0` as a real
+  limit rather than a second sentinel;
   `limit_rows([], 5) == ([], 0)`.
 - `section_heading("board", 5, 5) == "# board (5)"`;
   `section_heading("board", 20, 53) == "# board (20 of 53)"`;
   `section_heading("board", 0, 0) == "# board (0)"`.
 - `withheld_note(33)` ends with `and 33 additional rows`;
   `withheld_note(1)` ends with `and 1 additional row`.
-- `row_limit("0") == 0`, `row_limit("7") == 7`; `row_limit("-1")` and
-  `row_limit("abc")` each raise `argparse.ArgumentTypeError`.
+- `row_limit("-1") == NO_ROW_LIMIT`, `row_limit("0") == 0`,
+  `row_limit("7") == 7`; `row_limit("-2")` and `row_limit("abc")` each raise
+  `argparse.ArgumentTypeError`.
 
 **Files:** `tcw/listing.py`, `tests/test_listing.py`. **Proves it:** those
 tests.
@@ -270,15 +277,17 @@ Tests in `tests/test_work.py`:
   `# board (10 of 25)`, stderr contains `and 15 additional rows`.
 - **AC16** 5 items, `--limit 10`: 5 rows, heading `# board (5)`, stderr has no
   `additional row`.
-- **AC17** `--limit 0`: all 25 rows, heading `# board (25)`, no note.
+- **AC17** `--limit -1`: all 25 rows, heading `# board (25)`, no note.
+  `--limit 0`: heading `# board (0 of 25)`, no rows, `and 25 additional rows`
+  on stderr.
 - **AC18** 25 items, no `--limit`: 20 rows, heading `# board (20 of 25)`.
 - **AC19** `-i` with two nodes of 25 items each and `--limit 10`: **each**
   section prints 10 rows under its own `(10 of 25)` heading, and stderr carries
   two notes. This is the per-section proof; a per-command cap fails it.
 - **AC20** `--sort title --limit 3` prints the 3 alphabetically first titles.
-- **AC25** `main(["work","list","--limit","-1"])` and `--limit abc` each raise
-  `SystemExit` with code 2.
-- **AC26 (work half)** `--limit 0` stdout equals the pre-change output with the
+- **AC25** `main(["work","list","--limit","-2"])` and `--limit abc` each raise
+  `SystemExit` with code 2; `--limit -1` and `--limit 0` each return 0.
+- **AC26 (work half)** `--limit -1` stdout equals the pre-change output with the
   heading line prepended: assert the rows after the heading, in order, are the
   rows the item slugs produce.
 - **AC29 (limit half)** `--help` contains `--limit` and `default: 20`.
@@ -313,7 +322,7 @@ Tests in `tests/test_work.py`:
 - **AC21** 3 entries, `--limit 1`: 1 row, heading `# inbox (1 of 3)`, stderr
   contains `and 2 additional rows`.
 - An empty inbox prints `# inbox (0)` and exits 0.
-- **AC26 (inbox half)** `--limit 0` prints every entry in today's order, with
+- **AC26 (inbox half)** `--limit -1` prints every entry in today's order, with
   only the heading line added.
 - **AC29 (inbox half)** `inbox list --help` contains `--limit` and
   `default: 20`.
@@ -350,7 +359,7 @@ Tests in `tests/test_taxonomy.py`:
   row, with a note per shortened section.
 - **AC24** `search <q> --limit 2`: 2 rows under `# matches (2 of N)`, note on
   stderr.
-- **AC26 (taxonomy half)** `list --limit 0` prints every row in today's order.
+- **AC26 (taxonomy half)** `list --limit -1` prints every row in today's order.
 - **AC29 (taxonomy half)** `taxonomy list --help` and `taxonomy search --help`
   each contain `--limit` and `default: 20`.
 
@@ -379,7 +388,7 @@ Tests in `tests/test_capabilities.py`:
 - **AC23** `list --limit 2` and `search <q> --limit 2`: 2 rows each under a
   counted heading, note on stderr.
 - A store with local and federated capabilities prints one heading per origin.
-- **AC26 (capabilities half)** `list --limit 0` prints every row in today's
+- **AC26 (capabilities half)** `list --limit -1` prints every row in today's
   order.
 - **AC29 (capabilities half)** `capabilities list --help` and
   `capabilities search --help` each contain `--limit` and `default: 20`.
@@ -399,7 +408,7 @@ calls the highest-value part of the limiting half.
 
 1. `skills/work-create/references/find-overlap.md` — its Candidates section
    (`:14-17`) names `tcw work list`, `tcw work inbox list` and
-   `tcw work list --all`. Add `--limit 0` to each of the three, and one
+   `tcw work list --all`. Add `--limit -1` to each of the three, and one
    sentence saying why: the search concludes `no overlap` from an empty
    result, so it must see the whole board. Its closing `searched:` line
    (`:64`) shows the same three commands and gains the flag too.
@@ -413,7 +422,7 @@ calls the highest-value part of the limiting half.
    can raise it. Record that judgement in `outcome.md`.
 
 **Files:** `skills/work-create/references/find-overlap.md`. **Proves it
-(AC30):** `grep -c -- "--limit 0" skills/work-create/references/find-overlap.md`
+(AC30):** `grep -c -- "--limit -1" skills/work-create/references/find-overlap.md`
 returns 4 (three candidate lines plus the `searched:` line), and
 `tests/test_skill_lifecycle_parity.py` passes.
 
@@ -443,7 +452,8 @@ returns 4 (three candidate lines plus the `searched:` line), and
    order among themselves."
    Then, at the end of the body, add:
    "The board prints at most 20 rows per section, and `--limit` changes that
-   — `--limit 0` prints every row. Each section is headed by its own count,
+   — `--limit -1` prints every row, and `--limit 0` prints the counts alone.
+   Each section is headed by its own count,
    showing how many rows it printed of how many there are, and a section that
    was cut short says how many rows it held back."
 3. Edit the other five `description.md` files (under `tcw capabilities path`,
@@ -479,7 +489,8 @@ One pass over the finished diff, after Tasks 1–10, committed together before
   plain-language entries: `tcw work list --sort` with the four keys,
   `--order asc|desc` and each key's default, unset values last, children still
   nested; and `--limit` on the six list commands, with the default of 20, the
-  counted headings, the withheld-rows line, and `--limit 0` for all of it. Say
+  counted headings, the withheld-rows line, `--limit -1` for all of it and
+  `--limit 0` for the counts alone. Say
   plainly that the lists are now shortened by default, because that is the
   change a reader most needs to notice.
 - `docs/changelogs/upcoming.md` **[Any-Code-Change] — fires.** Under
@@ -504,7 +515,8 @@ One pass over the finished diff, after Tasks 1–10, committed together before
     `tcw work list [--status <s>] [--tag|--tags <t[,t]>] [--all] [-i] [--sort
     created|priority|effort|title [--order asc|desc]] [--limit <n>]` — hides
     resolved; `-i` adds descendant boards; `--sort` replaces priority-and-blocker
-    order; `--limit` caps rows per section, 20 by default, `0` for all. Its
+    order; `--limit` caps rows per section, 20 by default, `-1` for all and
+    `0` for counts only. Its
     "triage the inbox" row (`:6`) gains `[--limit <n>]` on `inbox list`.
   - `skills/taxonomy/SKILL.md:113` lists `tcw taxonomy list` and
     `tcw taxonomy search` in its browse row — add `[--limit <n>]` to both.
@@ -527,7 +539,7 @@ One pass over the finished diff, after Tasks 1–10, committed together before
   order, unless `--sort` is given, and add:
   ```
   tcw work list --sort created --order asc   # oldest first; also priority, effort, title; --order defaults per key
-  tcw work list --limit 50                   # more rows per section (default 20; --limit 0 for all)
+  tcw work list --limit 50                   # more rows per section (default 20; -1 for all, 0 for counts only)
   ```
 
 ## Verification
@@ -540,7 +552,7 @@ What the suite cannot check, done by hand at the end of implementation:
    `tcw work inbox list` to files in the session's scratchpad directory. After
    Task 8, with no store files changed in between (check
    `git status docs/work docs/taxonomy docs/capabilities`), run each again with
-   `--limit 0` and `diff` against its saved copy: every diff must be exactly
+   `--limit -1` and `diff` against its saved copy: every diff must be exactly
    one added heading line at the top (and, for `-i` and the two origin-grouped
    lists, one per section) and nothing else.
 2. **The default bites, and says so.** Run each of the six commands with no
@@ -564,7 +576,8 @@ What the suite cannot check, done by hand at the end of implementation:
    repository with the edited commands and confirm the candidate set is the
    whole board, not the first 20.
 6. **`--help` reads clearly** for all six commands: the limit wording, the
-   default, and `0` for no limit; plus `--sort`/`--order` on `work list`.
+   default, `-1` for no limit and `0` for counts only; plus `--sort`/`--order`
+   on `work list`.
 7. **Bare `pytest`** from the checkout root passes, the way CI runs it.
 
 ## Notes
@@ -578,6 +591,16 @@ What the suite cannot check, done by hand at the end of implementation:
   untouched, and it is also why the default of 20 can only be changed by a
   release. If the default proves wrong in use, that is a new item, not a
   revision of this one.
+- **`0` is a real limit, not a second sentinel**, and Task 4's
+  `limit_rows(rows, 0) == ([], len(rows))` test is what stops it drifting back
+  into one. The natural mistake when writing `limit_rows` is `if limit <= 0:
+  return rows, 0`, which silently makes `--limit 0` print everything — the
+  opposite of what it says. Write the guard against `NO_ROW_LIMIT` explicitly.
+- The requester confirmed the heading prints whatever the limit, knowing that
+  it costs the four exact-stdout assertions Tasks 5-7 name. Suppressing it
+  under `--limit -1` would have kept those tests untouched; it was rejected
+  because the output's shape would then depend on the flag. Do not reintroduce
+  it as a convenience while fixing those tests.
 - `WorkItem.created` stays annotated `str` although YAML can hand it a
   `datetime.date` or `datetime.datetime`; this item reads it through the shared
   function instead of changing the loader. That is the timestamps item's
