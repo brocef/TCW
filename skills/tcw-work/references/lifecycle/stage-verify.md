@@ -32,5 +32,7 @@ to produce with `tcw work stage prompt verify <slug>`.
    or keep the current version and update the changelog files in place, or —
    when the last tag was cut locally and never pushed — fold this work into that
    unpublished version rather than stacking a second one on it.
-   `documentation-sync`'s `references/cut-version.md` runs it. — user
+   The `documentation-sync` procedure runs it — read it with
+   `tcw work procedure prompt documentation-sync`, which is this project's text
+   if it replaced TCW's. — user
    `[judgment]`
