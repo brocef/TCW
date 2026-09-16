@@ -97,6 +97,18 @@ unresolved skill name and spawns nothing.
    substitution would destroy exactly the document that records what was renamed.
    The artifacts were edited by hand only.
 
+   **That exclusion was one file too broad, and it hid a real defect until
+   closeout.** `docs/work/dod.yaml` is live configuration, not a lifecycle
+   artifact, and its comment pointed at
+   `skills/tcw-work/references/transitions.md` — a path that stopped existing at
+   task 2. Rule 7 protects "every lifecycle artifact under `docs/work/**`", which
+   `dod.yaml` is not. Fixed, and the target verified to exist. Re-run narrowed to
+   exclude only the per-item artifact folders, `dod.yaml` was the sole live-config
+   hit; every other `docs/work/` file naming an old name is another item's
+   `spec.md`, `plan.md`, `initial-request.md` or `intake.md`, which rule 7 is
+   right to leave alone. The lesson for a future rename: "exclude the work board"
+   is not the same rule as "exclude the work board's artifacts".
+
 7. **The 8c mutation check fires two guards, not one.** The plan expected that
    moving `skills/work` back to `skills/tcw-work` with its frontmatter would leave
    "only 8c" speaking. `test_the_codex_description_counts_the_skills_it_ships`
