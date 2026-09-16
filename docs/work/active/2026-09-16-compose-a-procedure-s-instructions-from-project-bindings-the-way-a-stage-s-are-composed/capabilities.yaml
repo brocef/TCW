@@ -1,0 +1,5 @@
+new:
+    - work/run-a-procedure
+    - work/configure-procedures
+changed:
+    - work/configure-the-work-lifecycle

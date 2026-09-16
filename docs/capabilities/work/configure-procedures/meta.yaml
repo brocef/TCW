@@ -1,0 +1,7 @@
+id: cap-9e58e7
+name: Configure procedures
+Status: Missing
+Planning doc: 2026-09-16-compose-a-procedure-s-instructions-from-project-bindings-the-way-a-stage-s-are-composed
+Feature: configurable-work-lifecycle
+Subject:
+- work-item/lifecycle-hook

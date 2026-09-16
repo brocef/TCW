@@ -1,0 +1,7 @@
+id: cap-7d0c93
+name: Run a procedure
+Status: Missing
+Planning doc: 2026-09-16-compose-a-procedure-s-instructions-from-project-bindings-the-way-a-stage-s-are-composed
+Feature: configurable-work-lifecycle
+Subject:
+- work-item/lifecycle-hook
