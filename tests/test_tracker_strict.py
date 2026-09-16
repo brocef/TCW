@@ -139,7 +139,7 @@ def test_a_claimed_ticket_where_the_item_left_it_authorizes(strict, fake):
 
 
 @pytest.mark.parametrize("assignee, words", [(B, "assigned to Bob"),
-                                             (None, "assigned to nobody")])
+                                             (None, "is unassigned")])
 def test_a_ticket_not_assigned_to_you_authorizes_nothing_even_at_the_target(
         strict, fake, assignee, words):
     slug = bound_item(strict)
@@ -322,7 +322,7 @@ def test_a_hand_written_binding_for_an_unclaimed_ticket_refuses_submit(strict, f
     (st.path(slug) / "tracker.yaml").write_text(document(), encoding="utf-8")
     st.start(slug, owner="a@example.test")
     code, _out, err = cli(strict, "work", "submit", slug)
-    assert code == 1 and "nobody" in err
+    assert code == 1 and "is unassigned" in err
 
 
 def test_a_ticket_moved_back_refuses_submit(strict, fake):
@@ -712,3 +712,18 @@ def test_a_finished_held_item_keeps_the_record_that_can_still_deliver_its_move(
     code, out, err = cli(root, "work", "tracker", "sync", "--all")
     assert code == 0, (out, err)
     assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_refusal_for_a_plainly_linked_ticket_names_the_opt_in(tmp_path, fake):
+    """Strict mode refuses the move before it happens, so its refusal is the only place
+    to say the ticket was linked without its status synced, and how to opt in."""
+    root = make_node(tmp_path, statuses=STATUSES)
+    st = FsWorkStore.open(root)
+    slug = st.create("Already under way").slug
+    st.start(slug, owner="a@example.test")
+    assert cli(root, "work", "tracker", "link", slug, "SYNC-1")[0] == 0
+    set_tracker_key(root, "strict", True)
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and REFUSED in err
+    assert "linked without syncing its status" in err and "--sync-status" in err
+    assert status(root, slug) == "active" and fake.writes() == []

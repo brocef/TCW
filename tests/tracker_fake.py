@@ -49,6 +49,27 @@ SYNC = {
                   ("31", "Finish", "Done"), *_DISCARDS],
     "Done": [], "Won't Do": [], "Duplicate": [],
 }
+# Two routes out of one status into `Done` — a "finished" one and an "abandoned" one —
+# plus a pair sharing a name. Which transition ran cannot be read back from the status,
+# which is the whole reason a project has to be able to name it.
+_SAME_NAME = [("33", "Same Name", "Done"), ("34", "Same Name", "Done")]
+AMBIGUOUS = {
+    "To Do": [("21", "Start Progress", "In Progress")],
+    "In Progress": [("31", "Finish", "Done"), ("32", "Abandon", "Done"),
+                    ("41", "Ready for Review", "In Review"), *_SAME_NAME],
+    "In Review": [("31", "Finish", "Done"), ("32", "Abandon", "Done"), *_SAME_NAME],
+    "Done": [],
+}
+# A workflow with no shortcut: reaching `Done` means passing through `In Review`, so a
+# ticket several rungs behind its item needs more than one transition to catch up.
+STRICT_LADDER = {
+    "To Do": [("21", "Start Progress", "In Progress")],
+    "In Progress": [("41", "Ready for Review", "In Review")],
+    "In Review": [("31", "Finish", "Done")],
+    "Done": [],
+}
+# The same, with the last rung unreachable: a walk that gets part of the way.
+BROKEN_LADDER = {**STRICT_LADDER, "In Review": []}
 CATEGORY = {"To Do": "new", "In Progress": "indeterminate", "Done": "done",
             "Triage": "new", "In Review": "indeterminate", "Won't Do": "done",
             "Duplicate": "done"}
@@ -85,6 +106,7 @@ class FakeJira:
     hooks: list = field(default_factory=list)
     down: bool = False                                # every request unreachable
     site: str | None = None                           # the base URL it answers for
+    applied: list = field(default_factory=list)       # transition ids actually applied
 
     # -- setup --
 
@@ -167,6 +189,7 @@ class FakeJira:
             for tid, _name, to in offered:
                 if tid == wanted:
                     ticket.status = to
+                    self.applied.append(tid)
                     return (204, {}, b"")
             raise jira._for_status(400, {}, f"Action {wanted} is invalid", path)
         if match := re.fullmatch(r"/rest/api/3/issue/([^/?]+)/comment", path):
