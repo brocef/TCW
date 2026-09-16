@@ -62,7 +62,9 @@ both a skill and an agent, as it did before.
 in a lifecycle hook in your `tcw-config.yaml`. If you did — an entry reading
 `skill: tcw:tcw-work` or similar — update it to the new name. Nothing else in a
 configuration file refers to a skill, so for most projects there is nothing to
-change and `tcw validate` will tell you if there is.
+change. `tcw validate` does not check skill names, so it will not find an old
+one for you: search `tcw-config.yaml` for `skill:` values that start with `tcw-`
+or `tcw:tcw-`.
 
 **Your work items, taxonomy or capabilities.** Nothing about your own project's
 content is touched.

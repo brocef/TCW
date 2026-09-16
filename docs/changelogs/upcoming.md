@@ -35,9 +35,13 @@ category.
   changed configuration rather than prose.
 - Live references followed throughout: the 16 `SKILL.md` bodies and everything
   under `skills/*/references/`, `README.md`, `docs/guide/`, `docs/lifecycle/`,
-  `.codex-plugin/plugin.json`'s `longDescription`, `evals/` (`coverage.py`'s
+  `.codex-plugin/plugin.json`'s `longDescription` (which now also backticks
+  every skill name), `evals/` (`coverage.py`'s
   `EXCLUSIONS`/`PARTIAL` keys, `evals.json`, `grade.py`, `assets/gen_requirement.py`),
   `scripts/session_bootstrap.sh`, `tcw/work/templates.py`'s docstring, and `tests/`.
+  Where a bare new name would read as an ordinary word — `work`, `setup`,
+  `capabilities` in a skill `description`, `when_to_use` or a
+  `REQUIRED SUB-SKILL` line — it is written as "the `<name>` skill".
 
 ## Added
 
@@ -52,20 +56,25 @@ category.
   `.claude-plugin/plugin.json` rather than hardcoding it, so the rule survives a
   plugin rename and refuses the prefix returning one skill at a time.
 - `DELETED_NAMES` (`tests/test_skill_lifecycle_parity.py`) gains the 17 distinct
-  old names, and `LIVE_ROUTES` gains `agents` and `tcw-config.yaml` — both
-  shipped surfaces that name skills and neither previously in the guard's reach.
+  old names, and `LIVE_ROUTES` gains `agents`, `.agents`, `hooks`, `scripts`,
+  `tcw`, `evals` and `tcw-config.yaml` — every surface that ships or runs and can
+  name a skill, none previously in the guard's reach.
 
 ## Internal
 
 - The frontmatter parse in `tests/test_plugin_manifests.py` is extracted to
   `_frontmatter` and shared by all three frontmatter tests.
-- `test_a_shared_name_prefix_cannot_stand_in_for_the_shorter_name` demonstrated
-  its discrimination against `tcw-work-stage-spec`, a retired skill. After the
-  rename `work-stage` sits inside that name as an infix rather than a prefix, so
-  the test now uses the live pair — `work` is a prefix of `work-stage` and
-  `work-create` — which is the same collision class on names that still ship.
-- Capability and Feature ids are regenerated. The CLI has no rename verb on
-  either axis, so each entry was re-created with `add` + `set` and the old one
-  removed with `rm`; an id does not survive that. Nothing reads these ids today.
+- The Codex description guard (`_names_missing_from`) matches a skill name only
+  when backticked, and only in `longDescription`. It matched a whole token
+  across the whole manifest, which the prefix made safe: without it `work`,
+  `taxonomy` and `capabilities` are ordinary words, found in "framework", "work
+  item" and the manifest's keywords, so any of them could be dropped from the
+  enumeration with the suite green. Its self-test is renamed
+  `test_a_shared_name_or_plain_word_cannot_stand_in_for_a_skill_name` and
+  checks both collisions on live names.
+- Capability ids are regenerated. The CLI has no rename verb on either axis, so
+  each entry was re-created with `add` + `set` and the old one removed with
+  `rm`; an id does not survive that. Nothing reads these ids today. Taxonomy
+  Features carry no id — the slug is their identity — so they lose nothing.
   A `tcw capabilities mv` / `tcw taxonomy mv` would have made the migration two
   loops of one command and is filed as follow-up work.
