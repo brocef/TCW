@@ -768,6 +768,7 @@
   resolution: done
   resolved: '2026-09-16'
 2026-09-16-make-every-procedural-skill-in-tcw-overridable-by-the-project-that-uses-it:
+  location: e7261a2267c279e9e67be28cfd832e4c796ffbb4
   resolution: done
   resolved: '2026-09-16'
 2026-09-16-route-agents-to-tcw-work-stage-for-stage-instructions-and-validate-its-arguments:
