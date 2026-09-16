@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from tcw.store.base import (
-    BODY_ORDER, DEFAULT_OUTPUT_CAP, STAGE_IDS, STAGE_NEXT_STEPS, Binding,
+    BODY_ORDER, DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, STAGE_IDS, STAGE_NEXT_STEPS,
+    Binding,
     DocEntry, LifecyclePolicy, WorkItem,
 )
 from tcw.work.generate import GenerateError, run_generate
@@ -42,6 +43,9 @@ class Builtins:
     """
     stage_prompts: Mapping[str, str] = field(default_factory=dict)
     artifact_templates: Mapping[str, str] = field(default_factory=dict)
+    # A third map for the same reason as the first two: a procedure id could one
+    # day equal a stage id, and one registry could not hold both texts.
+    procedures: Mapping[str, str] = field(default_factory=dict)
 
 
 @lru_cache(maxsize=1)
@@ -64,21 +68,30 @@ def load_builtins() -> Builtins:
     and breaks under a zipimport-style install.
     """
     root = files("tcw.work")
-    prompts = {}
-    for sid in sorted(STAGE_IDS):
-        rel = f"prompts/{sid}.md"
+    return Builtins(stage_prompts=_load_texts(root, "prompts", STAGE_IDS, "prompt for stage"),
+                    artifact_templates=ARTIFACT_TEMPLATES,
+                    procedures=_load_texts(root, "procedures", PROCEDURE_IDS,
+                                           "text for procedure"))
+
+
+def _load_texts(root, folder: str, ids: Sequence[str], what: str) -> dict[str, str]:
+    """`<folder>/<id>.md` for every id, refusing a missing or empty file by name.
+    One loop for stage prompts and procedures, so the two refusals cannot drift."""
+    texts = {}
+    for sid in sorted(ids):
+        rel = f"{folder}/{sid}.md"
         try:
             text = (root / rel).read_text(encoding="utf-8")
         except (FileNotFoundError, OSError) as e:
             raise ResolveError(
-                f"built-in prompt for stage '{sid}' is missing from the "
+                f"built-in {what} '{sid}' is missing from the "
                 f"installed package (tcw/work/{rel}): {e}")
         if not text.strip():
             raise ResolveError(
-                f"built-in prompt for stage '{sid}' is empty "
+                f"built-in {what} '{sid}' is empty "
                 f"(tcw/work/{rel})")
-        prompts[sid] = text
-    return Builtins(stage_prompts=prompts, artifact_templates=ARTIFACT_TEMPLATES)
+        texts[sid] = text
+    return texts
 
 
 @dataclass(frozen=True)

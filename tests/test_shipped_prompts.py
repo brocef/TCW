@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import STAGE_IDS
+from tcw.store.base import PROCEDURE_IDS, STAGE_IDS
 from tcw.work.resolve import load_builtins
 
 SHIPPED = set(STAGE_IDS)
@@ -153,3 +153,8 @@ def test_the_prompts_are_in_the_built_wheel(tmp_path):
         assert {Path(n).stem for n in members} == SHIPPED
         for name in members:
             assert z.read(name).decode("utf-8").strip()
+        # The procedure defaults travel the same way (checked here rather than
+        # in `test_shipped_procedures.py` so the suite builds one wheel, not two).
+        procedures = {Path(n).stem for n in z.namelist()
+                      if n.startswith("tcw/work/procedures/") and n.endswith(".md")}
+        assert procedures == set(PROCEDURE_IDS)

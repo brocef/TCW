@@ -931,6 +931,15 @@ def body_title(body: str | None) -> str | None:
 
 STAGE_IDS = ("inbox", "request", "spec", "plan", "implement", "verify", "postmortem")
 
+# Procedures: instruction text TCW ships that is not a lifecycle stage, which a
+# project may replace under `work.procedures`. Public API like `STAGE_IDS`, and
+# deliberately **not** skill names: skills get renamed, and a project's
+# configuration must not break when one is. A project replaces a procedure's
+# text; it cannot add a procedure.
+PROCEDURE_IDS = ("autonomous-work", "triage-issues", "documentation-sync",
+                 "post-mortem", "create-work", "audit-backlog",
+                 "consolidate-plans", "decompose", "delegation", "search")
+
 # `discard` is a transition but **not** a CLI verb. Every other id here is the
 # command you type; `discard` is reached as `complete --resolution <not-done>`,
 # because the resolution picks the destination folder. Bindings key on the *move*
