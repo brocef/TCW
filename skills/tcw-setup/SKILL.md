@@ -7,6 +7,7 @@ metadata:
     author: Brian Cefali
 compatibility: Requires Python 3.11+ and network access to PyPI on first install; `tcw serve` additionally requires Node.js 22.12+; installs the `tcw-cli` distribution via pipx.
 license: Apache-2.0
+dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
 
 # Setting up TCW

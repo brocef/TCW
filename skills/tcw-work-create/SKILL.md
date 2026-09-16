@@ -6,6 +6,7 @@ allowed-tools: Bash(tcw *), Bash(git *), Bash(grep *), Read, Edit, Write
 metadata:
     author: Brian Cefali
 license: Apache-2.0
+dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
 
 # Turning an idea into a work item

@@ -1,6 +1,7 @@
 ---
 name: tcw-post-mortem
 description: Use when a TCW work item surfaced a problem worth understanding — verification rejected the work, a spec claim turned out false, or something shipped that should not have. Finds which lifecycle stage could first have caught it.
+dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
 
 # Running a post-mortem on a work item

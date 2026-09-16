@@ -82,3 +82,37 @@ def test_every_verdict_row_names_a_shipped_document():
     stale = [f"{o} {p}" for o, p, _ in rows if not matches(o, p) & shipped]
     assert not stale, f"skills/README.md has verdict rows naming no shipped document: {stale}"
 
+
+def _frontmatter_lines(skill: Path) -> list[str]:
+    lines = skill.read_text(encoding="utf-8").splitlines()
+    return lines[1:lines.index("---", 1)]
+
+
+def _verdict_for(skill: Path) -> str:
+    hits = [v for o, p, v in verdict_rows() if skill in matches(o, p)]
+    assert len(hits) == 1, f"skills/README.md has {len(hits)} verdict rows for {skill.parent.name}"
+    return hits[0]
+
+
+@per_skill
+def test_every_skill_carries_dynamic_skill_matching_its_verdict(skill):
+    import yaml
+    front = yaml.safe_load("\n".join(_frontmatter_lines(skill)))
+    name = skill.parent.name
+    assert "dynamic_skill" in front, (
+        f"{name} has no dynamic_skill key; see skills/README.md for its value")
+    assert isinstance(front["dynamic_skill"], bool), (
+        f"{name}: dynamic_skill must be true or false (skills/README.md)")
+    verdict = _verdict_for(skill)
+    assert front["dynamic_skill"] is VERDICTS[verdict], (
+        f"{name}: dynamic_skill is {front['dynamic_skill']} but skills/README.md "
+        f"says '{verdict}'")
+
+
+@per_skill
+def test_the_key_points_at_the_rules(skill):
+    line = next((l for l in _frontmatter_lines(skill)
+                 if l.startswith("dynamic_skill:")), "")
+    assert "#" in line and "../README.md" in line, (
+        f"{skill.parent.name}: the dynamic_skill line must end in a comment "
+        f"naming ../README.md (skills/README.md): {line!r}")
