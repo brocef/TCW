@@ -1,22 +1,3 @@
-# Running a post-mortem on a work item
-
-**The contract lives elsewhere.** The `postmortem` stage — invoke the `tcw-work-stage` skill with `postmortem` and the item's slug —
-defines the inputs, the `post-mortem.md` artifact, its required content, and the
-rule that this stage never changes status. Read it once and do not restate it.
-This skill is the part that document deliberately does not cover: **how to
-actually find the answer.**
-
-The question is always the same, and it is narrower than "what went wrong":
-
-> **Which stage could first have caught this, and at what cost?**
-
-## Read the spine backwards
-
-`refined-outcome.md` and `rework.md` → `outcome.md` → `plan.md` → `spec.md` →
-the body the item started from, `initial-request.md` or the `intake.md` beneath
-it. Backwards, because you know the outcome and are looking for the earliest
-point it was already determined.
-
 What each layer tends to reveal:
 
 - **`## Notes` across every artifact is the primary trail.** It is where each
@@ -58,13 +39,3 @@ Finish and say so when:
   it is a wish. A post-mortem that produces it has not found the cause yet.
 - The fix costs more than the failures it would prevent. Say that plainly — it is
   a real conclusion, not a failure to reach one.
-
-## Producing the artifact
-
-Write `post-mortem.md` per the `postmortem` stage's `Produce` section. Then create
-follow-up work items for anything worth changing — a recommendation with no item
-behind it will not happen.
-
-**Never change the item's status.** A post-mortem is legal in `review` and after
-`completed`, and it reopens nothing. Writing into a `completed/` item's folder is
-the single exception to that folder's immutability.

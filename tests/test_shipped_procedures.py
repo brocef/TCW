@@ -30,7 +30,7 @@ SOURCES = {
     "unattended-work": "skills/tcw-extras-autonomous-work/SKILL.md",
     "triage-issues": Composes("skills/tcw-extras-triage-issues/SKILL.md"),
     "documentation-sync": "skills/documentation-sync/SKILL.md",
-    "post-mortem": "skills/tcw-post-mortem/SKILL.md",
+    "post-mortem": Composes("skills/tcw-post-mortem/SKILL.md"),
     "create-work": "skills/tcw-work-create/SKILL.md",
     "audit-backlog": "skills/tcw-work/references/procedures/audit-backlog.md",
     "consolidate-plans": "skills/tcw-work/references/procedures/consolidate-plans.md",
@@ -79,6 +79,15 @@ def test_each_default_is_todays_text(pid):
     assert expected, f"{SOURCES[pid]} has no body to compare"
     assert load_builtins().procedures[pid].strip() == expected, \
         f"tcw/work/procedures/{pid}.md differs from {SOURCES[pid]}"
+
+
+def test_the_post_mortem_agent_reads_the_procedure():
+    """The agent restates the skill; once the skill's text can be replaced, a
+    copy in the agent would silently skip a project's replacement."""
+    text = (REPO / "agents/tcw-post-mortem.md").read_text(encoding="utf-8")
+    assert "tcw work procedure prompt post-mortem" in text
+    copied = _copied_paragraphs(load_builtins().procedures["post-mortem"], text)
+    assert not copied, f"agents/tcw-post-mortem.md carries the default: {copied[:1]}"
 
 
 def _fail_procedures(monkeypatch, error):
