@@ -58,7 +58,7 @@ unconfigured project reads, and does not change.
      mutated, dropped, completed or moved without asking.
    - `consolidate-plans.md:9-35` — start only when asked, never delete a source
      without an itemized approval, and delete only what git can give back.
-   - `decompose.md:14-16` — what `--parent` nesting does to status and
+   - `decompose.md:12-16` — what `--parent` nesting does to folders, status and
      transitions, and `:25-35`, which child relation `reconcile` follows. Both
      restate the data model that `epic-deltas.md` (fixed, Rule 1) owns.
    - `search.md:10-11` — a search is read-only.
@@ -134,7 +134,7 @@ rather than improvise the procedure — there is no second copy to fall back to.
 | `delegation.md` | `:1-18` title-less (stages delegable, transitions never; the table; `request`/`verify` reasons; `verify`'s assessment vs approval) · `:20-26` "Delegable means permitted, never required" · `:53-70` "Custom agents" | `# Delegation` · `:28-45` "What makes it correct" · `:47-51` "The shape this produces" |
 | `audit-backlog.md` | `:127-140` "The approval rule" | everything else |
 | `consolidate-plans.md` | `:9-20` "The two rules, before any step" · `:22-35` "Deletion is limited to what git can give back" | `:1-7` intro · `:37-63` "Scope" and "Process" |
-| `decompose.md` | `:14-16` the nesting bullets · `:25-35` "Which path?" | `:1-13` title, rule and command · `:17-23` the planning-time bullet and "Reach for this" |
+| `decompose.md` | `:12-16` the nesting bullets, under an added one-line lead-in · `:25-35` "Which path?" | `:1-11` title, rule and command · `:17-23` the planning-time bullet and "Reach for this" |
 | `search.md` | `:10-11` "It is read-only" | everything else |
 
 Why each is fixed is Problem §4. What is *not* fixed, and why: the delegation
