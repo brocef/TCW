@@ -26,4 +26,4 @@ delete `refined-outcome.md`, and run `tcw work rework <slug>` — the tool refus
 while that file is present.
 
 Reconcile capabilities before closeout. **REQUIRED SUB-SKILL: Use
-capabilities.**
+the `capabilities` skill.**

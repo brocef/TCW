@@ -1,6 +1,6 @@
 ---
 name: configure
-description: Changes how a project that already uses TCW is configured. Use when a user wants to set up or change lifecycle bindings (skills or commands run at a stage or transition), hook limits, the Definition of Done, documentation entries that track which documents a change must update, an external tracker, where a store lives, connected projects, or inherited taxonomy or capabilities. Getting TCW working in the first place is setup.
+description: Changes how a project that already uses TCW is configured. Use when a user wants to set up or change lifecycle bindings (skills or commands run at a stage or transition), hook limits, the Definition of Done, documentation entries that track which documents a change must update, an external tracker, where a store lives, connected projects, or inherited taxonomy or capabilities. Getting TCW working in the first place is the `setup` skill.
 when_to_use: Use when a working TCW project should behave differently — setting up or changing work.lifecycle bindings, docs/work/dod.yaml, work.documentation entries, work.tracker, work.retain, work.auto-commit-transitions, work.trunk-branch, work.publish-transitions, a store's path or repository, connected-projects, TCW_PROJECT_<ID>, or taxonomy and capabilities extends. Also when a request says "set up" but names one of those areas.
 allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write, Grep, Glob
 metadata:

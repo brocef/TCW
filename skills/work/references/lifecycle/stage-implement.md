@@ -21,7 +21,7 @@ pass.
    unresolved blocker or an inactive initiative epic, and commits the move
    itself. — agent `[gated]`
 2. On a capability change, contradiction detection is discharged by a sub-skill.
-   **REQUIRED SUB-SKILL: Use capabilities.** — agent `[judgment]`
+   **REQUIRED SUB-SKILL: Use the `capabilities` skill.** — agent `[judgment]`
 3. To discharge the prompt's Documentation Sync completion gate:
    invoke the `documentation-sync` skill. **REQUIRED SUB-SKILL: Use
    documentation-sync.** — agent `[judgment]`

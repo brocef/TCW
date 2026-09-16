@@ -1,7 +1,7 @@
 ---
 name: extras-triage-issues
-description: Triages the GitHub issues on **your own project's** repo and turns the ones worth acting on into `tcw work` items. Use when a user wants to check their project's GitHub issues, work through the issue backlog, or convert issues into tracked work. Most issues should not become work items, so triage decides first and every issue gets an offered reply. To file an issue *upstream to the TCW project* instead, that is extras-report.
-when_to_use: Use when a user asks to check, sweep, triage, or work through the GitHub issues on their own project — turning the worthwhile ones into tcw work items, closing duplicates and non-starters, and asking reporters for missing detail. Do not use it to file a report about TCW itself (that is extras-report), or to triage a docs/work/inbox entry (that is work).
+description: Triages the GitHub issues on **your own project's** repo and turns the ones worth acting on into `tcw work` items. Use when a user wants to check their project's GitHub issues, work through the issue backlog, or convert issues into tracked work. Most issues should not become work items, so triage decides first and every issue gets an offered reply. To file an issue *upstream to the TCW project* instead, that is the `extras-report` skill.
+when_to_use: Use when a user asks to check, sweep, triage, or work through the GitHub issues on their own project — turning the worthwhile ones into tcw work items, closing duplicates and non-starters, and asking reporters for missing detail. Do not use it to file a report about TCW itself (that is the `extras-report` skill), or to triage a docs/work/inbox entry (that is the `work` skill).
 allowed-tools: Bash(tcw *), Bash(gh auth status), Bash(gh repo view *), Bash(gh issue list *), Bash(gh issue view *), Bash(gh issue comment *), Bash(gh issue close *), Bash(grep *), Bash(git *), Read, Write, Edit, Grep, Glob
 metadata:
     author: Brian Cefali

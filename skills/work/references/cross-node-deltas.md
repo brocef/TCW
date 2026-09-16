@@ -48,7 +48,7 @@ as "not registered" and add a second declaration.
 3. **Each sub-project works its slice independently**, linking its own
    capabilities. Product-layer wording is coordinated over the inbox channel
    (`tcw work escalate "capability wording: …"`) — **non-blocking**; never wait
-   on a reply (capabilities).
+   on a reply (the `capabilities` skill).
 4. **A sub-project escalates up** when it needs the orchestrator:
    `tcw work escalate "<title>"` writes into the parent node's `inbox/`.
 5. **Roll up progress** from the orchestrator:

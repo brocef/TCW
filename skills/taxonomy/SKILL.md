@@ -25,7 +25,7 @@ one-directional — **taxonomy never points back** at capabilities or work.
 
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
 with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
-local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use capabilities**.
+local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use the `capabilities` skill**.
 **The taxonomy tree is not necessarily `docs/taxonomy`.** `taxonomy.path` in
 `tcw-config.yaml` can put it anywhere, and a `taxonomy.repository` block can put
 it in another Git repository entirely, fetched here by `tcw provision`. So never

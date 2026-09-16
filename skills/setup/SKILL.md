@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Gets TCW working where it does not work yet. Use when a project does not use TCW yet, when the `tcw` CLI is missing, broken, or stale (not on PATH, `tcw --version` fails, or a plugin update left it behind), when an existing TCW project needs its stores or connected projects on a new machine, or when starting a taxonomy or capabilities ledger from an existing codebase. Changing the configuration of a project that already works is configure.
+description: Gets TCW working where it does not work yet. Use when a project does not use TCW yet, when the `tcw` CLI is missing, broken, or stale (not on PATH, `tcw --version` fails, or a plugin update left it behind), when an existing TCW project needs its stores or connected projects on a new machine, or when starting a taxonomy or capabilities ledger from an existing codebase. Changing the configuration of a project that already works is the `configure` skill.
 when_to_use: Use when a user asks to install or repair tcw, start tracking a repository with TCW, run tcw init or tcw provision, get a cloned TCW project working on this machine, or seed a first taxonomy or capabilities ledger from the code. Under Claude a SessionStart hook installs the CLI automatically, so a missing CLI means that hook did not finish; Codex has no hook and uses this skill directly.
 allowed-tools: Bash(tcw *), Bash(command -v *), Bash(realpath *), Bash(head *), Bash(pipx *), Bash(python3 *), Bash(node --version), Bash(*/scripts/session_bootstrap.sh *), Read, Grep, Glob
 metadata:

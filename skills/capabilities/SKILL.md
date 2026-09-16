@@ -24,7 +24,7 @@ unprovisioned ledger fails, names the remote, and tells you to run
 beside the real one. Inheritance is unaffected: `extends` resolves against your
 project, not against wherever the tree sits.
 
-Each capability is a **path-addressed folder** (`docs/capabilities/<path>/` = `meta.yaml` + `description.md`) carrying an opaque stable `id`. Address a capability by its path (e.g. `auth/login`), never a `#heading`. Capabilities may carry `Subject` (a **multi-valued** loose taxonomy pointer — a list of slugs) and `Feature` (a strong pointer to a taxonomy feature). The taxonomy axis is **REQUIRED SUB-SKILL: Use taxonomy** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use work**.
+Each capability is a **path-addressed folder** (`docs/capabilities/<path>/` = `meta.yaml` + `description.md`) carrying an opaque stable `id`. Address a capability by its path (e.g. `auth/login`), never a `#heading`. Capabilities may carry `Subject` (a **multi-valued** loose taxonomy pointer — a list of slugs) and `Feature` (a strong pointer to a taxonomy feature). The taxonomy axis is **REQUIRED SUB-SKILL: Use the `taxonomy` skill** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use the `work` skill**.
 
 > **Web editing:** Capabilities can also be created and edited through the local `tcw serve` web app; check failures are surfaced in the UI.
 
