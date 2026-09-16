@@ -1,0 +1,11 @@
+slug: 2026-09-16-compose-documentation-sync-and-tcw-work-create-from-project-bindings
+title: Compose documentation-sync and tcw-work-create from project bindings
+created: '2026-09-16'
+resolution: null
+tags:
+- skills
+- docs
+initiative: 2026-09-16-make-every-procedural-skill-in-tcw-overridable-by-the-project-that-uses-it
+blocked_by:
+- slug: 2026-09-16-state-the-two-rules-for-an-overridable-skill-and-mark-every-skill-with-its-verdict
+- slug: 2026-09-16-compose-a-procedure-s-instructions-from-project-bindings-the-way-a-stage-s-are-composed
