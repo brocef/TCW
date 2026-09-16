@@ -38,6 +38,13 @@ category.
   `commands.md` no longer describe "the stage documents" as what to follow or
   hand a subagent; they name the stage as `tcw-work-stage` delivers it.
 - `stage` subparser metavar is `{prompt,gate,validate}`.
+- `skills/tcw-work-stage/SKILL.md` headings renamed: "How to work it" →
+  "Lifecycle stage contract", "What this project asks for" → "Stage
+  instructions", "Before you act on any of that" → "Stage pre-checks" (now one
+  line: run `tcw work stage gate` if not done). The command block moved to a
+  "Document command summary" section listing the injected commands in order,
+  with `gate` shown separately as the one to run yourself. `evals/grade.py`
+  `BLOCK_HEADINGS` and the `evals/evals.json` case text follow the new headings.
 
 ## Fixed
 
@@ -57,4 +64,5 @@ category.
   the orphan check exempts `references/lifecycle/`, and new tests require the
   bold `tcw-work-stage` note and the validation line as the stage skill's first
   injected command. New `tests/test_harness.py` and
-  `tests/test_stage_validate.py`.
+  `tests/test_stage_validate.py`. `tests/test_eval_grading.py` checks that the
+  grader's block headings appear in the stage skill.
