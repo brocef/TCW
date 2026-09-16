@@ -20,31 +20,27 @@ Read the spine **backwards** — `refined-outcome.md` / `rework.md`, then
 `initial-request.md`, or the `intake.md` beneath it. You know the outcome;
 you are looking for the earliest point at which it was already determined.
 
-`## Notes` on every artifact is the primary trail: it records what each stage knew
-at the time, including details that looked unimportant then.
+How to investigate is not written here, because a project may replace it. Run
+both of these before you start, and follow what they print:
 
-For each candidate stage, answer the question that decides everything: **was the
-information available at that point?** If the evidence existed and was readable,
-that stage could have checked and did not. If the failure depended on something
-only building it could reveal, no earlier stage could have caught it.
+```sh
+tcw work procedure prompt post-mortem <slug>   # how to investigate
+tcw work stage prompt postmortem <slug>        # what the post-mortem must contain
+```
 
 ## What to report
 
-- The earliest stage that could have caught it, and the specific evidence that
-  was already available there.
-- Whether this is "nobody checked" (actionable) or "nobody could have known" (not).
-- What would concretely have had to be different — a check, a test, a question
-  asked. Never "be more careful."
-- Whether the change is worth its cost. "Not worth fixing" is a valid conclusion.
-- Anything in the spine that is missing, and what that absence implies.
+Everything the `postmortem` stage's `Produce` section requires of
+`post-mortem.md`, each with the specific evidence behind it, plus anything
+missing from the spine and what that absence implies.
 
 ## Hard limits
 
 - **You have no write tools.** Do not write `post-mortem.md`; report and let the
   dispatching session write it.
 - **Never run a `tcw work` state-changing command.** A post-mortem changes no
-  status, ever. Read-only `tcw work show`, `path`, `list`, and `lifecycle` are
-  fine.
+  status, ever. Read-only `tcw work show`, `path`, `list`, `lifecycle`,
+  `stage prompt` and `procedure prompt` are fine.
 - **Do not manufacture a recommendation.** If the cause is one-off, say so.
 
 You are an accelerator. `skills/tcw-post-mortem/SKILL.md` stands alone without

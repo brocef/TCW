@@ -1,5 +1,5 @@
-slug: 2026-09-16-compose-tcw-extras-triage-issues-and-tcw-post-mortem-from-project-bindings
-title: Compose tcw-extras-triage-issues and tcw-post-mortem from project bindings
+slug: 2026-09-16-compose-the-five-tcw-work-procedure-documents-from-project-bindings
+title: Compose the five tcw-work procedure documents from project bindings
 created: '2026-09-16'
 resolution: null
 tags:
@@ -9,3 +9,7 @@ initiative: 2026-09-16-make-every-procedural-skill-in-tcw-overridable-by-the-pro
 blocked_by:
 - slug: 2026-09-16-state-the-two-rules-for-an-overridable-skill-and-mark-every-skill-with-its-verdict
 - slug: 2026-09-16-compose-a-procedure-s-instructions-from-project-bindings-the-way-a-stage-s-are-composed
+owner: ''
+started: ''
+worktree: .worktrees/2026-09-16-compose-the-five-tcw-work-procedure-documents-from-project-bindings
+branch: work/2026-09-16-compose-the-five-tcw-work-procedure-documents-from-project-bindings

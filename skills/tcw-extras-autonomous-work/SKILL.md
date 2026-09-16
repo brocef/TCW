@@ -1,6 +1,8 @@
 ---
 name: tcw-extras-autonomous-work
-description: Use when asked to work TCW items autonomously, unattended, or "without asking me" — drives one or more items to completion via the tcw-commands-drive-work-to-completion skill, consulting Codex and an Opus subagent in place of every human checkpoint.
+description: Use when asked to work TCW items autonomously, unattended, or "without asking me" — drives one or more items to completion via the tcw-commands-drive-work-to-completion skill, consulting read-only advisors in place of every human checkpoint (by default Codex and an Opus subagent; a project can name its own).
+allowed-tools: Bash(tcw *), Bash(codex *), Bash(git merge *), Agent, SendMessage
+compatibility: Declares what TCW's shipped procedure needs — the Codex CLI (`codex`) on PATH and a harness with subagents (Agent, SendMessage). A project that replaces it under `work.procedures.unattended-work` may need other tools. Requires a `tcw` with `tcw work procedure prompt`.
 dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
 
@@ -9,51 +11,47 @@ dynamic_skill: true # which skills a project may override, and why: ../README.md
 Drive the named items through the `tcw-commands-drive-work-to-completion`
 skill, back to back.
 Wherever the lifecycle would ask the human — a review, an open question, the
-verify decision, a closeout choice — ask **the two advisors** instead and decide
+verify decision, a closeout choice — ask **the advisors** instead and decide
 yourself. Stop only on a hard blocker.
 
 **Ask once, at the start:** confirm the item set (the user's list, or pick from
 `tcw work list --status backlog`) and the order. After that, no more questions
 until the run ends or a hard blocker hits.
 
-## The advisors
+## What an advisor must be
 
-Run both in parallel on the same brief:
+Whoever this project names as advisors, each one is:
 
-- **Codex** — `codex -C <repo> exec -c sandbox_mode=read-only "<brief>"` as a
-  background Bash call. Never bare `codex` (interactive TUI, hangs the call);
-  `-C` goes *before* `exec`; without the sandbox flag it stalls on an approval
-  prompt.
-- **Opus subagent** — Agent tool, `model: opus`, read-only prompt.
+- **Independent of this session** — a separate agent or program that does not
+  share your context and sees only the brief you give it. Otherwise it is you
+  agreeing with yourself.
+- **Read-only** — it reads and answers. It never edits, commits, runs a
+  transition or pushes; you act on what it says.
+- **Heard, not assumed** — an answer is text you read. Silence, or a report you
+  did not read, is no answer.
 
-The brief must stand alone: item slug, the files in play, the exact question,
-the options you see, and which one you lean towards. A brief that only makes
-sense with your context returns advice that only sounds right.
+**Two advisors are wanted**, as different from each other as the harness allows
+— another model, another tool — so they do not share the same blind spots.
 
-Adjudicate: agreement → act. Split → take the stronger argument, not a majority
-(there is no majority of two), and record why. Both come back "not enough
-information" on something irreversible → hard blocker. You are not bound by
-either; they replace a second opinion, not your judgement.
+An answer is an argument, weighed, never counted, whatever the number of
+advisors. With one, weigh its answer against your own reading of the code; with
+three, two that agree do not outvote a third with the better argument. You are
+never bound by an advisor.
 
-**An agent that goes idle without reporting has not answered.** It happens
-often, and silence reads exactly like "nothing to say". `SendMessage` it for the
-conclusion, restating what the answer must cover. Never write down a verdict you
-did not read. Codex is the reliable half — when an answer is load-bearing, do
-not let the run wait on the subagent alone.
+## This project's procedure
 
-## Checkpoint map
+The advisors, how to consult them and what to do at each checkpoint come from
+this project's `unattended-work` procedure. TCW ships a default; a project
+replaces it under `work.procedures.unattended-work`. This skill's `allowed-tools`
+and `compatibility` describe TCW's default only — a replacement may need other
+tools, and the harness asks before running one not declared.
 
-| The lifecycle asks for      | Do this instead                                                                                                       |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Sequential vs. subagents    | Decide yourself. Sequential unless the slices are genuinely independent.                                                |
-| Open question in spec/plan  | Consult, then write the answer into the artifact with the assumption stated in the text.                                |
-| Code review                 | A read-only adversarial review subagent — the `adversarial-code-reviewer` agent where the project has one. Apply what you agree with; write down what you reject and why. |
-| Verify assessment           | The `tcw-verifier` agent, **plus** your own hands-on exercise of whatever the project actually produces.                |
-| Verify decision             | Yours. Green → `tcw work submit`. Red → rework and loop; the same criterion failing three loops is a hard blocker.       |
-| Hands-on QA                 | Drive the real thing yourself, however this project is run — see the `run` skill, or whatever the repo's own guidance says. Agent reports and green suites are testimony, not evidence. |
-| Capability reconciliation   | The `tcw-capabilities` sub-skill, unchanged.                                                                            |
-| Version choice              | Never cut one. Accumulate into `upcoming.md` and move on.                                                               |
-| Closeout route              | `tcw work complete`, then merge the feature branch into main **locally**. Never `git push`.                             |
+The text was read without a work item. If
+`tcw work procedure prompt unattended-work --no-exec` reports a binding
+`skipped (condition)`, re-read it with each item's slug before working that
+item.
+
+!`tcw work procedure prompt unattended-work || true`
 
 ## Hard blockers — stop, report, wait
 
@@ -64,8 +62,8 @@ not let the run wait on the subagent alone.
 - Product direction: what a feature should *be*, pricing, copy that speaks for
   the product.
 - Spend on the user's paid accounts.
-- Advisors split on an irreversible choice, or both call the item's premise
-  wrong.
+- Advisors split on an irreversible choice, or all of them call the item's
+  premise wrong.
 - The spec contradicts the code and no reading makes both true.
 
 Not blockers: ugly code, a missing fixture, one flaky suite, an unfamiliar lint
@@ -81,3 +79,18 @@ without it.
 Close with one block per item: slug, resolution, decisions taken, review
 findings rejected, follow-ups filed, and anything you would have asked about if
 you could.
+
+## Document command summary
+
+The command below is automatically executed by the Claude Code harness where
+"This project's procedure" says, and its output belongs there.
+
+```sh
+# The project's unattended-work procedure: advisors, checkpoint map, closeout
+tcw work procedure prompt unattended-work
+```
+
+If your harness did not run it, run it yourself and read its output as that
+section before starting. To see whether any of the project's bindings depend on
+the work item, run it with `--no-exec`; to read it for one item, add the item's
+slug.

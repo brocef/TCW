@@ -690,7 +690,7 @@ across the axes.
 
 | Skill                                                                      | What it does                                                                                                        |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking two read-only advisors wherever the lifecycle would ask you.     |
+| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking read-only advisors wherever the lifecycle would ask you — by default Codex and an Opus subagent, replaceable by your project. |
 | [`tcw-extras-triage-issues`](skills/tcw-extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                      |
 | [`tcw-extras-report`](skills/tcw-extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues). |
 

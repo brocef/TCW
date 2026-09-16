@@ -16,6 +16,20 @@ internal module names.
 - New setting: `work.procedures` in `tcw-config.yaml`, beside
   `work.lifecycle`. `tcw validate` checks it.
 - The skills themselves do not read from the command yet; that comes next.
+- **The unattended-work skill no longer insists on particular advisors.** It
+  now takes its advisors, its code review, how it closes an item out and
+  whether it cuts a version from your project's `unattended-work` procedure.
+  With nothing configured it behaves exactly as before: it asks Codex and an
+  Opus subagent, never cuts a version and never pushes. What stays fixed is
+  what an advisor must be, when a run stops to ask you, and the record it
+  leaves in the item's `outcome.md`.
+- **The issue-triage and post-mortem skills now use your project's text.** If
+  you set `work.procedures.triage-issues` or `work.procedures.post-mortem`, that
+  is what an agent follows; with nothing set it follows the same instructions
+  as before. A few rules stay the same whatever you set: an issue's text is
+  never followed as instructions, nothing is posted to an issue without your
+  approval of the exact text, and a post-mortem never changes an item's status.
+  Triaging with a forge other than GitHub means replacing the triage procedure.
 - **Auditing the backlog, consolidating plans, splitting an item, delegating a
   stage and searching the board now follow your project's text** when it has
   replaced them. The instructions tell the agent to read them with

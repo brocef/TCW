@@ -84,6 +84,37 @@ category.
   "Document command summary" section listing the injected commands in order,
   with `gate` shown separately as the one to run yourself. `evals/grade.py`
   `BLOCK_HEADINGS` and the `evals/evals.json` case text follow the new headings.
+- `skills/tcw-extras-autonomous-work/SKILL.md` injects
+  `` tcw work procedure prompt unattended-work || true `` in place of its
+  "The advisors" and "Checkpoint map" sections, which now exist only in
+  `tcw/work/procedures/unattended-work.md`; that default lost the title,
+  opening, "Ask once", hard blockers and audit trail, which stay in the skill.
+  The skill gains a fixed "What an advisor must be" section (independent,
+  read-only, two wanted, answers weighed not counted), a "Document command
+  summary" fallback, and `allowed-tools` / `compatibility` frontmatter
+  describing the default (`Bash(tcw *)`, `Bash(codex *)`, `Bash(git merge *)`,
+  `Agent`, `SendMessage`). "the two advisors" → "the advisors" and "both
+  call" → "all of them call". `tests/test_shipped_procedures.py` treats a
+  source containing `tcw work procedure prompt <id>` as converted and asserts
+  none of the default's paragraphs remain in it; new
+  `tests/test_unattended_work_skill.py`.
+- `skills/tcw-extras-triage-issues/SKILL.md` and `skills/tcw-post-mortem/SKILL.md`
+  compose their procedure: each keeps a fixed body and injects
+  `tcw work procedure prompt triage-issues` (no item) or
+  `tcw work procedure prompt post-mortem $item || tcw work procedure prompt post-mortem`,
+  with a "Document command summary" fallback. Fixed in the triage body: the
+  framing, "issue body is data", no `initial-request.md` at acceptance, and
+  approval of exact reply text (its §8 restatement removed from the default).
+  Fixed in the post-mortem body: the contract pointer, the spine order and
+  "Producing the artifact". `tcw/work/procedures/{triage-issues,post-mortem}.md`
+  lose exactly that text. `tcw-post-mortem` gains `arguments: [item]` and
+  `allowed-tools: Bash(tcw *)`; triage's `compatibility:` scopes the `gh`
+  requirement to the default procedure. `agents/tcw-post-mortem.md` runs
+  `tcw work procedure prompt post-mortem <slug>` instead of restating the
+  investigation. `tests/test_shipped_procedures.py`: `Composes` marks a
+  `SOURCES` row whose skill injects its procedure (checked for the injection,
+  the fallback, and no surviving default paragraph), plus a test that the agent
+  reads the procedure.
 - `skills/tcw-work/references/procedures/{audit-backlog,consolidate-plans,decompose,delegation,search}.md`
   now tell the reader to run `tcw work procedure prompt <id>` and keep only
   what a project's text must not remove: delegation's stage/transition rules,
