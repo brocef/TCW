@@ -23,22 +23,24 @@ first. **REQUIRED SUB-SKILL: Use the `capabilities` skill.**
 A **stage** produces one artifact. A **transition** moves status. Nothing is
 both. Stage detection is artifact presence; status is the folder.
 
-| Stage        | Produces                                | Document                                                          |
-| ------------ | --------------------------------------- | ----------------------------------------------------------------- |
-| `inbox`      | — (creates the item)                    | [`stage-inbox.md`](references/lifecycle/stage-inbox.md)           |
-| `request`    | `initial-request.md`                    | [`stage-request.md`](references/lifecycle/stage-request.md)       |
-| `spec`       | `spec.md`                               | [`stage-spec.md`](references/lifecycle/stage-spec.md)             |
-| `plan`       | `plan.md`                               | [`stage-plan.md`](references/lifecycle/stage-plan.md)             |
-| `implement`  | `outcome.md`                            | [`stage-implement.md`](references/lifecycle/stage-implement.md)   |
-| `verify`     | `refined-outcome.md` **or** `rework.md` | [`stage-verify.md`](references/lifecycle/stage-verify.md)         |
-| `postmortem` | `post-mortem.md`                        | [`stage-postmortem.md`](references/lifecycle/stage-postmortem.md) |
+**To learn how to perform a stage, invoke the `work-stage` skill with the stage id and the work item — `work-stage <stage> [<slug>]`.**
+It is where a stage's instructions come from, composed with this project's own.
 
-`start` · `submit` · `rework` · `complete` · `discard` →
-[`transitions.md`](references/transitions.md)
+| Stage        | Produces                                |
+| ------------ | --------------------------------------- |
+| `inbox`      | — (creates the item)                    |
+| `request`    | `initial-request.md`                    |
+| `spec`       | `spec.md`                               |
+| `plan`       | `plan.md`                               |
+| `implement`  | `outcome.md`                            |
+| `verify`     | `refined-outcome.md` **or** `rework.md` |
+| `postmortem` | `post-mortem.md`                        |
+
+`start` · `submit` · `rework` · `complete` · `discard` → [`transitions.md`](references/transitions.md)
 
 ## Finding your place
 
-Read the item, then load **only** the document for the first missing artifact:
+Read the item, then invoke `work-stage` for **only** the first missing artifact's stage:
 no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md` →
 `plan` · no `outcome.md` → `implement` · no `refined-outcome.md`/`rework.md` →
 `verify`. Resume across sessions with `tcw work list --status active` →
@@ -49,9 +51,8 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
   it. Never batch several stages into one commit. TCW commits the _transitions_
   itself; do not commit those by hand.
-- **`tcw work stage gate <id> <slug>`, then `prompt`** at every stage entry —
-  `gate` refuses, `prompt` carries the methodology, the stage document only what
-  the CLI cannot. Bindings → [`hooks.md`](references/hooks.md) · declaring them: the `configure` skill · defaults → [`lifecycle/default/`](references/lifecycle/default/README.md)
+- **`tcw work stage gate <id> <slug>`** at every stage entry — it refuses; `work-stage` carries the instructions.
+  Bindings → [`hooks.md`](references/hooks.md) · declaring them: the `configure` skill
 - For a small change, ask whether to compress planning detail — but keep the item
   the durable source of truth and write whatever is needed to resume or review.
 
@@ -60,9 +61,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 - [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, command skills, the documentation gate (`tcw work docs`), publication on a provisioned store
 - [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into nested pieces
 - Turning an idea into a work item without duplicating tracked work → the `work-create` skill
-- [`tags.md`](references/tags.md) — the node's tag vocabulary
-- [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences
-- [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
+- [`tags.md`](references/tags.md) — the node's tag vocabulary · [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences · [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
 - **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources · [`search.md`](references/procedures/search.md): answering a described question about the board as a table
 
 > **Web editing:** items, artifacts (Request/Spec/Plan as tabs), and the `capabilities.yaml`

@@ -1,0 +1,9 @@
+slug: 2026-09-16-judge-a-worktree-item-s-completion-from-its-merged-branch-not-the-primary-checkout-s-stale-copy
+title: Judge a worktree item's completion from its merged branch, not the primary
+  checkout's stale copy
+created: '2026-09-16'
+resolution: null
+tags:
+- bug
+- cli
+- work

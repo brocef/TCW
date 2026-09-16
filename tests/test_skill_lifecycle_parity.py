@@ -285,21 +285,46 @@ def test_the_router_stays_within_its_line_budget():
         f"SKILL.md body is {lines} lines, budget is {SKILL_LINE_BUDGET} — extract, don't grow"
 
 
+LIFECYCLE_REFS = REFS / "lifecycle"
+
+
 @pytest.mark.parametrize("stage_id", STAGE_IDS)
-def test_the_router_routes_to_every_stage_document(stage_id):
-    assert f"stage-{stage_id}.md" in SKILL.read_text(encoding="utf-8"), \
-        f"SKILL.md never routes to stage-{stage_id}.md"
+def test_nothing_in_tcw_work_names_a_stage_document(stage_id):
+    """An agent that opens a stage document directly never sees the project's
+    own instructions for that stage, which only `tcw work stage prompt` resolves.
+    The `work-stage` skill delivers both together, so `work` names that
+    skill and never a path an agent could open instead."""
+    documents = [SKILL, *(p for p in REFS.rglob("*.md")
+                          if not p.is_relative_to(LIFECYCLE_REFS))]
+    for doc in documents:
+        text = doc.read_text(encoding="utf-8")
+        for needle in (f"stage-{stage_id}.md", "references/lifecycle/",
+                       "lifecycle/stage-"):
+            assert needle not in text, \
+                f"{doc.relative_to(REPO)} names {needle}"
+
+
+def test_the_router_names_the_stage_skill_in_bold():
+    bold = re.findall(r"\*\*(.+?)\*\*", SKILL.read_text(encoding="utf-8"),
+                      flags=re.DOTALL)
+    assert any("work-stage" in b and "<stage>" in b and "<slug>" in b
+               for b in bold), \
+        "SKILL.md has no emphasized note sending an agent to work-stage"
 
 
 def test_the_router_routes_to_every_reference_file():
     """An unreachable reference file is dead weight that still costs a reader
-    the time to wonder whether it matters."""
+    the time to wonder whether it matters.
+
+    `references/lifecycle/` is exempt: its stage documents are reached through
+    the `work-stage` skill, whose router path
+    `test_the_composing_skill_reads_a_router_that_exists` resolves."""
     text = SKILL.read_text(encoding="utf-8")
-    # Matched by path relative to `references/`, not bare name: a link written
-    # `references/lifecycle/stage-spec.md` has to count as reaching the file,
-    # and two files in different folders may legitimately share a name.
+    # Matched by path relative to `references/`, not bare name: two files in
+    # different folders may legitimately share a name.
     orphans = [rel for rel in sorted(p.relative_to(REFS).as_posix()
-                                     for p in REFS.rglob("*.md"))
+                                     for p in REFS.rglob("*.md")
+                                     if not p.is_relative_to(LIFECYCLE_REFS))
                if rel not in text]
     assert not orphans, f"unreachable from SKILL.md: {orphans}"
 
@@ -353,6 +378,23 @@ def test_the_composing_skill_reads_a_router_that_exists(stage):
         targets = {stage: REPO / template}
     for stage_id, target in targets.items():
         assert target.is_file(), f"{stage_id}: {target} does not exist"
+
+
+VALIDATE_LINE = "!`tcw work stage validate -- $stage $item 2>/dev/null || true`"
+
+
+def test_the_composing_skill_validates_its_arguments_first():
+    """A missing or wrong stage or item otherwise renders as two error fragments
+    mid-document with nothing saying what the invocation should have been. The
+    check has to be the first injected command, ahead of the heading, so its
+    usage error is the first thing the agent reads."""
+    lines = STAGE_SKILL.read_text(encoding="utf-8").splitlines()
+    body = lines[lines.index("---", 1) + 1:]
+    injected = [i for i, line in enumerate(body) if line.startswith("!`")]
+    assert injected and body[injected[0]] == VALIDATE_LINE, (
+        f"the first injected command is not {VALIDATE_LINE}")
+    heading = next(i for i, line in enumerate(body) if line.startswith("# The"))
+    assert injected[0] < heading, "the validation line comes after the heading"
 
 
 @composing

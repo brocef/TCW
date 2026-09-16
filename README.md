@@ -615,12 +615,12 @@ driving it to completion, verifying it, processing the inbox) described in
 
 **Lifecycle stages**
 
-| Command              | What it does                                                                              |
-| -------------------- | ----------------------------------------------------------------------------------------- |
-| `tcw work lifecycle` | prints every stage and transition, with what this project attaches to each                |
-| `tcw work stage`     | `stage gate` checks a stage may run; `stage prompt` prints its instructions               |
-| `tcw work scaffold`  | writes a draft of a stage's document from its template                                    |
-| `tcw work docs`      | prints the project's documentation entries: which documents a change must keep up to date |
+| Command              | What it does                                                                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tcw work lifecycle` | prints every stage and transition, with what this project attaches to each                                                                             |
+| `tcw work stage`     | `stage gate` checks a stage may run; `stage prompt` prints its instructions; `stage validate` checks the arguments given to the `work-stage` skill |
+| `tcw work scaffold`  | writes a draft of a stage's document from its template                                                                                                 |
+| `tcw work docs`      | prints the project's documentation entries: which documents a change must keep up to date                                                              |
 
 **Inbox, and work across projects**
 

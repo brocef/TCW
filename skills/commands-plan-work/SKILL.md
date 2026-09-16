@@ -12,11 +12,12 @@ Use the `work` skill. This skill covers the stage range **`request` →
 `plan`**.
 
 Read the `work` skill's `SKILL.md`, find the first missing artifact, and run the
-stages from there through `plan.md`, loading **only** each stage's own document:
+stages from there through `plan.md`, invoking the `work-stage` skill for
+**only** the stage you are running:
 
-- the `work` skill's `stage-request.md` → `initial-request.md`
-- the `work` skill's `stage-spec.md` → `spec.md`
-- the `work` skill's `stage-plan.md` → `plan.md`
+- `work-stage request <slug>` → `initial-request.md`
+- `work-stage spec <slug>` → `spec.md`
+- `work-stage plan <slug>` → `plan.md`
 
 For a `type: epic` item, also read the `work` skill's `epic-deltas.md` — the same three
 stages, with an overview spec and a coordination plan.

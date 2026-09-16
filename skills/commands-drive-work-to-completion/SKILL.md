@@ -12,8 +12,8 @@ Use the `work` skill. This skill covers **the current stage through
 `complete`**.
 
 Read the `work` skill's `SKILL.md` and detect the current stage from the item's
-type, status, and existing artifacts. Load **only** the document for the stage
-you are in; the router's "Finding your place" table maps missing artifacts to
+type, status, and existing artifacts. Invoke the `work-stage` skill for **only** the stage
+you are in; the router's "Finding your place" section maps missing artifacts to
 stages.
 
 If `plan.md` declares bounded stage documents, read the manifest first and then
@@ -30,6 +30,6 @@ already active, and ask whether to run the remaining stages sequentially or
 dispatch independent ones to subagents (the `work` skill's `delegation.md`).
 
 **Do not complete the item silently.** Stop at `verify` and hold there until the
-user explicitly approves closeout — see the `work` skill's `stage-verify.md`. At closeout,
+user explicitly approves closeout — see the `verify` stage (`work-stage verify <slug>`). At closeout,
 confirm the merge or PR route, the documentation updates, any follow-up items,
 and the version choice before running `tcw work complete`.

@@ -740,7 +740,14 @@
   location: c3e24c9ce474588785441cce9450f5f3b91ea8c2
   resolution: done
   resolved: '2026-09-16'
+2026-09-15-let-a-project-override-the-tools-and-procedures-tcw-s-own-skills-mandate:
+  resolution: superseded
+  resolved: '2026-09-16'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
   location: 8bac10d8aed8b383368e47f37caf7a50efd5d1ab
   resolution: done
   resolved: '2026-09-15'
+2026-09-16-route-agents-to-tcw-work-stage-for-stage-instructions-and-validate-its-arguments:
+  location: 4002ffb3ccdccb0a41678766655d3e7f67cb6b0b
+  resolution: done
+  resolved: '2026-09-16'

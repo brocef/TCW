@@ -119,6 +119,16 @@ def test_a_silent_empty_render_fails_the_blocks_read(graded):
         assert heading in blocks["evidence"]
 
 
+def test_the_grader_looks_for_the_headings_the_stage_skill_renders():
+    """The blocks predicate matches headings by text. Renaming one in the skill
+    without the grader makes every live run fail I1 while the fixtures, which
+    carry whatever headings they were written with, stay green."""
+    skill = (Path(grade.__file__).resolve().parents[1]
+             / "skills" / "work-stage" / "SKILL.md").read_text(encoding="utf-8")
+    for heading in grade.BLOCK_HEADINGS:
+        assert f"\n{heading}\n" in skill, heading
+
+
 # --- tool inputs: what the agent ran or opened ----------------------------
 
 READ_PATH = "/x/skills/setup/references/project.md"

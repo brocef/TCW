@@ -19,9 +19,9 @@ model to reason from, and it is not an analogy — it is the same shape. Like a
 `docs/work/inbox/` entry, an issue is a raw drop that gets **accepted or
 rejected**, and it was **written by someone other than the person triaging it**.
 
-So the judgment already exists: `work/references/lifecycle/stage-inbox.md` holds it —
+So the judgment already exists: the `inbox` stage holds it (invoke the `work-stage` skill with `inbox`) —
 retitle to a change rather than a symptom, split one drop into several items,
-never invent scope, choose tags from `tcw work tags list`. **Read that document
+never invent scope, choose tags from `tcw work tags list`. **Read it
 before accepting anything, and do not restate it here.** This skill is only the
 part it does not cover: reaching the issues, knowing which are already handled,
 rejecting the ones that should be rejected, and replying to the reporter.
@@ -129,7 +129,7 @@ Say which outcome you think fits and why, and let them decide — especially for
 
 ## 5. Accept: create the work item
 
-Per `stage-inbox.md` — retitle, pick tags, split if it is really several items.
+Per the `inbox` stage — retitle, pick tags, split if it is really several items.
 **An issue is raw arrival, so it is filed as the item's `intake.md`**, and what
 you pipe into `tcw work new` is stored as that intake verbatim.
 
@@ -172,7 +172,7 @@ Commit the item. **Do not write `initial-request.md` here.** That file is the
 `request` stage's own artifact, and an item carrying one it never produced reads
 as a stage that ran. `tcw work list` shows `i` for an item holding raw intake and
 `R` once the request exists, and that distinction is the whole point. Run the
-`request` stage (`work/references/lifecycle/stage-request.md`) when the item is picked
+`request` stage (`work-stage request <slug>`) when the item is picked
 up, to shape the reporter's words into a request.
 
 ## 6. Reply to the reporter

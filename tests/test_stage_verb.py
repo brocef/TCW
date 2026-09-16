@@ -727,7 +727,7 @@ def test_a_typo_is_not_offered_the_removed_spellings(tmp_path):
     root = _node(tmp_path)
     r = _bare(root, "bogus")
     assert r.returncode == 2
-    assert "choose from 'prompt', 'gate'" in r.stderr, r.stderr
+    assert "choose from 'prompt', 'gate', 'validate'" in r.stderr, r.stderr
     for stage_id in STAGE_IDS:
         assert f"'{stage_id}'" not in r.stderr.split("choose from")[1], stage_id
 
