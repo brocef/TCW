@@ -1950,7 +1950,8 @@ def _intake_text(outcome, description: str, today: str) -> str:
 
 
 def _binding_for(provider: str, project: str, ticket_id: str, ticket_key: str,
-                 ticket_url: str, part: str, today: str, unlinked: list) -> str:
+                 ticket_url: str, part: str, today: str, unlinked: list,
+                 status_synced: bool = True) -> str:
     """The binding document. `provider` and `project` are the values the ticket was
     looked up with, passed in rather than read again: tracker settings can come from
     parent nodes' files, and one changed or broken mid-run would otherwise fail here,
@@ -1959,7 +1960,7 @@ def _binding_for(provider: str, project: str, ticket_id: str, ticket_key: str,
     return binding_document(
         provider=provider, project=project, part=part,
         ticket_id=ticket_id, ticket_key=ticket_key, ticket_url=ticket_url,
-        bound=today, unlinked=unlinked)
+        bound=today, unlinked=unlinked, status_synced=status_synced)
 
 
 def _claim_summary(outcome) -> str:
@@ -2098,12 +2099,6 @@ def _item_or_reason(st, slug: str, label: str):
     return item
 
 
-# The move that leaves an item in each status, for a binding made after the item was
-# already there. `active` is the claim's own move, which is exactly what is owed.
-_LINK_MOVE = {"active": "start", "review": "submit", "completed": "complete",
-              "discarded": "discard"}
-
-
 def _tracker_link(args: argparse.Namespace) -> int:
     """Record that an existing item and a ticket are the same work.
 
@@ -2112,6 +2107,11 @@ def _tracker_link(args: argparse.Namespace) -> int:
     stores — and is otherwise left exactly as it was: no transition, no assignee
     change. Nothing in the item but `tracker.yaml` is written either, so its
     status, owner, intake and request are untouched.
+
+    `--sync-status` is the one exception, and only on request: for work already past
+    `backlog` it records that the claim is owed and delivers it at once, which claims
+    the ticket and brings it forward to where the item is. Whatever does not arrive
+    stays recorded for `tcw work tracker sync`.
     """
     from datetime import date
 
@@ -2155,24 +2155,28 @@ def _tracker_link(args: argparse.Namespace) -> int:
     except (TrackerError, BindingProblem, ValueError) as e:
         print(f"tcw work tracker link: {e}", file=sys.stderr)
         return 1
+    # Work already under way has a ticket nothing has claimed and nothing has moved.
+    # Changing the ticket is opt-in: by default the binding only notes that its status
+    # was not synced, so a later move that cannot follow says so rather than blaming a
+    # hand move nobody made. With `--sync-status` the claim is recorded as owed —
+    # which also keeps a failure from stamping `claim: done` over a claim nobody made,
+    # and leaves `sync` something to resume — and delivered below.
+    from tcw.store.base import target_status
+    from tcw.tracker.intake import with_sync_record
+    from tcw.tracker.sync import MOVE_ONTO, _normalize, _now, unsynced_hint
+    item = st.get(args.slug)
+    under_way = (item is not None and item.status != "backlog"
+                 and not st.pending_deletion(args.slug))
+    sync_status = under_way and args.sync_status
     existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
     today = date.today().isoformat()
     document = _binding_for(client.config.provider, project, ticket.issue_id,
                             ticket.key, ticket.url, part, today,
-                            unlinked_history(existing.content if existing else None))
-    # Work that is already under way has a ticket nothing has claimed and nothing has
-    # moved, so the binding says so from the start. Two things need it: the claim is
-    # genuinely owed, and recording that keeps a later failure from stamping
-    # `claim: done` over a claim nobody made; and `sync` only looks at items carrying a
-    # record, so without one the catch-up is unreachable from the command a user runs.
-    # This is a local write — the ticket itself is still untouched.
-    item = st.get(args.slug)
-    if (item is not None and item.status != "backlog"
-            and not st.pending_deletion(args.slug)):
-        from tcw.tracker.intake import with_sync_record
-        from tcw.tracker.sync import _now
+                            unlinked_history(existing.content if existing else None),
+                            status_synced=not under_way or sync_status)
+    if sync_status:
         document = with_sync_record(document, {
-            "state": "pending", "move": _LINK_MOVE[item.status], "since": "",
+            "state": "pending", "move": MOVE_ONTO[item.status], "since": "",
             "claim": "owed",
             # No full stop: `tcw work show` appends "; the claim is still owed" to a
             # reason, and a sentence ending in one renders as ".;".
@@ -2185,8 +2189,41 @@ def _tracker_link(args: argparse.Namespace) -> int:
         print(f"tcw work tracker link: the binding could not be written: {e}. "
               f"Run this command again.", file=sys.stderr)
         return 1
-    print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}). The ticket is "
-          f"unchanged in the tracker.", file=sys.stderr)
+    if not sync_status:
+        print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}). The ticket is "
+              f"unchanged in the tracker.", file=sys.stderr)
+        target = (target_status(client.config.statuses, item.status, item.resolution)
+                  if under_way else "")
+        if target and _normalize(ticket.status) != _normalize(target):
+            print(f"warning: {ticket.key} is in '{ticket.status}', but {args.slug} is "
+                  f"{item.status}, which maps to '{target}'. Its status was not synced, "
+                  f"and later moves will not bring it along. "
+                  f"{unsynced_hint(args.slug, ticket.key)}", file=sys.stderr)
+        return 0
+    print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}).", file=sys.stderr)
+    from tcw.tracker.sync import CONFLICTING, CURRENT, PENDING, deliver
+    try:
+        outcome = deliver(st, args.slug, client, client.config, move=None,
+                          previous_status=None)
+    except _LOCAL_WRITE_ERRORS as e:
+        print(f"tcw work tracker link: {args.slug} is bound, but whether {ticket.key} "
+              f"was synced could not be recorded: {e}. Run `tcw work tracker sync "
+              f"{args.slug}`.", file=sys.stderr)
+        return 1
+    if outcome.claimed:
+        print(f"→ {outcome.claimed}", file=sys.stderr)
+    if outcome.state in (PENDING, CONFLICTING):
+        print(f"tcw work tracker link: {args.slug} is bound; {ticket.key}'s status was "
+              f"not synced ({outcome.state}): {_sentence(outcome.reason)} Run `tcw work "
+              f"tracker sync {args.slug}` once that is resolved.", file=sys.stderr)
+        return 1
+    if outcome.state == CURRENT:
+        print(f"→ {ticket.key}'s status is synced with {args.slug}.", file=sys.stderr)
+    elif outcome.reason:
+        print(f"→ {outcome.reason}", file=sys.stderr)
+    else:
+        print(f"→ no tracker status is mapped for {item.status}, so {ticket.key} was "
+              f"not moved.", file=sys.stderr)
     return 0
 
 
@@ -2272,7 +2309,10 @@ def _tracker_sync(args: argparse.Namespace) -> int:
             print(f"{slug}: skipped{still} — started by {item.owner}. Run it as them "
                   f"(`TCW_WORK_OWNER={item.owner} tcw work tracker sync {slug}`), or take "
                   f"the item over with `tcw work start {slug} --take-over`.")
-            code = 1
+            # Failure only when something is actually owed: with no record there is
+            # nothing this skip leaves undone.
+            if owed or item.tracker.get("comment"):
+                code = 1
             continue
         recorded = item.tracker.get("sync")
         comment = item.tracker.get("comment")
@@ -2722,15 +2762,21 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         "link", help="record that an existing item and a ticket are the same work",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Write down that a work item and a ticket are the same piece of work.\n\n"
-                    "In the tracker: nothing. The ticket keeps its status and whoever holds\n"
-                    "it, and it may be held by anyone. It is read — which is how a key that\n"
-                    "does not exist is refused — and not written to.\n\n"
+                    "In the tracker: nothing, unless --sync-status is passed. The ticket\n"
+                    "keeps its status and whoever holds it, and it may be held by anyone.\n"
+                    "It is read — which is how a key that does not exist is refused — and\n"
+                    "not written to.\n\n"
                     "In this node: the binding sidecar is the only file written, so the\n"
                     "item's status, owner, intake and request are left alone.",
         epilog="Any status can be linked, a finished item included. Where finished\n"
                "items' folders are gitignored (the default), that binding stays on\n"
-               "this machine and is never committed. Nothing moves the ticket for you\n"
-               "afterwards — do that in the tracker yourself.\n\n"
+               "this machine and is never committed.\n\n"
+               "Linking an item already past backlog leaves the ticket where it is and\n"
+               "warns when its status does not match; later moves do not bring it\n"
+               "along. Pass --sync-status to claim it and move it to where the item\n"
+               "is — straight there when the workflow allows, otherwise forward\n"
+               "through the statuses mapped in work.tracker.statuses. It never moves\n"
+               "a ticket back, and never changes one that is already resolved.\n\n"
                "Use --part when one ticket is split across several items.\n\n"
                "Refuses when: no tracker is configured; --part is invalid; the slug\n"
                "is not an item here; the key does not exist; the item is already\n"
@@ -2745,6 +2791,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptrl.add_argument("--part", help="which of several items for this ticket "
                                      "(lowercase letters, digits, hyphens; "
                                      "default: default)")
+    ptrl.add_argument("--sync-status", action="store_true",
+                      help="also claim the ticket and move it to where the item is "
+                           "(forward only)")
     ptrl.set_defaults(func=_tracker_link)
 
     ptru = ptrs.add_parser(

@@ -26,7 +26,7 @@ Two things hold whatever you configure:
   expired.
 
 Which commands reach Jira: `list`, `show` and `link` read a ticket; `import`
-changes the ticket and then writes the work item; `unlink` touches only your
+changes the ticket and then writes the work item, and so does `link --sync-status`; `unlink` touches only your
 repository and needs no tracker configured. For an item linked to a ticket,
 `start`, `submit`, `rework`, `complete` and `tcw work tracker sync` also write to
 the ticket. No other command reaches Jira.
@@ -83,7 +83,9 @@ address or the token into `tcw-config.yaml`.
 release of TCW then complains in `tcw validate` rather than quietly doing less
 than you asked. This also means **every copy of `tcw` working on the project must
 understand a key before you set it**: an older copy that does not know `comments`
-or `link` treats the whole `tracker` block as broken.
+or `link` treats the whole `tracker` block as broken. The same goes for the
+`transitions` keys other than `claim`: version 2.3.0 and earlier reject the whole
+block when any of them is set.
 
 **A block with any problem counts as no tracker at all.** TCW never uses a
 half-valid configuration, because a block whose token variable name is mistyped
@@ -265,8 +267,8 @@ is what claims a linked ticket.
 
 ## Linking and unlinking
 
-**`tracker link` records that an item and a ticket are the same work, and does
-nothing else.** It reads the ticket, which is how a key that does not exist is
+**`tracker link` records that an item and a ticket are the same work, and — unless
+you pass `--sync-status` — does nothing else.** It reads the ticket, which is how a key that does not exist is
 refused, and writes the binding. Jira is left alone: the ticket keeps its status
 and whoever holds it, so you can link a ticket somebody else is assigned. In your
 repository nothing but `tracker.yaml` is written, so the item keeps its status,
@@ -277,17 +279,29 @@ gets tied to the ticket that tracked it. A finished item's folder is kept out of
 git by default, so a binding on one stays on your machine along with the rest of
 that item.
 
-**Linking an item that is already under way notes that the ticket is behind it.**
-Nothing has claimed that ticket and nothing has moved it, so the binding records a
-change still owed — the claim included. Your next lifecycle move, or
-`tcw work tracker sync <slug>`, is what brings the ticket forward (see
-[Tickets following their items](#tickets-following-their-items)). Linking an item
-still in the backlog records nothing, because nothing is owed yet. Either way
-Jira is untouched by `link` itself.
+**Linking an item that is already under way leaves its ticket alone unless you
+ask.** The binding notes that the ticket's status was not synced, and if the ticket
+is not in the status the item maps to, `link` warns you and names both. Later moves
+of that item do not bring the ticket along: each one says the ticket was linked
+without its status synced, moves nothing, and does not count as a failure. Under
+strict mode those moves are refused until the ticket is where the item expects,
+with the same explanation.
 
-If your project uses strict mode, that noted change is one the item has to clear
-before it can be submitted or completed — which is the point: strict mode means no
-work without a claimed ticket, and until the sync runs, the ticket is not claimed.
+**`tracker link <slug> <KEY> --sync-status`** asks for the ticket to be brought up
+to date as part of linking. TCW claims the ticket if it has to, then moves it to the
+status the item maps to — in one transition when the workflow offers one, otherwise
+forward through the statuses you mapped, one at a time (see
+[Tickets following their items](#tickets-following-their-items)). It never moves a
+ticket backwards, so a ticket already past where its item is stays put, and it never
+changes a ticket that is already resolved. Whatever cannot be done right away — Jira
+could not be reached, say — is recorded, and `tcw work tracker sync <slug>` finishes
+it. On an item still in the backlog the flag does nothing, because there is nothing
+to catch up yet.
+
+**A binding made by an earlier version whose ticket is stuck** — every move reported
+as a conflict because the ticket was linked after the work started — is repaired the
+same way: `tcw work tracker unlink <slug> --reason "sync its status"`, then
+`tcw work tracker link <slug> <KEY> --sync-status`.
 
 **`tracker unlink <slug> --reason <text>`** removes a binding. It keeps a record
 of what was bound, when, and your reason, makes no call to Jira, and needs no
@@ -358,14 +372,14 @@ transitions leads to the target status; where two do, name the one you want (see
 moved on past where its item is, is left alone. TCW never pulls a ticket back to
 match an item.
 
-**A ticket behind its item is brought forward, not refused.** If TCW has never
-claimed the ticket — you linked it to work that was already under way — it claims
-it and then walks it up through the statuses you mapped, one transition at a time,
-until it is where the item is. It only ever goes forward, only through statuses in
+**A ticket behind its item is brought forward when you asked for that.** If you
+linked it to work already under way with `--sync-status`, TCW claims it and moves
+it to where the item is: straight there when the workflow allows, otherwise up
+through the statuses you mapped, one transition at a time. It only ever goes forward, only through statuses in
 your `statuses` mapping, and it stops at the first step it cannot make, leaving the
-ticket where it got to and telling you. A ticket TCW *did* claim and somebody then
-moved backwards is not walked forward again — that is a move you made, and TCW does
-not undo it.
+ticket where it got to and telling you; `tcw work tracker sync <slug>` carries on
+from there. A ticket TCW *did* claim and somebody then moved backwards is not walked
+forward again — that is a move you made, and TCW does not undo it.
 
 One limit worth knowing: if your workflow forces a ticket through a status you have
 not mapped — `In Progress → Code Review → In Review`, with no `review`-style entry

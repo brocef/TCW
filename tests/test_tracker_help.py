@@ -73,12 +73,16 @@ def test_every_tracker_epilog_shows_an_example_invocation(command):
 
 def test_tracker_link_help_does_not_promise_a_claim():
     """`link` used to claim the ticket. Its own help said so, and that sentence is
-    the one a reader would act on, so its absence is worth pinning."""
+    the one a reader would act on, so its absence is worth pinning. Claiming is now
+    only what `--sync-status` opts in to, and only the text about that flag says so."""
     link = tracker_subparsers()["link"]
-    text = (f"{link.description}\n{link.epilog}\n{link.format_help()}\n"
+    opt_in = [p for p in link.epilog.split("\n\n") if "--sync-status" in p]
+    plain = [p for p in link.epilog.split("\n\n") if "--sync-status" not in p]
+    text = (f"{link.description}\n{chr(10).join(plain)}\n"
             f"{listing_help('link')}").lower()
     assert "claim" not in text
     assert "assign" not in text
+    assert opt_in and "claim" in " ".join(opt_in).lower()
 
 
 def test_import_help_still_says_it_claims_and_assigns():

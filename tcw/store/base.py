@@ -361,6 +361,10 @@ class Bound:
     sync: dict | None = field(default=None, compare=False)
     # A progress comment that did not post, in the same three shapes.
     comment: dict | None = field(default=None, compare=False)
+    # False when `link` bound work already past `backlog` without syncing the ticket's
+    # status, so a later move that cannot follow says why instead of blaming a hand
+    # move nobody made. Cleared once the ticket is where its item says.
+    status_synced: bool = field(default=True, compare=False)
 
     def key(self) -> tuple[str, str, str, str]:
         return (self.project, self.provider, self.ticket_id, self.part)
@@ -407,7 +411,8 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
                  ticket_key=fields_["ticket.key"],
                  ticket_url=_binding_text(ticket.get("url")),
                  bound=_binding_text(bound), sync=_sync_record(data.get("sync")),
-                 comment=_comment_record(data.get("comment")))
+                 comment=_comment_record(data.get("comment")),
+                 status_synced=data.get("status-synced") is not False)
 
 
 SYNC_STATES = ("pending", "conflicting")

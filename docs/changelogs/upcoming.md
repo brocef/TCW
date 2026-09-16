@@ -11,12 +11,20 @@ category.
   the ticket does not offer, that matches more than one offered transition, or that
   leads to a status other than the mapped one is refused before anything is sent.
   Validation is shape-only, as for `statuses`.
-- Tracker sync walks a ticket forward when TCW has never claimed it: the claim, then
-  one transition per mapped status, re-reading between hops, up to where the item is.
-  Bounded by the ladder of mapped statuses and forward-only. `tcw work tracker link`
-  now writes a `pending`/`claim: owed` sync record when it binds an item past
-  `backlog`, which is both true and what makes the catch-up reachable from
-  `tcw work tracker sync`.
+- `tcw work tracker link --sync-status`: for an item past `backlog`, records a
+  `pending`/`claim: owed` sync record and delivers it at once — the claim, then one
+  transition straight to the item's mapped status when offered, otherwise one per
+  mapped status, re-reading between hops. Forward-only: a ticket already past its
+  item is refused rather than claimed back, and a resolved ticket is never moved.
+  What does not arrive stays recorded for `tracker sync`, which resumes a walk the
+  claim finished but a later hop did not, and aims at the item's current status
+  rather than the recorded move's.
+- A plain `link` of an item past `backlog` changes nothing in the tracker and writes
+  `status-synced: false` on the binding (not part of `--json`), warning when the
+  ticket's status differs from the item's mapped one. While that note stands, a
+  move that cannot follow is `held` with the `--sync-status` repair instead of
+  `conflicting`, records nothing, and strict mode's refusal names the same repair.
+  The note clears once a delivery finds the ticket where its item says.
 
 ## Fixed
 
@@ -32,7 +40,8 @@ category.
   inverting the status mapping, which is ambiguous when `completed` and `discarded`
   map to one name.
 - `tcw work tracker sync <slug>` exits 1 when the named item was started by somebody
-  else, naming the owed record and `TCW_WORK_OWNER`; `--all` still exits 0. Strict
+  else and still carries a sync or comment record, naming it and `TCW_WORK_OWNER`;
+  with nothing recorded, and under `--all`, it still exits 0. Strict
   mode's refusal names the owner to run as, so its "run sync" advice can no longer
   end in a silent success.
 - Messages distinguish an unassigned ticket from one somebody else holds.
@@ -41,6 +50,9 @@ category.
 
 - `ladder_steps`/`ladder`/`forward_from` in `tcw/tracker/sync.py` express the mapped
   statuses as an ordered ladder, used both for the drift window and for the walk.
+  `MOVE_ONTO` (the inverse of `MOVE_STATUS`) is shared by the walk and `link`.
+- `transitions` keys other than `claim` are unknown to 2.3.0 and earlier, which
+  reject the whole tracker block when one is set.
   `assess_move` takes the move it is serving and the transition named for it.
 - `tests/tracker_fake.py` records applied transition ids and gains the `AMBIGUOUS`,
   `STRICT_LADDER` and `BROKEN_LADDER` workflows.

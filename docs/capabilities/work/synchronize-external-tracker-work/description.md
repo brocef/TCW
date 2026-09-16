@@ -19,13 +19,16 @@ lead there. If someone else holds the ticket, if it has been moved on past where
 item is, or if the named transition is not offered or leads elsewhere, TCW leaves it
 alone and tells me why. It never follows Jira and never pulls a ticket back.
 
-A ticket that is *behind* its item is brought forward rather than refused. Where TCW
-has never claimed it — I linked it to work already under way, which `tcw work tracker
-link` records — it claims the ticket and then walks it up through the statuses I
-mapped, one transition at a time, until it is where the item is. Forward only, only
-through statuses I named, and it stops at the first step it cannot make, leaving the
-ticket where it reached. A ticket TCW did claim and someone then moved backwards
-stays drift, and is not walked forward again.
+Linking a ticket to work already under way changes nothing in Jira unless I ask.
+`tcw work tracker link` warns me when the ticket's status does not match the item, and
+later moves of that item say the ticket was linked without its status synced instead
+of blaming a hand move nobody made. With `--sync-status`, TCW claims the ticket and
+brings it to where the item is — in one transition when the workflow offers one,
+otherwise up through the statuses I mapped, one at a time. Forward only, never on a
+ticket already resolved, only through statuses I named, and it stops at the first
+step it cannot make, leaving the ticket where it reached for `sync` to carry on from.
+A ticket TCW did claim and someone then moved backwards stays drift, and is not
+walked forward again.
 
 A hand move that takes the ticket part of the way TCW was trying to take it is
 accepted rather than reported as drift: anywhere on the path between where the ticket

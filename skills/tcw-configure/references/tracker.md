@@ -2,7 +2,7 @@
 
 A node connects to an external tracker for `tcw work tracker list` and `show`,
 which read tickets; for `import`, which claims a ticket through the workflow
-transition named in `transitions.claim`, and `link`, which only records a binding;
+transition named in `transitions.claim`, and `link`, which only records a binding unless `--sync-status` asks it to bring the ticket up to date;
 and for the lifecycle commands, which claim a bound item's ticket at `start` and
 move it to the statuses under `statuses` as the item moves. What those commands do, which
 file a tracker problem names, and what a malformed block does at runtime is in the
@@ -55,7 +55,9 @@ mode it may be partial: it exists to disambiguate, so name only what is ambiguou
 A move with no entry keeps deriving its transition from the status. There is no
 `start` key — that move is the claim, and `transitions.claim` names it. A named
 transition the ticket does not offer, or that matches twice, or that leads to a
-status other than the mapped one, is refused rather than ignored.
+status other than the mapped one, is refused rather than ignored. **Upgrade every
+copy of `tcw` first:** version 2.3.0 and earlier report these keys as unknown and
+treat the whole tracker block as broken.
 
 `statuses` names the tracker **status** (not transition) a bound ticket should be in
 for each local status: `active`, `review`, `completed`, `discarded`. Names match

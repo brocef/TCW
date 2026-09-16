@@ -160,13 +160,15 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
 
 def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
                      ticket_key: str, ticket_url: str, bound: str,
-                     unlinked: list) -> str:
+                     unlinked: list, status_synced: bool = True) -> str:
     """The `tracker.yaml` text for a new binding. No credential goes in it.
 
     The document records that an item and a ticket are the same work and nothing
     more: it names no account, because binding does not claim the ticket.
+    `status_synced=False` notes that the item was already past `backlog` and the
+    ticket's status was not brought along.
     """
-    return yaml.safe_dump({
+    document = {
         "schema": 1,
         "provider": provider,
         "project": project,
@@ -174,10 +176,14 @@ def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
         "ticket": {"id": ticket_id, "key": ticket_key, "url": ticket_url},
         "bound": bound,
         "unlinked": list(unlinked),
-    }, sort_keys=False, allow_unicode=True)
+    }
+    if not status_synced:
+        document["status-synced"] = False
+    return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
 
 
-_BINDING_KEYS = ("provider", "project", "part", "ticket", "bound", "sync", "comment")
+_BINDING_KEYS = ("provider", "project", "part", "ticket", "bound", "sync", "comment",
+                 "status-synced")
 
 
 def unlinked_history(content: str | None) -> list:
@@ -193,6 +199,11 @@ def with_sync_record(content: str, record: dict | None) -> str:
     """`content` with its `sync` record set to `record`, or removed for `None`.
     Every other key keeps its value and its place."""
     return _with_key(content, "sync", record)
+
+
+def with_status_synced(content: str) -> str:
+    """`content` without the note that its ticket's status was never synced."""
+    return _with_key(content, "status-synced", None)
 
 
 def with_comment_record(content: str, record: dict | None) -> str:

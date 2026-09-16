@@ -712,3 +712,18 @@ def test_a_finished_held_item_keeps_the_record_that_can_still_deliver_its_move(
     code, out, err = cli(root, "work", "tracker", "sync", "--all")
     assert code == 0, (out, err)
     assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_refusal_for_a_plainly_linked_ticket_names_the_opt_in(tmp_path, fake):
+    """Strict mode refuses the move before it happens, so its refusal is the only place
+    to say the ticket was linked without its status synced, and how to opt in."""
+    root = make_node(tmp_path, statuses=STATUSES)
+    st = FsWorkStore.open(root)
+    slug = st.create("Already under way").slug
+    st.start(slug, owner="a@example.test")
+    assert cli(root, "work", "tracker", "link", slug, "SYNC-1")[0] == 0
+    set_tracker_key(root, "strict", True)
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and REFUSED in err
+    assert "linked without syncing its status" in err and "--sync-status" in err
+    assert status(root, slug) == "active" and fake.writes() == []
