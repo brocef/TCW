@@ -18,9 +18,17 @@ REPO = Path(__file__).resolve().parent.parent
 # `tcw work procedure prompt` changes both sides on purpose, and changes or
 # removes its row here in the same commit. Until then this is what stops the
 # shipped default and the skill drifting apart.
+
+
+class Composes(str):
+    """A source that now reads its default through `tcw work procedure prompt`
+    instead of carrying a copy of it. Checked for the injection, the manual
+    fallback, and that no paragraph of the default survives in it."""
+
+
 SOURCES = {
     "unattended-work": "skills/tcw-extras-autonomous-work/SKILL.md",
-    "triage-issues": "skills/tcw-extras-triage-issues/SKILL.md",
+    "triage-issues": Composes("skills/tcw-extras-triage-issues/SKILL.md"),
     "documentation-sync": "skills/documentation-sync/SKILL.md",
     "post-mortem": "skills/tcw-post-mortem/SKILL.md",
     "create-work": "skills/tcw-work-create/SKILL.md",
@@ -48,9 +56,25 @@ def test_the_source_map_covers_exactly_the_ids():
     assert set(SOURCES) == set(PROCEDURE_IDS)
 
 
+def _copied_paragraphs(default: str, text: str) -> list[str]:
+    """Paragraphs of `default` (40 characters or longer) found in `text`."""
+    return [p for p in (q.strip() for q in default.split("\n\n"))
+            if len(p) >= 40 and p in text]
+
+
 @pytest.mark.parametrize("pid", PROCEDURE_IDS)
 def test_each_default_is_todays_text(pid):
     """Criterion 2: a project that configures nothing gets today's words."""
+    if isinstance(SOURCES[pid], Composes):
+        text = (REPO / SOURCES[pid]).read_text(encoding="utf-8")
+        assert f"!`tcw work procedure prompt {pid}" in text, \
+            f"{SOURCES[pid]} does not inject `tcw work procedure prompt {pid}`"
+        _, _, summary = text.partition("## Document command summary")
+        assert f"tcw work procedure prompt {pid}" in summary, \
+            f"{SOURCES[pid]} has no manual fallback naming the command"
+        copied = _copied_paragraphs(load_builtins().procedures[pid], text)
+        assert not copied, f"{SOURCES[pid]} still carries its default: {copied[:1]}"
+        return
     expected = _body(REPO / SOURCES[pid]).strip()
     assert expected, f"{SOURCES[pid]} has no body to compare"
     assert load_builtins().procedures[pid].strip() == expected, \
