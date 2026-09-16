@@ -1,7 +1,7 @@
 ---
 name: documentation-sync
 description: Use when completing a coding task and deciding whether documentation needs updating. Use when code changes have been made and you need to check if README, changelog, guides, or other docs should reflect those changes. Use when a project has documentation entries — from `tcw work docs`, or a `## Documentation Sync` section in its CLAUDE.md — and a change may have fired one. Use after completing development work to update release notes and changelogs. Use when offering to cut a new version of a project.
-allowed-tools: Bash(tcw *), Bash(cat *)
+allowed-tools: Bash(tcw *)
 dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
 
@@ -14,7 +14,7 @@ After completing code changes, get the project's documentation entries and evalu
 - `"config"` — the entries are declared in `tcw-config.yaml` under `work.documentation`, validated by `tcw validate`, and the `entries` array is authoritative. Use it and read no Markdown.
 - `"agent-guide"` — the project has declared nothing, so fall back to the legacy convention: a `## Documentation Sync` section in the project's `CLAUDE.md` / `AGENTS.md`, holding a bullet list of `- path [Trigger] — description`.
 
-Outside a TCW node the command does not exist; use the legacy convention directly. If neither is present, ask the user whether to add entries — read the `tcw-configure` skill's `docs-sync.md` to walk them through it.
+Outside a TCW node `tcw work docs` does not apply; use the legacy convention directly. If neither is present, ask the user whether to add entries — read the `tcw-configure` skill's `docs-sync.md` to walk them through it.
 
 This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `tcw-work` lifecycle invokes it at three points:
 
@@ -51,7 +51,7 @@ Each entry has three parts:
 2. **Trigger** (in brackets) — when this file needs updating
 3. **Description** — what the file is for and how to write updates for it
 
-!`tcw work procedure prompt documentation-sync 2>/dev/null || cat "${CLAUDE_PLUGIN_ROOT}/tcw/work/procedures/documentation-sync.md" || true`
+!`tcw work procedure prompt documentation-sync || true`
 
 ## Document command summary
 
@@ -61,10 +61,14 @@ tasks, and offering a version.
 
 ```sh
 # Get the procedure, composed with this project's text
+# (outside a TCW node it prints TCW's own text)
 tcw work procedure prompt documentation-sync
-# Only if that command fails (not a TCW node, or no tcw CLI): TCW's own text
-cat <plugin>/tcw/work/procedures/documentation-sync.md
 ```
+
+If the `tcw` CLI is not installed at all, read TCW's own text from
+`<plugin>/tcw/work/procedures/documentation-sync.md` instead. If the command is
+installed but fails, report the failure rather than reading that file: it would
+silently skip this project's own procedure.
 
 If your harness did not run them, run them yourself and follow the output in
 place of the line above. `references/` in that output means this skill's
