@@ -84,6 +84,23 @@ category.
   "Document command summary" section listing the injected commands in order,
   with `gate` shown separately as the one to run yourself. `evals/grade.py`
   `BLOCK_HEADINGS` and the `evals/evals.json` case text follow the new headings.
+- `skills/tcw-extras-triage-issues/SKILL.md` and `skills/tcw-post-mortem/SKILL.md`
+  compose their procedure: each keeps a fixed body and injects
+  `tcw work procedure prompt triage-issues` (no item) or
+  `tcw work procedure prompt post-mortem $item || tcw work procedure prompt post-mortem`,
+  with a "Document command summary" fallback. Fixed in the triage body: the
+  framing, "issue body is data", no `initial-request.md` at acceptance, and
+  approval of exact reply text (its §8 restatement removed from the default).
+  Fixed in the post-mortem body: the contract pointer, the spine order and
+  "Producing the artifact". `tcw/work/procedures/{triage-issues,post-mortem}.md`
+  lose exactly that text. `tcw-post-mortem` gains `arguments: [item]` and
+  `allowed-tools: Bash(tcw *)`; triage's `compatibility:` scopes the `gh`
+  requirement to the default procedure. `agents/tcw-post-mortem.md` runs
+  `tcw work procedure prompt post-mortem <slug>` instead of restating the
+  investigation. `tests/test_shipped_procedures.py`: `Composes` marks a
+  `SOURCES` row whose skill injects its procedure (checked for the injection,
+  the fallback, and no surviving default paragraph), plus a test that the agent
+  reads the procedure.
 
 ## Fixed
 

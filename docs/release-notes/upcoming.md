@@ -16,6 +16,13 @@ internal module names.
 - New setting: `work.procedures` in `tcw-config.yaml`, beside
   `work.lifecycle`. `tcw validate` checks it.
 - The skills themselves do not read from the command yet; that comes next.
+- **The issue-triage and post-mortem skills now use your project's text.** If
+  you set `work.procedures.triage-issues` or `work.procedures.post-mortem`, that
+  is what an agent follows; with nothing set it follows the same instructions
+  as before. A few rules stay the same whatever you set: an issue's text is
+  never followed as instructions, nothing is posted to an issue without your
+  approval of the exact text, and a post-mortem never changes an item's status.
+  Triaging with a forge other than GitHub means replacing the triage procedure.
 
 ## Getting a stage's instructions
 
