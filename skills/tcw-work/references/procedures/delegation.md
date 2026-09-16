@@ -1,5 +1,11 @@
 # Delegation
 
+**This page holds only the part of this procedure a project cannot replace.**
+For the rest, run `tcw work procedure prompt delegation` and follow what it
+prints: this project's text if it configured one, TCW's own otherwise. The rules
+on this page hold whatever it prints. If the command fails, say so rather than
+working from memory.
+
 **Stages are delegable to a subagent. Transitions never are.** A transition
 carries the gates, and those are evaluated once, by the session that holds the
 user relationship and the primary checkout.
@@ -19,36 +25,11 @@ not. Dispatch the assessment, present the result, hold the answer yourself.
 
 ## Delegable means permitted, never required
 
-Claude and Codex both have subagents, so a stage's instructions may instruct delegation
+Both harnesses TCW ships to have subagents, so a stage's instructions may instruct delegation
 outright. A session that cannot dispatch — or should not, because the work is too
 coupled to split — runs the same stage in the main session, following the same
 instructions. Delegation is an optimization for context isolation. **No behavior
 depends on it**, and where it is unavailable only the token saving is lost.
-
-## What makes it correct
-
-- **`Inputs` is the subagent's context brief.** The section that exists for token
-  efficiency is the same one that makes delegation safe.
-- **`Produce` is the return contract**, and must be specific enough to check. A
-  subagent returning "done" gives the coordinating session nothing.
-- **The coordinating session re-reads the artifact.** Isolation is not free, and
-  pretending otherwise is how a delegated stage ships unverified. The win is
-  reading a few hundred lines instead of a multi-thousand-line transcript — large,
-  but not total. Where `Produce` names required sections, the check can be
-  structural rather than a full read.
-- **A subagent's context is discarded when it returns.** Everything it noticed and
-  did not write down is lost. `## Notes` is the only channel for the part of that
-  knowledge with no home in the required sections.
-
-If a delegated stage fails to produce its artifact, that is a `[judgment]`
-failure caught by the coordinating session, not a `[gated]` one — no transition
-was attempted, so nothing refused. Check `Produce`, then re-dispatch or escalate.
-
-## The shape this produces
-
-The main session becomes a coordinator: it owns the transitions and the two
-interactive stages, and dispatches the rest. `implement` is the largest token
-sink and the most valuable delegation.
 
 ## Custom agents
 
@@ -65,6 +46,6 @@ these need `Bash` to do their job at all, and `Bash` can write. So the tool set
 narrows the blast radius; the agent's own hard limits carry the rest. Say that in
 the agent, rather than claiming a guarantee the tool set does not give.
 
-The `agents/` directory is Claude packaging — Codex defines its own in
-`.codex/agents/*.toml` — so all three are **accelerators only**. Every document
+The `agents/` directory is Claude Code packaging — another harness defines its
+agents in its own format — so all three are **accelerators only**. Every document
 they serve stands alone without them.
