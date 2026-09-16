@@ -2262,7 +2262,8 @@ def _tracker_link(args: argparse.Namespace) -> int:
     sync_status = under_way and args.sync_status
     if sync_status and (someone_else := _started_by_someone_else(
             item, _local_owner(st),
-            f"tcw work tracker link {args.slug} {args.ticket} --sync-status")):
+            f"tcw work tracker link {args.slug} {args.ticket}"
+            + (f" --part {part}" if args.part else "") + " --sync-status")):
         print(f"tcw work tracker link: {args.slug} was not linked: --sync-status acts as "
               f"you, and it was {someone_else}", file=sys.stderr)
         return 1

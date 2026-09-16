@@ -17,7 +17,8 @@ category.
   mapped status, re-reading between hops, and writes `catch-up: true` on the binding.
   Forward-only: no claim transition is applied to a ticket already past `active`
   (one assigned to the caller carries on from where it is — refused if resolved, and
-  under strict mode only when the claim would be exclusive; any other is refused), a
+  under strict mode, when it is on the `active` status itself, only if the claim would
+  be exclusive; any other is refused), a
   ticket past its item is refused, and a resolved ticket is never moved. Refused for
   an item somebody else started. What does not arrive stays recorded for `tracker
   sync`, which resumes a walk the claim finished but a later hop did not, and aims at
@@ -31,9 +32,10 @@ category.
   `status-synced: false` on the binding (not part of `--json`). While that note
   stands, a move refused only because the ticket's status is out of its window is
   `held` with the `--sync-status` repair instead of `conflicting`, and records
-  nothing; another holder, an unclaimed ticket and transition-name refusals stay
-  `conflicting`. Strict mode's refusal names the same repair. The note
-  clears once a delivery — or a checking `sync` — finds the ticket where its item says.
+  nothing; another holder, an unclaimed ticket whose status is in step, and
+  transition-name refusals stay `conflicting`. Strict mode's refusal names the same
+  repair. The note clears once a delivery — or a checking `sync` — finds the ticket
+  where its item says.
 - **`tcw work stage validate [words…]`** (`tcw/work/cli.py`): reports whether a
   `tcw-work-stage` invocation's arguments are ones `tcw work stage prompt` would
   accept — a known stage id, no item for `inbox`, otherwise an optional

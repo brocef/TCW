@@ -1794,3 +1794,52 @@ def test_an_unclaimed_ticket_put_in_step_after_a_plain_link_is_an_ordinary_confl
     code, _out, err = cli(root, "work", "submit", slug)
     assert code == 1 and "unassigned" in err and "linked without" not in err, err
     assert record(root, slug)["state"] == "conflicting"
+
+
+def test_strict_mode_carries_on_from_a_ticket_already_yours_in_review(tmp_path,
+                                                                    monkeypatch):
+    """The exclusivity check is about the claim's own status. A ticket already yours
+    and past it, on a workflow whose claim is exclusive, is not refused for not being
+    in progress — that would leave moving it back as the only way on."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC, status="In Review",
+                              assignee=A)
+    slug = under_way(root, "completed")
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["strict"] = True
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    code, _out, err = sync_link(root, slug)
+    assert code == 0, err
+    assert fake_.tickets[TICKET_ID].status == "Done" and fake_.applied == ["31"]
+
+
+def test_the_suggested_link_for_somebody_elses_item_keeps_its_part(tmp_path,
+                                                                  monkeypatch):
+    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC)
+    st = FsWorkStore.open(root)
+    slug = st.create("Theirs").slug
+    st.start(slug, owner="b@example.test")
+    code, _out, err = cli(root, "work", "tracker", "link", slug, KEY, "--part", "api",
+                          "--sync-status")
+    assert code == 1, err
+    assert (f"TCW_WORK_OWNER=b@example.test tcw work tracker link {slug} {KEY} "
+            f"--part api --sync-status") in err, err
+
+
+def test_a_closed_ticket_somebody_else_holds_is_refused_as_closed(tmp_path,
+                                                                 monkeypatch):
+    """Asking the user to assign a closed ticket to themselves only leads to the next
+    refusal, so the resolved check comes first."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, {
+        "To Do": [("21", "Start Progress", "In Progress")],
+        "Won't Do": [("31", "Finish", "Done")], "Done": []})
+    fake_.account("b@example.test", B, "Bob")
+    slug = bound_item(root)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])    # delivers nothing
+    fake_.tickets[TICKET_ID].status, fake_.tickets[TICKET_ID].assignee = "Won't Do", B
+    code, out, _err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1 and "already resolved" in out and "Assign it" not in out, out
+    assert fake_.applied == []

@@ -37,8 +37,9 @@ from datetime import datetime, timezone
 
 from tcw.store.base import RESOLVED_STATUSES, target_status, transition_name
 from tcw.tracker.claim import _normalize
-from tcw.tracker.intake import (BINDING_SIDECAR, Bound, binding_of, claim, read_ticket,
-                                same_site, with_status_synced, with_sync_record)
+from tcw.tracker.intake import (BINDING_SIDECAR, Bound, ClaimOutcome, binding_of, claim,
+                                read_ticket, same_site, with_status_synced,
+                                with_sync_record)
 from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerRateLimited,
                               TrackerUnavailable)
 
@@ -482,6 +483,14 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 return finish(CONFLICTING, (
                     f"{ticket.key} is in '{ticket.status}', which is past where its item "
                     f"is, so it was not claimed or moved back."))
+            if ticket.category == "done":
+                # `claim` refuses a resolved ticket first, and skipping it must not lose
+                # that: with the window set to where the ticket is, `assess_move`
+                # would not look, and a closed ticket could change resolution. Before
+                # the assignment, so a closed ticket is never "assign it to yourself".
+                return finish(CONFLICTING, (
+                    f"{ticket.key} is already resolved ('{ticket.status}'), so it was "
+                    f"not moved."))
             if ticket.assignee_id != ticket.me_id:
                 whose = (f"assigned to {ticket.assignee_name}" if ticket.assignee_id
                          else "unassigned")
@@ -489,18 +498,12 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                     f"{ticket.key} is in '{ticket.status}' and {whose}. Claiming it from "
                     f"there could move it back, so nothing was sent. Assign it to yourself "
                     f"in the tracker, then run `tcw work tracker sync {slug}`."))
-            if ticket.category == "done":
-                # `claim` refuses a resolved ticket, and skipping it must not lose
-                # that: with the window set to where the ticket is, `assess_move`
-                # would not look, and a closed ticket could change resolution.
-                return finish(CONFLICTING, (
-                    f"{ticket.key} is already resolved ('{ticket.status}'), so it was "
-                    f"not moved."))
-            if config.strict:
+            if config.strict and rung == 0:
                 # The same question a claim answers under strict mode: does the
                 # assignment authorize work, on a workflow that could let a second
-                # person claim it too? Skipping the transition does not skip that.
-                from tcw.tracker.intake import ClaimOutcome
+                # person claim it too? Skipping the transition does not skip that. It
+                # is a question about the claim's own status, so a ticket already past
+                # it is not asked — `claim_refusal` would refuse it for not being there.
                 refusal = claim_refusal(client, config, bound.ticket_id, ClaimOutcome(
                     row="1e", claimed=True, message="", issue_id=ticket.issue_id,
                     key=ticket.key, url=ticket.url, summary=ticket.summary,
