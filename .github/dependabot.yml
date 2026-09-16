@@ -1,0 +1,30 @@
+# Weekly version-update pull requests. Security updates are turned on in the
+# repository settings and do not need an entry here.
+#
+# There is no `pip` entry: the only runtime dependency is `PyYAML>=6`, which
+# already accepts every new release, and raising that minimum would only stop
+# users installing TCW next to an older PyYAML.
+#
+# Merge these only after the `test` workflow passes on the pull request. A
+# release publishes on tag push and a failing suite stops it without an obvious
+# error, so a broken update merged now shows up later as a release that never
+# appeared.
+version: 2
+updates:
+    - package-ecosystem: "npm"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+      # One pull request for every minor and patch bump; each major bump gets
+      # its own, since those are the ones likely to need code changes.
+      groups:
+          minor-and-patch:
+              update-types: ["minor", "patch"]
+
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+      groups:
+          actions:
+              patterns: ["*"]
