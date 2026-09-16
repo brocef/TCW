@@ -748,6 +748,7 @@
   resolution: done
   resolved: '2026-09-16'
 2026-09-16-compose-tcw-extras-triage-issues-and-tcw-post-mortem-from-project-bindings:
+  location: eb2806bda131427ff02d9eb34a3cc62a931031eb
   resolution: done
   resolved: '2026-09-16'
 2026-09-16-route-agents-to-tcw-work-stage-for-stage-instructions-and-validate-its-arguments:
