@@ -1,15 +1,3 @@
-# Autonomous TCW work
-
-Drive the named items through the `tcw-commands-drive-work-to-completion`
-skill, back to back.
-Wherever the lifecycle would ask the human — a review, an open question, the
-verify decision, a closeout choice — ask **the two advisors** instead and decide
-yourself. Stop only on a hard blocker.
-
-**Ask once, at the start:** confirm the item set (the user's list, or pick from
-`tcw work list --status backlog`) and the order. After that, no more questions
-until the run ends or a hard blocker hits.
-
 ## The advisors
 
 Run both in parallel on the same brief:
@@ -48,30 +36,3 @@ not let the run wait on the subagent alone.
 | Capability reconciliation   | The `tcw-capabilities` sub-skill, unchanged.                                                                            |
 | Version choice              | Never cut one. Accumulate into `upcoming.md` and move on.                                                               |
 | Closeout route              | `tcw work complete`, then merge the feature branch into main **locally**. Never `git push`.                             |
-
-## Hard blockers — stop, report, wait
-
-- Credentials, MFA, or any human-gated console: package publishing, app-store
-  submission, production database access.
-- Unrecoverable: data deletion, force-push, rewriting main, remote branch
-  deletion, production migrations.
-- Product direction: what a feature should *be*, pricing, copy that speaks for
-  the product.
-- Spend on the user's paid accounts.
-- Advisors split on an irreversible choice, or both call the item's premise
-  wrong.
-- The spec contradicts the code and no reading makes both true.
-
-Not blockers: ugly code, a missing fixture, one flaky suite, an unfamiliar lint
-rule, or any disagreement you can settle by reading the code.
-
-## Leave the audit trail
-
-Append an `## Autonomous decisions` section to the item's `outcome.md`: one line
-per consult — the question, what each advisor said, what you chose, why. This is
-what makes an unattended run reviewable afterwards. The run is not finished
-without it.
-
-Close with one block per item: slug, resolution, decisions taken, review
-findings rejected, follow-ups filed, and anything you would have asked about if
-you could.
