@@ -41,32 +41,32 @@ scan titles alphabetically.
 Current behavior, from the code:
 
 - `WorkStore.board` returns `topo_order(priority_order(self.query(status)))`
-  (`tcw/store/base.py:3207-3210`). `priority_order` puts items with a priority
+  (`tcw/store/base.py:3326-3329`). `priority_order` puts items with a priority
   first, highest number first, and keeps unset ones after them in input order
-  (`tcw/store/base.py:2577-2583`). `topo_order` then moves an item that blocks
-  another above the item it blocks (`tcw/store/base.py:2542-2574`).
+  (`tcw/store/base.py:2696-2703`). `topo_order` then moves an item that blocks
+  another above the item it blocks (`tcw/store/base.py:2661-2693`).
 - The "input order" both of those keep is the order of item folder paths
-  (`FsWorkStore._item_dirs`, `tcw/store/fs.py:3670-3692`), which for top-level
+  (`FsWorkStore._item_dirs`, `tcw/store/fs.py:3670`), which for top-level
   items is alphabetical by status folder and then by slug. Because a slug begins
   with its creation date, that is roughly creation order.
 - The CLI reads that order through `_visible_board_items`
-  (`tcw/work/cli.py:506-514`), which filters by `--status`, `--all` and `--tag`
+  (`tcw/work/cli.py:509-517`), which filters by `--status`, `--all` and `--tag`
   without reordering.
-- `_render_board` (`tcw/work/cli.py:552-568`) groups children under their
+- `_render_board` (`tcw/work/cli.py:555-571`) groups children under their
   parent while preserving the incoming order within each group, so whatever
   order the item list has is also the order siblings print in.
-- `_render_descendant_boards` (`tcw/work/cli.py:571-639`), used by
+- `_render_descendant_boards` (`tcw/work/cli.py:574-643`), used by
   `-i`/`--include-descendants`, prints one section per node in registered
   order, and indents items under a visible parent or owning epic, which may be
   in another node. Its per-owner child lists are built by walking all nodes'
-  items in node order (`tcw/work/cli.py:588-614`).
+  items in node order (`tcw/work/cli.py:591-617`).
 - The `list` options are `--status`, `--tag`/`--tags`, `--all` and
   `-i`/`--incl-desc`/`--include-descendants` (`tcw/work/cli.py:3074-3082`).
 - The values being sorted: `WorkItem.priority` is `int | None`,
   `WorkItem.effort` is one of `WORK_LEVELS = ("low", "medium", "high",
-  "very-high")` or `""` for unset (`tcw/store/base.py:852`, `2455-2456`), and
+  "very-high")` or `""` for unset (`tcw/store/base.py:861`, `2574-2575`), and
   `WorkItem.title` is a string. `WorkItem.created` is annotated `str`
-  (`tcw/store/base.py:2452`) but is taken straight from the parsed `state.yaml`
+  (`tcw/store/base.py:2571`) but is taken straight from the parsed `state.yaml`
   (`tcw/store/fs.py:4255`). YAML reads a quoted `'2026-09-15'` as a string, an
   unquoted `2026-09-15` as a `datetime.date`, and an unquoted
   `2026-09-15T14:03:22-07:00` as a `datetime.datetime`. Every item in this
@@ -84,9 +84,9 @@ Current behavior, from the code — each of these is a bare `for … print(…)`
 no count, no limit and no heading:
 
 - `_inbox_list` (`tcw/work/cli.py:451-457`) — one line per entry, no heading.
-- `_render_board` (`tcw/work/cli.py:552-568`) — rows only; the flat board has
+- `_render_board` (`tcw/work/cli.py:555-571`) — rows only; the flat board has
   **no** heading at all, and `tests/test_work.py:1757` pins that absence.
-- `_render_descendant_boards` (`tcw/work/cli.py:571-639`) — the only command
+- `_render_descendant_boards` (`tcw/work/cli.py:574-643`) — the only command
   that already has sections: `print(f"# {label}")` at `tcw/work/cli.py:635`,
   one per node, blank-line separated, no count.
 - `tcw taxonomy list` (`tcw/taxonomy/cli.py:44-62`) — rows only. It is already
