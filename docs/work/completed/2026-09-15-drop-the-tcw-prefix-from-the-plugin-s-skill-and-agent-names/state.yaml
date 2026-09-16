@@ -1,7 +1,7 @@
 slug: 2026-09-15-drop-the-tcw-prefix-from-the-plugin-s-skill-and-agent-names
 title: Drop the tcw- prefix from the plugin's skill and agent names
 created: '2026-09-15'
-resolution: null
+resolution: done
 priority: 40
 effort: medium
 complexity: low
