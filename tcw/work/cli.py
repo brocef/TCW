@@ -1,6 +1,8 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -25,6 +27,7 @@ from tcw.store.fs import (
     qualified_work_ref_problem, registered_project_id, remove_worktree,
     resolve_qualified_work_ref,
 )
+from tcw.harness import OTHER, ancestor_programs, detect
 from tcw.stdin import read_piped_stdin
 from tcw.store.project import worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
@@ -1243,7 +1246,7 @@ class _HidesRemovedSpellings(argparse.ArgumentParser):
     registering them is for.
 
     The guard is narrow on purpose: it fires only for the action that actually
-    offers both real verbs, so every other subcommand group keeps argparse's own
+    offers the real verbs, so every other subcommand group keeps argparse's own
     message unchanged.
     """
 
@@ -1470,6 +1473,81 @@ def _stage_prompt(args: argparse.Namespace) -> int:
               f"enter the stage.", file=sys.stderr)
 
     return _stage_tail(args, step, st, item, bare, args.slug)
+
+
+VALIDATE_ERROR = ("**Skill Invocation Error: The tcw-work-stage skill must be invoked "
+                  "with one to two arguments: `tcw-work-stage stage-id [work-slug]`**")
+VALIDATE_NOTICE = ("Your AI agent harness does not support dynamic context injection. "
+                   "You will need to manually run all commands with !`command` to "
+                   "interpret this skill.")
+
+
+def _stage_invocation_problem(words: list[str]) -> str | None:
+    """Why `tcw work stage prompt` would refuse these words, or None if it would not.
+
+    Mirrors `_stage_prompt`'s rules without printing: a known stage id, no item
+    for `inbox`, and otherwise an optional item that resolves to exactly one.
+    The item's status is deliberately not judged — `prompt` prints for an item in
+    the wrong status, and refusing here would contradict the verb this guards.
+    """
+    if not words:
+        return "No arguments were given."
+    if len(words) > 2:
+        return f"{len(words)} arguments were given: `{' '.join(words)}`."
+    step = LIFECYCLE_STEPS_BY_ID.get(words[0])
+    if step is None or step.kind != "stage":
+        legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
+        return f"`{words[0]}` is not a stage; expected one of {', '.join(legal)}."
+    if len(words) == 2 and step.id == "inbox":
+        return "`inbox` runs before a work item exists and takes no work item."
+    captured = io.StringIO()
+    with contextlib.redirect_stderr(captured):
+        try:
+            if len(words) == 1:
+                # `prompt` still opens the store with no item, so it refuses
+                # outside a work node or on an unprovisioned store — and so must
+                # this, or the answer would hinge on the word count.
+                if _store() is None:
+                    return captured.getvalue().strip() or "No work store here."
+                return None
+            resolved = _resolve(words[1], "stage validate")
+            if resolved is None:
+                return captured.getvalue().strip() or f"`{words[1]}` cannot be resolved."
+            st, bare = resolved
+            item = st.get(bare)
+        except (MultipleMatch, ValueError) as e:
+            # Raised rather than printed by the resolver or the store (an
+            # ambiguous locator, an interrupted claim). `main` would print them
+            # to stderr, which the skill line discards, leaving no report at all.
+            return str(e)
+    if item is None:
+        return f"No work item matches `{words[1]}`."
+    return None
+
+
+def _stage_validate(args: argparse.Namespace) -> int:
+    """`tcw work stage validate [words…]` — would `prompt` accept these arguments?
+
+    Injected as the first line of the `tcw-work-stage` skill, so everything goes
+    to stdout (Claude merges the streams anyway, and the skill line discards
+    stderr so an older `tcw` without this verb injects nothing). Valid prints
+    nothing under Claude Code; invalid prints a Markdown usage error and exits 1,
+    which the skill line absorbs with `|| true` — a non-zero injected command
+    would otherwise cancel the whole skill load.
+
+    Under any other harness the notice that injected lines must be run by hand
+    comes first, even when the arguments are valid: that reader ran this by hand,
+    and the rest of the skill holds more such lines.
+    """
+    problem = _stage_invocation_problem(args.words)
+    paragraphs = []
+    if detect(ancestor_programs(), os.environ) == OTHER:
+        paragraphs.append(VALIDATE_NOTICE)
+    if problem is not None:
+        paragraphs += [VALIDATE_ERROR, problem]
+    if paragraphs:
+        print("\n\n".join(paragraphs))
+    return 0 if problem is None else 1
 
 
 def _stage_without_item(args: argparse.Namespace, step) -> int:
@@ -2969,7 +3047,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     # it to a bare "verb" would hide the real two from `--help` — which is also
     # where `tests/test_documented_cli_surface.py` discovers the CLI surface.
     stg = pstg.add_subparsers(dest="stage_verb", required=True,
-                              metavar="{prompt,gate}")
+                              metavar="{prompt,gate,validate}")
 
     # Optional slug on both, required in the handlers: argparse cannot express
     # "required for six values of another positional, refused for the seventh".
@@ -2996,6 +3074,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pbg.add_argument("--no-exec", action="store_true",
                      help="report what would run and run none of it")
     pbg.set_defaults(func=_stage)
+
+    pvl = stg.add_parser("validate",
+                         help="check a tcw-work-stage skill invocation's arguments; "
+                              "prints nothing when they are valid")
+    pvl.add_argument("words", nargs="*",
+                     help="the skill's arguments as typed: a stage id and, "
+                          "optionally, a work item")
+    pvl.set_defaults(func=_stage_validate)
 
     # The removed form. Registered so it fails with the command to run instead
     # of argparse's bare "invalid choice", and hidden so it is not offered as a

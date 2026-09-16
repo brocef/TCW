@@ -11,7 +11,7 @@ license: Apache-2.0
 Use the `tcw-work` skill. This skill covers the **`verify` stage** and the
 `submit` / `rework` transitions.
 
-Read the `tcw-work` skill's `stage-verify.md`.
+Invoke the `tcw-work-stage` skill with `verify` and the item's slug.
 
 Assess the work against `spec.md`'s acceptance criteria — read the diff, run the
 checks, form an opinion. That half is delegable to a read-only subagent

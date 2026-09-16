@@ -9,41 +9,50 @@ metadata:
 license: Apache-2.0
 ---
 
+## Skill invocation validation (Claude-only injection)
+
+Under any harness other than Claude Code, run `tcw work stage validate` with this skill's arguments before reading on.
+
+!`tcw work stage validate -- $stage $item 2>/dev/null || true`
+
 # The `$stage` stage
 
-Two blocks follow: **how to work this stage**, then **what this project asks
-for at it**. They are different documents and neither replaces the other. Read
-both before producing anything.
+Two blocks follow: the **lifecycle stage contract**, then the **stage
+instructions** this project resolves for it. They are different documents and
+neither replaces the other. Read both before producing anything.
 
-## How to work it
+## Lifecycle stage contract
 
 !`cat "${CLAUDE_PLUGIN_ROOT}/skills/tcw-work/references/lifecycle/stage-$stage.md" || true`
 
-## What this project asks for
+## Stage instructions
 
 !`tcw work stage prompt $stage $item || true`
 
-## Before you act on any of that
+## Stage pre-checks
 
-The second block came from `tcw work stage prompt`, the **reading** verb. It runs
-no legality check and no `pre` bindings, so it answers for a stage the item is
-not ready for — which is the whole reason it can be composed into a skill.
+Run `tcw work stage gate $stage $item` if you have not done so already. If it
+refuses, the refusal is the answer.
 
-It carries its own reminder of that, at the top and bottom of the block: what to
-run to gate the stage, and what to do when its output is written. Follow those.
-This skill adds nothing to them beyond the one line below, because two copies
-drift and the copy in the CLI's output is the one a Codex reader gets too.
+## Document command summary
 
-**`tcw work stage gate $stage $item` is what refuses.** If it refuses, the
-refusal is the answer; do not proceed on the strength of having read the
-instructions here.
-
-If a block above is missing, empty, or shows a command error, this harness did
-not run the injected commands. Nothing is lost — run them yourself. Use the
-stage and work item named in the request in place of `$stage` and `$item`.
+The commands below are automatically executed by the Claude Code harness and
+listed in order that they execute in the document.
 
 ```sh
+# Validate the skill's arguments
+tcw work stage validate -- $stage $item
+# Get lifecycle stage description
 cat <plugin>/skills/tcw-work/references/lifecycle/stage-$stage.md
-tcw work stage gate $stage $item        # may it run?
-tcw work stage prompt $stage $item      # what does it ask for?
+# Generate prompt instructions for stage
+tcw work stage prompt $stage $item
 ```
+
+Not run automatically — run it yourself (see Stage pre-checks):
+
+```sh
+# Run pre-stage transition checks
+tcw work stage gate $stage $item
+```
+
+If your harness did not run them, run them yourself, using the stage and work item named in the request in place of `$stage` and `$item`.

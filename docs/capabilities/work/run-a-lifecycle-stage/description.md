@@ -1,11 +1,14 @@
-As a user or agent, I work a lifecycle stage with two verbs, each doing one job.
+As a user or agent, I work a lifecycle stage with three verbs, each doing one job.
 `tcw work stage gate <id> <ref>` asks **may this run**: TCW checks the stage makes
 sense for where the item is, runs whatever `pre` checks the project configured,
 and answers with an exit code. It prints no instructions.
 `tcw work stage prompt <id> [<ref>]` asks **what does it want**: the instructions,
 resolved, with no legality check and no `pre` checks at all.
+`tcw work stage validate <id> [<ref>]` asks **would `prompt` accept this**: it
+prints nothing when it would, and a Markdown usage error with the reason when it
+would not.
 
-They are two verbs because one command answering both questions made the obvious
+The two that deal in instructions are separate verbs because one command answering both questions made the obvious
 one unanswerable. On a project that gates a stage, asking what `plan` involves
 ran the gate, the gate refused because the spec was not written, and I learned
 nothing about planning — the command I would use to find out what to do required
@@ -28,10 +31,22 @@ A stage my project does configure replaces them outright; writing `builtin: true
 in that stage's `prompt:` list puts them back, composed with my own in the order
 I declared them.
 
-**`inbox` takes no work item reference, on either verb.** It runs before an item
+**`inbox` takes no work item reference, on any verb.** It runs before an item
 exists, so there is nothing to resolve a stage against: `tcw work stage gate
 inbox` and `tcw work stage prompt inbox` each take nothing after them, and naming
 an item is reported as the mistake it is rather than guessed at.
+
+**`validate` exists for the `tcw-work-stage` skill**, which runs it before
+anything else as the skill loads. The arguments are valid exactly when `prompt`
+would accept them: a known stage id, no work item for `inbox`, and otherwise an
+optional reference that resolves to one item. Like `prompt`, it does not judge
+the item's status. Valid arguments print nothing and exit 0; invalid ones print
+the usage error and the reason on stdout and exit 1. Under an agent harness other
+than Claude Code it first prints a notice that the skill's injected commands must
+be run by hand, even when the arguments are valid. The harness is the nearest
+`claude` or `codex` process above the command, and when that cannot be read, a
+`CODEX_THREAD_ID`, `CODEX_SANDBOX` or `CODEX_SESSION_ID` variable means Codex;
+anything else reads as Claude Code.
 
 **The shipped instructions name my item's own body, not a fixed filename.** The
 `spec` and `plan` instructions resolve it the same way `tcw work show` does —
@@ -43,12 +58,12 @@ instructions say to read a raw intake as the request instead of drawing
 conclusions from the request that is missing.
 
 They come out on **stdout alone**, so I can pipe them straight into an agent.
-Every check's own output, and every error, goes to stderr — and any failure
+On `gate` and `prompt`, every check's own output, and every error, goes to stderr — and any failure
 prints *nothing* on stdout, so a pipeline receives the whole instruction or none
 of it rather than a fragment.
 
-**Neither verb writes anything**: no lifecycle document, no draft, no status
-change, no field. Running either purely to read the instructions is safe, which
+**No verb writes anything**: no lifecycle document, no draft, no status
+change, no field. Running any of them purely to read the instructions is safe, which
 is what makes it usable — reaching a stage should not mean weighing whether
 asking what to do will change something.
 

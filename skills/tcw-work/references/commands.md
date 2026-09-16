@@ -28,7 +28,8 @@
 | topology                 | `tcw work nodes`                                                                                                                                |
 | check a stage may run    | `tcw work stage gate <id> <slug> [--no-exec]` — status legality, then the stage's `pre` checks. Prints **no** instructions and writes nothing; success is exit 0 with empty stdout. `inbox` takes no slug: `tcw work stage gate inbox` |
 | read a stage's instructions | `tcw work stage prompt <id> [<slug>]` — the **only** verb that prints them; runs **no** legality check and **no** `pre` checks. The slug is optional: without one they resolve generically, with one they resolve for that item. What it prints is wrapped in a gate reminder and a next-step section |
-| read a stage as one document | `tcw-work-stage <id> <item>` — the skill composes `lifecycle/stage-<id>.md` with the output of `tcw work stage prompt` so both arrive in one read. It reads: no legality check, no `pre` checks. `tcw work stage gate` is still what refuses |
+| check a stage skill's arguments | `tcw work stage validate <id> [<slug>]` — prints nothing and exits 0 when `tcw work stage prompt` would accept them; otherwise a Markdown usage error on stdout and exit 1. Under an agent harness other than Claude Code it first prints a notice that injected commands must be run by hand. Injected at the top of `tcw-work-stage` |
+| read a stage as one document | `tcw-work-stage <id> [<item>]` — the skill composes TCW's own document for the stage with the output of `tcw work stage prompt` so both arrive in one read. It reads: no legality check, no `pre` checks. `tcw work stage gate` is still what refuses |
 | start a document         | `tcw work scaffold <artifact> <slug> [--force]` — writes `<artifact>.draft.md` from its template and prints the locator; **never the artifact** |
 | validate                 | `tcw validate [path]`                                                                                                                           |
 | obtain a declared store or project | `tcw provision [--component work\|taxonomy\|capabilities] [--refresh] [--dry-run]` — fetches the stores **and connected projects** this node declares but does not have here; connected projects are followed transitively; every declared component by default; idempotent |
@@ -304,7 +305,7 @@ Reference another object in prose with `[text](tcw://W/<slug>)`, or
 Four skills carry the everyday workflows: `tcw-commands-process-inbox`,
 `tcw-commands-plan-work`, `tcw-commands-drive-work-to-completion` and
 `tcw-commands-verify-work`. Each works by invoking the skill, under any
-harness, and each follows the stage documents this skill already carries.
+harness, and each invokes the `tcw-work-stage` skill for the stage it runs.
 
 # Claims and external work stores
 
