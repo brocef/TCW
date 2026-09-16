@@ -96,3 +96,24 @@ command with a hard-coded default, no configuration schema change and no
 - Whether the overflow note goes to stdout with the rows or to stderr.
 - How limiting interacts with the sort this item already adds: which rows a
   limit keeps depends entirely on the order they are in.
+
+## Added 2026-09-16 (sentinel, default and heading)
+
+The requester settled three of the questions the section above left open for
+`spec`, in chat while reviewing the first plan:
+
+- **The no-limit sentinel is `-1`, not `0`.** `--limit -1` prints every row.
+  This frees `0` to mean what it plainly says — print the heading and no rows —
+  which is a useful way to ask for the counts alone.
+- **The default stays a per-section cap of 20 rows.**
+- **The heading always prints**, whatever the limit. The requester was shown
+  that `--limit -1` stops truncation but not the heading, so the exact-stdout
+  assertions in `tests/test_work.py` and `tests/test_taxonomy.py` need their
+  expected strings updated either way; and that suppressing the heading under
+  `-1` would make the output's shape depend on the flag and would hide the
+  counts exactly when someone asked to see everything. They chose the uniform
+  output.
+
+The requester also confirmed the scope increase from folding the two halves
+together is acceptable, and that existing callers in skills and tests should
+pass the no-limit sentinel rather than have the feature bend around them.
