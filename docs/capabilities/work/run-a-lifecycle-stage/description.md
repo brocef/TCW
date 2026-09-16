@@ -58,7 +58,7 @@ instructions say to read a raw intake as the request instead of drawing
 conclusions from the request that is missing.
 
 They come out on **stdout alone**, so I can pipe them straight into an agent.
-Every check's own output, and every error, goes to stderr — and any failure
+On `gate` and `prompt`, every check's own output, and every error, goes to stderr — and any failure
 prints *nothing* on stdout, so a pipeline receives the whole instruction or none
 of it rather than a fragment.
 

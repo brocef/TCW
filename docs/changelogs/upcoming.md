@@ -34,6 +34,9 @@ category.
   `tcw-post-mortem` and `tcw-extras-triage-issues` invoke `tcw-work-stage`
   instead of reading stage documents. `agents/tcw-verifier.md` names the
   `verify` stage rather than its file.
+- `skills/tcw-work/references/procedures/delegation.md`, `epic-deltas.md` and
+  `commands.md` no longer describe "the stage documents" as what to follow or
+  hand a subagent; they name the stage as `tcw-work-stage` delivers it.
 - `stage` subparser metavar is `{prompt,gate,validate}`.
 
 ## Fixed
