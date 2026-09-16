@@ -690,7 +690,7 @@ across the axes.
 
 | Skill                                                                      | What it does                                                                                                        |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking two read-only advisors wherever the lifecycle would ask you.     |
+| [`tcw-extras-autonomous-work`](skills/tcw-extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking read-only advisors wherever the lifecycle would ask you — by default Codex and an Opus subagent, replaceable by your project. |
 | [`tcw-extras-triage-issues`](skills/tcw-extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                      |
 | [`tcw-extras-report`](skills/tcw-extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues). |
 
@@ -700,7 +700,7 @@ file or moves an item; each reports back to the session that started it.
 | Agent                 | What it does                                                                                                                                     |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `tcw-verifier`        | For the `verify` stage: reads the change against the item's spec, runs checks, and reports whether each acceptance criterion is met.             |
-| `tcw-backlog-auditor` | Checks one backlog item for problems: already done, out of date, in the wrong project, not actionable, or blocked by something already resolved. |
+| `tcw-backlog-auditor` | Checks one backlog item against your project's backlog-audit procedure. By default: already done, out of date, in the wrong project, not actionable, or blocked by something already resolved. |
 | `tcw-post-mortem`     | Reads an item's documents and commit history backwards to find which stage could first have caught a problem.                                    |
 
 ## TCW Local Web App

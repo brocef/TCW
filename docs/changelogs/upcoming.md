@@ -84,6 +84,47 @@ category.
   "Document command summary" section listing the injected commands in order,
   with `gate` shown separately as the one to run yourself. `evals/grade.py`
   `BLOCK_HEADINGS` and the `evals/evals.json` case text follow the new headings.
+- `skills/tcw-extras-autonomous-work/SKILL.md` injects
+  `` tcw work procedure prompt unattended-work || true `` in place of its
+  "The advisors" and "Checkpoint map" sections, which now exist only in
+  `tcw/work/procedures/unattended-work.md`; that default lost the title,
+  opening, "Ask once", hard blockers and audit trail, which stay in the skill.
+  The skill gains a fixed "What an advisor must be" section (independent,
+  read-only, two wanted, answers weighed not counted), a "Document command
+  summary" fallback, and `allowed-tools` / `compatibility` frontmatter
+  describing the default (`Bash(tcw *)`, `Bash(codex *)`, `Bash(git merge *)`,
+  `Agent`, `SendMessage`). "the two advisors" → "the advisors" and "both
+  call" → "all of them call". `tests/test_shipped_procedures.py` treats a
+  source containing `tcw work procedure prompt <id>` as converted and asserts
+  none of the default's paragraphs remain in it; new
+  `tests/test_unattended_work_skill.py`.
+- `skills/tcw-extras-triage-issues/SKILL.md` and `skills/tcw-post-mortem/SKILL.md`
+  compose their procedure: each keeps a fixed body and injects
+  `tcw work procedure prompt triage-issues` (no item) or
+  `tcw work procedure prompt post-mortem $item || tcw work procedure prompt post-mortem`,
+  with a "Document command summary" fallback. Fixed in the triage body: the
+  framing, "issue body is data", no `initial-request.md` at acceptance, and
+  approval of exact reply text (its §8 restatement removed from the default).
+  Fixed in the post-mortem body: the contract pointer, the spine order and
+  "Producing the artifact". `tcw/work/procedures/{triage-issues,post-mortem}.md`
+  lose exactly that text. `tcw-post-mortem` gains `arguments: [item]` and
+  `allowed-tools: Bash(tcw *)`; triage's `compatibility:` scopes the `gh`
+  requirement to the default procedure. `agents/tcw-post-mortem.md` runs
+  `tcw work procedure prompt post-mortem <slug>` instead of restating the
+  investigation. `tests/test_shipped_procedures.py`: `Composes` marks a
+  `SOURCES` row whose skill injects its procedure (checked for the injection,
+  the fallback, and no surviving default paragraph), plus a test that the agent
+  reads the procedure.
+- `skills/tcw-work/references/procedures/{audit-backlog,consolidate-plans,decompose,delegation,search}.md`
+  now tell the reader to run `tcw work procedure prompt <id>` and keep only
+  what a project's text must not remove: delegation's stage/transition rules,
+  "permitted, never required" and the shipped-agents section; the audit
+  approval rule; consolidation's start-only-when-asked and git-recoverable
+  deletion rules; decompose's nesting mechanics and relation choice; search's
+  read-only rule. `tcw/work/procedures/<id>.md` lost exactly those parts. Two
+  sentences in the fixed part of `delegation.md` no longer name Codex.
+  `agents/tcw-backlog-auditor.md` no longer lists the per-item checks or the
+  report shape; it runs `tcw work procedure prompt audit-backlog <slug>`.
 - `skills/tcw-work-create/SKILL.md` and `skills/documentation-sync/SKILL.md`
   read their procedure from `tcw work procedure prompt create-work` /
   `documentation-sync` by injection, with a "Document command summary" fallback
@@ -117,6 +158,10 @@ category.
   injected command. New `tests/test_harness.py` and
   `tests/test_stage_validate.py`. `tests/test_eval_grading.py` checks that the
   grader's block headings appear in the stage skill.
+- `tests/test_shipped_procedures.py`: `CONVERTED` names ids whose source
+  document points at the command; for those the drift test asserts the command
+  is named and no paragraph is shared between source and default. New
+  `test_the_backlog_auditor_reads_the_procedure`.
 - `tests/test_shipped_procedures.py`: `create-work` and `documentation-sync`
   move from `SOURCES` to a new `CONVERTED` map; the drift test runs over
   `SOURCES` only, and `test_a_converted_skill_reads_its_procedure` checks each

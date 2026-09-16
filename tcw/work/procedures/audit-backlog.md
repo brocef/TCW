@@ -123,18 +123,3 @@ same reason.
 Finally, confirm you changed nothing: `git status --porcelain` should be empty.
 Every agent in this procedure holds `Bash`, so read-only is a rule honored rather
 than a wall enforced — check it rather than assume it.
-
-## The approval rule
-
-**Do not silently mutate, drop, complete, or move items.** Ask before performing
-any cleanup, including tag registration and tag edits.
-
-**Group the asks by kind** — one approval for the tag edits, one for the blocker
-edges, one for the drops. A real audit produces a dozen or more candidate
-actions; asking per item is unusable and asking once for everything is a blanket
-yes on decisions that deserve individual thought. Drops and completions are
-irreversible enough to name individually inside their group.
-
-When the user approves, use TCW commands for state transitions and tag edits
-wherever a command exists, and preserve useful context in the remaining or
-replacement item.

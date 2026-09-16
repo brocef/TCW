@@ -7,9 +7,6 @@ search verb to call: deciding whether an item is _about_ the question is the
 judgment a match cannot supply. Ask the `tcw-work` skill for it; under any
 harness, this document is the procedure.
 
-**It is read-only.** No transition, no `tcw work edit`, no file written. A search
-that changed the board would make its own result untrustworthy.
-
 ## 1. Narrow with the CLI first
 
 `tcw work list` is the candidate set, and its flags do for free what judgment
