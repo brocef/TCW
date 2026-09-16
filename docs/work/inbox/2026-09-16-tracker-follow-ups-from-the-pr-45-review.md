@@ -28,3 +28,12 @@ branch.
    reproduced a harmful result, and every step is still bounded to statuses the
    project mapped. Worth a test with the fake tracker before deciding whether the
    walk should stop when a step lands off its target.
+
+3. **Under strict mode, a ticket already yours and past In Progress is never asked
+   whether its claim is exclusive.** When `link --sync-status` or `sync` carries on
+   without a claim, `deliver` in `tcw/tracker/sync.py` runs `claim_refusal` only for
+   a ticket on the claim's own status, because that check refuses any other status.
+   So a ticket already in review, on a workflow that offers the claim transition from
+   every status, is caught up even though a second person could still claim it.
+   This is a design question, not a defect: decide whether strict mode should ask a
+   different exclusivity question for such a ticket, or accept the gap and document it.
