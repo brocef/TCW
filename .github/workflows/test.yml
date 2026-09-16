@@ -1,6 +1,18 @@
 name: test
 
-# `branches: ['**']` rather than a bare `push:` — a bare one also fires on tag
+# CI minutes are paid for, so the default is not to spend them. A push to a
+# feature branch raises no run at all, and a pull request raises one whose job
+# skips unless something asks for it. Three things always run the suite anyway:
+# a push to `main`, a pull request opened by Dependabot, and a release (which
+# reaches this through `workflow_call` from release.yml).
+#
+# To run it on a feature branch regardless, either add the `run-ci` label to its
+# pull request — which runs the suite then and on every push afterwards, since
+# the label stays applied — or start one from Actions → test → Run workflow
+# against the branch. The label has to exist in the repository before it can be
+# applied; create it once under Issues → Labels.
+#
+# `branches: ["main"]` rather than a bare `push:` — a bare one also fires on tag
 # pushes, which would run this suite twice for every release (once here, once as
 # the release workflow's gate).
 #
@@ -11,20 +23,33 @@ name: test
 # event triggers only: `workflow_call` takes none, so a release still runs the
 # full suite regardless of what the tagged commit changed.
 #
-# Do not make this workflow a *required* status check while the filter is here. A
-# run skipped by `paths-ignore` reports nothing at all rather than success, so a
-# required check would sit pending forever on exactly the backlog-only PRs this
-# is meant to let through.
+# Do not make this workflow a *required* status check while that filter is here.
+# A run skipped by `paths-ignore` reports nothing at all rather than success, so
+# a required check would sit pending forever on exactly the backlog-only PRs this
+# is meant to let through. The `if` gate below does not have that problem — a job
+# skipped by a conditional still reports a conclusion.
 on:
     push:
-        branches: ["**"]
+        branches: ["main"]
         paths-ignore: ["docs/work/**"]
     pull_request:
+        # `labeled` is listed so that applying `run-ci` starts a run on a pull
+        # request that is already open; naming any type means naming the three
+        # defaults too.
+        types: [opened, synchronize, reopened, labeled]
         paths-ignore: ["docs/work/**"]
     workflow_call:
+    workflow_dispatch:
 
 jobs:
     pytest:
+        # Everything except an unlabelled pull request that Dependabot did not
+        # open. Under `workflow_call` this reads the *caller's* event, which for
+        # release.yml is a tag push, so a release passes the gate.
+        if: >-
+            github.event_name != 'pull_request'
+            || github.event.pull_request.user.login == 'dependabot[bot]'
+            || contains(github.event.pull_request.labels.*.name, 'run-ci')
         runs-on: ubuntu-latest
         strategy:
             # Both legs always report. A failure on 3.13 that hides whether 3.11
