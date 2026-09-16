@@ -5,7 +5,6 @@ drift is the setup skill's job, not this test's).
 """
 import json
 import os
-import re
 import subprocess
 import tomllib
 
@@ -74,19 +73,18 @@ NUMBER_WORDS = {
 
 
 def _names_missing_from(blob: str, names) -> list[str]:
-    """Which of `names` the description does not mention, matching each as a
-    **whole token** rather than as a bare substring.
+    """Which of `names` the description does not mention, matching each only as
+    a **backticked name** rather than as a bare substring or bare word.
 
-    The distinction is load-bearing: `work` is a substring of `work-stage` and
-    `work-create`, so a plain `n in blob` finds the shorter skill inside every
-    longer one and reports it present when the description never names it. The
-    whole enumeration guard for that skill would be dead — its name could be
-    deleted from the description with the suite green.
-
-    The lookahead is the fix: a trailing `-` or word character means the match
-    landed inside a longer name, not on the one being checked.
+    The distinction is load-bearing. `work` is a substring of `work-stage` and
+    `work-create`, and without the plugin-id prefix several names are also
+    ordinary words: "work" sits inside "framework" and "work item", and
+    "taxonomy" and "capabilities" in the manifest's keywords. Any looser match
+    finds the name somewhere else and reports it present when the enumeration
+    never names it, so the guard for that skill would be dead — its name could
+    be deleted from the description with the suite green.
     """
-    return [n for n in names if not re.search(re.escape(n) + r"(?![-\w])", blob)]
+    return [n for n in names if f"`{n}`" not in blob]
 
 
 def test_the_codex_description_counts_the_skills_it_ships():
@@ -101,7 +99,7 @@ def test_the_codex_description_counts_the_skills_it_ships():
     """
     import json
     desc = json.loads((REPO / ".codex-plugin" / "plugin.json").read_text())
-    blob = json.dumps(desc)
+    blob = desc["interface"]["longDescription"]
     names = sorted(p.parent.name for p in (REPO / "skills").glob("*/SKILL.md"))
     word = NUMBER_WORDS[len(names)]
     assert f"{word} skills" in blob, (
@@ -111,17 +109,17 @@ def test_the_codex_description_counts_the_skills_it_ships():
     assert not missing, f"shipped but unnamed in the description: {missing}"
 
 
-def test_a_shared_name_prefix_cannot_stand_in_for_the_shorter_name():
-    """The guard above, guarded. `work` is a prefix of `work-stage` and
-    `work-create`, so under the substring match this test replaces, dropping the
-    shorter skill from the description was invisible: its name was still found,
-    inside the longer ones.
+def test_a_shared_name_or_plain_word_cannot_stand_in_for_a_skill_name():
+    """The guard above, guarded. `work` is a prefix of `work-stage` and an
+    ordinary word, so under a looser match dropping the `work` skill from the
+    description was invisible: its name was still found, inside a longer name
+    or in the surrounding prose.
 
     Asserting on the real description would not catch a revert — it names every
-    skill, so both matchers agree on it. This asserts the discrimination
-    directly, on a blob that names only the longer skill.
+    skill, so every matcher agrees on it. This asserts the discrimination
+    directly, on a blob that names only the longer skill and uses the word.
     """
-    blob = "ships sixteen skills, among them work-stage"
+    blob = "a framework for tracking work; among them `work-stage`"
     assert _names_missing_from(blob, ["work-stage"]) == []
     assert _names_missing_from(blob, ["work"]) == ["work"]
 

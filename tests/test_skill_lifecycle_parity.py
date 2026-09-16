@@ -522,13 +522,15 @@ DELETED_NAMES = (
     "tcw-extras-report", "tcw-backlog-auditor", "tcw-verifier",
 )
 
-# `agents/` and `tcw-config.yaml` are here because both are shipped surfaces that
-# name skills: the agents route to the skills they accelerate, and the config's
-# documentation entries carry a `skills/<name>/references/` path. Neither `evals/`
-# nor `tests/` belongs -- both legitimately quote retired names, this tuple among
-# them, so including them would make the guard fight itself.
-LIVE_ROUTES = ("skills", "agents", ".claude-plugin", ".codex-plugin", "README.md",
-               "docs/guide", "docs/lifecycle", "tcw-config.yaml")
+# Every shipped or run surface that can name a skill: the plugin's own files,
+# the Codex marketplace, the hook and the scripts it runs, the CLI source whose
+# stage prompts reach an agent, the eval cases that invoke skills by name, and
+# the config's documentation entries, which carry a `skills/<name>/references/`
+# path. `tests/` is the one place left out -- it legitimately quotes retired
+# names, this tuple among them, so including it would make the guard fight itself.
+LIVE_ROUTES = ("skills", "agents", ".claude-plugin", ".codex-plugin", ".agents",
+               "hooks", "scripts", "tcw", "evals", "README.md", "docs/guide",
+               "docs/lifecycle", "tcw-config.yaml")
 
 
 def _live_route_files():
