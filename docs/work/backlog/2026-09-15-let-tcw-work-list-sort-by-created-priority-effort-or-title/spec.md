@@ -511,8 +511,8 @@ otherwise.
 30. `skills/work-create/references/find-overlap.md` passes `--limit 0` on every
     command in its candidate search, so an agent following it still sees the
     whole board.
-31. The five capability descriptions named under **Capability changes** state
-    the new options, and the item's `capabilities.yaml` lists all five under
+31. The six capability descriptions named under **Capability changes** state
+    the new options, and the item's `capabilities.yaml` lists all six under
     `changed:`.
 
 ## Risks
