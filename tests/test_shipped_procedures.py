@@ -37,7 +37,7 @@ SOURCES = {
 # must not be able to remove. For these, the check turns around — the source
 # names the command and shares no paragraph with the default, so neither a
 # pasted-back copy nor a fixed rule leaking into the default passes.
-CONVERTED: set[str] = {"delegation", "audit-backlog", "consolidate-plans"}
+CONVERTED: set[str] = {"delegation", "audit-backlog", "consolidate-plans", "decompose"}
 
 
 def _body(path: Path) -> str:
