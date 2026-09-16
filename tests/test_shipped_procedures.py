@@ -21,7 +21,6 @@ REPO = Path(__file__).resolve().parent.parent
 SOURCES = {
     "unattended-work": "skills/tcw-extras-autonomous-work/SKILL.md",
     "triage-issues": "skills/tcw-extras-triage-issues/SKILL.md",
-    "documentation-sync": "skills/documentation-sync/SKILL.md",
     "post-mortem": "skills/tcw-post-mortem/SKILL.md",
     "audit-backlog": "skills/tcw-work/references/procedures/audit-backlog.md",
     "consolidate-plans": "skills/tcw-work/references/procedures/consolidate-plans.md",
@@ -34,6 +33,7 @@ SOURCES = {
 # the skill, the rest is read from `tcw work procedure prompt <id>`. There is no
 # second copy to drift from, so these are checked for the reading instead.
 CONVERTED = {
+    "documentation-sync": "skills/documentation-sync/SKILL.md",
     "create-work": "skills/tcw-work-create/SKILL.md",
 }
 
