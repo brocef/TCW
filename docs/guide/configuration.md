@@ -111,6 +111,14 @@ the instructions resolve generically, with one they resolve for that item, and a
 not legal for the item's status it still prints, and says so on stderr, leaving
 stdout to carry the instructions alone.
 
+**Checking the arguments given to the `tcw-work-stage` skill** is
+`tcw work stage validate <id> [<ref>]`. The skill runs it before anything else.
+It prints nothing and exits 0 when `prompt` would accept the arguments, and
+otherwise prints a Markdown usage error with the reason and exits 1. Everything
+it prints goes to stdout. Under an agent harness other than Claude Code, which
+does not run a skill's injected commands, it first prints a notice saying those
+commands must be run by hand.
+
 Because `prompt` gates nothing, what it prints says so: every resolved prompt is
 wrapped in a line naming the `gate` command for that stage and a closing section
 saying what to do once the stage's output is written. Your own `prompt:` bindings
