@@ -124,9 +124,12 @@ What the suite cannot check:
 
 ## Notes
 
-- The `plan` gate refuses on status (the item is `active`, `plan` runs in
-  `backlog`), as recorded in the spec's Notes. Its one `pre` check was run by
-  hand: `TCW_SLUG=<slug> python3 scripts/require_artifact.py spec` exited 0.
+- The stage gate refused because the coordinating session started the item
+  before planning, and the requester chose to proceed without moving it back.
+- Did skipping the gate skip a check? One. `tcw work lifecycle` shows the `plan`
+  stage binds one `pre` check, `command:python scripts/require_artifact.py spec`,
+  besides its prompt text. It was run by hand instead:
+  `TCW_SLUG=<slug> python3 scripts/require_artifact.py spec` exited 0.
 - No blockers to record: the routing item this child was blocked by is
   completed (`4002ffb3`), and child 2 is not a dependency.
 - Nothing here touches `tcw/`, so the lifecycle CLI stays usable for reads
