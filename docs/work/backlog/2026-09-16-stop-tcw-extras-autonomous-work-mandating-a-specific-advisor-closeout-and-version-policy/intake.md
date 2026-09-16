@@ -35,6 +35,20 @@ Epic criteria 8, 9, 10 and 11 for this skill. Verification includes an actual
 unattended run against a real backlog item, and a Codex session confirming the
 fallback block works.
 
+## What child 2 shipped (added 2026-09-16)
+
+- Procedure ids for this item: `unattended-work`. Read the text with
+  `tcw work procedure prompt <id> [slug]`; a project configures it under
+  `work.procedures.<id>` as a plain list of bindings.
+- Each id's default lives in `tcw/work/procedures/<id>.md`, today a verbatim copy
+  of the skill or reference text. `tests/test_shipped_procedures.py` fails when
+  a default and its source drift apart: change the default and its `SOURCES`
+  row in the same commit that converts the source.
+- The command does no harness adaptation, so the converted skill's manual
+  fallback block is what a harness without context injection relies on.
+- The epic's criterion 8 grep covers the converted skill files only, never
+  `tcw/work/procedures/`.
+
 ## Origin
 
 Opened by the epic's `implement` stage (plan task 3) on 2026-09-16.

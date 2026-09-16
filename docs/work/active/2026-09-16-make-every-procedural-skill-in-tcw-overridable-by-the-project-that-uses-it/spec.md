@@ -226,6 +226,9 @@ The initiative is done when all of these hold on `main`.
 8. Every converted skill's body contains no named third-party binary, model,
    agent name or git branch name. `grep -niE '\b(codex|opus|sonnet|haiku|sendmessage|adversarial-code-reviewer)\b'`
    over the converted `SKILL.md` files prints nothing.
+   The grep covers the converted skill files only, never
+   `tcw/work/procedures/`: TCW's shipped `unattended-work` default names Codex by
+   design (corrected 2026-09-16 after child 2 was accepted).
 9. `skills/tcw-extras-autonomous-work/SKILL.md` states what an advisor must be
    and how many are wanted, and names no specific one. Its frontmatter declares
    its tool requirements, as `tcw-setup` and `tcw-extras-triage-issues` do.
