@@ -22,8 +22,10 @@ category.
 ## Changed
 
 - `skills/tcw-work-stage/SKILL.md` injects
-  `` tcw work stage validate $ARGUMENTS 2>/dev/null || true `` ahead of its
-  heading. `2>/dev/null` keeps an older `tcw` without the verb silent.
+  `` tcw work stage validate -- $stage $item 2>/dev/null || true `` ahead of its
+  heading. `2>/dev/null` keeps an older `tcw` without the verb silent; named
+  arguments rather than `$ARGUMENTS`, because extra words reaching the shell
+  unquoted could make the line exit non-zero and cancel the skill load.
 - `skills/tcw-work/SKILL.md` and `references/commands.md` no longer link or name
   the `references/lifecycle/stage-*.md` documents. The router sends agents to
   `tcw-work-stage` in an emphasized note; `commands.md` gains a `validate` row.

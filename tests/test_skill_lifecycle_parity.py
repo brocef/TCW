@@ -380,7 +380,7 @@ def test_the_composing_skill_reads_a_router_that_exists(stage):
         assert target.is_file(), f"{stage_id}: {target} does not exist"
 
 
-VALIDATE_LINE = "!`tcw work stage validate $ARGUMENTS 2>/dev/null || true`"
+VALIDATE_LINE = "!`tcw work stage validate -- $stage $item 2>/dev/null || true`"
 
 
 def test_the_composing_skill_validates_its_arguments_first():

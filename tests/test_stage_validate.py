@@ -112,6 +112,30 @@ def test_an_unknown_project_qualifier_reports_resolves_message_on_stdout(node, c
     assert err == "", err
 
 
+@pytest.mark.parametrize("words", [("plan",), ("inbox",)])
+def test_one_word_outside_a_work_node_is_invalid_like_prompt(tmp_path, monkeypatch,
+                                                             capsys, words):
+    """`prompt` needs a work node even with no item, so `validate` must too —
+    otherwise the answer would depend on how many words were given."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("tcw.work.cli.ancestor_programs", lambda: None)
+    for name in HARNESS_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    code, out, err = _validate(capsys, *words)
+    assert code == 1
+    assert out.startswith(f"{ERROR}\n\ntcw work: no tcw work node here"), out
+    assert err == "", err
+
+
+def test_a_dash_word_after_the_separator_is_judged_not_parsed(node, capsys):
+    """The skill line passes `--` first, so a stage typed as `-h` is reported as
+    an unknown stage rather than printing argparse's help into the skill."""
+    code, out, err = _validate(capsys, "--", "-h")
+    assert code == 1
+    assert "`-h` is not a stage" in out, out
+    assert "usage:" not in out, out
+
+
 # ── under another harness: the notice first ─────────────────────────────────
 
 def test_another_harness_gets_the_notice_alone_when_valid(node, capsys, monkeypatch):

@@ -39,7 +39,8 @@ _MAX_HOPS = 64
 def _parent_via_ps(pid: int) -> tuple[int, str] | None:
     try:
         out = subprocess.run(["ps", "-o", "ppid=,comm=", "-p", str(pid)],
-                             capture_output=True, text=True, timeout=2).stdout
+                             stdin=subprocess.DEVNULL, capture_output=True,
+                             text=True, timeout=2).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     parts = out.strip().split(None, 1)

@@ -1498,19 +1498,27 @@ def _stage_invocation_problem(words: list[str]) -> str | None:
     if step is None or step.kind != "stage":
         legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
         return f"`{words[0]}` is not a stage; expected one of {', '.join(legal)}."
-    if len(words) == 1:
-        return None
-    if step.id == "inbox":
+    if len(words) == 2 and step.id == "inbox":
         return "`inbox` runs before a work item exists and takes no work item."
     captured = io.StringIO()
     with contextlib.redirect_stderr(captured):
-        resolved = _resolve(words[1], "stage validate")
-        if resolved is None:
-            return captured.getvalue().strip() or f"`{words[1]}` cannot be resolved."
-        st, bare = resolved
         try:
+            if len(words) == 1:
+                # `prompt` still opens the store with no item, so it refuses
+                # outside a work node or on an unprovisioned store — and so must
+                # this, or the answer would hinge on the word count.
+                if _store() is None:
+                    return captured.getvalue().strip() or "No work store here."
+                return None
+            resolved = _resolve(words[1], "stage validate")
+            if resolved is None:
+                return captured.getvalue().strip() or f"`{words[1]}` cannot be resolved."
+            st, bare = resolved
             item = st.get(bare)
-        except MultipleMatch as e:
+        except (MultipleMatch, ValueError) as e:
+            # Raised rather than printed by the resolver or the store (an
+            # ambiguous locator, an interrupted claim). `main` would print them
+            # to stderr, which the skill line discards, leaving no report at all.
             return str(e)
     if item is None:
         return f"No work item matches `{words[1]}`."

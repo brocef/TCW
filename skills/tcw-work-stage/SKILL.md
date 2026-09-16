@@ -13,7 +13,7 @@ license: Apache-2.0
 
 Under any harness other than Claude Code, run `tcw work stage validate` with this skill's arguments before reading on.
 
-!`tcw work stage validate $ARGUMENTS 2>/dev/null || true`
+!`tcw work stage validate -- $stage $item 2>/dev/null || true`
 
 # The `$stage` stage
 
