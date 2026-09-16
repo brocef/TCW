@@ -4,6 +4,7 @@ Mirrors `test_shipped_prompts.py` for `tcw/work/procedures/`. Everything goes
 through `load_builtins()`, so the assertions hold in an installed tree too.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -13,11 +14,11 @@ from tcw.work.resolve import ResolveError, load_builtins
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Where each default was copied from. Written out, not derived: a conversion
-# child that turns one of these skills into a reader of
-# `tcw work procedure prompt` changes both sides on purpose, and changes or
-# removes its row here in the same commit. Until then this is what stops the
-# shipped default and the skill drifting apart.
+# Where each default was copied from. Written out, not derived. Until a source
+# is converted, this is what stops the shipped default and the source drifting
+# apart. Once it reads `tcw work procedure prompt <id>` its row stays, and
+# `test_each_default_is_todays_text` checks instead that no paragraph of the
+# default is left behind in it.
 SOURCES = {
     "unattended-work": "skills/tcw-extras-autonomous-work/SKILL.md",
     "triage-issues": "skills/tcw-extras-triage-issues/SKILL.md",
@@ -48,12 +49,27 @@ def test_the_source_map_covers_exactly_the_ids():
     assert set(SOURCES) == set(PROCEDURE_IDS)
 
 
+def _paragraphs(text: str) -> list[str]:
+    return [p.strip() for p in re.split(r"\n\s*\n", text) if len(p.strip()) >= 40]
+
+
 @pytest.mark.parametrize("pid", PROCEDURE_IDS)
 def test_each_default_is_todays_text(pid):
-    """Criterion 2: a project that configures nothing gets today's words."""
-    expected = _body(REPO / SOURCES[pid]).strip()
-    assert expected, f"{SOURCES[pid]} has no body to compare"
-    assert load_builtins().procedures[pid].strip() == expected, \
+    """Criterion 2: a project that configures nothing gets today's words.
+
+    A converted source reads its default through `tcw work procedure prompt
+    <id>` instead of copying it, so the two are no longer equal by design.
+    There the drift to catch is a paragraph left in both places, which a
+    project's replacement would not remove."""
+    source = _body(REPO / SOURCES[pid])
+    default = load_builtins().procedures[pid]
+    assert source.strip(), f"{SOURCES[pid]} has no body to compare"
+    if f"tcw work procedure prompt {pid}" in source:
+        left = [p for p in _paragraphs(default) if p in source]
+        assert not left, (f"{SOURCES[pid]} still carries text from "
+                          f"tcw/work/procedures/{pid}.md: {left[0][:80]!r}")
+        return
+    assert default.strip() == source.strip(), \
         f"tcw/work/procedures/{pid}.md differs from {SOURCES[pid]}"
 
 

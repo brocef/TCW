@@ -16,6 +16,13 @@ internal module names.
 - New setting: `work.procedures` in `tcw-config.yaml`, beside
   `work.lifecycle`. `tcw validate` checks it.
 - The skills themselves do not read from the command yet; that comes next.
+- **The unattended-work skill no longer insists on particular advisors.** It
+  now takes its advisors, its code review, how it closes an item out and
+  whether it cuts a version from your project's `unattended-work` procedure.
+  With nothing configured it behaves exactly as before: it asks Codex and an
+  Opus subagent, never cuts a version and never pushes. What stays fixed is
+  what an advisor must be, when a run stops to ask you, and the record it
+  leaves in the item's `outcome.md`.
 
 ## Getting a stage's instructions
 
