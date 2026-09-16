@@ -737,7 +737,7 @@
   resolution: done
   resolved: '2026-09-15'
 2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync:
-  location: d59fee65136dc6de77adcf6a4c4ccc68c9de94f9
+  location: 7a0c2f3bf6d5b48161b384b05c59ea27072f84c6
   resolution: done
   resolved: '2026-09-15'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
