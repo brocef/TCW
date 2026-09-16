@@ -1,7 +1,7 @@
 """No skill points into another skill's `references/` by path.
 
 A pointer to another skill's document names the skill and the document in
-words ("the `tcw-configure` skill's `docs-sync.md`"). The eval routing checks
+words ("the `configure` skill's `docs-sync.md`"). The eval routing checks
 look for these paths in the tool calls an agent makes, so a path written into
 some other skill's text could be matched by an agent that only read that text
 rather than opening the document.
@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parent.parent
 SKILLS = REPO / "skills"
 
 
-@pytest.mark.parametrize("owner", ("tcw-setup", "tcw-configure"))
+@pytest.mark.parametrize("owner", ("setup", "configure"))
 def test_only_the_owning_skill_names_its_reference_paths(owner):
     needle = f"{owner}/references/"
     hits = sorted(

@@ -4,7 +4,7 @@ Answer a described question about the board — "anything about the web viewer",
 "blocked CLI items, ignore the docs ones, highest priority first" — with a table
 the reader can act on. This is an AI-driven read, and the CLI has no work-item
 search verb to call: deciding whether an item is _about_ the question is the
-judgment a match cannot supply. Ask the `tcw-work` skill for it; under any
+judgment a match cannot supply. Ask the `work` skill for it; under any
 harness, this document is the procedure.
 
 ## 1. Narrow with the CLI first

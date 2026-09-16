@@ -46,9 +46,115 @@ internal module names.
   documentation sync still takes its entries from `tcw work docs`.
   `documentation-sync` keeps working in a project that does not use TCW.
 
+## Breaking change: the skills and agents lost their `tcw-` prefix
+
+Every skill the plugin ships is already addressed through the plugin's own name,
+and then repeated it: the work skill was invoked as `/tcw:tcw-work` under Claude
+and `$tcw:tcw-work` under Codex. The second `tcw` distinguished nothing — it was
+four more characters to type and a stutter to read in a list of skills.
+
+The prefix is gone. The same skill is now `/tcw:work` and `$tcw:work`.
+
+**The old names stop working.** Neither Claude Code nor Codex offers a way to
+keep an old skill name pointing at a renamed one, so there is no deprecation
+period: after you update the plugin, typing `/tcw:tcw-work` will not find
+anything. The full list is below so you can find whichever one your fingers
+know.
+
+The groupings stay. `commands-` still marks the four everyday workflow skills and
+`extras-` the three optional ones, so they still sort together when you are
+scanning for one.
+
+### Skills
+
+| Type this now                       | Instead of                              |
+| ----------------------------------- | --------------------------------------- |
+| `work`                              | `tcw-work`                              |
+| `work-stage`                        | `tcw-work-stage`                        |
+| `work-create`                       | `tcw-work-create`                       |
+| `capabilities`                      | `tcw-capabilities`                      |
+| `taxonomy`                          | `tcw-taxonomy`                          |
+| `setup`                             | `tcw-setup`                             |
+| `configure`                         | `tcw-configure`                         |
+| `post-mortem`                       | `tcw-post-mortem`                       |
+| `commands-plan-work`                | `tcw-commands-plan-work`                |
+| `commands-drive-work-to-completion` | `tcw-commands-drive-work-to-completion` |
+| `commands-verify-work`              | `tcw-commands-verify-work`              |
+| `commands-process-inbox`            | `tcw-commands-process-inbox`            |
+| `extras-autonomous-work`            | `tcw-extras-autonomous-work`            |
+| `extras-triage-issues`              | `tcw-extras-triage-issues`              |
+| `extras-report`                     | `tcw-extras-report`                     |
+
+`documentation-sync` is unchanged — it never carried the prefix, and it is the
+shape the others have moved to.
+
+### Agents
+
+The three read-only agents are renamed for the same reason. `post-mortem` names
+both a skill and an agent, as it did before.
+
+| Now               | Instead of            |
+| ----------------- | --------------------- |
+| `verifier`        | `tcw-verifier`        |
+| `backlog-auditor` | `tcw-backlog-auditor` |
+| `post-mortem`     | `tcw-post-mortem`     |
+
+### What this does not break
+
+**Your project's configuration.** A skill name reaches TCW only if you named one
+in a lifecycle hook in your `tcw-config.yaml`. If you did — an entry reading
+`skill: tcw:tcw-work` or similar — update it to the new name. Nothing else in a
+configuration file refers to a skill, so for most projects there is nothing to
+change. `tcw validate` does not check skill names, so it will not find an old
+one for you: search `tcw-config.yaml` for `skill:` values that start with `tcw-`
+or `tcw:tcw-`.
+
+**Your work items, taxonomy or capabilities.** Nothing about your own project's
+content is touched.
+
+If your own `AGENTS.md` or `CLAUDE.md` tells contributors to "use the `tcw-work`
+skill", that sentence now points at a skill that is not there. It will not break
+anything, but it is worth a search-and-replace the next time you are in the file.
+
+## Your Jira tickets keep up with your work in more of the ordinary cases
+
+**You can say which transition a move should use.** Lots of Jira workflows have two
+ways to reach `Done` — one for finished work, one for abandoned work. TCW would not
+guess between them, so completing or discarding an item could never reach the
+ticket. Now you can name the transition for each move, and name a different one for
+each kind of discard so the ticket ends with the right resolution. Anything you do
+not name keeps working exactly as before. Upgrade every copy of TCW on the project
+before you use this: version 2.3.0 and earlier treat the whole tracker setup as
+broken when they see these settings.
+
+**Linking a ticket to work already under way no longer leaves it stuck.** Before, the
+ticket stayed where it was for good and every later move was reported as a conflict
+that blamed you for moving it. Now linking leaves the ticket alone unless you ask,
+warns you when it does not match the item, and while it stays that way later moves
+say plainly that it was linked without its status synced. Add `--sync-status` to `tcw work tracker
+link` to bring the ticket up to date: TCW claims it and moves it to where the item
+is — directly when your workflow allows, otherwise one step at a time through the
+statuses you mapped. It never moves a ticket backwards and never touches one already
+closed. A ticket stuck this way from an earlier version is fixed by unlinking it and
+linking it again with `--sync-status`.
+
+**Moving a ticket part of the way by hand is no longer treated as interference.** If
+a move failed to reach Jira and you moved the ticket yourself to the next status
+along, TCW now finishes the journey instead of reporting that somebody moved it.
+
+**Discarding work whose ticket nobody is assigned now closes the ticket.** Teams
+whose queue hands out unassigned tickets were left with every such ticket open and
+unresolved. A discard can now close one — and says why on the ticket. Every other
+kind of move still leaves an unassigned ticket alone, and a ticket somebody else is
+assigned is never touched.
+
+**`tcw work tracker sync <slug>` no longer reports success when it did nothing.**
+Naming an item somebody else started, while something is still owed on it, now fails,
+tells you what is owed, and tells you how to run it as them or take the item over.
+
 ## Getting a stage's instructions
 
-- **The `tcw-work-stage` skill now checks how it was called.** If it is invoked
+- **The `work-stage` skill now checks how it was called.** If it is invoked
   without a stage, with a stage that does not exist, or with a work item that
   cannot be found, the first thing the agent sees is a short error saying how
   the skill should be called and what was wrong, instead of a page with broken
@@ -56,9 +162,9 @@ internal module names.
 - **Under Codex, the skill says to run its commands yourself.** Codex does not
   run the commands a skill embeds, so when the check is run there it starts
   with a note saying so.
-- **Agents are sent to `tcw-work-stage` for how to do a stage.** The `tcw-work`
+- **Agents are sent to `work-stage` for how to do a stage.** The `work`
   skill and the planning, verifying, inbox, drive-to-completion, post-mortem and
-  issue-triage skills now point at `tcw-work-stage`, which delivers a stage's
+  issue-triage skills now point at `work-stage`, which delivers a stage's
   instructions together with your project's own additions to them. Before, an
   agent could read TCW's stage document on its own and miss your project's
   instructions.

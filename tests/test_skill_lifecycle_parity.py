@@ -1,4 +1,4 @@
-"""The `tcw-work` skill must agree with `LIFECYCLE_STEPS`.
+"""The `work` skill must agree with `LIFECYCLE_STEPS`.
 
 This is the guard the lifecycle epic exists to install. The two documents it
 replaces — `task-lifecycle.md` and `epic-lifecycle.md` — were ~85% identical and
@@ -23,8 +23,8 @@ from tcw.store.base import LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID
 from tcw.work.resolve import load_builtins
 
 REPO = Path(__file__).resolve().parents[1]
-SKILL = REPO / "skills/tcw-work/SKILL.md"
-REFS = REPO / "skills/tcw-work/references"
+SKILL = REPO / "skills/work/SKILL.md"
+REFS = REPO / "skills/work/references"
 
 STAGE_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "stage")
 TRANSITION_IDS = tuple(s.id for s in LIFECYCLE_STEPS if s.kind == "transition")
@@ -292,7 +292,7 @@ LIFECYCLE_REFS = REFS / "lifecycle"
 def test_nothing_in_tcw_work_names_a_stage_document(stage_id):
     """An agent that opens a stage document directly never sees the project's
     own instructions for that stage, which only `tcw work stage prompt` resolves.
-    The `tcw-work-stage` skill delivers both together, so `tcw-work` names that
+    The `work-stage` skill delivers both together, so `work` names that
     skill and never a path an agent could open instead."""
     documents = [SKILL, *(p for p in REFS.rglob("*.md")
                           if not p.is_relative_to(LIFECYCLE_REFS))]
@@ -307,9 +307,9 @@ def test_nothing_in_tcw_work_names_a_stage_document(stage_id):
 def test_the_router_names_the_stage_skill_in_bold():
     bold = re.findall(r"\*\*(.+?)\*\*", SKILL.read_text(encoding="utf-8"),
                       flags=re.DOTALL)
-    assert any("tcw-work-stage" in b and "<stage>" in b and "<slug>" in b
+    assert any("work-stage" in b and "<stage>" in b and "<slug>" in b
                for b in bold), \
-        "SKILL.md has no emphasized note sending an agent to tcw-work-stage"
+        "SKILL.md has no emphasized note sending an agent to work-stage"
 
 
 def test_the_router_routes_to_every_reference_file():
@@ -317,7 +317,7 @@ def test_the_router_routes_to_every_reference_file():
     the time to wonder whether it matters.
 
     `references/lifecycle/` is exempt: its stage documents are reached through
-    the `tcw-work-stage` skill, whose router path
+    the `work-stage` skill, whose router path
     `test_the_composing_skill_reads_a_router_that_exists` resolves."""
     text = SKILL.read_text(encoding="utf-8")
     # Matched by path relative to `references/`, not bare name: two files in
@@ -332,12 +332,12 @@ def test_the_router_routes_to_every_reference_file():
 # ── the composing skill ──────────────────────────────────────────────────────
 #
 # One document composes a stage out of `cat <router>` + `tcw work stage prompt`:
-# `tcw-work-stage`, which takes the stage id and the work item as arguments and
+# `work-stage`, which takes the stage id and the work item as arguments and
 # reaches every stage. Five per-stage skills that baked the stage in were
 # deleted; the tests below keep their parametrised shape, keyed by None for the
 # generic skill, so a second composing document would slot back in.
 
-STAGE_SKILL = REPO / "skills/tcw-work-stage/SKILL.md"
+STAGE_SKILL = REPO / "skills/work-stage/SKILL.md"
 
 # The generic skill keyed by None: it has no single stage, and every parametrised
 # test below has to say what it does differently for that case anyway.
@@ -461,18 +461,18 @@ def test_the_manual_fallback_says_where_the_arguments_come_from():
     sentences = re.split(r"(?<=\.)\s+", body)
     assert any("in place of" in s and "$stage" in s and "$item" in s
                for s in sentences), (
-        "tcw-work-stage never says to use the stage and item named in the "
+        "work-stage never says to use the stage and item named in the "
         "request in place of `$stage` and `$item`")
 
 
 # ── the setup and configure routers ──────────────────────────────────────────
 #
-# `tcw-setup` and `tcw-configure` route and nothing else: a purpose line, the
+# `setup` and `configure` route and nothing else: a purpose line, the
 # other skill named, and a table of situations to reference documents. Each
 # must name the other in the same words, because "set up X" can mean either.
 
 # Each routing skill, and the other skill its body must name.
-ROUTING_SKILLS = {"tcw-configure": "tcw-setup", "tcw-setup": "tcw-configure"}
+ROUTING_SKILLS = {"configure": "setup", "setup": "configure"}
 
 routing = pytest.mark.parametrize("skill", sorted(ROUTING_SKILLS))
 
@@ -519,19 +519,19 @@ def test_a_routing_skill_names_the_other_one(skill):
 
 
 # Words that pull a setup or configuration request toward a usage skill. Setting
-# up belongs to `tcw-setup` and configuring to `tcw-configure`, so a usage
+# up belongs to `setup` and configuring to `configure`, so a usage
 # skill's `description` and `when_to_use` must not advertise either.
 SETUP_TRIGGER_WORDS = ("bootstrap", "seed", "federat")
 
 
 def test_the_taxonomy_skill_does_not_advertise_setup_or_federation():
     import yaml
-    lines = (REPO / "skills/tcw-taxonomy/SKILL.md").read_text(
+    lines = (REPO / "skills/taxonomy/SKILL.md").read_text(
         encoding="utf-8").splitlines()
     front = yaml.safe_load("\n".join(lines[1:lines.index("---", 1)]))
     text = f"{front['description']} {front['when_to_use']}".lower()
     found = [w for w in SETUP_TRIGGER_WORDS if w in text]
-    assert not found, f"tcw-taxonomy's description or when_to_use says: {found}"
+    assert not found, f"taxonomy's description or when_to_use says: {found}"
 
 
 # ── removed skills and commands ──────────────────────────────────────────────
@@ -540,7 +540,7 @@ def test_the_taxonomy_skill_does_not_advertise_setup_or_federation():
 # removed or renamed. A live document still naming one sends a reader to
 # something that is not there. Matched as whole names: a preceding or following
 # `-` or word character means the match sits inside a longer name, so
-# `tcw-extras-autonomous-work` does not count as `autonomous-work`.
+# `extras-autonomous-work` does not count as `autonomous-work`.
 
 DELETED_NAMES = (
     "tcw-plugin", "tcw-taxonomy-init", "tcw-capabilities-init",
@@ -551,16 +551,40 @@ DELETED_NAMES = (
     "tcw-plan-work", "tcw-drive-work-to-completion", "tcw-verify-work",
     "tcw-process-inbox", "tcw-work-search", "tcw-audit-work-backlog",
     "tcw-consolidate-plans", "tcw-cut-version",
+    # The plugin id was dropped from every shipped skill and agent name: the
+    # namespace already supplies it, so `/tcw:tcw-work` stuttered. `tcw-work`
+    # and `tcw-work-stage` can both be listed because the match is on whole
+    # names -- the pattern for the shorter does not fire inside the longer.
+    # `tcw-post-mortem` named both a skill and an agent, so it appears once.
+    "tcw-work", "tcw-work-stage", "tcw-work-create", "tcw-capabilities",
+    "tcw-taxonomy", "tcw-setup", "tcw-configure", "tcw-post-mortem",
+    "tcw-commands-plan-work", "tcw-commands-drive-work-to-completion",
+    "tcw-commands-verify-work", "tcw-commands-process-inbox",
+    "tcw-extras-autonomous-work", "tcw-extras-triage-issues",
+    "tcw-extras-report", "tcw-backlog-auditor", "tcw-verifier",
 )
 
-LIVE_ROUTES = ("skills", ".claude-plugin", ".codex-plugin", "README.md",
-               "docs/guide", "docs/lifecycle")
+# The shipped or run surfaces that can name a skill: the plugin's own files, the
+# Codex marketplace, the hook and the scripts it runs, the CLI source whose stage
+# prompts reach an agent, the eval cases that invoke skills by name, and the
+# config's documentation entries, which carry a `skills/<name>/references/` path.
+# `tests/` stays out because it legitimately quotes retired names, this tuple
+# among them, so including it would make the guard fight itself.
+LIVE_ROUTES = ("skills", "agents", ".claude-plugin", ".codex-plugin", ".agents",
+               "hooks", "scripts", "tcw", "evals", "README.md", "docs/guide",
+               "docs/lifecycle", "tcw-config.yaml")
+
+
+# Build output under a route is not a source anyone edits: a stale `.pyc` keeps
+# an old docstring after the source is fixed, and `tcw/serve/dist` is a bundle.
+GENERATED_PARTS = {"__pycache__", "dist", "node_modules"}
 
 
 def _live_route_files():
     for root in LIVE_ROUTES:
         path = REPO / root
-        yield from (sorted(p for p in path.rglob("*") if p.is_file())
+        yield from (sorted(p for p in path.rglob("*") if p.is_file()
+                           and not GENERATED_PARTS & set(p.relative_to(REPO).parts))
                     if path.is_dir() else [path])
 
 

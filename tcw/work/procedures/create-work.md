@@ -66,11 +66,11 @@ tracked things covering the same work is itself news.
   `tcw work inbox show <entry>` prints as its body. Commit as in step 4.
 - **Revise** means re-running `spec`, and `plan` if one exists, after the
   append. Gate each one with `tcw work stage gate`, and commit each artifact
-  separately. Hand them to subagents under the `tcw-work` skill's
+  separately. Hand them to subagents under the `work` skill's
   `delegation.md` if you can dispatch; otherwise run them yourself. Report
   `revised` only once every artifact being revised is written: the spec alone
   when the item has no plan. Inside a
-  `tcw-extras-autonomous-work` session, its advisors stand in for "ask", and
+  `extras-autonomous-work` session, its advisors stand in for "ask", and
   this default applies only where that skill has no rule.
 - **Closed items are never the deciding match.** Name a close one under
   References. If it was discarded, put its resolution in the reason part of

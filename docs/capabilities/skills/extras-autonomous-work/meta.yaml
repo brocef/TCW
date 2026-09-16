@@ -1,0 +1,8 @@
+id: cap-9b64fa
+name: Offer a skill dedicated to instructing agents how to take work items to completion
+  unattended
+Status: Supported
+Feature: extras-autonomous-work-skill
+Subject:
+- skill
+Planning doc: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill

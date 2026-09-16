@@ -2,7 +2,7 @@
 
 Keep the backlog relevant, actionable, and correctly located. This is an
 AI-driven review, not a `tcw` subcommand — there is no `tcw work
-audit-work-backlog`. Ask the `tcw-work` skill for it; under any harness, this
+audit-work-backlog`. Ask the `work` skill for it; under any harness, this
 document is the procedure.
 
 Start with `tcw work list --status backlog`. Read each item folder via
@@ -84,7 +84,7 @@ from the inter-item agent's input.
 ### What every per-item dispatch must say
 
 - **Read-only.** Never mutate, transition, or tag. Approval belongs to the session
-  holding the user relationship. Prefer the `tcw-backlog-auditor` agent, which
+  holding the user relationship. Prefer the `backlog-auditor` agent, which
   holds no file-editing tools — that narrows the blast radius, though it still
   needs `Bash` to verify anything, so say this in the dispatch either way. **If
   that agent is not in your roster** — it ships with the plugin, so any session on

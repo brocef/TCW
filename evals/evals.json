@@ -183,7 +183,7 @@
    "id": "A1",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -219,7 +219,7 @@
    "id": "A2",
    "axis": "A",
    "stage": "plan",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized",
@@ -255,7 +255,7 @@
    "id": "A3",
    "axis": "A",
    "stage": "implement",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -291,7 +291,7 @@
    "id": "A4",
    "axis": "A",
    "stage": "verify",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "active",
    "arms": [
     "customized",
@@ -332,7 +332,7 @@
    "id": "A5",
    "axis": "A",
    "stage": "postmortem",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "completed",
    "arms": [
     "customized",
@@ -370,13 +370,13 @@
      "text": "silence invents nothing: none of the other stages' nonces appear in the post-mortem (I5)"
     }
    ],
-   "note": "Invokes the generic composer, not `tcw-post-mortem`. I5 asks what an agent does with a stage that asks nothing: proceed on the router alone, or invent instructions to fill the gap. The router is the composing skill's first block, so the composer is what has to be in play. `tcw-post-mortem` stays covered by B9. The two stage-prompt checks look like duplicates of the fixture guard and are not. The guard reads a freshly seeded node; these read the node after the agent has worked it, under acceptEdits, where the agent could have edited tcw-config.yaml. They confirm the stage was still silent for this run, which is the only form of the claim that grading can make. Both predicates therefore keep their only user."
+   "note": "Invokes the generic composer, not `post-mortem`. I5 asks what an agent does with a stage that asks nothing: proceed on the router alone, or invent instructions to fill the gap. The router is the composing skill's first block, so the composer is what has to be in play. `post-mortem` stays covered by B9. The two stage-prompt checks look like duplicates of the fixture guard and are not. The guard reads a freshly seeded node; these read the node after the agent has worked it, under acceptEdits, where the agent could have edited tcw-config.yaml. They confirm the stage was still silent for this run, which is the only form of the claim that grading can make. Both predicates therefore keep their only user."
   },
   {
    "id": "A6",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized"
@@ -395,7 +395,7 @@
    "id": "A7",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "arms": [
     "customized"
@@ -414,7 +414,7 @@
    "id": "A8",
    "axis": "A",
    "stage": "spec",
-   "invokes": "tcw-work-stage",
+   "invokes": "work-stage",
    "item": "backlog",
    "runner": "codex",
    "arms": [
@@ -440,8 +440,8 @@
   {
    "id": "B1",
    "axis": "B",
-   "skill": "tcw-work",
-   "invokes": "tcw-work",
+   "skill": "work",
+   "invokes": "work",
    "arms": [
     "with-skill",
     "no-skill"
@@ -485,8 +485,8 @@
   {
    "id": "B2",
    "axis": "B",
-   "skill": "tcw-work",
-   "invokes": "tcw-work",
+   "skill": "work",
+   "invokes": "work",
    "arms": [
     "with-skill",
     "no-skill"
@@ -522,8 +522,8 @@
   {
    "id": "B3",
    "axis": "B",
-   "skill": "tcw-capabilities",
-   "invokes": "tcw-capabilities",
+   "skill": "capabilities",
+   "invokes": "capabilities",
    "item": "active",
    "arms": [
     "with-skill",
@@ -564,8 +564,8 @@
   {
    "id": "B4",
    "axis": "B",
-   "skill": "tcw-taxonomy",
-   "invokes": "tcw-taxonomy",
+   "skill": "taxonomy",
+   "invokes": "taxonomy",
    "arms": [
     "with-skill",
     "no-skill"
@@ -604,9 +604,9 @@
     {
      "predicate": "tool_input_absent",
      "args": {
-      "text": "tcw-setup/references/"
+      "text": "setup/references/"
      },
-     "text": "recording new terms in a project that already uses TCW is taxonomy work, so no tcw-setup document was opened"
+     "text": "recording new terms in a project that already uses TCW is taxonomy work, so no setup document was opened"
     }
    ]
   },
@@ -615,8 +615,8 @@
    "axis": "B",
    "skill": "cross-axis",
    "invokes": [
-    "tcw-taxonomy",
-    "tcw-capabilities"
+    "taxonomy",
+    "capabilities"
    ],
    "arms": [
     "with-skill",
@@ -647,8 +647,8 @@
   {
    "id": "B6",
    "axis": "B",
-   "skill": "tcw-extras-report",
-   "invokes": "tcw-extras-report",
+   "skill": "extras-report",
+   "invokes": "extras-report",
    "arms": [
     "with-skill",
     "no-skill"
@@ -675,8 +675,8 @@
   {
    "id": "B7",
    "axis": "B",
-   "skill": "tcw-extras-triage-issues",
-   "invokes": "tcw-extras-triage-issues",
+   "skill": "extras-triage-issues",
+   "invokes": "extras-triage-issues",
    "arms": [
     "with-skill",
     "no-skill"
@@ -707,9 +707,9 @@
    "axis": "B",
    "skill": "cross-axis",
    "invokes": [
-    "tcw-taxonomy",
-    "tcw-capabilities",
-    "tcw-work"
+    "taxonomy",
+    "capabilities",
+    "work"
    ],
    "arms": [
     "with-skill",
@@ -739,9 +739,9 @@
     {
      "predicate": "tool_input_absent",
      "args": {
-      "text": "tcw-setup/references/"
+      "text": "setup/references/"
      },
-     "text": "\"Set it up\" here asks for a term, a capability and a work item in a project that already uses TCW, so no tcw-setup document was opened"
+     "text": "\"Set it up\" here asks for a term, a capability and a work item in a project that already uses TCW, so no setup document was opened"
     },
     {
      "unmechanized": "the three axes were touched in the right order — the term registered before the capability that uses it, the capability declared before the work item that delivers it",
@@ -752,8 +752,8 @@
   {
    "id": "B9",
    "axis": "B",
-   "skill": "tcw-post-mortem",
-   "invokes": "tcw-post-mortem",
+   "skill": "post-mortem",
+   "invokes": "post-mortem",
    "item": "completed",
    "arms": [
     "with-skill",
@@ -812,8 +812,8 @@
   {
    "id": "B11",
    "axis": "B",
-   "skill": "tcw-configure",
-   "invokes": "tcw-configure",
+   "skill": "configure",
+   "invokes": "configure",
    "arms": [
     "with-skill",
     "no-skill"
@@ -823,16 +823,16 @@
     {
      "predicate": "tool_input_contains",
      "args": {
-      "text": "tcw-configure/references/docs-sync.md"
+      "text": "configure/references/docs-sync.md"
      },
-     "text": "the agent opened the tcw-configure skill's docs-sync.md, the document for declaring documentation entries"
+     "text": "the agent opened the configure skill's docs-sync.md, the document for declaring documentation entries"
     },
     {
      "predicate": "tool_input_absent",
      "args": {
-      "text": "tcw-setup/references/"
+      "text": "setup/references/"
      },
-     "text": "the agent did not open any tcw-setup document: \"set up\" here names a configuration area in a project that already uses TCW"
+     "text": "the agent did not open any setup document: \"set up\" here names a configuration area in a project that already uses TCW"
     },
     {
      "predicate": "files_changed_exactly",
@@ -854,8 +854,8 @@
   {
    "id": "B12",
    "axis": "B",
-   "skill": "tcw-setup",
-   "invokes": "tcw-setup",
+   "skill": "setup",
+   "invokes": "setup",
    "fixture": "bare",
    "arms": [
     "with-skill",
@@ -866,16 +866,16 @@
     {
      "predicate": "tool_input_contains",
      "args": {
-      "text": "tcw-setup/references/project.md"
+      "text": "setup/references/project.md"
      },
-     "text": "the agent opened the tcw-setup skill's project.md, the document for starting TCW in a repository"
+     "text": "the agent opened the setup skill's project.md, the document for starting TCW in a repository"
     },
     {
      "predicate": "tool_input_absent",
      "args": {
-      "text": "tcw-configure/references/"
+      "text": "configure/references/"
      },
-     "text": "the agent opened no tcw-configure document: a repository with no tcw-config.yaml has nothing to configure yet"
+     "text": "the agent opened no configure document: a repository with no tcw-config.yaml has nothing to configure yet"
     },
     {
      "predicate": "validate_exit_zero",
@@ -888,8 +888,8 @@
   {
    "id": "B13",
    "axis": "B",
-   "skill": "tcw-work-create",
-   "invokes": "tcw-work-create",
+   "skill": "work-create",
+   "invokes": "work-create",
    "item": "active",
    "arms": [
     "with-skill",
@@ -900,9 +900,9 @@
     {
      "predicate": "tool_input_contains",
      "args": {
-      "text": "tcw-work-create"
+      "text": "work-create"
      },
-     "text": "the agent invoked the tcw-work-create skill or opened its file for an idea mentioned in passing"
+     "text": "the agent invoked the work-create skill or opened its file for an idea mentioned in passing"
     },
     {
      "predicate": "tool_input_contains",
@@ -928,7 +928,7 @@
      "text": "no item was created: the inbox entry covers the report"
     }
    ],
-   "note": "The fixture seeds docs/work/inbox/slow-login.md in step 9 of seed() (evals/seed_fixture.py), which every non-bare variant runs; its text already says eight seconds for accounts with many invoices, but not the import. What tells runs apart is files_changed_exactly: an agent that ignores the remark changes nothing, and one that creates an item or a second entry changes other paths. tool_input_contains 'tcw-work-create' is also satisfied by a Bash command naming the skill folder, so it is a routing signal, not proof of behavior. In the no-skill arm the first assertion and files_changed_exactly are expected to fail. new_item_count reads items that run_one does not yet write (2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly)."
+   "note": "The fixture seeds docs/work/inbox/slow-login.md in step 9 of seed() (evals/seed_fixture.py), which every non-bare variant runs; its text already says eight seconds for accounts with many invoices, but not the import. What tells runs apart is files_changed_exactly: an agent that ignores the remark changes nothing, and one that creates an item or a second entry changes other paths. tool_input_contains 'work-create' is also satisfied by a Bash command naming the skill folder, so it is a routing signal, not proof of behavior. In the no-skill arm the first assertion and files_changed_exactly are expected to fail. new_item_count reads items that run_one does not yet write (2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly)."
   }
  ]
 }

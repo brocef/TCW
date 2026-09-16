@@ -70,7 +70,7 @@ def test_no_prompt_names_a_sub_skill(sid):
     """The CLI states the obligation, the skill names the thing that discharges
     it — a skill name is a dangling reference for a user with no plugin."""
     text = load_builtins().stage_prompts[sid]
-    for name in ("tcw-verifier", "documentation-sync", "tcw-capabilities"):
+    for name in ("verifier", "documentation-sync", "capabilities"):
         assert name not in text
 
 

@@ -736,6 +736,14 @@
   location: a6f8ba0ab7c5ce459fc34ff48bcd6b74084388ef
   resolution: done
   resolved: '2026-09-15'
+2026-09-15-drop-the-tcw-prefix-from-the-plugin-s-skill-and-agent-names:
+  location: c3e24c9ce474588785441cce9450f5f3b91ea8c2
+  resolution: done
+  resolved: '2026-09-16'
+2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync:
+  location: 7a0c2f3bf6d5b48161b384b05c59ea27072f84c6
+  resolution: done
+  resolved: '2026-09-15'
 2026-09-15-let-a-project-override-the-tools-and-procedures-tcw-s-own-skills-mandate:
   resolution: superseded
   resolved: '2026-09-16'

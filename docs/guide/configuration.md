@@ -111,7 +111,7 @@ the instructions resolve generically, with one they resolve for that item, and a
 not legal for the item's status it still prints, and says so on stderr, leaving
 stdout to carry the instructions alone.
 
-**Checking the arguments given to the `tcw-work-stage` skill** is
+**Checking the arguments given to the `work-stage` skill** is
 `tcw work stage validate <id> [<ref>]`. The skill runs it before anything else.
 It prints nothing and exits 0 when `prompt` would accept the arguments, and
 otherwise prints a Markdown usage error with the reason and exits 1. Everything

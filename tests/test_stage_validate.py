@@ -1,4 +1,4 @@
-"""`tcw work stage validate` — the argument check `tcw-work-stage` injects first.
+"""`tcw work stage validate` — the argument check `work-stage` injects first.
 
 Valid means "`tcw work stage prompt` would accept these". Everything is run
 in-process with the harness pinned, so the output never depends on whether the
@@ -12,8 +12,8 @@ import pytest
 from tcw.cli import main
 from tcw.store.fs import FsWorkStore, init
 
-ERROR = ("**Skill Invocation Error: The tcw-work-stage skill must be invoked with "
-         "one to two arguments: `tcw-work-stage stage-id [work-slug]`**")
+ERROR = ("**Skill Invocation Error: The work-stage skill must be invoked with "
+         "one to two arguments: `work-stage stage-id [work-slug]`**")
 NOTICE = ("Your AI agent harness does not support dynamic context injection. You "
           "will need to manually run all commands with !`command` to interpret "
           "this skill.")

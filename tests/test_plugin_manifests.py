@@ -1,11 +1,10 @@
 """Plugin manifests parse, and the version is in lockstep across all 5 files.
 
 The single automated guard against *authoring* drift (runtime cache-vs-installed
-drift is the tcw-setup skill's job, not this test's).
+drift is the setup skill's job, not this test's).
 """
 import json
 import os
-import re
 import subprocess
 import tomllib
 
@@ -74,20 +73,18 @@ NUMBER_WORDS = {
 
 
 def _names_missing_from(blob: str, names) -> list[str]:
-    """Which of `names` the description does not mention, matching each as a
-    **whole token** rather than as a bare substring.
+    """Which of `names` the description does not mention, matching each only as
+    a **backticked name** rather than as a bare substring or bare word.
 
-    The distinction is load-bearing and was not before the per-stage skills
-    shipped: `tcw-work-stage` is a substring of `tcw-work-stage-spec`, so a plain
-    `n in blob` finds the generic skill inside every specialised one and reports
-    it present when the description never names it. The whole enumeration guard
-    for that skill would be dead — its name could be deleted from the
-    description with the suite green.
-
-    The lookahead is the fix: a trailing `-` or word character means the match
-    landed inside a longer name, not on the one being checked.
+    The distinction is load-bearing. `work` is a substring of `work-stage` and
+    `work-create`, and without the plugin-id prefix several names are also
+    ordinary words: "work" sits inside "framework" and "work item", and
+    "taxonomy" and "capabilities" in the manifest's keywords. Any looser match
+    finds the name somewhere else and reports it present when the enumeration
+    never names it, so the guard for that skill would be dead — its name could
+    be deleted from the description with the suite green.
     """
-    return [n for n in names if not re.search(re.escape(n) + r"(?![-\w])", blob)]
+    return [n for n in names if f"`{n}`" not in blob]
 
 
 def test_the_codex_description_counts_the_skills_it_ships():
@@ -102,7 +99,7 @@ def test_the_codex_description_counts_the_skills_it_ships():
     """
     import json
     desc = json.loads((REPO / ".codex-plugin" / "plugin.json").read_text())
-    blob = json.dumps(desc)
+    blob = desc["interface"]["longDescription"]
     names = sorted(p.parent.name for p in (REPO / "skills").glob("*/SKILL.md"))
     word = NUMBER_WORDS[len(names)]
     assert f"{word} skills" in blob, (
@@ -112,40 +109,97 @@ def test_the_codex_description_counts_the_skills_it_ships():
     assert not missing, f"shipped but unnamed in the description: {missing}"
 
 
-def test_a_shared_name_prefix_cannot_stand_in_for_the_shorter_name():
-    """The guard above, guarded. `tcw-work-stage` is a prefix of all five
-    `tcw-work-stage-<stage>` skills, so under the substring match this test
-    replaces, dropping the generic skill from the description was invisible:
-    its name was still found, inside its own specialisations.
+def test_a_shared_name_or_plain_word_cannot_stand_in_for_a_skill_name():
+    """The guard above, guarded. `work` is a prefix of `work-stage` and an
+    ordinary word, so under a looser match dropping the `work` skill from the
+    description was invisible: its name was still found, inside a longer name
+    or in the surrounding prose.
 
     Asserting on the real description would not catch a revert — it names every
-    skill, so both matchers agree on it. This asserts the discrimination
-    directly, on a blob that names only the longer skill.
+    skill, so every matcher agrees on it. This asserts the discrimination
+    directly, on a blob that names only the longer skill and uses the word.
     """
-    blob = "ships fourteen skills, among them tcw-work-stage-spec"
-    assert _names_missing_from(blob, ["tcw-work-stage-spec"]) == []
-    assert _names_missing_from(blob, ["tcw-work-stage"]) == ["tcw-work-stage"]
+    blob = "a framework for tracking work; among them `work-stage`"
+    assert _names_missing_from(blob, ["work-stage"]) == []
+    assert _names_missing_from(blob, ["work"]) == ["work"]
 
 
-@pytest.mark.parametrize("skill", sorted((REPO / "skills").glob("*/SKILL.md")), ids=lambda p: p.parent.name)
+SHIPPED_SKILLS = sorted((REPO / "skills").glob("*/SKILL.md"))
+SHIPPED_AGENTS = sorted((REPO / "agents").glob("*.md"))
+
+
+def _frontmatter(path: Path) -> dict:
+    """The `---`-delimited YAML frontmatter of a SKILL.md or an agent file.
+
+    Parsed as YAML, not scanned line by line. A plain scalar containing ": "
+    is a YAML error, and every one of the five per-stage skills shipped with
+    one on first write — a `when_to_use` reading "runs no gate: `tcw work
+    stage gate` is what refuses". A line-based scan sees the keys and passes;
+    Codex, which actually parses this, refuses to load the skill.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines and lines[0] == "---", f"{path} is missing YAML frontmatter"
+    end = lines.index("---", 1)
+    front = yaml.safe_load("\n".join(lines[1:end]))
+    assert isinstance(front, dict), f"{path} frontmatter is not a YAML mapping"
+    return front
+
+
+@pytest.mark.parametrize("skill", SHIPPED_SKILLS, ids=lambda p: p.parent.name)
 def test_every_skill_has_name_and_description_frontmatter(skill):
     """Codex refuses to load a skill whose SKILL.md lacks `---` frontmatter with
     a name and description; Claude silently tolerates it, so only a test catches
     the drop."""
-    lines = skill.read_text(encoding="utf-8").splitlines()
-    assert lines and lines[0] == "---", f"{skill} is missing YAML frontmatter"
-    end = lines.index("---", 1)
-
-    # Parsed as YAML, not scanned line by line. A plain scalar containing ": "
-    # is a YAML error, and every one of the five per-stage skills shipped with
-    # one on first write — a `when_to_use` reading "runs no gate: `tcw work
-    # stage gate` is what refuses". The line-based scan below sees the keys and
-    # passes; Codex, which actually parses this, refuses to load the skill. The
-    # scan cannot tell those apart, so it is no longer the only check.
-    front = yaml.safe_load("\n".join(lines[1:end]))
-    assert isinstance(front, dict), f"{skill} frontmatter is not a YAML mapping"
-    assert {"name", "description"} <= set(front), (
+    assert {"name", "description"} <= set(_frontmatter(skill)), (
         f"{skill} frontmatter lacks name/description")
+
+
+@pytest.mark.parametrize("skill", SHIPPED_SKILLS, ids=lambda p: p.parent.name)
+def test_skill_frontmatter_name_matches_its_directory(skill):
+    """A skill's declared `name` is the directory it sits in.
+
+    The test above checks `name` is *present*, never that it agrees with the
+    path — which is exactly what lets a directory rename land half-done. Move
+    `skills/<old>/` to `skills/<new>/` and leave `name: <old>` behind and the
+    whole suite stays green, while the two harnesses disagree about what the
+    skill is called.
+    """
+    front = _frontmatter(skill)
+    assert front["name"] == skill.parent.name, (
+        f"{skill} declares name={front['name']!r} but sits in "
+        f"{skill.parent.name!r} — a rename left the frontmatter behind")
+
+
+def test_no_shipped_name_repeats_the_plugin_id():
+    """A skill or agent name does not repeat the namespace that already qualifies
+    it. Claude invokes a skill as `/<plugin>:<skill>` and Codex as
+    `$<plugin>:<skill>`, so a `tcw-` prefix on the skill's own name produced
+    `/tcw:tcw-work` — four characters and a stutter distinguishing nothing.
+
+    Stated as the general rule, read from the manifest rather than hardcoded, so
+    it keeps holding if the plugin is ever renamed and it refuses the prefix
+    creeping back one skill at a time.
+    """
+    plugin_id = _load(CLAUDE_PLUGIN)["name"]
+    stutter = f"{plugin_id}-"
+    offenders = sorted(
+        [s.parent.name for s in SHIPPED_SKILLS if s.parent.name.startswith(stutter)]
+        + [a.stem for a in SHIPPED_AGENTS if a.stem.startswith(stutter)])
+    assert not offenders, (
+        f"these repeat the plugin id {plugin_id!r}, which the namespace already "
+        f"supplies: {offenders}")
+
+
+@pytest.mark.parametrize("agent", SHIPPED_AGENTS, ids=lambda p: p.stem)
+def test_agent_frontmatter_name_matches_its_file(agent):
+    """The same agreement, for the subagents. `agents/` carries no manifest —
+    Claude auto-loads the directory — so the filename and the declared name are
+    the only two statements of an agent's identity, and nothing else compares
+    them."""
+    front = _frontmatter(agent)
+    assert front["name"] == agent.stem, (
+        f"{agent} declares name={front['name']!r} but is filed as "
+        f"{agent.stem!r} — a rename left the frontmatter behind")
 
 
 def test_hooks_manifest_wires_one_executable_session_start_script():

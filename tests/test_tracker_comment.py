@@ -372,16 +372,19 @@ def test_the_whole_lifecycle_posts_five_comments(tmp_path, fake):
         FsWorkStore.open(root).read_sidecar(slug, "tracker.yaml").content)
 
 
-def test_a_discard_of_an_unclaimed_ticket_with_no_discard_status_posts_nothing(
+def test_a_discard_with_no_discard_status_moves_nothing_but_still_comments(
         tmp_path, fake):
+    """An unmapped `discarded` sends no status move — that is what this pins. The
+    comment is not governed by the status mapping, and a discard may act on a ticket
+    nobody holds, so the note saying the work was abandoned is still posted."""
     root = make_node(tmp_path, statuses={"active": "In Progress"})
     set_tracker_key(root, "comments", True)
     slug = bound_item(root)
     code, _out, err = cli(root, "work", "complete", slug, "--resolution", "wontfix",
                           "--confirm")
     assert code == 0, err
-    assert texts(fake) == [] and owed(root, slug) is None
-    assert "no progress comment" in err
+    assert fake.tickets[TICKET_ID].status == "To Do"      # nothing moved it
+    assert len(texts(fake)) == 1 and owed(root, slug) is None
 
 
 def test_a_held_part_still_posts_its_comment(tmp_path, fake):
@@ -548,3 +551,18 @@ def test_a_comment_owed_on_a_binding_from_another_site_is_reported(tmp_path, fak
     assert owed(root, slug)["state"] == "conflicting"
     assert "elsewhere.invalid" in owed(root, slug)["reason"]
     assert cli(root, "work", "tracker", "sync", slug)[0] == 1
+
+
+def test_a_discard_of_an_unassigned_ticket_still_posts_its_comment(tmp_path, fake):
+    """A discard may close a ticket nobody holds, so the comment saying why must go
+    with it — otherwise the ticket is closed with no trace of what closed it, which
+    is the whole of the reporter's queue."""
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    claimed_ticket(fake, "To Do", None)
+    code, out, err = cli(root, "work", "complete", slug, "--resolution", "wontfix",
+                         "--confirm", "--force")
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "Won't Do"
+    assert len(texts(fake)) == 1, texts(fake)
+    assert owed(root, slug) is None

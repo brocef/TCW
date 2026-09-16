@@ -3,7 +3,7 @@
 The defect this catches shipped three times undetected: `tcw work
 audit-work-backlog`, `tcw work consolidate-plans --apply --delete`, and `tcw work
 edit --pr` were all documented in `README.md` and the agent-facing
-`skills/tcw-work/references/commands.md` without ever existing. Two of them were
+`skills/work/references/commands.md` without ever existing. Two of them were
 AI-driven workflows that live as slash commands, written up as if they were CLI
 subcommands; the third was pure invention.
 
@@ -71,7 +71,7 @@ def _declares_a_missing_capability(doc: Path) -> bool:
     """Whether `doc` is the body of a capability the ledger marks `Missing`.
 
     A capability seeded `Missing` at a work item's `plan` stage describes what a
-    user *will* be able to do — `skills/tcw-capabilities/SKILL.md` prescribes
+    user *will* be able to do — `skills/capabilities/SKILL.md` prescribes
     exactly that (`tcw capabilities add … --status Missing`), and for any
     capability that adds a CLI verb the body necessarily names a verb that does
     not exist yet. Without this carve-out the documented planning workflow cannot
@@ -264,7 +264,7 @@ DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage gate",
 
 @pytest.mark.parametrize("verb", DOCUMENTED_VERBS)
 @pytest.mark.parametrize(
-    "doc", ("docs/guide/work.md", "skills/tcw-work/references/commands.md")
+    "doc", ("docs/guide/work.md", "skills/work/references/commands.md")
 )
 def test_a_shipped_verb_is_findable_in_the_docs(verb, doc):
     assert verb in (REPO / doc).read_text(encoding="utf-8"), \

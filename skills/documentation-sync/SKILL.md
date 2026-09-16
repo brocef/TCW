@@ -14,21 +14,21 @@ After completing code changes, get the project's documentation entries and evalu
 - `"config"` — the entries are declared in `tcw-config.yaml` under `work.documentation`, validated by `tcw validate`, and the `entries` array is authoritative. Use it and read no Markdown.
 - `"agent-guide"` — the project has declared nothing, so fall back to the legacy convention: a `## Documentation Sync` section in the project's `CLAUDE.md` / `AGENTS.md`, holding a bullet list of `- path [Trigger] — description`.
 
-Outside a TCW node `tcw work docs` does not apply; use the legacy convention directly. If neither is present, ask the user whether to add entries — read the `tcw-configure` skill's `docs-sync.md` to walk them through it.
+Outside a TCW node `tcw work docs` does not apply; use the legacy convention directly. If neither is present, ask the user whether to add entries — read the `configure` skill's `docs-sync.md` to walk them through it.
 
-This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `tcw-work` lifecycle invokes it at three points:
+This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `work` lifecycle invokes it at three points:
 
 | Lifecycle point        | What this skill does                                                                                                                                                                                       | Reference                                                     |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `tcw-work` → `references/lifecycle/stage-plan.md` step 1      |
-| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `tcw-work` → `references/lifecycle/stage-implement.md` step 3 |
-| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `tcw-work` → `references/lifecycle/stage-verify.md` step 5    |
+| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `work` → `references/lifecycle/stage-plan.md` step 1      |
+| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `work` → `references/lifecycle/stage-implement.md` step 3 |
+| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `work` → `references/lifecycle/stage-verify.md` step 5    |
 
 One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
 ## The Documentation Sync Section — the fallback form
 
-This is the **fallback**, not the recommended form. In a TCW node, declare the entries in `tcw-config.yaml` under `work.documentation` instead: `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `implement` put them in front of the agent directly, so the gate does not depend on anyone remembering to open a file and parse prose. The `tcw-configure` skill's `docs-sync.md` walks through both forms.
+This is the **fallback**, not the recommended form. In a TCW node, declare the entries in `tcw-config.yaml` under `work.documentation` instead: `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `implement` put them in front of the agent directly, so the gate does not depend on anyone remembering to open a file and parse prose. The `configure` skill's `docs-sync.md` walks through both forms.
 
 Use the section below when the project is **not** a TCW node, or when the user prefers Markdown. Project owners add it to their `CLAUDE.md`:
 

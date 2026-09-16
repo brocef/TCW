@@ -124,16 +124,16 @@ def test_the_grader_looks_for_the_headings_the_stage_skill_renders():
     without the grader makes every live run fail I1 while the fixtures, which
     carry whatever headings they were written with, stay green."""
     skill = (Path(grade.__file__).resolve().parents[1]
-             / "skills" / "tcw-work-stage" / "SKILL.md").read_text(encoding="utf-8")
+             / "skills" / "work-stage" / "SKILL.md").read_text(encoding="utf-8")
     for heading in grade.BLOCK_HEADINGS:
         assert f"\n{heading}\n" in skill, heading
 
 
 # --- tool inputs: what the agent ran or opened ----------------------------
 
-READ_PATH = "/x/skills/tcw-setup/references/project.md"
-RESULT_ONLY = "/x/skills/tcw-configure/references/docs-sync.md"
-TEXT_ONLY = "/x/skills/tcw-setup/references/work.md"
+READ_PATH = "/x/skills/setup/references/project.md"
+RESULT_ONLY = "/x/skills/configure/references/docs-sync.md"
+TEXT_ONLY = "/x/skills/setup/references/work.md"
 
 
 def _routing_run() -> dict:
@@ -196,11 +196,11 @@ def test_tool_input_absent_fails_when_there_are_no_tool_calls_at_all():
 EVALS = json.loads((Path(grade.__file__).parent / "evals.json")
                    .read_text(encoding="utf-8"))
 
-SETUP_PROJECT = "/p/skills/tcw-setup/references/project.md"
-CONFIGURE_DOCS = "/p/skills/tcw-configure/references/docs-sync.md"
-TAXONOMY_SKILL = "/p/skills/tcw-taxonomy/SKILL.md"
-WORK_SKILL = "/p/skills/tcw-work/SKILL.md"
-CREATE_SKILL = "/p/skills/tcw-work-create/SKILL.md"
+SETUP_PROJECT = "/p/skills/setup/references/project.md"
+CONFIGURE_DOCS = "/p/skills/configure/references/docs-sync.md"
+TAXONOMY_SKILL = "/p/skills/taxonomy/SKILL.md"
+WORK_SKILL = "/p/skills/work/SKILL.md"
+CREATE_SKILL = "/p/skills/work-create/SKILL.md"
 
 CASE_ROUTING = [
     ("B11", "tool_input_contains", SETUP_PROJECT, CONFIGURE_DOCS),
@@ -211,7 +211,7 @@ CASE_ROUTING = [
     ("B8", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
     # B13 carries a second `tool_input_contains` (for the inbox), so its row
     # names which assertion it pins by that assertion's search text.
-    ("B13", "tool_input_contains", WORK_SKILL, CREATE_SKILL, "tcw-work-create"),
+    ("B13", "tool_input_contains", WORK_SKILL, CREATE_SKILL, "work-create"),
 ]
 
 
