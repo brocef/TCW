@@ -74,7 +74,9 @@ category.
   checks both collisions on live names.
 - Capability ids are regenerated. The CLI has no rename verb on either axis, so
   each entry was re-created with `add` + `set` and the old one removed with
-  `rm`; an id does not survive that. Nothing reads these ids today. Taxonomy
+  `rm`; an id does not survive that. Nothing in this repository reads them, but
+  a project that inherits this ledger keys an override by the upstream id, so an
+  override of one of these 15 entries no longer matches it. Taxonomy
   Features carry no id — the slug is their identity — so they lose nothing.
   A `tcw capabilities mv` / `tcw taxonomy mv` would have made the migration two
   loops of one command and is filed as follow-up work.

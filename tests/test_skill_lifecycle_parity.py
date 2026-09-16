@@ -522,21 +522,27 @@ DELETED_NAMES = (
     "tcw-extras-report", "tcw-backlog-auditor", "tcw-verifier",
 )
 
-# Every shipped or run surface that can name a skill: the plugin's own files,
-# the Codex marketplace, the hook and the scripts it runs, the CLI source whose
-# stage prompts reach an agent, the eval cases that invoke skills by name, and
-# the config's documentation entries, which carry a `skills/<name>/references/`
-# path. `tests/` is the one place left out -- it legitimately quotes retired
-# names, this tuple among them, so including it would make the guard fight itself.
+# The shipped or run surfaces that can name a skill: the plugin's own files, the
+# Codex marketplace, the hook and the scripts it runs, the CLI source whose stage
+# prompts reach an agent, the eval cases that invoke skills by name, and the
+# config's documentation entries, which carry a `skills/<name>/references/` path.
+# `tests/` stays out because it legitimately quotes retired names, this tuple
+# among them, so including it would make the guard fight itself.
 LIVE_ROUTES = ("skills", "agents", ".claude-plugin", ".codex-plugin", ".agents",
                "hooks", "scripts", "tcw", "evals", "README.md", "docs/guide",
                "docs/lifecycle", "tcw-config.yaml")
 
 
+# Build output under a route is not a source anyone edits: a stale `.pyc` keeps
+# an old docstring after the source is fixed, and `tcw/serve/dist` is a bundle.
+GENERATED_PARTS = {"__pycache__", "dist", "node_modules"}
+
+
 def _live_route_files():
     for root in LIVE_ROUTES:
         path = REPO / root
-        yield from (sorted(p for p in path.rglob("*") if p.is_file())
+        yield from (sorted(p for p in path.rglob("*") if p.is_file()
+                           and not GENERATED_PARTS & set(p.relative_to(REPO).parts))
                     if path.is_dir() else [path])
 
 
