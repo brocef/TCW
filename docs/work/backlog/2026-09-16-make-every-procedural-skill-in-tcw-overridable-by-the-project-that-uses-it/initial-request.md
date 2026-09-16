@@ -161,15 +161,18 @@ composition point are open for `spec`.
   - of the four skills the requester's examples left unsaid,
     `documentation-sync`, `tcw-post-mortem` and `tcw-work-create` are
     overridable and `tcw-setup` is not;
-  - asked what should become of the exemplar's advisor pair, the requester chose
-    to remove the named tools entirely — the skill states only what an advisor
-    must be and how many are needed, and the roster comes from the project. This
-    was answered before the scope widened to every procedural skill, so `spec`
-    should confirm it still holds as the general rule and not only for that one
-    skill. It sits in tension with the constraint that a project configuring
-    nothing behaves as it does today: if no roster ships, the default is an
-    unattended run with no advisors at all, which is a behaviour change for the
-    only project currently using the skill.
+  - asked what should become of the exemplar's advisor pair, the requester first
+    chose to remove the named tools entirely, with the roster coming from the
+    project. That was answered before the scope widened, and it collided with
+    the constraint that a project configuring nothing behaves as it does today:
+    a skill shipping no roster would leave an unattended run with no advisors at
+    all. Put back to the requester on 2026-09-16, who resolved it the other way
+    — **today's text ships as the `builtin` default**. So the skill body stops
+    mandating anything, the Codex and Opus roster moves into TCW's shipped
+    default where a project can replace it, and behaviour is preserved
+    everywhere. The consequence to carry into `spec`: TCW still ships an
+    opinionated default naming a third-party CLI, and that is accepted. What
+    changes is that it is a default rather than a requirement.
 - Inference, not the requester's words: the two rules are this session's
   articulation of examples the requester supplied, agreed in chat but not
   authored by them; the list of documents left unclassified is this session's,
