@@ -1356,6 +1356,65 @@ def test_the_window_for_a_discard_record_is_its_two_ends(node, fake):
                                                                 "Won't Do")
 
 
+def test_a_late_linked_ticket_already_past_its_item_is_not_pulled_back(tmp_path,
+                                                                       monkeypatch):
+    """On a workflow offering the claim from every status, claiming a ticket that is
+    already in review would move it back to In Progress. It is refused instead, and
+    the claim stays owed."""
+    from tracker_fake import GLOBAL
+    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
+    slug = late_linked(root)
+    outcome = deliver_now(root, slug, move=None, previous=None)
+    assert outcome.state == "conflicting", outcome
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Review"
+    assert record(root, slug)["claim"] == "owed"
+
+
+def test_a_late_linked_discard_does_not_move_an_already_resolved_ticket(tmp_path,
+                                                                        monkeypatch):
+    """The walk passes the ticket's own status as where it is expected, so the resolved
+    check `assess_move` makes without a window has to be made before the walk."""
+    workflow = {"To Do": [("21", "Start Progress", "In Progress")], "In Progress": [],
+                "Done": [("51", "Abandon", "Won't Do")], "Won't Do": []}
+    root, fake_ = ladder_node(tmp_path, monkeypatch, workflow, status="Done")
+    slug = late_linked(root)
+    FsWorkStore.open(root).complete(slug, "wontfix", dod_ack=[], force=True)
+    outcome = deliver_now(root, slug, move="discard", previous="active")
+    assert outcome.state == "conflicting", outcome
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_walk_interrupted_after_the_claim_resumes_on_the_next_sync(tmp_path,
+                                                                     monkeypatch):
+    """The claim lands, then the tracker drops out before the first hop. The record
+    now says the claim is done, so the next sync is not on the owed path — and on a
+    workflow with no shortcut, one transition cannot reach Done from In Progress."""
+    from tcw.tracker.jira import TrackerUnavailable
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
+    slug = late_linked(root)
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])
+    answer, posts = fake_.answer, []
+
+    def second_transition_fails(client, method, path, body):
+        if method == "POST" and path.endswith("/transitions"):
+            posts.append(path)
+            if len(posts) == 2:
+                raise TrackerUnavailable("the tracker could not be reached (fake)")
+        return answer(client, method, path, body)
+
+    fake_.answer = second_transition_fails
+    first = deliver_now(root, slug, move="complete", previous="active")
+    assert first.state == "pending", first
+    assert record(root, slug)["claim"] == "done"
+    assert fake_.tickets[TICKET_ID].status == "In Progress"
+    fake_.answer = answer
+    outcome = deliver_now(root, slug, move=None, previous=None)
+    assert outcome.state == "current", outcome
+    assert fake_.tickets[TICKET_ID].status == "Done"
+    assert record(root, slug) is None
+
+
 def test_a_claim_landing_off_the_ladder_stops_the_catch_up(tmp_path, monkeypatch):
     """The claim is how a ticket gets onto the first rung. If it lands somewhere the
     project has not mapped, there is no rung to walk on from — and continuing would

@@ -99,6 +99,20 @@ def ladder(statuses: dict, local_target: str, resolution: str | None) -> tuple[s
                                                            resolution))
 
 
+def lowest_rung(statuses: dict, status: str) -> int | None:
+    """The lowest rung `status` is mapped to, or `None` when it is on none.
+
+    The lowest, because a status two local statuses share is only certainly as high as
+    the lower of them."""
+    rungs = []
+    for local, index in _RUNG_ORDER.items():
+        value = statuses.get(local, "")
+        for mapped in (value.values() if isinstance(value, dict) else (value,)):
+            if mapped and _normalize(mapped) == _normalize(status):
+                rungs.append(index)
+    return min(rungs, default=None)
+
+
 def forward_from(rungs: tuple[str, ...], status: str) -> tuple[str, ...]:
     """The rungs from `status` onward, inclusive — or `()` when it is not on `rungs`.
 
@@ -321,6 +335,60 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                                 revision=revision)
         return Outcome(state, reason, claimed=claimed_message)
 
+    def walk(ticket) -> Outcome:
+        # A ticket TCW has never held can be several rungs below its item — it was
+        # linked to work already under way — and a workflow with no shortcut to the top
+        # cannot be caught up in one transition. Walk the rungs the project itself
+        # mapped, one at a time, re-reading between them because what a workflow offers
+        # depends on where the ticket is. Bounded by the ladder: at most one hop per
+        # rung, each strictly higher, so it ends without a counter. Two paths get here:
+        # a claim that is owed, and a recorded move whose ticket is inside its window
+        # but has no transition straight to the target — a walk a failure interrupted.
+        # A ticket somebody moved *back* reaches neither, so it is never walked forward.
+        nonlocal since
+        if ticket.category == "done" and _normalize(ticket.status) != _normalize(target):
+            # Each hop passes the ticket's own status as `expected`, which skips
+            # `assess_move`'s resolved check, so it is made here: a ticket somebody
+            # already closed is never moved to a different closed status.
+            since = ticket.status
+            return finish(CONFLICTING, f"{ticket.key} is already resolved "
+                                       f"('{ticket.status}'), so it was not moved.")
+        steps = ladder_steps(config.statuses, MOVE_STATUS[move], item.resolution)
+        reached = forward_from(tuple(rung for rung, _local in steps), ticket.status)
+        remaining = steps[len(steps) - len(reached) + 1:] if reached else steps
+        for rung, local_name in remaining:
+            hop = _MOVE_ONTO.get(local_name, move)
+            verdict, detail = assess_move(
+                ticket, target=rung, expected=(ticket.status,), move=hop,
+                named_transition=transition_name(config.move_transitions, hop,
+                                                 item.resolution))
+            if verdict == CURRENT:
+                continue
+            since = ticket.status
+            if verdict != "apply":
+                # Not undone: the ticket is nearer where it belongs than it was, and
+                # every resting place is a mapped rung, so a later sync resumes here.
+                return finish(verdict, detail)
+            try:
+                client.apply_transition(ticket.issue_id, detail.id)
+            except TrackerError as error:
+                since = ticket.status          # nothing moved
+                return finish(classify_error(error), str(error))
+            try:
+                ticket = read_ticket(client, bound.ticket_id)
+            except TrackerError as error:
+                # The hop was applied, so the ticket is on `rung` even though the read
+                # that would have confirmed it failed. Recording where it actually is
+                # beats recording where it was: `since` is what the next run measures
+                # its window from.
+                since = rung
+                return finish(classify_error(error), str(error))
+        since = ticket.status
+        if _normalize(ticket.status) == _normalize(target):
+            return finish(CURRENT)
+        return finish(CONFLICTING, f"{ticket.key} did not reach '{target}': it is in "
+                                   f"'{ticket.status}'.")
+
     if not same_site(bound.ticket_url, config.base_url):
         return finish(CONFLICTING, (
             f"{bound.ticket_key}'s binding points at "
@@ -358,6 +426,15 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             if check_only:
                 return Outcome(CONFLICTING,
                                f"the claim of {bound.ticket_key} is still owed.")
+            ahead = lowest_rung(config.statuses, ticket.status)
+            if not starting and ahead is not None and ahead > _RUNG_ORDER.get(local, ahead):
+                # A late-linked ticket already past where its item is. Claiming it
+                # could move it back — a workflow may offer the claim from anywhere —
+                # and TCW never pulls a ticket back. The claim stays owed, so once the
+                # item catches up a later move or `sync` takes it from there.
+                return finish(CONFLICTING, (
+                    f"{ticket.key} is in '{ticket.status}', which is past where its item "
+                    f"is, so it was not claimed or moved back."))
             try:
                 outcome = claim(client, ticket)
             except TrackerError as error:
@@ -399,53 +476,21 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             except TrackerError as error:
                 return finish(classify_error(error), str(error))
 
-        # A ticket TCW has never held can be several rungs below its item — it was
-        # linked to work already under way — and a workflow with no shortcut to the top
-        # cannot be caught up in one transition. Walk the rungs the project itself
-        # mapped, one at a time, re-reading between them because what a workflow offers
-        # depends on where the ticket is. Bounded by the ladder: at most one hop per
-        # rung, each strictly higher, so it ends without a counter. Only a claim that is
-        # owed gets here, which is what keeps a ticket somebody moved *back* out of it.
-        steps = ladder_steps(config.statuses, MOVE_STATUS[move], item.resolution)
-        reached = forward_from(tuple(rung for rung, _local in steps), ticket.status)
-        remaining = steps[len(steps) - len(reached) + 1:] if reached else steps
-        for rung, local_name in remaining:
-            hop = _MOVE_ONTO.get(local_name, move)
-            verdict, detail = assess_move(
-                ticket, target=rung, expected=(ticket.status,), move=hop,
-                named_transition=transition_name(config.move_transitions, hop,
-                                                 item.resolution))
-            if verdict == CURRENT:
-                continue
-            since = ticket.status
-            if verdict != "apply":
-                # Not undone: the ticket is nearer where it belongs than it was, and
-                # every resting place is a mapped rung, so a later sync resumes here.
-                return finish(verdict, detail)
-            try:
-                client.apply_transition(ticket.issue_id, detail.id)
-            except TrackerError as error:
-                since = ticket.status          # nothing moved
-                return finish(classify_error(error), str(error))
-            try:
-                ticket = read_ticket(client, bound.ticket_id)
-            except TrackerError as error:
-                # The hop was applied, so the ticket is on `rung` even though the read
-                # that would have confirmed it failed. Recording where it actually is
-                # beats recording where it was: `since` is what the next run measures
-                # its window from.
-                since = rung
-                return finish(classify_error(error), str(error))
-        since = ticket.status
-        if _normalize(ticket.status) == _normalize(target):
-            return finish(CURRENT)
-        return finish(CONFLICTING, f"{ticket.key} did not reach '{target}': it is in "
-                                   f"'{ticket.status}'.")
+        return walk(ticket)
 
     named = transition_name(config.move_transitions, move, item.resolution) if move else ""
     verdict, detail = assess_move(ticket, target=target, expected=expected, move=move,
                                   named_transition=named)
     if verdict != "apply":
+        # A recorded move whose ticket is inside its window, with more than one rung
+        # still to climb, is a walk a failure stopped part-way — the claim landed, so
+        # the record no longer says it is owed. One transition cannot finish it on a
+        # workflow with no shortcut, so it resumes the walk instead of refusing.
+        if (verdict == CONFLICTING and record is not None and not check_only
+                and _normalize(ticket.status) in {_normalize(s) for s in expected}
+                and len(forward_from(ladder(config.statuses, MOVE_STATUS[move],
+                                            item.resolution), ticket.status)) > 2):
+            return walk(ticket)
         return finish(verdict, detail)
     if check_only:
         return Outcome(CONFLICTING, (
