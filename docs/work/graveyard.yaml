@@ -737,6 +737,7 @@
   resolution: done
   resolved: '2026-09-15'
 2026-09-15-drop-the-tcw-prefix-from-the-plugin-s-skill-and-agent-names:
+  location: c3e24c9ce474588785441cce9450f5f3b91ea8c2
   resolution: done
   resolved: '2026-09-16'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
