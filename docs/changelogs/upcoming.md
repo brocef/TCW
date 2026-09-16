@@ -5,6 +5,26 @@ category.
 
 ## Added
 
+- **Procedures** — non-stage instruction text a project may replace.
+  `PROCEDURE_IDS` (`tcw/store/base.py`): `unattended-work`, `triage-issues`,
+  `documentation-sync`, `post-mortem`, `create-work`, `audit-backlog`,
+  `consolidate-plans`, `decompose`, `delegation`, `search`. Defaults ship as
+  `tcw/work/procedures/<id>.md` (package data), verbatim copies of the matching
+  skill body or `skills/tcw-work/references/procedures/*.md`;
+  `tests/test_shipped_procedures.py` fails if a copy and its source diverge.
+  `load_builtins()` returns them as `Builtins.procedures`, refusing a missing or
+  empty file like a stage prompt (shared `_load_texts`).
+- **`work.procedures`** config: `parse_procedures()` (pure), one plain binding
+  list per id with `PROMPT_KINDS`, parsed by `_parse_binding_list` with role
+  `procedure`; an empty list is refused. `LifecyclePolicy.procedures` /
+  `.procedure(id)`, filled by `FsWorkStore.lifecycle_policy()`; problems and
+  `file:` checks reported through `lifecycle_problems()`.
+- **`resolve_procedure()`** (`tcw/work/resolve.py`): the `builtin` floor and
+  composition of `resolve_prompts`; `generate:` hooks see role `procedure`.
+- **`tcw work procedure prompt <id> [ref] [--no-exec]`**: no bookend, no status
+  note, no harness check. When every binding was skipped by its `when:`, a note
+  goes to stderr (exit 0, empty stdout).
+
 - **`tcw work stage validate [words…]`** (`tcw/work/cli.py`): reports whether a
   `tcw-work-stage` invocation's arguments are ones `tcw work stage prompt` would
   accept — a known stage id, no item for `inbox`, otherwise an optional
@@ -36,6 +56,9 @@ category.
   when the value disagrees with the row's verdict.
 
 ## Changed
+
+- `resolve_prompts` delegates to a private `_compose()` shared with
+  `resolve_procedure`; stage resolution is unchanged.
 
 - `skills/tcw-work-stage/SKILL.md` injects
   `` tcw work stage validate -- $stage $item 2>/dev/null || true `` ahead of its

@@ -76,6 +76,41 @@ work:
 key under `work.lifecycle` other than `stages`, `transitions`, `artifacts`,
 `timeout` and `output-cap` is reported as unknown.
 
+## Procedures: `work.procedures`
+
+Some of TCW's instructions are not lifecycle stages. A project can replace or
+add to their text under `work.procedures`, a key beside `work.lifecycle` (not
+inside it):
+
+```yaml
+work:
+    procedures:
+        unattended-work:
+            - file: docs/procedures/unattended-work.md
+        documentation-sync:
+            - builtin: true
+            - blob: "Also update docs/guide/ when a CLI flag changes."
+```
+
+- The ids are `unattended-work`, `triage-issues`, `documentation-sync`,
+  `post-mortem`, `create-work`, `audit-backlog`, `consolidate-plans`,
+  `decompose`, `delegation` and `search`. A project cannot add ids of its own.
+- Each id holds a plain list of bindings — no `prompt:` key — using `blob:`,
+  `file:`, `generate:`, `builtin: true` or `skill:`, each with an optional
+  `when:`. Every binding that applies is used, in order. An id left out gets
+  TCW's own text; once an id is listed, `builtin: true` is how TCW's text comes
+  back.
+- An empty list is refused. To make a procedure say nothing, write
+  `[{blob: ""}]`.
+- `when:` never matches without a work item. If every binding is conditional
+  and the procedure is read with no item, nothing prints and a note on stderr
+  says why — put an unconditional binding last to cover that case.
+- A `generate:` script runs under `work.lifecycle.timeout` and
+  `work.lifecycle.output-cap`, and gets `TCW_HOOK_ROLE=procedure`.
+
+`tcw validate` reports the same mistakes it reports for stage bindings, plus an
+unknown procedure id. Check the result with `tcw work procedure prompt <id>`.
+
 ## The Definition of Done: `dod.yaml`
 
 `tcw work complete --resolution done` prints a checklist and refuses until it is

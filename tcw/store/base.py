@@ -931,6 +931,15 @@ def body_title(body: str | None) -> str | None:
 
 STAGE_IDS = ("inbox", "request", "spec", "plan", "implement", "verify", "postmortem")
 
+# Procedures: instruction text TCW ships that is not a lifecycle stage, which a
+# project may replace under `work.procedures`. Public API like `STAGE_IDS`, and
+# deliberately **not** skill names: skills get renamed, and a project's
+# configuration must not break when one is. A project replaces a procedure's
+# text; it cannot add a procedure.
+PROCEDURE_IDS = ("unattended-work", "triage-issues", "documentation-sync",
+                 "post-mortem", "create-work", "audit-backlog",
+                 "consolidate-plans", "decompose", "delegation", "search")
+
 # `discard` is a transition but **not** a CLI verb. Every other id here is the
 # command you type; `discard` is reached as `complete --resolution <not-done>`,
 # because the resolution picks the destination folder. Bindings key on the *move*
@@ -1564,6 +1573,15 @@ class LifecyclePolicy:
     artifacts: dict[str, list[Binding]] = field(default_factory=dict)
     timeout: int = 300
     output_cap: int = DEFAULT_OUTPUT_CAP
+    # `work.procedures`, a sibling key of `work.lifecycle` in the config file,
+    # held here because it is the same kind of thing — bindings a node declares —
+    # and a procedure's `generate:` runs under the `timeout` and `output_cap`
+    # above.
+    procedures: dict[str, list[Binding]] = field(default_factory=dict)
+
+    def procedure(self, procedure_id: str) -> list[Binding]:
+        """A procedure's bindings, or `[]` when the node configured none."""
+        return self.procedures.get(procedure_id, [])
 
     def stage(self, stage_id: str) -> list[Binding]:
         """A stage's **prompts**.
@@ -1845,7 +1863,7 @@ def _parse_binding(raw: Any, where: str, legal: "frozenset[str] | set[str]",
     kind = declared[0]
     if kind not in legal:
         hint = ""
-        if kind == "command" and role in ("prompt", "artifact"):
+        if kind == "command" and role in ("prompt", "artifact", "procedure"):
             # The one misuse that is both likely and has a named alternative.
             hint = " — use 'generate' to run a script whose output is the text"
         problems.append(f"{where}: '{kind}' is not allowed in a {role} position; "
@@ -2343,6 +2361,39 @@ def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
                 policy.transitions[tid] = bindings
 
     return policy, problems
+
+
+def parse_procedures(raw: Any) -> tuple[dict[str, list[Binding]], list[str]]:
+    """Parse `work.procedures` into bindings per procedure id, plus problems.
+
+    Pure and never raises, like `parse_lifecycle_policy`, and built from the same
+    binding parser so a procedure's bindings and a stage's prompt bindings are
+    refused for the same mistakes in the same words. Each id holds a plain list:
+    a procedure has one role, so it needs no `prompt:` key to name it.
+    """
+    parsed: dict[str, list[Binding]] = {}
+    problems: list[str] = []
+    if raw is None:
+        return parsed, problems
+    if not isinstance(raw, dict):
+        return parsed, [f"work.procedures: expected a mapping of procedure ids to "
+                        f"lists of bindings, got {type(raw).__name__}"]
+    for pid, value in raw.items():
+        where = f"work.procedures.{pid}"
+        if pid not in PROCEDURE_IDS:
+            problems.append(f"{where}: unknown procedure id; expected one of "
+                            f"{', '.join(PROCEDURE_IDS)}")
+            continue
+        if isinstance(value, list) and not value:
+            problems.append(
+                f"{where}: an empty list is not an opt-out — a procedure with no "
+                f"bindings resolves to TCW's built-in text, and after parsing this "
+                f"is indistinguishable from not writing the key at all. Remove it, "
+                f"or bind [{{blob: ''}}] for a procedure that should say nothing")
+            continue
+        parsed[pid] = _parse_binding_list(value, where, problems, PROMPT_KINDS,
+                                          "procedure")
+    return parsed, problems
 
 
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",

@@ -10,6 +10,7 @@ the `tcw-configure` skill's `work.md`.
 | `check`    | `stages.<id>.pre`, `transitions.<id>.pre`/`post` | `command`, `skill`                       | Run in order; first failure stops. |
 | `prompt`   | `stages.<id>.prompt`, or a bare stage list       | `blob`, `file`, `generate`, `builtin`, `skill` | **All** matches, concatenated in declaration order. |
 | `artifact` | `artifacts.<name>`                               | `blob`, `file`, `generate`, `builtin`    | **First** match wins; `builtin` is the fallback and goes last. |
+| `procedure` | `work.procedures.<id>` (beside `work.lifecycle`) | `blob`, `file`, `generate`, `builtin`, `skill` | As `prompt`. Read by `tcw work procedure prompt <id> [<slug>]`. |
 
 `blob:` is inline text · `file:` is a node-relative path, confined to the node ·
 `generate:` is a script that receives the item as JSON on stdin and prints the
