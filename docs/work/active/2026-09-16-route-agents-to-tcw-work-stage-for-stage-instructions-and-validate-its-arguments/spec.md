@@ -237,7 +237,7 @@ Directly after the frontmatter, before `# The `$stage` stage`:
 ```markdown
 ## Skill invocation validation (Claude-only injection)
 
-!`tcw work stage validate $ARGUMENTS 2>/dev/null || true`
+!`tcw work stage validate -- $stage $item 2>/dev/null || true`
 ```
 
 **`2>/dev/null` handles an older CLI.** The plugin and the `tcw` CLI are
@@ -253,10 +253,16 @@ A bare "(Claude-only)" would tell a Codex reader to skip the section, and the
 harness notice exists for exactly that reader. One sentence under the heading
 tells any other harness to run the command itself first.
 
-**`$ARGUMENTS`, not `$stage $item`.** `$ARGUMENTS` expands to the full argument
-string as typed. That makes the three-or-more-words error possible: with
-`$stage $item`, a third word would be thrown away before `validate` ever ran.
-The other two injected lines keep `$stage` / `$item`.
+**`$stage $item`, not `$ARGUMENTS`.** *(Revised during `implement`, after
+review.)* This spec first chose `$ARGUMENTS` so that three or more words could
+be reported. But `$ARGUMENTS` puts the extra words into the shell unquoted, where
+the old lines simply dropped them. A `#` then comments out `|| true`, and an
+apostrophe or a parenthesis is a shell syntax error. Either way the line exits
+non-zero and cancels the whole skill load. The user chose `$stage $item` on
+2026-09-16. It keeps exactly the exposure the other two lines already have, and
+gives up reporting extra words from the skill. `validate` still reports them
+when run by hand. `--` comes first so that a stage typed as `-h` is judged, not
+parsed as an option.
 
 ### Parser
 
@@ -360,7 +366,7 @@ The other two injected lines keep `$stage` / `$item`.
    - an unreadable tree with only `CLAUDECODE=1` → Claude Code;
    - nothing at all → Claude Code.
 10. `skills/tcw-work-stage/SKILL.md` has
-    `` !`tcw work stage validate $ARGUMENTS 2>/dev/null || true` `` before its H1.
+    `` !`tcw work stage validate -- $stage $item 2>/dev/null || true` `` before its H1.
     **Invoking `/tcw:tcw-work-stage` with no arguments in a real Claude Code
     session** loads the skill: no "Shell command failed" notice, and the rendered
     text contains the Skill Invocation Error. Invoking it with valid arguments

@@ -152,14 +152,17 @@ Insert directly after the closing `---` of the frontmatter, before
 
 Under any harness other than Claude Code, run `tcw work stage validate` with this skill's arguments before reading on.
 
-!`tcw work stage validate $ARGUMENTS 2>/dev/null || true`
+!`tcw work stage validate -- $stage $item 2>/dev/null || true`
 
 ```
+
+*(Corrected during `implement`: the plan first used `$ARGUMENTS`. See spec.md,
+"The skill line", for why.)*
 
 In the "composing skill" section of `tests/test_skill_lifecycle_parity.py`, add
 `test_the_composing_skill_validates_its_arguments_first`. The first line of the
 body (after the frontmatter) that starts with `` !` `` must be exactly
-`` !`tcw work stage validate $ARGUMENTS 2>/dev/null || true` ``, and it must come
+`` !`tcw work stage validate -- $stage $item 2>/dev/null || true` ``, and it must come
 before the `# The` heading. The existing
 `test_every_injected_command_survives_its_own_failure` already covers `|| true`.
 
