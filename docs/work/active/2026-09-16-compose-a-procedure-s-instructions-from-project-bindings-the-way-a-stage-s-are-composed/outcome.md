@@ -90,7 +90,5 @@ Nothing else departed from the plan.
   `tcw work procedure prompt`, it changes that skill's row in `SOURCES` in
   `tests/test_shipped_procedures.py`, in the same commit that changes the
   default.
-- **Defect in the existing CLI (not fixed, outside this item's scope):**
-  `tcw work list` has no `--json`. `tcw work show --json` exists and the docs
-  name it, so a script expecting the board as JSON gets an argparse error.
-  Unverified whether this is intentional.
+- **No defect found in the existing CLI.** `tcw work list` has no `--json`
+  (only `show` does), but no document claims otherwise.
