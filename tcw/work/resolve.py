@@ -453,18 +453,49 @@ def resolve_prompts(policy: LifecyclePolicy, stage_id: str,
     match resolves to nothing, because the node configured that stage and a
     stage the node configures wins outright.
     """
+    return _compose(policy.stage(stage_id) or [Binding(kind="builtin")],
+                    role="prompt", hook_id=stage_id, item=item,
+                    node_root=node_root, builtins=builtins.stage_prompts,
+                    policy=policy, artifacts=artifacts, env=env, execute=execute,
+                    documentation=documentation)
+
+
+def resolve_procedure(policy: LifecyclePolicy, procedure_id: str,
+                      item: WorkItem | None, node_root: Path, builtins: Builtins,
+                      artifacts: Sequence = (), env: dict | None = None, *,
+                      execute: bool = True,
+                      documentation: Sequence[DocEntry] = ()) -> Resolution:
+    """A procedure's text, resolved exactly as a stage's prompt is.
+
+    Same floor, same rule: a procedure with no bindings under `work.procedures`
+    resolves as `[{builtin: true}]`, and one whose bindings all carry a `when:`
+    that did not match resolves to nothing. A `generate:` hook sees the role
+    `procedure`, so a script shared with a stage can tell which asked.
+    """
+    return _compose(policy.procedure(procedure_id) or [Binding(kind="builtin")],
+                    role="procedure", hook_id=procedure_id, item=item,
+                    node_root=node_root, builtins=builtins.procedures,
+                    policy=policy, artifacts=artifacts, env=env, execute=execute,
+                    documentation=documentation)
+
+
+def _compose(bindings: Sequence[Binding], *, role: str, hook_id: str,
+             item: WorkItem | None, node_root: Path, builtins: Mapping[str, str],
+             policy: LifecyclePolicy, artifacts: Sequence, env: dict | None,
+             execute: bool, documentation: Sequence[DocEntry]) -> Resolution:
+    """Every matching binding, in declaration order, joined and substituted.
+    Shared by stage prompts and procedures so the two cannot compose differently."""
     res = Resolution()
     parts: list[str] = []
-    bindings = policy.stage(stage_id) or [Binding(kind="builtin")]
     for b in bindings:
         matched = b.when is None or b.when.matches(item)
         if not matched:
             res.plan.append(PlanEntry(b.kind, b.ref, False))
             continue
         text, ran = _resolve_one(
-            b, role="prompt", hook_id=stage_id, phase="prompt", item=item,
+            b, role=role, hook_id=hook_id, phase="prompt", item=item,
             artifacts=artifacts, node_root=node_root,
-            builtins=builtins.stage_prompts, policy=policy, env=env or {},
+            builtins=builtins, policy=policy, env=env or {},
             execute=execute)
         res.plan.append(PlanEntry(b.kind, b.ref, True, ran))
         parts.append(text)
