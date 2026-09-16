@@ -41,3 +41,21 @@ the full suite once on the combined result before the epic closes.
 - **Documentation:** changelog and release-note bullets on this branch.
 - **Version:** none cut; accumulated in `upcoming.md`.
 - **GitHub issue:** none.
+
+## Integration result
+
+Recorded by the coordinating session on 2026-09-16, on this branch after `main`
+(children 1–5 merged) was merged in and the requester's three changes were made:
+
+- `04969ef5` — `tcw work procedure prompt <id>` without a slug prints TCW's
+  default outside a TCW node; with a slug, or in an unprovisioned node, it still
+  refuses. Tests written first and watched failing.
+- `9aa663c9` — `documentation-sync` drops the `cat` fallback; its manual block
+  reads the default file only when `tcw` is not installed.
+- `5152db84` — `stage-verify.md` reaches the version cut through the
+  `documentation-sync` procedure.
+- `7765ace7` (merge) — `tests/test_shipped_procedures.py` uses one `Composes`
+  marker for all ten converted sources; each check was broken on purpose and
+  failed with a message naming the file.
+- `033013d9` — changelog, release notes and `commands.md` updated to match.
+- **Full suite, bare, on the combined branch:** `3505 passed in 828.95s`.
