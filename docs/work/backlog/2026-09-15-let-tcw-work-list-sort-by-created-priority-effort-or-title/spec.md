@@ -576,6 +576,32 @@ otherwise.
 
 ## Notes
 
+- **Every question the request left open is settled here.** `initial-request.md`
+  carries two "open for `spec`" lists — one from the original sorting request
+  (`:44`), one from the fold (`:88`). Neither is rewritten, because the request
+  records what was open when it was filed; this is where each is answered.
+
+  | Left open | Settled by |
+  | --- | --- |
+  | The exact `--sort` option names | Design § Command-line syntax |
+  | The default direction of each ordering | Goal 3 |
+  | Where items with no priority or effort go | Goal 4 |
+  | The tie-break when two items compare equal | Goal 5 |
+  | Whether the no-sort board stays as it is today | Goal 7, AC14 |
+  | The limit flag's name, and how to ask for no limit | Requester: `--limit`, `-1`. Design § Command-line syntax |
+  | The default limit | Requester: 20 per section. Goal 11 |
+  | Whether a heading shows the emitted count, the total, or both — and what label an unsectioned command gets | Goal 12, and the label table in Design § The section, and what a heading says |
+  | Whether the limit counts nested child rows separately | Design § What a row is, when rows nest |
+  | Whether the overflow note goes to stdout or stderr | Goal 13, Design § Headings go to stdout |
+  | How limiting interacts with the sort | Goal 15, AC20 |
+  | Whether the heading prints when no limit is in force | Requester: always. Risks, and Notes below |
+
+  Two things remain **conditional rather than open**: whether Task 1 writes
+  `read_timestamp` or finds it already there, and which of this item and the
+  sibling inbox item defines `tcw work inbox list`'s sections. Both have a
+  decision rule in `plan.md` that resolves them at implementation without
+  anyone being asked.
+
 - **Considered and rejected: printing the heading only sometimes.** Two forms
   of this were put to the requester — only when a section is shortened, and only
   when a limit is in force — and both were rejected for the same reason: the

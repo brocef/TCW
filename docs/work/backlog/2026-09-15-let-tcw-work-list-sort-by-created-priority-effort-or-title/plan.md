@@ -582,6 +582,12 @@ What the suite cannot check, done by hand at the end of implementation:
 
 ## Notes
 
+- **No open questions.** Every question `initial-request.md` left for `spec` is
+  answered, and `spec.md` § Notes maps each one to where. Nothing in this plan
+  waits on the requester; it can be executed start to finish without asking
+  anything. Two steps are conditional rather than open — Task 1 branches on
+  whether `read_timestamp` already exists, and Task 6 on whether the sibling
+  inbox item has landed — and each carries the rule that resolves it.
 - The requester settled the sort's direction questions by asking for explicit
   ascending and descending sorts; the plan follows the revised spec
   (`--order asc|desc`, per-key defaults when it is left off, ties by slug A to
