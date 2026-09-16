@@ -237,8 +237,16 @@ Directly after the frontmatter, before `# The `$stage` stage`:
 ```markdown
 ## Skill invocation validation (Claude-only injection)
 
-!`tcw work stage validate $ARGUMENTS || true`
+!`tcw work stage validate $ARGUMENTS 2>/dev/null || true`
 ```
+
+**`2>/dev/null` handles an older CLI.** The plugin and the `tcw` CLI are
+installed separately, so a plugin carrying this line can meet a `tcw` that has
+no `validate` verb. That `tcw` exits 2 and prints argparse's usage error to
+stderr, which `|| true` alone would inject at the top of every stage.
+`validate` writes its whole report to stdout, so discarding stderr loses
+nothing from a current CLI and hides the noise from an old one. (Added during
+`plan`.)
 
 The heading takes the user's "(Claude-only)" and pins it to the *injection*.
 A bare "(Claude-only)" would tell a Codex reader to skip the section, and the
@@ -352,7 +360,7 @@ The other two injected lines keep `$stage` / `$item`.
    - an unreadable tree with only `CLAUDECODE=1` → Claude Code;
    - nothing at all → Claude Code.
 10. `skills/tcw-work-stage/SKILL.md` has
-    `` !`tcw work stage validate $ARGUMENTS || true` `` before its H1.
+    `` !`tcw work stage validate $ARGUMENTS 2>/dev/null || true` `` before its H1.
     **Invoking `/tcw:tcw-work-stage` with no arguments in a real Claude Code
     session** loads the skill: no "Shell command failed" notice, and the rendered
     text contains the Skill Invocation Error. Invoking it with valid arguments
