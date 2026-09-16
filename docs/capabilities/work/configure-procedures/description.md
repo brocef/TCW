@@ -5,8 +5,8 @@ As a user, I replace or extend the text of one of TCW's procedures in `tcw-confi
 ```yaml
 work:
     procedures:
-        autonomous-work:
-            - file: docs/procedures/autonomous-work.md
+        unattended-work:
+            - file: docs/procedures/unattended-work.md
         documentation-sync:
             - builtin: true
             - blob: "Also update docs/guide/ when a CLI flag changes."
