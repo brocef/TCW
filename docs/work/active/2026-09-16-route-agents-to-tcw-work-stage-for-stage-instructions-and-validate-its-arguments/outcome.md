@@ -91,3 +91,27 @@ skill line with that behaviour.
   `2026-09-15-fill-codex-gaps-in-skills-and-give-each-skill-one-capability`
   (the `<plugin>` placeholder in the fallback block). Quoting `$stage`/`$item` on
   the two older injected lines remains separate work, as the spec says.
+
+## Rework pass (from `rework.md`, 2026-09-16)
+
+The user requested changes at `verify` (`f28ee221`). All five are done:
+
+| Change | Commit |
+| --- | --- |
+| Headings renamed: Lifecycle stage contract, Stage instructions, Stage pre-checks. The pre-checks section is now one line naming `tcw work stage gate $stage $item`. | `89f5a62d` |
+| "Document command summary" section: the injected commands in order (`validate`, `cat`, `prompt`), with `gate` in a separate block to run yourself. The requested text listed `gate` as automatic and omitted `validate`; the user chose the corrected version. | `89f5a62d` |
+| Codex hint kept as one line under the summary ("in place of `$stage` and `$item`"). | `89f5a62d` |
+| `evals/grade.py` `BLOCK_HEADINGS`, the `evals/evals.json` A-case text, and the grading fixtures follow the new headings. | `89f5a62d` |
+| Changelog entry. | `0f61cdd2` |
+
+**Found during the rework.** Nothing tied the grader's headings to the skill.
+With the old headings left in `grade.py`, all 26 grading tests stayed green,
+because the fixtures carry their own headings. Every live eval run would have
+failed its blocks check instead. `test_the_grader_looks_for_the_headings_the_stage_skill_renders`
+now ties the two; reverting `BLOCK_HEADINGS` turns it red.
+
+**Checks.**
+- The ten affected test files: 555 passed.
+- A live Claude Code render (`plan` on a fixture item): the headings appear in
+  the new order, with no failed shell command, and the pre-check line is filled
+  in with the stage and item.
