@@ -310,13 +310,14 @@ read by people on either harness; the guarantee is the test, which runs in CI.
 
 ## Notes
 
-- **The stage gate refused.** `tcw work stage gate spec` and `gate plan` both
-  said: "'spec' is not legal for an item in 'active'; it runs in backlog". The
-  item was started into its worktree before planning, by the coordinating
-  session. The refusal concerns status only; `spec` has no `pre` check, and
-  `plan`'s only one, `python scripts/require_artifact.py spec`, is run by hand
-  before planning. Decided to proceed rather than stop, and flagged for the
-  requester.
+- The stage gate refused because the coordinating session started the item
+  before planning, and the requester chose to proceed without moving it back.
+  (`tcw work stage gate spec` said: "'spec' is not legal for an item in
+  'active'; it runs in backlog".)
+- Did skipping the gate skip a check? No. `tcw work lifecycle` shows the `spec`
+  stage binds only prompt text (`builtin:`, `file:docs/lifecycle/abstraction.md`,
+  `file:docs/lifecycle/harness.md`) and no `pre` check, so the status check was
+  the only thing the gate would have run.
 - **Decisions for the requester to confirm:**
   1. Rules document at `skills/README.md`, reached by a comment on each
      `dynamic_skill` line and by the completeness test — not by a body link.
