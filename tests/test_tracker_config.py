@@ -157,15 +157,6 @@ def test_strict_is_reported_as_unknown_because_c4_owns_it():
     assert any("strict" in p for p in problems), problems
 
 
-def test_the_transition_keys_c3_adds_are_not_accepted_yet():
-    """Forward-incompatible on purpose. C3 adds submit/rework/complete mappings;
-    until then, accepting them silently would mean not doing what a user asked."""
-    transitions = {**VALID["transitions"], "complete": "Done"}
-    config, problems = parse_tracker_config({**VALID, "transitions": transitions})
-    assert config is None
-    assert any("complete" in p for p in problems), problems
-
-
 # ── the two properties ───────────────────────────────────────────────────────
 
 
@@ -189,3 +180,59 @@ def test_the_config_holds_no_credential_value():
             assert value != "sentinel-token-value"
     finally:
         del os.environ["TCW_JIRA_API_TOKEN"]
+
+
+# ── transitions per move ─────────────────────────────────────────────────────
+
+
+def _with_transitions(**moves):
+    return {**VALID, "transitions": {"claim": "Start Progress", **moves}}
+
+
+def test_a_transition_per_move_parses():
+    config, problems = parse_tracker_config(_with_transitions(
+        submit="Ready for Review", rework="Back to Progress", complete="Finish",
+        discard="Abandon"))
+    assert problems == []
+    assert config.move_transitions == {
+        "submit": "Ready for Review", "rework": "Back to Progress",
+        "complete": "Finish", "discard": "Abandon"}
+    assert config.claim_transition == "Start Progress"
+
+
+def test_a_discard_transition_may_be_named_per_resolution_and_may_be_partial():
+    """Unlike `statuses.discarded` under strict mode, which must cover every
+    resolution, `transitions` is an optional override: it exists to disambiguate,
+    so naming only the ambiguous resolution has to be enough."""
+    config, problems = parse_tracker_config(
+        _with_transitions(discard={"wontfix": "Abandon"}))
+    assert problems == []
+    assert config.move_transitions["discard"] == {"wontfix": "Abandon"}
+
+
+def test_transitions_are_absent_by_default():
+    config, problems = parse_tracker_config(VALID)
+    assert problems == [] and config.move_transitions == {}
+
+
+@pytest.mark.parametrize("moves, key", [
+    ({"submit": 5}, "work.tracker.transitions.submit"),
+    ({"complete": ""}, "work.tracker.transitions.complete"),
+    ({"discard": {"nonsense": "X"}}, "work.tracker.transitions.discard.nonsense"),
+    ({"discard": {"wontfix": 7}}, "work.tracker.transitions.discard.wontfix"),
+    ({"discard": {"done": "X"}}, "work.tracker.transitions.discard.done"),
+], ids=["not-a-string", "empty", "unknown-resolution", "bad-name", "done-is-not-a-discard"])
+def test_a_malformed_transition_is_a_problem(moves, key):
+    config, problems = parse_tracker_config(_with_transitions(**moves))
+    assert config is None
+    matched = [p for p in problems if p.startswith(key)]
+    assert matched, problems
+    # The key is known now, so the complaint must be about the value. "unknown key"
+    # here would mean the move was never wired in and the test passes by accident.
+    assert not any("unknown key" in p for p in matched), problems
+
+
+def test_an_unknown_transition_key_is_still_reported():
+    config, problems = parse_tracker_config(_with_transitions(wander="Nowhere"))
+    assert config is None
+    assert any(p.startswith("work.tracker.transitions.wander") for p in problems), problems
