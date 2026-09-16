@@ -1,7 +1,7 @@
 slug: 2026-09-16-make-every-procedural-skill-in-tcw-overridable-by-the-project-that-uses-it
 title: Make every procedural skill in TCW overridable by the project that uses it
 created: '2026-09-16'
-resolution: null
+resolution: done
 tags:
 - skills
 - tech-debt
@@ -9,5 +9,5 @@ tags:
 blocked_by:
 - slug: 2026-09-16-route-agents-to-tcw-work-stage-for-stage-instructions-and-validate-its-arguments
 type: epic
-owner: brocef@users.noreply.github.com
-started: '2026-09-16T18:37:51.539882Z'
+owner: ''
+started: ''
