@@ -23,12 +23,18 @@ SOURCES = {
     "triage-issues": "skills/tcw-extras-triage-issues/SKILL.md",
     "documentation-sync": "skills/documentation-sync/SKILL.md",
     "post-mortem": "skills/tcw-post-mortem/SKILL.md",
-    "create-work": "skills/tcw-work-create/SKILL.md",
     "audit-backlog": "skills/tcw-work/references/procedures/audit-backlog.md",
     "consolidate-plans": "skills/tcw-work/references/procedures/consolidate-plans.md",
     "decompose": "skills/tcw-work/references/procedures/decompose.md",
     "delegation": "skills/tcw-work/references/procedures/delegation.md",
     "search": "skills/tcw-work/references/procedures/search.md",
+}
+
+# Skills that no longer carry a copy of their default: the fixed part stays in
+# the skill, the rest is read from `tcw work procedure prompt <id>`. There is no
+# second copy to drift from, so these are checked for the reading instead.
+CONVERTED = {
+    "create-work": "skills/tcw-work-create/SKILL.md",
 }
 
 
@@ -45,10 +51,26 @@ def test_every_procedure_ships_a_default():
 
 
 def test_the_source_map_covers_exactly_the_ids():
-    assert set(SOURCES) == set(PROCEDURE_IDS)
+    assert not set(SOURCES) & set(CONVERTED)
+    assert set(SOURCES) | set(CONVERTED) == set(PROCEDURE_IDS)
 
 
-@pytest.mark.parametrize("pid", PROCEDURE_IDS)
+@pytest.mark.parametrize("pid", sorted(CONVERTED))
+def test_a_converted_skill_reads_its_procedure(pid):
+    """Epic criterion 11: the skill injects its procedure and names the command
+    for a harness that runs no injection, and holds no copy of the default."""
+    body = _body(REPO / CONVERTED[pid])
+    command = f"tcw work procedure prompt {pid}"
+    assert f"!`{command}" in body, f"{CONVERTED[pid]} does not inject {command}"
+    _, _, summary = body.partition("## Document command summary")
+    assert command in summary.split("```", 2)[1], \
+        f"{CONVERTED[pid]} has no fallback block naming {command}"
+    first = next(line for line in load_builtins().procedures[pid].splitlines()
+                 if line.strip() and not line.startswith("#"))
+    assert first not in body, f"{CONVERTED[pid]} still carries its default"
+
+
+@pytest.mark.parametrize("pid", sorted(SOURCES))
 def test_each_default_is_todays_text(pid):
     """Criterion 2: a project that configures nothing gets today's words."""
     expected = _body(REPO / SOURCES[pid]).strip()

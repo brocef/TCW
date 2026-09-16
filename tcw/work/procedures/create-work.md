@@ -1,10 +1,3 @@
-# Turning an idea into a work item
-
-One idea goes in. Exactly one outcome comes out (step 5): a new item, an
-existing item or inbox entry with the idea added, or nothing, because the work is
-already tracked. Check what exists **before** running `tcw work new`. A duplicate
-item splits the history of one piece of work across two places.
-
 ## How it runs
 
 Decide the mode before step 1. It decides who answers every question below.
@@ -47,13 +40,6 @@ cannot write that sentence:
   Give it a `# <title>` heading, the idea as you have it, and where it came
   from. Commit it (step 4's commit), report `deferred to inbox <entry>`, and
   stop.
-
-## 2. Find overlap
-
-Follow [`find-overlap.md`](references/find-overlap.md). It is read-only and
-returns one line per candidate. In an Interactive run, dispatch it to a
-read-only subagent where you can and act on the lines it returns; otherwise run
-it yourself.
 
 ## 3. Act on the result
 
