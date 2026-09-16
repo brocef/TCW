@@ -16,6 +16,13 @@ internal module names.
 - New setting: `work.procedures` in `tcw-config.yaml`, beside
   `work.lifecycle`. `tcw validate` checks it.
 - The skills themselves do not read from the command yet; that comes next.
+- **Auditing the backlog, consolidating plans, splitting an item, delegating a
+  stage and searching the board now follow your project's text** when it has
+  replaced them. The instructions tell the agent to read them with
+  `tcw work procedure prompt`; with nothing configured they are the same as
+  before. The safety rules — ask before changing the board, delete only what git
+  can restore, a search changes nothing — stay whatever your project writes. The
+  backlog auditor agent reads its checks the same way.
 
 ## Getting a stage's instructions
 

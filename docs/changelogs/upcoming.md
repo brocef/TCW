@@ -84,6 +84,16 @@ category.
   "Document command summary" section listing the injected commands in order,
   with `gate` shown separately as the one to run yourself. `evals/grade.py`
   `BLOCK_HEADINGS` and the `evals/evals.json` case text follow the new headings.
+- `skills/tcw-work/references/procedures/{audit-backlog,consolidate-plans,decompose,delegation,search}.md`
+  now tell the reader to run `tcw work procedure prompt <id>` and keep only
+  what a project's text must not remove: delegation's stage/transition rules,
+  "permitted, never required" and the shipped-agents section; the audit
+  approval rule; consolidation's start-only-when-asked and git-recoverable
+  deletion rules; decompose's nesting mechanics and relation choice; search's
+  read-only rule. `tcw/work/procedures/<id>.md` lost exactly those parts. Two
+  sentences in the fixed part of `delegation.md` no longer name Codex.
+  `agents/tcw-backlog-auditor.md` no longer lists the per-item checks or the
+  report shape; it runs `tcw work procedure prompt audit-backlog <slug>`.
 
 ## Fixed
 
@@ -105,3 +115,7 @@ category.
   injected command. New `tests/test_harness.py` and
   `tests/test_stage_validate.py`. `tests/test_eval_grading.py` checks that the
   grader's block headings appear in the stage skill.
+- `tests/test_shipped_procedures.py`: `CONVERTED` names ids whose source
+  document points at the command; for those the drift test asserts the command
+  is named and no paragraph is shared between source and default. New
+  `test_the_backlog_auditor_reads_the_procedure`.
