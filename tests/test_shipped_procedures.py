@@ -4,6 +4,7 @@ Mirrors `test_shipped_prompts.py` for `tcw/work/procedures/`. Everything goes
 through `load_builtins()`, so the assertions hold in an installed tree too.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,13 @@ SOURCES = {
     "search": "skills/tcw-work/references/procedures/search.md",
 }
 
+# Ids whose source no longer carries a copy: it tells its reader to run
+# `tcw work procedure prompt <id>` and keeps only the rules a project's text
+# must not be able to remove. For these, the check turns around — the source
+# names the command and shares no paragraph with the default, so neither a
+# pasted-back copy nor a fixed rule leaking into the default passes.
+CONVERTED: set[str] = set()
+
 
 def _body(path: Path) -> str:
     """A skill's text after its YAML frontmatter; a reference document whole."""
@@ -48,9 +56,24 @@ def test_the_source_map_covers_exactly_the_ids():
     assert set(SOURCES) == set(PROCEDURE_IDS)
 
 
+def _paragraphs(text: str) -> set[str]:
+    """Blank-line-separated blocks, whitespace-normalized; headings and short
+    fragments are not evidence of a copy."""
+    blocks = (" ".join(b.split()) for b in re.split(r"\n\s*\n", text))
+    return {b for b in blocks if len(b) >= 40 and not b.startswith("#")}
+
+
 @pytest.mark.parametrize("pid", PROCEDURE_IDS)
 def test_each_default_is_todays_text(pid):
     """Criterion 2: a project that configures nothing gets today's words."""
+    if pid in CONVERTED:
+        source = _body(REPO / SOURCES[pid])
+        assert f"tcw work procedure prompt {pid}" in source, \
+            f"{SOURCES[pid]} does not send its reader to the command"
+        shared = _paragraphs(source) & _paragraphs(load_builtins().procedures[pid])
+        assert not shared, \
+            f"{SOURCES[pid]} and tcw/work/procedures/{pid}.md share: {sorted(shared)}"
+        return
     expected = _body(REPO / SOURCES[pid]).strip()
     assert expected, f"{SOURCES[pid]} has no body to compare"
     assert load_builtins().procedures[pid].strip() == expected, \
