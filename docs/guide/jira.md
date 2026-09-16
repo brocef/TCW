@@ -280,12 +280,16 @@ git by default, so a binding on one stays on your machine along with the rest of
 that item.
 
 **Linking an item that is already under way leaves its ticket alone unless you
-ask.** The binding notes that the ticket's status was not synced, and if the ticket
-is not in the status the item maps to, `link` warns you and names both. Later moves
-of that item do not bring the ticket along: each one says the ticket was linked
-without its status synced, moves nothing, and does not count as a failure. Under
-strict mode those moves are refused until the ticket is where the item expects,
-with the same explanation.
+ask.** If the ticket is not in the status the item maps to, or is not assigned to
+you, `link` warns you and the binding notes that its status was not synced. While the
+ticket stays out of step like that, later moves of the item do not bring it along:
+each one says the ticket was linked without its status synced, moves nothing, and
+does not count as a failure. Under strict mode those moves are refused, with the same
+explanation. Everything else is reported as it always was — a ticket somebody else
+holds, or a transition name the ticket does not offer, is still a conflict — and once
+the ticket is in step, by your hand or otherwise, it is an ordinary linked ticket and
+follows its item from then on. A ticket already in step and assigned to you when you
+link it is an ordinary linked ticket from the start.
 
 **`tracker link <slug> <KEY> --sync-status`** asks for the ticket to be brought up
 to date as part of linking. TCW claims the ticket if it has to, then moves it to the
@@ -295,8 +299,14 @@ forward through the statuses you mapped, one at a time (see
 ticket backwards, so a ticket already past where its item is stays put, and it never
 changes a ticket that is already resolved. Whatever cannot be done right away — Jira
 could not be reached, say — is recorded, and `tcw work tracker sync <slug>` finishes
-it. On an item still in the backlog the flag does nothing, because there is nothing
-to catch up yet.
+it. On an item still in the backlog the flag does nothing, and says so, because
+there is nothing to catch up yet. A ticket already past the claim's own status is
+never claimed again, since claiming could move it back: one assigned to you carries
+on from where it is, and one that is not is refused with a request to assign it to
+yourself first. `--sync-status` acts as you, so it refuses an item somebody else
+started, as `sync` does. Walking a ticket through several statuses happens only for a
+binding made with `--sync-status`; any other linked ticket still follows its item one
+transition at a time.
 
 **A binding made by an earlier version whose ticket is stuck** — every move reported
 as a conflict because the ticket was linked after the work started — is repaired the

@@ -162,14 +162,19 @@ tracker code is imported.
   `TCW_WORK_OWNER` and `start --take-over`; a `--all` sweep still exits 0 over other
   people's items.
 - **Catching a ticket up is opt-in.** A plain `link` on an item past `backlog` changes
-  nothing in the tracker: it notes `status-synced: false` on the binding and warns
-  when the ticket's status does not match. Later moves then report the ticket as
-  `held` — linked without its status synced — and move nothing; strict mode refuses
-  them with the same explanation. **`link <slug> <KEY> --sync-status`** records the
-  claim as owed and delivers it at once: claim, then straight to the item's mapped
-  status if the workflow offers it, otherwise forward one mapped status at a time.
-  Never backwards, never on a resolved ticket; what does not arrive is left for
-  `tracker sync`. A ticket TCW claimed and someone moved back is drift, not a
+  nothing in the tracker. When the ticket's status does not match or it is not yours,
+  it warns and notes `status-synced: false` on the binding; while the ticket stays out
+  of step (or unclaimed), later moves report it `held` — linked without its status
+  synced — and move nothing, and strict mode refuses them with the same explanation.
+  Another holder or a misnamed transition is still `conflicting`. The note clears once
+  a delivery or `sync` finds the ticket in step. **`link <slug> <KEY>
+  --sync-status`** records the claim as owed (and `catch-up: true`) and delivers it at
+  once: claim — skipped for a ticket already yours on a mapped status, refused for one past
+  `active` that is not yours — then
+  straight to the item's mapped status if the workflow offers it, otherwise forward
+  one mapped status at a time. Never backwards, never on a resolved ticket, never for
+  an item somebody else started; what does not arrive is left for `tracker sync`.
+  Only a `catch-up` binding is walked through several statuses. A ticket TCW claimed and someone moved back is drift, not a
   catch-up. To repair an older stuck binding: `unlink`, then `link --sync-status`.
 - **Parts:** a status move is held while another open item here shares the ticket.
 - **Another site:** a binding whose `ticket.url` is not on `base-url` is never

@@ -1951,7 +1951,7 @@ def _intake_text(outcome, description: str, today: str) -> str:
 
 def _binding_for(provider: str, project: str, ticket_id: str, ticket_key: str,
                  ticket_url: str, part: str, today: str, unlinked: list,
-                 status_synced: bool = True) -> str:
+                 status_synced: bool = True, catch_up: bool = False) -> str:
     """The binding document. `provider` and `project` are the values the ticket was
     looked up with, passed in rather than read again: tracker settings can come from
     parent nodes' files, and one changed or broken mid-run would otherwise fail here,
@@ -1960,7 +1960,7 @@ def _binding_for(provider: str, project: str, ticket_id: str, ticket_key: str,
     return binding_document(
         provider=provider, project=project, part=part,
         ticket_id=ticket_id, ticket_key=ticket_key, ticket_url=ticket_url,
-        bound=today, unlinked=unlinked, status_synced=status_synced)
+        bound=today, unlinked=unlinked, status_synced=status_synced, catch_up=catch_up)
 
 
 def _claim_summary(outcome) -> str:
@@ -2099,6 +2099,19 @@ def _item_or_reason(st, slug: str, label: str):
     return item
 
 
+def _started_by_someone_else(item, me: str) -> str | None:
+    """Why this identity should not act on `item`'s ticket, or `None`.
+
+    Tracker delivery acts as whoever runs it, so delivering for an item somebody else
+    started would claim or move their ticket under the wrong account. `me` is
+    `_local_owner`, passed in so a sweep reads Git's configuration once."""
+    if not item.owner or item.owner == me:
+        return None
+    return (f"started by {item.owner}. Run it as them (`TCW_WORK_OWNER={item.owner} "
+            f"tcw work tracker sync {item.slug}`), or take the item over with "
+            f"`tcw work start {item.slug} --take-over`.")
+
+
 def _tracker_link(args: argparse.Namespace) -> int:
     """Record that an existing item and a ticket are the same work.
 
@@ -2168,12 +2181,25 @@ def _tracker_link(args: argparse.Namespace) -> int:
     under_way = (item is not None and item.status != "backlog"
                  and not st.pending_deletion(args.slug))
     sync_status = under_way and args.sync_status
+    if sync_status and (someone_else := _started_by_someone_else(item, _local_owner(st))):
+        print(f"tcw work tracker link: {args.slug} was not linked: --sync-status acts as "
+              f"you, and it was {someone_else}", file=sys.stderr)
+        return 1
+    target = (target_status(client.config.statuses, item.status, item.resolution)
+              if under_way else "")
+    out_of_step = bool(target) and _normalize(ticket.status) != _normalize(target)
+    not_yours = (under_way and item.status not in ("completed", "discarded")
+                 and ticket.assignee_id != ticket.me_id)
+    # The note is only worth keeping while it explains something: a ticket already in
+    # step and already yours is an ordinary bound ticket, and a later refusal on it —
+    # somebody moving it back — is real drift that must not be explained away.
+    unsynced = under_way and not sync_status and (out_of_step or not_yours)
     existing = st.read_sidecar(args.slug, BINDING_SIDECAR)
     today = date.today().isoformat()
     document = _binding_for(client.config.provider, project, ticket.issue_id,
                             ticket.key, ticket.url, part, today,
                             unlinked_history(existing.content if existing else None),
-                            status_synced=not under_way or sync_status)
+                            status_synced=not unsynced, catch_up=sync_status)
     if sync_status:
         document = with_sync_record(document, {
             "state": "pending", "move": MOVE_ONTO[item.status], "since": "",
@@ -2192,16 +2218,23 @@ def _tracker_link(args: argparse.Namespace) -> int:
     if not sync_status:
         print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}). The ticket is "
               f"unchanged in the tracker.", file=sys.stderr)
-        target = (target_status(client.config.statuses, item.status, item.resolution)
-                  if under_way else "")
-        if target and _normalize(ticket.status) != _normalize(target):
-            print(f"warning: {ticket.key} is in '{ticket.status}', but {args.slug} is "
-                  f"{item.status}, which maps to '{target}'. Its status was not synced, "
-                  f"and later moves will not bring it along. "
+        if args.sync_status:
+            why = ("is still in the backlog, so there is nothing to catch up yet"
+                   if item is not None and item.status == "backlog" else
+                   "is being removed, so nothing can be recorded for it")
+            print(f"→ --sync-status did nothing: {args.slug} {why}.", file=sys.stderr)
+        elif unsynced:
+            if out_of_step:
+                what = (f"is in '{ticket.status}', but {args.slug} is {item.status}, "
+                        f"which maps to '{target}'")
+            else:
+                what = "is not assigned to you"
+            print(f"warning: {ticket.key} {what}. Its status was not synced, and while "
+                  f"it is out of step later moves will not bring it along. "
                   f"{unsynced_hint(args.slug, ticket.key)}", file=sys.stderr)
         return 0
     print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}).", file=sys.stderr)
-    from tcw.tracker.sync import CONFLICTING, CURRENT, PENDING, deliver
+    from tcw.tracker.sync import CONFLICTING, CURRENT, HELD, PENDING, deliver
     try:
         outcome = deliver(st, args.slug, client, client.config, move=None,
                           previous_status=None)
@@ -2219,6 +2252,10 @@ def _tracker_link(args: argparse.Namespace) -> int:
         return 1
     if outcome.state == CURRENT:
         print(f"→ {ticket.key}'s status is synced with {args.slug}.", file=sys.stderr)
+    elif outcome.state == HELD:
+        print(f"→ {outcome.reason} The catch-up stays recorded; `tcw work tracker sync "
+              f"{args.slug}` delivers it once this is the only open item on the "
+              f"ticket.", file=sys.stderr)
     elif outcome.reason:
         print(f"→ {outcome.reason}", file=sys.stderr)
     else:
@@ -2295,7 +2332,7 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     code = 0
     for slug in slugs:
         item = st.get(slug)
-        if item.owner and item.owner != me:
+        if someone_else := _started_by_someone_else(item, me):
             if args.all:
                 # A sweep legitimately walks past other people's work.
                 print(f"{slug}: skipped — started by {item.owner}")
@@ -2306,9 +2343,7 @@ def _tracker_sync(args: argparse.Namespace) -> int:
             owed = item.tracker.get("sync") or {}
             state = owed.get("state") or ("an unreadable record" if owed else "")
             still = f" — {state}, still owed" if state else ""
-            print(f"{slug}: skipped{still} — started by {item.owner}. Run it as them "
-                  f"(`TCW_WORK_OWNER={item.owner} tcw work tracker sync {slug}`), or take "
-                  f"the item over with `tcw work start {slug} --take-over`.")
+            print(f"{slug}: skipped{still} — {someone_else}")
             # Failure only when something is actually owed: with no record there is
             # nothing this skip leaves undone.
             if owed or item.tracker.get("comment"):
@@ -2772,11 +2807,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "items' folders are gitignored (the default), that binding stays on\n"
                "this machine and is never committed.\n\n"
                "Linking an item already past backlog leaves the ticket where it is and\n"
-               "warns when its status does not match; later moves do not bring it\n"
-               "along. Pass --sync-status to claim it and move it to where the item\n"
-               "is — straight there when the workflow allows, otherwise forward\n"
-               "through the statuses mapped in work.tracker.statuses. It never moves\n"
-               "a ticket back, and never changes one that is already resolved.\n\n"
+               "warns when it is out of step with the item or not yours; while it\n"
+               "stays out of step, later moves do not bring it along. Pass\n"
+               "--sync-status to claim it and move it to where the item is — straight\n"
+               "there when the workflow allows, otherwise forward through the\n"
+               "statuses mapped in work.tracker.statuses. It never moves a ticket\n"
+               "back, never changes one that is already resolved, and refuses an item\n"
+               "somebody else started.\n\n"
                "Use --part when one ticket is split across several items.\n\n"
                "Refuses when: no tracker is configured; --part is invalid; the slug\n"
                "is not an item here; the key does not exist; the item is already\n"

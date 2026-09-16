@@ -365,6 +365,9 @@ class Bound:
     # status, so a later move that cannot follow says why instead of blaming a hand
     # move nobody made. Cleared once the ticket is where its item says.
     status_synced: bool = field(default=True, compare=False)
+    # True when `link --sync-status` asked for the ticket to be caught up, which is
+    # what lets delivery walk it through more than one status. Cleared with the note.
+    catch_up: bool = field(default=False, compare=False)
 
     def key(self) -> tuple[str, str, str, str]:
         return (self.project, self.provider, self.ticket_id, self.part)
@@ -412,7 +415,8 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
                  ticket_url=_binding_text(ticket.get("url")),
                  bound=_binding_text(bound), sync=_sync_record(data.get("sync")),
                  comment=_comment_record(data.get("comment")),
-                 status_synced=data.get("status-synced") is not False)
+                 status_synced=data.get("status-synced") is not False,
+                 catch_up=data.get("catch-up") is True)
 
 
 SYNC_STATES = ("pending", "conflicting")

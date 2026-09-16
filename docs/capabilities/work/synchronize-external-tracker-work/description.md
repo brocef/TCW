@@ -20,9 +20,9 @@ item is, or if the named transition is not offered or leads elsewhere, TCW leave
 alone and tells me why. It never follows Jira and never pulls a ticket back.
 
 Linking a ticket to work already under way changes nothing in Jira unless I ask.
-`tcw work tracker link` warns me when the ticket's status does not match the item, and
-later moves of that item say the ticket was linked without its status synced instead
-of blaming a hand move nobody made. With `--sync-status`, TCW claims the ticket and
+`tcw work tracker link` warns me when the ticket does not match the item, and while it
+stays out of step later moves of that item say the ticket was linked without its
+status synced instead of blaming a hand move nobody made. With `--sync-status`, TCW claims the ticket and
 brings it to where the item is — in one transition when the workflow offers one,
 otherwise up through the statuses I mapped, one at a time. Forward only, never on a
 ticket already resolved, only through statuses I named, and it stops at the first

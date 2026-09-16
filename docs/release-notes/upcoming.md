@@ -17,8 +17,8 @@ broken when they see these settings.
 **Linking a ticket to work already under way no longer leaves it stuck.** Before, the
 ticket stayed where it was for good and every later move was reported as a conflict
 that blamed you for moving it. Now linking leaves the ticket alone unless you ask,
-warns you when its status does not match the item, and later moves say plainly that
-it was linked without its status synced. Add `--sync-status` to `tcw work tracker
+warns you when it does not match the item, and while it stays that way later moves
+say plainly that it was linked without its status synced. Add `--sync-status` to `tcw work tracker
 link` to bring the ticket up to date: TCW claims it and moves it to where the item
 is — directly when your workflow allows, otherwise one step at a time through the
 statuses you mapped. It never moves a ticket backwards and never touches one already

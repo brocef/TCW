@@ -14,17 +14,25 @@ category.
 - `tcw work tracker link --sync-status`: for an item past `backlog`, records a
   `pending`/`claim: owed` sync record and delivers it at once — the claim, then one
   transition straight to the item's mapped status when offered, otherwise one per
-  mapped status, re-reading between hops. Forward-only: a ticket already past its
-  item is refused rather than claimed back, and a resolved ticket is never moved.
-  What does not arrive stays recorded for `tracker sync`, which resumes a walk the
-  claim finished but a later hop did not, and aims at the item's current status
-  rather than the recorded move's.
-- A plain `link` of an item past `backlog` changes nothing in the tracker and writes
-  `status-synced: false` on the binding (not part of `--json`), warning when the
-  ticket's status differs from the item's mapped one. While that note stands, a
-  move that cannot follow is `held` with the `--sync-status` repair instead of
-  `conflicting`, records nothing, and strict mode's refusal names the same repair.
-  The note clears once a delivery finds the ticket where its item says.
+  mapped status, re-reading between hops, and writes `catch-up: true` on the binding.
+  Forward-only: no claim transition is applied to a ticket already past `active`
+  (one assigned to the caller carries on from where it is; any other is refused), a
+  ticket past its item is refused, and a resolved ticket is never moved. Refused for
+  an item somebody else started. What does not arrive stays recorded for `tracker
+  sync`, which resumes a walk the claim finished but a later hop did not, and aims at
+  the item's current status rather than the recorded move's. Only a `catch-up`
+  binding is walked through more than one status; every other delivery, including
+  an owed claim from a failed `start`, is followed by one transition as before.
+- A shared rung in the ladder (two local statuses mapped to one tracker status) is
+  named for the higher local status, so its hop uses that move's named transition.
+- A plain `link` of an item past `backlog` changes nothing in the tracker. When the
+  ticket's status differs from the item's mapped one, or an open item's ticket is not
+  assigned to the caller, it warns and writes `status-synced: false` on the binding
+  (not part of `--json`). While that note stands, a move refused only because the
+  ticket is out of its window or unclaimed is `held` with the `--sync-status` repair
+  instead of `conflicting`, and records nothing; another holder and transition-name
+  refusals stay `conflicting`. Strict mode's refusal names the same repair. The note
+  clears once a delivery — or a checking `sync` — finds the ticket where its item says.
 
 ## Fixed
 

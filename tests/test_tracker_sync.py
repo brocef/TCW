@@ -1537,3 +1537,176 @@ def test_a_resolved_items_ticket_already_at_its_status_is_left_alone(tmp_path, f
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 0, (out, err)
     assert fake.writes() == [] and record(root, slug) is None
+
+
+@pytest.mark.parametrize("workflow_name", ["GLOBAL", "SYNC"])
+def test_sync_status_carries_on_from_a_ticket_already_yours_part_way_up(
+        tmp_path, monkeypatch, workflow_name):
+    """A ticket already assigned to you and already in review needs no claim. Claiming
+    anyway moves it back on a workflow offering the claim from everywhere, and on one
+    that does not, the claim lands off `active` and the catch-up is refused."""
+    import tracker_fake
+    root, fake_ = ladder_node(tmp_path, monkeypatch, getattr(tracker_fake, workflow_name),
+                              status="In Review", assignee=A)
+    slug = under_way(root, "completed")
+    code, _out, err = sync_link(root, slug)
+    assert code == 0, err
+    assert fake_.tickets[TICKET_ID].status == "Done"
+    assert fake_.applied == ["31"], fake_.applied
+
+
+def test_sync_status_does_not_claim_back_an_unassigned_ticket_part_way_up(tmp_path,
+                                                                          monkeypatch):
+    """Unassigned and already in review: the claim would move it back, so it is
+    refused and nothing is sent."""
+    from tracker_fake import GLOBAL
+    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
+    slug = under_way(root, "completed")
+    code, _out, err = sync_link(root, slug)
+    assert code == 1, err
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Review"
+
+
+def test_a_status_shared_by_review_and_completed_uses_the_complete_transition(
+        tmp_path, monkeypatch):
+    """With `review` and `completed` both mapped to Done, the rung is the completion:
+    its hop must use `transitions.complete`, not `transitions.submit`."""
+    from tracker_fake import FakeJira
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow={
+        "To Do": [("21", "Start Progress", "In Progress")],
+        "In Progress": [("61", "Review", "Done"), ("62", "Finish", "Done")],
+        "Done": []})
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="To Do")
+    fake_.install(monkeypatch)
+    root = make_node(tmp_path, statuses={**STATUSES, "review": "Done"})
+    set_transition(root, "submit", "Review")
+    set_transition(root, "complete", "Finish")
+    slug = under_way(root, "completed")
+    code, _out, err = sync_link(root, slug)
+    assert code == 0, err
+    assert fake_.applied == ["21", "62"], fake_.applied
+
+
+def test_sync_status_on_a_review_item_does_not_claim_back_an_unassigned_ticket_in_review(
+        tmp_path, monkeypatch):
+    from tracker_fake import GLOBAL
+    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
+    slug = under_way(root, "review")
+    code, _out, err = sync_link(root, slug)
+    assert code == 1 and "Assign it to yourself" in err, err
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Review"
+    assert record(root, slug)["claim"] == "owed"
+
+
+# ── what a plain link's note does not explain away ───────────────────────────
+
+
+def plain_linked_in_step(tmp_path, monkeypatch, *, assignee=A):
+    """An active item plain-linked while its ticket is already In Progress."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC, status="In Progress",
+                              assignee=assignee)
+    fake_.account("b@example.test", B, "Bob")
+    slug = under_way(root, "active")
+    code, _out, err = cli(root, "work", "tracker", "link", slug, KEY)
+    assert code == 0, err
+    return root, fake_, slug
+
+
+def test_a_ticket_somebody_else_holds_stays_a_recorded_conflict_after_a_plain_link(
+        tmp_path, monkeypatch):
+    root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=B)
+    fake_.tickets[TICKET_ID].status = "To Do"          # out of step as well as Bob's
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and "Bob" in err and "linked without" not in err, err
+    assert record(root, slug)["state"] == "conflicting"
+
+
+def test_a_plain_link_in_step_and_yours_leaves_no_note_so_drift_is_reported(
+        tmp_path, monkeypatch):
+    root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch)
+    assert "status-synced" not in yaml.safe_load(binding_text(root, slug))
+    fake_.tickets[TICKET_ID].status = "To Do"                 # moved back by hand
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and "linked without" not in err, err
+    assert record(root, slug)["state"] == "conflicting"
+
+
+def test_a_misnamed_transition_stays_a_conflict_while_the_note_stands(tmp_path,
+                                                                      monkeypatch):
+    """A ticket in step but not yours keeps the note; once it is assigned to you, a
+    transition the project misnamed is a real conflict, not something the note hides."""
+    root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=None)
+    assert yaml.safe_load(binding_text(root, slug))["status-synced"] is False
+    fake_.tickets[TICKET_ID].assignee = A
+    set_transition(root, "submit", "Ready For Reveiw")
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and "offers no transition named" in err, err
+
+
+def test_sync_clears_the_note_once_the_ticket_is_where_its_item_says(tmp_path,
+                                                                     monkeypatch):
+    """Checking writes nothing else, but a note that is no longer true is removed —
+    otherwise a ticket put right by hand would stay explained away for good."""
+    root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=None)
+    FsWorkStore.open(root).submit(slug)                        # delivers nothing
+    fake_.tickets[TICKET_ID].status, fake_.tickets[TICKET_ID].assignee = "In Review", A
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0 and out.startswith(f"{slug}: current"), (out, err)
+    assert "status-synced" not in yaml.safe_load(binding_text(root, slug))
+
+
+def test_without_sync_status_sync_does_not_walk_a_ticket_through_statuses(tmp_path,
+                                                                          monkeypatch):
+    """An ordinary binding: completing straight from active on a workflow with no
+    shortcut is a conflict, and a later `sync` must not start walking it."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
+    slug = bound_item(root)                                    # linked in the backlog
+    assert cli(root, "work", "start", slug)[0] == 0
+    assert cli(root, "work", "complete", slug, "--resolution", "done", "--confirm",
+               "--force")[0] == 1
+    fake_.applied.clear()
+    code, _out, _err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1 and fake_.applied == [], fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "In Progress"
+
+
+def test_sync_status_refuses_an_item_somebody_else_started(tmp_path, monkeypatch):
+    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC)
+    st = FsWorkStore.open(root)
+    slug = st.create("Theirs").slug
+    st.start(slug, owner="b@example.test")
+    code, _out, err = sync_link(root, slug)
+    assert code == 1 and "b@example.test" in err, err
+    assert fake_.writes() == []
+    assert FsWorkStore.open(root).read_sidecar(slug, "tracker.yaml") is None
+
+
+def test_sync_status_on_a_backlog_item_says_it_did_nothing(node, fake):
+    slug = FsWorkStore.open(node).create("Not started").slug
+    code, _out, err = cli(node, "work", "tracker", "link", slug, KEY, "--sync-status")
+    assert code == 0 and "--sync-status did nothing" in err, err
+    assert fake.writes() == []
+
+
+def test_an_owed_claim_without_sync_status_is_followed_by_one_transition_only(
+        tmp_path, monkeypatch):
+    """A `start` whose claim did not reach the tracker leaves `claim: owed`. When the
+    item has moved on, `sync` claims and then makes the single move it always made —
+    walking through several statuses is only for a binding that asked for it."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
+    slug = bound_item(root)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    assert record(root, slug)["claim"] == "owed"
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])    # delivers nothing
+    code, _out, _err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1
+    assert fake_.applied == ["21"], fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "In Progress"

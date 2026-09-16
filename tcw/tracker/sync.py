@@ -76,7 +76,7 @@ def ladder_steps(statuses: dict, local_target: str,
     lifecycle order and ending at `local_target`.
 
     Deduplicated, so two local statuses mapped to one tracker status share a rung —
-    which is right: the journey simply has one hop fewer. An unmapped status has no
+    which is right: the journey simply has one hop fewer — named for the higher. An unmapped status has no
     rung and is skipped.
     """
     # A discard has no rungs below it. Work can be abandoned from anywhere — which is
@@ -87,13 +87,14 @@ def ladder_steps(statuses: dict, local_target: str,
     steps = [(target_status(statuses, name, None), name)
              for name, index in _RUNG_ORDER.items() if index < upto]
     steps.append((target_status(statuses, local_target, resolution), local_target))
-    seen: set[str] = set()
-    out = []
+    # A shared rung keeps its first place but the *last* local status's name: reaching
+    # it lands the ticket on the higher of them, so its hop must use that status's
+    # move — `transitions.complete`, not `transitions.submit`, when both map to Done.
+    out: dict[str, tuple[str, str]] = {}
     for mapped, local in steps:
-        if mapped and _normalize(mapped) not in seen:
-            seen.add(_normalize(mapped))
-            out.append((mapped, local))
-    return tuple(out)
+        if mapped:
+            out[_normalize(mapped)] = (out.get(_normalize(mapped), (mapped,))[0], local)
+    return tuple(out.values())
 
 
 def ladder(statuses: dict, local_target: str, resolution: str | None) -> tuple[str, ...]:
@@ -319,8 +320,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     def finish(state: str, reason: str = "") -> Outcome:
         # A folder about to be removed takes no write: git must hold all of it for
         # the removal to go ahead, and a staged record — or its removal — would stop it.
-        if check_only and not (state in (CURRENT, NONE) and bound.sync is not None
-                               and "problem" in bound.sync):
+        # Checking writes nothing, except to remove what is no longer true: an
+        # unreadable record once nothing is owed, or the unsynced note once the ticket
+        # is found where its item says.
+        if check_only and not (
+                (state in (CURRENT, NONE, HELD) and bound.sync is not None
+                 and "problem" in bound.sync)
+                or (state == CURRENT and not bound.status_synced)):
             return Outcome(state, reason)
         if store.pending_deletion(slug):
             return Outcome(state, reason, claimed=claimed_message)
@@ -335,7 +341,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         drop_record = bound.sync is not None and not owed
         # Once the ticket is where its item says, however it got there, the note that
         # its status was never synced is no longer true.
-        drop_note = state == CURRENT and not bound.status_synced
+        drop_note = state == CURRENT and (not bound.status_synced or bound.catch_up)
         if drop_record or drop_note:
             content = store.read_sidecar(slug, BINDING_SIDECAR).content
             if drop_record:
@@ -344,6 +350,16 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 content = with_status_synced(content)
             store.write_sidecar(slug, BINDING_SIDECAR, content, revision=revision)
         return Outcome(state, reason, claimed=claimed_message)
+
+    def unsynced_and_out_of_step(ticket) -> bool:
+        # Only the refusals a never-synced link explains: the ticket is out of the
+        # window, or nobody has claimed it. One somebody else holds, or a transition
+        # the project misnamed, is a real conflict and stays one.
+        if not bound.status_synced and ticket.assignee_id in ("", None, ticket.me_id):
+            window = {_normalize(status) for status in expected or (target,)}
+            return (_normalize(ticket.status) not in window
+                    or (not ticket.assignee_id and move not in MOVES_ALLOWING_UNASSIGNED))
+        return False
 
     def unsynced(ticket) -> Outcome:
         # `link` bound work already under way and was not asked to sync the ticket's
@@ -363,8 +379,9 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # ticket is. Bounded by the ladder: at most one hop per rung, each strictly
         # higher, so it ends without a counter. Two paths get here: a claim that is
         # owed, and a recorded move whose ticket is inside its window but has no
-        # transition straight to the target — a walk a failure interrupted. A ticket
-        # somebody moved *back* reaches neither, so it is never walked forward.
+        # transition straight to the target — a walk a failure interrupted. Both only
+        # on a binding `link --sync-status` made. A ticket somebody moved *back*
+        # reaches neither, so it is never walked forward.
         nonlocal since
         if ticket.category == "done" and _normalize(ticket.status) != _normalize(target):
             # Each hop passes the ticket's own status as `expected`, which skips
@@ -444,27 +461,43 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             # claim could only move it back first, on a workflow that offers it.
             owed = False
             return finish(CURRENT)
+        rung = lowest_rung(config.statuses, ticket.status)
         if move == "discard":
             # A discard claims nothing. Abandoning work is not a statement that you are
             # doing it, and claiming would assign the ticket and move it into a working
             # status purely so it could be closed. Nothing is owed afterwards either —
             # the item is resolved, so no later move will ever want a claim — and
-            # `assess_move` still refuses a ticket somebody else holds.
+            # `assess_move` still refuses a ticket somebody else holds, and with no
+            # window one that is already resolved.
             owed = False
             since = ticket.status
-        else:
-            if check_only:
-                return Outcome(CONFLICTING,
-                               f"the claim of {bound.ticket_key} is still owed.")
-            ahead = lowest_rung(config.statuses, ticket.status)
-            if not starting and ahead is not None and ahead > _RUNG_ORDER.get(local, ahead):
-                # A late-linked ticket already past where its item is. Claiming it
-                # could move it back — a workflow may offer the claim from anywhere —
-                # and TCW never pulls a ticket back. The claim stays owed, so once the
-                # item catches up a later move or `sync` takes it from there.
+            expected = ()
+        elif check_only:
+            return Outcome(CONFLICTING, f"the claim of {bound.ticket_key} is still owed.")
+        elif not starting and rung is not None and (
+                rung > 0 or ticket.assignee_id == ticket.me_id):
+            # Already past the claim's own status, or on it and already yours. Applying
+            # the claim transition from above it could only move it back — a workflow
+            # may offer it from anywhere — and TCW never pulls a ticket back.
+            if rung > _RUNG_ORDER.get(local, rung):
                 return finish(CONFLICTING, (
                     f"{ticket.key} is in '{ticket.status}', which is past where its item "
                     f"is, so it was not claimed or moved back."))
+            if ticket.assignee_id != ticket.me_id:
+                whose = (f"assigned to {ticket.assignee_name}" if ticket.assignee_id
+                         else "unassigned")
+                return finish(CONFLICTING, (
+                    f"{ticket.key} is in '{ticket.status}' and {whose}. Claiming it from "
+                    f"there could move it back, so nothing was sent. Assign it to yourself "
+                    f"in the tracker, then run `tcw work tracker sync {slug}`."))
+            # Already yours and on the ladder: that is what a claim would have left, so
+            # none is made, and delivery carries on from where the ticket is.
+            owed = False
+            since = ticket.status
+            expected = (ticket.status,)
+            if not target:
+                return finish(NONE)
+        else:
             try:
                 outcome = claim(client, ticket)
             except TrackerError as error:
@@ -482,21 +515,17 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             owed = False
             claimed_message = outcome.message
             active = target_status(config.statuses, "active", None)
-            if starting:
-                if active and _normalize(outcome.status) != _normalize(active):
-                    return finish(CONFLICTING, (
-                        f"claimed {bound.ticket_key}, but it is in '{outcome.status}', "
-                        f"not '{active}'."))
-                return finish(CURRENT)
             if active and _normalize(outcome.status) != _normalize(active):
-                # The same check `starting` makes, for the same reason: a claim that
-                # landed somewhere else has not put the ticket on the ladder, and
-                # walking on from an unmapped status would pick hops by the item's own
-                # move — naming the wrong `transitions` key in any refusal — and could
-                # come to rest somewhere no later run can reason about.
+                # A claim that landed somewhere else has not put the ticket on the
+                # ladder, and moving on from an unmapped status would pick hops by the
+                # item's own move — naming the wrong `transitions` key in any refusal —
+                # and could come to rest somewhere no later run can reason about.
+                onward = "." if starting else ", so it was not brought forward from there."
                 return finish(CONFLICTING, (
                     f"claimed {bound.ticket_key}, but it is in '{outcome.status}', not "
-                    f"'{active}', so it was not brought forward from there."))
+                    f"'{active}'{onward}"))
+            if starting:
+                return finish(CURRENT)
             expected = (active,) if active else ()
             since = active
             if not target:
@@ -506,7 +535,10 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             except TrackerError as error:
                 return finish(classify_error(error), str(error))
 
-        return walk(ticket)
+        if bound.catch_up:
+            return walk(ticket)
+        # Without `link --sync-status`, delivery after a claim is the one transition it
+        # always was; walking a ticket through several statuses is only ever asked for.
 
     named = transition_name(config.move_transitions, move, item.resolution) if move else ""
     verdict, detail = assess_move(ticket, target=target, expected=expected, move=move,
@@ -516,16 +548,17 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # still to climb, is a walk a failure stopped part-way — the claim landed, so
         # the record no longer says it is owed. One transition cannot finish it on a
         # workflow with no shortcut, so it resumes the walk instead of refusing.
-        if (verdict == CONFLICTING and record is not None and not check_only
+        if (verdict == CONFLICTING and bound.catch_up and record is not None
+                and not check_only
                 and _normalize(ticket.status) in {_normalize(s) for s in expected}
                 and len(forward_from(ladder(config.statuses, local, item.resolution),
                                      ticket.status)) > 2):
             return walk(ticket)
-        if verdict == CONFLICTING and not bound.status_synced:
+        if verdict == CONFLICTING and unsynced_and_out_of_step(ticket):
             return unsynced(ticket)
         return finish(verdict, detail)
     if check_only:
-        if not bound.status_synced:
+        if unsynced_and_out_of_step(ticket):
             return unsynced(ticket)
         return Outcome(CONFLICTING, (
             f"{ticket.key} is in '{ticket.status}', not '{target}', and no undelivered "
