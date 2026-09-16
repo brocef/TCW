@@ -84,6 +84,18 @@ category.
   "Document command summary" section listing the injected commands in order,
   with `gate` shown separately as the one to run yourself. `evals/grade.py`
   `BLOCK_HEADINGS` and the `evals/evals.json` case text follow the new headings.
+- `skills/tcw-work-create/SKILL.md` and `skills/documentation-sync/SKILL.md`
+  read their procedure from `tcw work procedure prompt create-work` /
+  `documentation-sync` by injection, with a "Document command summary" fallback
+  block. The skills keep only what a project may not replace: for
+  `tcw-work-create`, the one-outcome paragraph and step 2 (the overlap search,
+  moved above the injection); for `documentation-sync`, `tcw work docs --json`
+  and its sources, the lifecycle-point table and the Markdown fallback entry
+  form. `tcw/work/procedures/create-work.md` and `documentation-sync.md` lose
+  exactly those parts. `documentation-sync` gains
+  `allowed-tools: Bash(tcw *), Bash(cat *)`, and its injection falls back to
+  `cat ${CLAUDE_PLUGIN_ROOT}/tcw/work/procedures/documentation-sync.md` when the
+  verb fails (not a TCW node, or no CLI). Its two `references/` are unchanged.
 
 ## Fixed
 
@@ -105,3 +117,8 @@ category.
   injected command. New `tests/test_harness.py` and
   `tests/test_stage_validate.py`. `tests/test_eval_grading.py` checks that the
   grader's block headings appear in the stage skill.
+- `tests/test_shipped_procedures.py`: `create-work` and `documentation-sync`
+  move from `SOURCES` to a new `CONVERTED` map; the drift test runs over
+  `SOURCES` only, and `test_a_converted_skill_reads_its_procedure` checks each
+  converted skill injects its procedure, names it in its fallback block, and
+  holds no copy of the default.

@@ -16,6 +16,12 @@ internal module names.
 - New setting: `work.procedures` in `tcw-config.yaml`, beside
   `work.lifecycle`. `tcw validate` checks it.
 - The skills themselves do not read from the command yet; that comes next.
+- **The `tcw-work-create` and `documentation-sync` skills now read from it.** A
+  project's own text for `create-work` or `documentation-sync` is what an agent
+  using those skills follows. Two things stay TCW's: filing a work item still
+  searches for existing work first and ends in exactly one outcome, and
+  documentation sync still takes its entries from `tcw work docs`.
+  `documentation-sync` keeps working in a project that does not use TCW.
 
 ## Getting a stage's instructions
 
