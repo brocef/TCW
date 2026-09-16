@@ -4,6 +4,7 @@ Mirrors `test_shipped_prompts.py` for `tcw/work/procedures/`. Everything goes
 through `load_builtins()`, so the assertions hold in an installed tree too.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -13,21 +14,21 @@ from tcw.work.resolve import ResolveError, load_builtins
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Where each default was copied from. Written out, not derived: a conversion
-# child that turns one of these skills into a reader of
-# `tcw work procedure prompt` changes both sides on purpose, and changes or
-# removes its row here in the same commit. Until then this is what stops the
-# shipped default and the skill drifting apart.
+# Where each default was copied from. Written out, not derived. Until a source
+# is converted, this is what stops the shipped default and the source drifting
+# apart. A converted source keeps its row, wrapped in `Composes`, and is checked
+# instead for reading the procedure and for carrying no copy of its default.
 
 
 class Composes(str):
-    """A source that now reads its default through `tcw work procedure prompt`
-    instead of carrying a copy of it. Checked for the injection, the manual
-    fallback, and that no paragraph of the default survives in it."""
+    """A source that reads its default through `tcw work procedure prompt`
+    instead of carrying a copy of it. A skill must inject the command and name
+    it in its manual fallback; a reference document, where nothing is injected,
+    must name it. Either way no paragraph of the default may survive in it."""
 
 
 SOURCES = {
-    "unattended-work": "skills/tcw-extras-autonomous-work/SKILL.md",
+    "unattended-work": Composes("skills/tcw-extras-autonomous-work/SKILL.md"),
     "triage-issues": Composes("skills/tcw-extras-triage-issues/SKILL.md"),
     "documentation-sync": "skills/documentation-sync/SKILL.md",
     "post-mortem": Composes("skills/tcw-post-mortem/SKILL.md"),
@@ -58,27 +59,37 @@ def test_the_source_map_covers_exactly_the_ids():
 
 def _copied_paragraphs(default: str, text: str) -> list[str]:
     """Paragraphs of `default` (40 characters or longer) found in `text`."""
-    return [p for p in (q.strip() for q in default.split("\n\n"))
+    return [p for p in (q.strip() for q in re.split(r"\n\s*\n", default))
             if len(p) >= 40 and p in text]
 
 
 @pytest.mark.parametrize("pid", PROCEDURE_IDS)
 def test_each_default_is_todays_text(pid):
-    """Criterion 2: a project that configures nothing gets today's words."""
-    if isinstance(SOURCES[pid], Composes):
-        text = (REPO / SOURCES[pid]).read_text(encoding="utf-8")
-        assert f"!`tcw work procedure prompt {pid}" in text, \
-            f"{SOURCES[pid]} does not inject `tcw work procedure prompt {pid}`"
-        _, _, summary = text.partition("## Document command summary")
-        assert f"tcw work procedure prompt {pid}" in summary, \
-            f"{SOURCES[pid]} has no manual fallback naming the command"
-        copied = _copied_paragraphs(load_builtins().procedures[pid], text)
-        assert not copied, f"{SOURCES[pid]} still carries its default: {copied[:1]}"
+    """Criterion 2: a project that configures nothing gets today's words.
+
+    A converted source reads its default through `tcw work procedure prompt
+    <id>` instead of copying it, so the two are no longer equal by design.
+    There the drift to catch is a paragraph left in both places, which a
+    project's replacement would not remove."""
+    source = SOURCES[pid]
+    text = (REPO / source).read_text(encoding="utf-8")
+    default = load_builtins().procedures[pid]
+    if isinstance(source, Composes):
+        command = f"tcw work procedure prompt {pid}"
+        if source.endswith("SKILL.md"):
+            assert f"!`{command}" in text, f"{source} does not inject `{command}`"
+            _, _, summary = text.partition("## Document command summary")
+            assert command in summary, f"{source} has no manual fallback naming the command"
+        else:
+            assert command in text, f"{source} does not point the reader at `{command}`"
+        copied = _copied_paragraphs(default, text)
+        assert not copied, (f"{source} still carries text from "
+                            f"tcw/work/procedures/{pid}.md: {copied[0][:80]!r}")
         return
-    expected = _body(REPO / SOURCES[pid]).strip()
-    assert expected, f"{SOURCES[pid]} has no body to compare"
-    assert load_builtins().procedures[pid].strip() == expected, \
-        f"tcw/work/procedures/{pid}.md differs from {SOURCES[pid]}"
+    expected = _body(REPO / source).strip()
+    assert expected, f"{source} has no body to compare"
+    assert default.strip() == expected, \
+        f"tcw/work/procedures/{pid}.md differs from {source}"
 
 
 def test_the_post_mortem_agent_reads_the_procedure():

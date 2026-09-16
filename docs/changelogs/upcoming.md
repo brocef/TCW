@@ -84,6 +84,20 @@ category.
   "Document command summary" section listing the injected commands in order,
   with `gate` shown separately as the one to run yourself. `evals/grade.py`
   `BLOCK_HEADINGS` and the `evals/evals.json` case text follow the new headings.
+- `skills/tcw-extras-autonomous-work/SKILL.md` injects
+  `` tcw work procedure prompt unattended-work || true `` in place of its
+  "The advisors" and "Checkpoint map" sections, which now exist only in
+  `tcw/work/procedures/unattended-work.md`; that default lost the title,
+  opening, "Ask once", hard blockers and audit trail, which stay in the skill.
+  The skill gains a fixed "What an advisor must be" section (independent,
+  read-only, two wanted, answers weighed not counted), a "Document command
+  summary" fallback, and `allowed-tools` / `compatibility` frontmatter
+  describing the default (`Bash(tcw *)`, `Bash(codex *)`, `Bash(git merge *)`,
+  `Agent`, `SendMessage`). "the two advisors" → "the advisors" and "both
+  call" → "all of them call". `tests/test_shipped_procedures.py` treats a
+  source containing `tcw work procedure prompt <id>` as converted and asserts
+  none of the default's paragraphs remain in it; new
+  `tests/test_unattended_work_skill.py`.
 - `skills/tcw-extras-triage-issues/SKILL.md` and `skills/tcw-post-mortem/SKILL.md`
   compose their procedure: each keeps a fixed body and injects
   `tcw work procedure prompt triage-issues` (no item) or
