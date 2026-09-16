@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
-    DEFAULT_OUTPUT_CAP, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
+    DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TransitionCommitError, WorkItem,
@@ -33,8 +33,8 @@ from tcw.store.project import worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
 from tcw.work.resolve import (
-    ResolveError, bookend, load_builtins, resolve_artifact, resolve_prompts,
-    select,
+    ResolveError, bookend, load_builtins, resolve_artifact, resolve_procedure,
+    resolve_prompts, select,
 )
 from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
 
@@ -42,7 +42,7 @@ NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
                "rework", "edit", "complete", "drop", "delete", "nodes", "reconcile",
                "delegate",
-               "escalate", "tags", "lifecycle", "stage", "scaffold", "docs",
+               "escalate", "tags", "lifecycle", "stage", "procedure", "scaffold", "docs",
                "tracker"}
 DEFAULT_SUBCOMMAND = None  # work uses explicit show/path (slugs aren't tree paths)
 
@@ -1550,6 +1550,75 @@ def _stage_validate(args: argparse.Namespace) -> int:
     return 0 if problem is None else 1
 
 
+def _procedure_prompt(args: argparse.Namespace) -> int:
+    """`tcw work procedure prompt <id> [ref]` — a procedure's text, composed.
+
+    `tcw work stage prompt` without the stage ladder: no legality note, because a
+    procedure has no status it belongs to, and no bookend, because its header
+    names a gate and its footer the next stage, and a procedure has neither. The
+    reference does what it does there — `when:` can match the item, `generate:`
+    receives it, and `<project-id>/<slug>` reads that node's configuration.
+
+    Same stream discipline as `_stage_tail`: the text goes to stdout once,
+    after everything that could fail has succeeded; `--no-exec` prints its plan
+    to stderr and nothing to stdout.
+    """
+    label = "tcw work procedure prompt"
+    if args.procedure_id not in PROCEDURE_IDS:
+        print(f"{label}: unknown procedure '{args.procedure_id}'; expected one "
+              f"of {', '.join(PROCEDURE_IDS)}", file=sys.stderr)
+        return 1
+    item, bare = None, ""
+    if args.slug is None:
+        st = _store()
+        if st is None:
+            return 1
+    else:
+        resolved = _resolve(args.slug, "procedure prompt")
+        if resolved is None:
+            return 1
+        st, bare = resolved
+        try:
+            item = st.get(bare)
+        except MultipleMatch as e:
+            print(f"{label}: {e}", file=sys.stderr)
+            return 1
+        if item is None:
+            print(f"{label}: no such work item: {args.slug}", file=sys.stderr)
+            return 1
+    try:
+        res = resolve_procedure(st.lifecycle_policy(), args.procedure_id, item,
+                                st.node_root, load_builtins(),
+                                artifacts=st.artifacts(bare) if bare else (),
+                                env=dict(os.environ), execute=not args.no_exec,
+                                documentation=st.documentation())
+    except ResolveError as e:
+        print(f"{label}: {e}", file=sys.stderr)
+        return 1
+
+    if args.no_exec:
+        print(f"{label} {args.procedure_id}: --no-exec, nothing was resolved",
+              file=sys.stderr)
+        for entry in res.plan:
+            state = "matched" if entry.matched else "skipped (condition)"
+            detail = f": {entry.ref}" if entry.kind != "builtin" else ""
+            print(f"  procedure {entry.kind} — {state}{detail}", file=sys.stderr)
+        return 0
+
+    if res.text:
+        print(res.text)
+    elif res.plan and all(not entry.matched for entry in res.plan):
+        # A skill reading this would otherwise carry on with no procedure at all
+        # and nothing saying why. Exit 0 all the same: a project may mean it.
+        why = ("" if item is not None else
+               " Without a work item a when: never matches; add an unconditional "
+               "binding (for example {builtin: true}) to cover that case.")
+        print(f"{label}: note — every binding for '{args.procedure_id}' "
+              f"carries a when: that did not match, so nothing resolved.{why}",
+              file=sys.stderr)
+    return 0
+
+
 def _stage_without_item(args: argparse.Namespace, step) -> int:
     """The `inbox` half of `tcw work stage gate`: same contract, no item.
 
@@ -2974,6 +3043,23 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         pold.add_argument("--no-exec", action="store_true",
                           help=argparse.SUPPRESS)
         pold.set_defaults(func=_stage_removed_form, removed_stage=_sid)
+
+    pprc = g.add_parser("procedure",
+                        help="read one of TCW's procedures, composed with this "
+                             "project's own text for it")
+    prc = pprc.add_subparsers(dest="procedure_verb", required=True,
+                              metavar="{prompt}")
+    pprp = prc.add_parser("prompt",
+                          help="print a procedure's instructions")
+    pprp.add_argument("procedure_id", metavar="procedure",
+                      help=f"one of: {', '.join(PROCEDURE_IDS)}")
+    pprp.add_argument("slug", nargs="?",
+                      help="optional; with one, `when:` conditions and "
+                           "`generate:` scripts see that work item")
+    pprp.add_argument("--no-exec", action="store_true",
+                      help="report what would resolve and resolve none of it; "
+                           "prints nothing on stdout")
+    pprp.set_defaults(func=_procedure_prompt)
 
     pscf = g.add_parser("scaffold",
                         help="write a draft of a lifecycle artifact from its template")
