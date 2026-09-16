@@ -493,6 +493,11 @@ such as a design rule read at `spec` or `tcw validate` run before `complete`. Se
 [Configuration](docs/guide/configuration.md). `tcw work lifecycle` prints the
 whole contract, with whatever the project has attached.
 
+Some of TCW's other instructions can be replaced the same way: how to work items
+unattended, triage issues, keep documentation in sync, and seven more.
+`tcw work procedure prompt <id>` prints one of them, and a project replaces or
+adds to its text under `work.procedures` in `tcw-config.yaml`.
+
 #### Jira integration
 
 A project can name the Jira Cloud site its team works from. Tickets can then
@@ -619,6 +624,7 @@ driving it to completion, verifying it, processing the inbox) described in
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `tcw work lifecycle` | prints every stage and transition, with what this project attaches to each                                                                             |
 | `tcw work stage`     | `stage gate` checks a stage may run; `stage prompt` prints its instructions; `stage validate` checks the arguments given to the `tcw-work-stage` skill |
+| `tcw work procedure` | `procedure prompt` prints one of TCW's procedures, such as `unattended-work` or `search`, with this project's own text for it                           |
 | `tcw work scaffold`  | writes a draft of a stage's document from its template                                                                                                 |
 | `tcw work docs`      | prints the project's documentation entries: which documents a change must keep up to date                                                              |
 

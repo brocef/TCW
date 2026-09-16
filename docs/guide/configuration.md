@@ -130,6 +130,15 @@ tcw work stage gate plan "$slug"       # may it run? checks only, prints nothing
 tcw work stage prompt plan             # what does the plan stage ask for?
 ```
 
+**Procedures** are TCW instructions that are not stages — `unattended-work`,
+`triage-issues`, `documentation-sync`, `post-mortem`, `create-work`,
+`audit-backlog`, `consolidate-plans`, `decompose`, `delegation` and `search`.
+`tcw work procedure prompt <id> [<ref>]` prints one. Replace or extend its text
+under `work.procedures.<id>` with a plain list of the same bindings a stage's
+`prompt:` takes; with nothing configured you get TCW's own text. There is no
+gate and no header or footer, because a procedure has no status and no next
+stage.
+
 The shipped instructions include a short self-review pass at the stages where one
 earns its place — `spec`, `plan`, and `implement`. The `spec` and `plan` instructions name
 the item's **own** body artifact rather than a fixed filename: `initial-request.md`

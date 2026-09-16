@@ -3,6 +3,20 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## Replacing TCW's own procedures
+
+- **Your project can now replace the text of ten of TCW's procedures**, the way
+  it could already add to a stage's instructions. They cover working items
+  unattended, triaging GitHub issues, keeping documentation in sync, running a
+  post-mortem, filing a work item, auditing the backlog, consolidating plans,
+  splitting an item, delegating a stage, and searching the board.
+- New command: `tcw work procedure prompt <procedure> [<item>]` prints one,
+  composed with your project's own text. With nothing configured it prints
+  exactly what TCW ships today.
+- New setting: `work.procedures` in `tcw-config.yaml`, beside
+  `work.lifecycle`. `tcw validate` checks it.
+- The skills themselves do not read from the command yet; that comes next.
+
 ## Getting a stage's instructions
 
 - **The `tcw-work-stage` skill now checks how it was called.** If it is invoked
