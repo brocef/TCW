@@ -87,7 +87,7 @@ API for the same reason: projects type these ids into `tcw-config.yaml`.
 
 | Id | Default text is today's… |
 | --- | --- |
-| `autonomous-work` | `skills/tcw-extras-autonomous-work/SKILL.md` body |
+| `unattended-work` | `skills/tcw-extras-autonomous-work/SKILL.md` body |
 | `triage-issues` | `skills/tcw-extras-triage-issues/SKILL.md` body |
 | `documentation-sync` | `skills/documentation-sync/SKILL.md` body |
 | `post-mortem` | `skills/tcw-post-mortem/SKILL.md` body |
@@ -130,8 +130,8 @@ expectation for its ids, deliberately.
 ```yaml
 work:
     procedures:
-        autonomous-work:
-            - file: docs/procedures/autonomous-work.md
+        unattended-work:
+            - file: docs/procedures/unattended-work.md
         documentation-sync:
             - builtin: true
             - blob: "Also update docs/guide/ when a CLI flag changes."
@@ -335,7 +335,8 @@ The epic's criteria 4, 5, 6 and 7, made concrete, then this child's own.
   so per `CLAUDE.md` the work folder is maintained by hand; only read-only `tcw`
   commands were run, and before any `tcw/` edit.
 - **Decisions for the requester to confirm:**
-  1. The id list and names above — especially `create-work` for
+  1. The id list and names above — especially `unattended-work` for
+     `tcw-extras-autonomous-work`, `create-work` for
      `tcw-work-create`, `post-mortem` for `tcw-post-mortem`, and the unprefixed
      `search`.
   2. Defaults are verbatim copies now, guarded by a parity test, rather than
@@ -360,3 +361,11 @@ The epic's criteria 4, 5, 6 and 7, made concrete, then this child's own.
 - The `tcw-work` skill body is 59 lines against a budget of 60
   (`tests/test_skill_lifecycle_parity.py:50`), so the new verb is documented in
   `references/commands.md` and `references/hooks.md`, not in `SKILL.md`.
+- **Changed during `implement`: `autonomous-work` became `unattended-work`.**
+  The spec first used the requester's example id `autonomous-work`, but that is
+  a skill name TCW removed, and `tests/test_skill_lifecycle_parity.py`
+  (`DELETED_NAMES`) refuses any live document naming it — so every place this
+  id is documented would have failed that guard. A user-level skill called
+  `autonomous-work` also exists on the requester's machine. A procedure id that
+  reads as a skill name is the confusion the id rule exists to avoid, so the id
+  was renamed rather than the guard loosened.
