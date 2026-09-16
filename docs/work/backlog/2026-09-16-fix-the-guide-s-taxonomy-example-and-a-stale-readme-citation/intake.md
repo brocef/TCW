@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-15-follow-ups-the-readme-rewrite-found.md`
+
+## Inbox body
+
 # Follow-ups the README rewrite found
 
 ## Desired outcome
@@ -47,3 +53,26 @@ source code. Verified at that item's work branch.
 
 Items 3 and 4 edit `tcw/`, so under this repository's rules they are recorded
 here rather than done in a documentation-only item.
+
+## Triage (2026-09-16)
+
+Two of the four parts above need no work; this item is parts 2 and 3 only.
+
+- **Part 1 needs no action.** The entry already records it as resolved on `main`:
+  `docs/work/graveyard.yaml` carries the slug and `tcw validate` passes in a fresh
+  worktree.
+- **Part 4 is already fixed.** `tcw work tracker link --help` was rewritten when
+  `--sync-status` landed (`2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync`,
+  pull request #45). The epilog now reads "In the tracker: nothing, unless
+  `--sync-status` is passed", so the sentence the entry quotes is gone. Confirmed
+  by running the help at `632f023`.
+- **Part 2 is live.** `docs/guide/taxonomy-and-capabilities.md:25` still reads
+  `tcw taxonomy add Permission -p admin` with no `admin` term added before it.
+- **Part 3 is live.** `tcw/store/fs.py:4964` still says "the migration the README
+  describes".
+
+Part 2 edits `docs/guide/taxonomy-and-capabilities.md`, which
+`2026-09-15-repair-sentences-references-and-headings-in-the-guides` also edits — at
+`:53-54`, a different defect. Kept separate because that item's scope is prose that
+reads wrongly, and this is an example that does not run; whoever takes either should
+check the other is not in flight.

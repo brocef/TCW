@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-16-point-open-work-items-at-the-renamed-skills.md`
+
+## Inbox body
+
 # Point open work items at the renamed skills
 
 ## Desired outcome
