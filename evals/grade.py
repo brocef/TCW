@@ -47,7 +47,7 @@ from pathlib import Path
 
 # The two injected blocks, identified by their headings rather than by content,
 # which varies per node.
-BLOCK_HEADINGS = ("## How to work it", "## What this project asks for")
+BLOCK_HEADINGS = ("## Lifecycle stage contract", "## Stage instructions")
 
 # What an agent running the fenced fallback by hand would type *to obtain the
 # instructions*. Any of these appearing before a nonce means the text could have

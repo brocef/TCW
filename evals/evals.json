@@ -27,7 +27,7 @@
   "transcript_blocks_present": {
    "family": "transcript",
    "args": [],
-   "reads": "both injected blocks appear in the resolved stage prompt and are non-empty, identified by their headings ('## How to work it', '## What this project asks for') rather than by content, which varies per node. A heading with nothing under it is a fail."
+   "reads": "both injected blocks appear in the resolved stage prompt and are non-empty, identified by their headings ('## Lifecycle stage contract', '## Stage instructions') rather than by content, which varies per node. A heading with nothing under it is a fail."
   },
   "transcript_gate_before_artifact": {
    "family": "transcript",
