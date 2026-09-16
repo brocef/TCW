@@ -28,16 +28,16 @@ class Composes(str):
 
 
 SOURCES = {
-    "unattended-work": Composes("skills/tcw-extras-autonomous-work/SKILL.md"),
-    "triage-issues": Composes("skills/tcw-extras-triage-issues/SKILL.md"),
+    "unattended-work": Composes("skills/extras-autonomous-work/SKILL.md"),
+    "triage-issues": Composes("skills/extras-triage-issues/SKILL.md"),
     "documentation-sync": "skills/documentation-sync/SKILL.md",
-    "post-mortem": Composes("skills/tcw-post-mortem/SKILL.md"),
-    "create-work": "skills/tcw-work-create/SKILL.md",
-    "audit-backlog": Composes("skills/tcw-work/references/procedures/audit-backlog.md"),
-    "consolidate-plans": Composes("skills/tcw-work/references/procedures/consolidate-plans.md"),
-    "decompose": Composes("skills/tcw-work/references/procedures/decompose.md"),
-    "delegation": Composes("skills/tcw-work/references/procedures/delegation.md"),
-    "search": Composes("skills/tcw-work/references/procedures/search.md"),
+    "post-mortem": Composes("skills/post-mortem/SKILL.md"),
+    "create-work": "skills/work-create/SKILL.md",
+    "audit-backlog": Composes("skills/work/references/procedures/audit-backlog.md"),
+    "consolidate-plans": Composes("skills/work/references/procedures/consolidate-plans.md"),
+    "decompose": Composes("skills/work/references/procedures/decompose.md"),
+    "delegation": Composes("skills/work/references/procedures/delegation.md"),
+    "search": Composes("skills/work/references/procedures/search.md"),
 }
 
 def _body(path: Path) -> str:
@@ -100,23 +100,23 @@ def test_each_default_is_todays_text(pid):
 def test_the_post_mortem_agent_reads_the_procedure():
     """The agent restates the skill; once the skill's text can be replaced, a
     copy in the agent would silently skip a project's replacement."""
-    text = (REPO / "agents/tcw-post-mortem.md").read_text(encoding="utf-8")
+    text = (REPO / "agents/post-mortem.md").read_text(encoding="utf-8")
     assert "tcw work procedure prompt post-mortem" in text
     copied = _copied_paragraphs(load_builtins().procedures["post-mortem"], text)
-    assert not copied, f"agents/tcw-post-mortem.md carries the default: {copied[:1]}"
+    assert not copied, f"agents/post-mortem.md carries the default: {copied[:1]}"
 
 
 def test_the_backlog_auditor_reads_the_procedure():
     """The agent is dispatched per item by the audit procedure. A copy of the
     checks in it would audit against TCW's list after a project replaced it."""
-    text = (REPO / "agents/tcw-backlog-auditor.md").read_text(encoding="utf-8")
+    text = (REPO / "agents/backlog-auditor.md").read_text(encoding="utf-8")
     assert "tcw work procedure prompt audit-backlog" in text
     tools = next(line for line in text.splitlines() if line.startswith("tools:"))
     assert "Bash" in tools, "the agent cannot run the command without Bash"
     copied = [c for c in ("Already completed", "Outdated", "Wrong repository",
                           "Unactionable", "Blocked without a next action",
                           "Capability drift") if c.lower() in text.lower()]
-    assert not copied, f"agents/tcw-backlog-auditor.md still names: {copied}"
+    assert not copied, f"agents/backlog-auditor.md still names: {copied}"
 
 
 def _fail_procedures(monkeypatch, error):

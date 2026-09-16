@@ -134,7 +134,7 @@ def test_a_malformed_list_still_yields_the_entries_it_could_read():
 
 def test_a_path_that_does_not_exist_is_legal():
     """The parser touches no filesystem, and an entry naming a file the project
-    intends to create is correct — the `tcw-configure` skill's `docs-sync.md`
+    intends to create is correct — the `configure` skill's `docs-sync.md`
     exists to create them."""
     assert _problems([{"path": "docs/not-written-yet.md", "trigger": "Public-API",
                        "description": "Planned."}]) == []

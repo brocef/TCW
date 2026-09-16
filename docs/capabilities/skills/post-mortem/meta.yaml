@@ -1,0 +1,8 @@
+id: cap-449a66
+name: Offer a skill dedicated to instructing agents how to run a post-mortem on a
+  work item
+Status: Supported
+Feature: post-mortem-skill
+Subject:
+- skill
+Planning doc: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill

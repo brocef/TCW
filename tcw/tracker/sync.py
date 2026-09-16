@@ -8,14 +8,25 @@ follows first time costs no file change at all. The item's committed status is t
 durable statement of where the ticket should be; the record says it is not there yet.
 
 **TCW never follows the tracker and never pulls a ticket back.** A ticket is moved
-only when it is assigned to the account the credentials authenticate as and sits
-where the item's previous status left it (*expected*). Anything else is reported as
-conflicting. Every decision is taken from what the tracker says, read fresh; the
+only when it is assigned to the account the credentials authenticate as — or
+unassigned and being discarded, the one move a ticket nobody holds authorizes — and
+when it sits where the item's previous status left it, or anywhere on the path from
+there to where the move is going. A ticket *behind* its item, on a binding whose
+claim is still owed, is claimed and walked forward rung by rung instead of refused:
+that is a ticket TCW has never held, which is what a late `link` leaves. One TCW did
+hold and somebody moved back is drift, and stays refused. Anything else is reported
+as conflicting. Every decision is taken from what the tracker says, read fresh; the
 binding is never proof of anything.
+
+Which transition a move applies is derived from the target status — exactly one
+offered transition must lead there — unless the project names one for that move under
+`work.tracker.transitions`, which is what makes a workflow with two routes into one
+status reachable at all.
 
 States: `current` (the ticket is where it should be), `pending` (the tracker could
 not be reached or asked), `conflicting` (it answered, and the answer stops the move),
-`held` (another open item here shares the ticket, so this one does not move it), and
+`held` (another open item here shares the ticket, so this one does not move it; or it
+was linked without syncing its status, so moves do not bring it along), and
 `none` (nothing is mapped for this status).
 """
 
@@ -24,10 +35,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from tcw.store.base import RESOLVED_STATUSES, target_status
+from tcw.store.base import RESOLVED_STATUSES, target_status, transition_name
 from tcw.tracker.claim import _normalize
-from tcw.tracker.intake import (BINDING_SIDECAR, Bound, binding_of, claim, read_ticket,
-                                same_site, with_sync_record)
+from tcw.tracker.intake import (BINDING_SIDECAR, Bound, ClaimOutcome, binding_of, claim,
+                                read_ticket, same_site, with_status_synced,
+                                with_sync_record)
 from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerRateLimited,
                               TrackerUnavailable)
 
@@ -37,13 +49,85 @@ CURRENT, PENDING, CONFLICTING, HELD, NONE = (
 # The local status each move leaves an item in.
 MOVE_STATUS = {"start": "active", "submit": "review", "rework": "active",
                "complete": "completed", "discard": "discarded"}
+# The move that lands an item — or its ticket — on each local status: `MOVE_STATUS`
+# inverted. `active` is the claim's move, not `rework`: reaching it from nothing is
+# claiming, and the claim has its own transition name.
+MOVE_ONTO = {"active": "start", "review": "submit", "completed": "complete",
+             "discarded": "discard"}
+# The moves that may act on a ticket nobody holds. Abandoning work is the one thing
+# an unassigned ticket authorizes: every other move is somebody saying they are doing
+# the work, which is a claim, and a claim assigns. Widening this set would let TCW
+# march a ticket through a workflow on behalf of a person who never took it.
+MOVES_ALLOWING_UNASSIGNED = frozenset({"discard"})
 # Where to look for the status a ticket was left in, from an item's previous status.
 _EARLIER = {"active": ("active",), "review": ("review", "active")}
 # The same, from a recorded move whose `since` is unknown: where that move started.
 # A discard can start from `backlog`, where nothing is known, so it has none.
 _MOVED_FROM = {"start": ("active",), "submit": ("active",), "rework": ("review",),
                "complete": ("review", "active"), "discard": ()}
+# The rungs of the ladder, in the order the local lifecycle reaches them. A discard and
+# a completion share the top rung: both are where a ticket stops.
+_RUNG_ORDER = {"active": 0, "review": 1, "completed": 2, "discarded": 2}
 REASON_LIMIT = 300
+
+
+def ladder_steps(statuses: dict, local_target: str,
+                 resolution: str | None) -> tuple[tuple[str, str], ...]:
+    """The ladder as `(tracker status, the local status it stands for)`, in local
+    lifecycle order and ending at `local_target`.
+
+    Deduplicated, so two local statuses mapped to one tracker status share a rung —
+    which is right: the journey simply has one hop fewer — named for the higher. An unmapped status has no
+    rung and is skipped.
+    """
+    # A discard has no rungs below it. Work can be abandoned from anywhere — which is
+    # why `_MOVED_FROM["discard"]` is empty — and marching a ticket up through the
+    # statuses that mean somebody is doing the work, only to close it, is the opposite
+    # of what a discard says: three sets of notifications and SLA clocks to abandon it.
+    upto = 0 if local_target == "discarded" else _RUNG_ORDER[local_target]
+    steps = [(target_status(statuses, name, None), name)
+             for name, index in _RUNG_ORDER.items() if index < upto]
+    steps.append((target_status(statuses, local_target, resolution), local_target))
+    # A shared rung keeps its first place but the *last* local status's name: reaching
+    # it lands the ticket on the higher of them, so its hop must use that status's
+    # move — `transitions.complete`, not `transitions.submit`, when both map to Done.
+    out: dict[str, tuple[str, str]] = {}
+    for mapped, local in steps:
+        if mapped:
+            out[_normalize(mapped)] = (out.get(_normalize(mapped), (mapped,))[0], local)
+    return tuple(out.values())
+
+
+def ladder(statuses: dict, local_target: str, resolution: str | None) -> tuple[str, ...]:
+    """`ladder_steps` without the local names."""
+    return tuple(mapped for mapped, _local in ladder_steps(statuses, local_target,
+                                                           resolution))
+
+
+def lowest_rung(statuses: dict, status: str) -> int | None:
+    """The lowest rung `status` is mapped to, or `None` when it is on none.
+
+    The lowest, because a status two local statuses share is only certainly as high as
+    the lower of them."""
+    rungs = []
+    for local, index in _RUNG_ORDER.items():
+        value = statuses.get(local, "")
+        for mapped in (value.values() if isinstance(value, dict) else (value,)):
+            if mapped and _normalize(mapped) == _normalize(status):
+                rungs.append(index)
+    return min(rungs, default=None)
+
+
+def forward_from(rungs: tuple[str, ...], status: str) -> tuple[str, ...]:
+    """The rungs from `status` onward, inclusive — or `()` when it is not on `rungs`.
+
+    Direction is the whole point: a ticket somebody moved *back* is below where it
+    was left, so it never appears in the path forward from there and is still drift.
+    """
+    for index, rung in enumerate(rungs):
+        if _normalize(rung) == _normalize(status):
+            return rungs[index:]
+    return ()
 
 
 @dataclass(frozen=True)
@@ -85,23 +169,43 @@ def expected_statuses(statuses: dict, previous_status: str | None, record: dict 
                                         for earlier in _MOVED_FROM[record["move"]])))[:1]
             if not since:
                 return ()
-        moved_to = target_status(statuses, MOVE_STATUS[record["move"]], resolution)
+        local_target = MOVE_STATUS[record["move"]]
+        # Every rung from where the ticket was left up to where the move was taking it.
+        # A person who moved it part of the way did by hand what TCW failed to do; only
+        # the two ends used to be accepted, so an ordinary intermediate read as drift.
+        onward = forward_from(ladder(statuses, local_target, resolution), since[0])
+        if onward:
+            return onward
+        moved_to = target_status(statuses, local_target, resolution)
         return tuple(dict.fromkeys(filter(None, (*since, moved_to))))
     mapped = tuple(filter(None, (target_status(statuses, earlier, None)
                                  for earlier in _EARLIER.get(previous_status or "", ()))))
     return mapped if shared else mapped[:1]
 
 
-def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
+def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | None = None,
+                named_transition: str = ""):
     """Steps 4–7 of a status move, over one ticket read. Pure. Returns `(state, reason)`, or
-    `("apply", transition)` when exactly one offered transition leads to `target`."""
+    `("apply", transition)` when one transition to apply can be identified.
+
+    `move` is the lifecycle move being served, which decides whether a ticket nobody
+    holds may be acted on (`MOVES_ALLOWING_UNASSIGNED`). `named_transition` is what the
+    project configured for that move, if anything; without one the transition is derived
+    from the target status, which is the only rule that existed before.
+    """
     key, where = ticket.key, ticket.status
     if _normalize(where) == _normalize(target):
         return CURRENT, ""
     if ticket.assignee_id != ticket.me_id:
-        holder = ticket.assignee_name if ticket.assignee_id else "nobody"
-        return CONFLICTING, (f"{key} is assigned to {holder}, not to you, so it was not "
-                             f"moved from '{where}' to '{target}'.")
+        if ticket.assignee_id:
+            return CONFLICTING, (f"{key} is assigned to {ticket.assignee_name}, not to "
+                                 f"you, so it was not moved from '{where}' to "
+                                 f"'{target}'.")
+        if move not in MOVES_ALLOWING_UNASSIGNED:
+            return CONFLICTING, (f"{key} is unassigned, so it was not moved from "
+                                 f"'{where}' to '{target}'. Take it first — `tcw work "
+                                 f"start` claims a bound ticket — or assign it to "
+                                 f"yourself in the tracker.")
     if expected:
         if _normalize(where) not in {_normalize(status) for status in expected}:
             wanted = " or ".join(f"'{status}'" for status in expected)
@@ -112,6 +216,28 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...]):
                                  f"move it on by hand.")
     elif ticket.category == "done":
         return CONFLICTING, f"{key} is already resolved ('{where}'), so it was not moved."
+    if named_transition:
+        named = [t for t in ticket.offered
+                 if _normalize(t.name) == _normalize(named_transition)]
+        if not named:
+            offers = ", ".join(f"'{t.name}' to '{t.to_status}'" for t in ticket.offered)
+            return CONFLICTING, (f"{key} in '{where}' offers no transition named "
+                                 f"'{named_transition}'. It offers: {offers or 'nothing'}."
+                                 f" Fix work.tracker.transitions.{move}, or remove it to "
+                                 f"let TCW find the transition itself.")
+        if len(named) > 1:
+            ids = ", ".join(sorted(t.id for t in named))
+            return CONFLICTING, (f"'{named_transition}' matches more than one transition "
+                                 f"offered by {key} (ids {ids}); TCW will not guess which.")
+        # Refused rather than applied: the mapped status is how a delivered move is told
+        # from an undelivered one, so a transition landing anywhere else leaves a ticket
+        # that never reads as delivered — and applying it cannot be undone.
+        if _normalize(named[0].to_status) != _normalize(target):
+            return CONFLICTING, (f"{key}'s transition '{named_transition}' leads to "
+                                 f"'{named[0].to_status}', not '{target}', so nothing was "
+                                 f"sent. Check work.tracker.transitions.{move} against "
+                                 f"work.tracker.statuses.")
+        return "apply", named[0]
     leads = [t for t in ticket.offered if _normalize(t.to_status) == _normalize(target)]
     if not leads:
         offers = ", ".join(f"'{t.name}' to '{t.to_status}'" for t in ticket.offered)
@@ -195,8 +321,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     def finish(state: str, reason: str = "") -> Outcome:
         # A folder about to be removed takes no write: git must hold all of it for
         # the removal to go ahead, and a staged record — or its removal — would stop it.
-        if check_only and not (state in (CURRENT, NONE) and bound.sync is not None
-                               and "problem" in bound.sync):
+        # Checking writes nothing, except to remove what is no longer true: an
+        # unreadable record once nothing is owed, or the unsynced note once the ticket
+        # is found where its item says.
+        if check_only and not (
+                (state in (CURRENT, NONE, HELD) and bound.sync is not None
+                 and "problem" in bound.sync)
+                or (state == CURRENT and not bound.status_synced)):
             return Outcome(state, reason)
         if store.pending_deletion(slug):
             return Outcome(state, reason, claimed=claimed_message)
@@ -208,11 +339,102 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 "reason": reason[:REASON_LIMIT], "at": _now(),
             }), revision=revision)
             return Outcome(state, reason, recorded=True, claimed=claimed_message)
-        if bound.sync is not None and not owed:
+        drop_record = bound.sync is not None and not owed
+        # Once the ticket is where its item says, however it got there, the note that
+        # its status was never synced is no longer true.
+        drop_note = state == CURRENT and (not bound.status_synced or bound.catch_up)
+        if drop_record or drop_note:
             content = store.read_sidecar(slug, BINDING_SIDECAR).content
-            store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, None),
-                                revision=revision)
+            if drop_record:
+                content = with_sync_record(content, None)
+            if drop_note:
+                content = with_status_synced(content)
+            store.write_sidecar(slug, BINDING_SIDECAR, content, revision=revision)
         return Outcome(state, reason, claimed=claimed_message)
+
+    def unsynced_and_out_of_step(ticket) -> bool:
+        # Only the refusal a never-synced link explains: the ticket's status is out of
+        # the window. One somebody else holds, or a transition the project misnamed, is
+        # a real conflict and stays one; so is an unclaimed ticket once it is in step.
+        if not bound.status_synced and ticket.assignee_id in ("", None, ticket.me_id):
+            window = {_normalize(status) for status in expected or (target,)}
+            return _normalize(ticket.status) not in window
+        return False
+
+    def unsynced(ticket) -> Outcome:
+        # `link` bound work already under way and was not asked to sync the ticket's
+        # status, so a ticket that does not match is what the user chose — not drift,
+        # and not something `sync` should retry. Held, with the way to opt in; any
+        # record an outage left is dropped, since nothing will deliver it.
+        return finish(HELD, (f"{ticket.key} not moved to '{target}': it is in "
+                             f"'{ticket.status}' and was linked without syncing its "
+                             f"status. {unsynced_hint(slug, ticket.key)}"))
+
+    def walk(ticket) -> Outcome:
+        # A ticket TCW has never held can be several rungs below its item — it was
+        # linked to work already under way, and `link --sync-status` asked for it to
+        # catch up. It goes straight to the target when the workflow offers that;
+        # otherwise it walks the rungs the project itself mapped, one at a time,
+        # re-reading between them because what a workflow offers depends on where the
+        # ticket is. Bounded by the ladder: at most one hop per rung, each strictly
+        # higher, so it ends without a counter. Two paths get here: a claim that is
+        # owed, and a recorded move whose ticket is inside its window but has no
+        # transition straight to the target — a walk a failure interrupted. Both only
+        # on a binding `link --sync-status` made. A ticket somebody moved *back*
+        # reaches neither, so it is never walked forward.
+        nonlocal since
+        if ticket.category == "done" and _normalize(ticket.status) != _normalize(target):
+            # Each hop passes the ticket's own status as `expected`, which skips
+            # `assess_move`'s resolved check, so it is made here: a ticket somebody
+            # already closed is never moved to a different closed status.
+            since = ticket.status
+            return finish(CONFLICTING, f"{ticket.key} is already resolved "
+                                       f"('{ticket.status}'), so it was not moved.")
+        # From the item's status, not the recorded move's: a move that happened while
+        # nothing was sent leaves the record naming an earlier one.
+        steps = ladder_steps(config.statuses, local, item.resolution)
+        reached = forward_from(tuple(rung for rung, _local in steps), ticket.status)
+        remaining = steps[len(steps) - len(reached) + 1:] if reached else steps
+        if len(remaining) > 1:
+            hop = MOVE_ONTO[local]
+            verdict, _detail = assess_move(
+                ticket, target=target, expected=(ticket.status,), move=hop,
+                named_transition=transition_name(config.move_transitions, hop,
+                                                 item.resolution))
+            if verdict == "apply":
+                remaining = remaining[-1:]           # a shortcut: take it
+        for rung, local_name in remaining:
+            hop = MOVE_ONTO[local_name]
+            verdict, detail = assess_move(
+                ticket, target=rung, expected=(ticket.status,), move=hop,
+                named_transition=transition_name(config.move_transitions, hop,
+                                                 item.resolution))
+            if verdict == CURRENT:
+                continue
+            since = ticket.status
+            if verdict != "apply":
+                # Not undone: the ticket is nearer where it belongs than it was, and
+                # every resting place is a mapped rung, so a later sync resumes here.
+                return finish(verdict, detail)
+            try:
+                client.apply_transition(ticket.issue_id, detail.id)
+            except TrackerError as error:
+                since = ticket.status          # nothing moved
+                return finish(classify_error(error), str(error))
+            try:
+                ticket = read_ticket(client, bound.ticket_id)
+            except TrackerError as error:
+                # The hop was applied, so the ticket is on `rung` even though the read
+                # that would have confirmed it failed. Recording where it actually is
+                # beats recording where it was: `since` is what the next run measures
+                # its window from.
+                since = rung
+                return finish(classify_error(error), str(error))
+        since = ticket.status
+        if _normalize(ticket.status) == _normalize(target):
+            return finish(CURRENT)
+        return finish(CONFLICTING, f"{ticket.key} did not reach '{target}': it is in "
+                                   f"'{ticket.status}'.")
 
     if not same_site(bound.ticket_url, config.base_url):
         return finish(CONFLICTING, (
@@ -239,44 +461,125 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             # claim could only move it back first, on a workflow that offers it.
             owed = False
             return finish(CURRENT)
-        if check_only:
+        rung = lowest_rung(config.statuses, ticket.status)
+        if move == "discard":
+            # A discard claims nothing. Abandoning work is not a statement that you are
+            # doing it, and claiming would assign the ticket and move it into a working
+            # status purely so it could be closed. Nothing is owed afterwards either —
+            # the item is resolved, so no later move will ever want a claim — and
+            # `assess_move` still refuses a ticket somebody else holds, and with no
+            # window one that is already resolved.
+            owed = False
+            since = ticket.status
+            expected = ()
+        elif check_only:
             return Outcome(CONFLICTING, f"the claim of {bound.ticket_key} is still owed.")
-        try:
-            outcome = claim(client, ticket)
-        except TrackerError as error:
-            return finish(classify_error(error), str(error))
-        if not outcome.claimed:
-            state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
-            detail = f" ({outcome.detail})" if outcome.detail else ""
-            return finish(state, outcome.message + detail)
-        if config.strict:
-            # Under strict mode a claim the workflow cannot make exclusive authorizes
-            # nothing, so it stays owed and nothing moves.
-            refusal = claim_refusal(client, config, bound.ticket_id, outcome)
-            if refusal:
-                return finish(CONFLICTING, refusal)
-        owed = False
-        claimed_message = outcome.message
-        active = target_status(config.statuses, "active", None)
-        if starting:
+        elif not starting and rung is not None and (
+                rung > 0 or ticket.assignee_id == ticket.me_id):
+            # Already past the claim's own status, or on it and already yours. Applying
+            # the claim transition from above it could only move it back — a workflow
+            # may offer it from anywhere — and TCW never pulls a ticket back.
+            if rung > _RUNG_ORDER.get(local, rung):
+                return finish(CONFLICTING, (
+                    f"{ticket.key} is in '{ticket.status}', which is past where its item "
+                    f"is, so it was not claimed or moved back."))
+            if ticket.category == "done":
+                # `claim` refuses a resolved ticket first, and skipping it must not lose
+                # that: with the window set to where the ticket is, `assess_move`
+                # would not look, and a closed ticket could change resolution. Before
+                # the assignment, so a closed ticket is never "assign it to yourself".
+                return finish(CONFLICTING, (
+                    f"{ticket.key} is already resolved ('{ticket.status}'), so it was "
+                    f"not moved."))
+            if ticket.assignee_id != ticket.me_id:
+                whose = (f"assigned to {ticket.assignee_name}" if ticket.assignee_id
+                         else "unassigned")
+                return finish(CONFLICTING, (
+                    f"{ticket.key} is in '{ticket.status}' and {whose}. Claiming it from "
+                    f"there could move it back, so nothing was sent. Assign it to yourself "
+                    f"in the tracker, then run `tcw work tracker sync {slug}`."))
+            if config.strict and rung == 0:
+                # The same question a claim answers under strict mode: does the
+                # assignment authorize work, on a workflow that could let a second
+                # person claim it too? Skipping the transition does not skip that. It
+                # is a question about the claim's own status, so a ticket already past
+                # it is not asked — `claim_refusal` would refuse it for not being there.
+                refusal = claim_refusal(client, config, bound.ticket_id, ClaimOutcome(
+                    row="1e", claimed=True, message="", issue_id=ticket.issue_id,
+                    key=ticket.key, url=ticket.url, summary=ticket.summary,
+                    status=ticket.status))
+                if refusal:
+                    return finish(CONFLICTING, refusal)
+            # Already yours and on the ladder: that is what a claim would have left, so
+            # none is made, and delivery carries on from where the ticket is.
+            owed = False
+            since = ticket.status
+            expected = (ticket.status,)
+            if not target:
+                return finish(NONE)
+        else:
+            try:
+                outcome = claim(client, ticket)
+            except TrackerError as error:
+                return finish(classify_error(error), str(error))
+            if not outcome.claimed:
+                state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
+                detail = f" ({outcome.detail})" if outcome.detail else ""
+                return finish(state, outcome.message + detail)
+            if config.strict:
+                # Under strict mode a claim the workflow cannot make exclusive
+                # authorizes nothing, so it stays owed and nothing moves.
+                refusal = claim_refusal(client, config, bound.ticket_id, outcome)
+                if refusal:
+                    return finish(CONFLICTING, refusal)
+            owed = False
+            claimed_message = outcome.message
+            active = target_status(config.statuses, "active", None)
             if active and _normalize(outcome.status) != _normalize(active):
+                # A claim that landed somewhere else has not put the ticket on the
+                # ladder, and moving on from an unmapped status would pick hops by the
+                # item's own move — naming the wrong `transitions` key in any refusal —
+                # and could come to rest somewhere no later run can reason about.
+                onward = "." if starting else ", so it was not brought forward from there."
                 return finish(CONFLICTING, (
                     f"claimed {bound.ticket_key}, but it is in '{outcome.status}', not "
-                    f"'{active}'."))
-            return finish(CURRENT)
-        expected = (active,) if active else ()
-        since = active
-        if not target:
-            return finish(NONE)
-        try:
-            ticket = read_ticket(client, bound.ticket_id)
-        except TrackerError as error:
-            return finish(classify_error(error), str(error))
+                    f"'{active}'{onward}"))
+            if starting:
+                return finish(CURRENT)
+            expected = (active,) if active else ()
+            since = active
+            if not target:
+                return finish(NONE)
+            try:
+                ticket = read_ticket(client, bound.ticket_id)
+            except TrackerError as error:
+                return finish(classify_error(error), str(error))
 
-    verdict, detail = assess_move(ticket, target=target, expected=expected)
+        if bound.catch_up:
+            return walk(ticket)
+        # Without `link --sync-status`, delivery after a claim is the one transition it
+        # always was; walking a ticket through several statuses is only ever asked for.
+
+    named = transition_name(config.move_transitions, move, item.resolution) if move else ""
+    verdict, detail = assess_move(ticket, target=target, expected=expected, move=move,
+                                  named_transition=named)
     if verdict != "apply":
+        # A recorded move whose ticket is inside its window, with more than one rung
+        # still to climb, is a walk a failure stopped part-way — the claim landed, so
+        # the record no longer says it is owed. One transition cannot finish it on a
+        # workflow with no shortcut, so it resumes the walk instead of refusing.
+        if (verdict == CONFLICTING and bound.catch_up and record is not None
+                and not check_only
+                and _normalize(ticket.status) in {_normalize(s) for s in expected}
+                and len(forward_from(ladder(config.statuses, local, item.resolution),
+                                     ticket.status)) > 2):
+            return walk(ticket)
+        if verdict == CONFLICTING and unsynced_and_out_of_step(ticket):
+            return unsynced(ticket)
         return finish(verdict, detail)
     if check_only:
+        if unsynced_and_out_of_step(ticket):
+            return unsynced(ticket)
         return Outcome(CONFLICTING, (
             f"{ticket.key} is in '{ticket.status}', not '{target}', and no undelivered "
             f"change is recorded, so it is not moved."))
@@ -289,7 +592,12 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         again = read_ticket(client, bound.ticket_id)
     except TrackerError as error:
         return finish(classify_error(failure or error), str(failure or error))
-    if _normalize(again.status) == _normalize(target) and again.assignee_id == again.me_id:
+    # The assignment clause is relaxed for finished work exactly as the owed
+    # short-circuit above relaxes it: a discard may move a ticket nobody holds, and
+    # moving it assigns nothing, so demanding the ticket be ours afterwards would
+    # turn that success into "did not reach 'Won't Do': it is in 'Won't Do'".
+    if _normalize(again.status) == _normalize(target) and (
+            local in RESOLVED_STATUSES or again.assignee_id == again.me_id):
         return finish(CURRENT)
     if failure is not None:
         return finish(classify_error(failure), str(failure))
@@ -342,9 +650,18 @@ def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]
                       f"which is not on {config.base_url}.")
     if bound.sync is not None:
         what = bound.sync.get("state", "an unreadable record")
+        # `sync` acts as whoever runs it and skips an item somebody else started, so
+        # pointing at it without naming the owner sends the caller into a loop: the
+        # refusal says run sync, and sync says skipped. `owner` is a field on the item,
+        # not an identity this layer resolves — that stays in the CLI.
+        item = store.get(slug)
+        owner = item.owner if item is not None else ""
+        whose = (f" It was started by {owner}, so run it as them: "
+                 f"`TCW_WORK_OWNER={owner} tcw work tracker sync {slug}`." if owner else "")
         return None, (f"{key} has a change that has not reached the tracker ({what}). Run "
-                      f"`tcw work tracker sync {slug}` first; if that cannot clear it, "
-                      f"fix the ticket in the tracker, or unlink the item and discard it.")
+                      f"`tcw work tracker sync {slug}` first;{whose} if that cannot clear "
+                      f"it, fix the ticket in the tracker, or unlink the item and discard "
+                      f"it.")
     return bound, None
 
 
@@ -372,17 +689,26 @@ def authorize(store, slug: str, client, config, *, target: str) -> str | None:
         *expected_statuses(config.statuses, store.get(slug).status, None, None,
                            shared=shared), target))))
     where = " or ".join(f"'{status}'" for status in allowed) or "its mapped status"
+    unsynced = ("" if bound.status_synced else
+                f" It was linked without syncing its status. {unsynced_hint(slug, key)}")
     if ticket.assignee_id != ticket.me_id:
-        holder = ticket.assignee_name if ticket.assignee_id else "nobody"
-        return (f"{key} is assigned to {holder}, not to you. Assign it to yourself in "
+        whose = (f"is assigned to {ticket.assignee_name}, not to you"
+                 if ticket.assignee_id else "is unassigned")
+        return (f"{key} {whose}. Assign it to yourself in "
                 f"the tracker and put it in {where}, then run this again; discarding "
-                f"the item is always allowed.")
+                f"the item is always allowed.{unsynced}")
     if _normalize(ticket.status) not in {_normalize(status) for status in allowed}:
         return (f"{key} is in '{ticket.status}', not {where}. Either it was moved in the "
                 f"tracker, or TCW held it there for another part of the ticket whose item "
                 f"is not in this checkout. Put it in {where}, then run this again; "
-                f"discarding the item is always allowed.")
+                f"discarding the item is always allowed.{unsynced}")
     return None
+
+
+def unsynced_hint(slug: str, key: str) -> str:
+    """How to opt in to syncing a ticket that `link` bound without its status."""
+    return (f"To bring it along, run `tcw work tracker unlink {slug} --reason <text>`, "
+            f"then `tcw work tracker link {slug} {key} --sync-status`.")
 
 
 def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:

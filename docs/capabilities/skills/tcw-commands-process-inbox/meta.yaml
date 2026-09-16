@@ -1,8 +1,0 @@
-id: cap-3e9fbe
-name: Offer a skill dedicated to instructing agents how to turn work inbox entries
-  into work items
-Status: Supported
-Feature: tcw-commands-process-inbox-skill
-Subject:
-- skill
-Planning doc: 2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill

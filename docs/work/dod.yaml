@@ -7,7 +7,7 @@
 #
 # A discard (`--resolution wontfix|duplicate|superseded`) prints no checklist at
 # all, so nothing here reaches those paths; their guidance lives in
-# skills/tcw-work/references/transitions.md.
+# skills/work/references/transitions.md.
 
 - tests pass
 - docs synced

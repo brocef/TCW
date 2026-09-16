@@ -3,7 +3,7 @@
 `tcw validate` only resolves `tcw://` markdown links, so it can't catch a stale
 `skill-cefailures` reference or a missing skill file. This is that guard: the
 skill's files exist, no `skill-cefailures` reference survives the absorption, and
-the tcw-work lifecycle actually invokes the skill (positive check — an absence
+the work lifecycle actually invokes the skill (positive check — an absence
 grep alone would stay green if a rewire were skipped).
 """
 from pathlib import Path
@@ -18,8 +18,8 @@ SKILL_FILES = [
 ]
 
 # Declaring documentation entries is configuration, so the document that walks
-# a project through it lives in the `tcw-configure` skill.
-DOCS_SYNC_SETUP = REPO / "skills" / "tcw-configure" / "references" / "docs-sync.md"
+# a project through it lives in the `configure` skill.
+DOCS_SYNC_SETUP = REPO / "skills" / "configure" / "references" / "docs-sync.md"
 
 # Absorption must leave no dangling reference to the source plugin here.
 NO_CEFAILURES_ROOTS = [
@@ -34,8 +34,8 @@ NO_CEFAILURES_ROOTS = [
 # trigger expected to fire, and `implement` evaluates them before the work is
 # reported complete. Retargeted from the retired task/epic lifecycle documents.
 LIFECYCLE_REFS = [
-    REPO / "skills" / "tcw-work" / "references" / "lifecycle" / "stage-plan.md",
-    REPO / "skills" / "tcw-work" / "references" / "lifecycle" / "stage-implement.md",
+    REPO / "skills" / "work" / "references" / "lifecycle" / "stage-plan.md",
+    REPO / "skills" / "work" / "references" / "lifecycle" / "stage-implement.md",
 ]
 
 
@@ -92,7 +92,7 @@ def test_skill_has_no_cut_version_command_ref():
 # ── which form the skill recommends ────────────────────────────────────────
 
 def test_the_skill_presents_the_markdown_section_as_the_fallback():
-    """`SKILL.md` and the `tcw-configure` skill's `docs-sync.md` must agree on
+    """`SKILL.md` and the `configure` skill's `docs-sync.md` must agree on
     which form is recommended. `docs-sync.md` already says "prefer config in a
     TCW project"; the
     section in `SKILL.md` that shows the Markdown format must not read as the
@@ -127,7 +127,7 @@ def _frontmatter(path: Path) -> dict:
 
 
 def test_the_description_is_a_usage_trigger_not_a_setup_one():
-    """Declaring entries is the `tcw-configure` skill's job. A description that
+    """Declaring entries is the `configure` skill's job. A description that
     says "declares" pulls a "set up documentation tracking" request here instead
     of there."""
     description = _frontmatter(SKILL_DIR / "SKILL.md")["description"]

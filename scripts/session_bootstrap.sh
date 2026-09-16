@@ -6,7 +6,7 @@
 # The plugin root is read for the plugin's version, not installed from.
 #
 # Defaults: $CLAUDE_PLUGIN_ROOT and $CLAUDE_PLUGIN_DATA/installed-version. The
-# arguments exist so the tcw-setup skill can run this under Codex, where
+# arguments exist so the setup skill can run this under Codex, where
 # neither variable is set — nothing here may depend on them.
 #
 # Every path exits 0, and only a failed install prints. It prints to stdout
@@ -42,7 +42,7 @@ tcw_interpreter() {
 }
 
 # A developer's `pip install -e` checkout — report-and-don't-touch, per
-# the tcw-setup skill's install.md. The sys.path filter is load-bearing: a
+# the setup skill's install.md. The sys.path filter is load-bearing: a
 # session's cwd is usually the project, and a `tcw.egg-info` sitting in a TCW
 # checkout would otherwise answer this question instead of the real dist-info,
 # turning the guard into a force-install over the dev setup.

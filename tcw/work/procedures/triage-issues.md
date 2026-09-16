@@ -173,7 +173,7 @@ happens later, when the item that came out of it closes.
 
 You get here from `tcw work complete`, whose Definition-of-Done checklist can
 carry a line naming the originating issue (see
-`tcw-work/references/transitions.md`). Find the issue:
+`work/references/transitions.md`). Find the issue:
 
 ```bash
 tcw work show <slug>      # → the item's body, whichever artifact it is; read its ## Origin

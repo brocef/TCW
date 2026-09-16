@@ -26,7 +26,7 @@ Two things hold whatever you configure:
   expired.
 
 Which commands reach Jira: `list`, `show` and `link` read a ticket; `import`
-changes the ticket and then writes the work item; `unlink` touches only your
+changes the ticket and then writes the work item, and so does `link --sync-status`; `unlink` touches only your
 repository and needs no tracker configured. For an item linked to a ticket,
 `start`, `submit`, `rework`, `complete` and `tcw work tracker sync` also write to
 the ticket. No other command reaches Jira.
@@ -46,6 +46,8 @@ work:
             token-env: TCW_JIRA_API_TOKEN
         transitions:
             claim: Start Progress
+            complete: Finish # optional: only where the status cannot say
+            discard: Abandon # optional: may also be one name per resolution
         statuses: # optional: where a linked ticket goes as its item moves
             active: In Progress
             review: In Review
@@ -65,6 +67,7 @@ work:
 | `credentials.email-env` | yes      | The **name** of the environment variable holding your Jira account's e-mail address.                                                                   |
 | `credentials.token-env` | yes      | The **name** of the environment variable holding your Jira API token.                                                                                  |
 | `transitions.claim`     | yes      | The workflow transition that starts a ticket, spelled exactly as Jira spells it.                                                                       |
+| `transitions.submit`, `.rework`, `.complete`, `.discard` | no | The transition each move should use, for a workflow where the status alone cannot say. See [Naming a transition](#naming-a-transition).  |
 | `statuses`              | no       | The Jira **status** a linked ticket should be in for each of the item's statuses. See [Tickets following their items](#tickets-following-their-items). |
 | `comments`              | no       | `true` to post a short comment on the ticket for each move. See [Comments on the ticket](#comments-on-the-ticket).                                     |
 | `link`                  | no       | A web address added to each comment.                                                                                                                   |
@@ -80,7 +83,9 @@ address or the token into `tcw-config.yaml`.
 release of TCW then complains in `tcw validate` rather than quietly doing less
 than you asked. This also means **every copy of `tcw` working on the project must
 understand a key before you set it**: an older copy that does not know `comments`
-or `link` treats the whole `tracker` block as broken.
+or `link` treats the whole `tracker` block as broken. The same goes for the
+`transitions` keys other than `claim`: version 2.3.0 and earlier reject the whole
+block when any of them is set.
 
 **A block with any problem counts as no tracker at all.** TCW never uses a
 half-valid configuration, because a block whose token variable name is mistyped
@@ -262,8 +267,8 @@ is what claims a linked ticket.
 
 ## Linking and unlinking
 
-**`tracker link` records that an item and a ticket are the same work, and does
-nothing else.** It reads the ticket, which is how a key that does not exist is
+**`tracker link` records that an item and a ticket are the same work, and — unless
+you pass `--sync-status` — does nothing else.** It reads the ticket, which is how a key that does not exist is
 refused, and writes the binding. Jira is left alone: the ticket keeps its status
 and whoever holds it, so you can link a ticket somebody else is assigned. In your
 repository nothing but `tracker.yaml` is written, so the item keeps its status,
@@ -273,6 +278,41 @@ Any item can be linked, a finished one included. That is how work already done
 gets tied to the ticket that tracked it. A finished item's folder is kept out of
 git by default, so a binding on one stays on your machine along with the rest of
 that item.
+
+**Linking an item that is already under way leaves its ticket alone unless you
+ask.** If the ticket is not in the status the item maps to, `link` warns you and the
+binding notes that its status was not synced. While the
+ticket stays out of step like that, later moves of the item do not bring it along:
+each one says the ticket was linked without its status synced, moves nothing, and
+does not count as a failure. Under strict mode those moves are refused, with the same
+explanation. Everything else is reported as it always was — a ticket somebody else
+holds, one nobody has claimed, or a transition name the ticket does not offer, is
+still a conflict — and once
+the ticket is in step, by your hand or otherwise, it is an ordinary linked ticket and
+follows its item from then on. A ticket already in step when you link it is an
+ordinary linked ticket from the start.
+
+**`tracker link <slug> <KEY> --sync-status`** asks for the ticket to be brought up
+to date as part of linking. TCW claims the ticket if it has to, then moves it to the
+status the item maps to — in one transition when the workflow offers one, otherwise
+forward through the statuses you mapped, one at a time (see
+[Tickets following their items](#tickets-following-their-items)). It never moves a
+ticket backwards, so a ticket already past where its item is stays put, and it never
+changes a ticket that is already resolved. Whatever cannot be done right away — Jira
+could not be reached, say — is recorded, and `tcw work tracker sync <slug>` finishes
+it. On an item still in the backlog the flag does nothing, and says so, because
+there is nothing to catch up yet. A ticket already past the claim's own status is
+never claimed again, since claiming could move it back: one assigned to you carries
+on from where it is, and one that is not is refused with a request to assign it to
+yourself first. `--sync-status` acts as you, so it refuses an item somebody else
+started, as `sync` does. Walking a ticket through several statuses happens only for a
+binding made with `--sync-status`; any other linked ticket still follows its item one
+transition at a time.
+
+**A binding made by an earlier version whose ticket is stuck** — every move reported
+as a conflict because the ticket was linked after the work started — is repaired the
+same way: `tcw work tracker unlink <slug> --reason "sync its status"`, then
+`tcw work tracker link <slug> <KEY> --sync-status`.
 
 **`tracker unlink <slug> --reason <text>`** removes a binding. It keeps a record
 of what was bound, when, and your reason, makes no call to Jira, and needs no
@@ -335,11 +375,27 @@ statuses:
 
 The only resolutions are `wontfix`, `duplicate` and `superseded`.
 
-**TCW moves a ticket only when it is assigned to you and still where the item's
-previous status left it**, and only when exactly one of the ticket's offered
-transitions leads to the target status. A ticket someone else holds, one moved on
-in Jira, or one whose workflow has no single transition to the mapped status is
-left alone. TCW never pulls a ticket back to match an item.
+**TCW moves a ticket only when it is assigned to you** — or unassigned and being
+discarded — **and only when it can tell which transition to use.** With no
+`transitions` entry for the move, that means exactly one of the ticket's offered
+transitions leads to the target status; where two do, name the one you want (see
+[Naming a transition](#naming-a-transition)). A ticket someone else holds, or one
+moved on past where its item is, is left alone. TCW never pulls a ticket back to
+match an item.
+
+**A ticket behind its item is brought forward when you asked for that.** If you
+linked it to work already under way with `--sync-status`, TCW claims it and moves
+it to where the item is: straight there when the workflow allows, otherwise up
+through the statuses you mapped, one transition at a time. It only ever goes forward, only through statuses in
+your `statuses` mapping, and it stops at the first step it cannot make, leaving the
+ticket where it got to and telling you; `tcw work tracker sync <slug>` carries on
+from there. A ticket TCW *did* claim and somebody then moved backwards is not walked
+forward again — that is a move you made, and TCW does not undo it.
+
+One limit worth knowing: if your workflow forces a ticket through a status you have
+not mapped — `In Progress → Code Review → In Review`, with no `review`-style entry
+for `Code Review` — the walk stops there, because TCW will not route a ticket
+through statuses you did not name. Map the status, or move that one ticket by hand.
 
 **When a ticket does not follow, your move still happens.** It is committed first;
 the command then exits 1, says the item moved, and records why in `tracker.yaml`:
@@ -360,8 +416,15 @@ record and no change in your repository.
 **`tcw work tracker sync <slug>`**, or `--all`, retries once the cause is fixed.
 It acts only on items you started, because it acts as whoever runs it. It removes
 the record once the ticket is where it should be, and exits 1 while any item it
-acted on is still pending or conflicting. On an item with no record it checks the
-ticket but does not move it.
+acted on is still pending or conflicting.
+
+If you name a slug that somebody else started, it is skipped — and that is an
+**exit 1**, saying so and naming the record still owed, because you asked about
+that one item and nothing was done to it. Run it as them with
+`TCW_WORK_OWNER=<their identity>`, or take the item over with
+`tcw work start <slug> --take-over`. A `--all` sweep still exits 0 walking past
+other people's work, which is what a sweep is for. On an item with no record it
+checks the ticket but does not move it.
 
 **Several parts.** A ticket bound to several parts moves only when the last open
 part in this project moves. Parts in other projects are not seen.
@@ -374,6 +437,30 @@ ticket.
 **An item about to be removed.** If a project does not keep resolved items
 (`work.retain`) and the ticket fails to follow, no record is written and the item
 is kept instead of removed. Move the ticket by hand, then run `tcw work delete`.
+
+### Naming a transition
+
+Many workflows have two transitions ending in the same status: one for finished work
+and one for abandoned work, both landing in `Done`. TCW will not guess between them,
+so without help neither `complete` nor a discard can ever sync. Name them:
+
+```yaml
+transitions:
+    claim: Start Progress
+    complete: Finish
+    discard:
+        wontfix: Abandon # sets the matching Jira resolution
+        duplicate: Mark Duplicate
+```
+
+You only need to name the moves that are ambiguous — anything you leave out keeps
+working out the transition from the status, exactly as before. `discard` takes one
+name, or one per resolution, and a resolution you leave out falls back to the derived
+rule. There is no `start` key: `transitions.claim` already names that one.
+
+A name that the ticket does not offer, or that matches two transitions, or that leads
+somewhere other than the status you mapped, is refused and nothing is sent — TCW does
+not quietly fall back, because then a misspelled name would never be noticed.
 
 ## Comments on the ticket
 

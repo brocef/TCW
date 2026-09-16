@@ -1,0 +1,11 @@
+slug: 2026-09-16-add-a-rename-verb-to-tcw-capabilities-and-tcw-taxonomy
+title: Add a rename verb to tcw capabilities and tcw taxonomy
+created: '2026-09-16'
+resolution: null
+priority: 35
+effort: medium
+complexity: medium
+tags:
+- capabilities
+- taxonomy
+- cli
