@@ -13,6 +13,10 @@
 3. **Documentation Sync** — `134fe549`. `docs/changelogs/upcoming.md` gains a
    `Fixed` line for the guide and an `Internal` line for the comments. Release
    notes, README, `jira.md`, skills and `configure` references: no trigger fired.
+4. **Code review fixes** — `docs/guide/work.md:236` registers `cli` as well, so
+   `--tags bug,cli` at `:239` runs; the guide's multi-valued example uses
+   `Subject=invoice,user`, which reads more naturally for downloading an invoice.
+   Spec gains problem 3 and criterion 5; changelog entry extended.
 
 ## Evidence
 
@@ -23,6 +27,8 @@
   `Permission -p admin`, `--vocab user`, `show admin/permission`, and
   `Subject=invoice,billing`.
 - Criteria 2-3: `git grep -n README tcw/` no longer returns either comment.
+- Criterion 5: `tags add bug cli tech-debt`, `tags rm tech-debt`, `new "Login crash" --tags bug,cli` and `list --tags bug,cli` all exit 0 in a fresh project; before the fix `new` refused with "unregistered tag 'cli'".
+- Criterion 1 re-run after the `Subject` change: 24 of 24 exit 0.
 - Criterion 4: the README's taxonomy block (`README.md:306-309`) runs cleanly,
   unchanged.
 - `pytest -q -x`: 3605 passed in 966s.
@@ -38,4 +44,10 @@
   from the corrected run.
 - The spec's scope grew during the sibling sweep from one broken line and one
   comment (the request) to three broken lines and two comments. Both additions
-  are recorded in the spec; nothing else was found in the repo-wide sweep.
+  are recorded in the spec. **That sweep was not repo-wide**, although this
+  section first said nothing else was found: it ran taxonomy and capabilities
+  examples only. Code review found a fourth refusal of the same kind in
+  `docs/guide/work.md` (an unregistered tag), now fixed. The reviewer also ran the
+  other guides' concrete examples and found nothing further; `work.md:279`
+  (`--blocks downstream-slug`) refuses but sits in a placeholder reference block,
+  which the spec leaves out.

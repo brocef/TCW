@@ -38,12 +38,18 @@ behavior changes, so the capability ledger is untouched.
       `tcw work escalate` and `tcw work delegate` name it instead of calling the
       node a root or a leaf"). Found by the sibling sweep; not in the request.
 
+3. **Added at code review:** `docs/guide/work.md:239`
+   `tcw work new "Login crash" --tags bug,cli` → "unregistered tag 'cli'"; the
+   block registers only `bug` and `tech-debt` (`:236`). Same defect, missed by
+   this spec's sweep, which ran taxonomy and capabilities examples only.
+
 ## Goals
 
 - Every `tcw taxonomy` and `tcw capabilities` command in the example blocks of
   `docs/guide/taxonomy-and-capabilities.md` lines 23-35 and 70-87 succeeds when run
   top to bottom in a fresh project, excluding the `extends` lines, which need a
   second registered project by design.
+- `docs/guide/work.md`'s tag lines (`tags add` through `new --tags`) run in order.
 - Both comments name the document that actually says what they claim.
 
 ## Non-goals
@@ -84,6 +90,9 @@ Litmus test: not applicable — no operation is added or changed.
    `docs/guide/multi-repo.md` respectively, and the cited passages say what the
    comments attribute to them.
 4. The README's taxonomy example is unchanged and still runs.
+5. In a fresh project, `tcw work tags add bug cli tech-debt`, `tcw work tags rm tech-debt`
+   and `tcw work new "Login crash" --tags bug,cli` — the guide's lines as written —
+   each exit 0.
 
 ## Risks
 
