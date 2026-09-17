@@ -285,8 +285,8 @@ One block, after the code tasks, evaluated over the finished diff.
       `start` — so the behaviour is what needs writing down.
 
   `skills/work/SKILL.md` needs no change: it routes to `commands.md` for
-  the command table and states no field list. Neither do the five
-  `skills/tcw-work-stage-*/` skills, which compose stage instructions and name
+  the command table and states no field list. Neither does the
+  `skills/work-stage/` skill, which composes stage instructions and names
   no flags.
 
 ---

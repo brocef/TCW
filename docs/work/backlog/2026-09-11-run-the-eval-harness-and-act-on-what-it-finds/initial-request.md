@@ -122,7 +122,7 @@ record capped runs separately from failures — the runner already does.
 - **Scope is bundled.** Task 8 (a Codex adapter) is new build work —
   `evals/run_evals.py` has no Codex path — and so is the general ordering
   predicate. At spec, set a dollar ceiling and decide whether either moves to its
-  own item, and whether the unexercised `tcw-commands-*` skills are in scope.
+  own item, and whether the unexercised `commands-*` skills are in scope.
 - The heading says "act on what it finds"; the scope is "report" — applying
   fixes belongs to the refine item.
 
@@ -137,4 +137,4 @@ record capped runs separately from failures — the runner already does.
   the tool-input predicates assume — content blocks with `type: tool_use` and an
   `input` object — because it was only checked against hand-built transcripts.
 
-- **Eval cases changed** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): B11 (`configure`, "set up documentation tracking") and B12 (`setup`, `fixture: bare`, which can only run with `--out` outside this checkout) are new; B5 is retargeted to `cross-axis` over the `taxonomy` and `capabilities` skills; B4 and B8 gained `tool_input_absent` `setup/references/`; A1–A4 and A8 now invoke `work-stage`, and the axis A baseline may move, because the agent must now pass the stage as well as the item (if it passes only the item, the injected blocks fail quietly and nonces shift from `injected` to `fallback`); the four `tcw-commands-*` skills are excluded with no case yet, a gap to consider; `PARTIAL` gained `setup`, `configure` and `work-stage`.
+- **Eval cases changed** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): B11 (`configure`, "set up documentation tracking") and B12 (`setup`, `fixture: bare`, which can only run with `--out` outside this checkout) are new; B5 is retargeted to `cross-axis` over the `taxonomy` and `capabilities` skills; B4 and B8 gained `tool_input_absent` `setup/references/`; A1–A4 and A8 now invoke `work-stage`, and the axis A baseline may move, because the agent must now pass the stage as well as the item (if it passes only the item, the injected blocks fail quietly and nonces shift from `injected` to `fallback`); the four `commands-*` skills are excluded with no case yet, a gap to consider; `PARTIAL` gained `setup`, `configure` and `work-stage`.
