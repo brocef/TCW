@@ -2399,18 +2399,29 @@ def _item_or_reason(st, slug: str, label: str):
     return item
 
 
-def _started_by_someone_else(item, me: str, command: str) -> str | None:
-    """Why this identity should not act on `item`'s ticket, or `None`.
+def _held_by_someone_else(item, me: str, command: str,
+                          take_over: str = "") -> str | None:
+    """Why this identity should not act on `item`, or `None`.
 
     Tracker delivery acts as whoever runs it, so delivering for an item somebody else
-    started would claim or move their ticket under the wrong account. `me` is
+    holds would claim or move their ticket under the wrong account. `me` is
     `_local_owner`, passed in so a sweep reads Git's configuration once; `command` is
-    the one to run again as the owner."""
+    the one to run again as the owner.
+
+    **"Held", not "started".** An item carries an owner from whichever came first,
+    `tcw work start` or `tcw work tracker claim`, and a claimed item may still be
+    sitting in the backlog having never been started. Saying "started by" about one
+    of those is simply false, and the three places that report this all said it.
+
+    `take_over` is the command that overrides the refusal. It defaults to
+    `tcw work start <slug> --take-over` because that is the only override there was
+    when this was written; `release` passes its own, since telling somebody to start
+    an item in order to let go of it would be nonsense."""
     if not item.owner or item.owner == me:
         return None
-    return (f"started by {item.owner}. Run it as them (`TCW_WORK_OWNER={item.owner} "
+    return (f"held by {item.owner}. Run it as them (`TCW_WORK_OWNER={item.owner} "
             f"{command}`), or take the item over with "
-            f"`tcw work start {item.slug} --take-over`.")
+            f"`{take_over or f'tcw work start {item.slug} --take-over'}`.")
 
 
 def _tracker_link(args: argparse.Namespace) -> int:
@@ -2482,7 +2493,7 @@ def _tracker_link(args: argparse.Namespace) -> int:
     under_way = (item is not None and item.status != "backlog"
                  and not st.pending_deletion(args.slug))
     sync_status = under_way and args.sync_status
-    if sync_status and (someone_else := _started_by_someone_else(
+    if sync_status and (someone_else := _held_by_someone_else(
             item, _local_owner(st),
             f"tcw work tracker link {args.slug} {args.ticket}"
             + (f" --part {part}" if args.part else "") + " --sync-status")):
@@ -2632,11 +2643,11 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     code = 0
     for slug in slugs:
         item = st.get(slug)
-        if someone_else := _started_by_someone_else(item, me,
+        if someone_else := _held_by_someone_else(item, me,
                                                     f"tcw work tracker sync {slug}"):
             if args.all:
                 # A sweep legitimately walks past other people's work.
-                print(f"{slug}: skipped — started by {item.owner}")
+                print(f"{slug}: skipped — held by {item.owner}")
                 continue
             # A named slug is somebody asking about one item. Skipping it and exiting 0
             # says the item is fine when its change is still owed — and strict mode
@@ -3180,7 +3191,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         epilog="--all visits every item here with a sync or comment record, finished ones\n"
                "the store still holds included. An owed progress comment is posted once the\n"
                "ticket has followed and is assigned to you, unless it is already there.\n"
-               "An item started by another identity (its owner is\n"
+               "An item held by another identity (its owner is\n"
                "not TCW_WORK_OWNER or, without it, your Git identity) is skipped, because\n"
                "sync acts as whoever runs it. An item with no record is checked and never\n"
                "moved.\n\n"

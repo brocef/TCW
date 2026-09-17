@@ -656,7 +656,7 @@ def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]
         # not an identity this layer resolves — that stays in the CLI.
         item = store.get(slug)
         owner = item.owner if item is not None else ""
-        whose = (f" It was started by {owner}, so run it as them: "
+        whose = (f" It is held by {owner}, so run it as them: "
                  f"`TCW_WORK_OWNER={owner} tcw work tracker sync {slug}`." if owner else "")
         return None, (f"{key} has a change that has not reached the tracker ({what}). Run "
                       f"`tcw work tracker sync {slug}` first;{whose} if that cannot clear "
