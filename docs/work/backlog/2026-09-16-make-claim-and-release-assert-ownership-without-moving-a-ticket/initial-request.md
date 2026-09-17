@@ -94,8 +94,14 @@ Both were left to C1 by the epic's spec, and both were put to the requester:
 
 - The other three children. `sync` moving a ticket either way is C2;
   `transitions.claim` retiring into `transitions.start` is C3; the lifecycle
-  moves composing these primitives is C4. This child changes no lifecycle move
-  and no config key.
+  moves composing these primitives is C4. This child changes no lifecycle move.
+
+  **Amended at the spec stage:** this said "and no config key", which the spec
+  then contradicted. The optional exclusivity assertion needs somewhere to be
+  named, and reusing `transitions.claim` for it would block C3 from removing that
+  key. So this child adds exactly one, `work.tracker.exclusive-claim-transition`,
+  optional and absent by default, and no other. The line is corrected here rather
+  than left for a reader to find the contradiction.
 - Closing GitHub #41 and #42, or any of the six subsumed problems. They stay
   open as independent evidence and are resolved at the epic's closeout, after
   the version carrying the work is cut and pushed.

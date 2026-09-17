@@ -33,7 +33,7 @@ That is a sound way to get exclusivity out of a workflow, and it is exactly why
 ownership cannot be expressed without moving the ticket. The transition it
 applies is also the one that carries the ticket to the active status —
 `MOVE_STATUS` maps `start → active` (`tcw/tracker/sync.py:50`), and the comment
-on `MOVE_ONTO` (`:53-55`) says so outright: "`active` is the claim's move, not
+on `MOVE_ONTO` (`:52-54`) says so outright: "`active` is the claim's move, not
 `rework`: reaching it from nothing is claiming".
 
 Two consequences, both of them live defects filed elsewhere:
@@ -59,8 +59,11 @@ being its own answer — is **C2's**, not this child's. See the Non-goals.
    remote.
 2. `tcw work tracker release <slug>` drops ownership and nothing else: the item's
    status, the ticket's status and the binding are untouched.
-3. Ownership is **one fact**. The item's `owner` and the ticket's assignee are
-   written together, and neither is overwritten while somebody else holds it.
+3. Ownership is **one fact**, by construction. The item's `owner` and the
+   ticket's assignee are written by one command in one run, and neither is
+   overwritten while somebody else holds it. They are never *compared*: a local
+   identity and a Jira account id are unrelated strings. The epic's goal 2 was
+   amended to say this after asking for a comparison nothing can make.
 4. `claim` is idempotent for whoever holds it, and refuses anyone else by name.
 5. Exclusivity has a uniform floor — read-after-write — and an opt-in ceiling for
    a project whose workflow genuinely refuses a second claimant.
@@ -89,15 +92,19 @@ being its own answer — is **C2's**, not this child's. See the Non-goals.
   `submit`, `rework`, `complete` and `discard` compose these primitives — and
   retiring `link --sync-status` — is C4. `tcw work start`'s behaviour is
   unchanged by this child, byte for byte.
-- **The web app.** `tcw serve` has its own start path that passes neither an
-  owner nor a take-over (`tcw/serve/__init__.py:903` —
-  `work.start(slug, force=force)`). This child adds no claim or release action to
-  it and changes none of its code. **Recorded rather than assumed:** an item
-  started from the web app gets whatever owner `work.start` gives it, and there
-  is no way to assert or drop ownership from the browser. Whether that matters is
-  a follow-up item's question, raised at this epic's closeout.
+- **The web app**, which is already somebody else's item.
+  `2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app`
+  owns `tcw serve`'s start path passing neither an owner nor a take-over
+  (`tcw/serve/__init__.py:903` — `work.start(slug, force=force)`), and its request
+  records "**Decided with the maintainer at triage:** the web app is in scope".
+  This child does not re-open that; it changes no web-app code and takes no view
+  on the repair. What it *was* asked to decide, and did, is the separate question
+  of whether the browser grows `claim` and `release` **actions** — it does not,
+  and an item started from the web app therefore gets whatever owner
+  `work.start` gives it. Raised at the epic's closeout as a possible follow-up,
+  not deferred silently.
 - **`.claiming/`.** It is adapter-private filesystem staging behind the local
-  claim (`tcw/store/fs.py:921`, `:3799`, `:3851`) and stays exactly what it is.
+  claim (`tcw/store/fs.py:932-939`, `:3835-3887`) and stays exactly what it is.
 - **Reading Jira's workflow definition.** The optional assertion below is
   configured by hand, not discovered.
 - **Closing any of the six subsumed problems**, including GitHub #41 and #42.
@@ -118,26 +125,55 @@ collide with.
 ### The two verbs
 
 ```
-tcw work tracker claim   <slug> [--part <name>] [--owner <identity>] [--take-over]
-tcw work tracker release <slug> [--part <name>] [--owner <identity>] [--force]
+tcw work tracker claim   <slug> [--part <name>] [--take-over]
+tcw work tracker release <slug> [--part <name>] [--force]
 ```
 
-`--owner` resolves through `_local_owner` (`tcw/work/cli.py:1005-1017`) exactly
-as `start`'s does: the flag, then `TCW_WORK_OWNER`, then the Git email, then the
-Git name. Deliberately the same ladder, because the local owner and the Jira
-assignee are being made into one fact and two ladders would make them two.
+**Neither verb takes `--owner`, and that is deliberate.** The caller's identity
+is resolved through `_local_owner` (`tcw/work/cli.py:1005-1017`) with its flag
+argument left empty, so the ladder is `TCW_WORK_OWNER`, then the Git email, then
+the Git name. `start` has an `--owner` flag; copying it here would break goal 3
+outright, because the tracker half of the claim is not affected by it. Run
+`claim --owner alice@example.com` with Bob's credentials and the item records
+Alice while the ticket is assigned to Bob — one command, two owners, which is
+exactly the split this child exists to prevent. A claim is by definition by
+whoever is running it.
+
+`TCW_WORK_OWNER` remains, because it selects which identity *the caller* is
+acting as, for both halves at once, rather than overriding one of them.
 
 **Claim, step by step.**
 
 1. Resolve the item and the caller's identity. No identity is a refusal, worded
    as `start`'s is (`tcw/work/cli.py:1122`).
-2. **Check the local holder first.** If the item's `owner` is set and is not the
-   caller, refuse and name them — unless `--take-over`. This check is what makes
-   goal 3 true on an item with no ticket behind it, where there is no assignee to
-   check instead. It is the same question `FsWorkStore.start` asks before raising
-   `AlreadyClaimed` (`tcw/store/fs.py:3802-3806`), asked here without the status
-   move that exception is bound to; the refusal reuses that wording so the two
-   verbs do not disagree about what "already claimed" sounds like.
+2. **Check the local holder first, with `_started_by_someone_else`**
+   (`tcw/work/cli.py:2402-2412`). If the item's `owner` is set and is not the
+   caller, refuse and name them — unless `--take-over`. This is what makes goal 3
+   true on an item with no ticket behind it, or one whose ticket is unassigned,
+   where there is no assignee to check instead.
+
+   **Reuse that function rather than `AlreadyClaimed`.** The store's guard is
+   three inline lines inside `start` in both adapters (`tcw/store/base.py:3473-3475`,
+   `tcw/store/fs.py:3801-3806`), reachable only after `if item.status == "active"`,
+   and extracting it would mean editing `FsWorkStore.start`, whose own comments
+   say its statement ordering is load-bearing (`fs.py:3752-3757`) — inside a child
+   that promises `start` is unchanged. The exception is wrong here anyway: it
+   subclasses `IllegalTransition` (`base.py:2569`), and a claim that is
+   deliberately not a transition should not raise a transition-illegality error;
+   and its message is built from `started`, which this child never sets, so a
+   backlog item would refuse with "already claimed by alice since" and no date.
+   `_started_by_someone_else` already does this job in this command group —
+   `link --sync-status` (`cli.py:2485`) and `sync` (`cli.py:2636`) both call it —
+   returning a refusal string, naming the holder, and taking the remedy command
+   as a parameter.
+
+   **It needs one wording change, and that change is this child's to make.** It
+   says "started by", which after this child is wrong: an item can carry an owner
+   while sitting in `backlog`, never started. Rename it to "held by" at all three
+   call sites — `cli.py:2409` itself, `sync --all`'s skip line (`cli.py:2639`),
+   and strict mode's hint (`tcw/tracker/sync.py:658-660`) — so none of them says
+   "started" about something nobody started. That is a message change only; no
+   decision any of them takes moves.
 3. Read the binding (`binding_of`). **An unbound item is claimable** — claiming
    is a statement about the work, and the tracker is where that statement is also
    published when there is one to publish. An unbound claim writes the local
@@ -151,10 +187,23 @@ assignee are being made into one fact and two ladders would make them two.
 7. **Read the ticket back** and confirm the assignee is still the caller. If it
    is not, the claim failed: report who won and exit non-zero, leaving the local
    owner unwritten.
+
+   **This failure leaves ownership as two facts, and the message has to say so.**
+   The assignment from step 6 is not undone — undoing it would hand the ticket
+   back to nobody and could stamp on the winner's own claim — so after a lost
+   race the ticket may be assigned to the caller while the item has no owner.
+   Re-running `claim` repairs it, because every step is idempotent for the
+   holder, and the refusal must say that rather than leaving the user to guess.
 8. Write the item's `owner` with `set_field(slug, "owner", owner)` — the abstract
    operation that already exists (`tcw/store/base.py:3006`) and that `start`
    itself uses for exactly this field (`:3478`). The local write comes **after**
    the read-back, so an item is never marked owned by someone who lost the race.
+9. **Commit that write.** `set_field` reaches `_set_fields_at` and `_write_staged`
+   (`tcw/store/fs.py:5992-6009`), which writes and stages but does not commit, so
+   a claim would otherwise leave `state.yaml` staged and uncommitted and leave no
+   history at all. Its nearest peer, `start --take-over`, commits explicitly
+   (`fs.py:3808-3812`), and this repository dogfoods the system, so uncommitted
+   claims would be visible immediately. Both verbs commit their own local write.
 
 Idempotence falls out without a special case: a holder re-running it passes its
 own name at step 2, assigns the same account to itself, reads back its own name,
@@ -164,13 +213,25 @@ transition is applied, so the ticket cannot move on either pass.
 **Release, step by step.** The mirror image.
 
 1. Resolve the item and the identity as above.
-2. **Check the local holder.** If the item's `owner` is set and is not the
-   caller, refuse and name them — unless `--force`.
+2. **Check the local holder**, with the same `_started_by_someone_else` call. If
+   the item's `owner` is set and is not the caller, refuse and name them — unless
+   `--force`. This check runs on an unbound item too, which is the case the
+   ticket check below cannot reach.
 3. Where bound, read the ticket. If the assignee is neither empty nor the caller,
    refuse and name the holder — unless `--force`.
 4. Unassign the ticket. No transition; its status is neither read for a decision
-   nor changed.
-5. Clear the item's `owner` (`set_field(slug, "owner", "")`).
+   nor changed. **A refused unassignment is a refusal, not a crash** — see the
+   next section — and the local write below does not happen.
+5. Clear the item's `owner` (`set_field(slug, "owner", "")`), and commit it.
+
+**Release is allowed on an `active` item**, and that is the point of the verb:
+the epic's goal 4 is that stepping away or handing off has a name. The result is
+an active item with an empty `owner`, which is a state the board already has a
+word for and which the new `claim` is exactly how somebody picks up. One cosmetic
+consequence, recorded rather than fixed here: `tcw work start` on such an item
+raises `AlreadyClaimed(slug, "", started)` (`tcw/store/base.py:3475`) and renders
+an empty holder name. That path is `start`'s, which this child does not touch;
+C4 is composing the moves and is where it belongs.
 
 `--force` exists for one reason, and the help text says so: recovering a ticket
 held by an account that has gone away. It is the release-side counterpart of
@@ -204,6 +265,15 @@ otherwise the one fact splits in two, which is what goal 3 forbids. The failure
 path is real and untestable against the fake; it is listed under verification
 below.
 
+**The fake has to get stricter, or it certifies a wrong implementation.** As it
+stands it would accept `assign(issue_id, "")` — setting the assignee to the empty
+string, which `tracker_fake.py:215` then treats as unassigned — so a release that
+sends a value real Jira answers with 400 would go green on every criterion here.
+This child makes the fake reject any value that is neither `None` nor a
+registered account id. That is a test-fixture change with no production
+counterpart, and it is the only thing that makes criteria 7 and 9 mean what they
+say.
+
 ### Exclusivity: a uniform floor and an opt-in ceiling
 
 **The floor is read-after-write**, steps 6 and 7 above. It is weaker than today's
@@ -227,7 +297,17 @@ work:
 When set, `claim` applies that transition before assigning, in today's order and
 for today's reason, and a refusal from the workflow is a refusal to claim. When
 unset — the default, and what every existing config has — no transition is ever
-applied. It is a top-level `work.tracker` key, so it joins `TRACKER_KEYS`
+applied.
+
+**`intake.claim` cannot be reused for this as it stands**: it reads
+`client.config.claim_transition` directly (`tcw/tracker/intake.py:329`), so the
+transition name has to be passed in rather than looked up. What *should* be
+carried across from it is row `1e` (`intake.py:355-357`) — the rule that a ticket
+already in the landing status and already assigned to the caller is a claim that
+needs no second transition. Without it, criterion 1's idempotence fails the
+moment the key is set, because the second run would find the transition no longer
+offered. With the key set, criterion 2's "still in `backlog`, ticket unmoved"
+does not hold either, by design: opting in is opting into the move. It is a top-level `work.tracker` key, so it joins `TRACKER_KEYS`
 (`tcw/store/base.py:1106`) and merges through `merge_tracker_blocks` (`:1408`)
 like every other one.
 
@@ -241,6 +321,19 @@ This is a **new** key, not a rename of `transitions.claim`. The two answer
 different questions — `transitions.claim` is the transition a `start` applies,
 which C3 renames to `transitions.start` — and collapsing them is what this epic
 exists to undo. C3 is unaffected by this key and does not touch it.
+
+**An older `tcw` reading a config that sets this key loses the whole tracker
+surface**, because an unknown `work.tracker` key is recorded as a problem
+(`tcw/store/base.py:1149-1150`), `tracker_config` fails closed, and
+`_tracker_client` (`tcw/work/cli.py:2143-2152`) then exits 1 for every
+`tcw work tracker` command rather than just the new ones. **That is accepted, on
+the requester's standing decision not to design around old versions of `tcw`.**
+It is recorded because it is surprising, not because it is unresolved. The
+opposite direction — a newer `tcw` reading an older config — is still binding,
+and here it costs nothing: the key is optional and its absence is the default.
+`TRACKER_KEYS` (`tcw/store/base.py:1106`) gains it, and the epic's plan has been
+amended to fire the Configuration-Key-Change documentation trigger for this child
+as well as for C3.
 
 ### Abstraction litmus test
 
@@ -273,16 +366,26 @@ deterministic interleaving, which is what makes criterion 4 checkable at all.
 3. `tcw work tracker claim <slug>` against a ticket assigned to another account
    exits non-zero, prints that account's display name, and leaves the item's
    `owner` unchanged.
-4. On the fake's `GLOBAL` workflow, where the claim transition is offered from
-   every status, two claims from different accounts interleaved as *A assigns, B
-   assigns, A reads back* produce exactly one exit-0 run; A's exits non-zero and
-   names B.
-5. `tcw work tracker claim <slug>` on an item with no binding exits 0, sets the
-   item's `owner`, and says no ticket was assigned because the item is not bound.
-6. `tcw work tracker claim <slug>` on an **unbound** item whose `owner` is
-   another identity exits non-zero and names them; the same command with
-   `--take-over` exits 0 and sets `owner` to the caller. This is the criterion
-   that would pass vacuously if the guard were only on the ticket.
+4. Two claims from different accounts, interleaved as *A assigns → B's whole
+   claim runs → A reads back*, end with exactly one of them reporting success:
+   A's fails and names B. Driven with the fake's `before("PUT", "/assignee", …)`
+   hook, which runs B's claim inside A's — the pattern
+   `tests/test_tracker_claim.py:219` already uses. The workflow is irrelevant to
+   this criterion, because with `exclusive-claim-transition` unset no transition
+   is applied at all; an earlier draft inherited a "on a workflow that offers the
+   claim from every status" precondition from the epic's transition-based wording
+   and it did not belong.
+5. `tcw work tracker claim <slug>` on an item with no binding, **in a node that
+   does have a tracker configured**, exits 0, sets the item's `owner`, and says
+   no ticket was assigned because the item is not bound. In a node with no
+   tracker configured at all, it exits 1 with `_tracker_client`'s existing "no
+   tracker is configured" message, like every other verb in this group.
+6. `tcw work tracker claim <slug>` on an item whose `owner` is another identity
+   exits non-zero and names them, in **both** the cases the ticket check cannot
+   reach — an unbound item, and a bound item whose ticket is unassigned. The same
+   command with `--take-over` exits 0 and sets `owner` to the caller. The
+   equivalent pair for `release`, gated by `--force`, is criterion 9. These are
+   the criteria that would pass vacuously if the guard were only on the ticket.
 7. `tcw work tracker release <slug>` leaves the item's status, the ticket's
    status and the binding sidecar's binding keys unchanged, clears the item's
    `owner`, and leaves the ticket unassigned.
@@ -301,10 +404,17 @@ deterministic interleaving, which is what makes criterion 4 checkable at all.
     offers, a second account's claim exits non-zero because the workflow refused
     the transition, on a workflow that does not offer it from its own
     destination.
-13. `tcw validate` accepts a `work.tracker` block without
+13. After a lost race — the fake's `before` hook assigning the ticket to B
+    between A's assignment and A's read-back — A exits non-zero, the item's
+    `owner` is unset, and the ticket is assigned to B. Running A's `claim` again
+    once B has released exits 0 and leaves both halves A's.
+14. `tcw work tracker release <slug>` on an `active` item exits 0, leaves the
+    item `active` with an empty `owner`, and a subsequent `claim` from another
+    account exits 0 and sets that account as the owner.
+15. `tcw validate` accepts a `work.tracker` block without
     `exclusive-claim-transition` and one with it, and reports an unknown key for
     a misspelling of it.
-14. The existing `tests/test_tracker_sync.py`, `tests/test_tracker_strict.py`,
+16. The existing `tests/test_tracker_sync.py`, `tests/test_tracker_strict.py`,
     `tests/test_tracker_link.py` and `tests/test_tracker_import.py` suites pass
     **unchanged** — this child edits none of the code they cover.
 
@@ -341,14 +451,23 @@ proof:
    release a ticket at all; if that turns out to be common, the answer is
    probably to assign it to a configured default rather than to nobody, which
    would be a follow-up item, not a redesign of this one.
-4. **Two identity ladders could reappear.** `_local_owner` is deliberately reused
-   so the local owner and the Jira assignee come from one place. A Git email is
-   not a Jira account id, and the two are *compared* nowhere — the item's `owner`
-   is the local string, the ticket's assignee is the account the credentials
-   authenticate as. They are written together and are one fact by construction,
-   not by comparison. Anything that starts comparing them will find they never
-   match.
-5. **The claim can half-succeed.** Steps 6 to 8 are three tracker-and-store
+4. **Somebody will put `--owner` back.** `start` has the flag, the two verbs sit
+   beside it, and adding it looks like consistency. It is not: the flag moves the
+   local half of ownership without moving the tracker half, which splits the one
+   fact goal 3 depends on. The reason is written into the Design rather than left
+   to be rediscovered, and the epic's goal 2 was amended so it no longer reads as
+   if the two identities are meant to be compared. Anything that starts comparing
+   a Git email with a Jira account id will find they never match.
+5. **Every verb in this group needs a tracker client, including the half of this
+   one that has nothing to do with a tracker.** `_tracker_client`
+   (`tcw/work/cli.py:2133-2157`) refuses when no `work.tracker` block is
+   configured, so an unbound, purely local claim is unreachable in a node without
+   one. That is consistent with the group's name and is accepted here. **The
+   consequence lands on C4:** if C4 composes `start` out of `claim`, `start`
+   would stop working in a tracker-free node. C4 either keeps the local half
+   reachable without a client or does not compose that way, and this is where
+   the constraint is recorded so C4 does not meet it by surprise.
+6. **The claim can half-succeed.** Steps 6 to 8 are three tracker-and-store
    operations with no transaction across them. A crash between the assignment and
    the local write leaves the ticket assigned and the item unowned. Re-running
    `claim` fixes it, because every step is idempotent for the holder — but that
@@ -361,10 +480,14 @@ proof:
   changed rather than worked around. What left was the `claim: owed | done`
   removal; where it went and why is in the Non-goals and in the epic's C1 and C2
   sections.
-- **The command sits under `tcw work tracker` but works without a tracker.**
-  Criterion 5 makes an unbound claim legal, which puts a tracker-free operation
-  under a tracker-named group. The epic's spec names the surface, so it stands;
-  it is recorded here because it is the kind of wart that gets re-litigated.
+- **The command sits under `tcw work tracker` but its local half needs no
+  tracker.** Criterion 5 makes an unbound claim legal, which puts a
+  tracker-free operation under a tracker-named group — and, because of
+  `_tracker_client`, one that still refuses without a configured tracker. The
+  epic's spec names the surface, so it stands. The alternative considered and
+  not taken was `tcw work claim`, which would remove the wart and the constraint
+  risk 5 hands to C4; it is a surface decision the epic already made, and
+  re-opening it is a question for the epic's verification, not for this child.
 - **`--part` is accepted by both verbs** for the same reason `link` accepts it:
   one ticket can back several items, and the claim is on the item.
 - Asked for reference material at the request stage; the requester's answer was
