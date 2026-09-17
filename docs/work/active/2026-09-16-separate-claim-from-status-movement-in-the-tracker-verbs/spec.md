@@ -152,7 +152,16 @@ applies: a false blocker is a lie the tool enforces.
 `start`, `submit`, `rework`, `complete` and `discard` stop implementing claim and
 status logic and call the primitives. The rule the requester settled:
 **a claim gates work, not resolution** — `submit` and `rework` verify the claim is
-held; `complete` and `discard` require none. Retires `link --sync-status`
+held; `complete` and `discard` require none.
+
+**An active item with no holder is a state C1 creates, and this rule has to
+answer for it.** C1's `release` may be run on an `active` item — that is the
+point of the verb, per goal 4 — which leaves the item active with an empty
+`owner`. Under this rule `submit` on such an item is refused, and the way back is
+`tcw work tracker claim`, not `start --take-over`. C4 states that explicitly and
+gives it a criterion; it should also decide what `tcw work start` says about an
+unowned active item, which today renders `AlreadyClaimed(slug, "", started)` with
+an empty holder name (`tcw/store/base.py:3475`). Raised by C1's spec review. Retires `link --sync-status`
 (`tcw/work/cli.py:2341`), which becomes `link` then `claim` then `sync`.
 
 *Blocked by C2 and C3.*
