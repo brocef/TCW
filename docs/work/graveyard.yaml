@@ -792,6 +792,7 @@
   resolution: done
   resolved: '2026-09-17'
 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket:
+  location: ee59c22a745ea2167a6339c79b486332860e301b
   resolution: done
   resolved: '2026-09-17'
 2026-09-16-make-every-procedural-skill-in-tcw-overridable-by-the-project-that-uses-it:
