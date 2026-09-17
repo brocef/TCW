@@ -10,3 +10,5 @@ tags:
 initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
 blocked_by:
 - slug: 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket
+owner: brocef@users.noreply.github.com
+started: '2026-09-17T22:05:13.033430Z'
