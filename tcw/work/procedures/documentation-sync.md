@@ -45,34 +45,49 @@ These workflows are deeper than the core trigger-evaluation loop and live as ref
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`.   |
 | the `configure` skill's `docs-sync.md`   | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                        |
-| `references/cut-version.md`                  | The user asked to cut a version, or picked a `patch`/`minor`/`major` bump from the completion options below, and you're running the version cut — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. |
+| `references/cut-version.md`                  | The user asked to cut a version and you're running it — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. See "When the user asks to cut a version" below. |
 
-## When to offer version and changelog options
+## When the user asks to cut a version
 
-After a substantial set of changes has settled — a feature, a bug fix, a refactor, a docs sweep, or any combination the user clearly considers "done" — present the user with these four options:
+A version cut happens because the user asked for one. Nothing here volunteers
+it, and a finished change is not a reason to raise it.
 
-1. Major version bump
-2. Minor version bump
-3. Patch version bump
-4. Keep the current version and update the applicable changelog files
-
-"Changelog files" means the release-note and developer-changelog working files among the project's documentation entries (`tcw work docs`, or its `## Documentation Sync` section when `source` is `agent-guide`), such as `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md`. Update only the files whose triggers fire.
-
-**A fifth option appears only when the last version was cut but never published.** Before presenting the list, run this skill's gate script from inside the repo:
+When they do ask, first settle **whether this is a new version at all**. Run
+this skill's gate script from inside the repo:
 
 ```bash
 scripts/unpushed-version.sh          # optional arg: tag glob, default 'v*'
 ```
 
-Read the **exit code**, not the prose: `0` foldable · `1` not foldable (no tag, already published, or nothing since it) · `2` the remote was unreachable — ask the user rather than guessing. It prints one `STATUS:` line and, when foldable, the tag and the commits that would join it.
+Read the **exit code**, not the prose: `0` foldable · `1` not foldable (no tag,
+already published, or nothing since it) · `2` the remote was unreachable — ask
+the user rather than guessing. It prints one `STATUS:` line and, when foldable,
+the tag and the commits that would join it.
 
-On `0`, that release exists nowhere but this machine, so the work since it can still join it. Offer:
+On `0` the last release exists nowhere but this machine, so the work since it
+can still join it rather than becoming a second release stacked on top. Say so,
+and let the user choose between folding and a fresh bump — read
+`references/cut-version.md` → "Folding into an unpushed version" to run the
+fold. Don't propose the fold when the intervening work is larger than the
+version it would join can honestly carry; a feature folded into a patch is a
+mislabeled release, so recommend a fresh bump instead. Never fold into a
+published tag: rewriting a tag other people may have fetched is off the table,
+which is what the gate exists to prevent. That judgment is yours; the script
+only answers _whether the tag is still local_.
 
-5. Fold the changes since `{tag}` into `{tag}` itself — re-dating the release rather than cutting a second one on top of it
+For a fresh bump, the user's `major` / `minor` / `patch` choice drives it. Read
+`references/cut-version.md` — it starts by deferring to **the project's own
+version-cut process** (every project bumps differently; its `CLAUDE.md` /
+Versioning section names the files and the script) and falls back to the manual
+ritual only when the project has none.
 
-Read `references/cut-version.md` → "Folding into an unpushed version" to run it. Don't offer the fold when the intervening work is larger than the version it would be folded into can honestly carry — a feature folded into a patch is a mislabeled release; recommend a fresh bump instead. Never fold into a published tag: rewriting a tag other people may have fetched is off the table, which is what the gate exists to prevent. That judgment is yours; the script only answers _whether the tag is still local_.
-
-Don't offer mid-flow, and don't offer for trivial in-isolation edits. Don't change the version unless the user selects `major`, `minor`, or `patch`. For those three choices, read `references/cut-version.md` — it starts by deferring to **the project's own version-cut process** (every project bumps differently; its `CLAUDE.md` / Versioning section names the files and the script) and falls back to the manual ritual only when the project has none. For the keep-current-version choice, leave version-bearing metadata, tags, and working-file names unchanged and update the applicable changelog files in place.
+Updating the changelog files is **not** part of a version cut and does not wait
+for one. The release-note and developer-changelog working files among the
+project's documentation entries (`tcw work docs`, or its `## Documentation Sync`
+section when `source` is `agent-guide`) — such as `docs/release-notes/upcoming.md`
+and `docs/changelogs/upcoming.md` — are answered by the documentation gate at
+the end of `implement`, like any other entry whose trigger fired. Work
+accumulates there until a cut is asked for.
 
 ## Common Mistakes
 

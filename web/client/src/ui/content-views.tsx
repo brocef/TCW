@@ -1219,7 +1219,6 @@ export function CompleteModal({
               "docs synced",
               "capabilities reconciled",
               "reviewed",
-              "version offered",
           ]
     const [checked, setChecked] = useState<string[]>([])
     const [resolution, setResolution] = useState(discardOnly ? "wontfix" : "")

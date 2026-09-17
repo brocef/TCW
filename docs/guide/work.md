@@ -200,11 +200,10 @@ Write your own as a plain list in `docs/work/dod.yaml`:
 - docs synced
 - capabilities reconciled
 - reviewed
-- version offered
 ```
 
 Two things to know. The file **replaces** the built-in list rather than adding to
-it — those five are the defaults, so a list that leaves one out drops that check
+it — those four are the defaults, so a list that leaves one out drops that check
 from every completion, with no error. And it is printed only when the resolution
 is `done`: discarding an item (`wontfix`, `duplicate`, `superseded`) prints no
 checklist at all, so a line meant to cover those closures has nowhere to land.
@@ -505,7 +504,6 @@ Definition of Done — acknowledge each item:
   [ ] docs synced
   [ ] capabilities reconciled
   [ ] reviewed
-  [ ] version offered
 ```
 
 Resolutions are `done · wontfix · duplicate · superseded`. The

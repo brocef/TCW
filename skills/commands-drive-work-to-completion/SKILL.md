@@ -32,5 +32,5 @@ dispatch independent ones to subagents (the `work` skill's `delegation.md`).
 
 **Do not complete the item silently.** Stop at `verify` and hold there until the
 user explicitly approves closeout — see the `verify` stage (`work-stage verify <slug>`). At closeout,
-confirm the merge or PR route, the documentation updates, any follow-up items,
-and the version choice before running `tcw work complete`.
+confirm the merge or PR route, the documentation updates, and any follow-up
+items before running `tcw work complete`.

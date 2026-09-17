@@ -1910,11 +1910,13 @@ def _scaffold(args: argparse.Namespace) -> int:
 def _docs(args: argparse.Namespace) -> int:
     """`tcw work docs` — the node's documentation entries, read-only.
 
-    Exists because the documentation gate runs at **three** points and only two
-    are stages: `plan`, the end of `implement`, and the version offer *after*
-    `complete`. The third has no stage to hang off —
-    `tcw work stage gate implement` on a completed item is refused by the status
-    check, correctly — so it needs a verb of its own.
+    Exists as the read-only accessor for a node's documentation entries. The
+    gate itself runs at two points, both stages — `plan` and the end of
+    `implement` — and their prompts already inline the entries. The verb is for
+    every caller that is not resolving a stage prompt: the `documentation-sync`
+    skill asks it first, before and outside the lifecycle, and the web app reads
+    the same answer. Do not mistake the two-stage gate for the verb's only
+    audience and delete it.
 
     `source` is what lets a caller branch without guessing: `agent-guide` means
     the node configured nothing and the old behavior applies unchanged.

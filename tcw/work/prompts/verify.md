@@ -27,8 +27,6 @@ what the implementation still has to do. **Never both.** Optional `## Notes`.
 7. On acceptance: `tcw work complete <slug>`.
 8. If verification surfaced serious unforeseen problems, **offer** a
    post-mortem. Only on the user's assent.
-9. After `complete`, **offer** a version cut if the change set warrants one —
-   the user's call, after the item closes, never during implementation.
 
 ## Exit badly
 

@@ -2478,7 +2478,7 @@ def parse_procedures(raw: Any) -> tuple[dict[str, list[Binding]], list[str]]:
 
 
 DEFAULT_DOD = ("tests pass", "docs synced", "capabilities reconciled",
-               "reviewed", "version offered")
+               "reviewed")
 # Appended, never inserted in lifecycle position: the tuple's order drives the
 # stage-letter string in `tcw work list`, so inserting would shift every
 # existing item's display.

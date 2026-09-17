@@ -1,14 +1,14 @@
 # Cut a New Version
 
-Read this when the user asks to cut a version, or has chosen a `patch`, `minor`,
-or `major` bump from this skill's completion options (see `SKILL.md` → "When to
-offer version and changelog options"). It covers choosing the bump size and
-running the version-cut ritual.
+Read this when the user asks to cut a version, and has chosen a `patch`,
+`minor`, or `major` bump (see this skill's procedure → "When the user asks to
+cut a version"). It covers choosing the bump size and running the version-cut
+ritual.
 
-If the user instead chose to keep the current version, **stop** — leave
-version-bearing metadata, tags, and `upcoming.md` file names alone, and just
-update the release-note and developer-changelog working files whose triggers
-fire.
+Nothing asks for a cut on the user's behalf. If they have not asked for one,
+**stop** — leave version-bearing metadata, tags, and `upcoming.md` file names
+alone. The release-note and developer-changelog working files are kept current
+by the documentation gate at the end of `implement`, not by a version cut.
 
 ## Step 0: Does the project already have a version-cut process?
 

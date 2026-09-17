@@ -3,6 +3,22 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## TCW no longer offers to cut a version
+
+- **Finishing a work item no longer raises the question of a new version.**
+  TCW used to suggest cutting one every time an item completed, and the
+  suggestion fired on nearly every completion. It is gone.
+- **`version offered` is no longer part of the Definition of Done.** The
+  built-in checklist printed by `tcw work complete` now has four lines instead
+  of five: tests pass, docs synced, capabilities reconciled, reviewed.
+- **Cutting a version still works exactly as before — you ask for it.** Ask to
+  cut a version and TCW walks the same steps it always did, including telling
+  you when the last release was never published so this work can join it rather
+  than becoming a second release stacked on top.
+- Your release notes and changelogs are unaffected. They are kept current by the
+  documentation step at the end of implementation, which never depended on a
+  version being cut.
+
 ## Jira tickets waiting for triage show up in your inbox
 
 - **Set `work.tracker.inbox-query` and `tcw work inbox list` shows your Jira

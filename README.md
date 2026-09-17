@@ -686,7 +686,7 @@ across the axes.
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`setup`](skills/setup/SKILL.md)                           | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.   |
 | [`configure`](skills/configure/SKILL.md)                   | Changes a working project's configuration: what runs at each stage or transition, the Definition of Done, documentation entries, Jira, where stores live, connected and inherited projects. |
-| [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and offers a version bump when work is done.                                     |
+| [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and runs the version cut when you ask for one.                                     |
 | [`work-stage`](skills/work-stage/SKILL.md)                 | Reads one lifecycle stage in a single step: the stage's own instructions together with whatever this project adds to them.                                                                  |
 
 **Command skills: the everyday workflows**

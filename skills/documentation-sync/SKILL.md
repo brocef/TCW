@@ -1,6 +1,6 @@
 ---
 name: documentation-sync
-description: Use when completing a coding task and deciding whether documentation needs updating. Use when code changes have been made and you need to check if README, changelog, guides, or other docs should reflect those changes. Use when a project has documentation entries — from `tcw work docs`, or a `## Documentation Sync` section in its CLAUDE.md — and a change may have fired one. Use after completing development work to update release notes and changelogs. Use when offering to cut a new version of a project.
+description: Use when completing a coding task and deciding whether documentation needs updating. Use when code changes have been made and you need to check if README, changelog, guides, or other docs should reflect those changes. Use when a project has documentation entries — from `tcw work docs`, or a `## Documentation Sync` section in its CLAUDE.md — and a change may have fired one. Use after completing development work to update release notes and changelogs. Use when the user asks to cut a new version of a project.
 allowed-tools: Bash(tcw *)
 dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
@@ -16,13 +16,12 @@ After completing code changes, get the project's documentation entries and evalu
 
 Outside a TCW node `tcw work docs` does not apply; use the legacy convention directly. If neither is present, ask the user whether to add entries — read the `configure` skill's `docs-sync.md` to walk them through it.
 
-This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `work` lifecycle invokes it at three points:
+This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the `work` lifecycle invokes it at two points:
 
 | Lifecycle point        | What this skill does                                                                                                                                                                                       | Reference                                                     |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `work` → `references/lifecycle/stage-plan.md` step 1      |
 | **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished diff, answer every fired trigger, and commit the doc updates before writing `outcome.md`. | `work` → `references/lifecycle/stage-implement.md` step 3 |
-| **After `complete`**   | Offer the version options; run the cut if the user picks a bump.                                                                                                                                           | `work` → `references/lifecycle/stage-verify.md` step 5    |
 
 One pass at the end, not per-task: docs written mid-implementation describe a shape the change no longer has by the time it lands. `verify` then reviews code and docs together instead of accepting a diff whose docs are still pending.
 
@@ -57,7 +56,7 @@ Each entry has three parts:
 
 The commands below are automatically executed by the Claude Code harness, and
 their output is the rest of this procedure: evaluating triggers, planning doc
-tasks, and offering a version.
+tasks, and running a version cut when the user asks for one.
 
 ```sh
 # Get the procedure, composed with this project's text

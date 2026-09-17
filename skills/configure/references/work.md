@@ -114,8 +114,8 @@ unknown procedure id. Check the result with `tcw work procedure prompt <id>`.
 ## The Definition of Done: `dod.yaml`
 
 `tcw work complete --resolution done` prints a checklist and refuses until it is
-re-run with `--confirm`. The built-in checklist has five lines: `tests pass`,
-`docs synced`, `capabilities reconciled`, `reviewed`, `version offered`.
+re-run with `--confirm`. The built-in checklist has four lines: `tests pass`,
+`docs synced`, `capabilities reconciled`, `reviewed`.
 
 To set a project's own checklist, write `dod.yaml` at the root of the work store
 (`docs/work/dod.yaml` unless `work.path` puts the store elsewhere):

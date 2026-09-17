@@ -28,11 +28,3 @@ to produce with `tcw work stage prompt verify <slug>`.
    **REQUIRED SUB-SKILL: Use the `capabilities` skill.** — agent `[judgment]`
 4. `tcw work submit` and `tcw work rework` are `[gated]`, not conventions.
    — agent `[gated]`
-5. The version cut the prompt says to offer: the menu is major / minor / patch,
-   or keep the current version and update the changelog files in place, or —
-   when the last tag was cut locally and never pushed — fold this work into that
-   unpublished version rather than stacking a second one on it.
-   The `documentation-sync` procedure runs it — read it with
-   `tcw work procedure prompt documentation-sync`, which is this project's text
-   if it replaced TCW's. — user
-   `[judgment]`

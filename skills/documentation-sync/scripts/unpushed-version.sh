@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Is the project's most recent version tag still local-only?
 #
-# Answers the gate for option 5 of documentation-sync's version options: work
-# since an unpublished release can be folded into it instead of stacking a
-# second version on top. Run from anywhere inside the repo.
+# Asked when the user requests a version cut, to settle whether it is a new
+# version at all: work since an unpublished release can be folded into it
+# instead of stacking a second version on top. Run from anywhere inside the repo.
 #
 #   usage: unpushed-version.sh [tag-glob]     (default glob: v*)
 #

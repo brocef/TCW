@@ -3,6 +3,53 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category.
 
+## Removed — the post-completion version offer
+
+- **`tcw/work/prompts/verify.md`** — step 9 ("After `complete`, **offer** a
+  version cut…") deleted. The stage now ends at step 8, the post-mortem offer.
+  `tests/fixtures/prompt_fallback/unconfigured.json` re-baselined for the
+  `verify` entry only; every other stage's recorded stdout is byte-identical.
+- **`skills/work/references/lifecycle/stage-verify.md`** — item 5, the option
+  menu and its routing to the `documentation-sync` procedure, deleted. Nothing
+  renumbers; it was the last item.
+- **`DEFAULT_DOD`** (`tcw/store/base.py`) — `"version offered"` dropped; the
+  tuple is now four items. The adjacent comment about tuple order driving the
+  stage-letter string belongs to `WORK_ARTIFACTS`, not to this tuple, so
+  `tcw work list` output is unaffected. Mirrored in
+  `web/client/src/ui/content-views.tsx` (the completion dialog's fallback
+  checklist), `tests/test_serve_write.py`, and this repo's `docs/work/dod.yaml`.
+- **`skills/documentation-sync/SKILL.md`** — the `After complete` lifecycle row
+  removed; the table is two rows and the skill is described as invoked at two
+  lifecycle points, not three.
+
+## Changed — a version cut is now only ever user-initiated
+
+- **`tcw/work/procedures/documentation-sync.md`** — `## When to offer version
+  and changelog options` replaced by `## When the user asks to cut a version`.
+  The four-option menu and every instruction to present it are gone. Retained,
+  re-framed: the `unpushed-version.sh` gate with unchanged exit codes (`0`
+  foldable · `1` not · `2` remote unreachable), the fold-vs-fresh-bump judgment,
+  the bar on rewriting a published tag, and the deferral to the project's own
+  version-cut process before the manual ritual. Changelog upkeep is stated as
+  the end-of-`implement` documentation gate's job, not a version cut's.
+- **`tcw work docs` rationale** (`tcw/work/cli.py`,
+  `skills/work/references/commands.md`) — rewritten rather than trimmed. The
+  verb was justified by the gate's third, non-stage invocation point; that point
+  is gone but the verb is still the read-only accessor the `documentation-sync`
+  skill calls before any stage prompt resolves and the web app reads.
+- **`skills/documentation-sync/references/cut-version.md`** and
+  **`scripts/unpushed-version.sh`** — cross-references repointed at the renamed
+  section; the script's behavior and exit codes are unchanged.
+- **`tcw/work/procedures/unattended-work.md`** — the `Version choice` row
+  reworded to `Version cut`: not the run's to make, since nobody is present to
+  ask. The `upcoming.md` accumulation instruction is kept; it appears nowhere
+  else in that table.
+- Docs: `README.md`, `docs/guide/work.md` (both DoD listings and the
+  "those five are the defaults" prose), `skills/work/references/transitions.md`,
+  `skills/configure/references/work.md`,
+  `skills/commands-drive-work-to-completion/SKILL.md`, and four capability
+  descriptions under `docs/capabilities/`.
+
 ## Added
 
 - **`work.tracker.inbox-query`** — optional JQL, `TrackerConfig.inbox_query`

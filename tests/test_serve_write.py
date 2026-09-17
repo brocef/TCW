@@ -1061,7 +1061,7 @@ class TestLifecycleActions:
         status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {
             "resolution": "done",
             "dod_ack": ["tests pass", "docs synced", "capabilities reconciled",
-                         "reviewed", "version offered"],
+                         "reviewed"],
             "force": True,
         })
         assert status == HTTPStatus.OK

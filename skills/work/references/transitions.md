@@ -112,9 +112,9 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   TCW (a merged PR). Every other gate still runs.
 - The Definition-of-Done checklist is printed before `--confirm`. `[prompted]` —
   it is no longer stored. The node sets its own list in `docs/work/dod.yaml`,
-  which **replaces** the built-in five (`tests pass`, `docs synced`,
-  `capabilities reconciled`, `reviewed`, `version offered`) rather than extending
-  them — omit one and it is gone, with no error.
+  which **replaces** the built-in four (`tests pass`, `docs synced`,
+  `capabilities reconciled`, `reviewed`) rather than extending them — omit one
+  and it is gone, with no error.
 - **If the item came from a GitHub issue**, closing it out means saying so on the
   issue and closing it — read `extras-triage-issues` §8. `tcw work show <slug>` →
   the item's body → `## Origin` is where the issue URL lives; on an item filed

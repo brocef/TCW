@@ -11,13 +11,14 @@ declared nothing, the same span falls back to its own text unchanged, so a
 project that configured nothing gets byte-identical instructions rather than a
 blank where its entries would have been.
 
-**`tcw work docs` is the verb for the times there is no stage to hang off.** The
-gate runs at three points and only two of them are stages: the third is the
-version offer *after* an item completes, when `tcw work stage gate implement` is
-correctly refused because the item is closed. It prints each entry's path,
-trigger, and description, and writes nothing. `tcw work stage prompt implement`
-is not the refusal to reach for there — the reading verb checks nothing, so it
-answers for a closed item with a note on stderr and exit 0.
+**`tcw work docs` is the verb for every caller that is not resolving a stage
+prompt.** The gate itself runs at two points, both stages, but the entries are
+also read outside the lifecycle entirely — the `documentation-sync` skill asks
+for them before any stage is resolved, and the local web app reads the same
+answer. It prints each entry's path, trigger, and description, and writes
+nothing. It also answers for an item that is already closed, where
+`tcw work stage gate implement` is correctly refused: the reading verb checks
+nothing, so it responds with a note on stderr and exit 0.
 
 `--json` adds `source`, and that field is the point of it: `config` means the
 entries are declared and authoritative, so no Markdown needs reading;

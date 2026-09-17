@@ -73,9 +73,10 @@ node declared nothing and the `documentation-sync` skill falls back to a
 `## Documentation Sync` section in the agent guide, exactly as before.
 
 You rarely need the verb during a stage — `tcw work stage prompt plan` and
-`tcw work stage prompt implement` already include the entries inline. It exists for the
-third invocation point, the version offer *after* `complete`, which has no stage
-to hang off.
+`tcw work stage prompt implement` already include the entries inline. It exists
+as the read-only accessor for a node's documentation entries: the
+`documentation-sync` skill asks it first, before any stage prompt is resolved and
+outside the lifecycle altogether, and the web app reads the same answer.
 
 Writes never follow that fallback. A body edit always targets
 `initial-request.md`; on an intake-only item it **promotes** the item, creating
