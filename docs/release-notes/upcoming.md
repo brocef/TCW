@@ -152,6 +152,17 @@ assigned is never touched.
 Naming an item somebody else started, while something is still owed on it, now fails,
 tells you what is owed, and tells you how to run it as them or take the item over.
 
+## Making an existing item an epic
+
+- `tcw work edit <item> --type epic` turns an item into an epic, so an item that
+  grew into an initiative no longer has to be re-created under a new name.
+  `--type ""` makes an epic an ordinary item again.
+- Making an epic ordinary is refused while any item still names it as its
+  initiative, and when this checkout cannot see every project its children might
+  live in.
+- Under strict tracker mode, changing an item's type is refused, because epics
+  are not tied to tickets. Create epics with `tcw work new --epic` there.
+
 ## Getting a stage's instructions
 
 - **The `work-stage` skill now checks how it was called.** If it is invoked

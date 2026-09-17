@@ -542,7 +542,9 @@ Also under strict mode:
   refuse until it is fixed; run `tcw validate`.
 - **There is no way past a refusal.** `--force` and `--take-over` do not bypass it.
 - **Never refused:** `tcw work edit`, writing lifecycle documents, and
-  `tracker link` / `unlink`.
+  `tracker link` / `unlink`. The one exception is `tcw work edit --type`: an epic
+  is not gated by a ticket, so changing an item's type is refused. Create an epic
+  with `tcw work new --epic`.
 - **Parts handled elsewhere.** A ticket shared by several parts is recognized
   only from the parts' items in this checkout. If the part that held the ticket
   back was completed in another clone, or was not kept (`work.retain`), the last

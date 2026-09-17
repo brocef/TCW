@@ -527,11 +527,19 @@ tcw work nodes                              # show this node's parent + child no
 epic=$(tcw work new "Redesign checkout" --epic)
 tcw work new "Slice 1" --initiative "$epic" # in a child node: link a new task to the epic
 tcw work edit "$slug" --initiative "$epic"  # …or link an existing one
+tcw work edit "$item" --type epic           # make an existing item an epic (--type "" undoes it)
 
 tcw work reconcile "$epic"                  # follow registered descendants → rollup
 tcw work reconcile "$epic" --commit         # …and commit it
 tcw work reconcile "$epic" --complete-when-ready  # …and auto-close it if every child is resolved
+```
 
+Making an epic a plain item again is refused while any item names it as its
+initiative, whether that item is open or resolved, and while this checkout cannot
+reach every child project. Clear the children's `--initiative`, or complete the
+epic instead.
+
+```sh
 echo "needs an API change" | tcw work delegate child-repo "Expose X"  # request DOWN (child's project id, not a path)
 echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # request UP to the parent inbox/
 ```

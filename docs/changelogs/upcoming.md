@@ -99,6 +99,15 @@ category.
   reference document or agent has no verdict row (or more than one), when a row
   names no shipped file, when a skill lacks `dynamic_skill` or its comment, or
   when the value disagrees with the row's verdict.
+- **`tcw work edit --type {epic,""}`** and a `type` keyword on
+  `WorkStore.update_work`. `WorkStore._check_type_change(item, new_type)`
+  (`tcw/store/base.py`) validates against `WORK_TYPES` and refuses `epic` → `""`
+  while `initiative_children()` is non-empty (any status) or
+  `incomplete_graph_note()` is non-empty. `_edit` runs it before the blocker
+  writes, so a refused type change writes nothing; under `tracker_strict()` any
+  `--type` is refused via `_strict_says_no`. The web app's field whitelist still
+  excludes `type`. New `tests/test_edit_type.py`; strict case in
+  `tests/test_tracker_strict.py`.
 
 ## Changed
 

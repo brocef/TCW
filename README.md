@@ -605,7 +605,7 @@ driving it to completion, verifying it, processing the inbox) described in
 | `tcw work list` | shows the board; completed and discarded items only when asked |
 | `tcw work show` | prints an item's status, fields and documents                  |
 | `tcw work path` | prints the work store's folder, or an item's folder            |
-| `tcw work edit` | changes an item's title, estimates, tags or blockers           |
+| `tcw work edit` | changes an item's title, estimates, tags, blockers or type     |
 | `tcw work tags` | lists, adds or removes the project's registered tags           |
 
 **Transitions**
