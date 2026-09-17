@@ -412,3 +412,66 @@ def test_link_binds_with_the_settings_it_claimed_with_if_a_parent_changes_meanwh
     code, out, err = run(child, "link", slug, TICKET)
     assert code == 0, err
     assert binding(child, slug)["provider"] == "jira-cloud"
+
+
+# ── `tcw work inbox accept <ticket>` is the same claim ───────────────────────
+
+
+def inbox(root: Path, *argv: str) -> tuple[int, str, str]:
+    """`run`, for `tcw work inbox`."""
+    from tcw.cli import main
+    previous = os.getcwd()
+    out, err = io.StringIO(), io.StringIO()
+    os.chdir(root)
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = main(["work", "inbox", *argv])
+            except SystemExit as exit_:
+                code = exit_.code or 0
+    finally:
+        os.chdir(previous)
+    return code, out.getvalue(), err.getvalue()
+
+
+def with_inbox_query(root: Path) -> Path:
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["inbox-query"] = "status = Triage"
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return root
+
+
+def test_inbox_accept_of_a_ticket_makes_what_import_makes(tmp_path, fake):
+    imported = make_node(tmp_path, "alpha", email_env="TCW_A_EMAIL")
+    accepted = with_inbox_query(make_node(tmp_path, "beta", email_env="TCW_A_EMAIL"))
+    assert run(imported, "import", TICKET, "--part", "api")[0] == 0
+    code, out, err = inbox(accepted, "accept", TICKET, "--part", "api")
+    assert code == 0, err
+    [left], [right] = items(imported), items(accepted)
+    assert out.strip() == right.slug == left.slug and right.title == left.title
+    intake = [(FsWorkStore.open(r).path(i.slug) / "intake.md").read_text(encoding="utf-8")
+              for r, i in ((imported, left), (accepted, right))]
+    assert intake[0] == intake[1]
+    docs = [binding(imported, left.slug), binding(accepted, right.slug)]
+    assert docs[1]["project"] == "beta"
+    assert {**docs[0], "project": "beta"} == docs[1]
+
+    code, out, err = inbox(accepted, "accept", TICKET, "--part", "api")
+    assert code == 0 and out.strip() == right.slug and "already bound" in err
+    assert len(items(accepted)) == 1
+
+
+def test_inbox_accept_of_a_ticket_speaks_as_inbox_accept(node, fake):
+    with_inbox_query(node)
+    outputs = []
+    outputs.append(inbox(node, "accept", TICKET, "--part", "A B"))       # bad part
+    outputs.append(inbox(node, "accept", TICKET, "--title", " "))        # bad title
+    fake.tickets["10052"].assignee = B
+    outputs.append(inbox(node, "accept", TICKET))                        # refused claim
+    fake.fail("GET", "/myself", jira._for_status(401, {}, "", "/myself"))
+    outputs.append(inbox(node, "accept", TICKET))                        # tracker error
+    for code, _out, err in outputs:
+        assert code == 1 and err.startswith("tcw work inbox accept: "), err
+        assert "tcw work tracker import:" not in err and SENTINEL not in err
+    assert_no_item(node)

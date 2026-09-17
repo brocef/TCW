@@ -150,6 +150,31 @@ def test_the_jira_client_is_never_imported(node, argv):
     assert names == "", f"{argv} imported {names}"
 
 
+INBOX_COMMANDS = [
+    (["work", "inbox", "list"], 0),
+    (["work", "inbox", "show", "a-request"], 0),
+    (["work", "inbox", "show", "EX-404"], 1),
+    (["work", "inbox", "accept", "EX-404"], 1),
+    (["work", "inbox", "accept", "a-request"], 0),
+]
+
+
+@pytest.mark.parametrize("argv, exit_code", INBOX_COMMANDS)
+def test_inbox_commands_never_import_the_tracker(node, argv, exit_code):
+    """Inbox commands can reach a ticket now, and must still load no tracker code for
+    a project that has none, found or not found. Subprocess, for the reason above."""
+    root, _slug = node
+    inbox = FsWorkStore.open(root).root / "inbox"
+    inbox.mkdir(exist_ok=True)
+    (inbox / "a-request.md").write_text("# A request\n", encoding="utf-8")
+    script = _PROBE.format(repo=str(REPO), argv=argv)
+    result = subprocess.run([sys.executable, "-c", script], cwd=root,
+                            capture_output=True, text=True, timeout=120)
+    assert f"EXIT {exit_code}" in result.stdout, (result.stdout, result.stderr)
+    [loaded] = [line for line in result.stdout.splitlines() if line.startswith("LOADED")]
+    assert loaded.removeprefix("LOADED").strip() == "", f"{argv} imported {loaded}"
+
+
 # ── 3. output is stable across runs ──────────────────────────────────────────
 
 
