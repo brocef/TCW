@@ -122,6 +122,49 @@ def test_without_a_tracker_configured_the_verb_refuses(tmp_path, fake, monkeypat
     assert owner(root, slug) == ""
 
 
+# ── the opt-in exclusivity ceiling ───────────────────────────────────────────
+
+
+def with_exclusive_transition(root, name: str = "Start Progress") -> None:
+    config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
+    config["work"]["tracker"]["exclusive-claim-transition"] = name
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False),
+                                          encoding="utf-8")
+
+
+def test_a_configured_transition_is_applied_and_the_cost_is_reported(node, fake,  # noqa: F811
+                                                                     monkeypatch):
+    """The key is only worth having if the verb reads it, so this is what proves the
+    wiring rather than the function's own behavior."""
+    monkeypatch.setenv("TCW_WORK_OWNER", "alice@example.test")
+    with_exclusive_transition(node)
+    slug = write_binding(node, "Bound work")
+    code, _out, err = run(node, "claim", slug)
+    assert code == 0, err
+    assert fake.applied == ["21"]
+    assert fake.tickets["10052"].status == "In Progress"
+    assert "In Progress" in err and "exclusive-claim-transition" in err
+    assert owner(node, slug) == "alice@example.test"
+
+
+def test_a_workflow_that_refuses_the_transition_stops_the_claim_dead(node, fake,  # noqa: F811
+                                                                     monkeypatch):
+    """The refusal *is* the exclusion working: a workflow that will not run the
+    transition twice is how a second claimant is turned away. Nothing may be
+    assigned, and the item must not end up owned by somebody the tracker rejected."""
+    monkeypatch.setenv("TCW_WORK_OWNER", "alice@example.test")
+    with_exclusive_transition(node)
+    slug = write_binding(node, "Bound work")
+    fake.fail("POST", "/transitions", jira.TrackerRequestInvalid("already in progress"))
+    code, _out, err = run(node, "claim", slug)
+    assert code == 1
+    assert "not claimed" in err.replace("\n", " ")
+    assert owner(node, slug) == ""
+    assert fake.tickets["10052"].assignee is None
+    assert fake.tickets["10052"].status == "To Do"
+    assert SENTINEL not in err
+
+
 # ── the local guard, which the ticket check cannot supply ────────────────────
 
 
