@@ -102,7 +102,8 @@ A ← origin/main        B (tag: v3.2.1)        C ← HEAD
 reached anyone, so the tag can move to `C` and its notes can grow to cover it.
 
 **Re-confirm it is unpushed before touching anything** — run
-`scripts/unpushed-version.sh` and require exit code `0`. On `1` the tag is
+this skill's `scripts/unpushed-version.sh` (in the `documentation-sync` skill's
+folder, not the project's) and require exit code `0`. On `1` the tag is
 published (or there is nothing to fold) and on `2` the remote could not be
 reached; in both cases stop and cut a new version, or ask. A published tag that
 changes meaning is worse than an extra version number.
