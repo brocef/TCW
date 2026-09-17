@@ -82,7 +82,7 @@ tcw capabilities check                     # paths, metadata vocab, Subject/Feat
 tcw capabilities drift                     # inherited-but-unreviewed + shipped-but-Missing (CI-usable)
 
 tcw capabilities set billing/invoices --status Supported
-tcw capabilities set billing/invoices --field "Subject=invoice,admin/permission"   # multi-valued
+tcw capabilities set billing/invoices --field "Subject=invoice,user"   # multi-valued
 tcw capabilities set billing/invoices --field "Planning doc=2026-06-19-pdf-export"
 
 tcw capabilities rm billing/invoices/bulk  # delete a local capability (stage-only)

@@ -245,7 +245,9 @@ category.
 - `docs/guide/taxonomy-and-capabilities.md`'s examples refused when run in order:
   `Permission -p admin` and `--vocab user` named terms nothing had added, and
   `Subject=invoice,billing` a term that did not exist. The block now adds `Admin`
-  and `User` first and uses `Subject=invoice,admin/permission`.
+  and `User` first and uses `Subject=invoice,user`. In `docs/guide/work.md`,
+  `--tags bug,cli` named a tag the block never registered; `tags add` now
+  registers `cli` too.
 
 ## Removed
 

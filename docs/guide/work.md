@@ -233,7 +233,7 @@ tcw work new "Big rework" --effort high --complexity very-high
                                        # optional estimates (low|medium|high|very-high; L/M/H/VH shorthand ok)
 tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the parent's folder
 
-tcw work tags add bug tech-debt        # register a project's valid tags (in tcw-config.yaml)
+tcw work tags add bug cli tech-debt    # register a project's valid tags (in tcw-config.yaml)
 tcw work tags list                     # print the registered tags
 tcw work tags rm tech-debt             # unregister (warns about items still carrying it)
 tcw work new "Login crash" --tags bug,cli  # apply registered tags (repeatable or comma-separated)
