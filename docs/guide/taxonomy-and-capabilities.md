@@ -22,8 +22,10 @@ manifestations that operate on or involve vocabulary.
 
 ```sh
 tcw taxonomy add Invoice "A bill issued to a customer."     # vocabulary by default
+tcw taxonomy add Admin "Running the service."
 tcw taxonomy add Permission -p admin                        # -> admin/permission
 tcw taxonomy add Note -p invoice -s memo                    # custom leaf slug
+tcw taxonomy add User "A person who signs in."
 tcw taxonomy add "User Authentication" --kind feature --vocab user
 
 tcw taxonomy list                  # the forest, indented, flagged by origin
@@ -80,7 +82,7 @@ tcw capabilities check                     # paths, metadata vocab, Subject/Feat
 tcw capabilities drift                     # inherited-but-unreviewed + shipped-but-Missing (CI-usable)
 
 tcw capabilities set billing/invoices --status Supported
-tcw capabilities set billing/invoices --field "Subject=invoice,billing"   # multi-valued
+tcw capabilities set billing/invoices --field "Subject=invoice,admin/permission"   # multi-valued
 tcw capabilities set billing/invoices --field "Planning doc=2026-06-19-pdf-export"
 
 tcw capabilities rm billing/invoices/bulk  # delete a local capability (stage-only)
