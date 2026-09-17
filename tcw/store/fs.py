@@ -566,6 +566,16 @@ def git_stage(node_root: Path, *paths: Path) -> None:
     _warn_hidden(node_root, *(p for p in ignored if p.exists() or p.is_symlink()))
 
 
+def _same_folder(a: Path, b: Path) -> bool:
+    """Whether `a` and `b` are one folder. One gone since it was listed or
+    resolved is not a match; any other error leaves the question open, so it
+    propagates and the caller's delete stops."""
+    try:
+        return a.samefile(b)
+    except FileNotFoundError:
+        return False
+
+
 def git_rm(node_root: Path, path: Path) -> None:
     # -f so a term staged-but-not-yet-committed (just `add`ed) can still be removed.
     # --literal-pathspecs: `--` ends options but a path is still a glob to git, so
@@ -1962,10 +1972,20 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             raise ValueError(f"cannot remove inherited term '{term.qualified}' "
                              f"(edit it at its source)")
         d = self.root / term.slug
-        # Refused, never cascaded: `_rm` deletes the whole folder. Walked on the
-        # folder itself rather than `_local_slugs`, which skips unreadable
-        # directories that `git rm -rf` would delete all the same.
-        nested = sorted(str(p.relative_to(self.root)) for p in d.rglob("*") if p.is_dir())
+        # Refused, never cascaded: `_rm` is a `git rm -rf` of the whole folder.
+        # Asked of git rather than the disk, because git's answer is what gets
+        # deleted: a folder holding only untracked files (a `.DS_Store` left in a
+        # removed child's folder) is deleted by nothing, and refusing over it
+        # would name a "term" no `rm` can reach.
+        self._require_repository()
+        listed = _git(["git", "-C", str(self.store_git_root), "--literal-pathspecs",
+                       "ls-files", "-z", "--", str(d)],
+                      capture_output=True, text=True, check=True).stdout
+        here, top = d.resolve(), self.root.resolve()
+        nested = sorted({str(parent.relative_to(top))
+                         for f in listed.split("\0") if f
+                         for parent in [(self.store_git_root / f).resolve().parent]
+                         if here in parent.parents})
         if nested:
             raise ValueError(f"cannot remove '{term.slug}': nested under it: "
                              f"{', '.join(nested)} (remove those first)")
@@ -1983,17 +2003,19 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         `permission`."""
         out = []
         for term in self.list_all(local_only=True):
-            if (self.root / term.slug).samefile(target):
+            if _same_folder(self.root / term.slug, target):
                 continue
+            # `vocabulary` only on a Feature, the one kind `check` reads it on.
+            vocabulary = term.vocabulary if term.kind == "Feature" else []
             for field, refs in (("relatesTo", term.relates_to),
-                                ("vocabulary", term.vocabulary)):
+                                ("vocabulary", vocabulary)):
                 for ref in refs:
                     try:
                         hit = self.get(ref)
                     except AmbiguousRef:
                         continue
                     if (hit is not None and hit.origin == "local"
-                            and (self.root / hit.slug).samefile(target)):
+                            and _same_folder(self.root / hit.slug, target)):
                         out.append(f"{term.slug} ({field})")
                         break
         return out
@@ -2572,13 +2594,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             return [r for r in refs if r.startswith(f"{ns}/")]
 
         def same(a: Path) -> bool:
-            try:
-                return a.samefile(target)
-            # Gone since it was listed or resolved: not the target. Only that —
-            # any other error leaves the question open, so it propagates and
-            # the delete stops.
-            except FileNotFoundError:
-                return False
+            return _same_folder(a, target)
 
         out = []
         for p in self._all_meta_dirs():

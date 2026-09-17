@@ -428,6 +428,47 @@ def test_rm_ignores_a_self_reference(tmp_path):
     assert st.get("loop") is None
 
 
+def test_rm_is_not_blocked_by_an_untracked_leftover_folder(tmp_path):
+    """`git rm` leaves untracked files behind, so a removed child's folder can
+    survive holding only a `.DS_Store`. That folder is nothing git would delete
+    and nothing `rm` can remove, so it must not block its parent."""
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("Admin")
+    st.add("Permission", parent="admin")
+    (root / "docs/taxonomy/admin/permission/.DS_Store").write_bytes(b"x")
+    st.remove("admin/permission")
+    st.remove("admin")
+    assert not (root / "docs/taxonomy/admin/meta.yaml").exists()
+
+
+def test_rm_ignores_vocabulary_on_a_non_feature(tmp_path):
+    """`check` reads `vocabulary` only on Features, so `rm` must too."""
+    root = node(tmp_path, "repo")
+    write_term(root, "invoice", name="Invoice")
+    write_term(root, "payment", name="Payment", kind="Vocabulary", vocabulary=["invoice"])
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    st = FsTaxonomyStore.open(root)
+    assert st.check() == []
+    st.remove("invoice")
+    assert st.get("invoice") is None
+
+
+def test_referrers_treats_a_vanished_folder_as_no_match(tmp_path, monkeypatch):
+    root = node(tmp_path, "repo")
+    write_term(root, "invoice", name="Invoice")
+    write_term(root, "payment", name="Payment", relates_to=["invoice"])
+    st = FsTaxonomyStore.open(root)
+    real = Path.samefile
+
+    def vanished(self, other):
+        if self.name == "payment":
+            raise FileNotFoundError(self)
+        return real(self, other)
+    monkeypatch.setattr(Path, "samefile", vanished)
+    assert st._referrers(root / "docs/taxonomy/invoice") == ["payment (relatesTo)"]
+
+
 def test_rm_refuses_a_case_variant_spelling(tmp_path):
     root = node(tmp_path, "repo")
     st = FsTaxonomyStore.open(root)
