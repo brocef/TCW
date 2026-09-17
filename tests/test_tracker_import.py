@@ -33,7 +33,7 @@ def _tracker(email_env: str) -> dict:
         "base-url": BASE_URL,
         "candidate-query": "assignee = currentUser()",
         "credentials": {"email-env": email_env, "token-env": "TCW_PROBE_TOKEN"},
-        "transitions": {"claim": "Start Progress"},
+        "transitions": {"start": "Start Progress"},
     }
 
 

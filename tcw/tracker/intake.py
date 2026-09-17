@@ -326,7 +326,7 @@ def claim(client, ticket: TicketRead) -> ClaimOutcome:
                                   TrackerRequestInvalid)
 
     key, status = ticket.key, ticket.status
-    name = client.config.claim_transition
+    name = client.config.start_transition
 
     def refused(row: str, message: str, detail: str = "") -> ClaimOutcome:
         return ClaimOutcome(row=row, claimed=False, message=message, detail=detail,

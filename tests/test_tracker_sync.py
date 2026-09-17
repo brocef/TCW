@@ -106,7 +106,7 @@ def make_node(tmp_path: Path, *, statuses: dict | None,
             "provider": "jira-cloud", "base-url": base_url,
             "candidate-query": "assignee = currentUser()",
             "credentials": {"email-env": email_env, "token-env": "TCW_PROBE_TOKEN"},
-            "transitions": {"claim": "Start Progress"},
+            "transitions": {"start": "Start Progress"},
         }
         if statuses is not None:
             block["statuses"] = statuses

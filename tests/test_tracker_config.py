@@ -21,7 +21,7 @@ VALID = {
     "base-url": "https://example.atlassian.net",
     "candidate-query": 'assignee = currentUser() AND status = "To Do"',
     "credentials": {"email-env": "TCW_JIRA_EMAIL", "token-env": "TCW_JIRA_API_TOKEN"},
-    "transitions": {"claim": "Start Progress"},
+    "transitions": {"start": "Start Progress"},
 }
 
 
@@ -42,7 +42,7 @@ def test_a_valid_block_parses_with_no_problems():
     assert config.candidate_query == VALID["candidate-query"]
     assert config.email_env == "TCW_JIRA_EMAIL"
     assert config.token_env == "TCW_JIRA_API_TOKEN"
-    assert config.claim_transition == "Start Progress"
+    assert config.start_transition == "Start Progress"
 
 
 def test_the_timeout_defaults_to_fifteen_seconds():
@@ -85,16 +85,16 @@ def test_a_missing_credential_key_is_reported_by_name(key):
     assert any(f"work.tracker.credentials.{key}" in p for p in problems), problems
 
 
-def test_a_missing_claim_transition_is_reported_by_name():
+def test_a_missing_start_transition_is_reported_by_name():
     config, problems = parse_tracker_config({**VALID, "transitions": {}})
     assert config is None
-    assert any("work.tracker.transitions.claim" in p for p in problems), problems
+    assert any("work.tracker.transitions.start" in p for p in problems), problems
 
 
 def test_required_keys_are_required_independently():
     """Each key is reported on its own, so a config missing two hears about both
     rather than being told to fix one, rerun, and be told about the next."""
-    raw = {"provider": "jira-cloud", "transitions": {"claim": "Start Progress"}}
+    raw = {"provider": "jira-cloud", "transitions": {"start": "Start Progress"}}
     config, problems = parse_tracker_config(raw)
     assert config is None
     joined = " ".join(problems)
@@ -186,7 +186,7 @@ def test_the_config_holds_no_credential_value():
 
 
 def _with_transitions(**moves):
-    return {**VALID, "transitions": {"claim": "Start Progress", **moves}}
+    return {**VALID, "transitions": {"start": "Start Progress", **moves}}
 
 
 def test_a_transition_per_move_parses():
@@ -195,9 +195,9 @@ def test_a_transition_per_move_parses():
         discard="Abandon"))
     assert problems == []
     assert config.move_transitions == {
-        "submit": "Ready for Review", "rework": "Back to Progress",
-        "complete": "Finish", "discard": "Abandon"}
-    assert config.claim_transition == "Start Progress"
+        "start": "Start Progress", "submit": "Ready for Review",
+        "rework": "Back to Progress", "complete": "Finish", "discard": "Abandon"}
+    assert config.start_transition == "Start Progress"
 
 
 def test_a_discard_transition_may_be_named_per_resolution_and_may_be_partial():
@@ -210,9 +210,10 @@ def test_a_discard_transition_may_be_named_per_resolution_and_may_be_partial():
     assert config.move_transitions["discard"] == {"wontfix": "Abandon"}
 
 
-def test_transitions_are_absent_by_default():
+def test_only_the_required_start_transition_is_there_by_default():
+    """The four optional moves are absent; `start` is not optional, so it is not."""
     config, problems = parse_tracker_config(VALID)
-    assert problems == [] and config.move_transitions == {}
+    assert problems == [] and config.move_transitions == {"start": "Start Progress"}
 
 
 @pytest.mark.parametrize("moves, key", [
@@ -291,13 +292,13 @@ def test_an_exclusive_claim_transition_is_kept():
         {**VALID, "exclusive-claim-transition": "Start Progress"})
     assert problems == []
     assert config.exclusive_claim_transition == "Start Progress"
-    # It is not `transitions.claim`, and setting one must not set the other: they
+    # It is not `transitions.start`, and setting one must not set the other: they
     # answer different questions, and running them together is what the key exists
     # to stop.
-    assert config.claim_transition == "Start Progress"
+    assert config.start_transition == "Start Progress"
     config, _problems = parse_tracker_config(
         {**VALID, "exclusive-claim-transition": "Take It"})
-    assert (config.exclusive_claim_transition, config.claim_transition) == (
+    assert (config.exclusive_claim_transition, config.start_transition) == (
         "Take It", "Start Progress")
 
 

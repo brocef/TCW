@@ -1076,11 +1076,14 @@ class TrackerConfig:
     candidate_query: str
     email_env: str
     token_env: str
-    claim_transition: str
+    # The same string as `move_transitions["start"]`, named because the code that
+    # applies a start wants that one transition and is not walking the ladder with a
+    # move in a variable, which is what `transition_name` is for.
+    start_transition: str
     # Optional. The transition a claim asserts through, for a project whose workflow
     # refuses a second claimant from the claim's own destination. Empty — the default
     # — means a claim applies no transition at all and leaves the ticket where it is.
-    # Not `transitions.claim`, which is the transition a *start* applies: the two
+    # Not `transitions.start`, which is the transition a *start* applies: the two
     # answer different questions, and running them together is what this key exists
     # to stop.
     exclusive_claim_transition: str = ""
@@ -1122,11 +1125,21 @@ TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # workflow offering two transitions into one status — a "finished" and an "abandoned"
 # route both landing in `Done` is the common shape — is otherwise unreachable, since
 # TCW will not guess which. A move with no name here keeps the status-derived rule.
-# An unknown key is reported, because silently ignoring a key someone set is silently
-# not doing what they asked.
-TRACKER_TRANSITION_KEYS = frozenset({"claim", "submit", "rework", "complete", "discard"})
-# `start` is absent deliberately: it is the claim, and `transitions.claim` names it.
-TRACKER_MOVE_TRANSITION_KEYS = ("submit", "rework", "complete", "discard")
+# `start` is the exception and is required: a start applies its transition through the
+# claim rather than through `assess_move`, so it has no status-derived rule to fall
+# back to. An unknown key is reported, because silently ignoring a key someone set is
+# silently not doing what they asked.
+TRACKER_TRANSITION_KEYS = frozenset({"start", "submit", "rework", "complete", "discard"})
+TRACKER_MOVE_TRANSITION_KEYS = ("start", "submit", "rework", "complete", "discard")
+# A key that used to exist, with what replaced it, so a config written for an older
+# tcw is told what to change rather than only that a key it set is unknown. Every
+# tracker-backed project carries `transitions.claim` today, because it was required,
+# so this is the ordinary upgrade and not an edge case.
+TRACKER_RENAMED_KEYS = {
+    ("transitions", "claim"):
+        "renamed to work.tracker.transitions.start, the transition the start move "
+        "applies, alongside submit, rework, complete and discard",
+}
 TRACKER_STATUS_KEYS = ("active", "review", "completed", "discarded")
 
 TRACKER_DEFAULT_TIMEOUT = 15
@@ -1191,7 +1204,10 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
                             f"got {type(value).__name__}")
             return {}
         for sub in sorted(set(value) - allowed, key=str):
-            problems.append(f"work.tracker.{key}.{sub}: unknown key")
+            # Reported here rather than after the call, so a retired key produces the
+            # one problem that says what to write instead, not that plus "unknown key".
+            note = TRACKER_RENAMED_KEYS.get((key, sub), "unknown key")
+            problems.append(f"work.tracker.{key}.{sub}: {note}")
         return value
 
     credentials = nested("credentials", TRACKER_CREDENTIAL_KEYS)
@@ -1238,7 +1254,6 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
 
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
-    claim = nested_str(transitions, "claim", "transitions.claim")
     # Optional, so a lone `null` is a wrong value rather than a missing required one —
     # the same shape `inbox-query` uses above.
     if "exclusive-claim-transition" in raw and raw["exclusive-claim-transition"] is None:
@@ -1247,6 +1262,13 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
     exclusive_claim = (required_str("exclusive-claim-transition")
                        if raw.get("exclusive-claim-transition") is not None else "")
     move_transitions = _parse_tracker_transitions(transitions, problems)
+    # `start` is the one move whose transition is required: it is the only move with no
+    # status-derived fallback, because a start applies its transition through the claim
+    # rather than through `assess_move`. A wrong *value* is reported by the loop above,
+    # like its four siblings; an absent *key* is reported here.
+    if "start" not in transitions:
+        problems.append("work.tracker.transitions.start: required")
+    start = move_transitions.get("start", "")
 
     timeout: Any = raw.get("timeout-seconds", TRACKER_DEFAULT_TIMEOUT)
     # `bool` before `int`, because a bool *is* an int and `timeout-seconds: true`
@@ -1268,7 +1290,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         candidate_query=candidate_query,
         email_env=email_env,
         token_env=token_env,
-        claim_transition=claim,
+        start_transition=start,
         exclusive_claim_transition=exclusive_claim,
         timeout_seconds=int(timeout),
         move_transitions=move_transitions,
@@ -1366,8 +1388,9 @@ def _parse_tracker_statuses(raw: Any, problems: list[str]) -> dict:
 def _parse_tracker_transitions(raw: dict, problems: list[str]) -> dict:
     """The per-move keys of `work.tracker.transitions`, appending a problem per defect.
 
-    `claim` is parsed separately, because it is required and the others are not.
-    Absent is `{}`, which leaves every move on the status-derived rule.
+    All five keys are parsed here, uniformly. That `start` is required is the
+    caller's check, not this one's: absent is `{}` here, which leaves every move on
+    the status-derived rule.
     """
     where = "work.tracker.transitions"
 
@@ -1522,7 +1545,7 @@ def attribute_tracker_problems(problems: list[str], record: dict[TrackerKeyPath,
     """Prefix each parser problem with the label of the file that caused it.
 
     Matched on the problem's exact key path, never the nearest enclosing
-    mapping: `transitions.claim: required` under a `transitions` an ancestor
+    mapping: `transitions.start: required` under a `transitions` an ancestor
     supplied is about a key nobody set, and goes to `own_label`. The parser
     writes a path as its keys joined with `.` followed by `: `, so the longest
     recorded path whose spelling prefixes the problem that way is the one it is

@@ -10,7 +10,7 @@ work:
       email-env: TCW_JIRA_EMAIL
       token-env: TCW_JIRA_API_KEY
     transitions:
-      claim: Start
+      start: Start
     statuses:
       active: In Progress
       review: In Review

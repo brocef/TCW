@@ -28,7 +28,7 @@ COMPLETE = {
     "base-url": "https://root.example.invalid",
     "candidate-query": "project = EX",
     "credentials": {"email-env": "ROOT_EMAIL", "token-env": "ROOT_TOKEN"},
-    "transitions": {"claim": "Start"},
+    "transitions": {"start": "Start"},
 }
 
 CREDENTIALS_MESSAGE_START = "work.tracker.credentials: inherited from a parent node"
@@ -226,7 +226,7 @@ def test_a_missing_nested_key_under_an_ancestors_mapping_is_blamed_on_the_node(e
     """C22 at merge level. Root supplied `transitions`, but nobody set `claim`."""
     problems = _attributed([("pkg", {"candidate-query": "q"}),
                             ("root", {**COMPLETE, "transitions": {}})])
-    assert "pkg: work.tracker.transitions.claim: required" in problems
+    assert "pkg: work.tracker.transitions.start: required" in problems
     assert not [p for p in problems if p.startswith("root:")]
 
 
@@ -520,7 +520,7 @@ def test_a_nested_required_key_nobody_set_is_blamed_on_the_child(tmp_path):
     nodes = _chain(tmp_path, root_board=False, root={**COMPLETE, "transitions": {}},
                    repo=ABSENT, pkg=QUERY_ONLY)
     problems = _store(nodes["pkg"]).tracker_problems()
-    assert "tcw-config.yaml: work.tracker.transitions.claim: required" in problems
+    assert "tcw-config.yaml: work.tracker.transitions.start: required" in problems
     assert not [p for p in problems if str(nodes["root"]) in p]
     # Root's settings were inherited: only the key nobody set is missing.
     assert "tcw-config.yaml: work.tracker.transitions: required" not in problems

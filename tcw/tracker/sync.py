@@ -50,8 +50,8 @@ CURRENT, PENDING, CONFLICTING, HELD, NONE = (
 MOVE_STATUS = {"start": "active", "submit": "review", "rework": "active",
                "complete": "completed", "discard": "discarded"}
 # The move that lands an item — or its ticket — on each local status: `MOVE_STATUS`
-# inverted. `active` is the claim's move, not `rework`: reaching it from nothing is
-# claiming, and the claim has its own transition name.
+# inverted. `active` is `start`, not `rework`: reaching it from nothing is starting,
+# and `transitions.start` names the transition that does it.
 MOVE_ONTO = {"active": "start", "review": "submit", "completed": "complete",
              "discarded": "discard"}
 # The moves that may act on a ticket nobody holds. Abandoning work is the one thing
@@ -740,10 +740,10 @@ def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:
         return (f"{key} was claimed, but whether its workflow can refuse a second "
                 f"claimant could not be read ({error}). TCW leaves the ticket claimed; "
                 f"run this again once the tracker answers.")
-    verdict = assess(config.claim_transition, current_status=outcome.status,
+    verdict = assess(config.start_transition, current_status=outcome.status,
                      offered=offered, landing_status=active or outcome.status)
     if verdict.exclusivity == NOT_EXCLUSIVE:
         return (f"{key} was claimed, but its workflow still offers "
-                f"'{config.claim_transition}' from '{outcome.status}', so a second person "
+                f"'{config.start_transition}' from '{outcome.status}', so a second person "
                 f"could claim it too. TCW leaves the ticket claimed.")
     return None

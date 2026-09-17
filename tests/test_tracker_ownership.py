@@ -30,7 +30,7 @@ def _config(email_env: str) -> TrackerConfig:
     return TrackerConfig(provider="jira-cloud", base_url=BASE_URL,
                          candidate_query="assignee = currentUser()",
                          email_env=email_env, token_env="TCW_PROBE_TOKEN",
-                         claim_transition="Start Progress", timeout_seconds=15)
+                         start_transition="Start Progress", timeout_seconds=15)
 
 
 def _fake(monkeypatch, workflow=SYNC, **ticket):
