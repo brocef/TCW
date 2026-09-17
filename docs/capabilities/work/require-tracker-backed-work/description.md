@@ -3,8 +3,10 @@ As a developer on a project where every piece of work must come from a ticket, I
 authorizes. Nothing offers a way around it: there is no bypass flag, and `--force`
 and `--take-over` still gate only what they gated before.
 
-Under strict mode, `tcw work new` and `tcw work inbox accept` refuse and point me at
-`tcw work tracker import <ticket>`, which claims a ticket and creates its item.
+Under strict mode, `tcw work new`, and `tcw work inbox accept` of a raw inbox entry,
+refuse and point me at `tcw work tracker import <ticket>`, which claims a ticket and
+creates its item. `tcw work inbox accept` of a ticket key is not refused for being
+strict: it is that same import, and refuses exactly where the import would.
 `tcw work start` of an item with no ticket refuses; of a bound item, it claims the
 ticket first and starts the item only when the claim succeeded. `submit`, `rework`
 and completing an item as `done` first read the ticket and refuse unless it is

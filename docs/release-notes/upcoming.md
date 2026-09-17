@@ -3,6 +3,20 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## Jira tickets waiting for triage show up in your inbox
+
+- **Set `work.tracker.inbox-query` and `tcw work inbox list` shows your Jira
+  tickets waiting for triage** beside the requests in your inbox, in two sections.
+  Without the setting, nothing changes.
+- **You can read and take a ticket without changing command.** `tcw work inbox
+  show <ticket>` prints it with its description, and `tcw work inbox accept
+  <ticket>` takes it exactly as `tcw work tracker import` does.
+- If an inbox file has the same name as a ticket, the file wins; add `--ticket`
+  to get the ticket.
+- If Jira cannot be reached, you still see your inbox requests.
+- Under strict mode, with `inbox-query` set, accepting a ticket from the inbox is
+  allowed; accepting an inbox file is still refused.
+
 ## Replacing TCW's own procedures
 
 - **Your project can now replace the text of ten of TCW's procedures**, the way

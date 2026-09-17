@@ -507,7 +507,7 @@ to the transitions.
 
 | Lifecycle step                          | Without Jira                   | With Jira configured                                                                                                                           |
 | --------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| an item is created                      | `tcw work inbox accept`, `new` | `tcw work tracker import <ticket>` claims the ticket (starts it and assigns it to you), then creates a backlog item whose intake is the ticket |
+| an item is created                      | `tcw work inbox accept`, `new` | `tcw work tracker import <ticket>` claims the ticket (starts it and assigns it to you), then creates a backlog item whose intake is the ticket. With `inbox-query` set, `tcw work inbox accept <ticket>` does the same |
 | `request`, `spec`, `plan` stages        | unchanged                      | unchanged                                                                                                                                      |
 | at any time                             | —                              | `tcw work tracker link` / `unlink` records or removes the link between an existing item and a ticket; Jira itself is not touched               |
 | `start`                                 | moves the item                 | also claims a linked ticket, and posts a comment if `comments: true`                                                                           |
@@ -518,8 +518,9 @@ to the transitions.
 Setting `strict: true` changes several steps, so that no work happens without a
 claimed ticket:
 
-- `tcw work new` (except `--epic`) and `inbox accept` are refused, and point you at
-  `tcw work tracker import`.
+- `tcw work new` (except `--epic`) and `inbox accept` of an inbox entry are refused,
+  and point you at `tcw work tracker import`. Where `inbox-query` is set, `inbox accept`
+  of a ticket is allowed, because it claims the ticket.
 - `start` refuses an item with no ticket. For a linked item it claims the ticket
   first, and moves the item only if the claim worked.
 - `submit`, `rework` and `complete --resolution done` read the ticket first, and
@@ -542,7 +543,17 @@ work:
             token-env: TCW_JIRA_API_TOKEN
         transitions: { claim: Start Progress }
         statuses: { active: In Progress, review: In Review, completed: Done }
+        inbox-query: project = ENG AND status = Triage # optional
 ```
+
+`candidate-query` selects the tickets ready for you to take, and `tcw work tracker
+list` shows them. The optional `inbox-query` selects the tickets still waiting to be
+triaged. When it is set, `tcw work inbox list` prints two sections, `raw intake:` and
+`tracker tickets:`, so triage works from one list. `tcw work inbox show` and
+`inbox accept` then take a ticket key as well as an inbox entry: an inbox entry with
+the same name wins, and `--ticket` reads the name as a ticket anyway. Accepting a
+ticket claims it, exactly as `tcw work tracker import` does. Write the query so it
+leaves out tickets that already have a work item; TCW does not filter them.
 
 The credentials entries hold the **names** of environment variables, never the
 e-mail address or token themselves.
@@ -633,7 +644,7 @@ driving it to completion, verifying it, processing the inbox) described in
 
 | Command              | What it does                                                      |
 | -------------------- | ----------------------------------------------------------------- |
-| `tcw work inbox`     | `inbox list`, `inbox show` and `inbox accept` raw requests        |
+| `tcw work inbox`     | `inbox list`, `inbox show` and `inbox accept` raw requests, and Jira tickets awaiting triage |
 | `tcw work nodes`     | lists this project's parent and child projects                    |
 | `tcw work delegate`  | writes a request into a child project's inbox                     |
 | `tcw work escalate`  | writes a request into the parent project's inbox                  |

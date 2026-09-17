@@ -41,6 +41,7 @@ work:
         provider: jira-cloud # the only accepted value
         base-url: https://yourcompany.atlassian.net
         candidate-query: assignee = currentUser() AND status = "To Do"
+        inbox-query: project = EX AND status = Triage # optional
         credentials:
             email-env: TCW_JIRA_EMAIL
             token-env: TCW_JIRA_API_TOKEN
@@ -64,6 +65,7 @@ work:
 | `provider`              | yes      | `jira-cloud`; nothing else is accepted.                                                                                                                |
 | `base-url`              | yes      | Your Jira Cloud site.                                                                                                                                  |
 | `candidate-query`       | yes      | The Jira Query Language (JQL) search that `tracker list` runs.                                                                                         |
+| `inbox-query`           | no       | The JQL search for tickets waiting to be triaged, which `tcw work inbox list` shows. See [Tickets in the inbox](#tickets-in-the-inbox).                 |
 | `credentials.email-env` | yes      | The **name** of the environment variable holding your Jira account's e-mail address.                                                                   |
 | `credentials.token-env` | yes      | The **name** of the environment variable holding your Jira API token.                                                                                  |
 | `transitions.claim`     | yes      | The workflow transition that starts a ticket, spelled exactly as Jira spells it.                                                                       |
@@ -264,6 +266,42 @@ when they share inherited settings.
 
 `import` refuses a ticket that is linked here but not claimed: `tcw work start`
 is what claims a linked ticket.
+
+## Tickets in the inbox
+
+`candidate-query` selects tickets that are ready to be taken. Tickets that still
+need triage are usually a different set, so they have their own setting,
+`inbox-query`. It is optional; a project without it sees the inbox exactly as
+before. An empty `inbox-query` is a problem, because an empty search selects every
+ticket on the site.
+
+With it set, `tcw work inbox list` prints two sections:
+
+```
+raw intake:
+  2026-09-14-serve-accepts-writes.md | file | 2026-09-14-serve-accepts-writes
+
+tracker tickets:
+  EX-482 | Triage | unassigned | Login retries twice on a 502
+```
+
+An empty section says `(none)`. If Jira cannot be reached, the raw intake is still
+printed, the ticket section says `(not listed)`, the reason goes to the error
+stream, and the command exits 1.
+
+`tcw work inbox show <key>` prints a ticket as `tracker show` does, followed by its
+description. `tcw work inbox accept <key>` takes the ticket exactly as
+`tracker import` does — the same claim, the same checks, and `--part` and `--title`
+work the same way; running it again gives you the item you already have.
+
+**An inbox entry wins a name clash.** `show` and `accept` look for an inbox entry
+first and only then ask Jira, so a file named `EX-482.md` hides ticket `EX-482`.
+Add `--ticket` to read the name as a ticket key anyway. TCW cannot warn you about
+the clash without asking Jira every time.
+
+**The query decides what appears.** TCW does not hide tickets that already have a
+work item, so write the query to leave them out (for example by status). A ticket
+both queries select appears in both `tracker list` and `inbox list`; both are true.
 
 ## Linking and unlinking
 
@@ -525,7 +563,7 @@ With it on:
 
 | Command                                             | Under strict mode                                                                                                                                                                                                                                                      |
 | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tcw work new`, `tcw work inbox accept`             | refused, pointing you at `tcw work tracker import <ticket>`. `new --epic` is allowed, because an epic only groups work.                                                                                                                                                |
+| `tcw work new`, `tcw work inbox accept` of an entry | refused, pointing you at `tcw work tracker import <ticket>`. `new --epic` is allowed, because an epic only groups work. Where `inbox-query` is set, `inbox accept` of a ticket is allowed, and refused exactly where `tracker import` would be.                                                      |
 | `tcw work start`                                    | refused for an item with no ticket. For a bound item, the ticket is claimed **first**, and the item starts only if the claim worked. An epic may start without a ticket, but not with `--worktree`, since code on an epic's own branch would have no ticket behind it. |
 | `tcw work submit`, `rework`, `complete` as `done`   | the ticket is read first; refused unless it is assigned to you and in the status the item's last move left it in. For a `--worktree` item this is checked before anything is merged.                                                                                   |
 | `tcw work complete` as a discard                    | always allowed.                                                                                                                                                                                                                                                        |

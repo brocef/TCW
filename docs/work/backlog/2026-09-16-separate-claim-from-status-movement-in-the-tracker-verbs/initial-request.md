@@ -68,6 +68,7 @@ Each of these is open today, and each is a symptom rather than its own defect:
 | `2026-09-16-close-three-gaps-the-pr-45-review-left-in-tracker-delivery` §1 — `start` moves a ticket backwards | `deliver` skips the "already past the claim's status" check when the move is `start` (`tcw/tracker/sync.py:297`), so the claim transition fires from wherever the ticket sits |
 | that item's §3 — strict mode never asks exclusivity for a ticket already held by the caller | `claim_refusal` runs only for a ticket sitting on the claim's own status |
 | `2026-09-15-decide-claim-exclusivity-from-a-jira-project-s-workflow-definition` | you must read the workflow definition to learn whether a claim was exclusive, because the claim rides the workflow |
+| `tcw work inbox accept <ticket>` cannot take a ticket awaiting triage | accepting claims, and a claim needs the claim transition to be offered from the ticket's current status — which is precisely what a pre-triage status does not offer. Seen live on 2026-09-17: `TCW-1` in `Triage` offers only `Accept` and `Cancel`, so `work.tracker.inbox-query` selects tickets that `inbox accept` would refuse. An ownership-only claim dissolves it; nothing else here does |
 | the `claim: owed \| done` state inside the sync record | claim state is entangled in `tracker.yaml`'s sync record rather than being its own answer |
 
 None of these should be fixed individually while this is in flight.

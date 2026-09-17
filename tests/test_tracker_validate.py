@@ -178,3 +178,17 @@ def test_validate_is_fast_with_an_unroutable_base_url(node):
     started = time.monotonic()
     validate(root)
     assert time.monotonic() - started < 1.0
+
+
+def test_an_inbox_query_is_not_an_unknown_key(node):
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "inbox-query": "status = Triage"})
+    assert [p for p in validate(root) if "tracker" in p] == []
+
+
+def test_a_blank_inbox_query_is_named_by_validate(node):
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "inbox-query": " "})
+    assert any("work.tracker.inbox-query: expected a non-empty string" in p
+               for p in validate(root))
+    assert FsWorkStore.open(root).tracker_config() is None

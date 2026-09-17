@@ -3,7 +3,7 @@
 | Goal                     | Command                                                                                                                                         |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | create an item           | `tcw work new "<title>" [--priority N] [--effort L\|M\|H\|VH] [--complexity …] [--tag\|--tags <t[,t]>] [--blocked-by <ref>]`                                |
-| triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`; `<entry>` is either identifier `list` printed (ref or title) |
+| triage the inbox         | `tcw work inbox list` → `inbox show <entry>` → `inbox accept <entry> [--title <t>]`; `<entry>` is either identifier `list` printed (ref or title). With `work.tracker.inbox-query`, `list` adds a `tracker tickets:` section and `<entry>` may be a ticket key: a raw entry of that name wins, `--ticket` forces the ticket, and accepting a ticket is `tracker import` (`--part` too) |
 | locate stores            | `tcw work path` (configured work root) · `tcw work inbox path` (its inbox); both print only the absolute resolved path                          |
 | the board                | `tcw work list [--status <s>] [--tag\|--tags <t[,t]>] [--all] [-i]` — hides resolved; `-i` adds descendant boards                                           |
 | read an item             | `tcw work show <slug> [--json]` · `tcw work path <slug>` — `show` answers from the graveyard for an item retention deleted, naming the commit its documents are in                                                                                        |
@@ -220,7 +220,7 @@ that got as far as claiming leaves the ticket claimed.
 
 | Command | Under strict |
 | ------- | ------------ |
-| `new` (not `--epic`), `inbox accept` | refused → `tcw work tracker import <ticket>` |
+| `new` (not `--epic`), `inbox accept` of a raw entry | refused → `tcw work tracker import <ticket>` (`inbox accept <ticket>` is import, gated as import) |
 | `start` | unbound: refused. Bound: claim first (after the store's own status and blocker checks; the epic-active and repository checks come after it), move only if claimed. An epic cannot start with `--worktree` |
 | `submit`, `rework`, `complete --resolution done` | read the ticket: assigned to you, and in the mapped status of the item's status (or the target), or of an earlier status when an item for another part of the ticket is here; else refused. `complete` checks before the worktree merge |
 | `complete` with a discard resolution | allowed |

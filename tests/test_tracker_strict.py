@@ -251,6 +251,37 @@ def test_new_and_inbox_accept_are_refused(strict, fake):
     assert FsWorkStore.open(strict).query() == []
 
 
+def test_strict_refuses_a_raw_entry_but_not_a_ticket_through_inbox_accept(strict, fake):
+    set_tracker_key(strict, "inbox-query", "status = Triage")
+    inbox = FsWorkStore.open(strict).root / "inbox"
+    inbox.mkdir(exist_ok=True)
+    (inbox / "a-request.md").write_text("# A request\n", encoding="utf-8")
+    code, _out, err = cli(strict, "work", "inbox", "accept", "a-request.md")
+    assert code == 1 and REFUSED in err and "tcw work tracker import <ticket>" in err
+    assert (inbox / "a-request.md").exists()
+    code, out, err = cli(strict, "work", "inbox", "accept", KEY)
+    assert code == 0, err
+    assert REFUSED not in err
+    [item] = FsWorkStore.open(strict).query()
+    assert out.strip() == item.slug
+
+
+def test_strict_refuses_a_ticket_through_inbox_accept_where_import_is_refused(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    fake_ = FakeJira(workflow=GLOBAL)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=True)
+    set_tracker_key(root, "inbox-query", "status = Triage")
+    code, out, err = cli(root, "work", "inbox", "accept", KEY)
+    assert code == 1 and out == "" and "second person could claim it too" in err
+    assert err.startswith("tcw work inbox accept: ")
+    assert FsWorkStore.open(root).query() == []
+
+
 def test_a_broken_strict_block_still_refuses_new(tmp_path, fake):
     root = strict_node(tmp_path, strict=True)
     set_tracker_key(root, "timeout-seconds", -1)
@@ -745,3 +776,20 @@ def test_a_refusal_for_a_plainly_linked_ticket_names_the_opt_in(tmp_path, fake):
     assert code == 1 and REFUSED in err
     assert "linked without syncing its status" in err and "--sync-status" in err
     assert status(root, slug) == "active" and fake.writes() == []
+
+
+def test_a_broken_strict_block_refuses_inbox_accept_even_with_ticket(tmp_path, fake):
+    root = strict_node(tmp_path, strict=True)
+    set_tracker_key(root, "inbox-query", "status = Triage")
+    set_tracker_key(root, "timeout-seconds", -1)
+    code, _out, err = cli(root, "work", "inbox", "accept", "--ticket", KEY)
+    assert code == 1 and REFUSED in err and "tcw validate" in err
+    assert "--ticket needs" not in err
+    assert FsWorkStore.open(root).query() == []
+
+
+def test_strict_without_an_inbox_query_refuses_an_unknown_ref_in_todays_words(strict, fake):
+    code, out, err = cli(strict, "work", "inbox", "accept", "no-such-thing")
+    assert (code, out) == (1, "")
+    assert REFUSED in err and "no-such-thing was not accepted" in err
+    assert "no such inbox entry" not in err

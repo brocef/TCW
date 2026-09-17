@@ -9,6 +9,10 @@ to someone else, or already closed, is refused, and I am told who has it and whe
 it is. The item's intake holds the ticket's description with a link to the ticket,
 its request is still mine to write, and it has no owner until I start it.
 
+`tcw work inbox accept <key>` is a second way into the same claim, not a second
+claim: where `work.tracker.inbox-query` is declared, it runs this import, with the
+same checks, binding and messages, for a ticket I am triaging from the inbox.
+
 Running the same import again in the same node gives me the item I already have.
 If a run took the ticket but stopped before the item existed, the next run finishes
 it without moving the ticket again. `--part` lets one ticket become several items on purpose.

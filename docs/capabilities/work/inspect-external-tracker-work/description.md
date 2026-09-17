@@ -2,7 +2,9 @@ As a developer on a project whose work is assigned in Jira Cloud, I can point TC
 at the Jira site in `tcw-config.yaml` under `work.tracker` — the site address, the
 query that selects the tickets I could pick up, the names of the environment
 variables holding my credentials, and the name of the transition that claims a
-ticket — and then read those tickets from the terminal without changing anything
+ticket — and optionally a second query, `inbox-query`, that selects the tickets still
+waiting to be triaged, which `tcw work inbox list` reports beside the raw intake
+(`work/manage-the-work-inbox`) — and then read those tickets from the terminal without changing anything
 in Jira. Settings a node leaves out can come from its parent nodes
 (`work/inherit-tracker-settings-from-parent-nodes`).
 

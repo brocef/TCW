@@ -1091,6 +1091,10 @@ class TrackerConfig:
     # template with `{project}` and `{slug}` — appended when set.
     comments: bool = False
     link: str = ""
+    # The tickets `tcw work inbox list` reports as awaiting triage. Not
+    # `candidate_query` reused: that one selects tickets ready to be taken, a
+    # different set by construction. Empty means the inbox shows no tickets.
+    inbox_query: str = ""
 
 
 # The only `provider` value that parses. A literal in the abstract layer, which is
@@ -1101,7 +1105,7 @@ TRACKER_PROVIDERS = ("jira-cloud",)
 
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
                           "transitions", "statuses", "strict", "timeout-seconds",
-                          "comments", "link"})
+                          "comments", "link", "inbox-query"})
 TRACKER_LINK_PLACEHOLDERS = frozenset({"project", "slug"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # Where a ticket goes for a move is a *status*, under `statuses`, because only a status
@@ -1163,6 +1167,11 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
             f"(choose from {', '.join(TRACKER_PROVIDERS)})")
     base_url = required_str("base-url")
     candidate_query = required_str("candidate-query")
+    # Optional, so a lone `null` is a wrong value rather than a missing required one.
+    if "inbox-query" in raw and raw["inbox-query"] is None:
+        problems.append("work.tracker.inbox-query: expected a non-empty string, "
+                        "got NoneType")
+    inbox_query = required_str("inbox-query") if raw.get("inbox-query") is not None else ""
 
     def nested(key: str, allowed: frozenset[str]) -> dict:
         value = raw.get(key)
@@ -1251,6 +1260,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         strict=strict,
         comments=comments,
         link=link,
+        inbox_query=inbox_query,
     ), []
 
 
@@ -2654,6 +2664,14 @@ class InboxEntry:
     kind: str
 
 
+class InboxEntryNotFound(ValueError):
+    """No inbox entry answers to this reference.
+
+    Part of the store contract, and distinct from a reference that matches several
+    entries, which stays a plain `ValueError`: a caller may try a ref somewhere else
+    when nothing matched, and must not when too much did."""
+
+
 @dataclass(frozen=True)
 class InboxEntryDetail:
     """An inbox entry plus its readable primary content and bounded resources."""
@@ -3060,11 +3078,15 @@ class WorkStore(ABC):
 
     @abstractmethod
     def inbox_show(self, ref: str) -> InboxEntryDetail:
-        """Inspect one raw entry without emitting arbitrary binary content."""
+        """Inspect one raw entry without emitting arbitrary binary content.
+
+        Raises `InboxEntryNotFound` when no entry answers to ``ref``."""
 
     @abstractmethod
     def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
         """Atomically consume raw intake into a new backlog work item.
+
+        Raises `InboxEntryNotFound` when no entry answers to ``ref``.
 
         The title is ``title`` when given, else the first ATX H1 the entry's
         body declares (``body_title``), else a store-provided label for the

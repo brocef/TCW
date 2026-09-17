@@ -31,11 +31,16 @@ work:
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
 `credentials.token-env`, `transitions.claim`, and optional `statuses`, `strict`,
-`comments`, `link` and `timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
+`comments`, `link`, `inbox-query` and `timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
 parent's. Unknown keys are reported rather than
 ignored, so a config written for a later release complains instead of silently doing
 less.
+
+`inbox-query` is optional JQL selecting tickets awaiting triage, which
+`tcw work inbox list` reports beside raw intake; it is separate from
+`candidate-query` (tickets ready to take). Blank or not a string is a problem, which
+disables the whole block like any other; it inherits like every other scalar key.
 
 **Credentials are named, never stored** — the config holds two environment variable
 names, read at request time. Set those two variables in the shell that runs `tcw`;

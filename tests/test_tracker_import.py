@@ -412,3 +412,111 @@ def test_link_binds_with_the_settings_it_claimed_with_if_a_parent_changes_meanwh
     code, out, err = run(child, "link", slug, TICKET)
     assert code == 0, err
     assert binding(child, slug)["provider"] == "jira-cloud"
+
+
+# ── `tcw work inbox accept <ticket>` is the same claim ───────────────────────
+
+
+def inbox(root: Path, *argv: str) -> tuple[int, str, str]:
+    """`run`, for `tcw work inbox`."""
+    from tcw.cli import main
+    previous = os.getcwd()
+    out, err = io.StringIO(), io.StringIO()
+    os.chdir(root)
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = main(["work", "inbox", *argv])
+            except SystemExit as exit_:
+                code = exit_.code or 0
+    finally:
+        os.chdir(previous)
+    return code, out.getvalue(), err.getvalue()
+
+
+def with_inbox_query(root: Path) -> Path:
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["inbox-query"] = "status = Triage"
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return root
+
+
+def test_inbox_accept_of_a_ticket_makes_what_import_makes(tmp_path, fake):
+    imported = make_node(tmp_path, "alpha", email_env="TCW_A_EMAIL")
+    accepted = with_inbox_query(make_node(tmp_path, "beta", email_env="TCW_A_EMAIL"))
+    assert run(imported, "import", TICKET, "--part", "api")[0] == 0
+    code, out, err = inbox(accepted, "accept", TICKET, "--part", "api")
+    assert code == 0, err
+    [left], [right] = items(imported), items(accepted)
+    assert out.strip() == right.slug == left.slug and right.title == left.title
+    intake = [(FsWorkStore.open(r).path(i.slug) / "intake.md").read_text(encoding="utf-8")
+              for r, i in ((imported, left), (accepted, right))]
+    assert intake[0] == intake[1]
+    docs = [binding(imported, left.slug), binding(accepted, right.slug)]
+    assert docs[1]["project"] == "beta"
+    assert {**docs[0], "project": "beta"} == docs[1]
+
+    code, out, err = inbox(accepted, "accept", TICKET, "--part", "api")
+    assert code == 0 and out.strip() == right.slug and "already bound" in err
+    assert len(items(accepted)) == 1
+
+
+def test_inbox_accept_of_a_ticket_speaks_as_inbox_accept(node, fake):
+    with_inbox_query(node)
+    outputs = []
+    outputs.append(inbox(node, "accept", TICKET, "--part", "A B"))       # bad part
+    outputs.append(inbox(node, "accept", TICKET, "--title", " "))        # bad title
+    fake.tickets["10052"].assignee = B
+    outputs.append(inbox(node, "accept", TICKET))                        # refused claim
+    fake.fail("GET", "/myself", jira._for_status(401, {}, "", "/myself"))
+    outputs.append(inbox(node, "accept", TICKET))                        # tracker error
+    for code, _out, err in outputs:
+        assert code == 1 and err.startswith("tcw work inbox accept: "), err
+        assert "tcw work tracker import:" not in err and SENTINEL not in err
+    assert_no_item(node)
+
+
+def test_inbox_accept_of_a_linked_unclaimed_ticket_does_not_say_import(node, fake):
+    with_inbox_query(node)
+    write_binding(node, "Linked")
+    code, _out, err = inbox(node, "accept", TICKET)
+    assert code == 1 and "not claimed" in err
+    assert "`import`" not in err and "tracker import" not in err
+
+
+def test_inbox_accept_of_a_ticket_reads_jira_no_more_than_import(tmp_path, fake):
+    imported = make_node(tmp_path, "alpha", email_env="TCW_A_EMAIL")
+    accepted = with_inbox_query(make_node(tmp_path, "beta", email_env="TCW_A_EMAIL"))
+    assert run(imported, "import", TICKET)[0] == 0
+    before = len(fake.requests)
+    assert run(imported, "import", TICKET, "--part", "x")[0] == 0
+    import_reads = len(fake.requests) - before
+    before = len(fake.requests)
+    assert inbox(accepted, "accept", TICKET, "--part", "x")[0] == 0
+    assert len(fake.requests) - before == import_reads
+
+
+def test_inbox_accept_ticket_reaches_a_ticket_an_entry_shadows(node, fake):
+    with_inbox_query(node)
+    inbox_dir = FsWorkStore.open(node).root / "inbox"
+    inbox_dir.mkdir(exist_ok=True)
+    (inbox_dir / f"{TICKET}.md").write_text("# The local one\n", encoding="utf-8")
+    code, out, err = inbox(node, "accept", "--ticket", TICKET)
+    assert code == 0, err
+    [item] = items(node)
+    assert binding(node, item.slug)["ticket"]["key"] == TICKET
+    assert (inbox_dir / f"{TICKET}.md").exists()
+
+
+def test_part_on_a_raw_entry_is_refused_and_consumes_nothing(node, fake):
+    with_inbox_query(node)
+    inbox_dir = FsWorkStore.open(node).root / "inbox"
+    inbox_dir.mkdir(exist_ok=True)
+    (inbox_dir / "a-request.md").write_text("# A request\n", encoding="utf-8")
+    code, out, err = inbox(node, "accept", "a-request", "--part", "api")
+    assert (code, out) == (1, "")
+    assert err == ("tcw work inbox accept: --part applies only to a ticket, and "
+                   "a-request is a raw inbox entry\n")
+    assert (inbox_dir / "a-request.md").exists() and fake.requests == []
+    assert_no_item(node)

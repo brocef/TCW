@@ -256,3 +256,213 @@ def test_no_command_or_error_path_prints_the_token(node, monkeypatch):
     for path in root.rglob("*"):
         if path.is_file():
             assert SENTINEL not in path.read_text(encoding="utf-8", errors="ignore"), path
+
+
+# ── `tcw work inbox list`, `show` and `accept` with an inbox-query ───────────
+
+
+INBOX_TRACKER = {**TRACKER, "inbox-query": "status = Triage"}
+
+TRIAGE_BODY = {
+    "isLast": True,
+    "issues": [
+        {"key": "EX-482", "fields": {
+            "summary": "Login retries twice on a 502", "status": {"name": "Triage"},
+            "assignee": None}},
+    ],
+}
+
+
+def _recording(monkeypatch, mapping):
+    """`_responses`, also keeping every request as (method, path, body)."""
+    sent = []
+
+    def fake(self, method, path, body=None, *, timeout=None):
+        sent.append((method, path, body))
+        for fragment, response in mapping.items():
+            if fragment in path:
+                if isinstance(response, Exception):
+                    raise response
+                return response
+        return (200, {}, b"{}")
+    monkeypatch.setattr(jira.JiraClient, "_request", fake)
+    return sent
+
+
+def _inbox_entry(root, name="2026-09-14-serve-accepts-writes.md", text="# Serve\n"):
+    inbox = root / "docs/work/inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / name).write_text(text, encoding="utf-8")
+
+
+TODAY = "2026-09-14-serve-accepts-writes.md | file | 2026-09-14-serve-accepts-writes\n"
+
+
+@pytest.mark.parametrize("tracker", [None, TRACKER], ids=["no-tracker", "no-inbox-query"])
+def test_inbox_list_without_an_inbox_query_is_unchanged(node, monkeypatch, tracker):
+    root, configure = node
+    configure(tracker=tracker)
+    _inbox_entry(root)
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, out, err) == (0, TODAY, "")
+    assert sent == []
+
+
+def test_inbox_list_with_a_broken_tracker_is_unchanged_but_says_so(node, monkeypatch):
+    root, configure = node
+    configure(tracker={**INBOX_TRACKER, "timeout-seconds": -1})
+    _inbox_entry(root)
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, out) == (0, TODAY)
+    assert len(err.strip().splitlines()) == 1 and "tcw validate" in err
+    assert sent == []
+
+
+def test_inbox_list_prints_two_sections_from_the_inbox_query(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root)
+    sent = _recording(monkeypatch, {"/search": (200, {}, json.dumps(TRIAGE_BODY).encode())})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, err) == (0, "")
+    assert out == ("raw intake:\n  " + TODAY + "\ntracker tickets:\n"
+                   "  EX-482 | Triage | unassigned | Login retries twice on a 502\n")
+    [(_method, _path, body)] = sent
+    assert body["jql"] == "status = Triage"
+
+
+def test_inbox_list_marks_both_empty_sections(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _recording(monkeypatch, {"/search": (200, {}, b'{"isLast": true, "issues": []}')})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, err) == (0, "")
+    assert out == "raw intake:\n  (none)\n\ntracker tickets:\n  (none)\n"
+
+
+def test_inbox_list_says_there_are_more_naming_the_inbox_query(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    body = {**TRIAGE_BODY, "isLast": False}
+    _recording(monkeypatch, {"/search": (200, {}, json.dumps(body).encode())})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert code == 0
+    assert "work.tracker.inbox-query" in err and "candidate-query" not in err
+    assert "EX-482" in out
+
+
+def test_inbox_list_keeps_raw_intake_when_the_tracker_fails(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root)
+    _recording(monkeypatch, {"/search": jira.TrackerUnavailable("the tracker is down")})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert code != 0
+    assert out == "raw intake:\n  " + TODAY + "\ntracker tickets:\n  (not listed)\n"
+    assert "the tracker is down" in err
+    assert SENTINEL not in out + err
+
+
+def test_a_raw_entry_resolves_without_asking_the_tracker(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root)
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    code, out, err = _run(["work", "inbox", "show", "2026-09-14-serve-accepts-writes"])
+    assert code == 0, err
+    assert "body:" in out and sent == []
+    code, out, err = _run(["work", "inbox", "accept", "2026-09-14-serve-accepts-writes"])
+    assert code == 0, err
+    assert sent == []
+
+
+def test_inbox_show_reads_an_unknown_ref_as_a_ticket(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    issue = {**ISSUE_BODY, "fields": {**ISSUE_BODY["fields"],
+                                      "description": "The words triage reads."}}
+    _recording(monkeypatch, {**OK_RESPONSES,
+                             "/issue/": (200, {}, json.dumps(issue).encode())})
+    code, out, err = _run(["work", "inbox", "show", "TCWCLAIM-1"])
+    assert code == 0, err
+    for line in ("TCWCLAIM-1  [To Do]", "summary: A ticket that is ready",
+                 "assignee: Probe", "claimable: ", "workflow: ",
+                 "description:", "The words triage reads."):
+        assert line in out, (line, out)
+    assert "tracker show" not in err
+
+
+def test_a_raw_entry_shadows_a_ticket_of_the_same_name_unless_ticket_is_given(
+        node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root, name="TCWCLAIM-1.md", text="# The local one\n")
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    code, out, _err = _run(["work", "inbox", "show", "TCWCLAIM-1"])
+    assert code == 0 and "The local one" in out and sent == []
+    code, out, err = _run(["work", "inbox", "show", "--ticket", "TCWCLAIM-1"])
+    assert code == 0, err
+    assert "The local one" not in out and "summary: A ticket that is ready" in out
+
+
+def test_an_ambiguous_ref_is_not_tried_as_a_ticket(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root, name="EX-9.txt", text="one\n")
+    _inbox_entry(root, name="EX-9.rst", text="two\n")
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    for verb in ("show", "accept"):
+        code, _out, err = _run(["work", "inbox", verb, "EX-9"])
+        assert code == 1 and "ambiguous inbox entry" in err
+    assert sent == []
+
+
+def test_a_ref_that_is_neither_names_both(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _recording(monkeypatch, {"/issue/": jira.TrackerNotFound("Issue does not exist")})
+    for verb in ("show", "accept"):
+        code, out, err = _run(["work", "inbox", verb, "EX-404"])
+        assert (code, out) == (1, "")
+        assert err == (f"tcw work inbox {verb}: no such inbox entry: EX-404, and the "
+                       f"tracker has no ticket EX-404\n")
+
+
+@pytest.mark.parametrize("tracker", [None, TRACKER], ids=["no-tracker", "no-inbox-query"])
+def test_a_ref_that_is_nothing_without_an_inbox_query_says_what_it_said(
+        node, monkeypatch, tracker):
+    root, configure = node
+    configure(tracker=tracker)
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    for verb in ("show", "accept"):
+        code, out, err = _run(["work", "inbox", verb, "EX-404"])
+        assert (code, out, err) == (1, "", f"tcw work inbox {verb}: no such inbox entry: EX-404\n")
+    assert sent == []
+
+
+def test_no_inbox_path_prints_the_token(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root)
+    outputs = []
+    _recording(monkeypatch, OK_RESPONSES)
+    outputs += _run(["work", "inbox", "list"])[1:]
+    outputs += _run(["work", "inbox", "show", "TCWCLAIM-1"])[1:]
+    for error in (jira.TrackerAuthError(f"rejected"), jira.TrackerNotFound("gone"),
+                  jira.TrackerUnavailable("down")):
+        _recording(monkeypatch, {"/search": error, "/issue/": error})
+        outputs += _run(["work", "inbox", "list"])[1:]
+        outputs += _run(["work", "inbox", "show", "EX-1"])[1:]
+        outputs += _run(["work", "inbox", "accept", "EX-1"])[1:]
+    assert all(SENTINEL not in text for text in outputs)
+
+
+def test_ticket_with_a_broken_tracker_names_the_problem_not_the_missing_query(
+        node, monkeypatch):
+    root, configure = node
+    configure(tracker={**INBOX_TRACKER, "timeout-seconds": -1})
+    code, _out, err = _run(["work", "inbox", "show", "--ticket", "EX-1"])
+    assert code == 1 and "tcw validate" in err
+    assert "--ticket needs" not in err

@@ -12,7 +12,7 @@ from pathlib import Path
 from tcw.store.base import (
     DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
-    IllegalTransition, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
+    IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TransitionCommitError, WorkItem,
     normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status, StaleRevision,
@@ -452,20 +452,93 @@ def _inbox_list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    for entry in st.inbox_list():
-        print(f"{entry.ref} | {entry.kind} | {entry.title}")
+    entries = st.inbox_list()
+    config = st.tracker_config()
+    if config is None or not config.inbox_query:
+        # Without an inbox-query the output is exactly what it was before tickets
+        # could appear here. A broken block cannot say whether it declares one.
+        if config is None and st.tracker_problems():
+            print("tcw work inbox list: tracker tickets are not listed because the "
+                  "tracker configuration has problems; run `tcw validate`.",
+                  file=sys.stderr)
+        for entry in entries:
+            print(f"{entry.ref} | {entry.kind} | {entry.title}")
+        return 0
+    print("raw intake:")
+    for entry in entries:
+        print(f"  {entry.ref} | {entry.kind} | {entry.title}")
+    if not entries:
+        print("  (none)")
+    print("\ntracker tickets:")
+    return _inbox_tickets(config)
+
+
+def _inbox_tickets(config) -> int:
+    """The tracker half of `inbox list`, printed after raw intake so a tracker that
+    cannot be reached costs nothing but itself."""
+    from tcw.tracker.jira import JiraClient, TrackerError
+    try:
+        result = JiraClient(config).search(config.inbox_query)
+    except TrackerError as e:
+        print("  (not listed)")
+        print(f"tcw work inbox list: tracker tickets could not be listed: {e}",
+              file=sys.stderr)
+        return 1
+    for issue in result.issues:
+        print(f"  {_ticket_row(issue)}")
+    if not result.issues:
+        print("  (none)")
+    if result.truncated:
+        print(f"Showing the first {len(result.issues)} tickets; there are more. "
+              f"Narrow work.tracker.inbox-query to see the rest.", file=sys.stderr)
     return 0
+
+
+def _inbox_can_try_ticket(st, verb: str, not_found: InboxEntryNotFound | None) -> bool:
+    """Whether a ref may be read as a ticket key, after saying why not when it may not.
+
+    Reached only once the store has said `not_found` about the ref, or `--ticket` skipped
+    asking it (`not_found` is then None). Without a declared `inbox-query` no ticket is
+    looked up and no tracker code is loaded, so the store's answer stands as it was."""
+    config = st.tracker_config()
+    if config is not None and config.inbox_query:
+        return True
+    reason = not_found or (
+        "the tracker configuration has problems; run `tcw validate`"
+        if config is None and st.tracker_problems() else
+        "--ticket needs work.tracker.inbox-query to be declared in tcw-config.yaml")
+    print(f"tcw work {verb}: {reason}", file=sys.stderr)
+    return False
+
+
+def _not_a_ticket(verb: str, ref: str, not_found: InboxEntryNotFound | None,
+                  error: Exception) -> None:
+    """A failed ticket read, naming the raw-entry miss too when there was one."""
+    from tcw.tracker.jira import TrackerNotFound
+    if not_found is None:
+        reason = error
+    elif isinstance(error, TrackerNotFound):
+        reason = f"{not_found}, and the tracker has no ticket {ref}"
+    else:
+        reason = f"{not_found}, and it could not be looked up as a ticket: {error}"
+    print(f"tcw work {verb}: {reason}", file=sys.stderr)
 
 
 def _inbox_show(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
+    not_found = detail = None
     try:
-        detail = st.inbox_show(args.entry)
+        if not args.force_ticket:
+            detail = st.inbox_show(args.entry)
+    except InboxEntryNotFound as e:
+        not_found = e
     except _ERRORS as e:
         print(f"tcw work inbox show: {e}", file=sys.stderr)
         return 1
+    if detail is None:
+        return _inbox_show_ticket(st, args.entry, not_found)
     print(f"{detail.entry.ref}  [{detail.entry.kind}]")
     print(f"title: {detail.entry.title}")
     print("resources:")
@@ -475,6 +548,29 @@ def _inbox_show(args: argparse.Namespace) -> int:
     if detail.body is not None:
         print("\nbody:\n")
         print(detail.body, end="" if detail.body.endswith("\n") else "\n")
+    return 0
+
+
+def _inbox_show_ticket(st, ref: str, not_found: InboxEntryNotFound | None) -> int:
+    if not _inbox_can_try_ticket(st, "inbox show", not_found):
+        return 1
+    from tcw.tracker.jira import JiraClient, TrackerError
+    client = JiraClient(st.tracker_config())
+    try:
+        issue = client.issue(ref)
+    except TrackerError as e:
+        _not_a_ticket("inbox show", ref, not_found, e)
+        return 1
+    try:
+        offered = client.transitions(ref)
+        description = client.description(str(issue.get("id") or ref))
+    except TrackerError as e:
+        print(f"tcw work inbox show: {e}", file=sys.stderr)
+        return 1
+    _print_ticket(client, ref, issue, offered)
+    # Triage decides from the text, as it does from a raw entry's body.
+    print("\ndescription:\n")
+    print(description.strip() or "The ticket has no description.")
     return 0
 
 
@@ -490,20 +586,44 @@ def _inbox_accept(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    if st.tracker_strict():
-        return _strict_says_no("inbox accept", f"{args.entry} was not accepted",
-                               "Create work from a ticket with "
-                               "`tcw work tracker import <ticket>`."
-                               if st.tracker_config() is not None else _STRICT_BROKEN)
-    try:
-        item = st.inbox_accept(args.entry, title=args.title)
-    except _ERRORS as e:
-        print(f"tcw work inbox accept: {e}", file=sys.stderr)
+    config = st.tracker_config()
+    refusal = (lambda: _strict_says_no(
+        "inbox accept", f"{args.entry} was not accepted",
+        "Create work from a ticket with `tcw work tracker import <ticket>`."
+        if config is not None else _STRICT_BROKEN))
+    not_found = None
+    strict = st.tracker_strict()
+    if strict and (config is None or not config.inbox_query):
+        return refusal()
+    if not args.force_ticket:
+        # A raw entry is refused under strict mode, and with `--part`, which only a
+        # ticket takes; in both cases the ref is resolved without being consumed.
+        peek = strict or args.part is not None
+        try:
+            item = st.inbox_show(args.entry) if peek else \
+                st.inbox_accept(args.entry, title=args.title)
+        except InboxEntryNotFound as e:
+            not_found = e
+        except _ERRORS as e:
+            print(f"tcw work inbox accept: {e}", file=sys.stderr)
+            return 1
+        else:
+            if strict:
+                return refusal()
+            if args.part is not None:
+                print(f"tcw work inbox accept: --part applies only to a ticket, and "
+                      f"{args.entry} is a raw inbox entry", file=sys.stderr)
+                return 1
+            print(item.slug)
+            if loc := st.locate(item.slug):
+                print(f"→ now at {loc}", file=sys.stderr)
+            return 0
+    if not _inbox_can_try_ticket(st, "inbox accept", not_found):
         return 1
-    print(item.slug)
-    if loc := st.locate(item.slug):
-        print(f"→ now at {loc}", file=sys.stderr)
-    return 0
+    # Accepting a ticket is taking it: the same claim, binding and idempotence.
+    return _tracker_import(argparse.Namespace(ticket=args.entry, part=args.part,
+                                              title=args.title), label="inbox accept",
+                           not_found=not_found)
 
 
 def _visible_board_items(st: FsWorkStore, status: str | None, show_all: bool,
@@ -2025,20 +2145,27 @@ def _tracker_client(label: str):
     if config is None:
         problems = st.tracker_problems()
         if problems:
-            print(f"tcw work tracker {label}: the tracker configuration has "
+            print(f"tcw work {label}: the tracker configuration has "
                   f"problems:", file=sys.stderr)
             for problem in problems:
                 print(f"  - {problem}", file=sys.stderr)
         else:
-            print(f"tcw work tracker {label}: no tracker is configured. Add a "
+            print(f"tcw work {label}: no tracker is configured. Add a "
                   f"work.tracker block to tcw-config.yaml.", file=sys.stderr)
         return None
     from tcw.tracker.jira import JiraClient
     return JiraClient(config)
 
 
+def _ticket_row(issue: dict) -> str:
+    fields = issue.get("fields") or {}
+    status = (fields.get("status") or {}).get("name", "?")
+    assignee = (fields.get("assignee") or {}).get("displayName", "unassigned")
+    return f"{issue.get('key', '?')} | {status} | {assignee} | {fields.get('summary', '')}"
+
+
 def _tracker_list(args: argparse.Namespace) -> int:
-    client = _tracker_client("list")
+    client = _tracker_client("tracker list")
     if client is None:
         return 1
     from tcw.tracker.jira import TrackerError
@@ -2048,11 +2175,7 @@ def _tracker_list(args: argparse.Namespace) -> int:
         print(f"tcw work tracker list: {e}", file=sys.stderr)
         return 1
     for issue in result.issues:
-        fields = issue.get("fields") or {}
-        status = (fields.get("status") or {}).get("name", "?")
-        assignee = (fields.get("assignee") or {}).get("displayName", "unassigned")
-        summary = fields.get("summary", "")
-        print(f"{issue.get('key', '?')} | {status} | {assignee} | {summary}")
+        print(_ticket_row(issue))
     if not result.issues:
         print("No tickets matched the configured query.")
     if result.truncated:
@@ -2066,10 +2189,9 @@ def _tracker_list(args: argparse.Namespace) -> int:
 
 
 def _tracker_show(args: argparse.Namespace) -> int:
-    client = _tracker_client("show")
+    client = _tracker_client("tracker show")
     if client is None:
         return 1
-    from tcw.tracker.claim import assess
     from tcw.tracker.jira import TrackerError
     try:
         issue = client.issue(args.ticket)
@@ -2077,11 +2199,17 @@ def _tracker_show(args: argparse.Namespace) -> int:
     except TrackerError as e:
         print(f"tcw work tracker show: {e}", file=sys.stderr)
         return 1
+    _print_ticket(client, args.ticket, issue, offered)
+    return 0
 
+
+def _print_ticket(client, ref: str, issue: dict, offered) -> None:
+    """A ticket as `tracker show` prints it; `inbox show` prints the same."""
+    from tcw.tracker.claim import assess
     fields = issue.get("fields") or {}
     status = (fields.get("status") or {}).get("name", "?")
     assignee = (fields.get("assignee") or {}).get("displayName", "unassigned")
-    print(f"{issue.get('key', args.ticket)}  [{status}]")
+    print(f"{issue.get('key', ref)}  [{status}]")
     print(f"summary: {fields.get('summary', '')}")
     print(f"assignee: {assignee}")
 
@@ -2095,7 +2223,6 @@ def _tracker_show(args: argparse.Namespace) -> int:
     print(f"workflow: {result.exclusivity}")
     if result.detail:
         print(f"note: {result.detail}")
-    return 0
 
 
 def _project_id(st) -> str:
@@ -2105,7 +2232,7 @@ def _project_id(st) -> str:
 def _print_refusal(label: str, outcome) -> None:
     """A claim refusal: a fixed first line, and the tracker's own text only on a
     `detail:` line, so it is never read as the explanation."""
-    print(f"tcw work tracker {label}: {outcome.message}", file=sys.stderr)
+    print(f"tcw work {label}: {outcome.message}", file=sys.stderr)
     if outcome.detail:
         print(f"  detail: {outcome.detail}", file=sys.stderr)
 
@@ -2142,7 +2269,8 @@ def _claim_summary(outcome) -> str:
 _LOCAL_WRITE_ERRORS = (*_ERRORS, StaleRevision, OSError, subprocess.CalledProcessError)
 
 
-def _tracker_import(args: argparse.Namespace) -> int:
+def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
+                    not_found: InboxEntryNotFound | None = None) -> int:
     """Claim a ticket, then create a backlog item bound to it.
 
     No item is created unless the claim ends with the ticket in the status the claim
@@ -2156,20 +2284,21 @@ def _tracker_import(args: argparse.Namespace) -> int:
                                     find_binding, read_ticket, validate_part)
     from tcw.tracker.jira import TrackerError
 
-    client = _tracker_client("import")
+    client = _tracker_client(label)
     if client is None:
         return 1
     try:
         part = validate_part(args.part)
     except ValueError as e:
-        print(f"tcw work tracker import: {e}", file=sys.stderr)
+        print(f"tcw work {label}: {e}", file=sys.stderr)
         return 1
     if args.title is not None and not args.title.strip():
-        print("tcw work tracker import: --title is empty; give a title or omit it "
+        print(f"tcw work {label}: --title is empty; give a title or omit it "
               "to use the ticket's key and summary.", file=sys.stderr)
         return 1
     st = _store()
     today = date.today().isoformat()
+    ticket = None
     try:
         ticket = read_ticket(client, args.ticket)
         project = _project_id(st)
@@ -2185,32 +2314,35 @@ def _tracker_import(args: argparse.Namespace) -> int:
                 return 0
             if not ticket.assignee_id:
                 # What `link` leaves behind: bound, never claimed. Normal, not drift.
-                print(f"tcw work tracker import: {existing} is already linked to "
+                print(f"tcw work {label}: {existing} is already linked to "
                       f"{ticket.key} (part {part}), but the ticket is not claimed — it "
-                      f"is unassigned in '{ticket.status}'. `import` does not claim a "
-                      f"ticket that is already bound; move and assign it in the "
+                      f"is unassigned in '{ticket.status}'. This command does not "
+                      f"claim a ticket that is already bound; move and assign it in the "
                       f"tracker yourself.", file=sys.stderr)
                 return 1
             holder = ticket.assignee_name
-            print(f"tcw work tracker import: {existing} is bound here, but the tracker "
+            print(f"tcw work {label}: {existing} is bound here, but the tracker "
                   f"says {ticket.key} is assigned to {holder} in '{ticket.status}'.",
                   file=sys.stderr)
             return 1
         outcome = claim(client, ticket)
     except (TrackerError, BindingProblem, ValueError) as e:
-        print(f"tcw work tracker import: {e}", file=sys.stderr)
+        if ticket is None and not_found is not None and isinstance(e, TrackerError):
+            _not_a_ticket(label, args.ticket, not_found, e)   # `inbox accept` of neither
+        else:
+            print(f"tcw work {label}: {e}", file=sys.stderr)
         return 1
     if not outcome.claimed:
-        _print_refusal("import", outcome)
+        _print_refusal(label, outcome)
         return 1
     if client.config.strict:
         from tcw.tracker.sync import claim_refusal
         if refusal := claim_refusal(client, client.config, outcome.issue_id, outcome):
-            return _strict_says_no("tracker import", "no item was created", refusal)
+            return _strict_says_no(label, "no item was created", refusal)
     try:
         description = client.description(outcome.issue_id)
     except TrackerError as e:
-        print(f"tcw work tracker import: claimed {outcome.key}, but its description "
+        print(f"tcw work {label}: claimed {outcome.key}, but its description "
               f"could not be read: {e}. Run this command again.", file=sys.stderr)
         return 1
 
@@ -2219,7 +2351,7 @@ def _tracker_import(args: argparse.Namespace) -> int:
         slug = st.create_work(title, intake=_intake_text(outcome, description, today)
                               ).item.slug
     except _LOCAL_WRITE_ERRORS as e:
-        print(f"tcw work tracker import: claimed {outcome.key}, but the item could not "
+        print(f"tcw work {label}: claimed {outcome.key}, but the item could not "
               f"be created: {e}. Fix that and run this command again.", file=sys.stderr)
         return 1
     try:
@@ -2231,13 +2363,13 @@ def _tracker_import(args: argparse.Namespace) -> int:
         try:
             st.drop(slug)
         except _LOCAL_WRITE_ERRORS as drop_error:
-            print(f"tcw work tracker import: claimed {outcome.key}, but the binding "
+            print(f"tcw work {label}: claimed {outcome.key}, but the binding "
                   f"could not be written: {e}. The item {slug} was created unbound and "
                   f"could not be removed either ({drop_error}). Run "
                   f"`tcw work drop {slug} --confirm` before importing again, or a "
                   f"second item will be created.", file=sys.stderr)
             return 1
-        print(f"tcw work tracker import: claimed {outcome.key}, but the binding could "
+        print(f"tcw work {label}: claimed {outcome.key}, but the binding could "
               f"not be written: {e}. Run this command again.", file=sys.stderr)
         return 1
     print(slug)
@@ -2302,7 +2434,7 @@ def _tracker_link(args: argparse.Namespace) -> int:
                                     unlinked_history, validate_part)
     from tcw.tracker.jira import TrackerError
 
-    client = _tracker_client("link")
+    client = _tracker_client("tracker link")
     if client is None:
         return 1
     try:
@@ -2477,7 +2609,7 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     if bool(args.slug) == bool(args.all):
         print("tcw work tracker sync: name one slug, or pass --all.", file=sys.stderr)
         return 1
-    client = _tracker_client("sync")
+    client = _tracker_client("tracker sync")
     if client is None:
         return 1
     from tcw.tracker.intake import Bound, binding_of
@@ -2843,7 +2975,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     BARE_SLUG_HELP = "a work item slug in this node; a tracker belongs to one node, "\
                      "so this one is never node-qualified"
     TICKET_HELP = "a ticket key, e.g. EX-123"
-    ENTRY_HELP = "a raw inbox entry (`tcw work inbox list` prints them)"
+    ENTRY_HELP = ("a raw inbox entry (`tcw work inbox list` prints them), or a ticket "
+                  "key when work.tracker.inbox-query is declared; a raw entry of the "
+                  "same name wins")
+    FORCE_TICKET_HELP = "read the entry as a ticket key, even if a raw entry has its name"
 
     pi = g.add_parser("init", help="create raw inbox plus backlog/active/completed/discarded work storage")
     pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
@@ -2852,14 +2987,21 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pin = g.add_parser("inbox", help="inspect and accept raw work intake")
     ing = pin.add_subparsers(dest="inbox_cmd", required=True)
-    ing.add_parser("list", help="list raw inbox entries").set_defaults(func=_inbox_list)
+    ing.add_parser("list", help="list raw inbox entries, and the tickets "
+                                "work.tracker.inbox-query selects").set_defaults(func=_inbox_list)
     ing.add_parser("path", help="print the work inbox folder path").set_defaults(
         func=_inbox_path)
     pins = ing.add_parser("show", help="show one raw inbox entry")
     pins.add_argument("entry", help=ENTRY_HELP)
+    pins.add_argument("--ticket", dest="force_ticket", action="store_true",
+                      help=FORCE_TICKET_HELP)
     pins.set_defaults(func=_inbox_show)
     pina = ing.add_parser("accept", help="accept one raw entry into backlog")
     pina.add_argument("entry", help=ENTRY_HELP)
+    pina.add_argument("--ticket", dest="force_ticket", action="store_true",
+                      help=FORCE_TICKET_HELP)
+    pina.add_argument("--part", help="for a ticket, as `tcw work tracker import --part`: "
+                                     "name one of several items for it")
     pina.add_argument("--title", help="override the derived work-item title")
     pina.set_defaults(func=_inbox_accept)
 
