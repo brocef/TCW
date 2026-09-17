@@ -89,8 +89,20 @@ whose workflow genuinely refuses a second claim may additionally name a
 transition to assert through, keeping today's strong guarantee where it exists.
 The floor is uniform; the ceiling is opt-in.
 
-Carries the `claim: owed | done` removal from the sync record, since this is
-where the answer moves to.
+**The `claim: owed | done` removal moved to C2** after C1's own spec review. The
+reasoning that put it here — this is where the answer moves to — held, but the
+replacement rule did not: `deliver` writes `claim: owed` itself whenever a
+`start` fails to reach the tracker (`tcw/tracker/sync.py:338`), and
+`record_unsent` writes it with no client at all (`:623`). Neither path writes the
+`catch-up` note, so the record cannot be replaced by reading that note, and two
+tests pin the behaviour —
+`test_an_owed_claim_without_sync_status_is_followed_by_one_transition_only`
+(`tests/test_tracker_sync.py:1710`) and
+`test_open_work_with_no_mapping_keeps_its_owed_claim` (`:983`). Replacing the key
+means changing `deliver`'s own rules, which is C2's subject. Leaving it in place
+for one child is safe: `deliver` already reconciles a stale `owed` against the
+ticket's real assignee (`:456-461`, `:504-517`), so a ticket the new verb claimed
+is not claimed again.
 
 *No blockers.*
 
@@ -99,6 +111,15 @@ where the answer moves to.
 Removes the forward-only rule. A ticket ahead of its item is brought back; one
 behind is brought forward. Must not break the `--part` hold, where a ticket
 legitimately lags its item because another part is still open.
+
+**Also carries the `claim: owed | done` removal**, moved here from C1 for the
+reason recorded there. It belongs with the direction rules because what `owed`
+actually drives is which tickets `deliver` claims and walks forward, and that is
+what this child rewrites. `SYNC_FIELDS` (`tcw/store/base.py:423`), the record's
+validation (`:442`), the projection schema (`tcw/work/projection.py:125`) and
+`tcw work show`'s "; the claim is still owed" (`tcw/work/cli.py:216`) come with
+it, and a `tracker.yaml` already on disk that still carries the key must stay
+readable.
 
 *Blocked by C1* — it reads ownership rather than the claim record.
 
@@ -152,7 +173,8 @@ C1 ──┬── C2 ──┐
 10. `transitions.claim` is not accepted; `transitions.start` names the start
     move's transition; a config carrying only `transitions.claim` is reported by
     `tcw validate` with the replacement named.
-11. No `claim` key appears in `tracker.yaml`'s sync record.
+11. No `claim` key appears in `tracker.yaml`'s sync record, and one already on
+    disk is still read without breaking the binding. **C2's**, moved from C1.
 12. `tcw work submit` on an item whose ticket is held by another account is
     refused; `tcw work complete` and a discard on the same item are not.
 
