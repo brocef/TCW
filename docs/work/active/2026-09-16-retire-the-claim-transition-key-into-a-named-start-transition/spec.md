@@ -60,15 +60,26 @@ no transition, the transition formerly called "the claim's" is not the claim's:
 it is the one the `start` move applies, and every reason it is spelled and read
 differently from its four siblings has gone.
 
-One consequence is already visible as an inconsistency rather than as a future
-one. The catch-up walk asks for the start hop's named transition —
+One consequence is visible in the code as a contradiction, though not as a live
+defect. The catch-up walk asks for the start hop's named transition —
 `transition_name(config.move_transitions, hop, ...)` at `tcw/tracker/sync.py:402`
-and `:410`, where `hop` is `MOVE_ONTO["active"]`, which is the string `"start"`
-— and always gets `""` back, because `start` can never be in `move_transitions`.
-So a walk onto the active status derives its transition from the status while a
-start applies the configured name, on the same ticket, in the same run. A
-workflow with two routes into "In Progress" can disambiguate the one and not the
-other.
+and `:410`, where `hop` is `MOVE_ONTO["active"]`, which is the string `"start"` —
+and can only ever get `""` back, because `start` can never be in
+`move_transitions`. So the walk asks a question the configuration is built to be
+unable to answer.
+
+**Amended during implementation.** This section first said the walk therefore
+derives the hop from the status while a start applies the configured name, on
+the same ticket in the same run, and the Design, Sweep and Risks sections called
+that a sibling defect fixed here. It is not reachable. A probe added to
+`transition_name`, printing whenever it is asked for a `start` move with a name
+configured, fired **zero** times across `tests/test_tracker_sync.py`,
+`tests/test_tracker_replay.py`, `tests/test_tracker_hold.py` and
+`tests/test_tracker_cli.py` — and the probe was itself checked, firing on a
+direct call. Reading the code agrees: the `active` rung is in the walk's
+`remaining` only when `reached` is empty, which means the ticket is off the
+ladder, and every path into `walk` has the ticket on it. What the rename removes
+is dead inconsistency, not a defect. See `outcome.md`.
 
 ## Goals
 
@@ -115,16 +126,15 @@ with no special case, and `move_transitions["start"]` holds the name. The
 `discard`-only mapping branch is untouched: `start` takes a plain name, as
 `submit`, `rework` and `complete` do.
 
-This is what makes the catch-up walk's start hop consistent with a start:
+It also makes the catch-up walk's start hop answerable:
 `transition_name(config.move_transitions, "start", ...)` at
-`tcw/tracker/sync.py:402` and `:410` begins returning the configured name
-instead of `""`, so the hop is checked against `statuses.active` by
-`assess_move`'s named-transition branch (`tcw/tracker/sync.py:219-238`) rather
-than derived from the status. That is a behavior change, and it is the intended
-one: it is the same transition by the same name either way, and TCW already
-refuses a claim that lands anywhere but `statuses.active`
-(`tcw/tracker/sync.py:536-546`), so the check can only agree with a rule already
-enforced.
+`tcw/tracker/sync.py:402` and `:410` returns the configured name instead of
+`""`. **Amended during implementation: no current path reaches that call with a
+`start` move**, as the Problem section now records, so this changes no
+behaviour today. It is worth doing anyway, because leaving `start` out of
+`move_transitions` is what made the question unanswerable in the first place,
+and a later change that does reach the hop would silently get the wrong
+transition.
 
 ### 2. `transitions.start` stays required
 
@@ -245,10 +255,11 @@ key nested under `transitions:` were searched across every tracked file. The
 results are the list in Design section 5 plus the code in sections 1–4, the
 tests named under Risks, and the changelog entries deliberately left alone.
 
-The sweep found one sibling defect and it is fixed here rather than filed: the
-catch-up walk's start hop ignoring a configured transition name, described at
-the end of the Problem section. It is the same key in the same block and is
-repaired by the same change.
+The sweep found one sibling inconsistency, described at the end of the Problem
+section: the catch-up walk asking for a start hop's transition name that could
+never exist. It is the same key in the same block and the same change removes
+it. **Amended during implementation**: it was first written up as a defect, and
+it is not reachable, so nothing was being got wrong.
 
 ## Acceptance criteria
 
@@ -269,7 +280,10 @@ repaired by the same change.
 5. In a workspace where a parent node sets `transitions: {claim: ...}` and a
    child inherits it, `tcw validate` in the child prefixes the renamed-key
    problem with the parent's label, so the file to edit is named.
-6. `TrackerConfig` has no `claim_transition` attribute, and no module reads one.
+6. `transition_name(config.move_transitions, "start", None)` returns the
+   configured name — the public reader every other move goes through finds the
+   start move's transition too. And `TrackerConfig` has no `claim_transition`
+   attribute, and no module reads one.
    `work.tracker.exclusive-claim-transition` and
    `TrackerConfig.exclusive_claim_transition` are unchanged.
 7. This repository's own `tcw-config.yaml` reads `transitions: {start: Start}`
@@ -282,14 +296,12 @@ repaired by the same change.
 
 ## Risks
 
-1. **The catch-up walk's start hop changes behavior**, as Design section 1 sets
-   out. A project whose `transitions.start` names a transition that does not
-   lead to `statuses.active` gets a refusal from the walk where it previously
-   got a status-derived transition. That configuration is already refused on a
-   start (`tcw/tracker/sync.py:536-546`), so the walk is being brought into line
-   rather than newly broken — but it is the one place in this item where a
-   working project could behave differently, and it is the first thing to look
-   at if a walk test goes red.
+1. ~~**The catch-up walk's start hop changes behavior.**~~ **Withdrawn during
+   implementation.** The path is not reachable, so no project behaves
+   differently; the probe and the reading that establish it are in the Problem
+   section. The full suite confirmed it independently: 3739 tests passed on the
+   rename commit with no walk test red. This item therefore changes no runtime
+   behaviour at all beyond which spelling of one configuration key is accepted.
 2. **Nine test modules construct a `TrackerConfig` or assert on the key.**
    `tests/test_tracker_claim.py:31`, `tests/test_tracker_client.py:35` and
    `tests/test_tracker_ownership.py:33` pass `claim_transition=` to the

@@ -108,9 +108,11 @@ failure is read, and the mutation is reverted. Each mutation and what went red
 is recorded in `outcome.md`.
 
 1. `test_the_start_transition_is_a_move_transition_like_its_siblings` —
-   a block with `transitions: {start: Start Progress}` parses, and both
-   `config.start_transition` and `config.move_transitions["start"]` are
-   `"Start Progress"`.
+   a block with `transitions: {start: Start Progress}` parses, and
+   `config.start_transition`, `config.move_transitions["start"]` and
+   `transition_name(config.move_transitions, "start", None)` are all
+   `"Start Progress"`. The third is what the walk would call, and it is the
+   assertion that item 6 below was meant to cover from the outside.
    *Mutation:* remove `"start"` from `TRACKER_MOVE_TRANSITION_KEYS`. Expected
    red: `KeyError: 'start'` on `move_transitions`. This is the assertion that
    distinguishes "renamed the key" from "made it an ordinary move key", so it is
@@ -146,17 +148,18 @@ is recorded in `outcome.md`.
    mutation proves nothing, so the fixture must put the `transitions` block and
    the `claim` key in different files; that is checked before the mutation is
    run.
-6. `test_the_catch_up_walk_uses_the_named_start_transition`, in
-   `tests/test_tracker_sync.py` — a catch-up walk whose hop onto
-   `statuses.active` is refused when `transitions.start` names a transition the
-   ticket does not offer, with the refusal naming
-   `work.tracker.transitions.start`.
-   *Mutation:* revert `TRACKER_MOVE_TRANSITION_KEYS` to omit `"start"`.
-   Expected red: the walk derives the transition from the status and succeeds.
-   This is the only new assertion covering a behavior change rather than a
-   rename, and it is what makes the Problem section's last paragraph checkable.
+6. ~~`test_the_catch_up_walk_uses_the_named_start_transition`.~~ **Dropped
+   during implementation, and the spec amended with it.** The walk's start hop
+   is not reachable: a probe in `transition_name` that prints whenever it is
+   asked for a `start` move with a name configured fired zero times across
+   `tests/test_tracker_sync.py`, `tests/test_tracker_replay.py`,
+   `tests/test_tracker_hold.py` and `tests/test_tracker_cli.py`, and reading the
+   code agrees. A test asserting a refusal on that path could not be written
+   honestly, and writing one that passed for some other reason is exactly the
+   unearned green this project's rules exist to stop. What it was for — that
+   `transition_name` can answer for a start at all — moved into item 1.
 
-*Proves:* criteria 1–4 and 5; the sibling defect named in the spec's sweep.
+*Proves:* criteria 1–4, 5 and the first half of 6.
 
 ## Task 3 — This repository's own configuration, checked rather than assumed
 
