@@ -40,8 +40,20 @@ C2 and C3 are genuinely parallel and must **not** be chained to each other — t
 spec's ordering diagram is the authority, and a false blocker is a lie the tool
 enforces.
 
-*Proves:* `tcw work list` shows both gated; `tcw work start <C2-slug>` refuses
-while C1 is open.
+**Amended after C1's spec review: C3's blocker on C1 was itself false, and has
+been removed.** C3's premise is that the claim no longer transitions, and that
+becomes true at C4, not at C1 — C1 edits no delivery code. The `--blocked-by`
+recorded for C3 by this task is therefore dropped:
+
+```sh
+tcw work edit 2026-09-16-retire-the-claim-transition-key-into-a-named-start-transition \
+  --unblock 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket
+```
+
+C3 is workable now, alongside C1.
+
+*Proves:* `tcw work list` shows C2 gated and C3 workable; `tcw work start
+<C2-slug>` refuses while C1 is open, and `tcw work start <C3-slug>` does not.
 
 ## Task 3 — Open C4, blocked by C2 and C3
 
@@ -75,9 +87,12 @@ hand-edited into it.
 Three checkpoints earn a decision rather than a read:
 
 1. **After C1 completes** — confirm read-after-write behaves as the spec's
-   criteria 1–4 require *before* C2 and C3 build on it. If the race window proves
+   criteria 1–4 require *before* C2 builds on it. (C3 no longer waits on C1; the
+   checkpoint is about C2.) If the race window proves
    wider than the spec claims, C1 is reworked rather than C2 and C3 absorbing it.
-2. **After C2 and C3 both complete** — confirm criteria 8 and 10, and confirm the
+2. **After C2 and C3 both complete** — whichever order they land in, since they
+   are now independent of each other *and* of C1 in C3's case — confirm criteria
+   8 and 10, and confirm the
    `--part` hold (criterion 9) survived C2, which risk 3 names as the likeliest
    thing to break silently.
 3. **Before closeout** — the full criteria list, run against the merged tree.
@@ -112,7 +127,7 @@ missed between them.
 | `docs/guide/jira.md` | Tracker-Change | **All four.** C1 rewrites "Taking a ticket"; C2 reverses "It never follows Jira and never pulls a ticket back"; C3 rewrites the `transitions` table and the inheritance note; C4 rewrites what each lifecycle move does to a bound ticket |
 | `README.md` | Public-API | C1 (two new verbs on the public CLI surface) and C4 (`--sync-status` removed) |
 | `skills/work/SKILL.md` and its references | Skill-Driven-Component | **All four** — the CLI surface, the claim's meaning and the lifecycle moves' effects all change |
-| `skills/configure/references/<document>.md` | Configuration-Key-Change | **C3 only** — `transitions.claim` removed, `transitions.start` added |
+| `skills/configure/references/<document>.md` | Configuration-Key-Change | **C1 and C3.** C3 removes `transitions.claim` and adds `transitions.start`; C1 adds `work.tracker.exclusive-claim-transition`, the opt-in exclusivity assertion. **Amended** — this table said C3 only, which was written before C1's spec placed the optional assertion behind a key of its own |
 | `docs/release-notes/upcoming.md` | Public-API | All four, each appending its own user-facing entry |
 | `docs/changelogs/upcoming.md` | Any-Code-Change | All four |
 

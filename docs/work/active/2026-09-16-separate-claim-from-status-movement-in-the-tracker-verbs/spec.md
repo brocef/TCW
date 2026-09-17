@@ -43,8 +43,14 @@ Fixing them one at a time means six changes to the same coupling.
 1. Four verbs, each doing one thing: `link` associates, `claim` asserts ownership,
    `sync` reconciles status, and the lifecycle moves compose them.
 2. Ownership is one fact. `claim` asserts it locally and, where a binding exists,
-   in the tracker; the local owner and the Jira assignee are required to agree,
-   and a disagreement is drift `sync` reports.
+   in the tracker, **writing both together in one command** so they cannot come
+   apart. They are not *compared*: an item's `owner` is a local identity
+   (`--owner`, `TCW_WORK_OWNER`, then Git), and a ticket's assignee is the
+   account the tracker credentials authenticate as, and the two are unrelated
+   strings that would rarely match even when they name the same person. One fact
+   by construction, not by reconciliation. **Amended** after C1's spec review,
+   which found the original wording — "required to agree, and a disagreement is
+   drift `sync` reports" — asked for a comparison nothing can make.
 3. `claim` is idempotent for its holder and refuses a second holder.
 4. `release` exists, so stepping away or handing off has a name that is neither
    `unlink` nor resolving the item.
@@ -130,7 +136,16 @@ transition for the `start` move, uniform with the `submit`/`rework`/`complete`/
 `discard` keys added by pull request #45. Covers the config surface, `tcw
 validate`'s checks, and the migration for configs carrying the old key.
 
-*Blocked by C1.* Parallel with C2.
+*No blockers.* **Amended** after C1's spec review. C3 was blocked by C1 on the
+premise that "once the claim does not transition, the key is no longer special" —
+but C1 as scoped edits no delivery code, so `deliver` goes on applying
+`transitions.claim` through `intake.claim` (`tcw/tracker/sync.py:522`,
+`tcw/tracker/intake.py:329`) for every `start` until **C4**. The premise is
+satisfied by C4, not by C1. Re-pointing the blocker at C4 would make a cycle,
+since C4 is blocked by C3; and the work itself — renaming a configuration key,
+validating it, and migrating configs that carry the old one — needs nothing from
+any sibling. So the blocker goes rather than moves, and this plan's own rule
+applies: a false blocker is a lie the tool enforces.
 
 ### C4 — The lifecycle moves compose claim and sync
 
@@ -143,9 +158,12 @@ held; `complete` and `discard` require none. Retires `link --sync-status`
 *Blocked by C2 and C3.*
 
 ```
-C1 ──┬── C2 ──┐
-     └── C3 ──┴── C4
+C1 ───── C2 ──┐
+              ├── C4
+C3 ───────────┘
 ```
+
+C3 starts whenever; C2 waits for C1; C4 waits for both.
 
 ## Acceptance criteria
 
@@ -153,8 +171,14 @@ C1 ──┬── C2 ──┐
    times, and the ticket's status is unchanged after each.
 2. `tcw work tracker claim <slug>` against a ticket assigned to another account
    exits non-zero and names the holder.
-3. On a workflow that offers the claim transition from every status, two claims
-   from different accounts do not both report success.
+3. Where two accounts claim the same ticket and the second assigns before the
+   first reads back, the first reports failure and names the second. **Amended**
+   after C1's spec review. The original — "two claims from different accounts do
+   not both report success" — is not what read-after-write guarantees: two claims
+   whose reads interleave exactly (A assigns, A reads, B assigns, B reads) can
+   both succeed, and C1's design says so. The unconditional guarantee returns
+   only where a project sets `work.tracker.exclusive-claim-transition`, which is
+   opt-in, so it cannot be the criterion for the default.
 4. `tcw work tracker release <slug>` leaves the item's status, the ticket's
    status and the binding unchanged, and a subsequent `claim` from another
    account succeeds.
