@@ -947,6 +947,9 @@ def test_a_record_naming_auto_delete_is_unusable_not_a_crash(node, fake):
 
 
 def test_sync_reports_a_held_item_without_failing(node, fake):
+    """A ticket lagging its item because another part is still open is not drift.
+    `sync` names the other item and sends nothing — in either direction, now that it
+    would otherwise move a ticket to match the item it was asked about."""
     api = bound_item(node, "Api half", part="api")
     web = bound_item(node, "Web half", part="web")
     claimed_ticket(fake)
@@ -955,8 +958,23 @@ def test_sync_reports_a_held_item_without_failing(node, fake):
         st.start(slug, owner="a@example.test")
     st.submit(api)
     with_record(node, api, RECORD)
+    fake.requests.clear()
     code, out, err = cli(node, "work", "tracker", "sync", api)
     assert code == 0 and out.startswith(f"{api}: held — "), (out, err)
+    assert web in out, out                       # the item holding it is named
+    assert fake.writes() == []                   # nothing was sent, either way
+    assert fake.tickets[TICKET_ID].status == "In Progress"   # behind api, on purpose
+    # The same with no record at all, which is the reconciling path.
+    st2 = FsWorkStore.open(node)
+    content = yaml.safe_load(binding_text(node, api))
+    content.pop("sync", None)
+    (st2.path(api) / "tracker.yaml").write_text(yaml.safe_dump(content, sort_keys=False),
+                                                encoding="utf-8")
+    fake.requests.clear()
+    code, out, err = cli(node, "work", "tracker", "sync", api)
+    assert code == 0 and out.startswith(f"{api}: held — "), (out, err)
+    assert fake.writes() == []
+    assert fake.tickets[TICKET_ID].status == "In Progress"
 
 
 def test_a_move_whose_commit_was_refused_is_still_delivered(node, fake):
@@ -1976,11 +1994,15 @@ def written_record(root: Path, slug: str) -> dict:
     return yaml.safe_load(binding_text(root, slug))["sync"]
 
 
-def test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored(node, fake):
+@pytest.mark.parametrize("stale", ["owed", "done"])
+def test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored(node, fake,
+                                                                      stale):
+    """Both values an older `tcw` could have written. The key is not read, so neither
+    makes the binding malformed and neither reaches the projection or the output."""
     import json
     slug = bound_item(node)
     with_record(node, slug, {"state": "pending", "move": "submit",
-                             "since": "In Progress", "claim": "owed",
+                             "since": "In Progress", "claim": stale,
                              "reason": "the tracker could not be reached",
                              "at": "2026-09-14T10:00:00Z"})
     kept = record(node, slug)
@@ -1988,10 +2010,17 @@ def test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored(node, fak
     code, out, err = cli(node, "work", "show", slug)
     assert code == 0, err
     assert KEY in out and "pending after submit" in out
-    assert "owed" not in out, out
+    assert "owed" not in out and "claim" not in out, out
+    assert board_row(node, slug).endswith(f"| ticket: {KEY} (pending)")
     code, out, err = cli(node, "work", "show", slug, "--json")
     assert code == 0, err
     jsonschema.validate(json.loads(out), WORK_ITEM_SCHEMA)
+    # ...and the item keeps its ticket through a write that replaces the record.
+    claimed_ticket(fake, "In Review", A)
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    after = yaml.safe_load(binding_text(node, slug))
+    assert after["ticket"]["key"] == KEY and "sync" not in after, after
 
 
 def test_no_command_writes_a_claim_into_the_record(node, fake):

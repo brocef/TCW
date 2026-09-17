@@ -115,6 +115,8 @@ to the working tree, the named tests run, and the file restored.
 | 10 | `owed = True`, so every move claims | `…written_over_is_made_by_the_claim_verb`, on a claim made where none should be |
 | 11 | the claim verb never named in a failed claim | `…names_the_verb_that_can`, on the missing command |
 | 12 | named even for a ticket somebody else holds | the same test's first assertion |
+| 13 | `_siblings` never reporting an open sibling as holding | `test_sync_reports_a_held_item_without_failing`, which reported `current` — that is, `sync` moved a ticket another part was holding |
+| 14 | `_sync_record` keeping every key on disk instead of the five in `SYNC_FIELDS` | `…still_names_a_claim…`, on both `owed` and `done` |
 
 ## Acceptance criteria
 
@@ -126,10 +128,10 @@ to the working tree, the named tests run, and the file restored.
 | 4 | `test_sync_moves_a_ticket_from_a_status_the_project_maps_to_nothing` |
 | 5 | `test_sync_never_moves_a_ticket_somebody_else_holds` |
 | 6 | `test_sync_never_reopens_a_resolved_ticket` |
-| 7 | `test_sync_reports_a_held_item_without_failing` (existing, still passing unchanged) |
+| 7 | `test_sync_reports_a_held_item_without_failing` — extended during implementation: it reported the hold but never checked that the ticket stayed put, which is the thing this change could break. It now asserts the other item is named, `fake.writes() == []`, and the ticket is still at `In Progress`, both with a record and with none (the reconciling path) |
 | 8 | `test_sync_does_not_reconcile_a_ticket_bound_as_a_named_part` |
 | 9 | `test_no_command_writes_a_claim_into_the_record`, `test_a_late_link_records_its_catch_up_without_a_claim` |
-| 10 | `test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored`, and by hand |
+| 10 | `test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored`, parametrized over `owed` and `done`, and by hand |
 | 11 | that test's `show --json`, plus `test_the_json_document_validates_with_a_record_a_problem_and_none` |
 | 12, 13 | **rewritten during implementation** — see below. Now `test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb` and `test_a_claim_deliver_cannot_make_names_the_verb_that_can` |
 | 14 | `test_a_late_link_records_its_catch_up_without_a_claim`, plus the existing `sync_status` catch-up tests, unchanged |
