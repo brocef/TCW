@@ -3,8 +3,10 @@
 Two verbs, one optional configuration key, and no edit to any of the delivery
 code C2 and C4 are going to rewrite. That last part was the goal of the rescope
 this item went through at its spec stage, and it held: the diff touches
-`deliver`, `record_unsent`, `binding_refusal`, `authorize`, `intake.claim` and
-`FsWorkStore.start` not at all.
+`deliver`, `record_unsent`, `authorize`, `intake.claim` and `FsWorkStore.start`
+not at all. `binding_refusal` has one line changed, and only its wording — the
+"started by" hint became "held by" (Task 2, `tcw/tracker/sync.py:659`), which the
+spec's Design step 2 asked for. Its behaviour and control flow are untouched.
 
 ## What shipped, task by task
 
