@@ -138,6 +138,25 @@ def test_a_claimed_ticket_where_the_item_left_it_authorizes(strict, fake):
     assert authorize_now(strict, slug, "In Review") is None
 
 
+def test_authorize_reads_the_item_from_the_own_store_when_given_one(tmp_path, fake):
+    """`own=` is how `complete` judges a worktree item from its branch copy: the
+    binding, status and owner come from `own`, everything else from `store`."""
+    from tcw.tracker.sync import authorize
+    primary = strict_node(tmp_path, strict=True, name="alpha")
+    branch = strict_node(tmp_path, strict=True, name="beta")
+    slug = bound_item(primary)
+    assert bound_item(branch) == slug          # same title, same day, same slug
+    started(primary, slug)                     # the stale copy: still `active`
+    started(branch, slug, submitted=True)      # the branch copy: `review`
+    claimed_ticket(fake, "In Review", A)
+
+    st, client, config = client_for(primary)
+    own = FsWorkStore.open(branch)
+    assert authorize(st, slug, client, config, target="Done", own=own) is None
+    refusal = authorize(st, slug, client, config, target="Done")
+    assert refusal is not None and "In Review" in refusal
+
+
 @pytest.mark.parametrize("assignee, words", [(B, "assigned to Bob"),
                                              (None, "is unassigned")])
 def test_a_ticket_not_assigned_to_you_authorizes_nothing_even_at_the_target(
@@ -434,6 +453,25 @@ def test_complete_is_refused_before_the_worktree_merge(strict, fake):
                           "--confirm")
     assert code == 1 and REFUSED in err
     assert tree.exists() and not (strict / "code.txt").exists()
+
+
+def test_complete_judges_the_ticket_from_the_worktree_s_copy(strict, fake):
+    """A worktree item submitted on its branch: the ticket is where the branch's
+    `submit` put it, and the primary checkout's copy — still `active` — would
+    refuse it as out of place."""
+    slug = bound_item(strict)
+    commit_all(strict)
+    assert cli(strict, "work", "start", slug, "--worktree")[0] == 0
+    tree = strict / ".worktrees" / slug
+    assert cli(tree, "work", "submit", slug)[0] == 0
+    assert status(strict, slug) == "active"             # the stale copy
+    assert status(tree, slug) == "review"               # the branch copy
+    claimed_ticket(fake, "In Review", A)
+
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm")
+    assert code == 0 and REFUSED not in err
+    assert status(strict, slug) == "completed"
 
 
 def test_start_claims_nothing_for_a_start_the_store_would_refuse(strict, fake):

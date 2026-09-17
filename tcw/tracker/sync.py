@@ -634,11 +634,18 @@ def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
 # is nothing for a `sync` record to say.
 
 
-def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]:
+def binding_refusal(store, slug: str, config, *, own=None) -> tuple[Bound | None, str | None]:
     """The checks strict mode makes on `slug`'s binding before reading its ticket:
-    `(bound, None)`, or `(None, why not)`. Nothing here asks the tracker."""
+    `(bound, None)`, or `(None, why not)`. Nothing here asks the tracker.
+
+    `own` is where *this item's* own state is read from, when that is not `store`.
+    `complete` passes the branch copy of a `--worktree` item: the moves made during
+    the work are committed on the branch, so the primary checkout's binding and
+    owner are as stale as its status until the merge-back.
+    """
+    own = own or store
     try:
-        bound, _revision = binding_of(store, slug)
+        bound, _revision = binding_of(own, slug)
     except (OSError, UnicodeDecodeError):
         bound = None
     if not isinstance(bound, Bound):
@@ -654,7 +661,7 @@ def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]
         # pointing at it without naming the owner sends the caller into a loop: the
         # refusal says run sync, and sync says skipped. `owner` is a field on the item,
         # not an identity this layer resolves — that stays in the CLI.
-        item = store.get(slug)
+        item = own.get(slug)
         owner = item.owner if item is not None else ""
         whose = (f" It was started by {owner}, so run it as them: "
                  f"`TCW_WORK_OWNER={owner} tcw work tracker sync {slug}`." if owner else "")
@@ -665,14 +672,20 @@ def binding_refusal(store, slug: str, config) -> tuple[Bound | None, str | None]
     return bound, None
 
 
-def authorize(store, slug: str, client, config, *, target: str) -> str | None:
+def authorize(store, slug: str, client, config, *, target: str, own=None) -> str | None:
     """`None` when the ticket bound to `slug` authorizes a change leading to the
     tracker status `target` (empty when that status is unmapped); otherwise why not.
 
     Assignment is checked before any status comparison, including "already at the
     target": a ticket someone else holds authorizes nothing, wherever it is.
+
+    `own`, when given, is the store holding *this item's* own state — see
+    `binding_refusal`. `store` still answers for every *other* item: `_siblings`
+    asks which other items share the ticket, and the primary checkout is where
+    their current state is. The split is deliberate; they are different questions.
     """
-    bound, refusal = binding_refusal(store, slug, config)
+    own = own or store
+    bound, refusal = binding_refusal(store, slug, config, own=own)
     if bound is None:
         return refusal
     key = bound.ticket_key
@@ -686,7 +699,7 @@ def authorize(store, slug: str, client, config, *, target: str) -> str | None:
     # statuses, since that part may have held this one's moves.
     _held, shared = _siblings(store, slug, bound)
     allowed = tuple(dict.fromkeys(filter(None, (
-        *expected_statuses(config.statuses, store.get(slug).status, None, None,
+        *expected_statuses(config.statuses, own.get(slug).status, None, None,
                            shared=shared), target))))
     where = " or ".join(f"'{status}'" for status in allowed) or "its mapped status"
     unsynced = ("" if bound.status_synced else

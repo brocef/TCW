@@ -30,12 +30,18 @@ TCW: it moves directories *and* merges, and its failure mode is silent data loss
 | 12 | Starting an item already claimed by another owner is **refused**; `--take-over` replaces the claim and the new owner is recorded. |
 | 13 | **The race.** Two `tcw work start` processes launched simultaneously against the same backlog item: exactly one exits 0, the other exits non-zero, and the item ends with exactly one owner. Repeat several times, each round against a **freshly created backlog item** — re-racing the same item after round one tests "both refuse an already-active item", which is a different and much weaker claim. |
 | 14 | Running `tcw work complete` from **inside the item's own worktree** is refused. Left alone it exits 0 having done nothing: the merge would be the branch into itself and the teardown would look in the wrong place, reporting a completion that never happened. |
+| 16 | **The pre-merge checks read the worktree's copy.** Start `--worktree`, commit work on the branch, run `tcw work submit` **inside the worktree**, then `complete` from the primary checkout: it must NOT print "the verify stage was skipped". The primary checkout's copy still reads `active` at that moment, so this fails against a `complete` that judges the item from it. |
+| 17 | **And the mirror case still warns correctly.** Same setup, but `submit` run from the **primary** checkout while the code sits on the branch: `complete` must also NOT print the skipped-verify message. Judging from the worktree's copy alone reintroduces the same defect in the other direction. |
+| 18 | **Uncommitted item files refuse before the merge.** Start `--worktree`, commit on the branch, then leave an uncommitted file inside the item's folder in the worktree. `complete` exits non-zero, names the folder, merges nothing (the branch's commit is not reachable from the primary checkout's `HEAD`), and leaves the worktree in place. Repeat with `--force`: still refused, because the guard protects what the merge carries rather than whether shipping is allowed. |
+| 19 | The same refusal for a staged `tracker.yaml` advises committing it **before** it mentions `tcw work tracker sync`, and never advises discarding it — TCW leaves an undelivered ticket move staged there on purpose. |
+| 20 | A **discard** (`--resolution wontfix`) with the same uncommitted file completes normally: nothing is merged, so the guard does not apply. |
 | 15 | A node path **containing a space** works end-to-end: init, new, start `--worktree`, complete. Cheap, and it protects a class of failure this codebase has already been bitten by. |
 
 ## Refusals asserted
 
 - conflicting merge leaves everything intact (6)
 - `--already-integrated` does not weaken the DoD gate (8)
+- uncommitted item files in the worktree, with and without `--force` (18, 19)
 - claimed item refuses a second start (12)
 - exactly one winner in the race (13)
 

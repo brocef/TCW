@@ -19,6 +19,23 @@ internal module names.
   documentation step at the end of implementation, which never depended on a
   version being cut.
 
+## Finishing work you did in a separate worktree
+
+- **TCW no longer tells you that you skipped the verify stage when you did not.** If you
+  work an item with `tcw work start <slug> --worktree`, everything you do there — sending
+  the item for review, taking it back, resolving a blocker — is recorded on that item's own
+  branch. Completing it from your main checkout used to read the older copy sitting there
+  and could report the wrong thing: a false "the verify stage was skipped", a refusal over
+  a blocker you had already resolved, or a complaint that your ticket was in the wrong
+  place. Completing now reads the item as your worktree holds it. If that worktree is gone,
+  it says so and carries on with the copy it has.
+- **Completing now stops if the item's files in your worktree are not committed.** Only
+  status changes commit themselves, so an acceptance note or a blocker change you made
+  there can still be sitting uncommitted — and merging back carries only what was
+  committed, so those files would quietly be left behind. TCW asks you to commit them
+  first. If the file is `tracker.yaml`, commit it rather than deleting it: it can hold a
+  ticket update that never reached Jira.
+
 ## Jira tickets waiting for triage show up in your inbox
 
 - **Set `work.tracker.inbox-query` and `tcw work inbox list` shows your Jira

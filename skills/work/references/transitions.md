@@ -42,10 +42,15 @@ those are evaluated once, by the session holding the user relationship.
 - Unresolved blockers refuse the move. `[gated]`
 - An initiative child refuses until its epic is `active`. `[gated]`
 - `--force` overrides both. `[gated]`
-- `--worktree` isolates the item's code on its own branch and worktree;
-  transitions stay on the primary checkout, edits ride the branch, and `complete`
-  merges back. It commits regardless of `auto-commit-transitions`, because the
-  branch is cut from `HEAD` and would otherwise not contain the item's own move.
+- `--worktree` isolates the item's code on its own branch and worktree, and
+  `complete` merges back. It commits regardless of `auto-commit-transitions`,
+  because the branch is cut from `HEAD` and would otherwise not contain the item's
+  own move. **A transition run inside the worktree is committed on the branch**,
+  not in the primary checkout: with the store inside the checkout, the worktree
+  holds its own copy of it, so a `submit` or `rework` made there does not reach
+  the primary checkout until the merge-back. Run the moves wherever you are
+  working and let `complete` reconcile them; only `complete` itself has to run in
+  the primary checkout.
 - With a `work.path` in **another** repository, the setup splits by owner: the
   item's state commits in the store repository, `.gitignore` in the code one, and
   the worktree is created only after both succeed. The two commits cannot be
@@ -106,8 +111,24 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   unrelated worktree is fine. Everything else — `submit`, `rework`, the reads —
   works from either. If you took the item into a worktree, `cd` back out before
   `complete`.
+- For a `--worktree` item, every check made **before** the merge-back — the
+  skipped-verify message, blockers, and the strict tracker refusal — reads the
+  item as its worktree holds it, since that is where the work happened. If the
+  worktree cannot be read it says so and falls back to the primary copy.
+- **A `--worktree` item whose folder in the worktree has uncommitted changes is
+  refused before anything is merged**, because the merge-back carries only
+  commits: commit them there and complete again. `--force` does not skip this —
+  it overrides whether shipping is allowed, not what shipping carries. A staged
+  `tracker.yaml` is the one file to be careful with: it can hold a ticket move
+  that never reached the tracker, so commit it rather than discarding it, and run
+  `tcw work tracker sync <slug>` in the worktree if it still records an
+  undelivered move. It is checked before the Definition-of-Done checklist below
+  is printed, so a dirty worktree folder stops the command earlier than the
+  other gates do. `[gated]`
 - From `active` it prints that the verify stage was skipped. `[prompted]` —
-  advisory only: no second confirmation, and the exit status is unchanged.
+  advisory only: no second confirmation, and the exit status is unchanged. For a
+  `--worktree` item it needs **both** copies to read `active`: `submit` run in
+  either checkout means the stage was not skipped.
 - `--already-integrated` skips the merge-back when the branch was merged outside
   TCW (a merged PR). Every other gate still runs.
 - The Definition-of-Done checklist is printed before `--confirm`. `[prompted]` —
