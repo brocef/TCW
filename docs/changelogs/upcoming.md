@@ -242,6 +242,10 @@ category.
 - Messages distinguish an unassigned ticket from one somebody else holds.
 - `skills/documentation-sync/SKILL.md` cited steps 4, 6 and 9 of the stage
   documents; they are steps 1, 3 and 5.
+- `docs/guide/taxonomy-and-capabilities.md`'s examples refused when run in order:
+  `Permission -p admin` and `--vocab user` named terms nothing had added, and
+  `Subject=invoice,billing` a term that did not exist. The block now adds `Admin`
+  and `User` first and uses `Subject=invoice,admin/permission`.
 
 ## Removed
 
@@ -251,6 +255,8 @@ category.
 
 ## Internal
 
+- Two comments in `tcw/store/fs.py` cited README text that does not exist; they
+  now cite `docs/guide/work.md` and `docs/guide/multi-repo.md`.
 - The frontmatter parse in `tests/test_plugin_manifests.py` is extracted to
   `_frontmatter` and shared by all three frontmatter tests.
 - The Codex description guard (`_names_missing_from`) matches a skill name only
