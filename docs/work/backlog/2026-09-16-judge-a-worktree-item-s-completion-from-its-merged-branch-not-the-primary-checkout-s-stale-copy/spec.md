@@ -91,6 +91,15 @@ put them out of scope (see `initial-request.md`); this item does not sweep them.
   surface as a teardown warning after completion (`fs.py:830-846`); unchanged.
 - Other items' state. Blocker items and other items bound to the same ticket are
   still read from the primary checkout, which is where their current state is.
+- **A blocker added to the item on the primary checkout after `start`.** Today
+  that refuses before the merge; once the blocker list is read from the branch
+  copy, it is not seen there, the merge keeps the primary's edit, and the store's
+  own check refuses after the merge instead (`base.py:3559-3563`). Accepted
+  deliberately: the two directions cannot both be caught before the merge without
+  reconstructing the merged item, and the direction the spec requires is the one
+  where the work removes its own blocker on the branch (criterion 4). The
+  completion is recoverable — resolve the blocker and re-run, and the merge-back
+  is a no-op the second time (`fs.py:807-809`).
 - Refusals that already happen after the merge and are not about stale item
   state: the store's epic-children check (`base.py:3533-3553`), the `pre` hook,
   and the capability gate.
@@ -152,9 +161,15 @@ refusal from the guard therefore prints no warning.
 
 **The three judgments** use the branch copy:
 
-- the skipped-verify warning tests the branch copy's status — the latest status
-  on the branch wins, so an item submitted and then sent back by `rework` still
-  warns;
+- the skipped-verify warning is printed only when **both** copies say `active`.
+  Judging it from the branch copy alone would mirror the bug: `submit` can be run
+  from the primary checkout while the code work sits on the branch
+  (`tests/test_recursion.py:700-729`, `tests/test_tracker_sync.py:953`), which
+  leaves the primary at `review` and the branch copy at `active`, and the warning
+  would then be false in the other direction. Either copy saying `review` means
+  the item was submitted. The latest status on the branch still wins for an item
+  submitted and then sent back by `rework` on the branch: both copies read
+  `active`, so it warns;
 - the blocker check passes the branch copy to the **primary** store's
   `unresolved_blockers`, so `blocked_by` comes from the branch while each
   blocker's status comes from the primary checkout;
@@ -244,7 +259,11 @@ still `active`.
 15. **A discard is unchanged.** Discarding (`--resolution wontfix --confirm`) a
     worktree item with an untracked file in its worktree folder exits 0 and
     leaves the branch unmerged.
-16. The full suite passes with bare `pytest` from the repository root.
+16. **`submit` run from the primary checkout.** Start `--worktree`, commit work on
+    the branch, run `tcw work submit` from the **primary** checkout (the flow
+    `tests/test_recursion.py:700-729` drives), then complete: exit 0 and stderr
+    does **not** contain `directly from active`.
+17. The full suite passes with bare `pytest` from the repository root.
 
 ## Risks
 
@@ -277,6 +296,13 @@ still `active`.
   after the merge (`base.py:3559-3563`) — today's behavior, unchanged. Looking
   unknown blockers up in the branch store was considered and left out to keep
   this item to the stale copy of the item itself.
+- A second review, of `plan.md`, found two things that belong here and are folded
+  in above: the warning must consider both copies (a `submit` run from the primary
+  checkout would otherwise produce the mirrored false warning), and the
+  primary-side blocker edit is now a recorded non-goal. That review also answered
+  this spec's open assumption: `FsWorkStore.open` raises `StoreLocationUnusable`
+  (a `ValueError`) for both a missing directory and a directory that is not a
+  store, and opening the second store measured under a millisecond.
 - Spec reviewed once by the adversarial spec reviewer (not a multi review). Its
   blocking findings — the nested-node directory, the staged tracker record, the
   external-store exemption — and its significant ones are folded in above; the
