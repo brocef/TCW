@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-16-tracker-follow-ups-from-the-pr-45-review.md`
+
+## Inbox body
+
 # Tracker follow-ups from the pull request #45 review
 
 ## Desired outcome
@@ -37,3 +43,20 @@ branch.
    every status, is caught up even though a second person could still claim it.
    This is a design question, not a defect: decide whether strict mode should ask a
    different exclusivity question for such a ticket, or accept the gap and document it.
+
+## Triage (2026-09-16)
+
+Accepted whole. All three parts sit in `deliver` in `tcw/tracker/sync.py` and come
+from one review, so they are kept as one item rather than split by kind.
+
+- **Part 1 confirmed at `632f023`.** `tcw/tracker/sync.py:297` guards the
+  "already past the claim's own status" check with `if not starting:`, so `start`
+  and `start --take-over` skip it. Not tracked anywhere else on the board.
+- **Part 2** is a gap in the catch-up walk that pull request #45 itself added, so it
+  is the most direct follow-up of the four items this review produced.
+- **Part 3 overlaps `2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items`**,
+  which owns what strict mode refuses (`authorize` and `binding_refusal`). This part
+  is about `claim_refusal` inside `deliver`, which that item does not name. Left here
+  because it arrived with parts 1 and 2 and reads as one question about delivery;
+  a cross-reference is recorded on that item. If either reaches `spec` first, settle
+  which one owns the exclusivity question before writing it.

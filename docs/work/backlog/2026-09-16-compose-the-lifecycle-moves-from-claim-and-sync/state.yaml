@@ -1,0 +1,13 @@
+slug: 2026-09-16-compose-the-lifecycle-moves-from-claim-and-sync
+title: Compose the lifecycle moves from claim and sync
+created: '2026-09-16'
+resolution: null
+priority: 3
+effort: high
+tags:
+- work
+- cli
+initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
+blocked_by:
+- slug: 2026-09-16-let-sync-move-a-ticket-either-way-to-match-its-work-item
+- slug: 2026-09-16-retire-the-claim-transition-key-into-a-named-start-transition

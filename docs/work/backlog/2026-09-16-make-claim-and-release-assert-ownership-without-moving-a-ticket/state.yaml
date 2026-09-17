@@ -1,0 +1,10 @@
+slug: 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket
+title: Make claim and release assert ownership without moving a ticket
+created: '2026-09-16'
+resolution: null
+priority: 4
+effort: high
+tags:
+- work
+- cli
+initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs

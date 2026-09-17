@@ -1,0 +1,10 @@
+slug: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
+title: Separate claim from status movement in the tracker verbs
+created: '2026-09-16'
+resolution: null
+priority: 4
+effort: high
+tags:
+- work
+- cli
+type: epic

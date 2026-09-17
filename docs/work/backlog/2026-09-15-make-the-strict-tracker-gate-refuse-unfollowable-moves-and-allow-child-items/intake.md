@@ -89,3 +89,12 @@ and `new --initiative` through and require `tracker link` before the child start
 An epic started with `--worktree` before `strict: true` was set can still merge its
 branch when it completes, because epics are exempt from the gates. Strict mode only
 refuses starting an epic with a worktree.
+
+## Cross-reference added at triage (2026-09-16)
+
+`2026-09-16-close-three-gaps-the-pr-45-review-left-in-tracker-delivery` carries a
+third strict-mode question this item does not cover: a ticket already assigned to the
+caller and already past the claim's own status is never asked whether its claim is
+exclusive, because `claim_refusal` runs only for a ticket sitting on that status.
+That is `claim_refusal` in `deliver`, where this item's scope is `authorize` and
+`binding_refusal`. Settle which item owns it before either is specified.

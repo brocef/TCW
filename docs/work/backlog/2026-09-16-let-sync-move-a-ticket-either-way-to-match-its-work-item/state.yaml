@@ -1,0 +1,12 @@
+slug: 2026-09-16-let-sync-move-a-ticket-either-way-to-match-its-work-item
+title: Let sync move a ticket either way to match its work item
+created: '2026-09-16'
+resolution: null
+priority: 3
+effort: medium
+tags:
+- work
+- cli
+initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
+blocked_by:
+- slug: 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket
