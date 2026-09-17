@@ -169,6 +169,12 @@ tells you what is owed, and tells you how to run it as them or take the item ove
   `tracker.yaml`, which TCW commands write. Its server now refuses a save to
   either one too, and says which command writes it.
 
+## Codex setup instructions are complete
+
+- Under Codex, the `setup` skill now gives the exact command that installs `tcw`,
+  and the skills that fall back to reading a file from the plugin say where the
+  plugin's folder is.
+
 ## Getting a stage's instructions
 
 - **The `work-stage` skill now checks how it was called.** If it is invoked
