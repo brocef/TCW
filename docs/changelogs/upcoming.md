@@ -257,6 +257,11 @@ category.
   and `User` first and uses `Subject=invoice,user`. In `docs/guide/work.md`,
   `--tags bug,cli` named a tag the block never registered; `tags add` now
   registers `cli` too.
+- `PUT /api/work/<slug>/sidecars/<name>` wrote a `generated` sidecar
+  (`rollup.md`, `tracker.yaml`) although the client hides its edit control. It now
+  returns 409 naming the owning command, in every mode. `WORK_SIDECARS`'
+  `generated` value is that command instead of `"yes"`; the strict-mode-only
+  `tracker.yaml` branch of `_strict_refuses` and its call in the route are removed.
 
 ## Removed
 

@@ -163,6 +163,12 @@ tells you what is owed, and tells you how to run it as them or take the item ove
 - Under strict tracker mode, changing an item's type is refused, because epics
   are not tied to tickets. Create epics with `tcw work new --epic` there.
 
+## The web app no longer accepts edits to generated files
+
+- The local web app already hid the edit button for `rollup.md` and
+  `tracker.yaml`, which TCW commands write. Its server now refuses a save to
+  either one too, and says which command writes it.
+
 ## Getting a stage's instructions
 
 - **The `work-stage` skill now checks how it was called.** If it is invoked

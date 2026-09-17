@@ -15,9 +15,11 @@ fields are one write, so a rejected create is not half-made. Post-save warnings
 remain the rule for everything else.
 
 A sidecar a command writes rather than a person — `rollup.md`, produced by
-`tcw work reconcile` — is listed and labelled generated, and offers no edit
+`tcw work reconcile`, and `tracker.yaml`, written by `tcw work tracker import`,
+`link` and `unlink` — is listed and labelled generated, and offers no edit
 control. The app declines to take an edit it knows the next run of that command
-would discard.
+would discard: a save sent to either anyway is refused, naming the command that
+writes it, and nothing is written.
 
 The Work detail presents Initial Request, Spec, and Implementation Plan as
 first-class tabs. Present documents render and can be edited without leaving
