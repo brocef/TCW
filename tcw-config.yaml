@@ -1,5 +1,21 @@
 id: tcw
 work:
+  tracker:
+    provider: jira-cloud
+    base-url: https://proposit.atlassian.net
+    candidate-query: project = TCW AND status = "To Do" AND (assignee = currentUser()
+      OR assignee IS EMPTY)
+    inbox-query: project = TCW AND status = Triage
+    credentials:
+      email-env: TCW_JIRA_EMAIL
+      token-env: TCW_JIRA_API_KEY
+    transitions:
+      claim: Start
+    statuses:
+      active: In Progress
+      review: In Review
+      completed: Done
+      discarded: Won't Do
   tags:
   - bug
   - capabilities
