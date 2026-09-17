@@ -353,12 +353,18 @@ _STRICT_BROKEN = ("The tracker configuration has problems, and strict mode refus
                   "until it is fixed. Run `tcw validate`.")
 
 
-def _strict_refusal(st, bare: str, change: str) -> str | None:
+def _strict_refusal(st, bare: str, change: str, own=None) -> str | None:
     """Why strict tracker mode refuses `change` (a lifecycle move) of `bare`, or
-    `None`. Loads no tracker code unless the node is strict; epics are not gated."""
+    `None`. Loads no tracker code unless the node is strict; epics are not gated.
+
+    `own` is the store holding this item's own state when that is not `st` — the
+    branch copy of a `--worktree` item at `complete`. The node's configuration
+    (`tracker_strict`, `tracker_config`) is read from `st` either way: it is the
+    checkout the completion runs in that governs it.
+    """
     if not st.tracker_strict():
         return None
-    item = st.get(bare)
+    item = (own or st).get(bare)
     if item is None or item.type == "epic":
         return None
     config = st.tracker_config()
@@ -368,7 +374,7 @@ def _strict_refusal(st, bare: str, change: str) -> str | None:
     from tcw.tracker.jira import JiraClient
     from tcw.tracker.sync import MOVE_STATUS, authorize
     target = target_status(config.statuses, MOVE_STATUS[change], None)
-    return authorize(st, bare, JiraClient(config), config, target=target)
+    return authorize(st, bare, JiraClient(config), config, target=target, own=own)
 
 
 def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
