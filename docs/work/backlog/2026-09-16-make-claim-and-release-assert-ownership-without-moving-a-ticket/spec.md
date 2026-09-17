@@ -164,8 +164,11 @@ acting as, for both halves at once, rather than overriding one of them.
    backlog item would refuse with "already claimed by alice since" and no date.
    `_started_by_someone_else` already does this job in this command group —
    `link --sync-status` (`cli.py:2485`) and `sync` (`cli.py:2636`) both call it —
-   returning a refusal string, naming the holder, and taking the remedy command
-   as a parameter.
+   returning a refusal string and naming the holder. It takes the *run-it-as-them*
+   command as a parameter but hard-codes the take-over remedy to
+   `tcw work start <slug> --take-over` (`cli.py:2412`). That second remedy has to
+   become a parameter too, because `release`'s escape is `--force` and telling a
+   user to run `start --take-over` in order to release something would be wrong.
 
    **It needs one wording change, and that change is this child's to make.** It
    says "started by", which after this child is wrong: an item can carry an owner
