@@ -49,6 +49,9 @@ cat <plugin>/skills/work/references/lifecycle/stage-$stage.md
 tcw work stage prompt $stage $item
 ```
 
+`<plugin>` is the plugin's root folder, two levels above the folder this `SKILL.md`
+is in.
+
 Not run automatically — run it yourself (see Stage pre-checks):
 
 ```sh

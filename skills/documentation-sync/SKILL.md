@@ -66,9 +66,10 @@ tcw work procedure prompt documentation-sync
 ```
 
 If the `tcw` CLI is not installed at all, read TCW's own text from
-`<plugin>/tcw/work/procedures/documentation-sync.md` instead. If the command is
-installed but fails, report the failure rather than reading that file: it would
-silently skip this project's own procedure.
+`<plugin>/tcw/work/procedures/documentation-sync.md` instead, where `<plugin>` is
+the plugin's root folder, two levels above the folder this `SKILL.md` is in. If the
+command is installed but fails, report the failure rather than reading that file:
+it would silently skip this project's own procedure.
 
 If your harness did not run them, run them yourself and follow the output in
 place of the line above. `references/` in that output means this skill's
