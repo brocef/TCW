@@ -747,6 +747,9 @@
 2026-09-15-let-a-project-override-the-tools-and-procedures-tcw-s-own-skills-mandate:
   resolution: superseded
   resolved: '2026-09-16'
+2026-09-15-let-tcw-work-edit-change-an-item-s-type-to-or-from-epic:
+  resolution: done
+  resolved: '2026-09-17'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
   location: 8bac10d8aed8b383368e47f37caf7a50efd5d1ab
   resolution: done
