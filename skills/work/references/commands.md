@@ -226,7 +226,7 @@ that got as far as claiming leaves the ticket claimed.
 | `complete` with a discard resolution | allowed |
 | `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
 | `tracker import`, strict `start` claim | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed |
-| `tcw serve` create (not an epic), start, complete `done`, drop of an ever-bound item, PUT `tracker.yaml` | 409, naming the `tcw work` command |
+| `tcw serve` create (not an epic), start, complete `done`, drop of an ever-bound item | 409, naming the `tcw work` command (PUT `tracker.yaml` is refused in every mode, below) |
 
 - **Tracker unreachable, or an undelivered `sync` record:** refused. Run
   `tcw work tracker sync <slug>` first.
@@ -262,7 +262,7 @@ leads to and assigned to this account. A transition's error text is shown on a
 
 **The binding is `tracker.yaml`**, a sidecar marked `generated`: written by these
 commands, never by hand; the web app offers no edit for it, and its server refuses a
-write only under strict mode. It records provider,
+write to it in every mode, naming the commands that write it. It records provider,
 project id, part, the ticket's stable id, key and URL, the date, and an `unlinked`
 history. It names no account: a binding says two things are the same work, never
 who took the ticket. No credential and no e-mail address.

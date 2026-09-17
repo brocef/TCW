@@ -24,8 +24,9 @@ claim retried later — by the next lifecycle command or `tcw work tracker sync`
 checked the same way, and stays owed while the check fails.
 
 The web app cannot check a ticket, so under strict mode its create, start, complete
-as `done` and drop actions, and edits to `tracker.yaml`, answer with a refusal naming
-the `tcw work` command to use. Editing an item's fields and documents stays allowed
+as `done` and drop actions answer with a refusal naming the `tcw work` command to use;
+an edit to `tracker.yaml` is refused in every mode (see
+[Edit TCW content in a local web app](tcw://C/web/editing)). Editing an item's fields and documents stays allowed
 everywhere.
 
 Strict mode needs the tracker. When Jira cannot be reached, gated changes are refused
