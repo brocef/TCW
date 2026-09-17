@@ -2575,6 +2575,169 @@ def _tracker_link(args: argparse.Namespace) -> int:
     return 0
 
 
+def _own_locally(st, slug: str, owner: str, label: str) -> int:
+    """Write `slug`'s owner and commit it. 0, or 1 after saying what went wrong.
+
+    `set_field` stages the write without committing it (`FsWorkStore._write_staged`),
+    which would leave a claim sitting uncommitted in the working tree and no history
+    of who took what. `start --take-over` commits its own owner write for the same
+    reason; this is that, for a claim that is not a transition.
+    """
+    try:
+        st.set_field(slug, "owner", owner)
+    except _LOCAL_WRITE_ERRORS as e:
+        print(f"tcw work tracker {label}: the owner could not be written: {e}. "
+              f"Run this command again.", file=sys.stderr)
+        return 1
+    if st.auto_commit_transitions():
+        rel = str(st.path(slug).relative_to(st.store_git_root))
+        if err := git_commit_result(st.store_git_root,
+                                    f"tcw work: {label} {slug}", rel):
+            print(f"tcw work tracker {label}: {slug} was recorded, but committing it "
+                  f"failed:\n{err}", file=sys.stderr)
+            return 1
+    return 0
+
+
+def _tracker_ownership_target(args, label: str):
+    """`(store, item, owner, client, bound)` for a claim or release, or None.
+
+    Shared because the two verbs ask the same five questions in the same order, and
+    an order that differed between them would be a bug nobody could see in one file.
+    """
+    from tcw.tracker.intake import BINDING_SIDECAR, Bound, Malformed, binding_of
+
+    client = _tracker_client(f"tracker {label}")
+    if client is None:
+        return None
+    st = _store()
+    if st is None:
+        return None
+    item = _item_or_reason(st, args.slug, label)
+    if item is None:
+        return None
+    owner = _local_owner(st)
+    if not owner:
+        print(f"tcw work tracker {label}: claimant identity required; set "
+              f"TCW_WORK_OWNER, or configure a Git user.", file=sys.stderr)
+        return None
+    bound, _revision = binding_of(st, args.slug)
+    if isinstance(bound, Malformed):
+        print(f"tcw work tracker {label}: {args.slug} has a {BINDING_SIDECAR} that "
+              f"cannot be read ({bound.reason}).", file=sys.stderr)
+        return None
+    return st, item, owner, client, (bound if isinstance(bound, Bound) else None)
+
+
+def _tracker_claim(args: argparse.Namespace) -> int:
+    """Say that this work is yours, and change nothing else.
+
+    Two halves, written together so ownership stays one fact: the item's `owner`,
+    and — where the item is bound — the ticket's assignee. No transition is applied
+    and no status moves, local or remote, unless the project opted into an
+    exclusivity assertion.
+
+    **The local half is checked first**, because it is the only half an unbound item
+    has, and because the ticket check cannot see a second holder on a ticket nobody
+    is assigned to. **The local half is written last**, so a ticket that could not be
+    taken never leaves the item claiming something the tracker disagrees with.
+    """
+    from tcw.tracker.intake import read_ticket, same_site
+    from tcw.tracker.jira import TrackerError
+    from tcw.tracker.ownership import assert_ownership
+
+    resolved = _tracker_ownership_target(args, "claim")
+    if resolved is None:
+        return 1
+    st, item, owner, client, bound = resolved
+
+    if not args.take_over and (held := _held_by_someone_else(
+            item, owner, f"tcw work tracker claim {args.slug}",
+            f"tcw work tracker claim {args.slug} --take-over")):
+        print(f"tcw work tracker claim: {args.slug} is {held}", file=sys.stderr)
+        return 1
+
+    if bound is None:
+        if (code := _own_locally(st, args.slug, owner, "claim")) != 0:
+            return code
+        print(f"→ {args.slug} is held by {owner}. It is not bound to a ticket, so "
+              f"nothing was assigned in the tracker.", file=sys.stderr)
+        return 0
+
+    if not same_site(bound.ticket_url, client.config.base_url):
+        print(f"tcw work tracker claim: {bound.ticket_key}'s binding points at "
+              f"{bound.ticket_url or 'no recorded URL'}, which is not on "
+              f"{client.config.base_url}; nothing was sent.", file=sys.stderr)
+        return 1
+    try:
+        outcome = assert_ownership(
+            client, read_ticket(client, bound.ticket_id),
+            assertion=client.config.exclusive_claim_transition,
+            take_over=args.take_over)
+    except TrackerError as e:
+        print(f"tcw work tracker claim: {e}", file=sys.stderr)
+        return 1
+    if not outcome.settled:
+        detail = f" ({outcome.detail})" if outcome.detail else ""
+        print(f"tcw work tracker claim: {outcome.message}{detail}", file=sys.stderr)
+        return 1
+    if (code := _own_locally(st, args.slug, owner, "claim")) != 0:
+        return code
+    moved = (f" It moved to '{outcome.status}', which is what naming "
+             f"work.tracker.exclusive-claim-transition costs."
+             if outcome.transitioned else "")
+    print(f"→ {args.slug} and {bound.ticket_key} are held by {owner}.{moved}",
+          file=sys.stderr)
+    return 0
+
+
+def _tracker_release(args: argparse.Namespace) -> int:
+    """Let go of this work, and change nothing else.
+
+    The item keeps its status, the ticket keeps its status, and the binding is left
+    alone. An `active` item released this way stays active with no owner, which is
+    what handing work over looks like before somebody else claims it.
+    """
+    from tcw.tracker.intake import read_ticket, same_site
+    from tcw.tracker.jira import TrackerError
+    from tcw.tracker.ownership import drop_ownership
+
+    resolved = _tracker_ownership_target(args, "release")
+    if resolved is None:
+        return 1
+    st, item, owner, client, bound = resolved
+
+    if not args.force and (held := _held_by_someone_else(
+            item, owner, f"tcw work tracker release {args.slug}",
+            f"tcw work tracker release {args.slug} --force")):
+        print(f"tcw work tracker release: {args.slug} is {held}", file=sys.stderr)
+        return 1
+
+    if bound is not None:
+        if not same_site(bound.ticket_url, client.config.base_url):
+            print(f"tcw work tracker release: {bound.ticket_key}'s binding points at "
+                  f"{bound.ticket_url or 'no recorded URL'}, which is not on "
+                  f"{client.config.base_url}; nothing was sent.", file=sys.stderr)
+            return 1
+        try:
+            outcome = drop_ownership(client, read_ticket(client, bound.ticket_id),
+                                     force=args.force)
+        except TrackerError as e:
+            print(f"tcw work tracker release: {e}", file=sys.stderr)
+            return 1
+        if not outcome.settled:
+            detail = f" ({outcome.detail})" if outcome.detail else ""
+            print(f"tcw work tracker release: {outcome.message}{detail}",
+                  file=sys.stderr)
+            return 1
+    # Last, and only once the ticket half is done: the two must not disagree.
+    if (code := _own_locally(st, args.slug, "", "release")) != 0:
+        return code
+    what = f" and {bound.ticket_key}" if bound is not None else ""
+    print(f"→ {args.slug}{what} held by nobody.", file=sys.stderr)
+    return 0
+
+
 def _tracker_unlink(args: argparse.Namespace) -> int:
     """Remove an item's binding, keeping the record of it and the reason.
 
@@ -3154,6 +3317,60 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                       help="also claim the ticket and move it to where the item is "
                            "(forward only)")
     ptrl.set_defaults(func=_tracker_link)
+
+    ptrc = ptrs.add_parser(
+        "claim", help="say that an item, and the ticket it is bound to, are yours",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Take ownership of a work item, and of its ticket where it has one.\n\n"
+                    "In the tracker: assigns the ticket to you, then reads it back to\n"
+                    "confirm it is still yours. No transition is applied and the ticket's\n"
+                    "status does not change -- unless the project names one under\n"
+                    "work.tracker.exclusive-claim-transition, which buys a stronger\n"
+                    "guarantee and moves the ticket.\n\n"
+                    "In this node: sets the item's owner. The item's status does not\n"
+                    "change, so a backlog item stays in the backlog.",
+        epilog="Running it again while you hold it does nothing and succeeds, so it is\n"
+               "safe to repeat after a failure that left one half done.\n\n"
+               "Two people claiming at once: whoever assigns last wins, and the other\n"
+               "is told who has it. Claims whose reads overlap exactly can both\n"
+               "succeed; work.tracker.exclusive-claim-transition is the answer where\n"
+               "that is not acceptable.\n\n"
+               "An item with no binding is claimed locally, and says so.\n\n"
+               "Refuses when: no tracker is configured; the slug is not an item here;\n"
+               "no identity is set; somebody else holds the item or its ticket (use\n"
+               "--take-over); the ticket is resolved; or the tracker does not show the\n"
+               "claim afterwards.\n\n"
+               "  tcw work tracker claim 2026-09-14-rename-the-widget\n"
+               "  tcw work tracker claim 2026-09-14-rename-the-widget --take-over\n",
+    )
+    ptrc.add_argument("slug", help=BARE_SLUG_HELP)
+    ptrc.add_argument("--take-over", action="store_true",
+                      help="claim it even though somebody else holds it")
+    ptrc.set_defaults(func=_tracker_claim)
+
+    ptrr = ptrs.add_parser(
+        "release", help="let go of an item and the ticket it is bound to",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Give up ownership of a work item, and of its ticket where it has one.\n\n"
+                    "In the tracker: leaves the ticket assigned to nobody. No transition\n"
+                    "is applied and its status does not change.\n\n"
+                    "In this node: clears the item's owner. Its status and its binding\n"
+                    "are left alone, so an active item stays active with no owner --\n"
+                    "which is what handing work over looks like until somebody claims it.",
+        epilog="Releasing something nobody holds does nothing and succeeds.\n\n"
+               "Some Jira projects do not allow unassigned issues. There the release is\n"
+               "refused and says so, and the item keeps its owner rather than the two\n"
+               "disagreeing.\n\n"
+               "Refuses when: no tracker is configured; the slug is not an item here;\n"
+               "no identity is set; or somebody else holds it (use --force, which is\n"
+               "for recovering work from an account that has gone away).\n\n"
+               "  tcw work tracker release 2026-09-14-rename-the-widget\n"
+               "  tcw work tracker release 2026-09-14-rename-the-widget --force\n",
+    )
+    ptrr.add_argument("slug", help=BARE_SLUG_HELP)
+    ptrr.add_argument("--force", action="store_true",
+                      help="release it even though somebody else holds it")
+    ptrr.set_defaults(func=_tracker_release)
 
     ptru = ptrs.add_parser(
         "unlink", help="remove an item's binding, keeping a record "
