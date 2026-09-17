@@ -140,13 +140,22 @@ def assert_ownership(client, ticket, *, assertion: str = "",
         return OwnershipOutcome(settled=True, message=f"{key} is held by you.",
                                 holder_id=now_id, holder_name=now_name,
                                 status=status, transitioned=transitioned)
+    if not now_id:
+        # Assigned, then unassigned before the read-back — somebody released it out
+        # from under this claim. Nobody holds it, so saying somebody does would be a
+        # lie, and there is nobody whose claim re-running could stamp on.
+        return OwnershipOutcome(
+            settled=False, status=status, transitioned=transitioned,
+            message=(f"{key} was assigned to you and then to nobody, so you do not "
+                     f"hold it: somebody unassigned it while this claim was in "
+                     f"flight. Run this again to take it."))
     # Lost the race. The assignment is **not** undone: it would hand the ticket to
     # nobody, and on the likely reading of this state — somebody else assigned it
     # between our write and our read — undoing it would stamp on their claim.
     return OwnershipOutcome(
         settled=False, holder_id=now_id, holder_name=now_name, status=status,
         transitioned=transitioned,
-        message=(f"{key} is held by {now_name or 'somebody else'}, not by you: they "
+        message=(f"{key} is held by {now_name or 'another account'}, not by you: they "
                  f"took it while this claim was in flight. Nothing here is yours; "
                  f"run this again if they let it go."))
 

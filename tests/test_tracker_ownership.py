@@ -154,6 +154,22 @@ def test_the_loser_leaves_the_ticket_with_the_winner_and_can_retry(fake, alice, 
     assert fake.tickets[TICKET].assignee == A
 
 
+def test_a_ticket_unassigned_mid_claim_is_not_reported_as_somebody_elses(fake, alice,
+                                                                         bob):
+    """The read-back can find nobody rather than a rival. Saying "they took it" there
+    would name a holder that does not exist, and there is no claim to stamp on."""
+    mine = read_ticket(alice, TICKET)
+    fake.before("GET", f"/rest/api/3/issue/{TICKET}",
+                lambda: drop_ownership(bob, read_ticket(bob, TICKET), force=True),
+                account=A)
+    outcome = assert_ownership(alice, mine)
+    assert not outcome.settled
+    assert outcome.holder_id == "" and outcome.holder_name == ""
+    assert "somebody unassigned it" in outcome.message
+    assert "held by" not in outcome.message
+    assert fake.tickets[TICKET].assignee is None
+
+
 # ── the release ──────────────────────────────────────────────────────────────
 
 
