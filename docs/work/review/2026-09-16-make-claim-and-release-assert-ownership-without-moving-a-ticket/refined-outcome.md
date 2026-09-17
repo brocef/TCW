@@ -51,9 +51,10 @@ failed local write — each of which already has its own message.
 
 - **tests pass** — `pytest` over the whole suite from the worktree: **3718
   passed, 0 failed** through `6a65bcd1`. The six commits written at this stage
-  are covered by targeted runs (`tests/test_tracker_hold.py`,
-  `test_tracker_ownership.py`, `test_tracker_help.py`) and by a full run on the
-  merged `main`, recorded below.
+  are covered by a full run on the merged `main`, with the editable install
+  restored to the primary checkout: **3739 passed, 0 failed** (17m11s), plus
+  `tcw validate` clean. The count differs from the branch run because `main` had
+  advanced by two commits, and because this stage added three tests.
 - **docs synced** — `docs/guide/jira.md` (a new "Holding and releasing a ticket"
   section, the configuration block and the key table), `README.md` (the tracker
   row and a new example), `skills/work/references/commands.md`,
