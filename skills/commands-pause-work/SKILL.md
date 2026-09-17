@@ -1,7 +1,7 @@
 ---
 name: commands-pause-work
 description: Stop the work in hand gracefully, write down what resuming needs, and wait for the user.
-when_to_use: Use when a user asks to pause, stop for now, hold off, or stand down mid-task — including when they say they are about to lose their connection, reboot, or pick the work up on another machine. Not for finishing work (commands-drive-work-to-completion), abandoning it (tcw work discard), or recording a blocker.
+when_to_use: Use when a user asks to pause, stop for now, hold off, or stand down mid-task — including when they say they are about to lose their connection, reboot, or pick the work up on another machine. Not for finishing work (commands-drive-work-to-completion), abandoning it (tcw work drop), or recording a blocker.
 allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
 metadata:
     author: Brian Cefali
