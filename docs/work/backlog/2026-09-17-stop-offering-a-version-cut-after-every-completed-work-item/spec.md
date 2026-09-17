@@ -185,37 +185,51 @@ Each of these is a command whose output decides it.
 1. **No offer instruction survives in shipped text.** From the repo root:
    ```sh
    grep -rniE "offer[a-z]*[^.]{0,40}version|version[^.]{0,20}offer" \
-     tcw/ skills/ README.md docs/guide/ web/client/src/
+     tcw/ skills/ README.md docs/guide/ web/client/src/ --exclude-dir=dist
    ```
-   returns no matches.
-2. **`version offered` is gone from every live checklist.**
+   returns no matches. `--exclude-dir=dist` is required: `tcw/serve/dist/`
+   holds the minified web bundle, which matches this pattern on unrelated text
+   and is a build artifact, not shipped instruction. Run against the tree
+   today the same grep returns **14** matches, and every one of them is a site
+   this item changes — that list is the work.
+2. **The offer is gone from the sites that pattern cannot reach.** It requires
+   "offer" within 20 characters of "version", so it misses
+   `skills/work/references/lifecycle/stage-verify.md:31` ("the version cut the
+   prompt says to offer"). Check that separately:
+   ```sh
+   grep -rn "version cut" tcw/ skills/ docs/guide/ --exclude-dir=dist
+   ```
+   returns matches **only** under `skills/documentation-sync/` — the how-to
+   deliberately kept — and in the renamed procedure heading. No match in any
+   `prompts/`, `lifecycle/` or guide file.
+3. **`version offered` is gone from every live checklist.**
    ```sh
    grep -rn "version offered" tcw/ skills/ web/client/src/ docs/guide/ \
-     docs/work/dod.yaml tests/
+     docs/work/dod.yaml tests/ --exclude-dir=dist
    ```
    returns no matches. (`docs/changelogs/`, `docs/release-notes/` and existing
    work items are excluded — they are history.)
-3. **The built-in Definition of Done has four items.**
+4. **The built-in Definition of Done has four items.**
    `python -c "from tcw.store.base import DEFAULT_DOD; print(DEFAULT_DOD)"`
    prints exactly `('tests pass', 'docs synced', 'capabilities reconciled', 'reviewed')`.
-4. **A completion prints no version line.** `tcw work complete <slug>
+5. **A completion prints no version line.** `tcw work complete <slug>
    --resolution done` on a test item prints a four-item checklist and no line
    mentioning a version.
-5. **The `verify` prompt ends at step 8.**
+6. **The `verify` prompt ends at step 8.**
    `tcw work stage prompt verify <slug>` contains the post-mortem offer as its
    last numbered step and contains no occurrence of "version".
-6. **The cut still works when asked for.**
+7. **The cut still works when asked for.**
    `skills/documentation-sync/references/cut-version.md`,
    `scripts/cut_version.py` and
    `skills/documentation-sync/scripts/unpushed-version.sh` all still exist; the
    documentation-sync procedure contains a section whose heading names a
    user-requested cut; and `bash skills/documentation-sync/scripts/unpushed-version.sh`
    still exits `0`, `1` or `2` as before.
-7. **The suite is green the way CI runs it:** bare `pytest` from the repo root
+8. **The suite is green the way CI runs it:** bare `pytest` from the repo root
    passes, including `tests/test_unpushed_version_script.py`,
    `tests/test_documentation_sync_wiring.py`, `tests/test_skill_lifecycle_parity.py`
    and the prompt-fallback fixture test.
-8. **The web completion dialog offers four boxes**, not five, when a node has no
+9. **The web completion dialog offers four boxes**, not five, when a node has no
    `dod.yaml` — read from `content-views.tsx`, and `pnpm prettify:check` is no
    worse than it is on a clean checkout today.
 
@@ -224,7 +238,7 @@ Each of these is a command whose output decides it.
 - **Over-deletion.** The obvious failure is deleting the fold-into-an-unpushed-
   tag logic along with the menu it hung off, leaving a user who asks for a cut
   silently stacking a second release on an unpublished one. Goal 4 and
-  criterion 6 exist to catch this. `unpushed-version.sh` and its test are named
+  criterion 7 exist to catch this. `unpushed-version.sh` and its test are named
   as non-goals for the same reason.
 - **A shrinking default checklist is silent.** `dod.yaml` replaces rather than
   extends the built-in list, so any node that copied the five defaults into its
@@ -233,8 +247,8 @@ Each of these is a command whose output decides it.
   existing configured nodes. Worth one line in the release notes.
 - **Under-removal.** The instruction is restated in eight or nine places; a
   partial removal leaves an agent reading a menu that the prompt no longer
-  introduces, which is more confusing than leaving it alone. Criterion 1 is a
-  repo-wide grep rather than a file list for exactly this reason.
+  introduces, which is more confusing than leaving it alone. Criteria 1 and 2 are
+  repo-wide greps rather than a file list for exactly this reason.
 - **Prompt/fixture skew.** `unconfigured.json` embeds the verify prompt
   verbatim; forgetting it turns a documentation change into a red suite.
 - **`tcw work docs`'s rationale weakens.** Its docstring justifies the verb by a
