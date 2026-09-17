@@ -752,6 +752,7 @@
   resolution: done
   resolved: '2026-09-17'
 2026-09-15-refuse-web-writes-to-sidecars-a-command-generates:
+  location: 62a7da21e568bfb865d466efbd491e83688fcf65
   resolution: done
   resolved: '2026-09-17'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
