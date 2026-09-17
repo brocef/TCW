@@ -1214,12 +1214,7 @@ export function CompleteModal({
 }) {
     const checklist = detail.dodChecklist?.length
         ? detail.dodChecklist
-        : [
-              "tests pass",
-              "docs synced",
-              "capabilities reconciled",
-              "reviewed",
-          ]
+        : ["tests pass", "docs synced", "capabilities reconciled", "reviewed"]
     const [checked, setChecked] = useState<string[]>([])
     const [resolution, setResolution] = useState(discardOnly ? "wontfix" : "")
     const [force, setForce] = useState(false)
