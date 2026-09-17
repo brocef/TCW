@@ -244,7 +244,10 @@ Each of these is a command whose output decides it.
   extends the built-in list, so any node that copied the five defaults into its
   own file keeps asking about a version cut after this lands. That is correct —
   their file, their checklist — but it means the change does not propagate to
-  existing configured nodes. Worth one line in the release notes.
+  existing configured nodes. The requester was asked and **declined** a release
+  note calling this out, so the changelog entry states the change plainly and
+  says nothing about configured nodes. This repo's own `docs/work/dod.yaml`
+  does drop the line, by the same decision.
 - **Under-removal.** The instruction is restated in eight or nine places; a
   partial removal leaves an agent reading a menu that the prompt no longer
   introduces, which is more confusing than leaving it alone. Criteria 1 and 2 are
