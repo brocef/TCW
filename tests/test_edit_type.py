@@ -54,6 +54,8 @@ def test_demotion_refuses_while_a_child_points_at_the_epic(tmp_path, resolved):
         st.update_work(epic, type="", title="Changed")
     item = st.get(epic)
     assert (item.type, item.title) == ("epic", "Epic")
+    # Setting the type it already has is not a demotion, children or not.
+    assert st.update_work(epic, type="epic", title="Changed").item.title == "Changed"
 
 
 def test_demotion_sees_a_child_in_a_descendant_project(tmp_path):

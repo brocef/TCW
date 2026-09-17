@@ -1962,7 +1962,7 @@ def _edit(args: argparse.Namespace) -> int:
                     "leave an item no ticket authorizes. Create an epic with "
                     "`tcw work new --epic`.")
             # Before the blocker writes below, so a refused type change changes nothing.
-            st._check_type_change(current, args.type)
+            st.check_type_change(current, args.type)
         # Recompute the tag set only when --tag/--untag were given (else _UNSET).
         tags_kw = _UNSET
         if args.tag or args.untag:

@@ -3130,7 +3130,7 @@ class WorkStore(ABC):
         ``None`` clears a nullable field (``priority``, ``blockers``).  Empty
         strings are explicit values and are preserved.
 
-        ``type`` is ``""`` or ``"epic"``, checked by `_check_type_change` before
+        ``type`` is ``""`` or ``"epic"``, checked by `check_type_change` before
         any write: making an epic plain is refused while any item names it as
         its initiative, or while this store sees only part of the project graph.
 
@@ -3240,7 +3240,7 @@ class WorkStore(ABC):
         """
         return ""
 
-    def _check_type_change(self, item: WorkItem, new_type: str) -> None:
+    def check_type_change(self, item: WorkItem, new_type: str) -> None:
         """Refuse a type change that is invalid or would orphan an epic's children.
 
         Any child counts, resolved or not: a resolved child still points at the

@@ -40,7 +40,7 @@ from tcw.store.base import (
     DEFAULT_DOD,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
     binding_value, classify_binding, unreadable_binding,
-    WORK_STATUSES, _UNSET, resolution_status,
+    WORK_STATUSES, WORK_TYPES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
@@ -6197,7 +6197,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError("tags must be a list or None")
 
         # Validate type
-        if type and type != "epic":
+        if (type or "") not in WORK_TYPES:
             raise ValueError(f"invalid type '{type}' (only 'epic' is supported)")
 
         # Validate parent
@@ -6314,7 +6314,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 raise
 
         if type is not _UNSET:
-            self._check_type_change(self._require(slug), type)
+            self.check_type_change(self._require(slug), type)
 
         # Validate tags before applying (fail closed on unregistered)
         new_tags = None
