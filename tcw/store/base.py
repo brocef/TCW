@@ -1167,7 +1167,11 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
             f"(choose from {', '.join(TRACKER_PROVIDERS)})")
     base_url = required_str("base-url")
     candidate_query = required_str("candidate-query")
-    inbox_query = required_str("inbox-query") if "inbox-query" in raw else ""
+    # Optional, so a lone `null` is a wrong value rather than a missing required one.
+    if "inbox-query" in raw and raw["inbox-query"] is None:
+        problems.append("work.tracker.inbox-query: expected a non-empty string, "
+                        "got NoneType")
+    inbox_query = required_str("inbox-query") if raw.get("inbox-query") is not None else ""
 
     def nested(key: str, allowed: frozenset[str]) -> dict:
         value = raw.get(key)

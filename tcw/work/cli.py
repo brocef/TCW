@@ -494,31 +494,34 @@ def _inbox_tickets(config) -> int:
     return 0
 
 
-def _inbox_ticket(st, verb: str, ref: str, not_found: InboxEntryNotFound | None):
-    """`(client, issue)` for `ref` read as a ticket key, or None after saying why not.
+def _inbox_can_try_ticket(st, verb: str, not_found: InboxEntryNotFound | None) -> bool:
+    """Whether a ref may be read as a ticket key, after saying why not when it may not.
 
-    Reached only once the store has said `not_found` about `ref`, or `--ticket` skipped
+    Reached only once the store has said `not_found` about the ref, or `--ticket` skipped
     asking it (`not_found` is then None). Without a declared `inbox-query` no ticket is
     looked up and no tracker code is loaded, so the store's answer stands as it was."""
     config = st.tracker_config()
-    if config is None or not config.inbox_query:
-        reason = not_found or (
-            "the tracker configuration has problems; run `tcw validate`"
-            if config is None and st.tracker_problems() else
-            "--ticket needs work.tracker.inbox-query to be declared in tcw-config.yaml")
-        print(f"tcw work {verb}: {reason}", file=sys.stderr)
-        return None
-    from tcw.tracker.jira import JiraClient, TrackerError, TrackerNotFound
-    client = JiraClient(config)
-    try:
-        return client, client.issue(ref)
-    except TrackerNotFound as e:
-        reason = f"{not_found}, and the tracker has no ticket {ref}" if not_found else e
-    except TrackerError as e:
-        reason = (f"{not_found}, and it could not be looked up as a ticket: {e}"
-                  if not_found else e)
+    if config is not None and config.inbox_query:
+        return True
+    reason = not_found or (
+        "the tracker configuration has problems; run `tcw validate`"
+        if config is None and st.tracker_problems() else
+        "--ticket needs work.tracker.inbox-query to be declared in tcw-config.yaml")
     print(f"tcw work {verb}: {reason}", file=sys.stderr)
-    return None
+    return False
+
+
+def _not_a_ticket(verb: str, ref: str, not_found: InboxEntryNotFound | None,
+                  error: Exception) -> None:
+    """A failed ticket read, naming the raw-entry miss too when there was one."""
+    from tcw.tracker.jira import TrackerNotFound
+    if not_found is None:
+        reason = error
+    elif isinstance(error, TrackerNotFound):
+        reason = f"{not_found}, and the tracker has no ticket {ref}"
+    else:
+        reason = f"{not_found}, and it could not be looked up as a ticket: {error}"
+    print(f"tcw work {verb}: {reason}", file=sys.stderr)
 
 
 def _inbox_show(args: argparse.Namespace) -> int:
@@ -549,11 +552,15 @@ def _inbox_show(args: argparse.Namespace) -> int:
 
 
 def _inbox_show_ticket(st, ref: str, not_found: InboxEntryNotFound | None) -> int:
-    found = _inbox_ticket(st, "inbox show", ref, not_found)
-    if found is None:
+    if not _inbox_can_try_ticket(st, "inbox show", not_found):
         return 1
-    client, issue = found
-    from tcw.tracker.jira import TrackerError
+    from tcw.tracker.jira import JiraClient, TrackerError
+    client = JiraClient(st.tracker_config())
+    try:
+        issue = client.issue(ref)
+    except TrackerError as e:
+        _not_a_ticket("inbox show", ref, not_found, e)
+        return 1
     try:
         offered = client.transitions(ref)
         description = client.description(str(issue.get("id") or ref))
@@ -589,10 +596,11 @@ def _inbox_accept(args: argparse.Namespace) -> int:
     if strict and (config is None or not config.inbox_query):
         return refusal()
     if not args.force_ticket:
+        # A raw entry is refused under strict mode, and with `--part`, which only a
+        # ticket takes; in both cases the ref is resolved without being consumed.
+        peek = strict or args.part is not None
         try:
-            # Under strict mode a raw entry is refused and a ticket is not, so the
-            # ref is resolved without being consumed first.
-            item = st.inbox_show(args.entry) if strict else \
+            item = st.inbox_show(args.entry) if peek else \
                 st.inbox_accept(args.entry, title=args.title)
         except InboxEntryNotFound as e:
             not_found = e
@@ -602,15 +610,20 @@ def _inbox_accept(args: argparse.Namespace) -> int:
         else:
             if strict:
                 return refusal()
+            if args.part is not None:
+                print(f"tcw work inbox accept: --part applies only to a ticket, and "
+                      f"{args.entry} is a raw inbox entry", file=sys.stderr)
+                return 1
             print(item.slug)
             if loc := st.locate(item.slug):
                 print(f"→ now at {loc}", file=sys.stderr)
             return 0
-    if _inbox_ticket(st, "inbox accept", args.entry, not_found) is None:
+    if not _inbox_can_try_ticket(st, "inbox accept", not_found):
         return 1
     # Accepting a ticket is taking it: the same claim, binding and idempotence.
     return _tracker_import(argparse.Namespace(ticket=args.entry, part=args.part,
-                                              title=args.title), label="inbox accept")
+                                              title=args.title), label="inbox accept",
+                           not_found=not_found)
 
 
 def _visible_board_items(st: FsWorkStore, status: str | None, show_all: bool,
@@ -2256,7 +2269,8 @@ def _claim_summary(outcome) -> str:
 _LOCAL_WRITE_ERRORS = (*_ERRORS, StaleRevision, OSError, subprocess.CalledProcessError)
 
 
-def _tracker_import(args: argparse.Namespace, label: str = "tracker import") -> int:
+def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
+                    not_found: InboxEntryNotFound | None = None) -> int:
     """Claim a ticket, then create a backlog item bound to it.
 
     No item is created unless the claim ends with the ticket in the status the claim
@@ -2284,6 +2298,7 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import") -> 
         return 1
     st = _store()
     today = date.today().isoformat()
+    ticket = None
     try:
         ticket = read_ticket(client, args.ticket)
         project = _project_id(st)
@@ -2312,7 +2327,10 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import") -> 
             return 1
         outcome = claim(client, ticket)
     except (TrackerError, BindingProblem, ValueError) as e:
-        print(f"tcw work {label}: {e}", file=sys.stderr)
+        if ticket is None and not_found is not None and isinstance(e, TrackerError):
+            _not_a_ticket(label, args.ticket, not_found, e)   # `inbox accept` of neither
+        else:
+            print(f"tcw work {label}: {e}", file=sys.stderr)
         return 1
     if not outcome.claimed:
         _print_refusal(label, outcome)

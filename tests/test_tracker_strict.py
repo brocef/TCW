@@ -786,3 +786,10 @@ def test_a_broken_strict_block_refuses_inbox_accept_even_with_ticket(tmp_path, f
     assert code == 1 and REFUSED in err and "tcw validate" in err
     assert "--ticket needs" not in err
     assert FsWorkStore.open(root).query() == []
+
+
+def test_strict_without_an_inbox_query_refuses_an_unknown_ref_in_todays_words(strict, fake):
+    code, out, err = cli(strict, "work", "inbox", "accept", "no-such-thing")
+    assert (code, out) == (1, "")
+    assert REFUSED in err and "no-such-thing was not accepted" in err
+    assert "no such inbox entry" not in err

@@ -267,3 +267,9 @@ def test_an_inbox_query_does_not_stand_in_for_the_candidate_query():
                                              "inbox-query": "status = Triage"})
     assert config is None
     assert "work.tracker.candidate-query: required" in problems
+
+
+def test_a_lone_null_inbox_query_is_reported_as_the_wrong_type_not_as_required():
+    config, problems = parse_tracker_config({**VALID, "inbox-query": None})
+    assert config is None
+    assert problems == ["work.tracker.inbox-query: expected a non-empty string, got NoneType"]

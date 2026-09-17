@@ -483,3 +483,40 @@ def test_inbox_accept_of_a_linked_unclaimed_ticket_does_not_say_import(node, fak
     code, _out, err = inbox(node, "accept", TICKET)
     assert code == 1 and "not claimed" in err
     assert "`import`" not in err and "tracker import" not in err
+
+
+def test_inbox_accept_of_a_ticket_reads_jira_no_more_than_import(tmp_path, fake):
+    imported = make_node(tmp_path, "alpha", email_env="TCW_A_EMAIL")
+    accepted = with_inbox_query(make_node(tmp_path, "beta", email_env="TCW_A_EMAIL"))
+    assert run(imported, "import", TICKET)[0] == 0
+    before = len(fake.requests)
+    assert run(imported, "import", TICKET, "--part", "x")[0] == 0
+    import_reads = len(fake.requests) - before
+    before = len(fake.requests)
+    assert inbox(accepted, "accept", TICKET, "--part", "x")[0] == 0
+    assert len(fake.requests) - before == import_reads
+
+
+def test_inbox_accept_ticket_reaches_a_ticket_an_entry_shadows(node, fake):
+    with_inbox_query(node)
+    inbox_dir = FsWorkStore.open(node).root / "inbox"
+    inbox_dir.mkdir(exist_ok=True)
+    (inbox_dir / f"{TICKET}.md").write_text("# The local one\n", encoding="utf-8")
+    code, out, err = inbox(node, "accept", "--ticket", TICKET)
+    assert code == 0, err
+    [item] = items(node)
+    assert binding(node, item.slug)["ticket"]["key"] == TICKET
+    assert (inbox_dir / f"{TICKET}.md").exists()
+
+
+def test_part_on_a_raw_entry_is_refused_and_consumes_nothing(node, fake):
+    with_inbox_query(node)
+    inbox_dir = FsWorkStore.open(node).root / "inbox"
+    inbox_dir.mkdir(exist_ok=True)
+    (inbox_dir / "a-request.md").write_text("# A request\n", encoding="utf-8")
+    code, out, err = inbox(node, "accept", "a-request", "--part", "api")
+    assert (code, out) == (1, "")
+    assert err == ("tcw work inbox accept: --part applies only to a ticket, and "
+                   "a-request is a raw inbox entry\n")
+    assert (inbox_dir / "a-request.md").exists() and fake.requests == []
+    assert_no_item(node)
