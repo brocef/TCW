@@ -741,6 +741,7 @@
   resolution: done
   resolved: '2026-09-16'
 2026-09-15-fill-codex-gaps-in-skills-and-give-each-skill-one-capability:
+  location: f3594072c320bb4c5783434ef049343b76f325a1
   resolution: done
   resolved: '2026-09-17'
 2026-09-15-follow-late-linked-tickets-and-name-transitions-in-tracker-sync:
