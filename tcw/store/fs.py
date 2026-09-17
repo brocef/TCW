@@ -6279,6 +6279,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     title=_UNSET, body=_UNSET, priority=_UNSET,
                     effort=_UNSET, complexity=_UNSET, blockers=_UNSET,
                     initiative=_UNSET, parent=_UNSET, tags=_UNSET,
+                    type=_UNSET,
                     core_revision: str | None = None) -> "WorkDetail":
         """Partial-merge update with revision guard."""
         d = self._require_dir(slug)
@@ -6311,6 +6312,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 complexity = normalize_work_level(complexity)
             except ValueError:
                 raise
+
+        if type is not _UNSET:
+            self._check_type_change(self._require(slug), type)
 
         # Validate tags before applying (fail closed on unregistered)
         new_tags = None
@@ -6381,6 +6385,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             changed = True
         if initiative is not _UNSET:
             state["initiative"] = initiative if initiative is not None else ""
+            changed = True
+        if type is not _UNSET:
+            if type:
+                state["type"] = type
+            else:
+                state.pop("type", None)          # omit when plain, as create_work does
             changed = True
 
         # Apply body change

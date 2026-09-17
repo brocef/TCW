@@ -3122,12 +3122,17 @@ class WorkStore(ABC):
                     initiative: Any = _UNSET,
                     parent: Any = _UNSET,
                     tags: Any = _UNSET,
+                    type: Any = _UNSET,
                     core_revision: str | None = None) -> "WorkDetail":
         """Partial-merge update for an existing work item.
 
         Only fields whose keyword is *not* ``_UNSET`` are changed.  Passing
         ``None`` clears a nullable field (``priority``, ``blockers``).  Empty
         strings are explicit values and are preserved.
+
+        ``type`` is ``""`` or ``"epic"``, checked by `_check_type_change` before
+        any write: making an epic plain is refused while any item names it as
+        its initiative, or while this store sees only part of the project graph.
 
         ``core_revision`` (when provided) must match the current core token;
         a stale token raises ``StaleRevision`` and performs no write.
@@ -3234,6 +3239,29 @@ class WorkStore(ABC):
         sentence. The default is "" for an adapter that always sees everything.
         """
         return ""
+
+    def _check_type_change(self, item: WorkItem, new_type: str) -> None:
+        """Refuse a type change that is invalid or would orphan an epic's children.
+
+        Any child counts, resolved or not: a resolved child still points at the
+        epic, and an epic whose children are all resolved wants completing, not
+        demoting. A partial graph refuses for the reason `complete` does — no
+        children seen from here is not the same as no children.
+        """
+        if new_type not in WORK_TYPES:
+            raise ValueError(f"invalid type '{new_type}' (only 'epic' is supported)")
+        if item.type != "epic" or new_type == "epic":
+            return
+        children = self.initiative_children(item.slug)
+        if children:
+            raise ValueError(
+                f"Cannot make epic {item.slug} a plain item; these items name it as "
+                f"their initiative: {', '.join(c.slug for c in children)}. Complete "
+                f"the epic, or clear their --initiative first.")
+        if (note := self.incomplete_graph_note()):
+            raise ValueError(
+                f"Cannot make epic {item.slug} a plain item without seeing its "
+                f"initiative children{note}. Run from a checkout that has them.")
 
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
         """Items related to `epic_slug` by `initiative:`.
