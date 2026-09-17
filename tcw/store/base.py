@@ -1091,6 +1091,10 @@ class TrackerConfig:
     # template with `{project}` and `{slug}` — appended when set.
     comments: bool = False
     link: str = ""
+    # The tickets `tcw work inbox list` reports as awaiting triage. Not
+    # `candidate_query` reused: that one selects tickets ready to be taken, a
+    # different set by construction. Empty means the inbox shows no tickets.
+    inbox_query: str = ""
 
 
 # The only `provider` value that parses. A literal in the abstract layer, which is
@@ -1101,7 +1105,7 @@ TRACKER_PROVIDERS = ("jira-cloud",)
 
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
                           "transitions", "statuses", "strict", "timeout-seconds",
-                          "comments", "link"})
+                          "comments", "link", "inbox-query"})
 TRACKER_LINK_PLACEHOLDERS = frozenset({"project", "slug"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # Where a ticket goes for a move is a *status*, under `statuses`, because only a status
@@ -1163,6 +1167,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
             f"(choose from {', '.join(TRACKER_PROVIDERS)})")
     base_url = required_str("base-url")
     candidate_query = required_str("candidate-query")
+    inbox_query = required_str("inbox-query") if "inbox-query" in raw else ""
 
     def nested(key: str, allowed: frozenset[str]) -> dict:
         value = raw.get(key)
@@ -1251,6 +1256,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         strict=strict,
         comments=comments,
         link=link,
+        inbox_query=inbox_query,
     ), []
 
 

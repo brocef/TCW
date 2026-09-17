@@ -362,6 +362,15 @@ def test_a_query_only_child_inherits_everything_else(tmp_path):
     assert _store(nodes["pkg"]).tracker_problems() == []
 
 
+def test_an_inbox_query_is_inherited_and_a_childs_own_wins(tmp_path):
+    parent = {**COMPLETE, "inbox-query": "status = Triage"}
+    nodes = _chain(tmp_path, root_board=False, root=parent, repo=ABSENT, pkg=QUERY_ONLY)
+    assert _store(nodes["pkg"]).tracker_config().inbox_query == "status = Triage"
+    nodes = _chain(tmp_path / "own", root_board=False, root=parent, repo=ABSENT,
+                   pkg={**QUERY_ONLY, "inbox-query": "component = api"})
+    assert _store(nodes["pkg"]).tracker_config().inbox_query == "component = api"
+
+
 def test_a_node_that_writes_no_block_does_not_inherit(tmp_path):
     """C2."""
     nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=QUERY_ONLY)

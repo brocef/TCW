@@ -236,3 +236,34 @@ def test_an_unknown_transition_key_is_still_reported():
     config, problems = parse_tracker_config(_with_transitions(wander="Nowhere"))
     assert config is None
     assert any(p.startswith("work.tracker.transitions.wander") for p in problems), problems
+
+
+# ── inbox-query ──────────────────────────────────────────────────────────────
+
+
+def test_an_inbox_query_parses_onto_the_config():
+    config, problems = parse_tracker_config({**VALID, "inbox-query": "  status = Triage "})
+    assert problems == []
+    assert config.inbox_query == "status = Triage"
+    assert config.candidate_query == VALID["candidate-query"]
+
+
+def test_an_absent_inbox_query_is_empty_and_not_a_problem():
+    config, problems = parse_tracker_config(VALID)
+    assert problems == []
+    assert config.inbox_query == ""
+
+
+@pytest.mark.parametrize("value, kind", [("", "str"), ("   ", "str"), (42, "int")])
+def test_a_blank_or_non_string_inbox_query_fails_the_whole_block(value, kind):
+    """A blank JQL selects every ticket on the site, so blank is a problem, not absent."""
+    config, problems = parse_tracker_config({**VALID, "inbox-query": value})
+    assert config is None
+    assert problems == [f"work.tracker.inbox-query: expected a non-empty string, got {kind}"]
+
+
+def test_an_inbox_query_does_not_stand_in_for_the_candidate_query():
+    config, problems = parse_tracker_config({**_without("candidate-query"),
+                                             "inbox-query": "status = Triage"})
+    assert config is None
+    assert "work.tracker.candidate-query: required" in problems
