@@ -45,10 +45,17 @@ The rule for each match, decided per file:
    called or what became of it ("`skills/tcw-work`'s `cap-f533ba` became
    `skills/work`'s"), the names listed as removed, and text quoted verbatim from
    a third party (a `>`-quoted GitHub issue report).
-3. **`intake.md` beside an `initial-request.md` is a record** — a verbatim copy of
+3. **Wildcard and pattern forms count** (`tcw-commands-*`, `skills/tcw-work-stage-*/`),
+   though the intake's expression cannot match them; they are found by a second
+   search, `tcw-(commands|extras|work-stage)-(\*|<)`, and judged by rules 1-2.
+   *Added at verification, where both the verifier and the reviewer found them.*
+4. **An instruction whose target was deleted** under both names is left: there is
+   no current name to point at. *Added at verification; the plan had applied it
+   without the spec saying so.*
+5. **`intake.md` beside an `initial-request.md` is a record** — a verbatim copy of
    the inbox entry, superseded for every later stage — and is left alone. Where
-   `intake.md` is an item's only body it is read like `initial-request.md`, rule 1
-   and 2 applying line by line.
+   `intake.md` is an item's only body it is read like `initial-request.md`, rules 1-4
+   applying line by line.
 
 Matching is on whole names only, with the intake's regular expression; a rewrite
 changes the skill name and nothing else in the line, except for grammar the new
@@ -60,7 +67,8 @@ The per-file verdicts are the plan's task list.
 
 1. Re-running the intake's `git grep` (extended to `docs/work/inbox`) outside this
    item's own folder returns only lines the plan lists as "leave", each with its
-   reason.
+   reason; the wildcard search in rule 3 returns only removed names that rule 2
+   keeps.
 2. `git diff --stat` for the implementation touches only files under
    `docs/work/backlog/` (and `docs/work/inbox/` if a match is there), and no
    `intake.md` whose folder also holds an `initial-request.md`.
