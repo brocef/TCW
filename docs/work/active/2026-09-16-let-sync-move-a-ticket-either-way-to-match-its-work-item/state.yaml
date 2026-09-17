@@ -12,3 +12,5 @@ blocked_by:
 - slug: 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket
 owner: brocef@users.noreply.github.com
 started: '2026-09-17T22:05:13.033430Z'
+worktree: .worktrees/2026-09-16-let-sync-move-a-ticket-either-way-to-match-its-work-item
+branch: work/2026-09-16-let-sync-move-a-ticket-either-way-to-match-its-work-item
