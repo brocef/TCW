@@ -35,8 +35,8 @@
   refused naming it; `rm invoice` referenced by a feature refused naming
   `pdf-export (vocabulary)`; removals in the right order all succeed and `check` is
   OK. The reviewer's `.DS_Store` reproduction now removes the child, then the parent.
-- Full suite at `79bef735` (before review fixes): 3625 passed. After review fixes:
-  see `refined-outcome.md`.
+- Full suite at `79bef735` (before review fixes): 3625 passed. After review fixes,
+  at `4c099f78`: 3628 passed.
 
 ## What the plan or spec got wrong
 
@@ -46,3 +46,34 @@
 - **The spec said `vocabulary` generally** while `check` reads it only on Features.
 - **The spec said the refusal reaches the web app**; there is no taxonomy delete
   route, so the CLI is the only caller today.
+
+## Autonomous decisions
+
+Run unattended under `autonomous-work`; these replace the human checkpoints.
+
+- **Refuse on a Feature's `vocabulary` as well as `relatesTo`?** Codex: yes — same
+  store, same resolution, and leaving it out keeps `check` failing after a successful
+  `rm`. Opus: yes, and put the refusal in the store, deleting `relators`. Chose yes.
+- **Refuse on capabilities naming the term (`Subject`, `Feature`)?** Both: no
+  (option C1) — a cross-store dependency the taxonomy store does not have; a CLI-only
+  check leaves other callers unprotected; warning-only restores what the maintainer
+  rejected. Chose no; filed
+  `2026-09-17-tcw-taxonomy-rm-does-not-check-capabilities-that-name-the-term`.
+- **Count references from inherited taxonomies?** Both: no — local terms only, as
+  `check` and capabilities' `_referrers` do. Chose no.
+- **Advisors' implementation cautions adopted:** compare by resolved folder identity
+  (not `relators`' leaf match); exact listed spelling; skip self-references.
+- **Code review findings accepted:** untracked leftover folders blocking removal
+  (now asked of git); `vocabulary` on non-Features; unwrapped `samefile`; sharing the
+  same-folder helper with capabilities.
+- **Code review findings deferred or rejected:** non-string or scalar `relatesTo`
+  crashes and malformed `meta.yaml` (pre-existing, affect `check` equally — not
+  filed, already reachable through `check`); an extends alias whose store path points
+  back into this project (contrived, not filed); refusal message naming how to edit
+  `relatesTo` (no CLI command exists to name — skipped).
+- **Verifier note: an unstaged hand-written child does not block its parent**, which
+  then still lists after "Removed term". Not a regression; filed
+  `2026-09-17-tcw-taxonomy-rm-reports-removed-while-an-unstaged-child-keeps-the-term-listed`.
+- **Verify decision:** accept. Verifier: criteria 1-7 met, including the review
+  fixes; criterion 8 met by the 3628-test run.
+- **Interruption:** the machine crashed during the first code review; it was rerun.
