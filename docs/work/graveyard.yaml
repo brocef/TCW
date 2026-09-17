@@ -755,6 +755,9 @@
   location: 0c7562b61c361762767d75b5684a174f1040558d
   resolution: done
   resolved: '2026-09-17'
+2026-09-15-make-tcw-taxonomy-rm-refuse-nested-terms-and-live-references:
+  resolution: done
+  resolved: '2026-09-17'
 2026-09-15-refuse-web-writes-to-sidecars-a-command-generates:
   location: 62a7da21e568bfb865d466efbd491e83688fcf65
   resolution: done
