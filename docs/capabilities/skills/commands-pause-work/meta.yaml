@@ -1,7 +1,7 @@
 id: cap-71daf6
 name: Offer a skill dedicated to instructing agents how to pause work in progress
   and hand it off for resumption
-Status: Missing
+Status: Supported
 Feature: commands-pause-work-skill
 Subject:
 - skill
