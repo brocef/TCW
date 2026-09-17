@@ -1953,6 +1953,16 @@ def _edit(args: argparse.Namespace) -> int:
         if current is None:
             print(f"tcw work edit: no such work item: {args.slug}", file=sys.stderr)
             return 1
+        if args.type is not None:
+            if st.tracker_strict():
+                return _strict_says_no(
+                    "edit", f"{bare} was not changed",
+                    "An epic is not gated by a ticket, so making an item an epic "
+                    "would lift its ticket gates, and making an epic plain would "
+                    "leave an item no ticket authorizes. Create an epic with "
+                    "`tcw work new --epic`.")
+            # Before the blocker writes below, so a refused type change changes nothing.
+            st._check_type_change(current, args.type)
         # Recompute the tag set only when --tag/--untag were given (else _UNSET).
         tags_kw = _UNSET
         if args.tag or args.untag:
@@ -1985,6 +1995,7 @@ def _edit(args: argparse.Namespace) -> int:
             effort=_provided(args.effort),
             complexity=_provided(args.complexity),
             tags=tags_kw,
+            type=_provided(args.type),
         )
     except _ERRORS as e:
         print(f"tcw work edit: {e}", file=sys.stderr)
@@ -3212,7 +3223,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     sel.add_argument("--transition", help="limit to one transition id")
     plc.set_defaults(func=_lifecycle)
 
-    pe = g.add_parser("edit", help="change an item's title, estimates, tags, or blocking links")
+    pe = g.add_parser("edit", help="change an item's title, estimates, tags, type, or blocking links")
     pe.add_argument("slug", help=SLUG_HELP)
     pe.add_argument("--title", type=_nonempty, help="set the item title (the slug is unchanged)")
     pe.add_argument("--blocked-by", action="append",
@@ -3227,6 +3238,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe.add_argument("--complexity", type=_work_level,
                     help="set estimated complexity: low|medium|high|very-high (or L/M/H/VH)")
     pe.add_argument("--initiative", help='set the owning-epic back-pointer (use "" to clear)')
+    pe.add_argument("--type", choices=["epic", ""],
+                    help='make the item an epic, or "" to make an epic a plain item '
+                         '(refused while items name it as their initiative)')
     pe.add_argument("--tag", "--tags", action="extend", type=_tags,
                     help="apply a registered tag (repeatable; a value may be a,b,c)")
     pe.add_argument("--untag", "--untags", action="extend", type=_tags,

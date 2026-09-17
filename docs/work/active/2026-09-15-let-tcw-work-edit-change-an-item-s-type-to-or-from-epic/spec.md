@@ -99,7 +99,7 @@ or "" for a plain item`). `_edit`:
 7. Under strict mode, `tcw work edit <slug> --type epic` and `--type ""` exit 1 and
    leave the type unchanged; the refusal names `tcw work new --epic`.
 8. After promotion, an item whose `initiative:` names it is grouped under it on
-   `tcw work list`, and it is `ready-to-close` once that child is resolved.
+   `tcw work list --include-descendants` (the only board view that groups), and it is `ready-to-close` once that child is resolved.
 9. The full suite passes.
 
 ## Risks

@@ -446,6 +446,22 @@ def test_an_epic_is_not_gated(strict, fake):
     assert code == 0, err
 
 
+@pytest.mark.parametrize("promote", [True, False])
+def test_a_type_change_is_refused(strict, fake, promote):
+    """An epic is ungated, so a type change would lift or strand a ticket gate."""
+    if promote:
+        slug, to, before = bound_item(strict), "epic", ""
+    else:
+        code, out, err = cli(strict, "work", "new", "An epic", "--epic")
+        assert code == 0, err
+        slug, to, before = out.strip(), "", "epic"
+    code, _out, err = cli(strict, "work", "edit", slug, "--type", to)
+    assert code == 1
+    assert "refused under strict tracker mode" in err
+    assert "tcw work new --epic" in err
+    assert FsWorkStore.open(strict).get(slug).type == before
+
+
 def test_no_refusal_prints_the_token(strict, fake):
     slug = bound_item(strict)
     claimed_ticket(fake, "In Progress", B)
