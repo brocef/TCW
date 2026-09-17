@@ -175,6 +175,16 @@ tells you what is owed, and tells you how to run it as them or take the item ove
   and the skills that fall back to reading a file from the plugin say where the
   plugin's folder is.
 
+## `tcw taxonomy rm` refuses instead of deleting too much
+
+- **This changes what an existing command does.** `tcw taxonomy rm admin` used to
+  delete `admin` and every term nested under it, and removed a term other terms
+  still pointed at with only a warning. It now refuses both, names the terms in
+  the way, and deletes nothing — the same as `tcw capabilities rm`. Remove the
+  nested terms, or repoint the references, first.
+- Capabilities that name the term in `Subject` or `Feature` are not checked;
+  `tcw capabilities check` still reports those.
+
 ## Getting a stage's instructions
 
 - **The `work-stage` skill now checks how it was called.** If it is invoked

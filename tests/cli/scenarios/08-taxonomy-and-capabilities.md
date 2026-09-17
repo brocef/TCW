@@ -22,7 +22,7 @@ everywhere.
 | 4 | `--kind feature` creates a feature; `--vocab <ref>` records the vocabulary it involves, repeatable. |
 | 5 | `tcw taxonomy show <path>` prints the entry; an unknown path exits non-zero with empty stdout. |
 | 6 | `tcw taxonomy search` matches on **name and description**, not name alone. |
-| 7 | `tcw taxonomy rm <path>` removes a local entry; removing an inherited one is refused. |
+| 7 | `tcw taxonomy rm <path>` removes a local entry; removing an inherited one, one with a term nested under it, or one another term names in `relatesTo` or `vocabulary` is refused and deletes nothing. |
 | 8 | `tcw taxonomy check` passes on a clean tree and **fails** on a feature whose `--vocab` ref points at a term that does not exist. |
 | 9 | The tree is built from real parentage, not by sorting path strings — asserted with two terms whose names sort in the opposite order to their nesting. |
 

@@ -297,7 +297,7 @@ described in [Skills and Agents](#skills-and-agents).
 | `tcw taxonomy add`     | creates a vocabulary entry or a feature                               |
 | `tcw taxonomy show`    | prints one entry                                                      |
 | `tcw taxonomy path`    | prints the folder the taxonomy is stored in                           |
-| `tcw taxonomy rm`      | removes a local entry                                                 |
+| `tcw taxonomy rm`      | removes a local entry nothing is nested under or refers to            |
 | `tcw taxonomy search`  | searches entry names and descriptions                                 |
 | `tcw taxonomy check`   | checks that every reference and inherited project resolves            |
 | `tcw taxonomy extends` | adds or removes a project whose taxonomy this one inherits            |

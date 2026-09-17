@@ -236,6 +236,13 @@ category.
 - Capability ledger: `work/run-a-lifecycle-stage` no longer describes the
   `work-stage` skill (moved to `skills/work-stage`); the issue-closing rules live
   only in `work/complete-a-work-item`, linked from `skills/extras-triage-issues`.
+- **Behaviour change:** `FsTaxonomyStore.remove` refuses a term with any
+  subdirectory under its folder, or one another local term's `relatesTo` or
+  `vocabulary` resolves to (compared by folder identity, self-references ignored),
+  and a local spelling not in `_local_slugs()`. It no longer cascades through
+  `git rm -rf`. `relators()` and the CLI's post-removal warning are removed; its
+  leaf-name match flagged unrelated terms. `TaxonomyStore.remove` documents the
+  contract.
 
 ## Fixed
 

@@ -114,4 +114,4 @@ To seed a new taxonomy from an existing codebase, use the `setup` skill.
 | locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
 | inherit another project's terms | declared with the `configure` skill's `projects.md`                                                                                                          |
 | validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                                                     |
-| remove a local term             | `tcw taxonomy rm <path>`                                                                                                                                         |
+| remove a local term             | `tcw taxonomy rm <path>` — refused while a term is nested under it or another local term names it in `relatesTo` or `vocabulary`; remove or repoint those first |
