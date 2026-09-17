@@ -66,7 +66,11 @@ mutation is named here rather than merely claimed:
 | a transition applied with no assertion configured | 7 of 16 ownership tests |
 | row `1e`'s already-ours short circuit removed | `test_claiming_under_an_assertion_stays_idempotent` |
 | the local ownership guard removed from `claim` | both guard tests — the hole the spec review found |
-| the local owner written *before* the ticket half | `test_a_tracker_that_will_not_unassign_leaves_the_owner_alone` |
+| the local owner written *before* the ticket half, on `release` | `test_a_tracker_that_will_not_unassign_leaves_the_owner_alone` |
+| the same, on `claim` | `test_a_workflow_that_refuses_the_transition_stops_the_claim_dead` |
+| `claim` never reading `exclusive-claim-transition` | both new exclusivity tests |
+| the branch handling a workflow *refusing* the transition | `test_a_workflow_that_refuses_the_transition_stops_the_claim_dead` |
+| the read-back's "assigned to nobody" case folded back into the lost-race one | `test_a_ticket_unassigned_mid_claim_is_not_reported_as_somebody_elses` |
 | the owner write staged but not committed | `test_a_claim_is_committed_rather_than_left_staged` |
 | `exclusive-claim-transition` removed from `TRACKER_KEYS` | `test_an_exclusive_claim_transition_is_kept` |
 
@@ -101,6 +105,35 @@ had landed, so Bob was correctly refused and Alice won — a queue, not a race. 
 real race has both accounts read while the ticket is unassigned. The test now
 reads both tickets up front and registers the hook after, so the one-shot lands
 on Alice's read-back. Worth recording because the failing version looked right.
+
+**The verify stage found four more spec defects and one live message bug.** The
+first three rows added to the mutation table above were gaps, not passes: the
+suite could not tell whether `claim` read the new configuration key at all,
+never executed the branch that handles a workflow refusing the transition, and
+had no claim-side equivalent of the release-side ordering test — this document's
+mutation table originally credited the release test for both. Two tests close all
+three. Separately, the read-back treated "assigned to nobody" as a lost race, so
+a ticket unassigned mid-claim was reported as held by a person who did not
+exist; fixed with its own branch and test.
+
+The spec was wrong in four further places, all corrected or recorded:
+
+- **Non-goals forbade what Design step 2 instructed.** The non-goal said no edit
+  to `binding_refusal`; Design step 2 required the "started by" → "held by"
+  wording change inside it. The implementation followed the design. The non-goal
+  now says "no behavioural edit" and names the exception.
+- **Acceptance criterion 16 promised four suites would pass *unchanged*.** They
+  pass, but `tests/test_tracker_sync.py:699` was edited by the same rename.
+- **Design step 7 described a state the code never reaches.** It said a lost race
+  may leave the ticket assigned to the caller with the item unowned, and that the
+  message must say so. On the lost-race path the read-back has already found
+  another account, so the ticket is the winner's and "Nothing here is yours" is
+  correct. The state step 7 describes belongs to two other paths — a failed
+  read-back and a failed local write — each of which has its own message.
+- **Criterion 4 named the wrong hook.** It specified `before("PUT",
+  "/assignee", …)`; the test uses `before("GET", …)`, which is the only hook that
+  produces the interleaving the criterion describes. The test is right and the
+  criterion's wording is not.
 
 ## What a green suite does not prove
 
