@@ -643,6 +643,26 @@ class TestSidecarReadWrite:
         assert cap_sc["mediaType"] == "application/yaml"
         assert "revision" in cap_sc
 
+    @pytest.mark.parametrize("name, owner", [
+        ("rollup.md", "tcw work reconcile"),
+        ("tracker.yaml", "tcw work tracker"),
+    ])
+    def test_write_generated_sidecar_refused(self, seeded, name, owner):
+        """A sidecar a command writes is refused, naming that command."""
+        root, base, slug = seeded
+        folder = FsWorkStore.open(root).path(slug)
+        before = {p.name: p.read_bytes() for p in folder.iterdir()}
+        status, body = _req(base, "PUT", f"/api/work/{slug}/sidecars/{name}", {
+            "content": "ticket: X-1\n" if name == "tracker.yaml" else "# edited\n",
+        })
+        assert status == HTTPStatus.CONFLICT
+        assert name in body["error"] and owner in body["error"]
+        assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+        generated = {s["name"]: s["generated"]
+                     for s in _get_json(base, f"/api/work/{slug}/sidecars")}
+        assert generated == {"capabilities.yaml": False, "rollup.md": True,
+                             "tracker.yaml": True}
+
 
 # ── Tests: Oversized body rejection ─────────────────────────────────────────
 

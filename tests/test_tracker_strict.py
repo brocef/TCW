@@ -521,11 +521,13 @@ def test_serve_refuses_what_it_cannot_check_and_changes_nothing(strict, fake):
                  {"resolution": "done", "dod_ack": []}),
             send("DELETE", f"/api/work/{slug}"),
             send("DELETE", f"/api/work/{unlinked}"),
-            send("PUT", f"/api/work/{slug}/sidecars/tracker.yaml",
-                 {"content": document(ticket_key="SYNC-9")}),
         ]
         for code, text in refused:
             assert code == 409 and "strict tracker mode" in text and SENTINEL not in text
+        # Refused in every mode, as a generated sidecar, not only under strict mode.
+        code, text = send("PUT", f"/api/work/{slug}/sidecars/tracker.yaml",
+                          {"content": document(ticket_key="SYNC-9")})
+        assert code == 409 and "tcw work tracker" in text and SENTINEL not in text
         assert (folder_bytes(strict, slug), len(st.query())) == before
         assert fake.requests == []
         assert send("POST", "/api/work", {"title": "Web epic", "type": "epic"})[0] == 201

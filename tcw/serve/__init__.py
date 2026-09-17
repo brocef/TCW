@@ -236,8 +236,6 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     if action == "drop" and ever_bound(work, slug):
         return lead + (f"{slug} is, or was, bound to a ticket. Discard it instead: "
                        f"`tcw work complete {slug} --resolution wontfix --confirm`.")
-    if action == "tracker.yaml":
-        return lead + "use `tcw work tracker link` or `tcw work tracker unlink`."
     return None
 
 
@@ -1321,6 +1319,11 @@ class TcwHandler(BaseHTTPRequestHandler):
             if name not in WORK_SIDECARS:
                 self._send(HTTPStatus.BAD_REQUEST, b"unknown sidecar")
                 return
+            if (owner := WORK_SIDECARS[name].get("generated")):
+                self._send_err(HTTPStatus.CONFLICT,
+                               f"{name} is written by `{owner}`, not edited; "
+                               f"run that command instead.")
+                return
             resolved = self._resolve_work(slug)
             if resolved is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1333,9 +1336,6 @@ class TcwHandler(BaseHTTPRequestHandler):
             content = body.get("content")
             if content is None:
                 self._send_err(HTTPStatus.BAD_REQUEST, "content is required")
-                return
-            if name == "tracker.yaml" and (refusal := _strict_refuses(work, name, slug)):
-                self._send_err(HTTPStatus.CONFLICT, refusal)
                 return
             media_type = body.get("mediaType")
             revision = body.get("revision")
