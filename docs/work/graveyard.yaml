@@ -767,6 +767,9 @@
   location: 8bac10d8aed8b383368e47f37caf7a50efd5d1ab
   resolution: done
   resolved: '2026-09-15'
+2026-09-15-show-the-tracker-s-untriaged-tickets-on-tcw-work-inbox-list:
+  resolution: done
+  resolved: '2026-09-17'
 2026-09-16-compose-a-procedure-s-instructions-from-project-bindings-the-way-a-stage-s-are-composed:
   location: ce549533413869935806a4020c662a376f6d77b2
   resolution: done
