@@ -190,6 +190,18 @@ def test_assign_puts_the_account_id_by_issue_id(monkeypatch):
     assert rec.last["body"] == {"accountId": "acct-a"}
 
 
+def test_assign_unassigns_with_a_null_account_id(monkeypatch):
+    """`None` is Jira's documented way to unassign, and the only one that works.
+
+    An empty string is not an account id and the real endpoint answers it with 400;
+    the fake tracker used to accept it, which is how a release could have gone green
+    here and failed in production.
+    """
+    rec = Recorder()
+    assert _client(monkeypatch, rec).assign("10052", None) is None
+    assert rec.last["body"] == {"accountId": None}
+
+
 def test_a_write_answered_with_no_content_succeeds(monkeypatch):
     """Jira answers both writes with 204 and an empty body."""
     rec = Recorder({"/rest/api/3/issue/10052/transitions": (204, {}, b""),

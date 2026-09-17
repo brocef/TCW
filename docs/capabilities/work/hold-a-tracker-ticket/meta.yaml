@@ -1,0 +1,9 @@
+id: cap-2778c5
+name: Hold a tracker ticket
+Status: Supported
+Planning doc: 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket
+Feature: external-work-tracker
+Subject:
+- work-item
+- cli
+- reference

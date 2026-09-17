@@ -245,3 +245,24 @@ def test_a_global_workflow_claims_like_any_other(fake, alice, bob):
     fake.workflow = GLOBAL
     assert _claim(alice).row == "3a"
     assert _claim(bob).row == "1b"
+
+
+# ── the fake's own guard ─────────────────────────────────────────────────────
+
+
+def test_the_fake_refuses_an_assignee_it_does_not_know(fake, alice):
+    """The fixture must not certify an assignment real Jira would reject.
+
+    It used to write whatever it was handed onto the ticket and answer 204, so
+    `assign(id, "")` set an empty-string assignee that later reads treated as
+    unassigned — an unassign that passes here and 400s against Jira. Only `None`
+    and a registered account id are accepted now.
+    """
+    with pytest.raises(AssertionError):
+        alice.assign("10052", "")
+    with pytest.raises(AssertionError):
+        alice.assign("10052", "nobody-at-all")
+    alice.assign("10052", A)
+    assert fake.tickets["10052"].assignee == A
+    alice.assign("10052", None)
+    assert fake.tickets["10052"].assignee is None

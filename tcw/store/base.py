@@ -1077,6 +1077,13 @@ class TrackerConfig:
     email_env: str
     token_env: str
     claim_transition: str
+    # Optional. The transition a claim asserts through, for a project whose workflow
+    # refuses a second claimant from the claim's own destination. Empty — the default
+    # — means a claim applies no transition at all and leaves the ticket where it is.
+    # Not `transitions.claim`, which is the transition a *start* applies: the two
+    # answer different questions, and running them together is what this key exists
+    # to stop.
+    exclusive_claim_transition: str = ""
     timeout_seconds: int = 15
     # Move → the tracker transition to use for it, for a workflow where more than one
     # transition leads to the mapped status. Only the moves named; `discard` may be one
@@ -1104,6 +1111,7 @@ class TrackerConfig:
 TRACKER_PROVIDERS = ("jira-cloud",)
 
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
+                         "exclusive-claim-transition",
                           "transitions", "statuses", "strict", "timeout-seconds",
                           "comments", "link", "inbox-query"})
 TRACKER_LINK_PLACEHOLDERS = frozenset({"project", "slug"})
@@ -1231,6 +1239,13 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
     claim = nested_str(transitions, "claim", "transitions.claim")
+    # Optional, so a lone `null` is a wrong value rather than a missing required one —
+    # the same shape `inbox-query` uses above.
+    if "exclusive-claim-transition" in raw and raw["exclusive-claim-transition"] is None:
+        problems.append("work.tracker.exclusive-claim-transition: expected a "
+                        "non-empty string, got NoneType")
+    exclusive_claim = (required_str("exclusive-claim-transition")
+                       if raw.get("exclusive-claim-transition") is not None else "")
     move_transitions = _parse_tracker_transitions(transitions, problems)
 
     timeout: Any = raw.get("timeout-seconds", TRACKER_DEFAULT_TIMEOUT)
@@ -1254,6 +1269,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         email_env=email_env,
         token_env=token_env,
         claim_transition=claim,
+        exclusive_claim_transition=exclusive_claim,
         timeout_seconds=int(timeout),
         move_transitions=move_transitions,
         statuses=statuses,

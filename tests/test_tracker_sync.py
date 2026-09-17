@@ -699,7 +699,7 @@ def test_sync_all_visits_recorded_items_and_skips_another_owners(node, fake, mon
     fake.requests.clear()
     code, out, err = cli(node, "work", "tracker", "sync", "--all")
     lines = sorted(out.strip().splitlines())
-    assert lines == sorted([f"{mine}: current", f"{theirs}: skipped — started by "
+    assert lines == sorted([f"{mine}: current", f"{theirs}: skipped — held by "
                                                 f"b@example.test"]), (out, err)
     assert code == 0
     assert fake.tickets[TICKET_ID].status == "Done"

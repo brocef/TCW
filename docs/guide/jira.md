@@ -54,6 +54,7 @@ work:
             review: In Review
             completed: Done
             discarded: Won't Do
+        exclusive-claim-transition: Start Progress # optional; see below
         comments: false # optional, default false
         link: https://tcw.example.com/work/{slug} # optional
         strict: false # optional, default false
@@ -70,6 +71,7 @@ work:
 | `credentials.token-env` | yes      | The **name** of the environment variable holding your Jira API token.                                                                                  |
 | `transitions.claim`     | yes      | The workflow transition that starts a ticket, spelled exactly as Jira spells it.                                                                       |
 | `transitions.submit`, `.rework`, `.complete`, `.discard` | no | The transition each move should use, for a workflow where the status alone cannot say. See [Naming a transition](#naming-a-transition).  |
+| `exclusive-claim-transition` | no  | A transition `tracker claim` asserts through, where the workflow refuses a second claimant. **Moves the ticket**, which claiming otherwise does not. Not the same key as `transitions.claim`. See [When two people claim at once](#when-two-people-claim-at-once). |
 | `statuses`              | no       | The Jira **status** a linked ticket should be in for each of the item's statuses. See [Tickets following their items](#tickets-following-their-items). |
 | `comments`              | no       | `true` to post a short comment on the ticket for each move. See [Comments on the ticket](#comments-on-the-ticket).                                     |
 | `link`                  | no       | A web address added to each comment.                                                                                                                   |
@@ -302,6 +304,73 @@ the clash without asking Jira every time.
 **The query decides what appears.** TCW does not hide tickets that already have a
 work item, so write the query to leave them out (for example by status). A ticket
 both queries select appears in both `tracker list` and `inbox list`; both are true.
+
+## Holding and releasing a ticket
+
+Taking a ticket and starting work on it used to be the same act. They are not:
+`tcw work tracker claim` says a piece of work is yours, and nothing else.
+
+```sh
+tcw work tracker claim 2026-09-14-rename-the-widget
+tcw work tracker release 2026-09-14-rename-the-widget
+```
+
+**`claim` sets two things and moves nothing.** It records you as the item's owner,
+and assigns the ticket to you. The item's status does not change — a backlog item
+stays in the backlog — and neither does the ticket's. No workflow transition is
+applied.
+
+**Ownership is one thing, not two.** The item's owner and the ticket's assignee
+are written by the same command in the same run, so they cannot drift apart. If
+the ticket cannot be assigned, nothing is written locally either, and the command
+tells you why.
+
+**`release` gives it back.** It clears the owner and leaves the ticket assigned to
+nobody. The item's status, the ticket's status and the binding are all untouched.
+Releasing an item that is already under way is the normal way to hand work over:
+it stays active with no owner until somebody claims it.
+
+**Running either one twice is safe.** Claiming something you already hold succeeds
+and sends nothing; releasing something nobody holds does the same. So after a
+failure that left one half done, running the command again is the fix.
+
+**An item with no ticket can still be claimed.** You get the local half, and TCW
+says the ticket half was skipped. (You do still need a tracker configured in that
+project — these live under `tcw work tracker`.)
+
+### When two people claim at once
+
+TCW assigns the ticket and then **reads it back**. Whoever assigned last holds it,
+and the other person is told who has it rather than quietly losing their claim.
+
+That is not a lock, and this guide will not pretend otherwise: if two claims
+overlap exactly — both read, both assign, both read back — they can both report
+success. The window is small and the usual collision is caught.
+
+If that is not good enough for your project, and your Jira workflow genuinely
+refuses a second claimant, name the transition to assert through:
+
+```yaml
+work:
+  tracker:
+    exclusive-claim-transition: "Start Progress"
+```
+
+With this set, a claim applies that transition before assigning, so a second
+person's transition is refused and they never reach the assignment. **It costs a
+status move**: applying a transition moves the ticket, which is the thing claiming
+otherwise avoids. That is the trade, and it is why the setting is optional and off
+by default.
+
+It is a different setting from `transitions.claim`, which is the transition a
+`tcw work start` applies. Setting one does not set the other.
+
+### Taking something somebody else holds
+
+`claim --take-over` claims an item and ticket held by another account.
+`release --force` releases one. Both exist for the same situation — recovering
+work from somebody who has gone away — and both refuse without the flag, naming
+whoever holds it.
 
 ## Linking and unlinking
 

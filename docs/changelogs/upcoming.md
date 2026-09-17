@@ -171,6 +171,29 @@ category.
   excludes `type`. New `tests/test_edit_type.py`; strict case in
   `tests/test_tracker_strict.py`.
 
+- **`tcw work tracker claim <slug> [--take-over]`** and **`release <slug>
+  [--force]`** — ownership as its own operation. Sets/clears `WorkItem.owner` via
+  `WorkStore.set_field` and assigns/unassigns the bound ticket. No transition and
+  no status change on either side. The local half is guarded before it is written
+  (an unbound item, or one whose ticket is unassigned, has no assignee to check)
+  and written last, so a failed tracker half never leaves the two disagreeing; the
+  write is committed, as `start --take-over` commits its own.
+
+- **`tcw/tracker/ownership.py`** — `assert_ownership(client, ticket, *, assertion,
+  take_over)` and `drop_ownership(client, ticket, *, force)`, returning
+  `OwnershipOutcome`. Exclusivity is assign-then-read-back; `intake.claim` is
+  untouched and unused here, because it reads the transition name from
+  `config.claim_transition` directly and can only ever apply the start transition.
+  The read-back distinguishes three answers, not two: the caller holds it, another
+  account holds it, or nobody does — the last reports that the ticket was
+  unassigned mid-claim rather than naming a holder who does not exist.
+
+- **`work.tracker.exclusive-claim-transition`** — optional top-level key,
+  `TrackerConfig.exclusive_claim_transition` (`""` when absent; present-but-blank
+  or non-string is a problem and fails the block closed). In `TRACKER_KEYS`;
+  inherits through `merge_tracker_blocks` unchanged. Applied before the assignment
+  when set, which moves the ticket.
+
 ## Changed
 
 - **`complete` refuses a `--worktree` item whose folder in the worktree holds
@@ -327,6 +350,17 @@ category.
   leaf-name match flagged unrelated terms. `TaxonomyStore.remove` documents the
   contract.
 
+- **`JiraClient.assign`** takes `str | None`; `None` unassigns
+  (`{"accountId": null}`). A project forbidding unassigned issues answers 400,
+  surfacing as `TrackerRequestInvalid`, which `drop_ownership` reports rather than
+  raises.
+
+- **`_started_by_someone_else` → `_held_by_someone_else`** (`tcw/work/cli.py`),
+  and its wording from "started by" to "held by" at all three call sites
+  (`cli.py` guard, `sync --all` skip line, `tcw/tracker/sync.py` strict-mode hint):
+  an item can now carry an owner while sitting in `backlog`, never started. The
+  take-over remedy is a parameter rather than hardcoded to `start --take-over`.
+
 ## Fixed
 
 - **`complete` judges a `--worktree` item from its branch's copy.** With the store
@@ -431,3 +465,8 @@ category.
   more, headings excluded) survives in the source. New
   `test_the_backlog_auditor_reads_the_procedure` and
   `test_the_post_mortem_agent_reads_the_procedure`.
+
+- **`tests/tracker_fake.py` validates the assignee.** It previously wrote any
+  value and answered 204, and reads `""` as unassigned — so an unassignment sent
+  as `""` passed every test and would have 400d against real Jira. Only `None` or
+  a registered account id is accepted now.

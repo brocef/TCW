@@ -250,3 +250,32 @@ tells you what is owed, and tells you how to run it as them or take the item ove
   instructions.
 - New command: `tcw work stage validate <stage> [<item>]`, the check the skill
   runs.
+
+## Holding a ticket without starting it
+
+`tcw work tracker claim <slug>` says a piece of work is yours: it records you as
+the item's owner and assigns its ticket to you. It moves nothing — the item stays
+where it is, and so does the ticket. `tcw work tracker release <slug>` gives both
+back, leaving every status and the binding alone.
+
+Until now the only way to take a ticket was to start it, because claiming and
+starting were the same act. Releasing one had no name at all: you had to unlink
+the ticket or resolve the item.
+
+Both commands are safe to run twice. Claiming something you already hold succeeds
+and sends nothing, so re-running is how you finish a command that failed halfway.
+
+Releasing an item that is already under way is the normal way to hand work over —
+it stays active with nobody holding it until the next person claims it.
+
+**When two people claim at once**, TCW assigns the ticket and then reads it back,
+so whoever got there second is told who holds it instead of silently losing their
+claim. Two claims that overlap exactly can still both succeed; where that is not
+acceptable and your Jira workflow genuinely refuses a second claimant, the new
+optional `work.tracker.exclusive-claim-transition` setting names a transition to
+assert through. It restores the stronger guarantee and costs a status move on
+every claim, which is why it is off by default.
+
+Some Jira projects do not allow unassigned issues. There `release` is refused and
+says so, and your item keeps its owner rather than the two disagreeing.
+

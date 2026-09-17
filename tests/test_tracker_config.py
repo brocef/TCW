@@ -273,3 +273,48 @@ def test_a_lone_null_inbox_query_is_reported_as_the_wrong_type_not_as_required()
     config, problems = parse_tracker_config({**VALID, "inbox-query": None})
     assert config is None
     assert problems == ["work.tracker.inbox-query: expected a non-empty string, got NoneType"]
+
+
+# ── the opt-in exclusivity assertion ─────────────────────────────────────────
+
+
+def test_no_exclusive_claim_transition_is_the_default_and_not_a_problem():
+    """Absent means a claim applies no transition at all, which is the whole point
+    of the key being optional: every config that exists today reads this way."""
+    config, problems = parse_tracker_config(VALID)
+    assert problems == []
+    assert config.exclusive_claim_transition == ""
+
+
+def test_an_exclusive_claim_transition_is_kept():
+    config, problems = parse_tracker_config(
+        {**VALID, "exclusive-claim-transition": "Start Progress"})
+    assert problems == []
+    assert config.exclusive_claim_transition == "Start Progress"
+    # It is not `transitions.claim`, and setting one must not set the other: they
+    # answer different questions, and running them together is what the key exists
+    # to stop.
+    assert config.claim_transition == "Start Progress"
+    config, _problems = parse_tracker_config(
+        {**VALID, "exclusive-claim-transition": "Take It"})
+    assert (config.exclusive_claim_transition, config.claim_transition) == (
+        "Take It", "Start Progress")
+
+
+@pytest.mark.parametrize("value", [None, "", "   ", 7, True])
+def test_a_present_but_unusable_exclusive_claim_transition_is_reported(value):
+    """Present-and-wrong is a mistake; absent is a choice. Only the first is a
+    problem, and it fails the whole block closed like every other one."""
+    config, problems = parse_tracker_config(
+        {**VALID, "exclusive-claim-transition": value})
+    assert config is None
+    assert any("exclusive-claim-transition" in p for p in problems), problems
+
+
+def test_a_misspelled_exclusive_claim_transition_is_an_unknown_key():
+    """An unknown key under work.tracker takes the whole tracker surface down with
+    it, so the misspelling has to be named rather than ignored."""
+    config, problems = parse_tracker_config(
+        {**VALID, "exclusive-claim-transitions": "Start Progress"})
+    assert config is None
+    assert ["work.tracker.exclusive-claim-transitions: unknown key"] == problems

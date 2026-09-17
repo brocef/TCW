@@ -192,3 +192,19 @@ def test_a_blank_inbox_query_is_named_by_validate(node):
     assert any("work.tracker.inbox-query: expected a non-empty string" in p
                for p in validate(root))
     assert FsWorkStore.open(root).tracker_config() is None
+
+
+def test_an_exclusive_claim_transition_is_accepted_and_a_misspelling_is_not(node):
+    """The opt-in exclusivity assertion, end to end through `tcw validate`.
+
+    A misspelling matters more here than for most keys: an unknown key under
+    `work.tracker` fails the whole block closed, which takes down every
+    `tcw work tracker` command rather than just this feature.
+    """
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "exclusive-claim-transition": "Start Progress"})
+    assert [p for p in validate(root) if "tracker" in p] == []
+    set_tracker({**VALID_TRACKER, "exclusive-claim-transtion": "Start Progress"})
+    problems = validate(root)
+    assert any("exclusive-claim-transtion" in p and "unknown key" in p
+               for p in problems), problems
