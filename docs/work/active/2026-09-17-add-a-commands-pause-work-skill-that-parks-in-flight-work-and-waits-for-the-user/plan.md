@@ -78,15 +78,14 @@ Body, in the spec's order:
    an absent user is the cold-handoff case.
 3. Commit and push the work-in-progress, if that was the answer, on the item's branch, marked
    as such.
-4. Write `<stage-id>.handoff.md` in each affected item's folder, located with
-   `tcw work path <slug>` — never composed. Say "lifecycle stage id", because `plan/<id>.md`
-   is a second stage-id namespace (`tcw/store/fs.py:5627`). Valid ids: `request`, `spec`,
-   `plan`, `implement`, `verify`, `postmortem`; when between stages, the one that would run
-   next. **`inbox` is excluded** — there is no item folder yet — and the skill says so and
-   why. **Remove any handoff already present** before writing. **No `tcw://` links**; refer
-   to other items by bare slug, because `tcw validate` scans every `*.md` under the work root
-   (`tcw/validate.py:62`, `:313`) and gates `complete` here (`tcw-config.yaml:74-76`).
-   Contents: the five items the spec lists, branch and last commit among them.
+4. Write `handoff-<UTC timestamp>.md` in each affected item's folder, located with
+   `tcw work path <slug>` — never composed. **What goes in it is the pausing agent's
+   judgment**: the context an agent would need to resume the work in progress. Require only
+   two things — name the branch (and the last commit if one was made), and carry **no
+   `tcw://` links**, because `tcw validate` scans every `*.md` under the work root
+   (`tcw/validate.py:62`, `:313`) and gates `complete` here (`tcw-config.yaml:74-76`). Say
+   that resuming reads and deletes it, and that no handoff is written when there is no item
+   or nothing in flight. Keep the whole file under 80 lines.
 5. Commit and push the handoff — a **second** push, and say why it is not covered by step 3:
    the handoff is written after that commit, and the store may be a different repository
    (`work.repository`). Say that nothing pushes the store for you: TCW publishes only on a
