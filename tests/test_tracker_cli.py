@@ -256,3 +256,110 @@ def test_no_command_or_error_path_prints_the_token(node, monkeypatch):
     for path in root.rglob("*"):
         if path.is_file():
             assert SENTINEL not in path.read_text(encoding="utf-8", errors="ignore"), path
+
+
+# ── `tcw work inbox list`, `show` and `accept` with an inbox-query ───────────
+
+
+INBOX_TRACKER = {**TRACKER, "inbox-query": "status = Triage"}
+
+TRIAGE_BODY = {
+    "isLast": True,
+    "issues": [
+        {"key": "EX-482", "fields": {
+            "summary": "Login retries twice on a 502", "status": {"name": "Triage"},
+            "assignee": None}},
+    ],
+}
+
+
+def _recording(monkeypatch, mapping):
+    """`_responses`, also keeping every request as (method, path, body)."""
+    sent = []
+
+    def fake(self, method, path, body=None, *, timeout=None):
+        sent.append((method, path, body))
+        for fragment, response in mapping.items():
+            if fragment in path:
+                if isinstance(response, Exception):
+                    raise response
+                return response
+        return (200, {}, b"{}")
+    monkeypatch.setattr(jira.JiraClient, "_request", fake)
+    return sent
+
+
+def _inbox_entry(root, name="2026-09-14-serve-accepts-writes.md", text="# Serve\n"):
+    inbox = root / "docs/work/inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / name).write_text(text, encoding="utf-8")
+
+
+TODAY = "2026-09-14-serve-accepts-writes.md | file | 2026-09-14-serve-accepts-writes\n"
+
+
+@pytest.mark.parametrize("tracker", [None, TRACKER], ids=["no-tracker", "no-inbox-query"])
+def test_inbox_list_without_an_inbox_query_is_unchanged(node, monkeypatch, tracker):
+    root, configure = node
+    configure(tracker=tracker)
+    _inbox_entry(root)
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, out, err) == (0, TODAY, "")
+    assert sent == []
+
+
+def test_inbox_list_with_a_broken_tracker_is_unchanged_but_says_so(node, monkeypatch):
+    root, configure = node
+    configure(tracker={**INBOX_TRACKER, "timeout-seconds": -1})
+    _inbox_entry(root)
+    sent = _recording(monkeypatch, OK_RESPONSES)
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, out) == (0, TODAY)
+    assert len(err.strip().splitlines()) == 1 and "tcw validate" in err
+    assert sent == []
+
+
+def test_inbox_list_prints_two_sections_from_the_inbox_query(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root)
+    sent = _recording(monkeypatch, {"/search": (200, {}, json.dumps(TRIAGE_BODY).encode())})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, err) == (0, "")
+    assert out == ("raw intake:\n  " + TODAY + "\ntracker tickets:\n"
+                   "  EX-482 | Triage | unassigned | Login retries twice on a 502\n")
+    [(_method, _path, body)] = sent
+    assert body["jql"] == "status = Triage"
+
+
+def test_inbox_list_marks_both_empty_sections(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _recording(monkeypatch, {"/search": (200, {}, b'{"isLast": true, "issues": []}')})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert (code, err) == (0, "")
+    assert out == "raw intake:\n  (none)\n\ntracker tickets:\n  (none)\n"
+
+
+def test_inbox_list_says_there_are_more_naming_the_inbox_query(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    body = {**TRIAGE_BODY, "isLast": False}
+    _recording(monkeypatch, {"/search": (200, {}, json.dumps(body).encode())})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert code == 0
+    assert "work.tracker.inbox-query" in err and "candidate-query" not in err
+    assert "EX-482" in out
+
+
+def test_inbox_list_keeps_raw_intake_when_the_tracker_fails(node, monkeypatch):
+    root, configure = node
+    configure(tracker=INBOX_TRACKER)
+    _inbox_entry(root)
+    _recording(monkeypatch, {"/search": jira.TrackerUnavailable("the tracker is down")})
+    code, out, err = _run(["work", "inbox", "list"])
+    assert code != 0
+    assert out == "raw intake:\n  " + TODAY + "\ntracker tickets:\n  (not listed)\n"
+    assert "the tracker is down" in err
+    assert SENTINEL not in out + err

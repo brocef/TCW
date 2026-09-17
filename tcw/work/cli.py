@@ -452,8 +452,45 @@ def _inbox_list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
-    for entry in st.inbox_list():
-        print(f"{entry.ref} | {entry.kind} | {entry.title}")
+    entries = st.inbox_list()
+    config = st.tracker_config()
+    if config is None or not config.inbox_query:
+        # Without an inbox-query the output is exactly what it was before tickets
+        # could appear here. A broken block cannot say whether it declares one.
+        if config is None and st.tracker_problems():
+            print("tcw work inbox list: tracker tickets are not listed because the "
+                  "tracker configuration has problems; run `tcw validate`.",
+                  file=sys.stderr)
+        for entry in entries:
+            print(f"{entry.ref} | {entry.kind} | {entry.title}")
+        return 0
+    print("raw intake:")
+    for entry in entries:
+        print(f"  {entry.ref} | {entry.kind} | {entry.title}")
+    if not entries:
+        print("  (none)")
+    print("\ntracker tickets:")
+    return _inbox_tickets(config)
+
+
+def _inbox_tickets(config) -> int:
+    """The tracker half of `inbox list`, printed after raw intake so a tracker that
+    cannot be reached costs nothing but itself."""
+    from tcw.tracker.jira import JiraClient, TrackerError
+    try:
+        result = JiraClient(config).search(config.inbox_query)
+    except TrackerError as e:
+        print("  (not listed)")
+        print(f"tcw work inbox list: tracker tickets could not be listed: {e}",
+              file=sys.stderr)
+        return 1
+    for issue in result.issues:
+        print(f"  {_ticket_row(issue)}")
+    if not result.issues:
+        print("  (none)")
+    if result.truncated:
+        print(f"Showing the first {len(result.issues)} tickets; there are more. "
+              f"Narrow work.tracker.inbox-query to see the rest.", file=sys.stderr)
     return 0
 
 
@@ -2037,6 +2074,13 @@ def _tracker_client(label: str):
     return JiraClient(config)
 
 
+def _ticket_row(issue: dict) -> str:
+    fields = issue.get("fields") or {}
+    status = (fields.get("status") or {}).get("name", "?")
+    assignee = (fields.get("assignee") or {}).get("displayName", "unassigned")
+    return f"{issue.get('key', '?')} | {status} | {assignee} | {fields.get('summary', '')}"
+
+
 def _tracker_list(args: argparse.Namespace) -> int:
     client = _tracker_client("list")
     if client is None:
@@ -2048,11 +2092,7 @@ def _tracker_list(args: argparse.Namespace) -> int:
         print(f"tcw work tracker list: {e}", file=sys.stderr)
         return 1
     for issue in result.issues:
-        fields = issue.get("fields") or {}
-        status = (fields.get("status") or {}).get("name", "?")
-        assignee = (fields.get("assignee") or {}).get("displayName", "unassigned")
-        summary = fields.get("summary", "")
-        print(f"{issue.get('key', '?')} | {status} | {assignee} | {summary}")
+        print(_ticket_row(issue))
     if not result.issues:
         print("No tickets matched the configured query.")
     if result.truncated:
