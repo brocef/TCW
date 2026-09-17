@@ -35,7 +35,7 @@
   capability; `tcw capabilities check` OK.
 - Skill tests (`test_skill_lifecycle_parity`, `test_shipped_procedures`,
   `test_plugin_manifests`): 209 passed after the review fixes.
-- Full suite: combined run; result in `refined-outcome.md`.
+- Full suite at `79bef735`: 3625 passed. After the final wording fixes (`488aac45`), at `4c099f78`: 3628 passed.
 
 ## What the plan or spec got wrong
 
@@ -47,3 +47,24 @@
 - **Not verified:** whether Codex's default sandbox lets `pipx install` reach the
   network. The reviewer suspects not; nothing in `install.md` tells an agent to ask
   for that permission. Recorded, not filed — it was not observed.
+
+## Autonomous decisions
+
+Run unattended under `autonomous-work`; these replace the human checkpoints.
+
+- **No advisor consulted for design** — each part named its file and the wanted
+  result; the only choices were wording.
+- **Leave off the sentinel argument in the Codex command.** Decided from the script:
+  the install text runs it only when `tcw` is missing, where the sentinel does
+  nothing; both the reviewer and the verifier confirmed the script is safe without it.
+- **Widen scope to `documentation-sync`'s `<plugin>` and `cut-version.md`'s
+  skill-relative script path** — same defect, found by the spec sweep and by review.
+- **Review/verifier findings accepted:** `inbox` takes no item; the lost fact about
+  how Codex receives stage and item; the ambiguous folder count in `install.md`;
+  quoting the command in the code block itself; clearer `inbox` wording.
+- **Deferred, filed:** whether Codex's sandbox lets the install reach the network
+  (`2026-09-17-codex-s-sandbox-may-block-the-tcw-install-the-setup-skill-gives`) —
+  inferred, never observed.
+- **Verify decision:** accept. Verifier: criteria 1-6 met with its own scratch-plugin
+  run; criterion 7 met by `capabilities OK` and the 3628-test run.
+- **Interruption:** the machine crashed during verification; it was rerun.
