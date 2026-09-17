@@ -1,0 +1,6 @@
+name: TCW Pause Work Command Skill
+kind: Feature
+relatesTo: []
+vocabulary:
+- skill
+- work-item/lifecycle-stage
