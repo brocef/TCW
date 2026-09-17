@@ -287,7 +287,8 @@ def unreachable_parent(root: Path) -> "UnreachableProject | None":
     that is not here has none. Without this, `tcw work nodes` printed
     `(none — root)` and `tcw work escalate` said "this is the root" for a node
     whose config plainly names a parent — the exact confusion the comment above
-    `child_nodes` forbids, and which `README.md` promises does not happen.
+    `child_nodes` forbids, and which `docs/guide/multi-repo.md` promises does
+    not happen.
     """
     registry = FsProjectRegistry.open(root).require_valid()
     parent_id = registry.declared_parent_id()
@@ -4961,7 +4962,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             existing = self.tombstone(slug)
             # The item is the better source for the resolution when the
             # graveyard has no record — a board adopting retention before
-            # backfilling is the migration the README describes, and writing an
+            # backfilling is the migration `docs/guide/work.md` describes under
+            # "What happens to resolved work", and writing an
             # empty resolution over a real one is the overwrite
             # `record_tombstone` refuses by name. The *date* has no better
             # source: `WorkItem` carries no resolved timestamp, and
