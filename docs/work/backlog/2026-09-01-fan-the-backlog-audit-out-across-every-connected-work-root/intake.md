@@ -94,4 +94,4 @@ by @brocef.
 
 ## Notes
 
-- 2026-09-14: the capability `work/audit-work-backlog` was folded into `skills/tcw-work` and deleted by `2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill`, so this item's capability delta should name `skills/tcw-work` under `changed:`.
+- 2026-09-14: the capability `work/audit-work-backlog` was folded into `skills/work` and deleted by `2026-09-14-consolidate-the-setup-skills-into-a-single-tcw-setup-skill`, so this item's capability delta should name `skills/work` under `changed:`.

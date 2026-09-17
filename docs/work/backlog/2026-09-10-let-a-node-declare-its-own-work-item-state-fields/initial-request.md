@@ -81,7 +81,7 @@ The original request's words on this half are preserved below.
 - No new reference material was asked for at the split; this item inherits the
   original request's references, which were filed with it.
 
-- **Configuration keys are documented in `tcw-configure`** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): a new key's "how to declare it" text goes in the matching document under `skills/tcw-configure/references/`, per the `Configuration-Key-Change` documentation entry, not in the component's usage skill.
+- **Configuration keys are documented in the `configure` skill** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): a new key's "how to declare it" text goes in the matching document under `skills/configure/references/`, per the `Configuration-Key-Change` documentation entry, not in the component's usage skill.
 
 ## References
 

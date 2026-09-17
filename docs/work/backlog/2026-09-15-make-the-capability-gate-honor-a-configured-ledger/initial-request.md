@@ -26,7 +26,7 @@ else.
 
 - The gate must still **fail closed** on a declaration it cannot read: an unreadable
   file must not become "no declarations".
-- `skills/tcw-capabilities/SKILL.md` already says never to build a store path from the
+- `skills/capabilities/SKILL.md` already says never to build a store path from the
   node root; the fix should follow that rule, not add another hard-coded path.
 
 ## Also worth checking

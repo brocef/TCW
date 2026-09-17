@@ -3,7 +3,7 @@
 ## The observation
 
 `tcw work complete` enforces capability reconciliation, but only half of it. From
-`skills/tcw-work/references/transitions.md`:
+`skills/work/references/transitions.md`:
 
 > **Capability reconciliation is enforced**, not merely acknowledged: it fails if
 > a capability the item declared `new:` still reads `Missing`, or a declared path

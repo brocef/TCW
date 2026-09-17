@@ -275,7 +275,7 @@ One block, after the code tasks, evaluated over the finished diff.
   separate store calls, which a concurrent transition could tear across two
   locations; they are now one write.
 - **`skills/<component>/SKILL.md` — [Skill-Driven-Component], fires.**
-  Two files under `skills/tcw-work/`:
+  Two files under `skills/work/`:
     - `references/commands.md` line 8 gains `[--branch <b>]` in the board row,
       and line 12 gains a note that `start` records the branch.
     - `references/transitions.md` gains one bullet under its `start` section
@@ -284,7 +284,7 @@ One block, after the code tasks, evaluated over the finished diff.
       instead. The flag list at line 39 does not change — no flag was added to
       `start` — so the behaviour is what needs writing down.
 
-  `skills/tcw-work/SKILL.md` needs no change: it routes to `commands.md` for
+  `skills/work/SKILL.md` needs no change: it routes to `commands.md` for
   the command table and states no field list. Neither do the five
   `skills/tcw-work-stage-*/` skills, which compose stage instructions and name
   no flags.

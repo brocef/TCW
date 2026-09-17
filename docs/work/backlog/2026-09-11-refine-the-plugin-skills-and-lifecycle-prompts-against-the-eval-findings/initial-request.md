@@ -42,7 +42,7 @@ entirely the wrong layer.
 
 ## The composing skill is one file
 
-`skills/tcw-work-stage/SKILL.md`. It was six files when this item was filed; the
+`skills/work-stage/SKILL.md`. It was six files when this item was filed; the
 skill restructure deleted the five per-stage copies, and the parity guard in
 `tests/test_skill_lifecycle_parity.py` is now keyed to the one skill
 (`COMPOSING_SKILLS = {None: STAGE_SKILL}`). `skills/documentation-sync` also
@@ -75,4 +75,4 @@ reliably it does it, those need a body edit rather than a status flip.
 
 ## Notes
 
-- **The skill set was restructured** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): `tcw-plugin` and the five `tcw-work-stage-<stage>` skills are gone; `tcw-setup` and `tcw-configure` are new; the four workflow commands are `tcw-commands-*` skills; the three optional skills are `tcw-extras-*`; there are no slash commands. Refine that set.
+- **The skill set was restructured** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): `tcw-plugin` and the five `tcw-work-stage-<stage>` skills are gone; the `setup` and `configure` skills are new; the four workflow commands are `commands-*` skills; the three optional skills are `extras-*`; there are no slash commands. Refine that set.

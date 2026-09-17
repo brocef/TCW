@@ -54,4 +54,4 @@ overruled, not missed.
 Reference material: asked; none provided. The requester considers the repository
 itself sufficient — the doc-sync item's `spec.md` is the prior art.
 
-- **Configuration keys are documented in `tcw-configure`** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): a new key's "how to declare it" text goes in the matching document under `skills/tcw-configure/references/`, per the `Configuration-Key-Change` documentation entry, not in the component's usage skill.
+- **Configuration keys are documented in the `configure` skill** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): a new key's "how to declare it" text goes in the matching document under `skills/configure/references/`, per the `Configuration-Key-Change` documentation entry, not in the component's usage skill.

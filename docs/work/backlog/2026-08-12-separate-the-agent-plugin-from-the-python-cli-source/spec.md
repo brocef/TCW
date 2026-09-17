@@ -5,7 +5,7 @@
 >
 > - **It names a layout that no longer exists.** The skill restructure removed
 >   `commands/` and `skills/tcw-plugin` (commit 7caff3d0). The goals, acceptance
->   criteria and the Codex-route constraint must name `skills/tcw-setup`
+>   criteria and the Codex-route constraint must name `skills/setup`
 >   (`SKILL.md` and `references/install.md`) instead.
 > - **The eval harness assumes the plugin is the repository root.**
 >   `evals/run_evals.py` passes `--plugin-dir` as the repo root and asserts the
@@ -23,7 +23,7 @@
 > - Overlaps `2026-08-18-serve-version-cut-instructions-from-tcw-config-yaml-instead-of-the-agent-guide`
 >   (both change the version-file list) and inbox note
 >   `2026-09-14-guards-and-gaps-the-skill-restructure-review-left.md` items 3–4
->   (the same `tcw-setup` text).
+>   (the same `setup` text).
 
 ## Capability changes
 

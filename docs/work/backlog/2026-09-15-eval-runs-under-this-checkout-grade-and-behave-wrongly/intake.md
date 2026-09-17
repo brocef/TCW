@@ -67,9 +67,9 @@ rather than opened as their own, because they are defects in the same harness
    skills that still ship.** A stale key (say a deleted skill) passes
    `tests/test_eval_coverage.py`.
 
-6. **B4 and B8 only catch a wrong route into `tcw-setup`.** Each asserts
-   `tool_input_absent` `tcw-setup/references/`, as the spec asked. A B8 run ("Set
-   it up.") that opened a `tcw-configure` document instead passes every mechanized
+6. **B4 and B8 only catch a wrong route into the `setup` skill.** Each asserts
+   `tool_input_absent` `setup/references/`, as the spec asked. A B8 run ("Set
+   it up.") that opened a `configure` document instead passes every mechanized
    check, although "set it up" there asks for a term, a capability and a work item,
    not a configuration change. This is a gap in the spec, not a departure from it;
-   adding `tool_input_absent` `tcw-configure/references/` to both cases would close it.
+   adding `tool_input_absent` `configure/references/` to both cases would close it.

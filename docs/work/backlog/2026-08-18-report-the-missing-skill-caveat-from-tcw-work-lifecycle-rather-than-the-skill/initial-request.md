@@ -7,7 +7,7 @@ there because C7 was not touching `tcw/` outside the prompts.
 
 ## Product changes
 
-`skills/tcw-work/references/hooks.md:83` carries this caveat:
+`skills/work/references/hooks.md:83` carries this caveat:
 
 > **A configured-but-missing skill cannot fail closed everywhere.**
 
@@ -43,7 +43,7 @@ item rather than part of C7:
 
 ## Meta changes
 
-If the caveat moves rather than duplicates, `skills/tcw-work/references/hooks.md`
+If the caveat moves rather than duplicates, `skills/work/references/hooks.md`
 loses a line — but note C7 just consolidated that file from 159 to 92 lines, so
 check its current shape rather than an older one.
 
@@ -60,4 +60,4 @@ check its current shape rather than an older one.
 - The smallest of the three C8 filings in diff size and the largest in blast
   radius: it is the only one that changes what the CLI prints.
 
-- **The caveat it quotes has moved line** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): it was at `skills/tcw-work/references/hooks.md:88` and is still in `hooks.md`, under "Two limits worth knowing", after the declaring text moved to the `tcw-configure` skill's `work.md`.
+- **The caveat it quotes has moved line** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): it was at `skills/work/references/hooks.md:88` and is still in `hooks.md`, under "Two limits worth knowing", after the declaring text moved to the `configure` skill's `work.md`.

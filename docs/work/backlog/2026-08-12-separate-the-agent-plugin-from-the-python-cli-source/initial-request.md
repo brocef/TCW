@@ -81,4 +81,4 @@ on the Python source being co-located any more.
   cleanup with no user-visible behavior change, now that the install source has
   already moved.
 
-- **Paths its plan names have changed** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): `tcw-plugin` is gone and its install text is the `tcw-setup` skill's `install.md`; `commands/`, which the plan moves, no longer exists.
+- **Paths its plan names have changed** (2026-09-14-restructure-tcw-s-skills-setup-and-configure-skills-command-and-extras-skills-and-no-slash-commands): `tcw-plugin` is gone and its install text is the `setup` skill's `install.md`; `commands/`, which the plan moves, no longer exists.

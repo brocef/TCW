@@ -243,11 +243,11 @@ Every entry in `tcw work docs`, evaluated:
   write a different `bound`/`unlinked-on`), expected no change: the guide does
   not mention either field's form. Re-check on the finished diff.
 - `skills/<component>/SKILL.md` **[Skill-Driven-Component]** — fires for
-  `tcw-work`. Update `skills/tcw-work/references/commands.md:19`:
+  the `work` skill. Update `skills/work/references/commands.md:19`:
   `[--resolved <ISO>]` → `[--resolved <date or timestamp with offset>]`.
-  `skills/tcw-work/references/procedures/search.md:66` (`started: <timestamp>`)
+  `skills/work/references/procedures/search.md:66` (`started: <timestamp>`)
   stays correct. No other skill names a date form (searched `skills/`).
-- `skills/tcw-configure/references/<document>.md` **[Configuration-Key-Change]**
+- `skills/configure/references/<document>.md` **[Configuration-Key-Change]**
   — does not fire: no configuration key changes.
 - Not an entry, but found by the same search: `docs/guide/work.md:90` shows
   `--resolved 2026-09-01`, which stays valid. No change.

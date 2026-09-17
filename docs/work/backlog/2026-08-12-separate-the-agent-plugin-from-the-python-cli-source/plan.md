@@ -152,7 +152,7 @@ git commit -m "build: version the isolated plugin payload"
 ### Task 5: Repair repository-wide path consumers
 
 **Files:**
-- Modify: `tests/test_skill_lifecycle_parity.py:25-26` — `SKILL`/`REFS` are `REPO / "skills/tcw-work/…"` constants that break on the move; the only known-in-advance consumer, so fix it directly rather than waiting for the audit to rediscover it
+- Modify: `tests/test_skill_lifecycle_parity.py:25-26` — `SKILL`/`REFS` are `REPO / "skills/work/…"` constants that break on the move; the only known-in-advance consumer, so fix it directly rather than waiting for the audit to rediscover it
 - Modify: further tests and scripts found by the stale-path audit
 - Modify: repository docs outside the final Documentation Sync set when they contain broken literal paths
 
