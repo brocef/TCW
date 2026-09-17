@@ -1951,12 +1951,52 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     def remove(self, ref: str) -> None:
         term = self.get(ref)
+        # The exact listed spelling only, as `FsCapabilitiesStore.remove`: on a
+        # case-insensitive disk `ADMIN` resolves to the `admin` folder but echoes
+        # the spelling back as the slug, and git would not find that path.
+        if term is not None and term.origin == "local" and term.slug not in self._local_slugs():
+            term = None
         if term is None:
             raise ValueError(f"no such term: {ref}")
         if term.origin != "local":
             raise ValueError(f"cannot remove inherited term '{term.qualified}' "
                              f"(edit it at its source)")
-        self._rm(self.root / term.slug)
+        d = self.root / term.slug
+        # Refused, never cascaded: `_rm` deletes the whole folder. Walked on the
+        # folder itself rather than `_local_slugs`, which skips unreadable
+        # directories that `git rm -rf` would delete all the same.
+        nested = sorted(str(p.relative_to(self.root)) for p in d.rglob("*") if p.is_dir())
+        if nested:
+            raise ValueError(f"cannot remove '{term.slug}': nested under it: "
+                             f"{', '.join(nested)} (remove those first)")
+        referrers = self._referrers(d)
+        if referrers:
+            raise ValueError(f"cannot remove '{term.slug}': still referenced by "
+                             f"{', '.join(referrers)} (repoint or clear those first)")
+        self._rm(d)
+
+    def _referrers(self, target: Path) -> list[str]:
+        """`<term> (<field>)` for every other local term whose `relatesTo` or
+        `vocabulary` resolves to the local term folder `target` — exactly the
+        refs `check` would report dangling once it is gone. Compared by folder
+        identity, not spelling, so `admin/permission` never matches a top-level
+        `permission`."""
+        out = []
+        for term in self.list_all(local_only=True):
+            if (self.root / term.slug).samefile(target):
+                continue
+            for field, refs in (("relatesTo", term.relates_to),
+                                ("vocabulary", term.vocabulary)):
+                for ref in refs:
+                    try:
+                        hit = self.get(ref)
+                    except AmbiguousRef:
+                        continue
+                    if (hit is not None and hit.origin == "local"
+                            and (self.root / hit.slug).samefile(target)):
+                        out.append(f"{term.slug} ({field})")
+                        break
+        return out
 
     def extends_add(self, project_id: str) -> None:
         self._require_repository()
@@ -1994,11 +2034,6 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         cfg = self.root / "config.yaml"
         self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
                                                  allow_unicode=True))])
-
-    def relators(self, slug: str) -> list[str]:
-        """Local term slugs whose `relatesTo` points at `slug` (for rm warnings)."""
-        return [t.slug for t in self.list_all(local_only=True)
-                if any(r == slug or r.rsplit("/", 1)[-1] == slug for r in t.relates_to)]
 
     # -- validation --
 

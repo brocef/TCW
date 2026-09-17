@@ -279,7 +279,7 @@ def test_tree_store_reads_do_not_acquire_a_repository_precondition(unrepo):
     assert tax.get_term_detail("widget") is not None
     assert tax.search("widget")
     assert tax.check() == []
-    assert tax.relators("widget") == []
+    assert tax._referrers(tax.root / "widget") == []   # the read half of remove
     assert tax.__class__.__mro__          # sanity: store constructed at all
     assert tax._validation_resources("widget")
 

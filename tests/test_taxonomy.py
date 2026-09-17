@@ -372,6 +372,73 @@ def test_check_reports_escaping_ref_as_dangling(tmp_path):
     assert any("dangling vocabulary" in p for p in problems)
 
 
+def test_rm_refuses_nested_terms(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("Admin")
+    st.add("Permission", parent="admin")
+    with pytest.raises(ValueError, match="nested under it: admin/permission"):
+        st.remove("admin")
+    monkeypatch.chdir(root)
+    assert main(["taxonomy", "rm", "admin"]) == 1
+    captured = capsys.readouterr()
+    assert "admin/permission" in captured.err and captured.out == ""
+    assert st.get("admin") is not None and st.get("admin/permission") is not None
+
+
+def test_rm_refuses_a_relatesto_referrer(tmp_path):
+    root = node(tmp_path, "repo")
+    write_term(root, "invoice", name="Invoice")
+    write_term(root, "payment", name="Payment", relates_to=["invoice"])
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    st = FsTaxonomyStore.open(root)
+    with pytest.raises(ValueError, match=r"still referenced by payment \(relatesTo\)"):
+        st.remove("invoice")
+    assert st.get("invoice") is not None and st.check() == []
+
+
+def test_rm_refuses_a_vocabulary_referrer(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("Invoice")
+    st.add("PDF Export", kind="feature", vocabulary=["invoice"])
+    with pytest.raises(ValueError, match=r"still referenced by pdf-export \(vocabulary\)"):
+        st.remove("invoice")
+    assert st.get("invoice") is not None
+
+
+def test_rm_is_not_refused_by_a_same_leaf_ref_elsewhere(tmp_path):
+    root = node(tmp_path, "repo")
+    write_term(root, "permission", name="Permission")
+    write_term(root, "admin/permission", name="Admin Permission")
+    write_term(root, "role", name="Role", relates_to=["admin/permission"])
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    st = FsTaxonomyStore.open(root)
+    st.remove("permission")
+    assert st.get("permission") is None and st.check() == []
+
+
+def test_rm_ignores_a_self_reference(tmp_path):
+    root = node(tmp_path, "repo")
+    write_term(root, "loop", name="Loop", relates_to=["loop"])
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    st = FsTaxonomyStore.open(root)
+    st.remove("loop")
+    assert st.get("loop") is None
+
+
+def test_rm_refuses_a_case_variant_spelling(tmp_path):
+    root = node(tmp_path, "repo")
+    st = FsTaxonomyStore.open(root)
+    st.add("Admin")
+    if not (root / "docs/taxonomy/ADMIN").is_dir():
+        pytest.skip("case-sensitive filesystem: the variant resolves to nothing anyway")
+    with pytest.raises(ValueError, match="no such term"):
+        st.remove("ADMIN")
+    assert (root / "docs/taxonomy/admin").is_dir()
+
+
 def test_rm_refuses_inherited(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)

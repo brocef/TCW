@@ -113,15 +113,11 @@ def _rm(args: argparse.Namespace) -> int:
     if term is None:
         print(f"tcw taxonomy rm: no such term: {args.path}", file=sys.stderr)
         return 1
-    relators = st.relators(term.slug) if term.origin == "local" else []
     try:
         st.remove(args.path)
     except ValueError as e:
         print(f"tcw taxonomy rm: {e}", file=sys.stderr)
         return 1
-    if relators:
-        print(f"warning: still referenced by relatesTo of: {', '.join(relators)}",
-              file=sys.stderr)
     print(f"Removed term {term.slug}")
     return 0
 
