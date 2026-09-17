@@ -51,3 +51,26 @@
   other guides' concrete examples and found nothing further; `work.md:279`
   (`--blocks downstream-slug`) refuses but sits in a placeholder reference block,
   which the spec leaves out.
+
+## Autonomous decisions
+
+Run unattended under `autonomous-work`; these replace the human checkpoints.
+
+- **Compress the plan?** No advisor consulted — a two-edit change with no open
+  question. Chose a short plan written on `main`, no worktree.
+- **Widen scope to the sibling defects the spec sweep found** (`--vocab user`,
+  `Subject=…,billing`, the `fs.py:290` citation)? No advisor consulted: the spec
+  stage's rule makes the sibling sweep repo-wide by default, and all three are the
+  same one-line kind. Included.
+- **Code review, finding: `docs/guide/work.md:239` registers no `cli` tag.**
+  Accepted after reproducing it; folded in as the same defect class.
+- **Code review, finding: `outcome.md` overstated the sweep.** Accepted; corrected.
+- **Code review, suggestion: `Subject=invoice,user`.** Accepted — reads naturally,
+  and `-p` already shows the path form.
+- **Code review, note: `work.md:279` `--blocks downstream-slug` refuses.** Rejected
+  for this item: that block is placeholder syntax (`$slug`, `some-slug`), which the
+  spec leaves out.
+- **Verify decision:** accept. `tcw-verifier` reported all four criteria met on
+  `c4652143`; criterion 5 and the re-run of criterion 1 after the review fixes were
+  checked by hand (see Evidence). The review fixes touch only guide text, so the
+  3605-test run at `8822ca20` still stands for code.
