@@ -519,8 +519,8 @@ Setting `strict: true` changes several steps, so that no work happens without a
 claimed ticket:
 
 - `tcw work new` (except `--epic`) and `inbox accept` of an inbox entry are refused,
-  and point you at `tcw work tracker import`. `inbox accept` of a ticket is allowed,
-  because it claims the ticket.
+  and point you at `tcw work tracker import`. Where `inbox-query` is set, `inbox accept`
+  of a ticket is allowed, because it claims the ticket.
 - `start` refuses an item with no ticket. For a linked item it claims the ticket
   first, and moves the item only if the claim worked.
 - `submit`, `rework` and `complete --resolution done` read the ticket first, and

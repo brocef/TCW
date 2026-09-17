@@ -14,8 +14,8 @@ internal module names.
 - If an inbox file has the same name as a ticket, the file wins; add `--ticket`
   to get the ticket.
 - If Jira cannot be reached, you still see your inbox requests.
-- Under strict mode, accepting a ticket from the inbox is allowed; accepting an
-  inbox file is still refused.
+- Under strict mode, with `inbox-query` set, accepting a ticket from the inbox is
+  allowed; accepting an inbox file is still refused.
 
 ## Replacing TCW's own procedures
 
