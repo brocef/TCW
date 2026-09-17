@@ -41,7 +41,7 @@ It is where a stage's instructions come from, composed with this project's own.
 
 ## Finding your place
 
-Read the item — and if a `<stage-id>.handoff.md` sits in its folder, an agent paused mid-task there: read it, let it place you, then delete it in the same step, because a stale one misleads the next reader. Then invoke `work-stage` for **only** the first missing artifact's stage:
+Read the item — and if any `handoff-*.md` sits in its folder, an agent paused mid-task there: read them, newest last, let them place you, then delete what you read, because a stale one misleads the next reader. Then invoke `work-stage` for **only** the first missing artifact's stage:
 no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md` →
 `plan` · no `outcome.md` → `implement` · no `refined-outcome.md`/`rework.md` →
 `verify`. Resume across sessions with `tcw work list --status active` →

@@ -7,13 +7,13 @@ category.
 
 - **`commands-pause-work`** — a command skill that stops work in progress. It
   brings the current edit to a coherent resting point, asks whether to commit and
-  push (treating no answer as yes), writes a `<stage-id>.handoff.md` into each
-  affected item's folder, commits and pushes that too, then reports and falls
-  silent. It runs no lifecycle stage and no transition, so an item keeps its
-  status and its claim. `<stage-id>` is a lifecycle stage id; `inbox` is excluded
-  because there is no item folder at that stage. The file carries no `tcw://`
-  links, since `tcw validate` resolves links in every Markdown file under the
-  work store and a project may gate `complete` on it.
+  push (treating no answer as yes), writes a `handoff-<UTC timestamp>.md` into
+  each affected item's folder, commits and pushes that too, then reports and
+  falls silent. It runs no lifecycle stage and no transition, so an item keeps
+  its status and its claim. What goes in the document is left to the agent that
+  paused; only two things are required of it — name the branch, and carry no
+  `tcw://` links, since `tcw validate` resolves links in every Markdown file
+  under the work store and a project may gate `complete` on it.
 - **The handoff is read and deleted on the way back in.** `skills/work/SKILL.md`'s
   "Finding your place" now checks for one before detecting the stage from
   artifacts, and `commands-drive-work-to-completion` points at that step — without

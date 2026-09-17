@@ -13,8 +13,8 @@ Use the `work` skill. This skill covers the **`verify` stage** and the
 `submit` / `rework` transitions.
 
 Invoke the `work-stage` skill with `verify` and the item's slug. First check the
-item's folder for a `<stage-id>.handoff.md`: an agent paused here and left it.
-Read it, let it place you, then delete it in the same step.
+item's folder for any `handoff-*.md`: an agent paused here and left one. Read
+it, let it place you, then delete what you read.
 
 Assess the work against `spec.md`'s acceptance criteria — read the diff, run the
 checks, form an opinion. That half is delegable to a read-only subagent

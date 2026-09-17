@@ -16,10 +16,10 @@ resuming needs into the work item itself — the stage it was in, the branch and
 last commit, the decisions it had already made, anything left deliberately
 half-done, and the next thing to do. Then it reports and waits.
 
-You will see a file called something like `implement.handoff.md` appear in the
-item's folder. That is the note. When you pick the work back up, the agent reads
-it and deletes it — it describes where things stood, which stops being true the
-moment you carry on.
+You will see a file called something like `handoff-20260917T2115Z.md` appear in
+the item's folder. That is the note. When you pick the work back up, the agent
+reads it and deletes it — it describes where things stood, which stops being true
+the moment you carry on.
 
 If you do not answer the question about committing, it commits and pushes anyway.
 Being away is exactly when you would want that.
