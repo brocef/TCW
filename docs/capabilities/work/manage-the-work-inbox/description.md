@@ -19,6 +19,17 @@ the entry's body declares, or the entry's own name with a leading `YYYY-MM-DD-`
 removed — in that order. An entry named nothing *but* a date keeps it, since
 stripping it would leave no name at all.
 
+Where the project has connected a tracker and declared
+`work.tracker.inbox-query`, the inbox also holds the tracker's tickets waiting to be
+triaged. `tcw work inbox list` then prints two sections, `raw intake:` and
+`tracker tickets:`, and a tracker that cannot be reached still leaves me the raw
+intake, marks the ticket section `(not listed)` and exits non-zero. Without that
+query the listing is exactly the raw intake, as before. `show` and `accept` take a
+ticket key as well as an entry: a raw entry is looked for first, so an entry with a
+ticket's name hides that ticket until I pass `--ticket`. Showing a ticket prints it
+as `tcw work tracker show` does, followed by its description, and accepting one
+claims it exactly as `tcw work tracker import` does, `--part` included.
+
 Requests I send across nodes with `tcw work delegate` and `tcw work escalate`
 land in the target project's configured inbox, wherever `work.path` puts it. If
 that store cannot be resolved, the command fails with a non-zero exit and an
