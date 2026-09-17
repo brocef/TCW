@@ -95,6 +95,8 @@ synchronization". No other command gains a network dependency.
 | list tickets the configured query selects | `tcw work tracker list` |
 | one ticket, plus its claimability report | `tcw work tracker show <ticket>` |
 | claim a ticket and create a bound backlog item | `tcw work tracker import <ticket> [--part <id>] [--title <title>]` |
+| say an item and its ticket are yours | `tcw work tracker claim <slug> [--take-over]` — sets the item's owner and assigns the ticket; applies no transition and moves neither status |
+| let go of an item and its ticket | `tcw work tracker release <slug> [--force]` — clears the owner and unassigns the ticket; status and binding untouched |
 | record that an existing item and a ticket are the same work | `tcw work tracker link <slug> <ticket> [--part <id>]` |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 | retry tickets that did not follow their items | `tcw work tracker sync <slug>` · `tcw work tracker sync --all` |

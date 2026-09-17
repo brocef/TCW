@@ -31,7 +31,8 @@ work:
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
 `credentials.token-env`, `transitions.claim`, and optional `statuses`, `strict`,
-`comments`, `link`, `inbox-query` and `timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
+`comments`, `link`, `inbox-query`, `exclusive-claim-transition` and
+`timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
 parent's. Unknown keys are reported rather than
 ignored, so a config written for a later release complains instead of silently doing
@@ -63,6 +64,22 @@ transition the ticket does not offer, or that matches twice, or that leads to a
 status other than the mapped one, is refused rather than ignored. **Upgrade every
 copy of `tcw` first:** version 2.3.0 and earlier report these keys as unknown and
 treat the whole tracker block as broken.
+
+`exclusive-claim-transition` is optional, sits at the top level of `work.tracker`
+rather than under `transitions`, and is the transition `tcw work tracker claim`
+asserts through. **Leave it unset unless the project needs it.** Unset, a claim
+applies no transition at all: it assigns the ticket, reads it back, and leaves the
+status alone. Set, a claim applies the named transition before assigning, so that
+on a workflow refusing a second claimant the second person is stopped before they
+reach the assignment — and **the ticket moves**, which is the thing an unset claim
+avoids. Name it only where the workflow really does exclude, and where that
+guarantee is worth a status change on every claim.
+
+It is not `transitions.claim` under another name. That one is the transition a
+`tcw work start` applies; this one is how a claim proves it is exclusive. Setting
+either has no effect on the other. **Upgrade every copy of `tcw` first:** version
+2.3.0 and earlier report this key as unknown and treat the whole tracker block as
+broken, which disables every `tcw work tracker` command rather than just this.
 
 `statuses` names the tracker **status** (not transition) a bound ticket should be in
 for each local status: `active`, `review`, `completed`, `discarded`. Names match

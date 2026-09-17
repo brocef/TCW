@@ -578,7 +578,19 @@ tcw work tracker link <slug> ENG-517       # TCW: records the link.             
 tcw work start <slug>                      # TCW: backlog → active.               Jira: if unassigned or yours, ENG-517 → In Progress, assigned to you
 ```
 
-**Example 3: the same project with `strict: true`.**
+**Example 3: taking a ticket without starting it, and handing it back.**
+
+```sh
+tcw work tracker claim <slug>           # TCW: records you as the owner.          Jira: ENG-517 assigned to you; status unchanged
+#   …you decide it is not yours after all…
+tcw work tracker release <slug>         # TCW: clears the owner.                  Jira: ENG-517 unassigned; status unchanged
+```
+
+Neither command moves anything. Claiming an item already under way is how you
+take work over; releasing one is how you hand it on, and it stays where it is
+until somebody else claims it.
+
+**Example 4: the same project with `strict: true`.**
 
 ```sh
 tcw work new "Speed up the checkout page"
@@ -654,7 +666,7 @@ driving it to completion, verifying it, processing the inbox) described in
 
 | Command              | What it does                                                                                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `tcw work tracker`   | `list`, `show`, `import`, `link`, `unlink` and `sync` against Jira; see [Jira integration](#jira-integration) |
+| `tcw work tracker`   | `list`, `show`, `import`, `claim`, `release`, `link`, `unlink` and `sync` against Jira; see [Jira integration](#jira-integration) |
 | `tcw work init`      | creates the work store's folders (the same as `tcw init work`)                                                |
 | `tcw work tombstone` | records items resolved before the store kept a record of them, so their slugs are never reused                |
 
