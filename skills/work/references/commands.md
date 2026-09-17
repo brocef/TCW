@@ -303,10 +303,12 @@ Reference another object in prose with `[text](tcw://W/<slug>)`, or
 
 ## Command skills
 
-Four skills carry the everyday workflows: `commands-process-inbox`,
-`commands-plan-work`, `commands-drive-work-to-completion` and
-`commands-verify-work`. Each works by invoking the skill, under any
-harness, and each invokes the `work-stage` skill for the stage it runs.
+Five skills carry the everyday workflows: `commands-process-inbox`,
+`commands-plan-work`, `commands-drive-work-to-completion`,
+`commands-verify-work` and `commands-pause-work`. Each works by invoking the
+skill, under any harness. The first four each invoke the `work-stage` skill for
+the stage they run; `commands-pause-work` stops the work in hand instead, and
+reaches a stage only if the agent resumes into one.
 
 # Claims and external work stores
 

@@ -5,6 +5,24 @@ category.
 
 ## Added
 
+- **`commands-pause-work`** — a command skill that stops work in progress. It
+  brings the current edit to a coherent resting point, asks whether to commit and
+  push (treating no answer as yes), writes a `handoff-<UTC timestamp>.md` into
+  each affected item's folder, commits and pushes that too, then reports and
+  falls silent. It runs no lifecycle stage and no transition, so an item keeps
+  its status and its claim. What goes in the document is left to the agent that
+  paused; only two things are required of it — name the branch, and carry no
+  `tcw://` links, since `tcw validate` resolves links in every Markdown file
+  under the work store and a project may gate `complete` on it.
+- **The handoff is read and deleted on the way back in.** `skills/work/SKILL.md`'s
+  "Finding your place" now checks for one before detecting the stage from
+  artifacts, and `commands-drive-work-to-completion` points at that step — without
+  a reader on the resume path the document would never be opened.
+- Taxonomy Feature `commands-pause-work-skill` and capability
+  `skills/commands-pause-work`; the Codex manifest's skill count and enumeration;
+  an `evals/coverage.py` exclusion with its own reason (the skill's outcome is an
+  agent that stops, so a graded run has no artifact to read).
+
 - **Procedures** — non-stage instruction text a project may replace.
   `PROCEDURE_IDS` (`tcw/store/base.py`): `unattended-work`, `triage-issues`,
   `documentation-sync`, `post-mortem`, `create-work`, `audit-backlog`,
@@ -89,12 +107,12 @@ category.
   what is produced, the project owns the conduct) — why a project cannot add a
   procedure id of its own, and a verdict with a reason for every `SKILL.md`,
   every file under a skill's `references/`, and every `agents/*.md`.
-- **`dynamic_skill: true|false`** in the frontmatter of all sixteen
+- **`dynamic_skill: true|false`** in the frontmatter of all seventeen
   `skills/*/SKILL.md`, as a top-level key with a trailing comment pointing at
   `../README.md`. Read by people only; neither harness acts on it. `true` for
   `extras-autonomous-work`, `extras-triage-issues`,
-  `documentation-sync`, `post-mortem`, `work-create` and
-  `work-stage`; `false` for the rest. No skill body changed.
+  `documentation-sync`, `post-mortem`, `work-create`, `work-stage` and
+  `commands-pause-work`; `false` for the rest. No skill body changed.
 - **`tests/test_dynamic_skill_marker.py`**: fails when a shipped skill,
   reference document or agent has no verdict row (or more than one), when a row
   names no shipped file, when a skill lacks `dynamic_skill` or its comment, or
