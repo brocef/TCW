@@ -43,24 +43,34 @@ Built in the worktree on `work/2026-09-15-show-the-tracker-s-untriaged-tickets-o
   `test_tracker_cli.py` cannot. The no-tracker-import test went in
   `tests/test_tracker_absent.py`, which already carries the subprocess probe the plan
   described. Nothing was added to `tests/test_work.py` beyond task 2's test.
-- **Accepting a ticket reads it once more than `tracker import` does.** To tell "no
-  such ticket" apart from other errors and name both possibilities (criterion 20),
-  `_inbox_ticket` fetches the issue before delegating, so `inbox accept <key>` makes
-  one extra GET. It changes nothing in Jira.
-- **`inbox-query: null` alone** is reported as `work.tracker.inbox-query: required`,
-  the same message a lone `null` gets for other keys. The spec did not cover it; the
-  wording is odd for an optional key but matches the existing rule that a lone null
-  is reported.
+- **Accepting a ticket first read it once more than `tracker import` does**, to name
+  both possibilities when a ref is neither (criterion 20). Removed at verify
+  (`fd62e098`): `_tracker_import` now takes `not_found` and words that message itself;
+  `test_inbox_accept_of_a_ticket_reads_jira_no_more_than_import` pins it.
+- **`inbox-query: null` alone** was reported as `required`, odd for an optional key.
+  At verify it became `expected a non-empty string, got NoneType`.
 - Line numbers in the plan had drifted (for example `_inbox_list` was at `:451`, not
   `:448`); no task depended on them.
 
-## Not done here
+## Live Jira check (done at verify)
 
-- **The check against a live Jira site** from the plan's Verification section: a real
-  `inbox-query`, a malformed one, and a real 404 for a ref that is neither. The suite
-  replaces the transport, so whether Jira answers a non-key ref such as `nope` with
-  404 (giving the "names both" message) or with 400 (giving "could not be looked up as
-  a ticket: …") is unverified. Both paths are handled; only the wording differs.
+Against proposit.atlassian.net, in a scratch node with
+`inbox-query: project = TCW AND status = Triage`, read-only commands only:
+
+- `inbox list`: both sections, `(none)` for the empty TCW project, exit 0.
+- A malformed query (`status = (Triage`): raw intake printed, `(not listed)`, Jira's
+  own "Expecting ')'" message on stderr, exit 1, no traceback.
+- `inbox show nope`, `inbox show TCW-99999`, `inbox accept nope`: Jira answers 404
+  for a non-key ref too, so each prints "no such inbox entry: …, and the tracker has
+  no ticket …".
+- `inbox show --ticket TCWTEST-3`: the ticket block, then its description.
+- `tcw validate`: OK with `inbox-query` set.
+
+## Follow-ups folded in at verify
+
+`fd62e098`: `accept --ticket` on a shadowed ref and a nonexistent ref under strict mode
+without `inbox-query` gained tests (each mutation-checked red); `--part` on a raw entry
+is refused without consuming it; the extra ticket read and the `null` message above.
 
 ## Notes
 

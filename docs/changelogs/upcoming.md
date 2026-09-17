@@ -14,7 +14,9 @@ category.
   Without it, output is byte-identical to before; a tracker block with problems adds
   one stderr line. The search is `JiraClient.search(inbox_query)`, in the CLI —
   `WorkStore.inbox_list` is unchanged.
-- **`inbox show|accept --ticket`**, and **`inbox accept --part`**.
+- **`inbox show|accept --ticket`**, and **`inbox accept --part`** (refused, consuming
+  nothing, when the ref resolves to a raw entry). A lone `inbox-query: null` is
+  reported as `expected a non-empty string, got NoneType`.
 - **`InboxEntryNotFound(ValueError)`** in `tcw/store/base.py`, raised by
   `FsWorkStore` for no such inbox entry; ambiguity stays a plain `ValueError`.
 
@@ -126,8 +128,9 @@ category.
 
 - **Inbox ref resolution**: `inbox show`/`accept` ask the store first and, only on
   `InboxEntryNotFound` with `inbox-query` declared, read the ref as a ticket
-  (`_inbox_ticket`). A ref that is neither names both. `inbox accept <ticket>` calls
-  `_tracker_import(..., label="inbox accept")`; `_tracker_client`, `_print_refusal`
+  (`_inbox_can_try_ticket`). A ref that is neither names both (`_not_a_ticket`).
+  `inbox accept <ticket>` calls `_tracker_import(..., label="inbox accept",
+  not_found=...)`, which makes no extra ticket read; `_tracker_client`, `_print_refusal`
   and `_tracker_import` now take the full verb as their label. `_ticket_row` and
   `_print_ticket` are shared with `tracker list`/`show`, whose output is unchanged.
 - **Strict mode**: `inbox accept` is refused for a raw entry only; a ticket goes
