@@ -265,8 +265,18 @@ class JiraClient:
         self._json("POST", f"/rest/api/3/issue/{issue_id}/transitions",
                    {"transition": {"id": transition_id}})
 
-    def assign(self, issue_id: str, account_id: str) -> None:
-        """Assign the issue to an account. Overwrites whatever assignee it had."""
+    def assign(self, issue_id: str, account_id: str | None) -> None:
+        """Assign the issue to an account. Overwrites whatever assignee it had.
+
+        `None` unassigns it, which is what Jira documents `{"accountId": null}` to
+        mean. An empty string is not an account id and is answered with 400, so
+        callers wanting nobody to hold the ticket pass `None` rather than `""`.
+
+        A project configured to forbid unassigned issues refuses the unassignment
+        with 400 as well, which surfaces as `TrackerRequestInvalid`. That is a
+        refusal a caller reports, not a bug — and no fake can produce it, so it is
+        the one behaviour here that only a live project confirms.
+        """
         self._json("PUT", f"/rest/api/3/issue/{issue_id}/assignee",
                    {"accountId": account_id})
 

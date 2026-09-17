@@ -203,7 +203,16 @@ class FakeJira:
                 {"author": {"accountId": author}, "body": document}
                 for author, document in newest]})
         if match := re.fullmatch(r"/rest/api/3/issue/([^/?]+)/assignee", path):
-            self._find(match[1]).assignee = body["accountId"]
+            # Only `None` or an account id this fake was told about. Real Jira
+            # answers anything else with 400, and accepting it here once meant an
+            # unassignment sent as `""` passed every test and would have failed in
+            # production: `_issue` below reads `""` as unassigned, so the ticket
+            # even looked right afterwards.
+            account = body["accountId"]
+            assert account is None or account in {
+                aid for aid, _name in self.accounts.values()
+            }, f"not an account this fake knows: {account!r}"
+            self._find(match[1]).assignee = account
             return (204, {}, b"")
         if match := re.fullmatch(r"/rest/api/3/issue/([^/?]+)\?fields=.*", path):
             ticket = self._find(match[1].replace("%2F", "/"))
