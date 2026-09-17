@@ -60,7 +60,7 @@ Both were left to C1 by the epic's spec, and both were put to the requester:
 
 2. **The web app is out of scope, and that is recorded rather than assumed.**
    `tcw serve` has its own start path that passes neither an owner nor a
-   take-over (`tcw/serve/__init__.py:905` — `work.start(slug, force=force)`).
+   take-over (`tcw/serve/__init__.py:903` — `work.start(slug, force=force)`).
    C1 changes no web-app code; its spec must state plainly that the web app has
    no claim or release action, so ownership asserted there remains whatever
    `work.start` does on its own. A follow-up item can add it if that turns out

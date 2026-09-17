@@ -85,7 +85,7 @@ way to change it afterwards is `start --take-over`.
   move, adds and removes no configuration key other than the optional assertion
   key below, and leaves `tcw work start`'s behaviour byte-for-byte as it is.
 - **The web app.** `tcw serve` has its own start path that passes neither an
-  owner nor a take-over (`tcw/serve/__init__.py:905` —
+  owner nor a take-over (`tcw/serve/__init__.py:903` —
   `work.start(slug, force=force)`). This child adds no claim or release action
   to it and changes none of its code. **Recorded rather than assumed:** an item
   started from the web app gets whatever owner `work.start` gives it, and there
