@@ -767,6 +767,9 @@
   location: 1e76f4edac404a3b9b6bba1f0987fe8deda84309
   resolution: done
   resolved: '2026-09-16'
+2026-09-16-fix-the-guide-s-taxonomy-example-and-a-stale-readme-citation:
+  resolution: done
+  resolved: '2026-09-17'
 2026-09-16-make-every-procedural-skill-in-tcw-overridable-by-the-project-that-uses-it:
   location: e7261a2267c279e9e67be28cfd832e4c796ffbb4
   resolution: done
