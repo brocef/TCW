@@ -239,6 +239,49 @@ def test_an_unknown_transition_key_is_still_reported():
     assert any(p.startswith("work.tracker.transitions.wander") for p in problems), problems
 
 
+def test_the_start_transition_is_a_move_transition_like_its_siblings():
+    """`start` is read the same way as `submit`, `rework`, `complete` and `discard`.
+
+    The field and the `move_transitions` entry are the same string, and
+    `transition_name` — the function every other move goes through — finds it. Before
+    this item `start` could not be in `move_transitions` at all, so asserting only on
+    the field would pass on a rename that left the key special.
+    """
+    from tcw.store.base import transition_name
+    config, problems = parse_tracker_config(VALID)
+    assert problems == []
+    assert config.start_transition == "Start Progress"
+    assert config.move_transitions["start"] == "Start Progress"
+    assert transition_name(config.move_transitions, "start", None) == "Start Progress"
+
+
+def test_the_retired_claim_key_names_its_replacement():
+    """Every tracker-backed project carries `transitions.claim`, because it was
+    required, so this is what an upgrade looks like. Being told a key is unknown
+    would leave the reader to work out what replaced it."""
+    config, problems = parse_tracker_config({**VALID, "transitions": {"claim": "Start"}})
+    assert config is None
+    about_claim = [p for p in problems if p.startswith("work.tracker.transitions.claim")]
+    assert len(about_claim) == 1, problems
+    assert "work.tracker.transitions.start" in about_claim[0], about_claim
+    assert "unknown key" not in about_claim[0], about_claim
+    # And the replacement is still reported as missing, so the two problems together
+    # say exactly what to edit.
+    assert "work.tracker.transitions.start: required" in problems, problems
+
+
+@pytest.mark.parametrize("value", [None, "", "   ", 5], ids=["null", "empty", "blank",
+                                                             "not-a-string"])
+def test_a_present_but_unusable_start_transition_is_reported(value):
+    """A wrong value is reported by the same loop that reports its four siblings',
+    with the same wording. Only an absent key is the caller's `required` check."""
+    config, problems = parse_tracker_config({**VALID, "transitions": {"start": value}})
+    assert config is None
+    matched = [p for p in problems if p.startswith("work.tracker.transitions.start")]
+    assert matched, problems
+    assert "expected a non-empty tracker transition name" in matched[0], matched
+
+
 # ── inbox-query ──────────────────────────────────────────────────────────────
 
 

@@ -223,11 +223,28 @@ def test_a_missing_top_level_key_is_blamed_on_the_node_being_checked(empty_cwd):
 
 
 def test_a_missing_nested_key_under_an_ancestors_mapping_is_blamed_on_the_node(empty_cwd):
-    """C22 at merge level. Root supplied `transitions`, but nobody set `claim`."""
+    """C22 at merge level. Root supplied `transitions`, but nobody set `start`."""
     problems = _attributed([("pkg", {"candidate-query": "q"}),
                             ("root", {**COMPLETE, "transitions": {}})])
     assert "pkg: work.tracker.transitions.start: required" in problems
     assert not [p for p in problems if p.startswith("root:")]
+
+
+def test_a_retired_key_in_a_parent_names_the_parents_file(empty_cwd):
+    """The file to edit is the one that wrote `transitions.claim`. In a shared
+    workspace that is the parent holding the settings every node reads, not the node
+    being validated — and since `transitions.claim` was required, every such parent
+    has one. Telling the child to fix it would send the reader to the wrong file.
+
+    The replacement is reported as missing on the node being checked, which is the
+    existing rule for a key nobody set, so the two problems name two files."""
+    problems = _attributed([("pkg", {"candidate-query": "q"}),
+                            ("root", {**COMPLETE, "transitions": {"claim": "Start"}})])
+    retired = [p for p in problems if "transitions.claim" in p]
+    assert len(retired) == 1, problems
+    assert retired[0].startswith("root: "), problems
+    assert "work.tracker.transitions.start" in retired[0], retired
+    assert "pkg: work.tracker.transitions.start: required" in problems, problems
 
 
 def test_a_key_whose_name_contains_a_dot_is_one_key(empty_cwd):
