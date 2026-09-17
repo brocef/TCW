@@ -49,6 +49,8 @@ item as implemented and sends the next reader to `verify`.
 5. The agent then holds — no completing, discarding, handing on, or resuming on its own.
 6. Registered the way every other skill is, so the suite stays green and it is discoverable
    under both Claude Code and Codex.
+7. **Short.** The whole skill under 80 lines: an instruction an agent reads while the user is
+   walking away earns its length or loses it.
 
 ## Non-goals
 
@@ -70,54 +72,39 @@ item as implemented and sends the next reader to `verify`.
 
 ### The handoff document
 
-A paused agent writes **one file per affected work item**, in that item's folder, located
-with `tcw work path <slug>` — never by composing the path. This is the same instruction
-TCW's own shipped procedures already give: `tcw/work/procedures/create-work.md:125-126` has
-agents `git -C <store folder> add/commit` against an absolute path obtained that way.
+A paused agent writes **one file per affected work item**, in that item's folder,
+located with `tcw work path <slug>` — never by composing the path. This is the same
+instruction TCW's own shipped procedures already give
+(`tcw/work/procedures/create-work.md:125-126`).
 
 ```
-<stage-id>.handoff.md
+handoff-<UTC timestamp>.md          e.g. handoff-20260917T2115Z.md
 ```
 
-`<stage-id>` is the lifecycle stage the agent was running: one of `request`, `spec`, `plan`,
-`implement`, `verify`, `postmortem` (`LIFECYCLE_STEPS`, `tcw/store/base.py:1712`). When
-between stages, the stage that would run next — the first missing artifact, which is the
-`work` skill's "Finding your place" rule.
+**Its contents are the pausing agent's judgment**: whatever context an agent would
+need to resume the work that was in progress. The agent has been working the item
+and knows what mattered; a checklist fixed in advance cannot, and produces
+ceremony instead. Only two things are required, and both are facts about the
+system rather than advice about note-taking:
 
-**`inbox` is excluded, deliberately.** At that stage there is no item and no folder; entries
-live under `docs/work/inbox/` (`tcw/store/fs.py:5705`). A handoff written into a folder-shaped
-entry would be swept into `attachments/` by `inbox_accept` (`fs.py:5860`, `:5895`) and then
-have its source removed (`:5905`) — surviving under a name nothing looks for. An inbox-stage
-pause writes no handoff: the raw entry is already the durable record, and the skill says so.
+- **the branch**, and the last commit if one was made — `state.yaml`'s `branch`
+  field (`tcw/store/fs.py:4268`) is written only by `start --worktree`
+  (`tcw/work/cli.py:1045`), so otherwise nothing records where the work is;
+- **no `tcw://` links** — `tcw validate` scans every `*.md` under the work root
+  (`_iter` is `root.rglob`, `tcw/validate.py:62`; the link pass at `:313`) and this
+  repo binds it as `transitions.complete.pre` (`tcw-config.yaml:74-76`), so a
+  dangling reference would **refuse `tcw work complete`**.
 
-Naming it for the **stage** rather than the artifact diverges from the neighbouring
-`<artifact>.draft.md` shape (`write_draft`, `tcw/store/fs.py:6475`). A stage is in progress
-before anyone has decided what its artifact will say; `verify` produces two possible
-artifacts; and a resuming agent's first question is answered by `tcw work stage`, which takes
-stage ids. The inconsistency is chosen.
+**A timestamp, not a stage id.** An earlier draft keyed the name to the lifecycle
+stage, which bought a guarantee nobody needed and cost two rules: an `inbox`
+carve-out, because that stage has no item folder, and a collision rule, because a
+second pause in the same stage would overwrite the first. A timestamp collides with
+nothing, so both rules disappear rather than being restated. Several handoffs may
+coexist; a resuming agent reads what it finds, newest last, and deletes what it
+read.
 
-**It contains no `tcw://` links.** `tcw validate` scans every `*.md` under the work root —
-`_iter` is `root.rglob(pattern)` (`tcw/validate.py:62`) and the link pass runs over it
-(`:313`) — and this repo binds `tcw validate` as `transitions.complete.pre`
-(`tcw-config.yaml:74-76`). A handoff carrying a dangling reference would therefore **refuse
-`tcw work complete`**. Reference other items by bare slug.
-
-**Deleted when the work resumes**, by the agent that read it, in the same step as reading it.
-It is a message in flight, not a record.
-
-**A pause removes any handoff already there** before writing its own. Because the name is
-keyed to the stage, a `spec` pause followed by an `implement` pause would otherwise leave two,
-one describing a position the work has left.
-
-Content, written for a reader with no memory of the session:
-
-- the stage in progress and what within it was and was not done;
-- **the branch name and the last commit**: `state.yaml`'s `branch` field
-  (`tcw/store/fs.py:4268`) is written only by `start --worktree` (`tcw/work/cli.py:1045`), so
-  nothing else records it;
-- decisions already taken and the reasoning behind them;
-- anything deliberately left broken, and what it was going to become;
-- the immediate next action.
+With no work item there is nowhere to put one, so none is written and the agent
+says so instead.
 
 ### What the pause does, in order
 
@@ -233,11 +220,10 @@ release-note and changelog entries.
 6. `skills/work/references/commands.md` names five command skills, says "Five", and its
    following sentence ("each invokes the `work-stage` skill for the stage it runs") is
    reworded so it is true of all five. `README.md` has a matching table row.
-7. The skill's body states: the file name `<stage-id>.handoff.md`; that `<stage-id>` is a
-   lifecycle stage id and which stage to use when between stages; that `inbox` is excluded
-   and why; that it carries no `tcw://` links; that a pause first removes any handoff already
-   present; that resuming reads it and deletes it in the same step; and the five content
-   items, branch and last commit among them.
+7. The skill's body states: the file name `handoff-<UTC timestamp>.md`; that what goes in it
+   is the pausing agent's judgment — the context an agent would need to resume; that it must
+   name the branch and carry no `tcw://` links; that resuming reads it and deletes it; and
+   that no handoff is written when there is no work item or nothing in flight.
 8. The skill's body instructs, in order: coherent resting point → **ask whether to commit and
    push, treating no answer as yes** → commit and push → write the handoff → commit and push
    the handoff **as a second push** → report → stop. It states that no transition is run and
@@ -306,6 +292,9 @@ release-note and changelog entries.
 - A second "stage id" namespace exists — declared plan-stage documents at `plan/<id>.md`
   (`tcw/store/fs.py:5627`). No collision (`plan.handoff.md` is a file, `plan/` a directory),
   but the skill should say "lifecycle stage id" rather than "stage id".
+- Reworked at `verify` on the requester's feedback: the content list became the agent's
+  judgment, the stage-keyed name became a timestamp, and the skill was cut to under 80 lines.
+  `rework.md` records why. The procedure itself was not reopened.
 - This spec was rewritten after an adversarial review of its first draft. Corrected: the
   push gap, the missing resume-side reader, the false claim that `tcw validate` ignores the
   file, the wrong assertion that the item is always `active`, the unhomed `inbox` handoff, the
