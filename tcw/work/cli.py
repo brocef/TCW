@@ -25,7 +25,7 @@ from tcw.store.fs import (
     parent_node, registered_children, registered_parent,
     unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
-    resolve_qualified_work_ref,
+    resolve_qualified_work_ref, worktree_node_root,
 )
 from tcw.harness import OTHER, ancestor_programs, detect
 from tcw.stdin import read_piped_stdin
@@ -2757,6 +2757,42 @@ def _tags_rm(args: argparse.Namespace) -> int:
     return 0
 
 
+def _branch_copy(st, bare: str, item):
+    """`(branch store, the item as its worktree holds it)` for a `--worktree` item.
+
+    `complete` runs in the primary checkout, but the item's lifecycle moves are
+    committed on its branch: with the store inside the checkout, the worktree has
+    its own copy, and the primary's stays as `start` left it until the merge-back.
+    Every judgment made *before* that merge therefore has to read the worktree's
+    copy, or it judges a copy the same command is about to replace.
+
+    Falls back to `(None, item)` — the primary copy, as before — when the worktree
+    cannot be read, saying so. It never refuses: `merge_worktree` already tolerates
+    a branch that is gone, and a worktree removed by hand is a recovery path.
+
+    The caller decides *whether* to ask: this runs only for a shipping completion
+    of an item with a worktree and a branch that is not already integrated.
+    """
+    path = worktree_node_root(st.node_root, item.worktree)
+    try:
+        if path is not None and path.is_dir():
+            store = FsWorkStore.open(path)
+            judged = store.get(bare)
+            if judged is not None:
+                return store, judged
+    except (ValueError, OSError, MultipleMatch):
+        # `ValueError` covers the store-resolution refusals (`StoreLocationUnusable`,
+        # `StoreDeclarationError`, `StoreNotProvisioned`) and a malformed config on
+        # the branch; `MultipleMatch` is not one of them and has to be named.
+        pass
+    # `path` is None when the node is not in a git repository at all, and printing
+    # "at None" would be nonsense — name where the worktree would be instead.
+    where = path if path is not None else st.node_root / item.worktree
+    print(f"tcw work complete: could not read {bare} from its worktree at {where}; "
+          f"judging it from the primary checkout's copy", file=sys.stderr)
+    return None, item
+
+
 def _complete(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "complete")
     if resolved is None:
@@ -2788,19 +2824,38 @@ def _complete(args: argparse.Namespace) -> int:
                   f"own worktree — the merge-back and teardown act on the primary "
                   f"checkout. Re-run from {main}.", file=sys.stderr)
             return 1
+    # A discard is not a shipment: the blocker check, the Definition-of-Done
+    # checklist, the capability gate, and the worktree merge-back all exist to
+    # police shipped work, so none of them apply. `--confirm` still does —
+    # closing is terminal.
+    #
+    # Read here rather than after the warning below, because what gets merged —
+    # and therefore which copy of the item the pre-merge judgments must read — is
+    # a question only a shipping completion asks.
+    shipping = resolution_status(args.resolution) == "completed"
+    # The copy every judgment before the merge-back is made from. Only a shipping
+    # completion merges, and `--already-integrated` means the branch already
+    # reached this checkout, so in every other case the primary copy *is* the
+    # item that gets completed.
+    branch_store, judged = (
+        _branch_copy(st, bare, item)
+        if shipping and has_worktree and branch and not args.already_integrated
+        else (None, item))
     # `[prompted]`: an obligation on the CLI to say something, not a gate and not
     # an interactive prompt. Completing straight from `active` skips the verify
     # stage, which is legal and often right for a small change — the point is
     # that it not happen without anyone noticing. Read before the transition;
     # afterwards the status is terminal and the branch is unreachable.
-    if item.status == "active":
+    #
+    # **Both** copies have to say `active`, and neither alone will do. `submit`
+    # run in the worktree leaves the primary copy at `active` while the branch
+    # reads `review`; `submit` run in the primary checkout leaves exactly the
+    # reverse (`tests/test_recursion.py`, `tests/test_tracker_sync.py` both drive
+    # that one). Trusting either copy by itself prints "you skipped verify" at
+    # someone who did not, which is the defect this whole path exists to remove.
+    if item.status == "active" and judged.status == "active":
         print(f"tcw work complete: completing {args.slug} directly from active; "
               f"the verify stage was skipped", file=sys.stderr)
-    # A discard is not a shipment: the blocker check, the Definition-of-Done
-    # checklist, the capability gate, and the worktree merge-back all exist to
-    # police shipped work, so none of them apply. `--confirm` still does —
-    # closing is terminal.
-    shipping = resolution_status(args.resolution) == "completed"
     # The binding keys on the **move**, not the verb: `complete --resolution done`
     # fires `complete`'s hooks and any other resolution fires `discard`'s. One
     # binding firing for both "we shipped it" and "we gave up on it" would erase
@@ -2808,7 +2863,10 @@ def _complete(args: argparse.Namespace) -> int:
     transition_id = "complete" if shipping else "discard"
     policy = st.lifecycle_policy()
     if shipping and not args.force:
-        blockers = st.unresolved_blockers(item)
+        # `judged` for the item's own `blocked_by` — a blocker the work resolved
+        # on its branch is resolved — while `st` still answers for the blocker
+        # items themselves, whose current state is in this checkout.
+        blockers = st.unresolved_blockers(judged)
         if blockers:
             print(f"tcw work complete: blocked by: {', '.join(blockers)} "
                   f"(use --force to override)", file=sys.stderr)
@@ -2835,7 +2893,8 @@ def _complete(args: argparse.Namespace) -> int:
     # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
     # the item, its branch and its worktree exactly as they were. Discards are never
     # refused — abandoning work authorizes none.
-    if shipping and (reason := _strict_refusal(st, bare, "complete")):
+    if shipping and (reason := _strict_refusal(st, bare, "complete",
+                                              own=branch_store)):
         return _strict_says_no("complete", f"{bare} was not changed", reason)
     if shipping and has_worktree and branch and not args.already_integrated:
         err = merge_worktree(st.node_root, branch)

@@ -783,6 +783,27 @@ def add_worktree(node_root: Path, slug: str) -> tuple[Path, str]:
     return wt, branch
 
 
+def worktree_node_root(node_root: Path, worktree: str) -> Path | None:
+    """This node's own directory inside the item's worktree, or None.
+
+    **Not the worktree's top.** `add_worktree` runs `git worktree add`, which
+    checks out the *whole repository*, so a node at `apps/server` has its copy at
+    `<worktree top>/apps/server`. The distinction matters because `resolve_store`
+    reads `<node_root>/tcw-config.yaml` at exactly the directory it is handed and
+    never searches upward: hand it the worktree top for a nested node and it finds
+    no configuration and no store, silently. `_complete` computes the inverse of
+    this when it refuses to run from inside the item's own worktree.
+
+    None when the node is not in a git repository, which is the one case with no
+    answer to give: the worktree path is relative to the node, but the node's
+    offset within the checkout is a question only git can answer.
+    """
+    top = git_root(node_root)
+    if top is None:
+        return None
+    return node_root / worktree / node_root.resolve().relative_to(top.resolve())
+
+
 def merge_worktree(node_root: Path, branch: str) -> str | None:
     """Merge the work branch into the primary checkout's current branch — the
     "merge-back on complete" half of the split-ownership model. Runs *before* the

@@ -455,6 +455,25 @@ def test_complete_is_refused_before_the_worktree_merge(strict, fake):
     assert tree.exists() and not (strict / "code.txt").exists()
 
 
+def test_complete_judges_the_ticket_from_the_worktree_s_copy(strict, fake):
+    """A worktree item submitted on its branch: the ticket is where the branch's
+    `submit` put it, and the primary checkout's copy — still `active` — would
+    refuse it as out of place."""
+    slug = bound_item(strict)
+    commit_all(strict)
+    assert cli(strict, "work", "start", slug, "--worktree")[0] == 0
+    tree = strict / ".worktrees" / slug
+    assert cli(tree, "work", "submit", slug)[0] == 0
+    assert status(strict, slug) == "active"             # the stale copy
+    assert status(tree, slug) == "review"               # the branch copy
+    claimed_ticket(fake, "In Review", A)
+
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm")
+    assert code == 0 and REFUSED not in err
+    assert status(strict, slug) == "completed"
+
+
 def test_start_claims_nothing_for_a_start_the_store_would_refuse(strict, fake):
     blocker = bound_item(strict, "Blocker", part="blocker")
     slug = bound_item(strict, "Blocked")
