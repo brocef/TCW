@@ -73,7 +73,8 @@ passes whether or not `own` is honored.
      `judged is None`: set `own = None`, `judged = item`, and print to stderr
      exactly
      `tcw work complete: could not read {bare} from its worktree at {path}; judging it from the primary checkout's copy`.
-   Otherwise `own = None`, `judged = item`, silently.
+   When that condition is false (a discard, `--already-integrated`, or no
+   worktree), set `own = None`, `judged = item`, and print nothing.
    Keep this in a small private helper `_branch_copy(st, bare, item) -> (own, judged)`
    in `cli.py` so `_complete` stays readable.
 3. Warning (`cli.py:2658`): test `judged.status`.
