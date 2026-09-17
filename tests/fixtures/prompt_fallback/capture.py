@@ -27,6 +27,23 @@ Twice so far it has been touched, and the two are opposites worth telling apart:
   reason: the release intends that line to move. Only the `verify` entry
   changes; the other five are byte-identical across this re-capture, which is
   itself worth checking if anyone repeats it.
+- `2026-09-17-stop-offering-a-version-cut-after-every-completed-work-item`
+  deleted step 9 of the `verify` stage, the instruction to offer a version cut
+  after an item completes. That release intends the step to disappear, so the
+  file was re-captured once more. Again only the `verify` entry moves, and only
+  its `stdout`; the diff is the two deleted lines and nothing else, which was
+  asserted before the new bytes were written.
+
+  **Capture with the interpreter whose `tcw` you mean to pin.** This script
+  shells out to whatever `tcw` is first on `PATH`, and an editable install is a
+  single shared resource — a sibling worktree can own it, in which case a
+  capture silently records *that* tree's prompts and re-baselines this fixture
+  to the wrong text, with nothing failing. This re-capture was taken through a
+  throwaway venv (`python -m venv --system-site-packages`, then
+  `pip install -e <checkout> --no-deps`) with its `bin` first on `PATH`, which
+  pins the checkout without disturbing whatever the shared install points at.
+  Check `python -c "import tcw; print(tcw.__file__)"` immediately before
+  capturing, not once at setup.
 
 Every stage is exercised at a status where it is **legal**. Not because
 `prompt` would refuse otherwise — it refuses nothing, which is the whole point of
