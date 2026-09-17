@@ -125,10 +125,25 @@ in the tracker and what happens in this node, and an epilog listing what is
 refused — because `tests/test_tracker_help.py`, `tests/test_cli_help_coverage.py`
 and `tests/test_documented_cli_surface.py` all read it.
 
-*Proves:* `tests/test_tracker_cli.py` gains the round trip — claim, claim again,
-release, claim from a second account — covering acceptance criteria 1, 2, 7 and
-8. `tcw work tracker claim --help` and `release --help` exit 0 and the help
-coverage tests pass.
+*Proves:* `tests/test_tracker_cli.py` gains four things.
+
+1. The round trip — claim, claim again, release, claim from a second account —
+   covering acceptance criteria 1, 2, 7 and 8.
+2. **`claim` on an unbound item** in a node that has a tracker configured exits
+   0, sets `owner`, and says no ticket was assigned; in a node with no tracker
+   configured it exits 1 with `_tracker_client`'s existing message. Acceptance
+   criterion 5.
+3. **A refused unassignment**, driven with the fake's `fail("PUT", "/assignee",
+   …)` hook: `release` exits non-zero, says the ticket was not released, and the
+   item's `owner` is unchanged. Acceptance criterion 10 — and the reason the
+   local write is last in both handlers, so this test is what stops that ordering
+   being undone later.
+4. **`release` on an `active` item** exits 0, leaves the item `active` with an
+   empty `owner`, and a subsequent `claim` from another account exits 0.
+   Acceptance criterion 14.
+
+`tcw work tracker claim --help` and `release --help` exit 0 and the help coverage
+tests pass.
 
 ## Task 5 — The local ownership guard, which is where the hole was
 
@@ -247,6 +262,11 @@ What the suite cannot settle, and what has to be done by hand or by a person:
 
 ## Notes
 
+- **Every acceptance criterion traces to a task**, checked by walking the spec's
+  list rather than by memory: 1 and 3 to tasks 3 and 4; 2, 5, 7, 8, 10 and 14 to
+  task 4; 4 and 13 to task 6; 6 and 9 to task 5; 11 to task 3; 12 and 15 to task
+  7; 16 to Verification. The first pass of this plan had 5, 10 and 14 covered by
+  no task at all, which is what the self-review is for.
 - **Task ordering puts the two riskiest things last but one**, which is
   deliberate: tasks 5 and 6 both depend on the verbs existing, and both are
   test-first against code that is already there, so each failure is about the
