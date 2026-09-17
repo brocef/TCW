@@ -106,23 +106,3 @@ A project-qualified reference resolves against the owning node, so I can ask
 about a descendant's item from the enclosing project — including on `prompt`,
 where it reads that node's `prompt:` bindings rather than the one I am standing
 in.
-
-**Under Claude I can take both halves in one read.** The `work-stage` skill
-puts the stage's own working document and the instructions `prompt` resolves for
-it into a single document, so I am not opening a file and running a command and
-joining them in my head. It is an ergonomic over the two commands and nothing
-more: it reads with `prompt`, so it runs no gate — and the text it delivers says
-so itself, in the header every resolved prompt carries. A Codex user, who gets no
-context injection, runs the two commands and reads the same header, which is why
-that reminder lives in the CLI's output and not in the skill.
-
-**And I can ask for any stage by name.** `work-stage` takes the stage id and
-the work item reference, so it reaches every stage — `inbox` and `postmortem`
-included — under Claude and Codex alike. I name the stage and the item in the
-request. Under Claude they are passed to the skill as arguments; under Codex,
-which has no skill arguments, the skill's own fallback tells me to use the stage
-and item named in the request and run the two commands myself. The work item
-reference is optional, because `tcw work stage prompt` is: invoked without one, I
-still get both halves, with `<slug>` standing where a reference would go. The
-skill does not gate either — the same header carries the same warning, for the
-same reason.
