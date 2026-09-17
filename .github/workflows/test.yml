@@ -65,8 +65,8 @@ jobs:
                 # runs.
                 python-version: ["3.11", "3.14"]
         steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-python@v5
+            - uses: actions/checkout@v7
+            - uses: actions/setup-python@v7
               with:
                   python-version: ${{ matrix.python-version }}
             # No Node: pytest never shells out to it (`tcw serve`'s runtime
