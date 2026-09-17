@@ -82,9 +82,13 @@ being its own answer — is **C2's**, not this child's. See the Non-goals.
   the key alone for one child is safe: `deliver` already reconciles a stale
   `owed` against the ticket's real assignee (`tcw/tracker/sync.py:456-461`,
   `:504-517`), so a ticket this child's `claim` took is not claimed again.
-- **Any edit to `deliver`, `record_unsent`, `binding_refusal` or `authorize`.**
-  This child adds code; it changes none of the existing delivery path. That is
-  what keeps it out of the way of C2, C4 and
+- **Any behavioural edit to `deliver`, `record_unsent`, `binding_refusal` or
+  `authorize`.** This child adds code; it changes none of the existing delivery
+  path. The single exception is a wording change, spelled out in Design step 2:
+  strict mode's hint in `binding_refusal` says "started by" where it now has to
+  say "held by", because after this child a holder is not necessarily somebody
+  who started anything. No behaviour, no control flow and no other line of that
+  function changes. That is what keeps this child out of the way of C2, C4 and
   `2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items`,
   all three of which edit those functions.
 - **The other three children.** `sync` moving a ticket in either direction is C2.
