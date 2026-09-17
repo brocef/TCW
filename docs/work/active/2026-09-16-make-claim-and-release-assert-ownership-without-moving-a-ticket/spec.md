@@ -125,8 +125,8 @@ collide with.
 ### The two verbs
 
 ```
-tcw work tracker claim   <slug> [--part <name>] [--take-over]
-tcw work tracker release <slug> [--part <name>] [--force]
+tcw work tracker claim   <slug> [--take-over]
+tcw work tracker release <slug> [--force]
 ```
 
 **Neither verb takes `--owner`, and that is deliberate.** The caller's identity
@@ -491,8 +491,11 @@ proof:
   not taken was `tcw work claim`, which would remove the wart and the constraint
   risk 5 hands to C4; it is a surface decision the epic already made, and
   re-opening it is a question for the epic's verification, not for this child.
-- **`--part` is accepted by both verbs** for the same reason `link` accepts it:
-  one ticket can back several items, and the claim is on the item.
+- **`--part` was dropped at the implement stage**, having been specified here. It
+  is redundant: `link` and `import` take it to choose *which item* a ticket maps
+  to, but these verbs are given the item by slug, and an item has exactly one
+  binding, which already records its part. The flag could only ever have agreed
+  with the binding or contradicted it.
 - Asked for reference material at the request stage; the requester's answer was
   that the epic's spec, the code it cites, and GitHub #41 and #42 are the whole
   of it.

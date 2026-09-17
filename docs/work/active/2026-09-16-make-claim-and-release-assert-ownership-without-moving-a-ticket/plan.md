@@ -107,8 +107,12 @@ criteria 1, 3 and 11.
 
 `_tracker_claim` and `_tracker_release`, with their parsers registered beside
 `link`, `unlink` and `sync` (`cli.py:3043-3210`). Both follow `_tracker_link`'s
-shape: `_tracker_client(label)`, `validate_part`, `_item_or_reason`,
-`binding_of`, then the work.
+shape: `_tracker_client(label)`, `_item_or_reason`, `binding_of`, then the work.
+
+**No `--part`, though the spec specified one.** It is redundant here: `link` and
+`import` take it to choose which item a ticket maps to, and these verbs are given
+the item by slug, which already has exactly one binding recording its part. The
+spec has been corrected rather than the flag added.
 
 Order inside `claim`: identity, then the local guard from task 2 (`--take-over`),
 then the binding, then the ticket, then `assert_ownership`, then the local write
