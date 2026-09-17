@@ -2660,6 +2660,14 @@ class InboxEntry:
     kind: str
 
 
+class InboxEntryNotFound(ValueError):
+    """No inbox entry answers to this reference.
+
+    Part of the store contract, and distinct from a reference that matches several
+    entries, which stays a plain `ValueError`: a caller may try a ref somewhere else
+    when nothing matched, and must not when too much did."""
+
+
 @dataclass(frozen=True)
 class InboxEntryDetail:
     """An inbox entry plus its readable primary content and bounded resources."""
@@ -3066,11 +3074,15 @@ class WorkStore(ABC):
 
     @abstractmethod
     def inbox_show(self, ref: str) -> InboxEntryDetail:
-        """Inspect one raw entry without emitting arbitrary binary content."""
+        """Inspect one raw entry without emitting arbitrary binary content.
+
+        Raises `InboxEntryNotFound` when no entry answers to ``ref``."""
 
     @abstractmethod
     def inbox_accept(self, ref: str, title: str | None = None) -> WorkItem:
         """Atomically consume raw intake into a new backlog work item.
+
+        Raises `InboxEntryNotFound` when no entry answers to ``ref``.
 
         The title is ``title`` when given, else the first ATX H1 the entry's
         body declares (``body_title``), else a store-provided label for the

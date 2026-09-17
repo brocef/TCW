@@ -37,7 +37,7 @@ import yaml
 
 from tcw.store.base import (
     BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
-    DEFAULT_DOD,
+    DEFAULT_DOD, InboxEntryNotFound,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
     binding_value, classify_binding, unreadable_binding,
     WORK_STATUSES, WORK_TYPES, _UNSET, resolution_status,
@@ -5788,14 +5788,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                  + ", ".join(titled))
             if titled:
                 return titled[0]
-        raise ValueError(f"no such inbox entry: {ref}")
+        raise InboxEntryNotFound(f"no such inbox entry: {ref}")
 
     def _inbox_path(self, ref: str) -> Path:
         if not ref or ref in {".", ".."} or "/" in ref or "\\" in ref or ref.startswith("."):
-            raise ValueError(f"no such inbox entry: {ref}")
+            raise InboxEntryNotFound(f"no such inbox entry: {ref}")
         path = self.inbox_root / ref
         if not path.exists() or path.is_symlink() or path.parent != self.inbox_root:
-            raise ValueError(f"no such inbox entry: {ref}")
+            raise InboxEntryNotFound(f"no such inbox entry: {ref}")
         return path
 
     @staticmethod

@@ -335,6 +335,25 @@ def test_inbox_unknown_entry_still_reports_no_such_entry(tmp_path):
         st.inbox_accept("nope")
 
 
+def test_inbox_not_found_is_its_own_type_and_ambiguity_is_not(tmp_path):
+    """The CLI falls through to the tracker on not-found only; trying an ambiguous
+    ref as a ticket key would hide the ambiguity."""
+    from tcw.store.base import InboxEntryNotFound
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    for call in (st.inbox_show, st.inbox_accept):
+        with pytest.raises(InboxEntryNotFound, match="no such inbox entry: nope"):
+            call("nope")
+    with pytest.raises(InboxEntryNotFound):
+        st.inbox_show("../escape")
+    inbox = root / "docs/work/inbox"
+    (inbox / "example.txt").write_text("one\n", encoding="utf-8")
+    (inbox / "example.rst").write_text("two\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ambiguous inbox entry") as raised:
+        st.inbox_show("example")
+    assert not isinstance(raised.value, InboxEntryNotFound)
+
+
 def _delegated(root, name: str, front: str) -> None:
     """An inbox entry shaped exactly as `tcw work delegate` writes one."""
     (root / "docs/work/inbox" / name).write_text(
