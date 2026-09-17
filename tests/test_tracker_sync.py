@@ -2003,6 +2003,29 @@ def test_no_command_writes_a_claim_into_the_record(node, fake):
     assert set(written_record(node, slug)) == RECORD_FIELDS, written_record(node, slug)
 
 
+def test_a_claim_deliver_cannot_make_names_the_verb_that_can(node, fake):
+    """A ticket nobody else holds that the claim transition cannot reach from where it
+    sits. `tcw work tracker claim` takes it without a transition, so the refusal says
+    so — and a ticket somebody else holds is not sent there, since claiming it would
+    only produce a second refusal naming the same person."""
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 1 and "Bob" in err and "tracker claim" not in err, err
+    claimed_ticket(fake, "In Progress", None)          # Bob let it go, where he had it
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 1, err
+    # `transitions.claim` is 'Start Progress', which 'In Progress' does not offer.
+    assert "does not offer 'Start Progress'" in err, err
+    assert f"tcw work tracker claim {slug}" in err, err
+    # ...and it is the way through.
+    assert cli(node, "work", "tracker", "claim", slug)[0] == 0
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert record(node, slug) is None
+
+
 def test_a_late_link_records_its_catch_up_without_a_claim(node, fake):
     fake.tickets[TICKET_ID].status = "To Do"
     late = under_way(node, "active")

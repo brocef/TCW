@@ -525,10 +525,15 @@ the command then exits 1, says the item moved, and records why in `tracker.yaml`
   the ticket is assigned to someone else or is no longer where TCW expected.
 
 If the claim at `start` never succeeded, the record says so by naming the `start`
-as the move it still owes, and every later attempt tries the claim first. Once a
-second failure writes a different move over that record, no command claims the
-ticket for you any more — take it with `tcw work tracker claim <slug>`, then run
-`tcw work tracker sync <slug>`.
+as the move it still owes, and every later attempt tries the claim first. When that
+attempt cannot be made — the ticket has moved on and no longer offers the
+`transitions.claim` transition, say — the refusal names `tcw work tracker claim
+<slug>`, which takes the ticket without moving it; run `tcw work tracker sync
+<slug>` after. A ticket somebody else holds is not sent there, because the refusal
+already names them.
+
+Once a second failure writes a different move over that record, no command claims
+the ticket for you any more, and the same two commands are how you take it.
 
 `tcw work show` prints a `tracker sync:` line with the state, the move, when, and
 the reason; the `tcw work list` row reads `ticket: <KEY> (pending)`; and

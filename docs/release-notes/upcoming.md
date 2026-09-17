@@ -292,7 +292,9 @@ The one case that changes: if a second command then fails too, its own move
 replaces `start` in the record, and from then on nothing claims the ticket for you.
 Take it with `tcw work tracker claim <slug>` and run `tcw work tracker sync <slug>`.
 Refusals that used to say "`tcw work start` claims a bound ticket" now name the
-claim command.
+claim command — as does a claim TCW tried to make and could not, which used to
+report only that the ticket did not offer the transition. A ticket somebody else
+holds is not sent there: that refusal already names them.
 
 A `tracker.yaml` written by an older version still carries the old key. It is read
 and ignored, nothing about the binding breaks, and the key goes away the next time

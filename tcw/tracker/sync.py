@@ -576,7 +576,14 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             if not outcome.claimed:
                 state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
                 detail = f" ({outcome.detail})" if outcome.detail else ""
-                return finish(state, outcome.message + detail)
+                # Where the claim lives now, for a ticket nobody else holds. Said only
+                # then: telling somebody to claim a ticket another account holds would
+                # send them to a refusal naming that account, which this message
+                # already does.
+                where = ("" if ticket.assignee_id not in ("", None, ticket.me_id) else
+                         f" Take it with `tcw work tracker claim {slug}`, then run "
+                         f"`tcw work tracker sync {slug}`.")
+                return finish(state, outcome.message + detail + where)
             if config.strict:
                 # Under strict mode a claim the workflow cannot make exclusive
                 # authorizes nothing, so it stays owed and nothing moves.

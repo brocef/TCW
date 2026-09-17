@@ -27,6 +27,10 @@ category.
   command later.
 - **`assess_move`'s unassigned refusal** names `tcw work tracker claim` instead of
   "`tcw work start` claims a bound ticket".
+- **A claim `deliver` could not make names `tcw work tracker claim <slug>`** and the
+  `sync` to run after it, appended to `intake.claim`'s own message — but only when the
+  ticket is unassigned or already this account's, since sending somebody to claim a
+  ticket another account holds produces a second refusal naming the same person.
 
 ## Removed — `sync.claim` in the binding record
 
