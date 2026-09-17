@@ -126,6 +126,17 @@ category.
 
 ## Changed
 
+- **`complete` refuses a `--worktree` item whose folder in the worktree holds
+  uncommitted changes**, before the merge-back, since the merge carries only commits and
+  the judgments above read working files. `uncommitted_paths` (`tcw/store/fs.py`) reads
+  `git status --porcelain -z --untracked-files=all`, includes untracked entries (unlike
+  `_has_committable_changes`) and consumes a rename's source record. Not skipped by
+  `--force`, which overrides whether shipping is allowed rather than what it carries, and
+  it therefore precedes the Definition-of-Done checklist. An external `work.path` store is
+  exempt: both checkouts share it, detected by comparing the two stores' resolved roots. A
+  staged `tracker.yaml` gets a second line naming `tcw work tracker sync` *after*
+  committing, because a sync with nothing owed writes nothing and leaves the file staged.
+
 - **Inbox ref resolution**: `inbox show`/`accept` ask the store first and, only on
   `InboxEntryNotFound` with `inbox-query` declared, read the ref as a ticket
   (`_inbox_can_try_ticket`). A ref that is neither names both (`_not_a_ticket`).
@@ -270,6 +281,26 @@ category.
   contract.
 
 ## Fixed
+
+- **`complete` judges a `--worktree` item from its branch's copy.** With the store
+  inside the checkout the worktree holds its own copy, so `submit`, `rework`, blocker
+  edits and tracker records made during the work are committed on the branch while the
+  primary checkout's copy stays as `start` left it. `_complete` read that stale copy for
+  every judgment it makes before `merge_worktree`. It now opens a second store —
+  `_branch_copy` (`tcw/work/cli.py`) over `worktree_node_root` (`tcw/store/fs.py`), the
+  node's own directory *inside* the worktree, not the worktree top, since `git worktree
+  add` checks out the whole repository and `resolve_store` never searches upward — and
+  uses it for the blocker check and the strict tracker refusal. `authorize` and
+  `binding_refusal` (`tcw/tracker/sync.py`) and `_strict_refusal` take a keyword-only
+  `own=` for the item's own binding, status and owner; `_siblings` and the tracker
+  configuration still come from the primary store. Unreadable worktree (gone, not a
+  store, malformed config on the branch, item absent) falls back to the primary copy
+  with one line on stderr; `ValueError`, `OSError` and `MultipleMatch` are all caught,
+  the last because it is not a `ValueError`.
+- **The skipped-verify message now requires both copies to read `active`.** Either copy
+  alone is wrong: `submit` inside the worktree leaves the primary at `active`, and
+  `submit` from the primary checkout leaves the branch copy at `active`
+  (`tests/test_recursion.py`, `tests/test_tracker_sync.py` drive the second).
 
 - A discard moves a ticket nobody is assigned; every other move still refuses one,
   and a ticket assigned to another account is still never moved. The post-transition
