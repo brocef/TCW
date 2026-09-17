@@ -10,11 +10,11 @@ it says nothing most sessions. Under Codex there is no hook, so once the check
 below finds no `tcw`, run it yourself:
 
 ```sh
-bash <plugin>/scripts/session_bootstrap.sh <plugin>
+bash "<plugin>/scripts/session_bootstrap.sh" "<plugin>"
 ```
 
 `<plugin>` is the plugin's root folder — the one holding `skills/` and `scripts/`,
-three levels above the folder this file is in. Quote it if the path has a space. The script's second argument, a file recording which
+three levels above the folder this file is in. The script's second argument, a file recording which
 plugin version it last installed for, can be left off: you run the script only when
 `tcw` is missing, and that file only saves a reinstall on a later run. The script
 prints nothing when it succeeds or declines, so run `tcw --version` afterwards; if

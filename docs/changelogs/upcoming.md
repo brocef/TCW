@@ -230,7 +230,7 @@ category.
   `documentation-sync`'s `references/cut-version.md` directly, so a project's
   replacement is followed.
 - `skills/setup/references/install.md` gives the Codex install command,
-  `bash <plugin>/scripts/session_bootstrap.sh <plugin>`, and says where `<plugin>`
+  `bash "<plugin>/scripts/session_bootstrap.sh" "<plugin>"`, and says where `<plugin>`
   is and why the sentinel argument can be omitted. `skills/work-stage/SKILL.md` and
   `skills/documentation-sync/SKILL.md` define `<plugin>` in their manual fallbacks.
 - Capability ledger: `work/run-a-lifecycle-stage` no longer describes the
