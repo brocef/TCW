@@ -33,7 +33,7 @@ A, B = "acct-a", "acct-b"
 KEY, TICKET_ID = "SYNC-1", "20001"
 STATUSES = {"active": "In Progress", "review": "In Review", "completed": "Done",
             "discarded": "Won't Do"}
-RECORD = {"state": "pending", "move": "submit", "since": "In Progress", "claim": "done",
+RECORD = {"state": "pending", "move": "submit", "since": "In Progress",
           "reason": "the tracker could not be reached", "at": "2026-09-14T10:00:00Z"}
 
 
@@ -55,10 +55,9 @@ def test_a_record_is_carried_on_the_binding():
 
 @pytest.mark.parametrize("sync", [5, {**RECORD, "state": "late"},
                                   {**RECORD, "move": "wander"},
-                                  {**RECORD, "claim": "maybe"},
                                   {k: v for k, v in RECORD.items() if k != "reason"},
                                   {**RECORD, "at": None}],
-                         ids=["not-mapping", "state", "move", "claim", "missing", "null"])
+                         ids=["not-mapping", "state", "move", "missing", "null"])
 def test_an_unusable_record_is_a_problem_and_the_binding_stays_bound(sync):
     data = yaml.safe_load(document())
     data["sync"] = sync
@@ -240,14 +239,13 @@ def test_import_refuses_a_same_id_ticket_from_another_site(tmp_path, two_sites):
 # ── delivery rules, called directly ──────────────────────────────────────────
 
 
-def deliver_now(root: Path, slug: str, *, move: str | None, previous: str | None,
-                check_only: bool = False):
+def deliver_now(root: Path, slug: str, *, move: str | None, previous: str | None):
     from tcw.tracker.jira import JiraClient
     from tcw.tracker.sync import deliver
     st = FsWorkStore.open(root)
     config = st.tracker_config()
     return deliver(st, slug, JiraClient(config), config, move=move,
-                   previous_status=previous, check_only=check_only)
+                   previous_status=previous)
 
 
 def claimed_ticket(fake, status: str = "In Progress", assignee: str | None = A):
@@ -552,22 +550,43 @@ def test_start_of_a_ticket_someone_else_holds_starts_locally_and_records_it(node
     assert fake.writes() == []
     assert "Bob" in err and f"{slug} moved to active and was committed" in err
     sync = record(node, slug)
-    assert (sync["state"], sync["move"], sync["claim"]) == ("conflicting", "start", "owed")
+    assert (sync["state"], sync["move"]) == ("conflicting", "start")
     dirty = subprocess.run(["git", "-C", str(node), "status", "--porcelain", "--",
                             f"docs/work/backlog/{slug}"], capture_output=True, text=True)
     assert dirty.stdout == "", "the move out of backlog was not committed"
 
 
-def test_an_owed_claim_is_retried_before_the_next_move(node, fake):
+def test_a_start_whose_delivery_is_recorded_is_claimed_before_the_next_move(node, fake):
+    """The record naming the `start` is what says the ticket has never been taken, now
+    that no `claim` key does."""
     slug = bound_item(node)
     claimed_ticket(fake, "In Progress", B)
     cli(node, "work", "start", slug)
+    assert record(node, slug)["move"] == "start"
     claimed_ticket(fake, "To Do", None)                   # Bob let it go
     code, _out, err = cli(node, "work", "submit", slug)
     assert code == 0, err
     held = fake.tickets[TICKET_ID]
     assert (held.status, held.assignee) == ("In Review", A)
     assert record(node, slug) is None
+
+
+def test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb(node, fake):
+    """Once a later move records itself, the record no longer names the `start`, so no
+    command claims the ticket on that start's behalf. `tcw work tracker claim` does."""
+    root = make_node(node.parent, statuses={"active": "In Progress",
+                                            "completed": "Done"}, name="beta")
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Progress", B)
+    assert cli(root, "work", "start", slug)[0] == 1
+    assert cli(root, "work", "submit", slug)[0] == 1    # review unmapped; Bob still has it
+    assert record(root, slug)["move"] == "submit"
+    claimed_ticket(fake, "In Progress", None)          # Bob let it go, where he had it
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].assignee is None     # nothing claimed it
+    assert cli(root, "work", "tracker", "claim", slug)[0] == 0
+    assert fake.tickets[TICKET_ID].assignee == A
 
 
 def test_a_move_the_tracker_misses_is_pending_and_sync_finishes_it(node, fake):
@@ -715,7 +734,10 @@ def test_sync_all_exits_one_while_a_move_stays_pending(node, fake):
     assert code == 1 and out.startswith(f"{slug}: pending — ")
 
 
-def test_sync_of_an_item_with_no_record_checks_and_never_moves(node, fake):
+def test_sync_of_an_item_with_no_record_still_moves_its_ticket(node, fake):
+    """A move made with no delivery — from `tcw serve`, or interrupted between its
+    commit and the tracker call — leaves no record. `sync` does not need one: the
+    item's status is what the ticket is moved to."""
     slug = bound_item(node)
     claimed_ticket(fake, "In Progress")
     st = FsWorkStore.open(node)
@@ -724,8 +746,9 @@ def test_sync_of_an_item_with_no_record_checks_and_never_moves(node, fake):
     before = binding_text(node, slug)
     fake.requests.clear()
     code, out, _err = cli(node, "work", "tracker", "sync", slug)
-    assert code == 1 and "conflicting" in out
-    assert fake.writes() == [] and binding_text(node, slug) == before
+    assert code == 0 and "current" in out, out
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert binding_text(node, slug) == before
 
 
 def test_sync_of_a_named_slug_someone_else_started_exits_one(node, fake):
@@ -737,7 +760,7 @@ def test_sync_of_a_named_slug_someone_else_started_exits_one(node, fake):
     slug = bound_item(node)
     st = FsWorkStore.open(node)
     st.start(slug, owner="b@example.test")
-    with_record(node, slug, {**RECORD, "move": "start", "since": "", "claim": "owed"})
+    with_record(node, slug, {**RECORD, "move": "start", "since": ""})
     code, out, err = cli(node, "work", "tracker", "sync", slug)
     assert code == 1, (out, err)
     assert "skipped" in out and "b@example.test" in out
@@ -760,7 +783,7 @@ def test_the_strict_refusal_names_the_owner_to_sync_as(node, fake):
     slug = bound_item(node)
     st = FsWorkStore.open(node)
     st.start(slug, owner="b@example.test")
-    with_record(node, slug, {**RECORD, "move": "start", "since": "", "claim": "owed"})
+    with_record(node, slug, {**RECORD, "move": "start", "since": ""})
     st = FsWorkStore.open(node)
     bound, refusal = binding_refusal(st, slug, st.tracker_config())
     assert bound is None and refusal is not None
@@ -810,8 +833,8 @@ def test_show_and_list_state_a_record(node, fake):
         "tracker sync: pending after submit (2026-09-14T10:00:00Z): the tracker could "
         "not be reached")
     assert board_row(node, slug).endswith(f"| ticket: {KEY} (pending)")
-    with_record(node, slug, {**RECORD, "state": "conflicting", "claim": "owed"})
-    assert show_lines(node, slug)[1].endswith("; the claim is still owed")
+    with_record(node, slug, {**RECORD, "state": "conflicting"})
+    assert show_lines(node, slug)[1].startswith("tracker sync: conflicting after submit")
 
 
 def test_a_part_and_a_state_share_the_brackets(node, fake):
@@ -980,13 +1003,12 @@ def test_an_empty_since_on_complete_accepts_only_the_nearest_mapped_status(node,
     assert expected_statuses(no_review, None, record_, "done") == ("In Progress", "Done")
 
 
-def test_open_work_with_no_mapping_keeps_its_owed_claim(tmp_path, fake):
+def test_open_work_with_no_mapping_still_owes_a_recorded_start(tmp_path, fake):
     root = make_node(tmp_path, statuses={"active": "In Progress", "completed": "Done"})
     slug = bound_item(root)
     claimed_ticket(fake, "In Progress", B)
     assert cli(root, "work", "start", slug)[0] == 1
-    assert cli(root, "work", "submit", slug)[0] == 1       # review unmapped; Bob still has it
-    assert record(root, slug)["claim"] == "owed"
+    assert record(root, slug)["move"] == "start"
     claimed_ticket(fake, "To Do", None)
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 0, (out, err)
@@ -1009,7 +1031,7 @@ def test_an_owed_claim_on_a_ticket_already_yours_at_the_target_sends_nothing(tmp
     st = FsWorkStore.open(root)
     st.start(slug, owner="a@example.test")
     st.submit(slug)
-    with_record(root, slug, {**RECORD, "move": "start", "since": "", "claim": "owed"})
+    with_record(root, slug, {**RECORD, "move": "start", "since": ""})
     fake_.requests.clear()
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 0, (out, err)
@@ -1340,7 +1362,7 @@ def test_a_walk_that_cannot_finish_leaves_the_ticket_where_it_reached(tmp_path,
     assert fake_.tickets[TICKET_ID].status == "In Review"       # as far as it got
     written = record(root, slug)
     assert written["since"] == "In Review"                      # actually observed
-    assert written["claim"] == "done"                           # the claim did land
+    assert fake_.tickets[TICKET_ID].assignee == A               # the claim did land
 
 
 def test_sync_finishes_a_sync_status_link_the_tracker_did_not_answer(tmp_path,
@@ -1352,7 +1374,8 @@ def test_sync_finishes_a_sync_status_link_the_tracker_did_not_answer(tmp_path,
     slug = under_way(root, "review")
     restore = transitions_fail(fake_, 1)
     assert sync_link(root, slug)[0] == 1
-    assert record(root, slug)["claim"] == "owed"
+    assert fake_.tickets[TICKET_ID].assignee is None            # the claim is still owed
+    assert yaml.safe_load(binding_text(root, slug))["catch-up"] is True
     assert fake_.tickets[TICKET_ID].status == "To Do"
     restore()
     code, out, err = cli(root, "work", "tracker", "sync", slug)
@@ -1410,7 +1433,7 @@ def test_a_claimed_ticket_moved_back_is_not_walked_forward_again(tmp_path, monke
     st.start(slug, owner="a@example.test")
     st.submit(slug)
     with_record(root, slug, {"state": "pending", "move": "submit",
-                             "since": "In Progress", "claim": "done",
+                             "since": "In Progress",
                              "reason": "the tracker could not be reached",
                              "at": "2026-09-15T10:00:00Z"})
     fake_.tickets[TICKET_ID].status = "To Do"          # pushed back, by hand
@@ -1446,7 +1469,7 @@ def test_the_window_for_a_discard_record_is_its_two_ends(node, fake):
     discard status to accept — only the two ends."""
     from tcw.tracker.sync import expected_statuses
     rec = {"state": "pending", "move": "discard", "since": "In Progress",
-           "claim": "done", "reason": "x", "at": "2026-09-15T00:00:00Z"}
+           "reason": "x", "at": "2026-09-15T00:00:00Z"}
     assert expected_statuses(STATUSES, None, rec, "wontfix") == ("In Progress",
                                                                 "Won't Do")
 
@@ -1462,7 +1485,7 @@ def test_sync_status_does_not_pull_back_a_ticket_already_past_its_item(tmp_path,
     code, _out, err = sync_link(root, slug)
     assert code == 1 and "past where its item is" in err, err
     assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Review"
-    assert record(root, slug)["claim"] == "owed"
+    assert yaml.safe_load(binding_text(root, slug))["catch-up"] is True
 
 
 def test_sync_status_does_not_move_an_already_resolved_ticket(tmp_path, monkeypatch):
@@ -1487,7 +1510,7 @@ def test_a_walk_interrupted_after_the_claim_resumes_on_the_next_sync(tmp_path,
     slug = under_way(root, "completed")
     restore = transitions_fail(fake_, 2)
     assert sync_link(root, slug)[0] == 1
-    assert record(root, slug)["claim"] == "done"
+    assert fake_.tickets[TICKET_ID].assignee == A               # the claim did land
     assert fake_.tickets[TICKET_ID].status == "In Progress"
     restore()
     outcome = deliver_now(root, slug, move=None, previous=None)
@@ -1522,7 +1545,8 @@ def test_sync_status_on_a_resolved_item_records_its_own_move(tmp_path, monkeypat
     transitions_fail(fake_, 1)
     assert sync_link(root, slug)[0] == 1
     written = record(root, slug)
-    assert written["move"] == "complete" and written["claim"] == "owed"
+    assert written["move"] == "complete"
+    assert yaml.safe_load(binding_text(root, slug))["catch-up"] is True
 
 
 def test_a_resolved_items_ticket_already_at_its_status_is_left_alone(tmp_path, fake):
@@ -1601,7 +1625,7 @@ def test_sync_status_on_a_review_item_does_not_claim_back_an_unassigned_ticket_i
     code, _out, err = sync_link(root, slug)
     assert code == 1 and "Assign it to yourself" in err, err
     assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Review"
-    assert record(root, slug)["claim"] == "owed"
+    assert yaml.safe_load(binding_text(root, slug))["catch-up"] is True
 
 
 # ── what a plain link's note does not explain away ───────────────────────────
@@ -1707,10 +1731,10 @@ def test_sync_status_on_a_backlog_item_says_it_did_nothing(node, fake):
     assert fake.writes() == []
 
 
-def test_an_owed_claim_without_sync_status_is_followed_by_one_transition_only(
+def test_a_recorded_start_without_sync_status_is_followed_by_one_transition_only(
         tmp_path, monkeypatch):
-    """A `start` whose claim did not reach the tracker leaves `claim: owed`. When the
-    item has moved on, `sync` claims and then makes the single move it always made —
+    """A `start` whose claim did not reach the tracker leaves a record naming it. When
+    the item has moved on, `sync` claims and then makes the single move it always made —
     walking through several statuses is only for a binding that asked for it."""
     from tracker_fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
@@ -1718,7 +1742,7 @@ def test_an_owed_claim_without_sync_status_is_followed_by_one_transition_only(
     fake_.down = True
     assert cli(root, "work", "start", slug)[0] == 1
     fake_.down = False
-    assert record(root, slug)["claim"] == "owed"
+    assert record(root, slug)["move"] == "start"
     FsWorkStore.open(root).complete(slug, "done", ["acked"])    # delivers nothing
     code, _out, _err = cli(root, "work", "tracker", "sync", slug)
     assert code == 1
@@ -1843,3 +1867,153 @@ def test_a_closed_ticket_somebody_else_holds_is_refused_as_closed(tmp_path,
     code, out, _err = cli(root, "work", "tracker", "sync", slug)
     assert code == 1 and "already resolved" in out and "Assign it" not in out, out
     assert fake_.applied == []
+
+
+# ── reconciling a ticket to its item ─────────────────────────────────────────
+#
+# The item's status is what the ticket is moved to, wherever the ticket sits. A
+# ticket ahead of its item is brought back; one behind is brought forward.
+
+
+def started_and_bound(node, fake) -> str:
+    """An active item holding its ticket at the active status, with no record."""
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    assert record(node, slug) is None
+    return slug
+
+
+def test_sync_brings_a_ticket_someone_moved_on_back_to_its_item(node, fake):
+    slug = started_and_bound(node, fake)
+    fake.tickets[TICKET_ID].status = "In Review"            # moved on by hand
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    assert record(node, slug) is None
+
+
+def test_sync_says_when_it_moved_a_ticket_backwards(node, fake):
+    slug = started_and_bound(node, fake)
+    fake.tickets[TICKET_ID].status = "In Review"
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    said = out + err
+    assert code == 0, said
+    assert KEY in said and "'In Review'" in said and "'In Progress'" in said, said
+
+
+def test_sync_brings_a_ticket_someone_moved_back_forward_again(node, fake):
+    slug = started_and_bound(node, fake)
+    assert cli(node, "work", "submit", slug)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    fake.tickets[TICKET_ID].status = "In Progress"          # sent back by hand
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review"
+
+
+def test_sync_moves_a_ticket_from_a_status_the_project_maps_to_nothing(node, fake):
+    slug = started_and_bound(node, fake)
+    fake.tickets[TICKET_ID].status = "To Do"
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+
+
+def test_sync_never_moves_a_ticket_somebody_else_holds(node, fake):
+    slug = started_and_bound(node, fake)
+    claimed_ticket(fake, "In Review", B)
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 1, (out, err)
+    assert "Bob" in out + err
+    assert fake.tickets[TICKET_ID].status == "In Review"
+
+
+def test_sync_never_reopens_a_resolved_ticket(tmp_path, monkeypatch):
+    """The workflow offers a way back out of `Done`, so only the rule that TCW does
+    not change a ticket's resolution stops this."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, {
+        "To Do": [("21", "Start Progress", "In Progress")],
+        "In Progress": [("41", "Ready for Review", "In Review")],
+        "In Review": [("31", "Finish", "Done")],
+        "Done": [("42", "Reopen", "In Progress")]})
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    fake_.tickets[TICKET_ID].status = "Done"                # closed by hand
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1, (out, err)
+    assert "already resolved" in out + err
+    assert fake_.tickets[TICKET_ID].status == "Done"
+    # ...and the same, before anything is said about who holds it: telling somebody to
+    # take a closed ticket only leads them to this refusal one command later.
+    fake_.tickets[TICKET_ID].assignee = None
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1 and "already resolved" in out + err, (out, err)
+    assert "unassigned" not in out + err, out + err
+
+
+def test_sync_does_not_reconcile_a_ticket_bound_as_a_named_part(node, fake):
+    """A ticket the user said serves several items is not reconciled against one of
+    them: another part may be holding it, and a hold leaves no evidence outside the
+    checkout it happened in."""
+    slug = bound_item(node, part="api")
+    assert cli(node, "work", "start", slug)[0] == 0
+    fake.tickets[TICKET_ID].status = "In Review"
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 1, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review"
+
+
+# ── the claim is no longer part of the record ────────────────────────────────
+
+
+RECORD_FIELDS = {"state", "move", "since", "reason", "at"}
+
+
+def written_record(root: Path, slug: str) -> dict:
+    """The record as it sits in the file, not as `_sync_record` parses it — which is
+    the only way to see a key that should not have been written at all."""
+    return yaml.safe_load(binding_text(root, slug))["sync"]
+
+
+def test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored(node, fake):
+    import json
+    slug = bound_item(node)
+    with_record(node, slug, {"state": "pending", "move": "submit",
+                             "since": "In Progress", "claim": "owed",
+                             "reason": "the tracker could not be reached",
+                             "at": "2026-09-14T10:00:00Z"})
+    kept = record(node, slug)
+    assert "problem" not in kept and set(kept) == RECORD_FIELDS, kept
+    code, out, err = cli(node, "work", "show", slug)
+    assert code == 0, err
+    assert KEY in out and "pending after submit" in out
+    assert "owed" not in out, out
+    code, out, err = cli(node, "work", "show", slug, "--json")
+    assert code == 0, err
+    jsonschema.validate(json.loads(out), WORK_ITEM_SCHEMA)
+
+
+def test_no_command_writes_a_claim_into_the_record(node, fake):
+    slug = bound_item(node)
+    fake.down = True
+    assert cli(node, "work", "start", slug)[0] == 1
+    assert set(written_record(node, slug)) == RECORD_FIELDS, written_record(node, slug)
+    assert cli(node, "work", "submit", slug)[0] == 1
+    assert set(written_record(node, slug)) == RECORD_FIELDS, written_record(node, slug)
+
+
+def test_a_late_link_records_its_catch_up_without_a_claim(node, fake):
+    fake.tickets[TICKET_ID].status = "To Do"
+    late = under_way(node, "active")
+    assert sync_link(node, late)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    assert record(node, late) is None
+    second = under_way(node, "review")
+    fake.ticket(id="20009", key="SYNC-9", summary="Another", status="To Do")
+    transitions_fail(fake, 1)               # the claim never leaves the machine
+    code, _out, err = cli(node, "work", "tracker", "link", second, "SYNC-9",
+                          "--sync-status")
+    assert code == 1, err
+    assert set(written_record(node, second)) == RECORD_FIELDS, written_record(node, second)
+    assert yaml.safe_load(binding_text(node, second))["catch-up"] is True

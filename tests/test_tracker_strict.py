@@ -752,7 +752,8 @@ def test_sync_rechecks_an_owed_claim_under_strict_mode(tmp_path, monkeypatch):
     set_tracker_key(root, "strict", True)
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 1 and "second person could claim it too" in out + err
-    assert record(root, slug)["claim"] == "owed"
+    # The claim is still owed: the record still names the `start` that owes it.
+    assert record(root, slug)["move"] == "start"
 
 
 # ── a held item and its record, with strict on ───────────────────────────────
@@ -762,7 +763,7 @@ def test_a_held_item_drops_its_record_so_strict_mode_does_not_lock_it(strict, fa
     api = bound_item(strict, "Api", part="api")
     assert cli(strict, "work", "start", api)[0] == 0
     with_record(strict, api, {"state": "pending", "move": "start", "since": "",
-                              "claim": "done", "reason": "down", "at": "2026-09-15T00:00:00Z"})
+                              "reason": "down", "at": "2026-09-15T00:00:00Z"})
     bound_item(strict, "Web", part="web")
     code, out, _err = cli(strict, "work", "tracker", "sync", api)
     assert code == 0 and "held" in out
