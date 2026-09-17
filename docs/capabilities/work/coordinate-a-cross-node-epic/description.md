@@ -6,6 +6,13 @@ individual slices at it from wherever they live. A slice declares its owner with
 back-pointer is one-directional and loose: the epic holds no list of its children,
 so a slice can be added, moved, or dropped without editing the epic.
 
+An item that grows into an initiative becomes an epic with
+`tcw work edit <slug> --type epic`, keeping its slug and history; `--type ""` makes
+an epic an ordinary item again. That is refused while any item — open or resolved —
+still names it as its initiative, and while this checkout cannot reach every project
+its slices might live in, so no slice is left pointing at something that is no
+longer an epic.
+
 Slices may live in child projects, and TCW finds them through the registered
 graph rather than the filesystem — see
 [Inspect the node topology](tcw://C/work/inspect-the-node-topology).

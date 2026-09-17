@@ -14,7 +14,8 @@ changes no file; a `start` refused after its claim leaves the ticket claimed.
 Discarding an item is always allowed, so no item is trapped; `drop` refuses an item
 that has ever been bound, since dropping would erase that record, and tells me to
 discard it instead. Epics are not gated, since they only group work, except that an
-epic cannot be started in a worktree.
+epic cannot be started in a worktree — and for that reason `tcw work edit --type`
+refuses to turn an item into an epic or an epic into an item.
 
 A claim only authorizes work when the workflow could have refused a second person:
 if, once claimed, the ticket still offers the claim transition, `start` and
