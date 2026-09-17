@@ -541,7 +541,7 @@ work:
         credentials:
             email-env: TCW_JIRA_EMAIL
             token-env: TCW_JIRA_API_TOKEN
-        transitions: { claim: Start Progress }
+        transitions: { start: Start Progress }
         statuses: { active: In Progress, review: In Review, completed: Done }
         inbox-query: project = ENG AND status = Triage # optional
 ```

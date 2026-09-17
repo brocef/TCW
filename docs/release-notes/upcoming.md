@@ -3,6 +3,28 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## One word to change in your Jira settings
+
+- **The setting that names the transition which starts a ticket is now called
+  `start`.** It used to be called `claim`, back when taking a ticket and starting
+  work on it were one and the same. They are separate now, so the setting is named
+  after the move it belongs to, next to `submit`, `rework`, `complete` and
+  `discard`.
+- **If your project is connected to Jira, you have one word to change.** In your
+  `tcw-config.yaml`, under `work` → `tracker` → `transitions`, rename `claim` to
+  `start`. Leave the value exactly as it is.
+
+  ```yaml
+  transitions:
+      start: Start Progress # this line used to read "claim: Start Progress"
+  ```
+- **The old name is not quietly accepted.** Run `tcw validate` and it tells you
+  which file to edit and what to write instead. In a shared workspace, where one
+  parent project holds the Jira settings for everything below it, the file it
+  names is that parent's — which is the one to fix, even when you are checking a
+  project further down.
+- Nothing else about your tickets changes.
+
 ## TCW no longer offers to cut a version
 
 - **Finishing a work item no longer raises the question of a new version.**

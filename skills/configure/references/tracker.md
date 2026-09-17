@@ -2,7 +2,7 @@
 
 A node connects to an external tracker for `tcw work tracker list` and `show`,
 which read tickets; for `import`, which claims a ticket through the workflow
-transition named in `transitions.claim`, and `link`, which only records a binding unless `--sync-status` asks it to bring the ticket up to date;
+transition named in `transitions.start`, and `link`, which only records a binding unless `--sync-status` asks it to bring the ticket up to date;
 and for the lifecycle commands, which claim a bound item's ticket at `start` and
 move it to the statuses under `statuses` as the item moves. What those commands do, which
 file a tracker problem names, and what a malformed block does at runtime is in the
@@ -19,7 +19,7 @@ work:
             email-env: TCW_JIRA_EMAIL
             token-env: TCW_JIRA_API_TOKEN
         transitions:
-            claim: Start Progress
+            start: Start Progress
         statuses:
             active: In Progress
             review: In Review
@@ -30,7 +30,7 @@ work:
 
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.claim`, and optional `statuses`, `strict`,
+`credentials.token-env`, `transitions.start`, and optional `statuses`, `strict`,
 `comments`, `link`, `inbox-query`, `exclusive-claim-transition` and
 `timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
@@ -47,7 +47,7 @@ disables the whole block like any other; it inherits like every other scalar key
 names, read at request time. Set those two variables in the shell that runs `tcw`;
 never write the email address or the token into `tcw-config.yaml`.
 
-`transitions.claim` is the name of the tracker's workflow transition that starts
+`transitions.start` is the name of the tracker's workflow transition that starts
 a ticket, exactly as the tracker spells it. `tcw` cannot tell a wrong name from a
 ticket that simply does not offer it yet, so copy it from the project's workflow.
 
@@ -58,12 +58,28 @@ and one for abandoned work, is the usual case, and without a name neither `compl
 nor a discard can sync at all. `discard` takes one name or one per discard resolution
 (`wontfix`, `duplicate`, `superseded`), and unlike `statuses.discarded` under strict
 mode it may be partial: it exists to disambiguate, so name only what is ambiguous.
-A move with no entry keeps deriving its transition from the status. There is no
-`start` key — that move is the claim, and `transitions.claim` names it. A named
+A move with no entry keeps deriving its transition from the status. `start` is the
+exception and is required: a start applies its transition through the claim rather
+than deriving it from the status, so there is nothing for it to fall back to. A named
 transition the ticket does not offer, or that matches twice, or that leads to a
 status other than the mapped one, is refused rather than ignored. **Upgrade every
-copy of `tcw` first:** version 2.3.0 and earlier report these keys as unknown and
-treat the whole tracker block as broken.
+copy of `tcw` first:** version 2.3.0 and earlier report the four optional keys as
+unknown and treat the whole tracker block as broken.
+
+**`transitions.start` was called `transitions.claim` in version 2.3.0 and earlier**,
+when claiming a ticket and starting one were the same act. The old spelling is not
+accepted. Since it was a required key, every tracker-backed node has one to change —
+one word, with the value left as it is. `tcw validate` reports it by name:
+
+```
+tcw-config.yaml: work.tracker.transitions.claim: renamed to
+work.tracker.transitions.start, the transition the start move applies, alongside
+submit, rework, complete and discard
+tcw-config.yaml: work.tracker.transitions.start: required
+```
+
+It is reported against the file that wrote it, which in a shared workspace is the
+parent node holding the settings, not the child being validated.
 
 `exclusive-claim-transition` is optional, sits at the top level of `work.tracker`
 rather than under `transitions`, and is the transition `tcw work tracker claim`
@@ -75,7 +91,7 @@ reach the assignment — and **the ticket moves**, which is the thing an unset c
 avoids. Name it only where the workflow really does exclude, and where that
 guarantee is worth a status change on every claim.
 
-It is not `transitions.claim` under another name. That one is the transition a
+It is not `transitions.start` under another name. That one is the transition a
 `tcw work start` applies; this one is how a claim proves it is exclusive. Setting
 either has no effect on the other. **Upgrade every copy of `tcw` first:** version
 2.3.0 and earlier report this key as unknown and treat the whole tracker block as
@@ -172,7 +188,7 @@ work:
             email-env: TCW_JIRA_EMAIL
             token-env: TCW_JIRA_API_TOKEN
         transitions:
-            claim: Start Progress
+            start: Start Progress
 ```
 
 ```yaml
