@@ -457,3 +457,12 @@ def test_no_inbox_path_prints_the_token(node, monkeypatch):
         outputs += _run(["work", "inbox", "show", "EX-1"])[1:]
         outputs += _run(["work", "inbox", "accept", "EX-1"])[1:]
     assert all(SENTINEL not in text for text in outputs)
+
+
+def test_ticket_with_a_broken_tracker_names_the_problem_not_the_missing_query(
+        node, monkeypatch):
+    root, configure = node
+    configure(tracker={**INBOX_TRACKER, "timeout-seconds": -1})
+    code, _out, err = _run(["work", "inbox", "show", "--ticket", "EX-1"])
+    assert code == 1 and "tcw validate" in err
+    assert "--ticket needs" not in err

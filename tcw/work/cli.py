@@ -502,8 +502,10 @@ def _inbox_ticket(st, verb: str, ref: str, not_found: InboxEntryNotFound | None)
     looked up and no tracker code is loaded, so the store's answer stands as it was."""
     config = st.tracker_config()
     if config is None or not config.inbox_query:
-        reason = not_found or ("--ticket needs work.tracker.inbox-query to be declared "
-                               "in tcw-config.yaml")
+        reason = not_found or (
+            "the tracker configuration has problems; run `tcw validate`"
+            if config is None and st.tracker_problems() else
+            "--ticket needs work.tracker.inbox-query to be declared in tcw-config.yaml")
         print(f"tcw work {verb}: {reason}", file=sys.stderr)
         return None
     from tcw.tracker.jira import JiraClient, TrackerError, TrackerNotFound
@@ -583,10 +585,10 @@ def _inbox_accept(args: argparse.Namespace) -> int:
         "Create work from a ticket with `tcw work tracker import <ticket>`."
         if config is not None else _STRICT_BROKEN))
     not_found = None
+    strict = st.tracker_strict()
+    if strict and (config is None or not config.inbox_query):
+        return refusal()
     if not args.force_ticket:
-        strict = st.tracker_strict()
-        if strict and (config is None or not config.inbox_query):
-            return refusal()
         try:
             # Under strict mode a raw entry is refused and a ticket is not, so the
             # ref is resolved without being consumed first.
@@ -2299,8 +2301,8 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import") -> 
                 # What `link` leaves behind: bound, never claimed. Normal, not drift.
                 print(f"tcw work {label}: {existing} is already linked to "
                       f"{ticket.key} (part {part}), but the ticket is not claimed — it "
-                      f"is unassigned in '{ticket.status}'. `import` does not claim a "
-                      f"ticket that is already bound; move and assign it in the "
+                      f"is unassigned in '{ticket.status}'. This command does not "
+                      f"claim a ticket that is already bound; move and assign it in the "
                       f"tracker yourself.", file=sys.stderr)
                 return 1
             holder = ticket.assignee_name

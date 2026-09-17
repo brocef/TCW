@@ -776,3 +776,13 @@ def test_a_refusal_for_a_plainly_linked_ticket_names_the_opt_in(tmp_path, fake):
     assert code == 1 and REFUSED in err
     assert "linked without syncing its status" in err and "--sync-status" in err
     assert status(root, slug) == "active" and fake.writes() == []
+
+
+def test_a_broken_strict_block_refuses_inbox_accept_even_with_ticket(tmp_path, fake):
+    root = strict_node(tmp_path, strict=True)
+    set_tracker_key(root, "inbox-query", "status = Triage")
+    set_tracker_key(root, "timeout-seconds", -1)
+    code, _out, err = cli(root, "work", "inbox", "accept", "--ticket", KEY)
+    assert code == 1 and REFUSED in err and "tcw validate" in err
+    assert "--ticket needs" not in err
+    assert FsWorkStore.open(root).query() == []

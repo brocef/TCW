@@ -475,3 +475,11 @@ def test_inbox_accept_of_a_ticket_speaks_as_inbox_accept(node, fake):
         assert code == 1 and err.startswith("tcw work inbox accept: "), err
         assert "tcw work tracker import:" not in err and SENTINEL not in err
     assert_no_item(node)
+
+
+def test_inbox_accept_of_a_linked_unclaimed_ticket_does_not_say_import(node, fake):
+    with_inbox_query(node)
+    write_binding(node, "Linked")
+    code, _out, err = inbox(node, "accept", TICKET)
+    assert code == 1 and "not claimed" in err
+    assert "`import`" not in err and "tracker import" not in err
