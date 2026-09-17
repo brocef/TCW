@@ -252,3 +252,155 @@ def test_a_missing_worktree_falls_back_to_the_primary_copy(
     assert "could not read" in err
     assert "judging it from the primary checkout's copy" in err
     assert FsWorkStore.open(root).get(slug).status == "completed"
+
+# ── the uncommitted-changes guard ────────────────────────────────────────────
+
+
+def item_folder(node: Path, slug: str) -> Path:
+    return FsWorkStore.open(node).path(slug)
+
+
+def test_an_untracked_file_in_the_item_s_worktree_folder_refuses(
+        tmp_path, monkeypatch, capsys):
+    """Criterion 6. The judgments read the worktree's working files; the merge
+    carries only commits. Anything uncommitted there would be judged and then
+    left behind, so it is refused before the merge rather than after it."""
+    root = repo(tmp_path)
+    slug = new_item(root, monkeypatch, capsys)
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    tip = branch_commit(wt)
+    (item_folder(wt, slug) / "refined-outcome.md").write_text("kept\n", encoding="utf-8")
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm")
+    assert code == 1
+    assert str(item_folder(wt, slug)) in err
+    assert WARNING not in err
+    refused_before_merge(root, wt, slug, tip)
+
+
+def test_a_staged_edit_in_the_item_s_worktree_folder_refuses(
+        tmp_path, monkeypatch, capsys):
+    """Criterion 6, the tracked half: staged is still not committed."""
+    root = repo(tmp_path)
+    slug = new_item(root, monkeypatch, capsys)
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    tip = branch_commit(wt)
+    state = item_folder(wt, slug) / "state.yaml"
+    state.write_text(state.read_text(encoding="utf-8") + "owner: someone\n",
+                     encoding="utf-8")
+    _git(_top(wt), "add", str(state))
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm")
+    assert code == 1
+    refused_before_merge(root, wt, slug, tip)
+
+
+def test_force_does_not_skip_the_uncommitted_guard(tmp_path, monkeypatch, capsys):
+    """Criterion 6, `--force`. `--force` overrides judgments about whether
+    shipping is allowed; this guard is about what shipping would carry."""
+    root = repo(tmp_path)
+    slug = new_item(root, monkeypatch, capsys)
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    tip = branch_commit(wt)
+    (item_folder(wt, slug) / "outcome.md").write_text("late\n", encoding="utf-8")
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm", "--force")
+    assert code == 1
+    refused_before_merge(root, wt, slug, tip)
+
+
+def test_a_staged_tracker_record_is_never_advised_away(tmp_path, monkeypatch, capsys):
+    """Criterion 7. TCW leaves an undelivered ticket move staged in `tracker.yaml`
+    on purpose. Committing always works; `tracker sync` is conditional, because a
+    sync with nothing owed writes nothing and leaves the file staged — which would
+    refuse again and send the user round in a circle."""
+    root = repo(tmp_path)
+    slug = new_item(root, monkeypatch, capsys)
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    tip = branch_commit(wt)
+    (item_folder(wt, slug) / "tracker.yaml").write_text("sync:\n  state: pending\n",
+                                                        encoding="utf-8")
+    _git(_top(wt), "add", str(item_folder(wt, slug) / "tracker.yaml"))
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm")
+    assert code == 1
+    assert "commit it in the worktree" in err
+    assert "tcw work tracker sync" in err
+    # Committing is advised before syncing, and discarding is only ever named as
+    # the thing NOT to do.
+    assert err.index("commit it in the worktree") < err.index("tcw work tracker sync")
+    assert "rather than discarding it" in err
+    refused_before_merge(root, wt, slug, tip)
+
+
+def test_an_uncommitted_status_move_refuses_with_auto_commit_off(
+        tmp_path, monkeypatch, capsys):
+    """Criterion 8. With `auto-commit-transitions` off, even `submit` leaves the
+    move staged, so the branch does not carry the status the judgments just read.
+    The move appears as a rename, which is why the porcelain read handles them."""
+    root = repo(tmp_path)
+    config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
+    config.setdefault("work", {})["auto-commit-transitions"] = False
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False),
+                                          encoding="utf-8")
+    commit_all(_top(root), "auto-commit off")
+    slug = new_item(root, monkeypatch, capsys)
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    tip = branch_commit(wt)
+    assert run_in(wt, monkeypatch, capsys, "work", "submit", slug)[0] == 0
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm")
+    assert code == 1
+    refused_before_merge(root, wt, slug, tip)
+
+
+def test_an_external_store_is_exempt_from_the_guard(tmp_path, monkeypatch, capsys):
+    """Criterion 10. A store outside the checkout is shared by both checkouts:
+    there is no separate branch copy to be out of step with, and its own staged
+    records are none of this guard's business."""
+    store = tmp_path / "planning"
+    store.mkdir()
+    subprocess.run(["git", "init", "-q", "--initial-branch=main", str(store)], check=True)
+    _git(store, "config", "user.email", "t@t")
+    _git(store, "config", "user.name", "t")
+    root = repo(tmp_path, name="code")
+    config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
+    config.setdefault("work", {})["path"] = str(store / "work")
+    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False),
+                                          encoding="utf-8")
+    init(["work"], root, project_id="code")
+    commit_all(store, "store")
+    commit_all(_top(root), "point at the external store")
+    slug = new_item(root, monkeypatch, capsys)
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    branch_commit(wt)
+    assert FsWorkStore.open(wt).root == FsWorkStore.open(root).root   # one store
+    (item_folder(root, slug) / "scratch.md").write_text("uncommitted\n",
+                                                        encoding="utf-8")
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm")
+    assert code == 0, err
+    assert FsWorkStore.open(root).get(slug).status == "completed"
+
+
+def test_a_discard_is_not_guarded(tmp_path, monkeypatch, capsys):
+    """Criterion 15. A discard merges nothing, so there is nothing for the branch
+    copy to be out of step with — and refusing to abandon work over an uncommitted
+    file would put friction on the one path that exists to smooth it."""
+    root = repo(tmp_path)
+    slug = new_item(root, monkeypatch, capsys)
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    tip = branch_commit(wt)
+    (item_folder(wt, slug) / "notes.md").write_text("abandoned\n", encoding="utf-8")
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "wontfix", "--confirm")
+    assert code == 0, err
+    assert FsWorkStore.open(root).get(slug).status == "discarded"
+    assert _git(root, "merge-base", "--is-ancestor", tip, "HEAD").returncode != 0

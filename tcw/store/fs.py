@@ -804,6 +804,38 @@ def worktree_node_root(node_root: Path, worktree: str) -> Path | None:
     return node_root / worktree / node_root.resolve().relative_to(top.resolve())
 
 
+def uncommitted_paths(directory: Path) -> list[str]:
+    """Paths under `directory` that git has not committed — staged, unstaged, or
+    untracked — as repository-relative strings. Empty when git cannot answer.
+
+    Untracked entries are **included**, unlike `_has_committable_changes`, and the
+    difference is the point: that one asks "would a scoped commit record anything",
+    this one asks "is what is on disk here what the branch carries". A file nobody
+    ever staged answers no to the first and yes to the second.
+
+    `-z` rather than plain porcelain: porcelain quotes any path holding a space or
+    a non-ASCII character, so a perfectly ordinary `scratch note.md` would come
+    back wrapped in quotes and escaped. With `-z` the records are NUL-separated
+    and literal. A rename carries its source as a second record, which is consumed
+    here and not reported — the destination is where the content is now.
+    """
+    r = _git(["git", "-C", str(directory), "status", "--porcelain", "-z",
+              "--untracked-files=all", "--", "."], capture_output=True, text=True)
+    if r.returncode != 0:
+        return []
+    fields = r.stdout.split("\0")
+    paths: list[str] = []
+    index = 0
+    while index < len(fields):
+        entry, index = fields[index], index + 1
+        if not entry:
+            continue
+        paths.append(entry[3:])                # `XY <path>`
+        if "R" in entry[:2] or "C" in entry[:2]:
+            index += 1                         # ...followed by the source path
+    return paths
+
+
 def merge_worktree(node_root: Path, branch: str) -> str | None:
     """Merge the work branch into the primary checkout's current branch — the
     "merge-back on complete" half of the split-ownership model. Runs *before* the

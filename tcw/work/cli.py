@@ -25,7 +25,7 @@ from tcw.store.fs import (
     parent_node, registered_children, registered_parent,
     unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
-    resolve_qualified_work_ref, worktree_node_root,
+    resolve_qualified_work_ref, uncommitted_paths, worktree_node_root,
 )
 from tcw.harness import OTHER, ancestor_programs, detect
 from tcw.stdin import read_piped_stdin
@@ -2841,6 +2841,42 @@ def _complete(args: argparse.Namespace) -> int:
         _branch_copy(st, bare, item)
         if shipping and has_worktree and branch and not args.already_integrated
         else (None, item))
+    # What was judged just above came off the worktree's *working files*, while the
+    # merge-back carries only what the branch committed. Uncommitted item files are
+    # an ordinary state — only transitions commit themselves, so a field edit, a
+    # blocker change or a verify artifact written in the worktree is at most staged
+    # — so this is guidance, not an accusation.
+    #
+    # It runs regardless of `--force`, and that is the whole distinction: `--force`
+    # overrides judgments about whether shipping is *allowed*, while this protects
+    # what shipping would *carry*. It therefore also precedes the Definition-of-Done
+    # checklist: there is no point acknowledging a checklist for a completion that
+    # would leave half the item behind.
+    #
+    # An external store is exempt, because both checkouts share it — there is no
+    # second copy to be out of step with, and its own staged records are not this
+    # command's business.
+    if branch_store is not None and branch_store.root.resolve() != st.root.resolve():
+        folder = branch_store.path(bare)
+        if changed := uncommitted_paths(folder):
+            print(f"tcw work complete: {bare} was not completed: its folder in the "
+                  f"worktree at {folder} has changes that are not committed there, "
+                  f"and the merge-back carries only commits: {', '.join(changed)}. "
+                  f"Commit them in the worktree, then complete again.",
+                  file=sys.stderr)
+            # `tracker.yaml` is deliberately left staged when a ticket move does not
+            # reach the tracker, so it is the one file here a user might be tempted
+            # to throw away — and it is the one carrying the evidence. Committing is
+            # named first because it always works: `tracker sync` with nothing owed
+            # writes nothing and leaves the file exactly as staged as it found it,
+            # which would refuse again and read as a loop.
+            if any(p.endswith("tracker.yaml") for p in changed):
+                print(f"tcw work complete: tracker.yaml may record a ticket move or "
+                      f"comment that did not reach the tracker — commit it in the "
+                      f"worktree rather than discarding it, and if it still records "
+                      f"an undelivered move, run `tcw work tracker sync {bare}` "
+                      f"there first.", file=sys.stderr)
+            return 1
     # `[prompted]`: an obligation on the CLI to say something, not a gate and not
     # an interactive prompt. Completing straight from `active` skips the verify
     # stage, which is legal and often right for a small change — the point is
