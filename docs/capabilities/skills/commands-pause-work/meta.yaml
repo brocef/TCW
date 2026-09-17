@@ -1,0 +1,8 @@
+id: cap-71daf6
+name: Offer a skill dedicated to instructing agents how to pause work in progress
+  and hand it off for resumption
+Status: Missing
+Feature: commands-pause-work-skill
+Subject:
+- skill
+Planning doc: 2026-09-17-add-a-commands-pause-work-skill-that-parks-in-flight-work-and-waits-for-the-user
