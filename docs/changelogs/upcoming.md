@@ -137,6 +137,9 @@ category.
   `OwnershipOutcome`. Exclusivity is assign-then-read-back; `intake.claim` is
   untouched and unused here, because it reads the transition name from
   `config.claim_transition` directly and can only ever apply the start transition.
+  The read-back distinguishes three answers, not two: the caller holds it, another
+  account holds it, or nobody does — the last reports that the ticket was
+  unassigned mid-claim rather than naming a holder who does not exist.
 
 - **`work.tracker.exclusive-claim-transition`** — optional top-level key,
   `TrackerConfig.exclusive_claim_transition` (`""` when absent; present-but-blank
