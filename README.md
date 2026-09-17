@@ -514,6 +514,7 @@ to the transitions.
 | `submit`, `rework`, `complete`, discard | moves the item                 | also moves a linked ticket to the Jira status mapped under `statuses`, and posts a comment if `comments: true`                                 |
 | the ticket could not follow             | —                              | the item still moves; the command exits 1 and records the ticket as pending or conflicting; `tcw work tracker sync` retries                    |
 | the ticket is behind its item           | —                              | with `tcw work tracker link --sync-status`, a ticket linked to work already under way is claimed and moved forward to where the item is      |
+| the ticket does not match its item      | —                              | `tcw work tracker sync <slug>` puts it where the item's status says, whether the ticket is ahead of the item or behind it; a backwards move says so |
 
 Setting `strict: true` changes several steps, so that no work happens without a
 claimed ticket:

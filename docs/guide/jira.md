@@ -486,18 +486,30 @@ The only resolutions are `wontfix`, `duplicate` and `superseded`.
 discarded — **and only when it can tell which transition to use.** With no
 `transitions` entry for the move, that means exactly one of the ticket's offered
 transitions leads to the target status; where two do, name the one you want (see
-[Naming a transition](#naming-a-transition)). A ticket someone else holds, or one
-moved on past where its item is, is left alone. TCW never pulls a ticket back to
-match an item.
+[Naming a transition](#naming-a-transition)). A ticket someone else holds is left
+alone. So is a ticket already resolved: TCW does not reopen one, and does not
+change one resolution to another.
 
-**A ticket behind its item is brought forward when you asked for that.** If you
-linked it to work already under way with `--sync-status`, TCW claims it and moves
-it to where the item is: straight there when the workflow allows, otherwise up
-through the statuses you mapped, one transition at a time. It only ever goes forward, only through statuses in
-your `statuses` mapping, and it stops at the first step it cannot make, leaving the
-ticket where it got to and telling you; `tcw work tracker sync <slug>` carries on
-from there. A ticket TCW *did* claim and somebody then moved backwards is not walked
-forward again — that is a move you made, and TCW does not undo it.
+A lifecycle move — `start`, `submit`, `rework`, `complete`, a discard — also
+expects the ticket to be where the previous move left it, or somewhere on the way
+to where this one is going. That is how a ticket somebody moved by hand is told
+apart from one TCW has not managed to move yet, and a ticket outside that window
+is reported rather than moved.
+
+**`tcw work tracker sync` has no such window, because no move just happened.** It
+puts the ticket where the item's status says it belongs, from wherever the ticket
+is: one that was moved on is brought back, and one that fell behind is brought
+forward. Your work item is what decides. A backwards move prints a line naming the
+ticket, the status it was in and the status it was put in, so a move you made on
+purpose does not get undone in silence.
+
+**A ticket several rungs behind its item is walked up when you asked for that.**
+If you linked it to work already under way with `--sync-status`, TCW claims it and
+moves it to where the item is: straight there when the workflow allows, otherwise up
+through the statuses you mapped, one transition at a time. It only ever goes forward,
+only through statuses in your `statuses` mapping, and it stops at the first step it
+cannot make, leaving the ticket where it got to and telling you; `tcw work tracker
+sync <slug>` carries on from there. A plain `sync` makes one move, not a walk.
 
 One limit worth knowing: if your workflow forces a ticket through a status you have
 not mapped — `In Progress → Code Review → In Review`, with no `review`-style entry
@@ -512,8 +524,11 @@ the command then exits 1, says the item moved, and records why in `tracker.yaml`
 - **conflicting**: Jira answered, and its answer stopped the move, for example
   the ticket is assigned to someone else or is no longer where TCW expected.
 
-If the claim at `start` never succeeded, the record says the claim is still owed,
-and every later attempt tries the claim first.
+If the claim at `start` never succeeded, the record says so by naming the `start`
+as the move it still owes, and every later attempt tries the claim first. Once a
+second failure writes a different move over that record, no command claims the
+ticket for you any more — take it with `tcw work tracker claim <slug>`, then run
+`tcw work tracker sync <slug>`.
 
 `tcw work show` prints a `tracker sync:` line with the state, the move, when, and
 the reason; the `tcw work list` row reads `ticket: <KEY> (pending)`; and
@@ -530,16 +545,24 @@ If you name a slug that somebody else started, it is skipped — and that is an
 that one item and nothing was done to it. Run it as them with
 `TCW_WORK_OWNER=<their identity>`, or take the item over with
 `tcw work start <slug> --take-over`. A `--all` sweep still exits 0 walking past
-other people's work, which is what a sweep is for. On an item with no record it
-checks the ticket but does not move it.
+other people's work, which is what a sweep is for.
+
+A `--all` sweep visits the items that have a record or an owed comment, which is
+what it is for; reconciling a ticket nothing is recorded for is something you ask
+for by naming the item.
 
 **Several parts.** A ticket bound to several parts moves only when the last open
-part in this project moves. Parts in other projects are not seen.
+part in this project moves. Parts in other projects are not seen — and because a
+hold leaves no trace outside the checkout it happened in, `tcw work tracker sync`
+will not reconcile a ticket whose binding names a `--part` unless a record says
+what that item owes. It reports what it found instead. A ticket bound as the
+default part, which is every binding you did not pass `--part` for, is reconciled
+normally.
 
 **Two moves are not caught.** A move made in `tcw serve`, and a command
 interrupted between its commit and its call to Jira, leave no record, so the board
-shows them as in step. `sync <slug>` checks such an item but will not move its
-ticket.
+shows them as in step. `tcw work tracker sync <slug>` puts such an item right: it
+does not need a record to know where the ticket belongs.
 
 **An item about to be removed.** If a project does not keep resolved items
 (`work.retain`) and the ticket fails to follow, no record is written and the item

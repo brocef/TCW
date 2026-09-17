@@ -251,6 +251,53 @@ tells you what is owed, and tells you how to run it as them or take the item ove
 - New command: `tcw work stage validate <stage> [<item>]`, the check the skill
   runs.
 
+## Your work item decides where its ticket goes
+
+`tcw work tracker sync <slug>` now puts a bound ticket where its work item's status
+says it belongs, from wherever the ticket happens to be. A ticket somebody moved on
+ahead of the item is brought back; one that fell behind is brought forward. Until
+now `sync` would only report a mismatch it had no record of, and it never moved a
+ticket backwards at all.
+
+This is also what repairs the two cases that used to go unnoticed: a move made in
+the local web app, and a command interrupted between saving your work and calling
+Jira. Neither leaves a record, and `sync` no longer needs one.
+
+A move that takes a ticket backwards prints a line naming the ticket, the status it
+was in and the status it was put in — so a move you made on purpose does not get
+undone in silence. There is no prompt: `sync` only ever runs because you asked it
+to, and a prompt would stop `--all` and any script.
+
+Three things still stop a move, in either direction: a ticket somebody else holds,
+a ticket nobody holds (except when you are discarding the item), and a ticket that
+is already resolved, which TCW does not reopen.
+
+**A ticket you bound with `--part` is left alone** unless a record says what that
+item owes. Several items share that ticket, another part may be holding it back,
+and a hold leaves no trace outside the checkout it happened in — so `sync` reports
+what it found instead of guessing. Bindings without `--part`, which is most of
+them, are unaffected.
+
+A `--all` sweep still visits only the items that have something recorded. Putting
+a drifted ticket right is something you ask for by naming the item.
+
+## Taking a ticket is its own act, in one more place
+
+The `claim` flag TCW used to keep inside a binding's `sync` record is gone. What
+says a `start`'s claim never reached Jira is now the record itself, which names
+`start` as the move it still owes — and the later command that finds it still
+claims the ticket first, exactly as before.
+
+The one case that changes: if a second command then fails too, its own move
+replaces `start` in the record, and from then on nothing claims the ticket for you.
+Take it with `tcw work tracker claim <slug>` and run `tcw work tracker sync <slug>`.
+Refusals that used to say "`tcw work start` claims a bound ticket" now name the
+claim command.
+
+A `tracker.yaml` written by an older version still carries the old key. It is read
+and ignored, nothing about the binding breaks, and the key goes away the next time
+the record is written.
+
 ## Holding a ticket without starting it
 
 `tcw work tracker claim <slug>` says a piece of work is yours: it records you as

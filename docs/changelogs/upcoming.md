@@ -3,6 +3,58 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category.
 
+## Changed — `sync` reconciles a ticket to its item in either direction
+
+- **`deliver` (`tcw/tracker/sync.py`) lost its `check_only` parameter** and decides
+  for itself: `check_only = syncing and record is None and bound.part != "default"`.
+  `tcw work tracker sync` therefore moves a ticket it has no record for. With
+  `move=None` and `previous_status=None`, `expected_statuses` already returned `()`
+  and `assess_move` applies no status test on an empty window, so both directions
+  fall out of removing the refusal — no new direction rule was written. A lifecycle
+  move's window is untouched. `tcw/work/cli.py` drops `check_only=not usable` and the
+  `usable` local from the sync command; `deliver_now` in `tests/test_tracker_sync.py`
+  drops the argument.
+- **`Outcome.note`** — a warning the caller prints, set by `finish` only for
+  `CURRENT`, when the ticket's `lowest_rung` was above `_RUNG_ORDER[local]`: "KEY was
+  in 'X', past where <slug> is, and was put back to 'Y'." Printed beside
+  `outcome.claimed` in `_deliver_after` and the `link` path, and as its own
+  `<slug>: <note>` line before `<slug>: current` in the sync command. No prompt and no
+  record — a delivered move writes nothing, by design.
+- **`assess_move`'s resolved check moved above the assignment checks** and is now
+  `if not expected and ticket.category == "done"` rather than the `elif` on the
+  window branch. Reachable for the first time from a record-less `sync`, where
+  telling somebody to take a closed ticket only leads them to the same refusal one
+  command later.
+- **`assess_move`'s unassigned refusal** names `tcw work tracker claim` instead of
+  "`tcw work start` claims a bound ticket".
+
+## Removed — `sync.claim` in the binding record
+
+- **`SYNC_FIELDS` (`tcw/store/base.py`)** is five fields; `_sync_record`'s
+  `'sync.claim' is …` check is gone. A `claim:` still on disk is dropped on the way
+  in — not read, not validated, not projected, not printed — and the binding stays
+  readable, as `_sync_record`'s contract requires. The next write of the record
+  replaces the whole `sync` key, so the stale key leaves with it.
+- **`tcw/work/projection.py`** — the `claim` property and its place in `required`.
+  The object is `additionalProperties: false`, so a surviving key would have failed
+  validation; it cannot survive `_sync_record`.
+- **`web/client/src/model/types.ts`** — `claim: "done" | "owed"`.
+- **`tcw work show`** no longer appends "; the claim is still owed". The `link
+  --sync-status` record's reason regains its full stop, which only existed to avoid
+  ".;" before that suffix.
+- **`deliver`'s `finish` and `record_unsent`** write one field fewer.
+- **`owed`** is `starting or bound.catch_up or (record is not None and
+  record["move"] == "start")`. Both replacements are facts already on the binding and
+  already durable: `catch-up: true` is written by `link --sync-status` and cleared by
+  `with_status_synced` the moment the ticket is in step, and a record naming `start`
+  means that start's delivery never finished. The claim key's one behaviour that does
+  not survive: a second failure's record overwrites `start` with its own move, and no
+  later command claims for it — `tcw work tracker claim` does.
+- **`finish`'s `drop_record`** is `bound.sync is not None`, and the held-sibling
+  branch's `stale` is `bound.sync is not None and local not in RESOLVED_STATUSES`.
+  Both lost an `owed` term that existed only to keep the claim key alive across a
+  dropped record.
+
 ## Removed — the post-completion version offer
 
 - **`tcw/work/prompts/verify.md`** — step 9 ("After `complete`, **offer** a
