@@ -67,10 +67,45 @@ The spec's survival claim held, and better than claimed. An unregistered
 `active → discarded` — with its content intact, and `tcw validate`, `tcw work show`
 and `tcw work list` reported the item no differently with it present.
 
-Residue: the probe item sits in `docs/work/discarded/`. `tcw work delete` declines
-it because this project's `work.retain.discarded` keeps resolved items. Removing
-it by hand would work around a retention policy the project set deliberately, so
-it was left; its `intake.md` says what it was and that it is spent.
+Residue, corrected after verification: the probe folder sits in
+`docs/work/discarded/`, which `.gitignore:29` makes **untracked** — so it is local
+to this machine and does not travel with the branch. The only thing that ships is
+one line in `docs/work/graveyard.yaml` recording the slug as `wontfix`. An earlier
+draft of this section reasoned about retention policy as though the folder merged;
+it does not. `tcw work delete` does decline it (`work.retain.discarded` keeps
+resolved items), but that decides only what stays on this disk.
+
+## What verification found
+
+An independent verifier pass over the 16 acceptance criteria returned 15 met and
+one partially not met, plus three defects outside the criteria. All were fixed
+before the accept decision rather than deferred:
+
+1. **Criterion 7's resume-and-delete statement was missing from the skill body.**
+   The behaviour existed in `skills/work/SKILL.md`, but the pause skill never told
+   its reader the file would be deleted on resume — so a pausing agent could not
+   say what would happen to the document it had just written. Added.
+2. **`when_to_use` named `tcw work drop` for abandoning**, and `drop` refuses any
+   item not in `backlog` (`tcw/store/base.py:3556`). A pause during `implement` is
+   by this skill's own table an `active` item, so the reader most likely to follow
+   that clause would hit an error. This is the *third* instance of the same shape
+   — the commit that fixed `discard`→`drop` introduced it, and the outcome section
+   below recorded discovering that `drop` cannot reach an active item without
+   revisiting the line it had just written. The command name is now gone from that
+   negative clause entirely, which is the root fix: naming a command in a
+   "not for this" aside carries no value and is what kept biting.
+3. **`commands-verify-work` never routed through "Finding your place"**, going
+   straight to `work-stage verify`. A `verify`-stage pause resumed with the skill
+   named for that stage would leave the handoff unread — while the release note
+   promised "the agent reads it and deletes it". The pointer was added there too.
+4. **`outcome.md` described the probe residue inaccurately** (above), and
+   `commands-drive-work-to-completion` overstated the router's ordering. Both
+   corrected. A README table cell was also one character short of its neighbours.
+
+The verifier also caught that this document's mutation-check quote was a
+paraphrase presented as command output, and that two tests fail on that revert
+rather than one. Recorded rather than quietly reworded: the substance held, the
+transcription did not.
 
 ## What the plan and spec got wrong
 
