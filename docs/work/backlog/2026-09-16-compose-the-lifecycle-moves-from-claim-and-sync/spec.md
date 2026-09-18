@@ -1,10 +1,11 @@
 # Compose the lifecycle moves from claim and sync
 
-**Second draft.** The first was rejected at review: its design answered the
-easiest of the seven questions this change actually raises and hand-waved the
-rest, and two of its acceptance criteria were unreachable from its own design.
-The epic's C4 section has been amended to name all seven, and this spec answers
-them in Design. What the review found is recorded in `## Notes`.
+**Third draft.** The first two were rejected at review. The first answered the
+easiest of the seven questions this change raises and hand-waved the rest. The
+second answered them, but its central claim — that `owed` could be deleted rather
+than replaced — was broken by the reviewer and the break was confirmed against
+the code. What each draft got wrong is in `## Notes`, because the pattern is more
+useful than the errors.
 
 ## Capability changes
 
@@ -53,10 +54,16 @@ ticket there*. They are consequences of the entanglement, not decisions.
 offers `config.start_transition` from where the claim landed — meaningful only
 while the claim *is* that transition.
 
-**A claim gates the wrong verbs.** Strict mode refuses `submit`
-(`tcw/work/cli.py:1233`), `rework` (`:1262`), `complete` (`:3107`) and `drop`
-(`:3228`). Gating `complete` means somebody who cannot take the ticket cannot
-record that the work is finished.
+**A claim gates the wrong verb.** Strict mode refuses `submit`
+(`tcw/work/cli.py:1233`), `rework` (`:1262`) and `complete` (`:3107`). Gating
+`complete` means somebody who cannot take the ticket cannot record that the work
+is finished. Half of the epic's rule is **already true**: `_complete` calls
+`_strict_refusal` only under `if shipping` (`:3105`), with the comment "Discards
+are never refused — abandoning work authorizes none", so a discard has never been
+gated there. `drop` is **not** one of the five moves and is out of scope: it
+erases an item outright, and its strict refusal is `ever_bound()` (`:3225-3229`),
+which refuses because dropping would erase a tracker record — nothing to do with
+a claim. The first two drafts cited it wrongly.
 
 **Outside strict mode a claim gates nothing.** `assess_move` refuses to move a
 ticket held by another account (`tcw/tracker/sync.py:224-233`), but the item has
@@ -98,42 +105,80 @@ third way to say "claim this"** (`tcw/work/cli.py:2502`, `:2524-2530`).
 
 ## Design
 
-### 1. The already-yours branch becomes the only branch
+### 1. `assert_ownership` replaces `intake.claim`, and the ticket stops moving
 
-`deliver` already contains the shape this item needs. At
-`tcw/tracker/sync.py:565-582`, when the ticket is on the ladder and already the
-caller's, it makes no claim, asks strict mode's question, sets
-`since = ticket.status` and `expected = (ticket.status,)`, and carries on
-delivering from where the ticket is.
+The claim inside `deliver` (`tcw/tracker/sync.py:590`) and `_strict_claim`
+(`tcw/work/cli.py:379`) both call `intake.claim`, which applies the configured
+transition. Both call C1's `assert_ownership` instead, which assigns and reads
+back and applies no transition unless `work.tracker.exclusive-claim-transition`
+names one.
 
-The change is to make every path take that shape: **claim through C1's
-`assert_ownership` when the ticket is not yours, then proceed exactly as the
-already-yours branch does.** `assert_ownership` assigns and reads back without
-applying any transition unless `work.tracker.exclusive-claim-transition` names
-one, so after it the ticket is still where it was — which is the premise the
-already-yours branch is written for.
+Everything after the claim then has to change, because it was written on the
+premise that the claim had just moved the ticket onto `statuses.active`:
 
-This answers the epic's questions 2 and 3 together: `expected` and `since` become
-the ticket's real status at claim time, for every path, because no path moves it.
+- **The "claimed, but it is in X, not active" refusal (`:613-620`) goes.** It
+  exists because a claim that landed off the ladder left a ticket nothing could
+  reason about. With the transition applied through `assess_move` instead, a
+  ticket at an unmapped status is exactly what `transitions.start` is for. **This
+  is the hole C2 named and handed here**: "a ticket in a status the project maps
+  to nothing could not be walked onto the ladder at all, because the claim
+  transition was the only thing that ever put it there."
+- **`if starting: return finish(CURRENT)` (`:621`) goes.** A start's ticket has
+  not arrived anywhere yet; it still has to be delivered.
+- **`since` becomes the ticket's status at claim time**, not `statuses.active`.
+- **`expected` is left exactly as `expected_statuses` computed it** (`:367-368`),
+  including its `shared` widening. It is not overwritten. See the warning below.
 
-### 2. `owed` is deleted, not replaced
+**`expected` is the drift window, not bookkeeping.** Its docstring
+(`tcw/tracker/sync.py:170`) is "Where the ticket may be before this move without
+it counting as drift", and `assess_move` refuses on it at `:234`. The second
+draft proposed setting it to the ticket's own status on every path; that makes
+the refusal unreachable by construction, discards the `shared` widening that C2's
+`--part` hold depends on, and disables the resolved-ticket check at `:221`, which
+only fires when `expected` is empty. The one place it may be set that way is the
+already-yours branch (`:585`), and only because that branch has already
+established the ticket is on the ladder and is where a claim would have left it.
+That premise does not generalise, and any later change proposing to widen it
+should be read against this paragraph.
 
-Once a claim is an assignment, "has this ticket been held?" is a question the
-ticket answers: `ticket.assignee_id == ticket.me_id`. No term of `owed` survives
-because none is needed — `starting`, `catch-up: true` and a record naming `start`
-were three ways of remembering something that can now be read.
+### 2. `owed` becomes a question the ticket answers
 
-This is why retiring `--sync-status` is safe here and was not safe for C2. C2
-removed a *reader* of the fact while the fact was still unreadable, which is why
-`owed = starting or bound.catch_up` failed. This item removes the reason the fact
-had to be remembered.
+`owed` is three remembered facts today (`:328`): `starting`, `bound.catch_up`,
+and a record whose `move` is `start`. All three remember that a claim has not
+happened, because the ticket could not be asked — its status conflated "TCW
+claimed this" with "somebody moved it here by hand".
 
-`catch-up: true` therefore goes with `--sync-status`, and the binding key is
-removed. **`status-synced` stays**: it is written by a plain `link` as well
-(`tcw/work/cli.py:2517`), and it records something the ticket cannot answer —
-that a binding was made to a ticket already out of step, so the mismatch is not
-drift somebody caused. `unsynced_hint` (`tcw/tracker/sync.py:803-806`) is
-rewritten to advise `claim` then `sync` instead of the retired flag.
+Once a claim is an assignment, the ticket answers directly:
+`ticket.assignee_id != ticket.me_id`.
+
+**But `owed` is not deleted, and the block it gates is not left alone.** `if owed:`
+(`:524`) hosts six guards that have nothing to do with assignment, and two of
+them test the assignee *again* — `at_target and (… or assignee == me)` at `:526`,
+and `rung > 0 or assignee == me` at `:545`. Those inner tests exist precisely
+because the remembered `owed` was not trustworthy. Once `owed` **is** the
+assignee question they are unreachable, and they are removed rather than left as
+dead conditions. Each remaining guard is restated under the new definition:
+
+| Guard | Under the new `owed` |
+| --- | --- |
+| `at_target and local in RESOLVED_STATUSES` → CURRENT (`:526`) | Kept. A finished item whose ticket is already at the target is not claimed, whoever holds it. Its `assignee == me` half is removed as unreachable. |
+| `move == "discard"` claims nothing (`:533`) | Kept verbatim. Abandoning work is not a statement that you are doing it. |
+| `check_only` → CONFLICTING (`:543`) | Kept, reworded: "the claim of X is still owed" becomes "X is not held", which is what is now being reported. |
+| the past-the-claim branch (`:545-585`) | Its `rung > 0` half is kept; its `assignee == me` half is removed as unreachable. |
+| the resolved refusal inside it (`:554-561`) | Kept. Its comment says it exists because skipping the claim would lose the claim's own resolved refusal; that reason survives. |
+| strict mode's `claim_refusal` at `rung == 0` (`:569`) | Replaced — see section 4. |
+
+`catch-up: true` stops being written with `--sync-status`, and the field is
+dropped from `Bound`. A binding on disk that still carries the key parses as
+`Bound` either way, because `classify_binding` reads it with `data.get`
+(`tcw/store/base.py:419`) — verified, not assumed. Whether `_BINDING_KEYS`
+(`tcw/tracker/intake.py:189`) keeps carrying it forward on a rewrite is a
+decision for the plan; dropping it is the tidier answer and loses nothing.
+
+**`status-synced` stays.** It is written by a plain `link` as well
+(`tcw/work/cli.py:2517`) and records something the ticket cannot answer — that a
+binding was made to a ticket already out of step. `unsynced_hint` (`:803-806`) is
+rewritten to advise `claim` then `sync` rather than the retired flag.
 
 ### 3. Lifecycle moves deliver forward; only `sync` reconciles backwards
 
@@ -181,8 +226,28 @@ key (`tcw/tracker/sync.py:247-252`) is deleted with it, and its test changes.
 
 ### 6. The gate, and what it does when the tracker cannot answer
 
-`submit` and `rework` refuse before moving the item when the ticket is held by
-another account. `complete` and a discard do not consult ownership.
+**For a bound item, `submit` and `rework` require the ticket to be assigned to
+you.** Held by another account refuses and names them; unassigned refuses and
+names `tcw work tracker claim`. Requiring the assignment, rather than merely the
+absence of a rival, is what makes the epic's own sentence true — "`submit` on
+[an active item with no holder] is refused, and the way back is
+`tcw work tracker claim`" — because C1's `release` unassigns the ticket
+(`tcw/tracker/ownership.py:180`), so a released item has no rival to detect. The
+first two drafts refused only "held by another account" and therefore did not
+refuse the case the epic exists to answer.
+
+**An unbound item is not gated**, on the requester's decision that the gate reads
+the ticket only. The epic's sentence is therefore satisfied for bound items and
+knowingly not for unbound ones; that is recorded rather than quietly dropped.
+
+**`complete` and a discard do not consult ownership — and neither does their
+delivery.** `assess_move` refuses a ticket held by another account for every move
+(`tcw/tracker/sync.py:224-233`), so "requires no claim" has to reach that check
+too, or the verb succeeds locally and still exits non-zero. Those two moves join
+`discard` in `MOVES_ALLOWING_UNASSIGNED` (`:78`), which becomes the set of moves
+that need no claim. Without this, criteria 8 and 10 demand opposite exit codes
+from one code path — `_deliver_after` returns 1 for `PENDING` and `CONFLICTING`
+alike (`tcw/work/cli.py:1071-1076`) — which is what the first two drafts did.
 
 **The gate refuses only on a positive answer.** If the tracker cannot be reached
 it cannot say another account holds the ticket, so the move proceeds and the
@@ -192,13 +257,29 @@ what was asked, and what strict mode already exists to opt into. Strict mode
 keeps its stronger behaviour, where an unanswerable tracker is a refusal by
 design (`tcw/work/cli.py:404-407`).
 
-### 7. Two retirements, and the unowned active item
+### 7. One retirement, and the unowned active item
 
-`start --take-over` and `link --sync-status` are removed, each failing with a
-message naming what replaces it. `FsWorkStore.start` stops raising
-`AlreadyClaimed` when the item is active with an empty `owner`: it takes the
-claim and returns. Active *and* held by somebody else is still refused, naming
-`tcw work tracker claim --take-over`.
+**`link --sync-status` is retired**, failing with a message naming `link`, then
+`claim`, then `sync`.
+
+**`start --take-over` stays.** The requester reversed an earlier decision to
+retire it once the premise turned out to be false, and the reason belongs here so
+nobody retires it again on the same reasoning: it is not a duplicate of
+`claim --take-over`. It is the only code that republishes an interrupted
+`.claiming/` staging directory (`tcw/store/fs.py:3817-3830`, whose own comment
+calls it "the documented remedy for an interrupted claim"), it refreshes
+`started` (`tcw/store/base.py:3516`), and it accepts `--owner`.
+`claim --take-over` does none of those, and on an item with an interrupted claim
+it cannot even be attempted: it resolves the item through `st.get`, which raises
+"`{slug}` has an interrupted claim; use `--take-over --owner <identity>`"
+(`tcw/store/fs.py:5172`) before any ownership code runs. Two messages advise the
+flag by name, and
+`2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app`
+is an open item aimed at the same path.
+
+`FsWorkStore.start` stops raising `AlreadyClaimed` when the item is active with
+an empty `owner`: it takes the claim and returns. Active *and* held by somebody
+else is still refused, naming `tcw work tracker claim --take-over`.
 
 ### 8. The sweep
 
@@ -219,10 +300,15 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
    sets `owner` to the running identity.
 4. `tcw work start` on an item active and held by another account exits non-zero
    and names `tcw work tracker claim --take-over`.
-5. `start --take-over` and `link --sync-status` each exit non-zero naming their
-   replacement, and neither appears in any help text.
+5. `link --sync-status` exits non-zero naming its replacement and appears in no
+   help text. `start --take-over` still works, and still recovers an interrupted
+   claim.
 6. With strict mode off, `tcw work submit` on an item whose ticket is held by
    another account exits non-zero **and the item is still `active`**.
+6b. With strict mode off, `tcw work submit` on an item that is `active` with an
+    empty `owner` and an unassigned ticket exits non-zero, the item is still
+    `active`, and the message names `tcw work tracker claim`.
+6c. `tcw work submit` on an item with no binding is not gated: it moves.
 7. `tcw work rework` behaves the same way from `review`.
 8. `tcw work complete <slug> --resolution done --confirm` on an item whose ticket
    is held by another account exits 0 and the item is `completed`.
@@ -236,8 +322,11 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
 12. `tcw work tracker link <slug> <key>` on an active item, then
     `tcw work tracker claim <slug>`, then `tcw work tracker sync <slug>`, leaves
     the ticket at `statuses.active` and exits 0.
-13. No `catch-up` key is written to any binding, and one already on disk does not
-    break the binding.
+13. No `catch-up` key is written to any binding; one already on disk still
+    parses as a bound binding.
+13b. `tcw work tracker sync` on a `--part` binding whose sibling is open still
+     reports the hold and moves nothing — C2's criterion 9, re-checked here
+     because this item rewrites the block that decides it.
 14. With `exclusive-claim-transition` unset, a `tcw work start` posts exactly one
     workflow transition — the one `transitions.start` names — or none when that
     key is unset too.
