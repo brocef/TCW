@@ -1421,6 +1421,78 @@ def test_a_claimed_ticket_moved_back_is_not_walked_forward_again(tmp_path, monke
     assert fake_.tickets[TICKET_ID].status == "To Do"
 
 
+def _ticket_offering(*offered, status: str = "In Progress"):
+    """One `TicketRead`, ours, for a direct call on `assess_move`."""
+    from tcw.tracker.intake import TicketRead
+    from tcw.tracker.jira import Transition
+    return TicketRead(
+        issue_id=TICKET_ID, key=KEY, url="", summary="t", status=status, category="new",
+        assignee_id=A, assignee_name="Alice", me_id=A, me_name="Alice",
+        offered=tuple(Transition(id=str(i), name=name, to_status=to)
+                      for i, (name, to) in enumerate(offered, start=1)))
+
+
+@pytest.mark.parametrize("move, removable", [("start", False), ("complete", True)],
+                         ids=["start-is-required", "complete-is-optional"])
+def test_only_a_removable_transition_key_is_offered_for_removal(move, removable):
+    """The refusal tells you to fix the key it named, and offers to let TCW work the
+    transition out instead — which means deleting the key. Four of the five may be
+    deleted. `transitions.start` may not: the parser requires it, because a start has
+    no status-derived rule to fall back to, so advising its removal would advise
+    something `tcw validate` then refuses."""
+    from tcw.tracker.sync import CONFLICTING, assess_move
+    verdict, reason = assess_move(
+        _ticket_offering(("Ready for Review", "In Review")),
+        target="Done", expected=("In Progress",), move=move,
+        named_transition="Not Offered Here")
+    assert verdict == CONFLICTING, reason
+    assert f"Fix work.tracker.transitions.{move}" in reason, reason
+    assert ("remove it to let TCW find the transition itself" in reason) is removable, reason
+
+
+def _also_name(root: Path, **moves: str) -> None:
+    """Name transitions for more moves than `make_node` sets up."""
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["transitions"].update(moves)
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+
+@pytest.mark.parametrize("recorded, since, named, extra", [
+    ("start", "To Do", {}, "a start whose confirming read failed"),
+    ("complete", "In Progress", {"complete": "Finish"}, "a completion the tracker missed"),
+], ids=["stale-start", "stale-complete"])
+def test_a_stale_record_does_not_strand_an_item_that_has_moved_on(
+        node, fake, recorded, since, named, extra):
+    """`deliver` serves the *recorded* move when the caller names none
+    (`tcw/tracker/sync.py`, `move = move or record["move"]`), and that record can name
+    a move the item is already past: {extra}, and then a local status change that
+    delivered nothing.
+
+    The transition configured for that move leads where *that* move lands, not to the
+    target the item's current status asks for, so naming it can only refuse — with
+    "offers no transition named" when the ticket does not offer it, and with "leads to
+    ... not ..." when it does. Either way the item is stuck. The name is right only
+    when the move's own mapped status is the one being moved to.
+
+    `start` is the case this repository's rename created, because `transitions.start`
+    is required and so every project has one. `complete` is the same defect reached
+    through the other refusal, and it was there before.
+    """
+    if named:
+        _also_name(node, **named)
+    slug = bound_item(node)
+    claimed_ticket(fake)                       # In Progress, and ours
+    moved_to(node, slug, "review")             # the item moved on, delivering nothing
+    with_record(node, slug, {"state": "pending", "move": recorded, "since": since,
+                             "claim": "owed" if recorded == "start" else "done",
+                             "reason": f"could not read {KEY} back",
+                             "at": "2026-09-15T10:00:00Z"})
+    outcome = deliver_now(node, slug, move=None, previous=None)
+    assert outcome.state != "conflicting", outcome
+    assert fake.tickets[TICKET_ID].status == "In Review"
+
+
 def test_a_discard_goes_straight_to_its_status_without_working_the_ticket_up(
         tmp_path, monkeypatch):
     """Abandoning work must not march the ticket through the statuses that mean

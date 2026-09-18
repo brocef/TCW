@@ -213,8 +213,9 @@ category.
   siblings get — so `transitions: {start: null}` now reads "expected a non-empty
   tracker transition name, got NoneType" rather than "required".
   `MOVE_ONTO["active"]` is still `"start"`, and `transition_name` can now answer
-  for it; no current path reaches that call, which was checked with a probe in
-  `transition_name` that fired zero times across the tracker test modules.
+  for it. The catch-up walk's two calls are not reached with a `start` move, but
+  the one at the end of `deliver` is, and that needed the guard described under
+  Fixed below.
 - **`complete` refuses a `--worktree` item whose folder in the worktree holds
   uncommitted changes**, before the merge-back, since the merge carries only commits and
   the judgments above read working files. `uncommitted_paths` (`tcw/store/fs.py`) reads
@@ -381,6 +382,28 @@ category.
   take-over remedy is a parameter rather than hardcoded to `start --take-over`.
 
 ## Fixed
+
+- **A binding whose sync record names a move the item is already past no longer
+  strands it.** `deliver` serves the recorded move when its caller names none
+  (`move = move or record["move"]`) while `target` comes from the item's current
+  status, so the two disagree whenever a record outlives the status it was
+  written under. The transition configured for a move leads where that move
+  lands, so looking it up for a target it does not lead to can only refuse.
+  `transition_name` is now consulted only when `MOVE_STATUS[move]` is the item's
+  own status, and the status-derived rule applies otherwise — which is what the
+  code did for `start` before it joined `move_transitions`, and what it should
+  always have done for the other four.
+  Every move a caller passes agrees with the item's status by construction, so
+  no caller-driven path is narrowed. The reachable route is a `start` whose
+  confirming read failed (`intake.claim` row `3-read`, recorded
+  `state: pending, move: start`) followed by a local status change that delivers
+  nothing; a record naming `complete` under an item back in `review` was wrong
+  the same way before `start` existed as a key.
+- **A refusal no longer offers to remove a transition key that cannot be
+  removed.** "Fix `work.tracker.transitions.{move}`, or remove it to let TCW
+  find the transition itself" is generic over the move and was written for the
+  four optional ones. `transitions.start` is required, so the removal half is
+  now offered only for a key `tcw validate` would still accept without.
 
 - **`complete` judges a `--worktree` item from its branch's copy.** With the store
   inside the checkout the worktree holds its own copy, so `submit`, `rework`, blocker
