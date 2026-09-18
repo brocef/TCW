@@ -243,30 +243,52 @@ So a `start` whose ticket is already at or ahead of `statuses.active` takes the
 claim and leaves the ticket alone, reporting where it is — exit 0. That is the
 epic's criterion 5, and the first draft could not reach it.
 
-**The rule needs a mechanism, and the existing one does not cover a start.** The
-backwards check is `if rung > _RUNG_ORDER.get(local, rung)` (`:550-553`,
-"so it was not claimed or moved back"), and it sits inside the branch guarded by
-`elif not starting and …` at `:545`. It never runs for a start. Today a start is
-protected by something else: `intake.claim` moves the ticket and `:613` then
-refuses if it did not land on `statuses.active` — the guard Design section 1
-removes.
+**This reverses a decision C2 made deliberately, and the reversal is argued
+rather than slipped in.** C2's own commit (`42f28ce2`) removed a module-level
+invariant, not a `sync`-only rule: "TCW never follows the tracker and never pulls
+a ticket back. … A ticket *behind* its item, on a binding whose claim is still
+owed, is claimed and walked forward rung by rung instead of refused. … One TCW
+did hold and somebody moved back is drift, and stays refused." C2 introduced
+`syncing` (`:317`) in that same change and used it for one thing only,
+`check_only` (`:338`). Its follow-up `67af2b55`, whose whole subject was a
+lifecycle caller misreporting a backwards move, added `syncing and` to the note
+(`:519`) and stopped there. C2 had the discriminator in hand, was looking at this
+code for this reason, and drew the line at the message.
 
-Without a replacement the epic's own criterion 5 breaks in the case it was
-written for. A start on an unassigned ticket in the review status has `owed`
-true, skips `:545` because `starting` is true, is claimed without moving by
-`assert_ownership`, meets no landing check, and reaches `assess_move` with an
-empty `expected` — which finds a transition to `statuses.active` and applies it,
-pulling the ticket backwards out of review.
+The argument for going further is the epic's own risk 2: "the item is truth"
+silently undoing a move somebody made on purpose in the tracker is the thing that
+rule was protecting against, and a lifecycle move is exactly where the undoing is
+least expected — nobody running `tcw work start` is asking about a ticket's
+current status. `sync` is where a person has asked for reconciliation, and it
+keeps reconciling in both directions.
 
-The mechanism is therefore to **hoist the rung comparison out of that branch** so
-it runs for every lifecycle move before delivery, a start included, while `sync`
-keeps reconciling in both directions. `syncing` (`:317`) is what tells them
-apart, and it is already the discriminator C2 used for the backwards note
-(`:513-517`), so this is one rule where there were two.
+**The mechanism is the `expected` window, not the direction of travel.** An
+earlier draft of this section proposed hoisting the rung comparison at `:550-553`
+out of the `:545` branch so it would run for every lifecycle move. That is wrong,
+and the way it is wrong is worth keeping: it fires on `rework`. A `rework` has
+already moved the item to `active`, so `local` is `"active"` and
+`_RUNG_ORDER["active"]` is 0, while the ticket still sits at `statuses.review`,
+rung 1 — so `1 > 0` refuses the one move whose purpose is to bring the ticket
+back down. Today that never happens only because `owed` is false for a rework and
+the branch is not entered; hoisting it out of `if owed:` is what exposes it.
 
-Worth noting what the hoist is not: it is not the drift window. `expected`
-refuses a ticket that has *moved somewhere unexpected*; this refuses a ticket
-that is *further along than its item*. The messages differ and both are wanted.
+The right question is not which way the ticket is moving but **whose move is being
+undone**, and `expected_statuses` already computes that:
+
+| move | window | a ticket at `statuses.review` |
+| --- | --- | --- |
+| `rework` | `_EARLIER["review"]` → `mapped[:1]` = `(statuses.review,)` (`:200-202`) | **inside** its own window — this move's own business |
+| `start` from `backlog` | `_EARLIER.get("backlog", ())` → `()` | **outside** — somebody else's move |
+
+So the rule is: **a lifecycle move does not move a ticket that is above the
+target and outside its `expected` window.** `assess_move` already refuses
+everything outside a *non-empty* window (`:232-238`), so the only case this adds
+is the empty one — which is precisely criterion 1's.
+
+It reports **`HELD`**, not `CONFLICTING`. `:385-393` writes a sync record for
+`PENDING` and `CONFLICTING` only, and such a record would trip
+`binding_refusal:740` on the next move; `_deliver_after:1068-1069` prints a
+`HELD` reason with the exit code left at 0, which is what criterion 1 asks for.
 
 This also explains C2's `rework` defect in one rule rather than as a special
 case: the "ticket was ahead of its item" note was a `sync` fact leaking into a
@@ -463,9 +485,11 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
     ticket ahead of it, `tcw work rework` does not pull the ticket back and prints
     no note saying it did.
 18b. `tcw work start` on a backlog item whose ticket is unassigned and in the
-     review status assigns the ticket and leaves its status alone — the case the
-     hoisted rung check exists for, and the one an empty `expected` would
-     otherwise let through.
+     review status assigns the ticket, leaves its status alone, exits 0, and
+     writes **no** sync record.
+18d. `tcw work rework` on a bound item whose ticket is at the review status moves
+     that ticket back to the active status and exits 0 — the case the rejected
+     rung-comparison mechanism would have refused.
 18c. `tcw work tracker sync` on the same item still reconciles in both
      directions, so the hoist has not made `sync` forward-only.
 
