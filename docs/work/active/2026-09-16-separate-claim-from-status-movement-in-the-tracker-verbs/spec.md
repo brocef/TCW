@@ -161,8 +161,52 @@ point of the verb, per goal 4 — which leaves the item active with an empty
 `tcw work tracker claim`, not `start --take-over`. C4 states that explicitly and
 gives it a criterion; it should also decide what `tcw work start` says about an
 unowned active item, which today renders `AlreadyClaimed(slug, "", started)` with
-an empty holder name (`tcw/store/base.py:3475`). Raised by C1's spec review. Retires `link --sync-status`
-(`tcw/work/cli.py:2341`), which becomes `link` then `claim` then `sync`.
+an empty holder name (`tcw/store/base.py:3510` — the line moved; this section said
+`:3475`). Raised by C1's spec review. Retires `link --sync-status`
+(`tcw/work/cli.py:2502`), which becomes `link` then `claim` then `sync`.
+
+**Amended after C4's spec review. This section reads as a list of independent
+jobs, and it is not one.** Removing the transition a claim applies is a single
+change that pulls six others in behind it, and a spec written from the list above
+without tracing them produced a design with a one-sentence answer to the hardest
+part. Whoever plans C4 must answer all seven together:
+
+1. **What replaces `owed`.** It is three terms today
+   (`tcw/tracker/sync.py:328`): `starting`, `bound.catch_up`, and a record whose
+   `move` is `start`. Retiring `--sync-status` deletes the only writer of
+   `catch-up: true` (`tcw/tracker/intake.py:185`), and reading a record's `move`
+   as an instruction is the coupling C2 and C3 both deferred here — so two of
+   the three terms go, leaving `owed = starting`, which **C2 built and reverted**
+   because it does not work. The replacement fact has to be named.
+2. **What `expected` and `since` become.** Both are set to `statuses.active`
+   (`tcw/tracker/sync.py:625-626`) *because the claim transition has just put the
+   ticket there*. With no transition the ticket has not moved.
+3. **What a `start` delivers when its ticket is at or ahead of the target.**
+   C2 made delivery bidirectional, so "an ordinary delivery" would drag a ticket
+   backwards out of the review status — which is the epic's own criterion 5 and
+   one of the six problems it exists to fix.
+4. **What happens to strict mode's exclusivity.** `claim_refusal`
+   (`tcw/tracker/sync.py:809`) reads `config.start_transition` and is what tells
+   a strict project a second person could claim the same ticket. Its lifecycle
+   call sites all disappear with the claim transition; C1's replacement key,
+   `work.tracker.exclusive-claim-transition`, is **opt-in**. A strict project
+   that never set it loses a guarantee unless C4 says otherwise.
+5. **Whether `transitions.start` stays required.** C3 kept it required precisely
+   because a start applies it through the claim rather than through `assess_move`
+   and so has no status-derived fallback. Route the start through `assess_move`
+   and that reason is gone, along with the hardcoded branch C3 added to withhold
+   the "or remove it" advice for that one key (`tcw/tracker/sync.py:247-252`).
+6. **The machinery behind `--sync-status`.** `status-synced`, `catch-up`,
+   `unsynced_and_out_of_step` (`tcw/tracker/sync.py:408-415`), `walk()` and
+   `unsynced_hint` (`:803`) are its readers. `unsynced_hint` advises the very
+   flag being retired.
+7. **The five verbs and the claim gate**, which is the only part of this list
+   that could stand as its own item.
+
+Kept as one item rather than split, on the requester's rule that a split is worth
+it only when the parts can run in parallel. They cannot: items 1 and 6 must
+jointly answer one fact, and items 1, 3 and 7 all edit `_start`
+(`tcw/work/cli.py:1103`).
 
 *Blocked by C2 and C3.*
 
