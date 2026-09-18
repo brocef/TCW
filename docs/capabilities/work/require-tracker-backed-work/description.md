@@ -22,8 +22,9 @@ item — except that an epic cannot be started in a worktree.
 A claim only authorizes work when the workflow could have refused a second person:
 if, once claimed, the ticket still offers the claim transition, `start` and
 `tcw work tracker import` refuse and leave the ticket claimed for me to release. A
-claim retried later — by the next lifecycle command or `tcw work tracker sync` — is
-checked the same way, and stays owed while the check fails.
+claim retried later — by the next lifecycle command or `tcw work tracker sync`, while
+the binding's record still names the `start` it owes — is checked the same way, and
+stays owed while the check fails.
 
 The web app cannot check a ticket, so under strict mode its create, start, complete
 as `done` and drop actions answer with a refusal naming the `tcw work` command to use;

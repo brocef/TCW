@@ -205,7 +205,6 @@ test("a ticket the tracker has not caught up with says so", () => {
                 state: "pending",
                 move: "submit",
                 since: "In Progress",
-                claim: "done",
                 reason: "the tracker could not be reached",
                 at: "2026-09-14T10:00:00Z",
             },

@@ -213,9 +213,8 @@ def _print_item(item: WorkItem) -> None:
         if sync and "problem" in sync:
             print(f"tracker sync: record cannot be read ({sync['problem']})")
         elif sync:
-            owed = "; the claim is still owed" if sync["claim"] == "owed" else ""
             print(f"tracker sync: {sync['state']} after {sync['move']} ({sync['at']}): "
-                  f"{sync['reason']}{owed}")
+                  f"{sync['reason']}")
         comment = item.tracker.get("comment")
         if comment and "problem" in comment:
             print(f"tracker comment: record cannot be read ({comment['problem']})")
@@ -2442,9 +2441,9 @@ def _tracker_link(args: argparse.Namespace) -> int:
     status, owner, intake and request are untouched.
 
     `--sync-status` is the one exception, and only on request: for work already past
-    `backlog` it records that the claim is owed and delivers it at once, which claims
-    the ticket and brings it forward to where the item is. Whatever does not arrive
-    stays recorded for `tcw work tracker sync`.
+    `backlog` it notes on the binding that the ticket has to catch up, and delivers
+    that at once, which claims the ticket and brings it forward to where the item is.
+    Whatever does not arrive stays recorded for `tcw work tracker sync`.
     """
     from datetime import date
 
@@ -2491,9 +2490,9 @@ def _tracker_link(args: argparse.Namespace) -> int:
     # Work already under way has a ticket nothing has claimed and nothing has moved.
     # Changing the ticket is opt-in: by default the binding only notes that its status
     # was not synced, so a later move that cannot follow says so rather than blaming a
-    # hand move nobody made. With `--sync-status` the claim is recorded as owed —
-    # which also keeps a failure from stamping `claim: done` over a claim nobody made,
-    # and leaves `sync` something to resume — and delivered below.
+    # hand move nobody made. With `--sync-status` the binding carries `catch-up: true`,
+    # which is what tells `deliver` the ticket has never been held, and the catch-up is
+    # delivered below, leaving `sync` a record to resume from if it does not arrive.
     from tcw.store.base import target_status
     from tcw.tracker.intake import with_sync_record
     from tcw.tracker.sync import MOVE_ONTO, _normalize, _now, unsynced_hint
@@ -2525,11 +2524,8 @@ def _tracker_link(args: argparse.Namespace) -> int:
     if sync_status:
         document = with_sync_record(document, {
             "state": "pending", "move": MOVE_ONTO[item.status], "since": "",
-            "claim": "owed",
-            # No full stop: `tcw work show` appends "; the claim is still owed" to a
-            # reason, and a sentence ending in one renders as ".;".
             "reason": (f"{ticket.key} was linked to work already under way, so nothing "
-                       f"has claimed it and it has not followed the item yet"),
+                       f"has claimed it and it has not followed the item yet."),
             "at": _now()})
     try:
         st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
@@ -2834,7 +2830,6 @@ def _tracker_sync(args: argparse.Namespace) -> int:
             continue
         recorded = item.tracker.get("sync")
         comment = item.tracker.get("comment")
-        usable = isinstance(recorded, dict) and "problem" not in recorded
         try:
             if recorded is None and comment is not None:
                 # Only the comment is owed: the status arrived, and a ticket moved on
@@ -2842,7 +2837,7 @@ def _tracker_sync(args: argparse.Namespace) -> int:
                 outcome = None
             else:
                 outcome = deliver(st, slug, client, client.config, move=None,
-                                  previous_status=None, check_only=not usable)
+                                  previous_status=None)
             posted = None
             if comment is not None:
                 if (outcome is None or outcome.state in (CURRENT, NONE, HELD)
@@ -2857,6 +2852,8 @@ def _tracker_sync(args: argparse.Namespace) -> int:
         if outcome is None:
             pass
         elif outcome.state in (CURRENT, NONE):
+            if outcome.note:
+                print(f"{slug}: {outcome.note}")
             print(f"{slug}: current")
         elif outcome.state == HELD:
             print(f"{slug}: held — {outcome.reason}")

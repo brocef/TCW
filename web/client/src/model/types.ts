@@ -30,7 +30,6 @@ export type TTrackerBinding =
                     state: "pending" | "conflicting"
                     move: string
                     since: string
-                    claim: "done" | "owed"
                     reason: string
                     at: string
                 }

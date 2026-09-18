@@ -420,7 +420,7 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
 
 
 SYNC_STATES = ("pending", "conflicting")
-SYNC_FIELDS = ("state", "move", "since", "claim", "reason", "at")
+SYNC_FIELDS = ("state", "move", "since", "reason", "at")
 
 
 def _sync_record(value: Any) -> dict | None:
@@ -439,8 +439,6 @@ def _sync_record(value: Any) -> dict | None:
         return {"problem": f"'sync.state' is {record['state']!r}"}
     if record["move"] not in TRANSITION_IDS or record["move"] == "auto-delete":
         return {"problem": f"'sync.move' is {record['move']!r}"}
-    if record["claim"] not in ("done", "owed"):
-        return {"problem": f"'sync.claim' is {record['claim']!r}"}
     return record
 
 

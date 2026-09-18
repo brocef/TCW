@@ -7,16 +7,33 @@ records in the binding only what did **not** reach the tracker — so a ticket t
 follows first time costs no file change at all. The item's committed status is the
 durable statement of where the ticket should be; the record says it is not there yet.
 
-**TCW never follows the tracker and never pulls a ticket back.** A ticket is moved
-only when it is assigned to the account the credentials authenticate as — or
-unassigned and being discarded, the one move a ticket nobody holds authorizes — and
-when it sits where the item's previous status left it, or anywhere on the path from
-there to where the move is going. A ticket *behind* its item, on a binding whose
-claim is still owed, is claimed and walked forward rung by rung instead of refused:
-that is a ticket TCW has never held, which is what a late `link` leaves. One TCW did
-hold and somebody moved back is drift, and stays refused. Anything else is reported
-as conflicting. Every decision is taken from what the tracker says, read fresh; the
-binding is never proof of anything.
+**The work item is the source of truth for status.** After a lifecycle move, the
+ticket must sit where the item's previous status left it, or anywhere on the path
+from there to where the move is going; that window is what tells a hand move apart
+from a move TCW itself has not managed to deliver yet. `tcw work tracker sync` has
+no such window — no local transition just happened — so it puts the ticket where the
+item says it belongs from wherever the ticket sits: **one that was moved on is
+brought back, and one that fell behind is brought forward.** A backwards move is
+reported, so somebody who moved the ticket on purpose sees that it was undone.
+
+Three things stop a move in either direction, and none of them is about which way it
+goes: a ticket assigned to another account, a ticket nobody holds (except for a
+discard, the one move an unheld ticket authorizes), and a ticket already resolved,
+whose resolution TCW never changes. Anything else that stops a move is reported as
+conflicting.
+
+A ticket the user bound as a named `--part` is left alone by `sync` when nothing is
+recorded for it: several items share it, another part may be holding it back, and a
+hold leaves no evidence outside the checkout it happened in.
+
+A ticket TCW has never held is claimed first. Two things on the binding say it has
+never been held — `catch-up: true`, what a late `link --sync-status` leaves, and a
+record naming the `start`, meaning that start's delivery never finished — and a
+catch-up is then walked forward rung by rung. Nothing else claims a ticket: taking
+one in any other circumstance is `tcw work tracker claim`.
+
+Every decision is taken from what the tracker says, read fresh; the binding is never
+proof of anything.
 
 Which transition a move applies is derived from the target status — exactly one
 offered transition must lead there — unless the project names one for that move under
@@ -136,6 +153,8 @@ class Outcome:
     reason: str = ""
     recorded: bool = False       # a record was written (pending/conflicting only)
     claimed: str = ""            # the claim's own message, when this run claimed
+    note: str = ""               # a warning for the caller to print: set when the
+                                 # move that was made took the ticket backwards
 
 
 def classify_error(error: TrackerError) -> str:
@@ -196,6 +215,12 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
     key, where = ticket.key, ticket.status
     if _normalize(where) == _normalize(target):
         return CURRENT, ""
+    # Before the assignment, and before the window. With no window the ticket is not
+    # moved wherever it sits, so who holds it changes nothing — and telling somebody to
+    # take a closed ticket, or to put it back where its item is, only leads them to this
+    # refusal one command later.
+    if not expected and ticket.category == "done":
+        return CONFLICTING, f"{key} is already resolved ('{where}'), so it was not moved."
     if ticket.assignee_id != ticket.me_id:
         if ticket.assignee_id:
             return CONFLICTING, (f"{key} is assigned to {ticket.assignee_name}, not to "
@@ -203,9 +228,9 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
                                  f"'{target}'.")
         if move not in MOVES_ALLOWING_UNASSIGNED:
             return CONFLICTING, (f"{key} is unassigned, so it was not moved from "
-                                 f"'{where}' to '{target}'. Take it first — `tcw work "
-                                 f"start` claims a bound ticket — or assign it to "
-                                 f"yourself in the tracker.")
+                                 f"'{where}' to '{target}'. Take it with `tcw work "
+                                 f"tracker claim`, or assign it to yourself in the "
+                                 f"tracker.")
     if expected:
         if _normalize(where) not in {_normalize(status) for status in expected}:
             wanted = " or ".join(f"'{status}'" for status in expected)
@@ -214,8 +239,6 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
                                  f"of the ticket whose item is not in this checkout. "
                                  f"TCW does not move it back: put it in {wanted}, or "
                                  f"move it on by hand.")
-    elif ticket.category == "done":
-        return CONFLICTING, f"{key} is already resolved ('{where}'), so it was not moved."
     if named_transition:
         named = [t for t in ticket.offered
                  if _normalize(t.name) == _normalize(named_transition)]
@@ -279,13 +302,10 @@ def _siblings(store, slug: str, bound: Bound) -> tuple[list[str], bool]:
 
 
 def deliver(store, slug: str, client, config, *, move: str | None,
-            previous_status: str | None, check_only: bool = False) -> Outcome:
+            previous_status: str | None) -> Outcome:
     """Bring `slug`'s ticket to where its local status says, and record what did not.
 
-    `move` is the transition that just happened, or `None` from `sync`. With
-    `check_only`, nothing is sent to the tracker and nothing is written: `sync` on an
-    item with no record uses it, since without a record "not where the item says"
-    cannot be told from a ticket somebody else moved.
+    `move` is the transition that just happened, or `None` from `sync`.
     """
     item = store.get(slug)
     bound, revision = binding_of(store, slug)
@@ -294,24 +314,50 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     record = bound.sync if bound.sync and "problem" not in bound.sync else None
     local = item.status
     target = target_status(config.statuses, local, item.resolution)
+    syncing = move is None                   # `sync`, not a lifecycle move
     starting = move == "start"
-    owed = starting or (record is not None and record["claim"] == "owed")
+    # A ticket TCW has never held, and so still owes a claim. Two facts already on the
+    # binding say it, and both are read rather than believed: `catch-up: true`, written
+    # by `link --sync-status` and removed the moment the ticket is in step; and a record
+    # whose move is the `start` — the move that takes the ticket — meaning that start's
+    # delivery never finished. This replaces a `claim: owed | done` key in the record,
+    # which said the same thing in a third way and had to be carried from one record to
+    # the next by hand. A claim the record no longer names is made with `tcw work
+    # tracker claim`, and `deliver` re-reads the ticket's real assignee before claiming
+    # anything, so a stale `start` record on a ticket already held costs nothing.
+    owed = starting or bound.catch_up or (record is not None
+                                          and record["move"] == "start")
     move = move or (record["move"] if record else None)
+    # Nothing is sent and nothing is written: the ticket is only reported on. A `sync`
+    # with no record has no window of statuses the ticket may be in — no local move
+    # just happened — so it reconciles the ticket to the item from wherever it sits, in
+    # whichever direction that is. A binding for a named part is the exception: several
+    # items share that ticket, another part may be holding it back, and a hold leaves no
+    # evidence outside the checkout it happened in, so nothing here can tell the two
+    # apart and the ticket is reported on instead.
+    check_only = syncing and record is None and bound.part != "default"
 
     others, shared = _siblings(store, slug, bound)
     if not starting:
-        # Held even when this item's claim is owed: the open part will claim and move
-        # the ticket, and claiming it here could only lead to closing it early.
+        # Held even when this item still owes its ticket a claim: the open part will
+        # claim and move it, and claiming it here could only lead to closing it early.
         if others:
             # An open item owes the ticket no move while another part holds it, so an
-            # earlier record — unless it still owes the claim — no longer says
-            # anything true, and under strict mode it would lock the item. A finished
-            # item's record is kept: if the other part goes away, it is the only thing
-            # left that can still deliver this item's move.
-            stale = (bound.sync is not None and local not in RESOLVED_STATUSES
-                     and (record is None or record["claim"] != "owed"))
-            if stale and not store.pending_deletion(slug) and (
-                    not check_only or record is None):
+            # earlier record no longer says anything true, and under strict mode it
+            # would lock the item out of its own lifecycle. A finished item's record is
+            # kept: if the other part goes away, it is the only thing left that can
+            # still deliver this item's move.
+            #
+            # A record naming the `start` goes with the rest, and that costs something:
+            # it is what says this item's ticket has never been claimed, so once the
+            # other part closes nothing claims the ticket on this item's behalf, and the
+            # next move reports the ticket unassigned and names `tcw work tracker claim`.
+            # Keeping it was tried and is worse — it locks an item out of submitting
+            # finished work until an unrelated part closes, for a claim one command
+            # recovers. Claim state riding on this record is what `claim: owed | done`
+            # was, and it is not coming back under another name.
+            stale = bound.sync is not None and local not in RESOLVED_STATUSES
+            if stale and not store.pending_deletion(slug):
                 content = store.read_sidecar(slug, BINDING_SIDECAR).content
                 store.write_sidecar(slug, BINDING_SIDECAR,
                                     with_sync_record(content, None), revision=revision)
@@ -322,6 +368,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                                  item.resolution, shared=shared)
     since = record["since"] if record else (expected[0] if expected else "")
     claimed_message = ""
+    backwards = ""
 
     def finish(state: str, reason: str = "") -> Outcome:
         # A folder about to be removed takes no write: git must hold all of it for
@@ -335,16 +382,16 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 or (state == CURRENT and not bound.status_synced)):
             return Outcome(state, reason)
         if store.pending_deletion(slug):
-            return Outcome(state, reason, claimed=claimed_message)
+            return Outcome(state, reason, claimed=claimed_message,
+                           note=backwards if state == CURRENT else "")
         if state in (PENDING, CONFLICTING):
             content = store.read_sidecar(slug, BINDING_SIDECAR).content
             store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, {
                 "state": state, "move": move, "since": since,
-                "claim": "owed" if owed else "done",
                 "reason": reason[:REASON_LIMIT], "at": _now(),
             }), revision=revision)
             return Outcome(state, reason, recorded=True, claimed=claimed_message)
-        drop_record = bound.sync is not None and not owed
+        drop_record = bound.sync is not None
         # Once the ticket is where its item says, however it got there, the note that
         # its status was never synced is no longer true.
         drop_note = state == CURRENT and (not bound.status_synced or bound.catch_up)
@@ -355,7 +402,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             if drop_note:
                 content = with_status_synced(content)
             store.write_sidecar(slug, BINDING_SIDECAR, content, revision=revision)
-        return Outcome(state, reason, claimed=claimed_message)
+        return Outcome(state, reason, claimed=claimed_message,
+                       note=backwards if state == CURRENT else "")
 
     def unsynced_and_out_of_step(ticket) -> bool:
         # Only the refusal a never-synced link explains: the ticket's status is out of
@@ -448,8 +496,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             f"nothing was sent. Unlink and link it again if the site changed."))
     if not target and (not owed or local in RESOLVED_STATUSES):
         # Nothing is owed to the tracker for this status. For finished work that
-        # includes a claim, which would take a ticket only to leave it held; open work
-        # with no mapping still owes its claim, below.
+        # includes the claim an undelivered start or a catch-up still owes, which would
+        # take a ticket only to leave it held; open work with no mapping still owes it.
         owed = False
         return finish(NONE)
 
@@ -457,6 +505,21 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         ticket = read_ticket(client, bound.ticket_id)
     except TrackerError as error:
         return finish(classify_error(error), str(error))
+
+    # Somebody moved the ticket on past where its item is, and it is about to be put
+    # back. Said rather than confirmed: `sync` is already something a person asked
+    # for, a prompt would stop `--all` and every script, and a successful move leaves
+    # no record by design. The transcript is where a deliberate move that got undone
+    # has to be visible.
+    #
+    # Only for a `sync`. A lifecycle move that finds its ticket a rung up is `rework`,
+    # which moves an item from review back to active every time it runs — telling the
+    # user that their own move was drift somebody else caused would be a lie.
+    ticket_rung = lowest_rung(config.statuses, ticket.status)
+    if syncing and target and ticket_rung is not None and ticket_rung > _RUNG_ORDER.get(
+            local, ticket_rung):
+        backwards = (f"{ticket.key} was in '{ticket.status}', past where {slug} is, "
+                     f"and was put back to '{target}'.")
 
     if owed:
         at_target = bool(target) and _normalize(ticket.status) == _normalize(target)
@@ -530,7 +593,14 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             if not outcome.claimed:
                 state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
                 detail = f" ({outcome.detail})" if outcome.detail else ""
-                return finish(state, outcome.message + detail)
+                # Where the claim lives now, for a ticket nobody else holds. Said only
+                # then: telling somebody to claim a ticket another account holds would
+                # send them to a refusal naming that account, which this message
+                # already does.
+                where = ("" if ticket.assignee_id not in ("", None, ticket.me_id) else
+                         f" Take it with `tcw work tracker claim {slug}`, then run "
+                         f"`tcw work tracker sync {slug}`.")
+                return finish(state, outcome.message + detail + where)
             if config.strict:
                 # Under strict mode a claim the workflow cannot make exclusive
                 # authorizes nothing, so it stays owed and nothing moves.
@@ -584,7 +654,6 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # the record no longer says it is owed. One transition cannot finish it on a
         # workflow with no shortcut, so it resumes the walk instead of refusing.
         if (verdict == CONFLICTING and bound.catch_up and record is not None
-                and not check_only
                 and _normalize(ticket.status) in {_normalize(s) for s in expected}
                 and len(forward_from(ladder(config.statuses, local, item.resolution),
                                      ticket.status)) > 2):
@@ -623,8 +692,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
 def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
     """Record that a move was not sent at all — the tracker configuration has
     problems, so there is no client to send it with. Pending: fixing the
-    configuration and running `sync` sends it. Keeps an existing record's `since`
-    and `claim`, as any later transition does."""
+    configuration and running `sync` sends it. Keeps an existing record's `since`,
+    as any later transition does."""
     bound, revision = binding_of(store, slug)
     if not isinstance(bound, Bound):
         return Outcome(NONE)
@@ -635,8 +704,6 @@ def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
     store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, {
         "state": PENDING, "move": move,
         "since": record["since"] if record else "",
-        "claim": "owed" if move == "start" or (record and record["claim"] == "owed")
-                 else "done",
         "reason": reason[:REASON_LIMIT], "at": _now(),
     }), revision=revision)
     return Outcome(PENDING, reason, recorded=True)
