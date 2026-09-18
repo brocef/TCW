@@ -792,6 +792,7 @@
   resolution: done
   resolved: '2026-09-17'
 2026-09-16-let-sync-move-a-ticket-either-way-to-match-its-work-item:
+  location: 108446fa538725bc89ac0bcc3eb992fcef4b76be
   resolution: done
   resolved: '2026-09-17'
 2026-09-16-make-claim-and-release-assert-ownership-without-moving-a-ticket:
