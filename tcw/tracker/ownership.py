@@ -7,7 +7,7 @@ a workflow.
 
 **Why not reuse `intake.claim`.** That function exists to take a ticket *and*
 start it, and it cannot be told apart from what it does: it reads the transition
-name from `client.config.claim_transition` directly, so it can only ever apply
+name from `client.config.start_transition` directly, so it can only ever apply
 the one transition a project configured for starting work. Reusing it here would
 mean either moving every claimed ticket — the thing this whole change exists to
 stop — or editing it, which belongs to the child that rewrites the lifecycle

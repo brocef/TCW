@@ -50,8 +50,8 @@ CURRENT, PENDING, CONFLICTING, HELD, NONE = (
 MOVE_STATUS = {"start": "active", "submit": "review", "rework": "active",
                "complete": "completed", "discard": "discarded"}
 # The move that lands an item — or its ticket — on each local status: `MOVE_STATUS`
-# inverted. `active` is the claim's move, not `rework`: reaching it from nothing is
-# claiming, and the claim has its own transition name.
+# inverted. `active` is `start`, not `rework`: reaching it from nothing is starting,
+# and `transitions.start` names the transition that does it.
 MOVE_ONTO = {"active": "start", "review": "submit", "completed": "complete",
              "discarded": "discard"}
 # The moves that may act on a ticket nobody holds. Abandoning work is the one thing
@@ -221,10 +221,15 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
                  if _normalize(t.name) == _normalize(named_transition)]
         if not named:
             offers = ", ".join(f"'{t.name}' to '{t.to_status}'" for t in ticket.offered)
+            # `transitions.start` is the one key of the five that cannot be removed:
+            # a start has no status-derived rule to fall back to, so the parser
+            # requires it (`TRACKER_MOVE_TRANSITION_KEYS` in `tcw/store/base.py`).
+            # Offering to remove it would advise something `tcw validate` refuses.
+            drop = ("" if move == "start"
+                    else ", or remove it to let TCW find the transition itself")
             return CONFLICTING, (f"{key} in '{where}' offers no transition named "
                                  f"'{named_transition}'. It offers: {offers or 'nothing'}."
-                                 f" Fix work.tracker.transitions.{move}, or remove it to "
-                                 f"let TCW find the transition itself.")
+                                 f" Fix work.tracker.transitions.{move}{drop}.")
         if len(named) > 1:
             ids = ", ".join(sorted(t.id for t in named))
             return CONFLICTING, (f"'{named_transition}' matches more than one transition "
@@ -560,7 +565,17 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # Without `link --sync-status`, delivery after a claim is the one transition it
         # always was; walking a ticket through several statuses is only ever asked for.
 
-    named = transition_name(config.move_transitions, move, item.resolution) if move else ""
+    # Only when the move's own mapped status is the one being moved to. `move` here can
+    # be a *recorded* move the item is already past — `move = move or record["move"]`
+    # above — and the transition configured for that move leads where it lands, not to
+    # `target`, so naming it could only ever refuse. Every move a caller passes agrees
+    # with `local` by construction, so this narrows nothing a caller asked for; what it
+    # catches is a stale record, where deriving the transition from the target status is
+    # the only honest answer left. It applies to all five keys: a record naming
+    # `complete` under an item back in `review` was wrong the same way before `start`
+    # joined them, and reached the same refusal wherever a project had named that one.
+    named = (transition_name(config.move_transitions, move, item.resolution)
+             if move and MOVE_STATUS.get(move) == local else "")
     verdict, detail = assess_move(ticket, target=target, expected=expected, move=move,
                                   named_transition=named)
     if verdict != "apply":
@@ -740,10 +755,10 @@ def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:
         return (f"{key} was claimed, but whether its workflow can refuse a second "
                 f"claimant could not be read ({error}). TCW leaves the ticket claimed; "
                 f"run this again once the tracker answers.")
-    verdict = assess(config.claim_transition, current_status=outcome.status,
+    verdict = assess(config.start_transition, current_status=outcome.status,
                      offered=offered, landing_status=active or outcome.status)
     if verdict.exclusivity == NOT_EXCLUSIVE:
         return (f"{key} was claimed, but its workflow still offers "
-                f"'{config.claim_transition}' from '{outcome.status}', so a second person "
+                f"'{config.start_transition}' from '{outcome.status}', so a second person "
                 f"could claim it too. TCW leaves the ticket claimed.")
     return None

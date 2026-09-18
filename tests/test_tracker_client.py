@@ -32,7 +32,7 @@ CONFIG = TrackerConfig(
     candidate_query='assignee = currentUser() AND status = "To Do"',
     email_env="TCW_PROBE_EMAIL",
     token_env="TCW_PROBE_TOKEN",
-    claim_transition="Start Progress",
+    start_transition="Start Progress",
     timeout_seconds=15,
 )
 

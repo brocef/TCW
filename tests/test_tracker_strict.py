@@ -25,7 +25,7 @@ BASE = {
     "provider": "jira-cloud", "base-url": BASE_URL,
     "candidate-query": "assignee = currentUser()",
     "credentials": {"email-env": "TCW_A_EMAIL", "token-env": "TCW_PROBE_TOKEN"},
-    "transitions": {"claim": "Start Progress"},
+    "transitions": {"start": "Start Progress"},
 }
 
 

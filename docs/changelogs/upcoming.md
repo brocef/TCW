@@ -196,6 +196,26 @@ category.
 
 ## Changed
 
+- **`work.tracker.transitions.claim` is now `work.tracker.transitions.start`.**
+  It names the transition the `start` move applies and is parsed, stored and read
+  exactly as `submit`, `rework`, `complete` and `discard` are: `start` joins
+  `TRACKER_TRANSITION_KEYS` and `TRACKER_MOVE_TRANSITION_KEYS`, so
+  `_parse_tracker_transitions` handles all five in one loop and
+  `move_transitions["start"]` holds the name. `TrackerConfig.claim_transition`
+  becomes `TrackerConfig.start_transition`, carrying the same string; its four
+  readers (`tcw/tracker/intake.py`, `tcw/tracker/sync.py` twice,
+  `tcw/work/cli.py`) change by name only.
+  It stays **required**, unlike its four siblings, because a start applies its
+  transition through `intake.claim` rather than through `assess_move` and so has
+  no status-derived rule to fall back on. The required check moves from
+  `nested_str` to an `if "start" not in transitions` membership test, which
+  leaves a wrong *value* reported by the parsing loop with the same wording the
+  siblings get — so `transitions: {start: null}` now reads "expected a non-empty
+  tracker transition name, got NoneType" rather than "required".
+  `MOVE_ONTO["active"]` is still `"start"`, and `transition_name` can now answer
+  for it. The catch-up walk's two calls are not reached with a `start` move, but
+  the one at the end of `deliver` is, and that needed the guard described under
+  Fixed below.
 - **`complete` refuses a `--worktree` item whose folder in the worktree holds
   uncommitted changes**, before the merge-back, since the merge carries only commits and
   the judgments above read working files. `uncommitted_paths` (`tcw/store/fs.py`) reads
@@ -363,6 +383,28 @@ category.
 
 ## Fixed
 
+- **A binding whose sync record names a move the item is already past no longer
+  strands it.** `deliver` serves the recorded move when its caller names none
+  (`move = move or record["move"]`) while `target` comes from the item's current
+  status, so the two disagree whenever a record outlives the status it was
+  written under. The transition configured for a move leads where that move
+  lands, so looking it up for a target it does not lead to can only refuse.
+  `transition_name` is now consulted only when `MOVE_STATUS[move]` is the item's
+  own status, and the status-derived rule applies otherwise — which is what the
+  code did for `start` before it joined `move_transitions`, and what it should
+  always have done for the other four.
+  Every move a caller passes agrees with the item's status by construction, so
+  no caller-driven path is narrowed. The reachable route is a `start` whose
+  confirming read failed (`intake.claim` row `3-read`, recorded
+  `state: pending, move: start`) followed by a local status change that delivers
+  nothing; a record naming `complete` under an item back in `review` was wrong
+  the same way before `start` existed as a key.
+- **A refusal no longer offers to remove a transition key that cannot be
+  removed.** "Fix `work.tracker.transitions.{move}`, or remove it to let TCW
+  find the transition itself" is generic over the move and was written for the
+  four optional ones. `transitions.start` is required, so the removal half is
+  now offered only for a key `tcw validate` would still accept without.
+
 - **`complete` judges a `--worktree` item from its branch's copy.** With the store
   inside the checkout the worktree holds its own copy, so `submit`, `rework`, blocker
   edits and tracker records made during the work are committed on the branch while the
@@ -416,6 +458,14 @@ category.
 
 ## Removed
 
+- **`work.tracker.transitions.claim` is not accepted**, and is not aliased.
+  A block carrying it is reported through the new `TRACKER_RENAMED_KEYS` table in
+  `tcw/store/base.py`, consulted by `parse_tracker_config`'s unknown-key loop so
+  a retired key produces one problem naming its replacement instead of that plus
+  "unknown key". The parse still fails closed, so such a block is no tracker at
+  all, and `attribute_tracker_problems` names the file that wrote the key —
+  the parent node, in a workspace where the settings are shared. Since the key
+  was required, every tracker-backed node carries one and has to change it.
 - `skills/work/references/lifecycle/default/README.md`, which pointed at
   `tcw/work/prompts/*.md` — files that ship with the Python package, not the
   plugin.
@@ -445,8 +495,9 @@ category.
 - `ladder_steps`/`ladder`/`forward_from` in `tcw/tracker/sync.py` express the mapped
   statuses as an ordered ladder, used both for the drift window and for the walk.
   `MOVE_ONTO` (the inverse of `MOVE_STATUS`) is shared by the walk and `link`.
-- `transitions` keys other than `claim` are unknown to 2.3.0 and earlier, which
-  reject the whole tracker block when one is set.
+- `transitions` keys other than the start one are unknown to 2.3.0 and earlier,
+  which reject the whole tracker block when one is set. 2.3.0 and earlier also
+  know the start transition only as `transitions.claim`; see the rename below.
   `assess_move` takes the move it is serving and the transition named for it.
 - `tests/tracker_fake.py` records applied transition ids and gains the `AMBIGUOUS`,
   `STRICT_LADDER` and `BROKEN_LADDER` workflows.

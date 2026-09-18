@@ -163,7 +163,7 @@ def assess(claim_transition: str, *, current_status: str, offered,
             claimable=NOT_CLAIMABLE,
             exclusivity=NOT_DETERMINED,
             verdict=CLAIM_NOT_OFFERED,
-            detail=(f"work.tracker.transitions.claim is {claim_transition!r}, which "
+            detail=(f"work.tracker.transitions.start is {claim_transition!r}, which "
                     f"this ticket does not offer. It offers: "
                     f"{', '.join(repr(n) for n in offered_names)}. Either the name "
                     f"is wrong, or this ticket is not at the point where it applies — "

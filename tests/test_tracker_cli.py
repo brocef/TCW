@@ -26,7 +26,7 @@ TRACKER = {
     "base-url": "https://example.invalid",
     "candidate-query": "assignee = currentUser()",
     "credentials": {"email-env": "TCW_PROBE_EMAIL", "token-env": "TCW_PROBE_TOKEN"},
-    "transitions": {"claim": "Start Progress"},
+    "transitions": {"start": "Start Progress"},
 }
 
 SEARCH_BODY = {

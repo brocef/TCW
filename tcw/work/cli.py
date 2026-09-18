@@ -2221,7 +2221,7 @@ def _print_ticket(client, ref: str, issue: dict, offered) -> None:
     print(f"summary: {fields.get('summary', '')}")
     print(f"assignee: {assignee}")
 
-    result = assess(client.config.claim_transition,
+    result = assess(client.config.start_transition,
                     current_status=status, offered=offered)
     # Two words, deliberately never one. "claimable" is this ticket right now;
     # "exclusive" is whether the workflow would refuse a second claimant. A reader

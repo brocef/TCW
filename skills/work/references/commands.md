@@ -288,7 +288,7 @@ mapping, as it does for any record TCW writes.
 ticket; the `request` stage still runs. It does not set `owner` — importing is not
 starting. `unlink` makes no tracker call and needs no tracker configured.
 
-Neither `list` nor `show` detects a wrong `transitions.claim` value. A ticket not offering it
+Neither `list` nor `show` detects a wrong `transitions.start` value. A ticket not offering it
 may not have reached the claim yet, or may have been claimed already, and both are
 indistinguishable from a typo without reading the project's workflow definition.
 
