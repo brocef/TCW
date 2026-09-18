@@ -162,7 +162,7 @@ dead conditions. Each remaining guard is restated under the new definition:
 | Guard | Under the new `owed` |
 | --- | --- |
 | `at_target and local in RESOLVED_STATUSES` → CURRENT (`:526`) | Kept. A finished item whose ticket is already at the target is not claimed, whoever holds it. Its `assignee == me` half is removed as unreachable. |
-| `move == "discard"` claims nothing (`:533`) | Kept verbatim. Abandoning work is not a statement that you are doing it. |
+| `move == "discard"` claims nothing (`:533`) | **Widened** to the renamed set, so `complete` is exempt too. Kept verbatim it would let a `complete` on an unassigned ticket reach `assert_ownership` and claim it. |
 | `check_only` → CONFLICTING (`:543`) | Kept, reworded: "the claim of X is still owed" becomes "X is not held", which is what is now being reported. |
 | the past-the-claim branch (`:545-585`) | Its `rung > 0` half is kept; its `assignee == me` half is removed as unreachable. |
 | the resolved refusal inside it (`:554-561`) | Kept. Its comment says it exists because skipping the claim would lose the claim's own resolved refusal; that reason survives. |
@@ -273,13 +273,48 @@ the ticket only. The epic's sentence is therefore satisfied for bound items and
 knowingly not for unbound ones; that is recorded rather than quietly dropped.
 
 **`complete` and a discard do not consult ownership — and neither does their
-delivery.** `assess_move` refuses a ticket held by another account for every move
-(`tcw/tracker/sync.py:224-233`), so "requires no claim" has to reach that check
-too, or the verb succeeds locally and still exits non-zero. Those two moves join
-`discard` in `MOVES_ALLOWING_UNASSIGNED` (`:78`), which becomes the set of moves
-that need no claim. Without this, criteria 8 and 10 demand opposite exit codes
-from one code path — `_deliver_after` returns 1 for `PENDING` and `CONFLICTING`
-alike (`tcw/work/cli.py:1071-1076`) — which is what the first two drafts did.
+delivery. Resolution overrides ownership**, on the requester's decision, asked
+because the epic's criterion 12 has two readings and they differ by whether TCW
+will move a ticket somebody else holds.
+
+This is a **deliberate reversal of a stated prohibition**, and it is written here
+rather than left to arrive as a side effect. `MOVES_ALLOWING_UNASSIGNED`'s
+comment (`tcw/tracker/sync.py:74-77`) says: "Abandoning work is the one thing an
+unassigned ticket authorizes: every other move is somebody saying they are doing
+the work, which is a claim, and a claim assigns. Widening this set would let TCW
+march a ticket through a workflow on behalf of a person who never took it." The
+answer is that finishing and abandoning are not statements that you are doing the
+work — they are statements that nobody is, and blocking them on ownership leaves
+a resolved item with a ticket nothing can close.
+
+Three things follow, and the first is not what the second draft assumed:
+
+- **Widening the set is not enough.** It is consulted only when the assignee is
+  *empty* (`:229`, inside `if ticket.assignee_id != me` after `if
+  ticket.assignee_id: return CONFLICTING` at `:225`). The held-by-another case
+  returns one branch earlier whatever the set contains. The assignee check must be
+  **skipped entirely** for resolution moves, not widened.
+- **The set is renamed to what it now means** — the moves that need no claim,
+  `complete` and `discard` — and `:533`'s `move == "discard"` becomes a test
+  against it, or `complete` on an unassigned ticket still reaches
+  `assert_ownership` and claims it.
+- **`tcw/tracker/progress.py:125` is a second reader.** Today a move on a ticket
+  nobody holds skips its progress comment; after this it posts one. That is
+  consistent — the comment records what happened to the work — but it is a
+  behaviour change in a file the first two drafts' sweep lists did not name.
+
+**One shipped test asserts the opposite and must change**:
+`tests/test_tracker_sync.py:436`,
+`test_a_discard_still_refuses_a_ticket_someone_else_holds`. It is not wrong
+today; it pins the rule this item reverses. It is rewritten to assert the new
+rule, and `outcome.md` names it with the reason, rather than being deleted
+quietly.
+
+This also resolves the exit-code conflict between criteria 8 and 10 in the
+direction the requester chose: a resolution move's delivery succeeds, so exit 0;
+an unreachable tracker still leaves the move made and exits non-zero
+(`_deliver_after` returns 1 for `PENDING` and `CONFLICTING` alike,
+`tcw/work/cli.py:1071-1076`).
 
 **The gate refuses only on a positive answer.** If the tracker cannot be reached
 it cannot say another account holds the ticket, so the move proceeds and the
@@ -343,7 +378,10 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
 6c. `tcw work submit` on an item with no binding is not gated: it moves.
 7. `tcw work rework` behaves the same way from `review`.
 8. `tcw work complete <slug> --resolution done --confirm` on an item whose ticket
-   is held by another account exits 0 and the item is `completed`.
+   is held by another account exits 0, the item is `completed`, and the ticket is
+   moved to the completed status while still assigned to that account.
+8b. The same for a discard, which is the case
+    `tests/test_tracker_sync.py:436` pins the other way today.
 9. `tcw work complete <slug> --resolution wontfix --confirm` on a bound,
    never-started, unassigned ticket moves the ticket to the discarded status and
    exits 0.
