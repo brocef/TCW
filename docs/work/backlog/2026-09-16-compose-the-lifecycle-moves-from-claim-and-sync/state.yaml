@@ -11,3 +11,4 @@ initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
 blocked_by:
 - slug: 2026-09-16-let-sync-move-a-ticket-either-way-to-match-its-work-item
 - slug: 2026-09-16-retire-the-claim-transition-key-into-a-named-start-transition
+- slug: 2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode

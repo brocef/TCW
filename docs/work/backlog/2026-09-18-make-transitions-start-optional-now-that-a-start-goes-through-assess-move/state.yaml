@@ -1,0 +1,12 @@
+slug: 2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move
+title: Make transitions.start optional now that a start goes through assess_move
+created: '2026-09-18'
+resolution: null
+priority: 2
+effort: low
+tags:
+- work
+- cli
+blocked_by:
+- slug: 2026-09-16-compose-the-lifecycle-moves-from-claim-and-sync
+initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
