@@ -243,6 +243,31 @@ So a `start` whose ticket is already at or ahead of `statuses.active` takes the
 claim and leaves the ticket alone, reporting where it is — exit 0. That is the
 epic's criterion 5, and the first draft could not reach it.
 
+**The rule needs a mechanism, and the existing one does not cover a start.** The
+backwards check is `if rung > _RUNG_ORDER.get(local, rung)` (`:550-553`,
+"so it was not claimed or moved back"), and it sits inside the branch guarded by
+`elif not starting and …` at `:545`. It never runs for a start. Today a start is
+protected by something else: `intake.claim` moves the ticket and `:613` then
+refuses if it did not land on `statuses.active` — the guard Design section 1
+removes.
+
+Without a replacement the epic's own criterion 5 breaks in the case it was
+written for. A start on an unassigned ticket in the review status has `owed`
+true, skips `:545` because `starting` is true, is claimed without moving by
+`assert_ownership`, meets no landing check, and reaches `assess_move` with an
+empty `expected` — which finds a transition to `statuses.active` and applies it,
+pulling the ticket backwards out of review.
+
+The mechanism is therefore to **hoist the rung comparison out of that branch** so
+it runs for every lifecycle move before delivery, a start included, while `sync`
+keeps reconciling in both directions. `syncing` (`:317`) is what tells them
+apart, and it is already the discriminator C2 used for the backwards note
+(`:513-517`), so this is one rule where there were two.
+
+Worth noting what the hoist is not: it is not the drift window. `expected`
+refuses a ticket that has *moved somewhere unexpected*; this refuses a ticket
+that is *further along than its item*. The messages differ and both are wanted.
+
 This also explains C2's `rework` defect in one rule rather than as a special
 case: the "ticket was ahead of its item" note was a `sync` fact leaking into a
 lifecycle move, which is the same leak in the other direction.
@@ -437,6 +462,12 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
 18. No lifecycle move moves a ticket backwards: with the item in `review` and the
     ticket ahead of it, `tcw work rework` does not pull the ticket back and prints
     no note saying it did.
+18b. `tcw work start` on a backlog item whose ticket is unassigned and in the
+     review status assigns the ticket and leaves its status alone — the case the
+     hoisted rung check exists for, and the one an empty `expected` would
+     otherwise let through.
+18c. `tcw work tracker sync` on the same item still reconciles in both
+     directions, so the hoist has not made `sync` forward-only.
 
 Criteria 6 and 10 are the pair the first draft conflated: 6 is a refusal *before*
 the local move, 10 is a non-zero exit *after* one. They are different contracts
