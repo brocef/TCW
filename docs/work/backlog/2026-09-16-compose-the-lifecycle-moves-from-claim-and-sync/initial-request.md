@@ -33,10 +33,21 @@ The requester decided the two questions the epic left open:
   on.** There is nobody to displace, so it succeeds rather than refusing. Today
   it renders `AlreadyClaimed(slug, "", started)` with an empty holder name — a
   refusal that names nobody.
-- **`tcw work start --take-over` is retired.** C1's `tcw work tracker claim
+- **`tcw work start --take-over` is retired.** ~~C1's `tcw work tracker claim
   --take-over` does the ownership half, and after this item `start` is composed
   from the primitives, so two flags for taking over somebody else's work is one
-  too many. This is a breaking change to the CLI surface.
+  too many.~~ **Reversed at the spec review, on the requester's decision: the
+  flag stays.** The premise was false. The two flags are not the same operation:
+  `start --take-over` is the only code that republishes an interrupted
+  `.claiming/` staging directory (`tcw/store/fs.py:3817-3830`), it refreshes
+  `started` (`tcw/store/base.py:3516`), and it accepts `--owner`.
+  `claim --take-over` does none of those, and on an item with an interrupted
+  claim it cannot even be attempted — it resolves the item through `st.get`,
+  which raises `{slug} has an interrupted claim; use --take-over --owner
+  <identity>` (`tcw/store/fs.py:5172`) before any ownership code runs. Two error
+  messages advise the flag by name, and
+  `2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app`
+  is an open item aimed at that same path.
 
 **Two further decisions, given while the spec was being prepared**, because the
 epic settles *which* verbs a claim gates but not *when* the gate applies:
