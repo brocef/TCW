@@ -219,7 +219,16 @@ error.
 
 ## A second pass, after the verify assessment
 
-Four findings, all real. Commits `RANGE`.
+Four findings, all real. Commits `c2ce6813`, `67af2b55` and `31d6e76f`.
+
+The full suite after them, read from the output file:
+
+```
+3756 passed in 895.31s (0:14:55)
+pytest exit 0
+```
+
+`pnpm test` 64 passed, `npx tsc --noEmit` clean, `tcw validate` OK.
 
 **1 — the sibling hold drops a record that still owes the `start`'s claim, and I
 left the guard out.** The assessment was right that this is a second corner
