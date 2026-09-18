@@ -38,6 +38,18 @@ The requester decided the two questions the epic left open:
   from the primitives, so two flags for taking over somebody else's work is one
   too many. This is a breaking change to the CLI surface.
 
+**Two further decisions, given while the spec was being prepared**, because the
+epic settles *which* verbs a claim gates but not *when* the gate applies:
+
+- **The gate applies always, not only under strict tracker mode.** A ticket held
+  by another account refuses `submit` and `rework` before the item moves
+  locally, whether or not `work.tracker.strict` is set. The requester was told
+  this reverses a standing rule — that a tracker problem never undoes a local
+  move — and chose it anyway.
+- **The gate reads the ticket's assignee only.** An item with no ticket bound to
+  it is not gated, and the item's `owner` stays a record of who holds the work
+  rather than a permission to move it.
+
 **`link --sync-status` is retired too** (`tcw/work/cli.py:2341`). It becomes
 `link`, then `claim`, then `sync`.
 
