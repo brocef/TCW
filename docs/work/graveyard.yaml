@@ -804,6 +804,7 @@
   resolution: done
   resolved: '2026-09-17'
 2026-09-16-retire-the-claim-transition-key-into-a-named-start-transition:
+  location: a2b72dace9ab1332fc06cd19986d5e1b9dd371d5
   resolution: done
   resolved: '2026-09-17'
 2026-09-16-route-agents-to-tcw-work-stage-for-stage-instructions-and-validate-its-arguments:
