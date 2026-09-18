@@ -72,6 +72,27 @@ internal module names.
 - Under strict mode, with `inbox-query` set, accepting a ticket from the inbox is
   allowed; accepting an inbox file is still refused.
 
+## Telling an agent to pause
+
+Sometimes you have to stop mid-task — you are about to lose your connection,
+reboot, or pick the work up on another machine. There was no good way to say so:
+you told the agent to stop in your own words and it halted wherever it happened
+to be.
+
+Now you can ask it to **pause**. It finishes or backs out whatever edit is in
+hand, asks whether you want the work committed and pushed, and writes what
+resuming needs into the work item itself — the stage it was in, the branch and
+last commit, the decisions it had already made, anything left deliberately
+half-done, and the next thing to do. Then it reports and waits.
+
+You will see a file called something like `handoff-20260917T2115Z.md` appear in
+the item's folder. That is the note. When you pick the work back up, the agent
+reads it and deletes it — it describes where things stood, which stops being true
+the moment you carry on.
+
+If you do not answer the question about committing, it commits and pushes anyway.
+Being away is exactly when you would want that.
+
 ## Replacing TCW's own procedures
 
 - **Your project can now replace the text of ten of TCW's procedures**, the way
@@ -130,7 +151,7 @@ period: after you update the plugin, typing `/tcw:tcw-work` will not find
 anything. The full list is below so you can find whichever one your fingers
 know.
 
-The groupings stay. `commands-` still marks the four everyday workflow skills and
+The groupings stay. `commands-` still marks the everyday workflow skills and
 `extras-` the three optional ones, so they still sort together when you are
 scanning for one.
 

@@ -15,7 +15,8 @@ Use the `work` skill. This skill covers **the current stage through
 Read the `work` skill's `SKILL.md` and detect the current stage from the item's
 type, status, and existing artifacts. Invoke the `work-stage` skill for **only** the stage
 you are in; the router's "Finding your place" section maps missing artifacts to
-stages.
+stages — and covers the handoff document a paused agent may have left, which is
+read and deleted before the stage is detected.
 
 If `plan.md` declares bounded stage documents, read the manifest first and then
 only the stage document relevant to the current slice. Dependency ordering there

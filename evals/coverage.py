@@ -43,6 +43,12 @@ EXCLUSIONS = {
                     "commands-drive-work-to-completion",
                     "commands-verify-work",
                     "commands-process-inbox")},
+    "commands-pause-work":
+        "Its observable outcome is an agent that stops and stays stopped, so a "
+        "graded run has no produced artifact to read and would have to measure "
+        "an absence. The handoff document it does write is deleted by the "
+        "resume it would be graded against. Worth a case if the harness gains a "
+        "way to assert that a run ended deliberately rather than ran out.",
 }
 
 # Not exclusions. A skill a case names counts as covered, but a directory-level

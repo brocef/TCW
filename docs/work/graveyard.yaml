@@ -823,3 +823,10 @@
   location: a805e877e1b4f626b9234329fbc97b460b4ff691
   resolution: done
   resolved: '2026-09-16'
+2026-09-17-add-a-commands-pause-work-skill-that-parks-in-flight-work-and-waits-for-the-user:
+  location: 5a2cf99f48e96667d96f2dd23000fc0eb9436356
+  resolution: done
+  resolved: '2026-09-17'
+2026-09-17-scratch-handoff-tolerance-probe:
+  resolution: wontfix
+  resolved: '2026-09-17'
