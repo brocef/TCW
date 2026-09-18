@@ -135,8 +135,8 @@ Merged into `main` in the primary checkout locally. Not pushed, no version cut.
   item worked around its absence rather than supplying it.
 - **`intake.claim` is untouched.** Its refusal now has a way out appended at the
   call site in `sync.py`, named only when the ticket is unassigned or already
-  yours, because sending somebody to claim a ticket another account holds only
-  a second refusal naming the same person. The message and the coupling behind it
+  yours, because sending somebody to claim a ticket another account holds would
+  only produce a second refusal naming the same person. The message and the coupling behind it
   belong to C3 and C4.
 - **This item was started before its artifacts existed**, so the `request`,
   `spec` and `plan` gates refused — they run from `backlog` and the item was
