@@ -168,29 +168,37 @@ dead conditions. Each remaining guard is restated under the new definition:
 | the resolved refusal inside it (`:554-561`) | Kept. Its comment says it exists because skipping the claim would lose the claim's own resolved refusal; that reason survives. |
 | strict mode's `claim_refusal` at `rung == 0` (`:569`) | Replaced — see section 4. |
 
-**`owed` has to move, because it is consumed before the ticket is read.** It is
-computed at `:328`; the ticket is not fetched until `:505`. One consumer sits
-between them — the early exit at `:497`, `if not target and (not owed or local in
-RESOLVED_STATUSES): return finish(NONE)` — which today avoids contacting the
-tracker at all for an item whose status maps to nothing. A fact read from the
-ticket cannot serve a decision made before the ticket is fetched.
+**`owed` is two questions, and only one of them is about the ticket.** It asks
+*is this a move that takes a ticket* — the `starting`, `bound.catch_up` and
+`record["move"] == "start"` terms — and *is the ticket already taken*, which
+nothing answers today. That second question is why the first has to be
+remembered at all: with no way to read whether a ticket was ever held, TCW has to
+keep a note of every route that would have held it.
 
-So that term is dropped rather than computed early:
+So the conjunction is split rather than collapsed:
 
 ```python
-if not target and local in RESOLVED_STATUSES:
-    return finish(NONE)
+takes_ticket = starting or bound.catch_up or (record is not None
+                                              and record["move"] == "start")
+...                                   # after the ticket is read
+owed = takes_ticket and ticket.assignee_id != ticket.me_id
 ```
 
-Finished work with no mapped target has nothing to do and still needs no read.
-Open work with no target now falls through, reads the ticket, may claim it, and
-finds nothing to deliver — which is what that line's own comment already says
-should happen: "open work with no mapping still owes it". The cost is one tracker
-read for open items at an unmapped status, and one behaviour change worth naming:
-with the tracker unreachable, such an item reports the tracker error where today
-it returns `NONE` silently. That is the price of the fact becoming readable, and
-it is small because an open item whose status maps to nothing is already a
-project that has not finished configuring its statuses.
+`takes_ticket` is a property of the move, needs no ticket, and is computed at
+`:328` exactly where `owed` is today — so the early exit at `:497`, which decides
+without a ticket in hand, keeps working unchanged and no extra tracker request is
+made. Only the second half waits for the read at `:505`.
+
+**Collapsing the two into one read would be a defect, and a subtle one.** With
+`owed = assignee != me` alone, `owed` is true for every move on an unassigned
+ticket: a `submit` on a ticket in `statuses.active` that nobody holds enters the
+block at `:524`, is not at target, is not a discard, is not `check_only`, fails
+both halves of `rung > 0 or assignee == me` at `:545`, and reaches the claim.
+`submit`, `rework` and `complete` would all start assigning tickets — which is
+exactly what `MOVES_ALLOWING_UNASSIGNED`'s comment (`:75-78`) exists to forbid,
+"marching a ticket through a workflow on behalf of a person who never took it",
+and what Goal 2 forbids for `complete`. The second draft proposed that collapse;
+it was caught at review, and the reasoning is recorded here so it is not retried.
 
 `catch-up: true` stops being written with `--sync-status`, and the field is
 dropped from `Bound`. A binding on disk that still carries the key parses as
@@ -360,8 +368,11 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
 17. A sync record written by a failed `start`, on an item since moved to
     `review`, does not make a later `tcw work tracker sync` serve the `start`
     move.
-17b. A bound item whose local status maps to no tracker status, and which is
-     finished, is delivered with no tracker request at all.
+17b. A bound item whose local status maps to no tracker status is delivered with
+     no tracker request at all, exactly as today — the early exit at `:497`
+     decides before any read and keeps deciding.
+17c. `tcw work submit`, `rework` and `complete` on a bound item whose ticket is
+     unassigned assign nothing in the tracker.
 18. No lifecycle move moves a ticket backwards: with the item in `review` and the
     ticket ahead of it, `tcw work rework` does not pull the ticket back and prints
     no note saying it did.
