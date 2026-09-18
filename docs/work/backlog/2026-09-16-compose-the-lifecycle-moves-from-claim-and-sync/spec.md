@@ -526,6 +526,35 @@ tracker does not refuse outside strict mode (section 6), and strict mode now
 requires `exclusive-claim-transition` (section 4). Both have criteria so a reader
 can check them.
 
+**Where the review stopped, and why it matters to the plan.** Six adversarial
+rounds. The first four found structural problems in the design; the fifth and
+sixth found defects in the *repairs* rather than in the original work — a hoisted
+check that would have refused every `rework` of a bound item, and a `check_only`
+refusal reworded when it had become unreachable. Both of those were the same
+mistake in different clothes: moving a guard without tracing every case the old
+guard covered.
+
+The requester stopped the review there, on the standing rule that a gate whose
+later rounds find holes in earlier rounds' fixes has stopped paying for itself.
+The seven cascading questions are answered and the spine is settled; what kept
+breaking is control flow through a three-hundred-line function, which a test
+settles in minutes and careful reading evidently does not.
+
+**So three mechanism questions go to the plan as tasks, not as settled design**,
+each to be proved by a test that is broken before it is trusted:
+
+1. The `HELD`-without-a-record behaviour for a lifecycle move above its window
+   (Design section 3). Criteria 1, 18b and 18d are the shape; the plan proves
+   them rather than assuming them.
+2. The retry field on `OwnershipOutcome` and the `pending`/`conflicting` split it
+   restores (Non-goals, criterion 17d).
+3. Renaming `MOVES_ALLOWING_UNASSIGNED` and skipping the assignee check for
+   resolution moves (Design section 6, criteria 8 and 8b), including
+   `tcw/tracker/progress.py:125` as its second reader.
+
+A plan task that cannot be made to pass is evidence the design is wrong, and
+should come back here rather than be worked around.
+
 **What the first draft got wrong**, kept because the pattern matters more than
 the errors. It specced from the epic's summary and read the code afterwards, so
 it missed that removing one transition cascades into six other changes. It then
