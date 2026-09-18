@@ -2069,3 +2069,117 @@ def test_a_late_link_records_its_catch_up_without_a_claim(node, fake):
     assert code == 1, err
     assert set(written_record(node, second)) == RECORD_FIELDS, written_record(node, second)
     assert yaml.safe_load(binding_text(node, second))["catch-up"] is True
+
+
+# ── what the verify assessment found ─────────────────────────────────────────
+
+
+def test_a_hold_drops_a_record_that_still_owes_the_start_s_claim(node, fake):
+    """Two parts share a ticket, and part A's `start` never claimed it. The hold drops
+    A's record with the rest, and that loses the one thing saying A's ticket has never
+    been taken — so once the other part closes, A's next move reports the ticket
+    unassigned and names the verb that takes it. Keeping the record instead would lock
+    A out of its own lifecycle under strict mode, for a claim one command recovers.
+    """
+    api = bound_item(node, "Api half", part="api")
+    fake.down = True
+    assert cli(node, "work", "start", api)[0] == 1
+    fake.down = False
+    assert record(node, api)["move"] == "start"
+    web = bound_item(node, "Web half", part="web")       # the other part opens
+    assert cli(node, "work", "start", web)[0] == 0
+    code, out, err = cli(node, "work", "tracker", "sync", api)
+    assert code == 0 and out.startswith(f"{api}: held — "), (out, err)
+    assert record(node, api) is None
+    # The other part closes, leaving the ticket where it took it and nobody having
+    # claimed it for `api`.
+    FsWorkStore.open(node).complete(web, "done", ["acked"])
+    claimed_ticket(fake, "In Progress", None)
+    code, out, err = cli(node, "work", "submit", api)
+    assert code == 1, (out, err)
+    assert "tcw work tracker claim" in out + err, out + err
+    # ...and the named verb is the whole recovery.
+    assert cli(node, "work", "tracker", "claim", api)[0] == 0
+    code, out, err = cli(node, "work", "tracker", "sync", api)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert record(node, api) is None
+
+
+def test_a_hold_drops_a_record_so_strict_mode_cannot_lock_the_item(node, fake):
+    """Why the record goes: while another part holds the ticket this item owes the
+    tracker nothing, and a record left behind is what strict mode refuses over."""
+    api = bound_item(node, "Api half", part="api")
+    claimed_ticket(fake)
+    st = FsWorkStore.open(node)
+    st.start(api, owner="a@example.test")
+    st.submit(api)
+    with_record(node, api, RECORD)                        # move: submit
+    bound_item(node, "Web half", part="web")
+    code, out, err = cli(node, "work", "tracker", "sync", api)
+    assert code == 0 and out.startswith(f"{api}: held — "), (out, err)
+    assert record(node, api) is None
+
+
+def test_rework_does_not_call_the_user_s_own_move_a_pull_back(node, fake):
+    """`rework` takes an item from review to active, so its ticket is legitimately one
+    rung up every single time. The note is `sync`'s, for a move somebody else made."""
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    assert cli(node, "work", "submit", slug)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    code, out, err = cli(node, "work", "rework", slug)
+    assert code == 0, err
+    assert "past where" not in out + err, out + err
+    assert "put back" not in out + err, out + err
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    # At the source, not only in what the command printed: `deliver` does not set the
+    # note for a lifecycle move at all, so no caller of it can start printing one.
+    # The item is active and the ticket a rung above it, which is the shape that sets
+    # the note for a `sync`.
+    fake.tickets[TICKET_ID].status = "In Review"
+    outcome = deliver_now(node, slug, move="rework", previous="review")
+    assert outcome.state == "current" and outcome.note == "", outcome
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    fake.tickets[TICKET_ID].status = "In Review"
+    outcome = deliver_now(node, slug, move=None, previous=None)
+    assert outcome.state == "current" and "past where" in outcome.note, outcome
+
+
+def test_record_unsent_writes_no_claim(node, fake):
+    """The move never reaches a client at all, so `record_unsent` writes the record
+    rather than `deliver`'s `finish`. Nothing else observes what this function
+    writes."""
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    path = node / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"]["base-url"] = 17          # a block with problems
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    fake.requests.clear()
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 1 and fake.requests == [], err
+    written = written_record(node, slug)
+    assert set(written) == RECORD_FIELDS, written
+    assert written["state"] == "pending" and written["move"] == "submit"
+
+
+def test_the_link_that_asks_for_a_catch_up_writes_no_claim(node, fake):
+    """`link --sync-status` writes its own record and then delivers, and the delivery
+    overwrites it — so this reads the file in the moment between the two, from a hook
+    on the first request the delivery makes."""
+    slug = under_way(node, "active")
+    seen = {}
+
+    def peek():
+        seen.update(yaml.safe_load(binding_text(node, slug)))
+
+    # `link` resolves the ticket by key (`/issue/SYNC-1`); the delivery reads it by id,
+    # and that first read is the moment after `link`'s own write and before `finish`
+    # replaces it.
+    fake.before("GET", f"/issue/{TICKET_ID}?fields=", peek)
+    assert sync_link(node, slug)[0] == 0
+    assert seen, "the hook never ran, so nothing was observed"
+    assert seen["catch-up"] is True
+    assert set(seen["sync"]) == RECORD_FIELDS, seen["sync"]
+    assert seen["sync"]["move"] == "start" and seen["sync"]["state"] == "pending"

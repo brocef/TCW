@@ -1065,8 +1065,6 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) ->
         return 1
     if outcome.claimed:
         print(f"→ {outcome.claimed}", file=sys.stderr)
-    if outcome.note:
-        print(f"→ {outcome.note}", file=sys.stderr)
     if outcome.state == HELD:
         print(f"→ {outcome.reason}", file=sys.stderr)
     code = 0
@@ -2562,8 +2560,6 @@ def _tracker_link(args: argparse.Namespace) -> int:
         return 1
     if outcome.claimed:
         print(f"→ {outcome.claimed}", file=sys.stderr)
-    if outcome.note:
-        print(f"→ {outcome.note}", file=sys.stderr)
     if outcome.state in (PENDING, CONFLICTING):
         print(f"tcw work tracker link: {args.slug} is bound; {ticket.key}'s status was "
               f"not synced ({outcome.state}): {_sentence(outcome.reason)} Run `tcw work "

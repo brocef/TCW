@@ -334,17 +334,25 @@ def deliver(store, slug: str, client, config, *, move: str | None,
 
     others, shared = _siblings(store, slug, bound)
     if not starting:
-        # Held even when this item's claim is owed: the open part will claim and move
-        # the ticket, and claiming it here could only lead to closing it early.
+        # Held even when this item still owes its ticket a claim: the open part will
+        # claim and move it, and claiming it here could only lead to closing it early.
         if others:
             # An open item owes the ticket no move while another part holds it, so an
-            # earlier record — unless it still owes the claim — no longer says
-            # anything true, and under strict mode it would lock the item. A finished
-            # item's record is kept: if the other part goes away, it is the only thing
-            # left that can still deliver this item's move.
+            # earlier record no longer says anything true, and under strict mode it
+            # would lock the item out of its own lifecycle. A finished item's record is
+            # kept: if the other part goes away, it is the only thing left that can
+            # still deliver this item's move.
+            #
+            # A record naming the `start` goes with the rest, and that costs something:
+            # it is what says this item's ticket has never been claimed, so once the
+            # other part closes nothing claims the ticket on this item's behalf, and the
+            # next move reports the ticket unassigned and names `tcw work tracker claim`.
+            # Keeping it was tried and is worse — it locks an item out of submitting
+            # finished work until an unrelated part closes, for a claim one command
+            # recovers. Claim state riding on this record is what `claim: owed | done`
+            # was, and it is not coming back under another name.
             stale = bound.sync is not None and local not in RESOLVED_STATUSES
-            if stale and not store.pending_deletion(slug) and (
-                    not check_only or record is None):
+            if stale and not store.pending_deletion(slug):
                 content = store.read_sidecar(slug, BINDING_SIDECAR).content
                 store.write_sidecar(slug, BINDING_SIDECAR,
                                     with_sync_record(content, None), revision=revision)
@@ -498,8 +506,12 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # for, a prompt would stop `--all` and every script, and a successful move leaves
     # no record by design. The transcript is where a deliberate move that got undone
     # has to be visible.
+    #
+    # Only for a `sync`. A lifecycle move that finds its ticket a rung up is `rework`,
+    # which moves an item from review back to active every time it runs — telling the
+    # user that their own move was drift somebody else caused would be a lie.
     ticket_rung = lowest_rung(config.statuses, ticket.status)
-    if target and ticket_rung is not None and ticket_rung > _RUNG_ORDER.get(
+    if syncing and target and ticket_rung is not None and ticket_rung > _RUNG_ORDER.get(
             local, ticket_rung):
         backwards = (f"{ticket.key} was in '{ticket.status}', past where {slug} is, "
                      f"and was put back to '{target}'.")
@@ -627,7 +639,6 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # the record no longer says it is owed. One transition cannot finish it on a
         # workflow with no shortcut, so it resumes the walk instead of refusing.
         if (verdict == CONFLICTING and bound.catch_up and record is not None
-                and not check_only
                 and _normalize(ticket.status) in {_normalize(s) for s in expected}
                 and len(forward_from(ladder(config.statuses, local, item.resolution),
                                      ticket.status)) > 2):
