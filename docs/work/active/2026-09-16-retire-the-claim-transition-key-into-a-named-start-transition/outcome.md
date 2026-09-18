@@ -86,6 +86,8 @@ the source restored from a copy taken before the first one.
 | 3 | delete the `if "start" not in transitions` membership test | `test_a_missing_start_transition_is_reported_by_name` and `test_a_missing_nested_key_under_an_ancestors_mapping_is_blamed_on_the_node`, the second showing the problem list was empty: the block parsed clean with no start transition at all |
 | 4 | `_parse_tracker_transitions`'s `name()` returns `str(value).strip()` instead of reporting a bad value | all four cases of `test_a_present_but_unusable_start_transition_is_reported`, and three of the pre-existing `test_a_malformed_transition_is_a_problem` — `assert config is None` failed with a config whose discard transition was the string `'7'` |
 | 5b | report a retired key under its enclosing mapping's path: `work.tracker.transitions: claim renamed to …` | `test_a_retired_key_in_a_parent_names_the_parents_file` alone, with the message present but attributed and spelled so that nothing matched `transitions.claim` |
+| 7 | drop the stale-move guard, restoring the unconditional `transition_name` lookup | both cases of `test_a_stale_record_does_not_strand_an_item_that_has_moved_on`, through two different branches: the stale `start` with `offers no transition named 'Start Progress'`, and the stale `complete` with `'Finish' leads to 'Done', not 'In Review'` |
+| 8 | offer the removal advice for every move, not only the removable ones | `test_only_a_removable_transition_key_is_offered_for_removal[start-is-required]` alone; the `complete` case stayed green, so the parametrization is not dead weight |
 
 Mutation 1 is recorded separately from 1b because 1 alone did not prove what the
 test was for. It goes red on the first of the test's three assertions, which a
@@ -137,10 +139,52 @@ one that applied.
    `'TrackerConfig' object has no attribute 'claim_transition'. Did you mean:
    'start_transition'?` — is the incidental proof.
 
+### Fixing the regression the rename shipped (`639890e5`)
+
+Found by review, not by me. See "What the plan and spec got wrong" below for how
+the sweep missed it.
+
+`deliver` serves the recorded move when its caller names none —
+`move = move or (record["move"] if record else None)` — while `target` comes
+from the item's *current* status. A record outlives the status it was written
+under, so the two disagree, and once `start` was in `move_transitions` the
+transition configured for it was looked up for a target it does not lead to. The
+refusal that follows strands the item, and its advice — "or remove it to let TCW
+find the transition itself" — is impossible for a key this item made required.
+
+One guard, at the site every one of those callers routes through:
+
+```python
+named = (transition_name(config.move_transitions, move, item.resolution)
+         if move and MOVE_STATUS.get(move) == local else "")
+```
+
+and the removal advice is now offered only for a key that can be removed.
+
+Two tests, both mutation-checked and listed below.
+`test_a_stale_record_does_not_strand_an_item_that_has_moved_on` is parametrized
+over the stale `start` this item created and a stale `complete`, which was
+broken the same way before this item existed and reaches the defect through the
+*other* refusal branch ("leads to 'Done', not 'In Review'"). That second case is
+why the guard sits at the shared site rather than at the `start` that reported
+it: the defect is not `start`-shaped.
+`test_only_a_removable_transition_key_is_offered_for_removal` calls `assess_move`
+directly, over `start` and `complete`, because after the guard I could not
+construct an end-to-end route that reaches the named branch with `start` — and
+having just been wrong about exactly that kind of claim, I tested the function
+rather than assert the path away.
+
+**What is deliberately not fixed** is whether `deliver` should serve a stale
+`start` when the work in front of it is really a `submit`. Treating the record's
+`move` as a statement about what to do now is the coupling C4 is rewriting. This
+restores the behaviour the rename took away and leaves nothing stranded; it does
+not pre-empt C4's design.
+
 ## What the plan and spec got wrong
 
-**The catch-up walk was not a defect, and the spec said it was.** This is the
-substantive error and it is corrected in `f21c7c08`.
+**I shipped a regression and then wrote down twice that there was none.** This
+is the substantive failure of the item and it is worth being exact about, since
+the second version was wrong in a more dangerous way than the first.
 
 The spec's Problem section claimed that the walk derives its start hop's
 transition from the status while a start applies the configured name, on the
@@ -148,31 +192,42 @@ same ticket in the same run; the Design section called that behavior change
 intended; the Sweep called it a sibling defect fixed here; Risk 1 was about it;
 and Task 2 item 6 of the plan was a test for it.
 
-The reasoning behind it was sound and the conclusion was not. `MOVE_ONTO["active"]`
-really is `"start"`, and `transition_name` really could only ever return `""`
-for it, because `start` could not be in `move_transitions`. What I did not check
-before writing it down is whether anything reaches that call. Nothing does. A
-probe added to `transition_name`, printing whenever it is asked for a `start`
-move with a name configured, fired **zero** times across
-`tests/test_tracker_sync.py`, `tests/test_tracker_replay.py`,
-`tests/test_tracker_hold.py` and `tests/test_tracker_cli.py` — and the probe was
-itself checked, printing on a direct call, so the silence was the answer and not
-a broken probe. Reading the code agrees: the walk visits the `active` rung only
-when `reached` is empty, which means the ticket is off the ladder, and every
-path into `walk` has it on the ladder.
+That claim about the *walk* is correct and still stands. The conclusion I drew
+from it — "so this item changes no runtime behaviour at all" — was not, and it
+is the sentence that mattered.
 
-So putting `start` into `move_transitions` changes no behaviour at all. It is
-still right — leaving `start` out is what made the walk's question unanswerable,
-and a later change that does reach the hop would otherwise get the wrong
-transition silently — but it is consistency in unreached code, not a fix. The
-planned test was dropped rather than written, because a test for an unreachable
-refusal either cannot be written or passes for some other reason, and what it
-was for moved into the first assertion as a direct
-`transition_name(config.move_transitions, "start", None)` check.
+**Two mistakes made it, and the second is the one to learn from.**
 
-The upside is that this item now changes no runtime behaviour whatsoever. The
-only thing that behaves differently is which spelling of one configuration key
-is accepted.
+The first was reading a zero-hit probe as proof of unreachability. It is proof
+that no test exercises the call, which is a weaker statement, and I wrote the
+stronger one.
+
+The second is worse, because the probe was in the right function and still
+missed the defect. `transition_name` has **three** call sites. I examined the
+two in the catch-up walk and never looked at the third, at the end of `deliver`,
+where the move served is `move = move or (record["move"] if record else None)`.
+A recorded move outlives the item's status, so `start` arrives there for an item
+already past it, and the lookup I had just made possible returns a transition
+that cannot lead to the target. The result strands the item, and the refusal's
+advice to remove the key is impossible for a key I had just made required.
+
+**Why the sweep did not find it.** I swept for `transitions.claim` and
+`claim_transition` — the key's own spelling. That third site never names the
+key. It reads `config.move_transitions` through `transition_name`, so nothing
+about it matches a search for the thing being renamed. The sweep I needed was
+over *the readers of the dictionary the key now lands in*. **Adding a key to a
+shared mapping means auditing every reader of that mapping**, and the spec's
+"Sweep" section now says so.
+
+The route was reproduced end to end before anything was changed, the test went
+red with the quoted message, and it goes green with the guard. Removing the
+guard turns both parametrized cases red again through two different refusal
+branches.
+
+**The regression was also proved to be mine, not pre-existing.** With `start`
+popped back out of `move_transitions` — the shape the code had on `main` — the
+reproducing test passes. With the rename and no guard, it fails. That is what
+makes it a regression this item introduced rather than something it uncovered.
 
 **Criterion 8 as written is falsified by the work it also asks for.** It says no
 file under `docs/guide/`, `skills/` or `README.md` mentions `transitions.claim`.

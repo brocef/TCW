@@ -68,18 +68,24 @@ and can only ever get `""` back, because `start` can never be in
 `move_transitions`. So the walk asks a question the configuration is built to be
 unable to answer.
 
-**Amended during implementation.** This section first said the walk therefore
-derives the hop from the status while a start applies the configured name, on
-the same ticket in the same run, and the Design, Sweep and Risks sections called
-that a sibling defect fixed here. It is not reachable. A probe added to
-`transition_name`, printing whenever it is asked for a `start` move with a name
-configured, fired **zero** times across `tests/test_tracker_sync.py`,
-`tests/test_tracker_replay.py`, `tests/test_tracker_hold.py` and
-`tests/test_tracker_cli.py` — and the probe was itself checked, firing on a
-direct call. Reading the code agrees: the `active` rung is in the walk's
-`remaining` only when `reached` is empty, which means the ticket is off the
-ladder, and every path into `walk` has the ticket on it. What the rename removes
-is dead inconsistency, not a defect. See `outcome.md`.
+**Amended twice during implementation, and the first amendment was also wrong.**
+
+The first version of this section said the walk derives the hop from the status
+while a start applies the configured name, and the Design, Sweep and Risks
+sections called that a sibling defect fixed here. That was not grounded.
+
+The first amendment replaced it with "the walk's start hop is not reachable, so
+this change alters no behaviour at all", on the strength of a probe in
+`transition_name` that fired zero times across four tracker test modules. **The
+claim about the walk is right; the conclusion drawn from it was not.** Zero hits
+meant no test exercises the call, not that nothing reaches it — and the probe
+was in `transition_name`, which has a *third* call site the sweep never
+examined: `tcw/tracker/sync.py`, at the end of `deliver`, where the move served
+is `move = move or (record["move"] if record else None)`. A recorded move
+outlives the item's status, so `start` arrives there for an item that is already
+past it. Putting `start` into `move_transitions` therefore **did** change
+behaviour, and the change stranded work. Design section 5 states the defect and
+the fix; `outcome.md` records how it was found.
 
 ## Goals
 
@@ -129,12 +135,12 @@ with no special case, and `move_transitions["start"]` holds the name. The
 It also makes the catch-up walk's start hop answerable:
 `transition_name(config.move_transitions, "start", ...)` at
 `tcw/tracker/sync.py:402` and `:410` returns the configured name instead of
-`""`. **Amended during implementation: no current path reaches that call with a
-`start` move**, as the Problem section now records, so this changes no
-behaviour today. It is worth doing anyway, because leaving `start` out of
-`move_transitions` is what made the question unanswerable in the first place,
-and a later change that does reach the hop would silently get the wrong
-transition.
+`""`. No current path reaches *those two* call sites with a `start` move, so
+they change nothing today; they are worth correcting because leaving `start` out
+is what made the question unanswerable, and a later change reaching the hop
+would otherwise get the wrong transition silently.
+
+The third call site is a different matter and is Design section 5.
 
 ### 2. `transitions.start` stays required
 
@@ -231,9 +237,77 @@ validating the moment the code lands.
 `docs/changelogs/v2.1.2.md:9` and `:121` are **not** edited: a changelog records
 what shipped in a past version, and `transitions.claim` is what shipped then.
 
+### 5. A recorded move outlives the item's status, and the name must not
+
+Putting `start` into `move_transitions` widened a defect that was already there
+for the other four keys, and made it universal.
+
+`deliver` serves the recorded move when its caller names none —
+`move = move or (record["move"] if record else None)`, `tcw/tracker/sync.py` —
+but `target` comes from the item's *current* status, not from that move. The two
+disagree whenever a record outlives the status it was written under. The
+transition configured for a move leads where that move lands, so naming it for a
+target it does not lead to can only refuse, and the item is stranded with no way
+forward.
+
+The reachable route, confirmed end to end:
+
+1. `tcw work start` on a bound item. The claim transition and the assignment
+   both apply and the confirming read then fails, so `intake.claim` returns row
+   `3-read` and `deliver` records `state: pending, move: start` while the ticket
+   really is in the active status and really is ours.
+2. The item reaches `review` through something that delivers nothing — the web
+   app, `tcw serve`, or a command interrupted between its commit and its tracker
+   call. Nothing rewrites the record, so it still says `start`.
+3. `tcw work tracker sync` arrives with `move` saying `start` and `target`
+   saying the review status, and refuses.
+
+**The fix is one guard at the shared site**: use the configured name only when
+the move's own mapped status is the one being moved to.
+
+```python
+named = (transition_name(config.move_transitions, move, item.resolution)
+         if move and MOVE_STATUS.get(move) == local else "")
+```
+
+Every move a caller passes agrees with `local` by construction — `submit` with
+`review`, `complete` with `completed`, and so on — so this narrows nothing any
+caller asked for. What it catches is a stale record, where deriving the
+transition from the target status is the only honest answer, and is what the
+code did before `start` joined the mapping.
+
+It is placed at the one site all of these callers route through rather than at
+the `start` case that reported it, because the defect is not `start`-shaped: a
+record naming `complete` under an item back in `review` was wrong the same way
+before this item existed, and reached the same dead end wherever a project had
+named `transitions.complete`. Both are covered by one parametrized test.
+
+**The refusal's advice also had to change.** It offered "or remove it to let TCW
+find the transition itself", which is generic over the move and was written for
+the four optional keys. `transitions.start` is required, so that advice tells a
+user to do something `tcw validate` then refuses. It is now offered only for a
+key that can actually be removed.
+
+**What this does not fix** is the deeper question of whether `deliver` should
+serve a stale `start` at all when the work in front of it is really a `submit`.
+The record's `move` is a statement about what was last attempted, and treating
+it as a statement about what to do now is the coupling C4 is rewriting. This
+item makes the stale case behave as it did before the rename — derived from the
+status, which works — rather than redesigning the record. The narrower change is
+the right one here: it restores a working path without pre-empting C4's design,
+and it leaves nothing stranded in the meantime.
+
 ### Abstraction litmus test
 
-**Passes; it barely engages.** Everything here is node configuration, parsed by
+**Passes.** The guard added in Design section 5 is pure logic over two local
+strings — the move being served and the item's status — compared through
+`MOVE_STATUS`, a constant mapping in the tracker module. No filesystem, no
+adapter, nothing a non-filesystem store would do differently; it is a decision
+about which of two values already in hand to use, made before any store or
+tracker call. It belongs exactly where it is, at the point that chooses the
+transition, because that is the only place that holds both values.
+
+The rest barely engages. Everything else here is node configuration, parsed by
 a pure function that touches no filesystem, reads no environment variable and
 never raises (`parse_tracker_config`'s own docstring, `tcw/store/base.py:1135`).
 A non-filesystem store reads the same mapping from wherever it keeps node
@@ -255,11 +329,15 @@ key nested under `transitions:` were searched across every tracked file. The
 results are the list in Design section 5 plus the code in sections 1–4, the
 tests named under Risks, and the changelog entries deliberately left alone.
 
-The sweep found one sibling inconsistency, described at the end of the Problem
-section: the catch-up walk asking for a start hop's transition name that could
-never exist. It is the same key in the same block and the same change removes
-it. **Amended during implementation**: it was first written up as a defect, and
-it is not reachable, so nothing was being got wrong.
+The sweep was **not thorough enough, and this is the item's main lesson.** It
+found the two catch-up-walk call sites of `transition_name` and missed the third
+— the one at the end of `deliver`, which serves a *recorded* move rather than
+the caller's. Grepping for `transitions.claim` and `claim_transition` could not
+have found it, because that site never names the key: it reads
+`config.move_transitions` through `transition_name`, so the sweep had to be over
+*the readers of the dictionary the key now lands in*, not over the key's own
+spelling. Adding a key to a shared mapping means auditing every reader of that
+mapping. Design section 5 is the consequence.
 
 ## Acceptance criteria
 
@@ -292,16 +370,25 @@ it is not reachable, so nothing was being got wrong.
    `transitions.claim` or shows a `claim:` key under a `transitions:` block.
    Files under `docs/changelogs/` and `docs/release-notes/` for already-released
    versions still do.
-9. The whole test suite passes.
+9. An item whose binding records `move: start` while the item itself has
+   reached `review` is not stranded: `sync` moves the ticket to the review
+   status rather than refusing. The same holds for a record naming `complete`
+   under an item at `review` where `transitions.complete` is set.
+10. A refusal naming `work.tracker.transitions.start` does not advise removing
+    it; one naming an optional key still does.
+11. The whole test suite passes.
 
 ## Risks
 
-1. ~~**The catch-up walk's start hop changes behavior.**~~ **Withdrawn during
-   implementation.** The path is not reachable, so no project behaves
-   differently; the probe and the reading that establish it are in the Problem
-   section. The full suite confirmed it independently: 3739 tests passed on the
-   rename commit with no walk test red. This item therefore changes no runtime
-   behaviour at all beyond which spelling of one configuration key is accepted.
+1. **Adding `start` to `move_transitions` changes what `deliver` does with a
+   stale record, and the first version of this item shipped that as a
+   regression.** Stated wrongly twice before it was stated right: first as a
+   defect in the catch-up walk, then as no behaviour change at all. Both were
+   drawn from an incomplete sweep. Design section 5 has the route, the guard and
+   the reasoning, and the parametrized regression test is
+   `test_a_stale_record_does_not_strand_an_item_that_has_moved_on`.
+   The guard is deliberately narrow, so the risk that remains is the one it does
+   not address: `deliver` serving a stale move at all. That is C4's.
 2. **Nine test modules construct a `TrackerConfig` or assert on the key.**
    `tests/test_tracker_claim.py:31`, `tests/test_tracker_client.py:35` and
    `tests/test_tracker_ownership.py:33` pass `claim_transition=` to the
