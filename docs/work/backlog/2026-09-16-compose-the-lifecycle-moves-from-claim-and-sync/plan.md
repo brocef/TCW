@@ -1,6 +1,6 @@
 # Plan: compose the lifecycle moves from claim and sync
 
-Ten code tasks, then one documentation block. The suite is green at every task
+Eight code tasks, then one documentation block. The suite is green at every task
 boundary — no task leaves the tree broken for the next.
 
 The ordering principle: **every guard that has to survive is pinned by a test
@@ -85,12 +85,19 @@ exists.
 
 - Replace the `claim(client, ticket)` call at `:590` with `assert_ownership`.
 - Delete the "claimed {key}, but it is in '{status}', not '{active}'" refusal at
-  `:613-620` — with the transition applied through `assess_move` instead, a
+  `:613-621` — with the transition applied through `assess_move` instead, a
   ticket at an unmapped status is what `transitions.start` is for.
 - Delete `if starting: return finish(CURRENT)` at `:621`; a start's ticket still
   has to be delivered.
 - `since` becomes the ticket's status at claim time. `expected` is **not**
   touched.
+- Remove `claim_refusal`'s lifecycle call sites (`sync.py:575`, `:607`) and
+  delete `_strict_claim` (`cli.py:379`) with its call at `cli.py:1146`.
+  `_tracker_import`'s call at `cli.py:2347` stays: `import` still claims through
+  `intake.claim`, which is knowingly the one place Goal 1 is not yet true.
+- Set `claimed_message` on the path that skips the claim because the ticket is
+  already yours, or the "already held by you" line today's row-`1e` claim prints
+  on every such `start` silently disappears. It is set only at `:611` today.
 
 **Proves:** spec criteria 1 and 2 — `tcw work start` on a backlog item whose
 ticket is in the review status exits 0, leaves the ticket in that status, and
@@ -161,40 +168,7 @@ fake — the same reason C1's tests went to `test_tracker_hold.py`.
 **Mutation:** make the gate refuse on an unreachable tracker and confirm
 criterion 10 goes red.
 
-## Task 8 — Strict mode requires `exclusive-claim-transition`
-
-**Modifies:** `tcw/store/base.py`, `tcw/tracker/sync.py`, `tcw/work/cli.py`.
-**Adds:** tests in `tests/test_tracker_config.py`,
-`tests/test_tracker_validate.py`.
-
-- `tcw validate` refuses `work.tracker.strict: true` without
-  `exclusive-claim-transition`, naming the key — the migration shape C3 used for
-  `transitions.claim`.
-- Remove `claim_refusal`'s lifecycle call sites (`sync.py:575`, `:607`,
-  `cli.py:412`). `_tracker_import`'s at `cli.py:2347` stays: `import` still
-  claims through `intake.claim`.
-- Delete `_strict_claim` (`cli.py:379`).
-
-**Proves:** spec criterion 15.
-
-**Mutation:** remove the validate check and confirm the test goes red.
-
-## Task 9 — `transitions.start` becomes optional
-
-**Modifies:** `tcw/store/base.py`, `tcw/tracker/sync.py`. **Adds:** tests in
-`tests/test_tracker_config.py`.
-
-Drop the required check at `base.py:1267-1269`. Delete the hardcoded branch at
-`sync.py:247-252` that withholds the "or remove it" advice for `transitions.start`
-— its stated reason (a start has no status-derived fallback) is gone once task 4
-routes the start through `assess_move` — and update the test C3 added for it.
-
-**Proves:** spec criterion 16 — a configuration with no `transitions.start`
-validates.
-
-**Mutation:** restore the required check and confirm the test goes red.
-
-## Task 10 — Retire `link --sync-status` and answer the unowned active item
+## Task 8 — Retire `link --sync-status` and answer the unowned active item
 
 **Modifies:** `tcw/work/cli.py`, `tcw/store/base.py`, `tcw/tracker/intake.py`,
 `tcw/tracker/sync.py`. **Adds:** tests in `tests/test_tracker_link.py`,
@@ -202,11 +176,20 @@ validates.
 
 - `link --sync-status` exits non-zero naming `link`, then `claim`, then `sync`,
   and leaves no such flag in any help text.
-- Stop writing `catch-up: true`; drop the field from `Bound` (`base.py:419`) and
-  decide `_BINDING_KEYS` (`intake.py:189`) — dropping it is the tidier answer and
-  loses nothing, since an old binding still parses either way.
+- Stop writing `catch-up: true`, but **keep reading it**. The field stays on
+  `Bound` (`base.py:419`) and in `_BINDING_KEYS` (`intake.py:189`), on the
+  requester's decision, because `walk()` — the multi-rung catch-up — is reachable
+  only through `bound.catch_up` (`sync.py:634`, `:660`). Dropping the reader
+  would make `walk()` dead code and silently remove the ability to bring a ticket
+  up more than one rung, since `assess_move` only ever finds a single transition
+  to the target. The writer goes; the walk stays reachable for every binding that
+  already carries the key, and ages out with them.
+- A test asserts `walk()` is still reached for a binding carrying `catch-up:
+  true`, so the retirement cannot quietly take it.
 - Delete the now-unreachable `check_only` refusal at `sync.py:543-544`.
 - Rewrite `unsynced_hint` (`sync.py:803-806`) to advise `claim` then `sync`.
+- `AlreadyClaimed` (`base.py:2611-2613`) names the remedy command; criterion 4
+  requires a message that does, and today's names none.
 - `FsWorkStore.start` takes the claim instead of raising `AlreadyClaimed` when
   the item is active with an empty `owner`. Active **and** held by somebody else
   is still refused, naming `tcw work tracker claim --take-over`.
@@ -220,7 +203,7 @@ criterion 3 goes red.
 
 ## Documentation Sync
 
-One pass over the finished diff, after task 10, before `outcome.md`.
+One pass over the finished diff, after task 8, before `outcome.md`.
 
 | Entry | Trigger | Fires | Why |
 | --- | --- | --- | --- |
@@ -251,9 +234,17 @@ Things the suite cannot answer, to be checked by hand and recorded in
 ## Notes
 
 **Every acceptance criterion traces to a task.** 1, 2 → task 4. 3, 4, 5, 12, 13,
-13b → task 10. 6, 6b, 6c, 10, 11 → task 7. 8, 8b → task 6. 9 → task 6 (its
-delivery) and task 7 (its gate). 14 → Verification. 15 → task 8. 16 → task 9. 17,
+13b → task 8. 6, 6b, 6c, 10, 11 → task 7. 8, 8b → task 6. 9 → task 6 (its
+delivery) and task 7 (its gate). 14 → Verification. 17,
 17b → tasks 2 and 3. 17c → task 2. 17d → task 5. 18, 18b, 18c, 18d → tasks 1 and 3.
+
+**Criteria 15 and 16 are no longer this item's.** They went to
+`2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode`,
+which blocks this item, and
+`2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move`,
+which this item blocks. What stays here is removing `claim_refusal`'s lifecycle
+call sites and deleting `_strict_claim`, both of which belong to task 4's change
+rather than to a configuration key.
 
 **Three tasks carry mechanism questions the spec deliberately left open** —
 3, 5 and 6. Each is proved by a test rather than by argument. A task that cannot

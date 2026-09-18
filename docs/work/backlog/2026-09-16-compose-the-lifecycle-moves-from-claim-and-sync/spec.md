@@ -21,7 +21,12 @@ changed:
     - work/discard-a-work-item
     - work/require-tracker-backed-work
     - work/manage-external-tracker-intake
+    - work/synchronize-external-tracker-work
 ```
+
+`work/synchronize-external-tracker-work` is on the list because `deliver`'s
+direction rule, `unsynced_hint` and the reachability of `walk()` all change, even
+though `sync`'s own verb surface does not.
 
 ## Problem
 
@@ -46,7 +51,7 @@ happened, because the ticket itself could not be asked — its status conflates
 "claimed" with "someone moved it here by hand".
 
 **`expected` and `since` are set to `statuses.active`**
-(`tcw/tracker/sync.py:625-626`) *because the claim transition has just put the
+(`tcw/tracker/sync.py:624-625`) *because the claim transition has just put the
 ticket there*. They are consequences of the entanglement, not decisions.
 
 **Strict mode's exclusivity question is asked about the wrong transition.**
@@ -72,7 +77,7 @@ reports and does not undo it.
 
 **An active item with no holder has no answer.** C1's `release` leaves one, and
 `FsWorkStore.start` (`tcw/store/base.py:3507`) then raises
-`AlreadyClaimed(slug, item.owner, item.started)` at `:3510` with an empty holder
+`AlreadyClaimed(slug, item.owner, item.started)` at `:3512` with an empty holder
 name.
 
 **Two flags take over somebody else's work**, and **`link --sync-status` is a
@@ -137,14 +142,14 @@ names one.
 Everything after the claim then has to change, because it was written on the
 premise that the claim had just moved the ticket onto `statuses.active`:
 
-- **The "claimed, but it is in X, not active" refusal (`:613-620`) goes.** It
+- **The "claimed, but it is in X, not active" refusal (`:613-621`) goes.** It
   exists because a claim that landed off the ladder left a ticket nothing could
   reason about. With the transition applied through `assess_move` instead, a
   ticket at an unmapped status is exactly what `transitions.start` is for. **This
   is the hole C2 named and handed here**: "a ticket in a status the project maps
   to nothing could not be walked onto the ladder at all, because the claim
   transition was the only thing that ever put it there."
-- **`if starting: return finish(CURRENT)` (`:621`) goes.** A start's ticket has
+- **`if starting: return finish(CURRENT)` (`:622-623`) goes.** A start's ticket has
   not arrived anywhere yet; it still has to be delivered.
 - **`since` becomes the ticket's status at claim time**, not `statuses.active`.
 - **`expected` is left exactly as `expected_statuses` computed it** (`:367-368`),
@@ -171,6 +176,14 @@ claimed this" with "somebody moved it here by hand".
 
 Once a claim is an assignment, the ticket answers directly:
 `ticket.assignee_id != ticket.me_id`.
+
+**With one precondition worth stating**: `me_id` is the account the tracker
+credentials authenticate as, not the person running the command. A project whose
+team shares one service account reads every ticket that account holds as "held by
+you", whoever is actually working it. That is already true of C1's `claim` and of
+`assess_move` today, so this item inherits it rather than introducing it — but it
+is the assumption the new `owed` rests on, and a project that shares credentials
+gets a weaker answer than one that does not.
 
 **But `owed` is not deleted, and the block it gates is not left alone.** `if owed:`
 (`:524`) hosts six guards that have nothing to do with assignment, and two of
@@ -221,12 +234,16 @@ exactly what `MOVES_ALLOWING_UNASSIGNED`'s comment (`:75-78`) exists to forbid,
 and what Goal 2 forbids for `complete`. The second draft proposed that collapse;
 it was caught at review, and the reasoning is recorded here so it is not retried.
 
-`catch-up: true` stops being written with `--sync-status`, and the field is
-dropped from `Bound`. A binding on disk that still carries the key parses as
-`Bound` either way, because `classify_binding` reads it with `data.get`
-(`tcw/store/base.py:419`) — verified, not assumed. Whether `_BINDING_KEYS`
-(`tcw/tracker/intake.py:189`) keeps carrying it forward on a rewrite is a
-decision for the plan; dropping it is the tidier answer and loses nothing.
+**`catch-up: true` stops being written, and keeps being read.** The writer goes
+with `--sync-status`; the field stays on `Bound` (`tcw/store/base.py:419`) and in
+`_BINDING_KEYS` (`tcw/tracker/intake.py:189`). Dropping the reader would be the
+tidier change and would silently delete a capability: `walk()`, the multi-rung
+catch-up, is reachable only through `bound.catch_up` (`tcw/tracker/sync.py:634`,
+`:660`), and `assess_move` only ever finds a single transition to the target, so
+nothing else can bring a ticket up more than one rung. The requester chose to
+keep it reachable for bindings that already carry the key, ageing out with them.
+A test pins that `walk()` is still reached, so the retirement cannot take it by
+accident.
 
 **`status-synced` stays.** It is written by a plain `link` as well
 (`tcw/work/cli.py:2517`) and records something the ticket cannot answer — that a
@@ -517,9 +534,14 @@ and both are wanted.
 
 ## Notes
 
-Four decisions are the requester's, recorded in `initial-request.md`: `start` on
-an unowned active item claims and carries on; `start --take-over` is retired; the
-gate applies always; the gate reads the ticket's assignee only.
+The requester's decisions, recorded in `initial-request.md`: `start` on an
+unowned active item claims and carries on; the gate applies always; the gate
+reads the ticket's assignee only; resolution overrides ownership; `catch-up`
+stays readable so the multi-rung walk survives. **`start --take-over` was
+decided for retirement and then kept** once the premise turned out to be false —
+Design section 7 has the reason, and this sentence exists because an earlier
+draft of these Notes still listed the retirement as a live decision while section
+7 kept the flag.
 
 Two are this spec's own and are argued above rather than assumed: an unreachable
 tracker does not refuse outside strict mode (section 6), and strict mode now
