@@ -100,6 +100,27 @@ third way to say "claim this"** (`tcw/work/cli.py:2502`, `:2524-2530`).
 - **Making the local `owner` a permission.** The gate reads the ticket's
   assignee; an unbound item is not gated.
 - **Widening `sync --all`**, a stated non-goal of C2.
+- **Changing what `claim`, `release` or `sync` mean — with one exception.**
+  `OwnershipOutcome` (`tcw/tracker/ownership.py:48-62`) gains a field saying
+  whether a failure is worth retrying. `ClaimOutcome` carries `row`, and
+  `deliver` uses it at `:594` to record a transient claim failure as `pending`
+  rather than `conflicting`: `state = PENDING if outcome.row in ("3-read", "3f")
+  else CONFLICTING`. `OwnershipOutcome` has no equivalent, and `detail` is not a
+  proxy — it is set on the permanent workflow refusal (`:119-124`) as well as on
+  the transient assign and read-back failures (`:128-130`, `:135-138`). Without
+  the field every claim failure records as `conflicting`.
+
+  **What that costs is narrower than it first appears, and the difference was
+  checked rather than assumed.** It does *not* lock an item under strict mode:
+  `binding_refusal` refuses on `bound.sync is not None` (`:740`) whatever the
+  state says, and every other reader tests `state in (PENDING, CONFLICTING)`
+  (`:387`, `tcw/work/cli.py:1071`, `:1088`, `:2563`). What is lost is the
+  diagnosis the user is given — "this will clear if you re-run it" reported as
+  "somebody has to do something". Worth a field; not worth a redesign.
+
+  Adding it exposes what `assert_ownership` already knows and changes no
+  behaviour of C1's verbs, which is why it is an exception to this non-goal
+  rather than a breach of it.
 - **Retiring `tcw/tracker/claim.py`'s `assess`.** `tracker show`'s claimability
   report and `tracker import` still ask its question. Only the lifecycle stops.
 
@@ -163,7 +184,7 @@ dead conditions. Each remaining guard is restated under the new definition:
 | --- | --- |
 | `at_target and local in RESOLVED_STATUSES` → CURRENT (`:526`) | Kept. A finished item whose ticket is already at the target is not claimed, whoever holds it. Its `assignee == me` half is removed as unreachable. |
 | `move == "discard"` claims nothing (`:533`) | **Widened** to the renamed set, so `complete` is exempt too. Kept verbatim it would let a `complete` on an unassigned ticket reach `assert_ownership` and claim it. |
-| `check_only` → CONFLICTING (`:543`) | Kept, reworded: "the claim of X is still owed" becomes "X is not held", which is what is now being reported. |
+| `check_only` → CONFLICTING (`:543`) | **Deleted as unreachable.** On that path `move` is `None`, so `starting` is False (computed at `:318`, before `:330` reassigns `move`) and `record is None` kills the third term — `takes_ticket` reduces to `bound.catch_up`, which this item drops. It is reachable today only on a `--part` binding made by `link --sync-status`. What is lost: a part-bound `sync` no longer says the claim is owed. Nothing replaces it, because after this item the ticket's assignee is what a caller reads instead. |
 | the past-the-claim branch (`:545-585`) | Its `rung > 0` half is kept; its `assignee == me` half is removed as unreachable. |
 | the resolved refusal inside it (`:554-561`) | Kept. Its comment says it exists because skipping the claim would lose the claim's own resolved refusal; that reason survives. |
 | strict mode's `claim_refusal` at `rung == 0` (`:569`) | Replaced — see section 4. |
@@ -411,6 +432,8 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
      decides before any read and keeps deciding.
 17c. `tcw work submit`, `rework` and `complete` on a bound item whose ticket is
      unassigned assign nothing in the tracker.
+17d. A claim that fails because the tracker could not be reached records
+     `state: pending`, not `state: conflicting`.
 18. No lifecycle move moves a ticket backwards: with the item in `review` and the
     ticket ahead of it, `tcw work rework` does not pull the ticket back and prints
     no note saying it did.
