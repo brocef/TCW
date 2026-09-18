@@ -288,9 +288,11 @@ says a `start`'s claim never reached Jira is now the record itself, which names
 `start` as the move it still owes — and the later command that finds it still
 claims the ticket first, exactly as before.
 
-The one case that changes: if a second command then fails too, its own move
-replaces `start` in the record, and from then on nothing claims the ticket for you.
-Take it with `tcw work tracker claim <slug>` and run `tcw work tracker sync <slug>`.
+Two cases change, and both recover the same way. If a second command then fails
+too, its own move replaces `start` in the record; and if another part's item holds
+the ticket, the hold clears this item's record, because while it is held the item
+owes the tracker nothing. From then on nothing claims the ticket for you. Take it
+with `tcw work tracker claim <slug>` and run `tcw work tracker sync <slug>`.
 Refusals that used to say "`tcw work start` claims a bound ticket" now name the
 claim command — as does a claim TCW tried to make and could not, which used to
 report only that the ticket did not offer the transition. A ticket somebody else

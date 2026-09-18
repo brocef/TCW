@@ -15,11 +15,13 @@ category.
   `usable` local from the sync command; `deliver_now` in `tests/test_tracker_sync.py`
   drops the argument.
 - **`Outcome.note`** — a warning the caller prints, set by `finish` only for
-  `CURRENT`, when the ticket's `lowest_rung` was above `_RUNG_ORDER[local]`: "KEY was
-  in 'X', past where <slug> is, and was put back to 'Y'." Printed beside
-  `outcome.claimed` in `_deliver_after` and the `link` path, and as its own
-  `<slug>: <note>` line before `<slug>: current` in the sync command. No prompt and no
-  record — a delivered move writes nothing, by design.
+  `CURRENT`, and only **for a `sync`** (`syncing and target and …`), when the ticket's
+  `lowest_rung` was above `_RUNG_ORDER[local]`: "KEY was in 'X', past where <slug> is,
+  and was put back to 'Y'." A lifecycle move that finds its ticket a rung up is
+  `rework`, every time it runs, so a note there would call the user's own move drift.
+  Printed only by the sync command, as its own `<slug>: <note>` line before
+  `<slug>: current`; `_deliver_after` and `_tracker_link` print nothing, since neither
+  can now produce one. No prompt and no record — a delivered move writes nothing.
 - **`assess_move`'s resolved check moved above the assignment checks** and is now
   `if not expected and ticket.category == "done"` rather than the `elif` on the
   window branch. Reachable for the first time from a record-less `sync`, where
@@ -57,7 +59,15 @@ category.
 - **`finish`'s `drop_record`** is `bound.sync is not None`, and the held-sibling
   branch's `stale` is `bound.sync is not None and local not in RESOLVED_STATUSES`.
   Both lost an `owed` term that existed only to keep the claim key alive across a
-  dropped record.
+  dropped record. `drop_record`'s removal is inert. `stale`'s is a second corner of
+  the same kind as the one above: a sibling-part hold now drops a record naming the
+  `start`, so once the other part closes nothing claims the ticket for this item.
+  Restoring the term as `record["move"] != "start"` was built and rejected — it makes
+  `binding_refusal` lock a held item out of submitting finished work until an
+  unrelated part closes, which
+  `test_a_held_item_drops_its_record_so_strict_mode_does_not_lock_it` exists to
+  prevent. Both corners recover with `tcw work tracker claim`, which the refusal
+  names.
 
 ## Removed — the post-completion version offer
 

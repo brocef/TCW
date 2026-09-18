@@ -39,8 +39,10 @@ ticket was in the wrong place — the item still moves and is committed, the com
 exits 1 saying so, and the binding records whether that is pending or conflicting.
 `tcw work show` and `tcw work list` show that state, and `tcw work tracker sync
 <slug>` or `--all` retries it, including a claim that did not succeed at start, while
-the record still names that `start` as what it owes. Once a second failure records a
-different move over it, no command claims the ticket for me any more: `tcw work tracker
+the record still names that `start` as what it owes. Two things clear that note — a
+second failure recording its own move over it, and another part's item holding the
+ticket, which drops this item's record because a held item owes the tracker nothing —
+and after either, no command claims the ticket for me any more: `tcw work tracker
 claim <slug>` takes it and `sync` then delivers the move.
 `sync` acts only on items I started, since it acts as whoever runs it; naming one
 somebody else started fails and tells me how to run it as them or take the item over,

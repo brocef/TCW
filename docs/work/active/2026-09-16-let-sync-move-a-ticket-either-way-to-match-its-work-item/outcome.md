@@ -130,7 +130,7 @@ to the working tree, the named tests run, and the file restored.
 | 6 | `test_sync_never_reopens_a_resolved_ticket` |
 | 7 | `test_sync_reports_a_held_item_without_failing` — extended during implementation: it reported the hold but never checked that the ticket stayed put, which is the thing this change could break. It now asserts the other item is named, `fake.writes() == []`, and the ticket is still at `In Progress`, both with a record and with none (the reconciling path) |
 | 8 | `test_sync_does_not_reconcile_a_ticket_bound_as_a_named_part` |
-| 9 | `test_no_command_writes_a_claim_into_the_record`, `test_a_late_link_records_its_catch_up_without_a_claim` |
+| 9 | `test_no_command_writes_a_claim_into_the_record` (the failed `start` and `submit` legs), `test_record_unsent_writes_no_claim`, `test_the_link_that_asks_for_a_catch_up_writes_no_claim`. The last two were added in the second pass: the first two legs were the only ones genuinely covered before it |
 | 10 | `test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored`, parametrized over `owed` and `done`, and by hand |
 | 11 | that test's `show --json`, plus `test_the_json_document_validates_with_a_record_a_problem_and_none` |
 | 12, 13 | **rewritten during implementation** — see below. Now `test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb` and `test_a_claim_deliver_cannot_make_names_the_verb_that_can` |
@@ -216,6 +216,68 @@ error.
 - **Nothing was flipped to `Supported`.** `capabilities.yaml` declares
   `work/synchronize-external-tracker-work` and `work/require-tracker-backed-work`
   as changed; the ledger statuses are closeout's.
+
+## A second pass, after the verify assessment
+
+Four findings, all real. Commits `RANGE`.
+
+**1 — the sibling hold drops a record that still owes the `start`'s claim, and I
+left the guard out.** The assessment was right that this is a second corner
+`outcome.md` did not admit, and right that my spec's justification for removing
+the `(record is None or record["claim"] != "owed")` term covered only the
+late-link half of `owed`. The assessment preferred restoring it as
+`record["move"] != "start"`. **I built that and rejected it**, because it makes
+`tests/test_tracker_strict.py:760` fail: with the record kept,
+`binding_refusal` refuses every local move on a held item, so someone whose
+`start` did not reach the tracker cannot submit finished work until an unrelated
+part closes. That test exists precisely to prevent that lock. The trade is a hard
+block on work in progress against a claim one command recovers, so the record
+still goes. What changed instead: the corner is now stated where it happens (a
+fifteen-line comment on the held branch saying what is lost, that keeping it was
+tried, and why claim state riding on this record is what `claim: owed | done`
+was), and it is pinned by two tests rather than left implicit.
+
+**2 — the comment above it.** Rewritten, along with the "Held even when this
+item's claim is owed" line two lines further up, which named the same removed
+rule.
+
+**3 — `rework` printed a note calling the user's own move a pull-back.** Fixed at
+the source: `backwards` is set only when `syncing`, so no caller of `deliver` can
+print one for a lifecycle move. `rework` takes an item from review to active, so
+its ticket is legitimately one rung up every single time. The two prints that can
+no longer fire — `_deliver_after`'s and `_tracker_link`'s — are deleted.
+
+**4 — two of criterion 9's four legs were unpinned**, and the assessment
+identified the cause exactly: both writes are masked by a later read. Now pinned
+by a test each, both mutation-checked to go red with the key put back.
+
+Also done: the three dead things. `not check_only` in the walk-resume and
+`or record is None` in the held guard were tautologies (`check_only` implies
+`record is None`) and are deleted rather than tested.
+
+### Tests added or changed in this pass
+
+| Test | What it pins |
+| ---- | ------------ |
+| `test_a_hold_drops_a_record_that_still_owes_the_start_s_claim` | the corner itself, end to end: the hold drops the record, the next move after the other part closes names `tcw work tracker claim`, and that verb plus a `sync` is the whole recovery |
+| `test_a_hold_drops_a_record_so_strict_mode_cannot_lock_the_item` | why it is dropped, in this repository's own fixture rather than only in `tests/test_tracker_strict.py` |
+| `test_rework_does_not_call_the_user_s_own_move_a_pull_back` | both the command output and, through `deliver_now`, that `deliver` sets no note for a lifecycle move while still setting one for a `sync` of the same ticket |
+| `test_record_unsent_writes_no_claim` | the record `record_unsent` writes, reached by breaking the tracker block so no client exists |
+| `test_the_link_that_asks_for_a_catch_up_writes_no_claim` | the record `_tracker_link` writes, read from a hook on the delivery's first ticket read — the one moment between that write and `finish` replacing it |
+| `test_sync_reports_a_held_item_without_failing` (existing) | extended earlier in this pass: the ticket does not move, in either direction, with a record and without one |
+| `test_a_record_on_disk_that_still_names_a_claim_is_read_and_ignored` (existing) | extended earlier: parametrized over `owed` and `done` |
+
+### Mutations run in this pass
+
+| # | Mutation | What went red |
+| - | -------- | ------------- |
+| 13 | `_siblings` never reporting an open sibling as holding | the hold test, on `current` — `sync` moved a ticket another part was holding |
+| 14 | `_sync_record` keeping every key on disk | the stale-key test, on both `owed` and `done` |
+| 15 | `stale` with the `record["move"] != "start"` guard restored | `…drops_a_record_that_still_owes…`, which is how the guard's cost was measured |
+| 16 | `stale` never true | `…drops_a_record_so_strict_mode_cannot_lock…` and `test_a_held_item_drops_its_record…` |
+| 17 | the `syncing` term dropped from the note | `…does_not_call_the_user_s_own_move…`, on a note set for a `rework`. **The first version of that test did not catch this** — it observed only the command's output, which the deleted print already silenced. The `deliver_now` assertions are what earn it. |
+| 18 | `"claim": "done"` back in `record_unsent` | `test_record_unsent_writes_no_claim` |
+| 19 | `"claim": "owed"` back in `_tracker_link` | `test_the_link_that_asks_for_a_catch_up_writes_no_claim` |
 
 ## Notes
 

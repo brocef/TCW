@@ -533,7 +533,10 @@ attempt cannot be made — the ticket has moved on and no longer offers the
 already names them.
 
 Once a second failure writes a different move over that record, no command claims
-the ticket for you any more, and the same two commands are how you take it.
+the ticket for you any more, and the same two commands are how you take it. The
+same is true when another part's item holds the ticket: the hold clears this item's
+record, because while it is held the item owes the tracker nothing, and that takes
+the note of the owed claim with it.
 
 `tcw work show` prints a `tracker sync:` line with the state, the move, when, and
 the reason; the `tcw work list` row reads `ticket: <KEY> (pending)`; and
