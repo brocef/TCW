@@ -90,7 +90,10 @@ strands nobody in the meantime. The guard is a floor, not the fix.
 - **The web app.** Out of scope for the epic, recorded rather than assumed.
 - **Changing what `claim`, `release` or `sync` mean.** This item calls them.
 - **`.claiming/`**, the filesystem staging behind the local claim
-  (`tcw/store/fs.py:921`, `:3799`). Adapter-private, and the epic says so.
+  (`tcw/store/fs.py:985`, `:3819-3849`, `:3888`). Adapter-private, and the epic
+  says so. The epic's own spec cites `fs.py:921` and `:3799` for this; neither
+  line resolves to claiming code on `main` today, so the lines above are the ones
+  this item checked.
 - **The catch-up walk's own defect**, which stays
   `2026-09-16-close-three-gaps-the-pr-45-review-left-in-tracker-delivery`.
 - **Making the local `owner` a permission.** The requester decided the gate reads
@@ -159,8 +162,8 @@ rather than an argument.
 Repo-wide, and it is the sweep C3's failure teaches: every **reader** of the
 things this item changes, not every mention of their names. That means each
 caller of `_strict_refusal`, `_strict_claim`, `_deliver_after`, `authorize`,
-`intake.claim`, `FsWorkStore.start` and `MOVE_STATUS`, and the tests that name
-them. `tcw serve` and `web/` are read for callers but not changed.
+`intake.claim`, `FsWorkStore.start` and `MOVE_STATUS` (`tcw/tracker/sync.py:67`),
+and the tests that name them. `tcw serve` and `web/` are read for callers but not changed.
 
 ## Acceptance criteria
 
