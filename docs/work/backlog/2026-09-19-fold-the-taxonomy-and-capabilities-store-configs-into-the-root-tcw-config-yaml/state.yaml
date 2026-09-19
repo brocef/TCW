@@ -1,0 +1,9 @@
+slug: 2026-09-19-fold-the-taxonomy-and-capabilities-store-configs-into-the-root-tcw-config-yaml
+title: Fold the taxonomy and capabilities store configs into the root tcw-config.yaml
+created: '2026-09-19'
+resolution: null
+tags:
+- store
+- taxonomy
+- capabilities
+- cli
