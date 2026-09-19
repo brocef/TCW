@@ -229,8 +229,10 @@ harnesses read the same way.
    `tcw capabilities list` shows `base/` capabilities.
 3. `tcw taxonomy extends add base` writes `taxonomy.extends: [base]` into
    `tcw-config.yaml`, creates no file under the taxonomy store, and leaves every
-   other key in that config — `id`, `work.tags`, `taxonomy.path` — byte-identical
-   in value. `tcw taxonomy extends rm base` removes the key. The same holds for
+   other key in that config — `id`, `work.tags`, `taxonomy.path` — equal in
+   parsed value. (Not byte-identical: `dump_yaml` rewrites the sentinel
+   wholesale and drops comments, which `_write_tags` already accepts —
+   `tcw/store/fs.py:5658-5660`.) `tcw taxonomy extends rm base` removes the key. The same holds for
    `tcw capabilities extends base` and `--rm` against `capabilities.extends`.
 4. With `taxonomy.path` pointing into a **second git repository**,
    `tcw taxonomy extends add base` exits 0, and `git status` in the node's
