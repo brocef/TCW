@@ -101,9 +101,17 @@ Repo-wide, for anything sibling to this. Five findings, all small:
    configuration TCW keeps outside `tcw-config.yaml`. Deliberately left alone —
    see Non-goals.
 
-Outside `tcw/`, every reference to the two filenames is a test fixture: 24
-occurrences across ten files under `tests/`, plus
-`tests/fixtures/lifecycle_baseline/capture.py`. The web app carries none —
+Outside `tcw/`, every reference to the two filenames is a test fixture: **19
+write sites across six files**, plus one docstring
+(`tests/test_capabilities_federation.py:443`) — `test_multiproject.py`,
+`test_store_provisioning.py`, `test_environment_hardness.py`,
+`test_capabilities_federation.py`, `test_taxonomy.py`, `test_serve.py`. A plain
+grep for `config.yaml` over `tests/` overcounts: `test_lifecycle_baseline.py:49`,
+`test_lifecycle_validation.py:324-328` and
+`tests/fixtures/lifecycle_baseline/capture.py:93` all name a *lifecycle corpus*
+file that happens to be called `<case>.config.yaml`, and
+`test_store_editor.py:1595` is an `_atomic_write_all` test using an arbitrary
+temp filename. None of the four is a store config. The web app carries none —
 `tcw/serve/runtime.py` never mentions `extends`, and reaches inherited entries
 through the store like every other reader. `evals/seed_fixture.py` touches only
 `tcw-config.yaml`. `tcw init` scaffolds no per-store config
@@ -481,7 +489,7 @@ that happens by *omission* if nobody writes it down.
   requester was asked twice and confirmed. The blast is bounded by how rare
   `extends` is — the file is "optional and commonly absent"
   (`tcw/store/fs.py:3187-3188`) — but it is real.
-- **Test churn hides a regression.** Two dozen fixture sites move from writing a
+- **Test churn hides a regression.** Nineteen fixture sites move from writing a
   file to writing a config key. A fixture rewritten slightly wrong is a test that
   passes while testing nothing, and
   `tests/test_capabilities_federation.py:441-452` deliberately writes
