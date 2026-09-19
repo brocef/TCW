@@ -564,9 +564,10 @@ def test_a_duplicate_key_is_still_reported(tmp_path):
 
 def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
     """The set is a judgment that drifts as record files are added, so it is
-    checked against the names the source actually writes. Three absences are
-    deliberate, and each one is a file that is legitimately not a mapping, or
-    is never reached by this pass — see `OWNED_YAML_NAMES` for why."""
+    checked against the YAML names the source mentions. Five absences are
+    deliberate: each is a file that is legitimately not a mapping, is never
+    reached by this pass, or is no longer written at all — see
+    `OWNED_YAML_NAMES` for why."""
     import re
 
     from tcw.store.fs import OWNED_YAML_NAMES
@@ -582,4 +583,13 @@ def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
         "dod.yaml",            # a top-level list by design
         "tcw-config.yaml",     # outside the scanned trees; `load_config` refuses it
         "capabilities.yaml",   # two valid shapes — a mapping and reconcile's list
+        # The two per-store configs `extends` used to live in. Nothing writes
+        # either one now that it is `<component>.extends` in the node config;
+        # the literals survive only as `LEGACY_CONFIG_NAME`, which keeps each
+        # store's former filename out of its own attachment listing. A leftover
+        # copy on disk is not a record of ours, so it is not held to the mapping
+        # contract — `tcw validate`'s YAML scan still reports one that will not
+        # parse, independently of this set.
+        "config.yaml",
+        ".config.yaml",
     }, written
