@@ -9,3 +9,5 @@ tags:
 - cli
 owner: brocef@users.noreply.github.com
 started: '2026-09-19T22:55:51.821917Z'
+worktree: .worktrees/2026-09-19-fold-the-taxonomy-and-capabilities-store-configs-into-the-root-tcw-config-yaml
+branch: work/2026-09-19-fold-the-taxonomy-and-capabilities-store-configs-into-the-root-tcw-config-yaml
