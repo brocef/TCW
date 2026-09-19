@@ -1701,6 +1701,66 @@ class FsTreeStore:
         """Deliberately stateless — see `test_non_git_writes.py`'s no-state pin."""
         require_repository(self._write_git_root())
 
+    # -- the node's own `tcw-config.yaml` --
+    #
+    # On `FsTreeStore` rather than on one component, because all three now write
+    # it: `work.tags`, `taxonomy.extends` and `capabilities.extends`. It is the
+    # node's file, not any store's, and the two roots vary independently.
+
+    def _config_path(self) -> Path:
+        """The node sentinel's path. Not resolved — `FsTreeStore` keeps
+        `node_root` as it was handed over where `FsWorkStore` resolves it, and a
+        plain join is correct either way."""
+        return self.node_root / SENTINEL
+
+    def _config(self) -> dict:
+        """Read the node sentinel config, tolerant of absence/emptiness. A
+        malformed file raises a clear error naming the path rather than a raw
+        YAML traceback. Plain board listing never calls this, so a broken config
+        only fails operations that actually need it."""
+        return load_config(self._config_path())
+
+    def _component_config(self) -> dict:
+        """This component's section of the node config, as a mapping.
+
+        Mirrors `resolve_store` exactly, and has to: a section that is present
+        but not a mapping normalizes to `{}` there (see the `isinstance` guard
+        beside `<component>.path`), so doing anything else here would turn
+        `taxonomy: docs/tax` into an `AttributeError` on a path `resolve_store`
+        answers calmly.
+        """
+        section = self._config().get(self.COMPONENT)
+        return section if isinstance(section, dict) else {}
+
+    def _write_node_config(self, config: dict) -> None:
+        """Write the node sentinel and stage it in the **node's** repository.
+
+        The store root and the node root are different repositories in the
+        orchestrator layout, and `git add` refuses a path outside the repository
+        it is run in — staging this against the store's repository is what made
+        `tcw work tags add` fail with *is outside repository at …*, so the whole
+        verb was unusable there.
+
+        The `None` branch is narrower than it looks: callers run
+        `_require_repository` first, which refuses a non-git node whose store is
+        its own default folder. What reaches it is the node that is not a
+        repository while its *store* is — an external `<component>.path`
+        pointing into one — where writing the file is the whole of what can be
+        done.
+
+        `yaml.safe_dump` re-renders the file: keys, values and their order
+        survive, comments and formatting do not. Accepted, and true of
+        `tcw work tags add` before this.
+        """
+        config_path = self._config_path()
+        node_repository = git_root(config_path.parent)
+        payload = [(config_path, yaml.safe_dump(config, sort_keys=False,
+                                                allow_unicode=True))]
+        if node_repository is None:
+            _atomic_write_all(payload)
+        else:
+            self._write_staged(payload, stage_root=node_repository)
+
     def _stage(self, *paths: Path) -> None:
         self._require_repository()
         git_stage(self.store_git_root, *paths)
@@ -5243,16 +5303,6 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     # -- tag registry (node-root `tcw-config.yaml` → `work.tags`) --
 
-    def _config_path(self) -> Path:
-        return self.node_root / SENTINEL
-
-    def _config(self) -> dict:
-        """Read the node sentinel config, tolerant of absence/emptiness. A
-        malformed file raises a clear error naming the path rather than a raw
-        YAML traceback. Plain board listing never calls this, so a broken config
-        only fails operations that actually need the tag registry."""
-        return load_config(self._config_path())
-
     def registered_tags(self) -> list[str]:
         work = self._config().get("work")
         if not isinstance(work, dict):                 # absent or hand-edited to a scalar/list
@@ -5666,8 +5716,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         repository made `tcw work tags add` fail outright with *is outside
         repository at …*, so the whole verb was unusable there.
 
-        A node outside git stages nothing rather than failing: the file is
-        written and that is the whole of what a non-git node can do.
+        **A node outside git does not get here.** `_require_repository` below
+        resolves through `store_git_root`, which falls back to the node root, so
+        a default-layout store in a non-git node refuses before anything is
+        written — the contract `tests/test_non_git_writes.py` exists to pin. This
+        docstring used to claim the opposite ("stages nothing rather than
+        failing"), which is true only of the narrow case where the *store* is in
+        a repository and the *node* is not; `_write_node_config` handles that one.
         """
         self._require_repository()
         config = self._config()
@@ -5677,14 +5732,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         result = sorted(tags)
         work["tags"] = result
         config["work"] = work
-        config_path = self._config_path()
-        node_repository = git_root(config_path.parent)
-        payload = [(config_path, yaml.safe_dump(config, sort_keys=False,
-                                                allow_unicode=True))]
-        if node_repository is None:
-            _atomic_write_all(payload)
-        else:
-            self._write_staged(payload, stage_root=node_repository)
+        self._write_node_config(config)
         return result
 
     def register_tags(self, tags: list[str]) -> list[str]:
